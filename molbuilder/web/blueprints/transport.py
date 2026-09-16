@@ -382,18 +382,30 @@ def api_transport_describe() -> Any:
                             "error": f"{_name!r} is the description's "
                                      f"own field (identity, bias) -- "
                                      f"it is never an override"}), 400
-        if _contract_sealed and _name in CONTRACT_FIELDS:
+        if _name in CONTRACT_FIELDS:
+            # SHARED, therefore not a per-stage override -- and that is the
+            # reason, not "the citation owns it".
+            #
+            # This said *"cite a relaxation that ran with the values you
+            # want"* until 2026-09-16, which was the SEALED reading and by
+            # then actively misleading advice: it told a person to redo a
+            # relaxation when they could edit one line of the template.
+            # `engines/transport.md` § 2a.7 ruled that the cited run
+            # DEFAULTS these values; what remains true is that they are
+            # shared by every rung, so giving ONE rung its own would let the
+            # device disagree with its own leads -- the single thing that
+            # must be impossible.
             return jsonify({"ok": False,
-                            "error": f"{_name!r} is the citation's to "
-                                     f"say (the electronic contract "
-                                     f"arrives from the cited "
-                                     f"relaxation's own deck) -- reset "
-                                     f"it in the form; cite a "
-                                     f"relaxation that ran with the "
-                                     f"values you want, or cite a "
-                                     f"plain .xyz+.molstruct pair, "
-                                     f"whose contract fields are "
-                                     f"open"}), 400
+                            "error": f"{_name!r} is shared by every stage "
+                                     f"of this calculation, so it cannot "
+                                     f"be a per-stage override: the "
+                                     f"electrode and the device must not "
+                                     f"be able to disagree about it.  "
+                                     f"Change it in the calculation's "
+                                     f"template ({_name} there applies to "
+                                     f"all five rungs at once) -- it was "
+                                     f"filled in from the run you cited, "
+                                     f"and it is yours to change."}), 400
     try:
         task = Task(
             engine="siesta", shape="hierarchical",

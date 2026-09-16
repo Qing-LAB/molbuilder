@@ -1835,7 +1835,16 @@ class TestTheOverrideLane:
         self._with_override(calc, "device", {"basis_size": "DZP"})
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "device")
-        assert "citation's to say" in str(e.value)
+        msg = str(e.value)
+        assert "SHARED" in msg or "shared" in msg, (
+            f"the refusal must say WHY -- the value is shared by every "
+            f"stage, so one rung cannot have its own.  It said \"the "
+            f"citation's to say\" until 2026-09-16, which § 2a.7 reversed: "
+            f"the cited run DEFAULTS these values rather than owning them, "
+            f"so that message sent a person to redo a relaxation when they "
+            f"could edit one line of the template: {msg}")
+        assert "template" in msg, (
+            f"...and it must name where the value IS changed: {msg}")
 
     def test_an_unknown_knob_is_refused_by_name(self, calc):
         """A misspelled override key is refused, quoting the key.
@@ -1859,19 +1868,24 @@ class TestFormBContract:
     ordinary overrides and land in the rendered deck."""
 
     def test_an_open_contract_field_reaches_the_deck(self, tmp_path):
-        """SCIENCE, and the other half of the seal. When the citation is a labeled
-        PAIR (form B) rather than a concluded run, `basis_size` is an ORDINARY
-        override and must reach the deck.
+        """SCIENCE. A form-B citation carries no deck, so nothing dictates its
+        electronic description — and the person must still be able to state it.
 
-        Catches the seal being applied unconditionally. A pair has no deck, so there
-        is no cited electronic contract to defer to -- if the field stayed sealed
-        there would be no way to state the basis at all, and every form-B transport
-        calculation would render at the default basis with the user unable to change
-        it. The rule is not "these fields are frozen", it is "these fields belong to
-        the citation when the citation HAS them".
+        **The mechanism changed on 2026-09-16 and the concern did not.** This
+        test used to set `basis_size` as a STAGE OVERRIDE, because that was the
+        only way in: the contract fields were sealed for form A and opened for
+        form B, so the override lane was where a pair's basis could be said.
+        Its worry was exact — *"if the field stayed sealed there would be no
+        way to state the basis at all"*.
 
-        Contract: `engines/transport.md` § 3.1 (what makes a directory citable --
-        form A vs form B) + § 5 (the invariant set).
+        `engines/transport.md` § 2a.7 answered it better. Every transport
+        calculation now carries a TEMPLATE: for form A it is filled from the
+        cited deck, for form B from the catalogue's own defaults, and either
+        way the person may change it. So the basis is stateable for a pair —
+        in the place where it applies to all five rungs at once, rather than
+        on one rung where it could make the device disagree with its leads.
+
+        Contract: `engines/transport.md` § 3.1 (form A vs form B) + § 2a.7.
         """
         from molbuilder.workingcopy_structure import StructureCodec
         root = tmp_path / "projects"
@@ -1880,17 +1894,23 @@ class TestFormBContract:
         StructureCodec().write(_junction_struct(), pair / "junction.xyz")
         write_pseudos(pair, ["Au", "S", "C"])
         dest = _describe_transport(root, cite="J/structure/junc")
-        # basis_size is CONTRACT -- sealed for form A, open here.
-        import json as _json
-        t = _json.loads((dest / "task.json").read_text())
-        for st in t["stages"]:
-            if st["name"] == "seed":
-                st["overrides"] = {"basis_size": "TZP"}
-        t["varies"] = ["basis_size"]
-        (dest / "task.json").write_text(_json.dumps(t, indent=2) + "\n")
+        # A pair has no deck, so the template starts from the catalogue's
+        # defaults -- and the person changes it there.
+        import dataclasses
+        from molbuilder.template import _emit, find_template, read_template
+        tmpl = find_template(dest)
+        assert tmpl is not None, (
+            "a form-B transport calculation carries a template too -- "
+            "without one there would be nowhere to state the basis")
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value="TZP") if i.name == "basis_size"
+             else i for i in parsed.items], engines=("siesta",)))
         prep_calculation(dest, "seed")
         deck = (dest / "01_seed" / "T_01_seed.fdf").read_text()
-        assert "TZP" in deck, "the open contract field must reach the deck"
+        assert _says(deck, "PAO.BasisSize", "TZP"), (
+            "a pair's electronic description is the person's to state, and "
+            "the template is where they state it")
 
     def test_the_same_field_stays_sealed_for_a_relaxation(self, calc):
         """SCIENCE. The paired negative: the SAME field, on a form-A citation, is still
@@ -1914,4 +1934,13 @@ class TestFormBContract:
         (calc / "task.json").write_text(_json.dumps(t, indent=2) + "\n")
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "seed")
-        assert "citation's to say" in str(e.value)
+        msg = str(e.value)
+        assert "SHARED" in msg or "shared" in msg, (
+            f"the refusal must say WHY -- the value is shared by every "
+            f"stage, so one rung cannot have its own.  It said \"the "
+            f"citation's to say\" until 2026-09-16, which § 2a.7 reversed: "
+            f"the cited run DEFAULTS these values rather than owning them, "
+            f"so that message sent a person to redo a relaxation when they "
+            f"could edit one line of the template: {msg}")
+        assert "template" in msg, (
+            f"...and it must name where the value IS changed: {msg}")

@@ -975,7 +975,12 @@ class TestTheRecordedContract:
                                   overrides={"basis_size": "SZ"}),))
         with pytest.raises(StageError) as e:
             config_for(task, out)
-        assert "RECORDED" in str(e.value)
+        msg = str(e.value)
+        assert "SHARED" in msg or "shared" in msg, (
+            f"the refusal's reason is that the value is shared by every "
+            f"stage -- not that a recorded contract owns it.  § 2a.7 "
+            f"reversed the latter: {msg}")
+        assert "template" in msg, f"and it must say where to change it: {msg}"
 
     def test_a_plain_pair_stays_open(self, tmp_path):
         from molbuilder.workingcopy_structure import StructureCodec

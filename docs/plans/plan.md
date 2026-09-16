@@ -118,7 +118,7 @@ the same day, with what it turned out to be.
 | **W27** | engines / execution | **Transport is not on the seven-floor stack — put it there.** *(user: "fix your fucking plan by having first a correct top-down architecture"; "why the fuck is the emit not based on template based approach".)*  The architecture and the derivation are `engines/transport.md` §§ 3.2–3.7.  **THE ROOT, in the project's own vocabulary** (`execution/architecture.md` § 2): `molbuilder/transport/` appears in **none of the seven floors**, while that document's one mention of transport claims its stages "run INSIDE the job system (each an ordinary prep/launch rung)".  Four rules broken: floor 3 renders the text of every file from a `ParameterSet` through `prepare_deck` — transport's `render_script` concatenates literal f-strings; floor 2 holds what the person asked for — transport had no template, so `TransportConfig` became the definition; `prep` is the conductor and may never decide — `_prep_transport` is a second conductor that does; floor 2 must never name a machine — `max_memory_mb`/`num_threads` sit on it.  **WHY, from the history:** `transiesta.py::render_script` 2026-06-10; the pipeline landed 2026-08-19 (`refactor(prep): the seam carries the engine's FORM`) and migrated siesta + pyscf in one commit, leaving transport behind; the composite was then built outward from the unmigrated emitter.  `template.md` § 9.2 has recorded the missing arm all along, filed as one lost feature (USER-CUSTOM) rather than as *transport cannot render from a template*.  **MEASURED:** the seed deck `prep` renders carries **13 keywords / 4 blocks** against a template offering **45 deck-reaching items**.  **EVERY KNOWN DEFECT IS DOWNSTREAM:** the seed dying at 1000 SCF iterations (`MaxSCFIterations` cannot travel from the citation — no transport emitter writes it and no transport field held it); the device deck aborting on "the continued fraction method requires at least 20 poles" (the pole *energy* is written, never `TS.Contours.Eq.Pole.N`); `TBT.k` as a bare scalar the parser rejects; `tbt_k_grid`'s unguarded transport axis; the electronic contract as two frozensets and a twice-spelled predicate.  **ORDER OF WORK IS FLOOR ORDER**, § 3.6: (1) render through `spec_for`/`DeckSpec`/`prepare_deck`, (2) no value syntax by hand, (3) validation report + read-back check, (4) `_prep_transport` stops deciding, then the floor-2 items.  My first draft of this plan put the pipeline at step 6 of 7 because it was written from the parameters down; read from the floors down it is step 1.  **DONE:** 4a the `citation` marker (`template.md` § 6.4's sibling answerer, per-kind); 4b/4c transport's parameters as 17 catalogue rows + 7 shared rows tagged `citation = ["transport"]` + 9 relaxation rows tagged `optimization`, with matching `SiestaConfig` fields — which also made `electrode_kz` (invariant I9) reachable from a description for the first time. | `engines/transport.md` §§ 3.2–3.7 · 2026-09-15 | 4a/4b/4c **done** · floor-3 migration **open** |
 | **TR1–TR3** | engines / transport | **Transport's description gains a template, and the catalogue gains what the design needs.** T1: `jobset init --calculation transport` writes `<label>.template.toml` with its Class A values defaulted from the cited relaxation — today a transport folder has **no template at all**, so the shared baseline has no home and the stage table has nothing to read. T2: the three keywords with no catalogue row — `TS.HS.Save`, the equilibrium pole **count**, `TS.Voltage`. T3: `kgrid` split, because its three components fall in three classes. **Reuses `build_description` / `template_with_values`, which already narrows the catalogue by `calculation`** | § 5p · `transport.md` § 2a | **ALL DONE 2026-09-16** — TR1 § 5p.3c, TR2/TR3 § 5p.3d |
 | **TR4–TR6** | engines / transport | **Transport renders through the one path.** T4: `_prep_transport` keeps the compose and hands to `resolve`, so a transport run has a `ParameterSet` with provenance and `--pipeline-log` stops being a no-op. T5: the remaining four rungs onto `spec_for` — ⚠️ **blocked on a seam question**, what a composite kind hands its renderer, since `spec_for(struct, cfg, stage_token=)` does not carry the `ComposedJunction`. T6: `TransportConfig` retires | § 5p · § 2a | **TR4 done 2026-09-16** (§ 5p.3e); TR6 half-done — `siesta_config_for` already deleted; **TR4 and TR5 DONE**; TR6 all but done — one projection survives, feeding the lifted NEGF block, and goes with it |
-| **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | **TR8 done 2026-09-16** (§ 5p.3k) — the live defect is closed; TR7 not started |
+| **TR7–TR8** | front end / transport | **The tab reads the catalogue, and an override reaches the rung that owns it.** T7: the bespoke dataclass form is deleted for the kind-aware catalogue route plus the existing **stage table** — rows are stages, columns are `varies`, an empty cell inherits the template. T8 fixes the **live defect**: every override currently lands on the `device` bag, so a parameter the transmission owns never reaches the transmission deck. **T8 needs the `stages = [...]` declaration** (§ 5p.3), not yet approved | § 5p · § 2a.7 | **TR8 done 2026-09-16** (§ 5p.3k) — the live defect is closed. **TR7 half done** (§ 5p.3l): the seal's reason is corrected and the form-B hole closed; the interface half — § 2a.6's Panel 0 — awaits a ruling on where Class A is edited |
 | **TR9–TR10** | execution / front end | **Grouping and the deliverable.** T9: the preparatory block (seed + both leads) as one submission — ⚠️ **must first reconcile with `task-setup.md` § 1's "no run-all-stages button"**; § 5p.5 has the argument, and if it does not hold T9 is withdrawn rather than the rule bent. T10: Results reads the transmission with its **treatment label** and provenance chain, so a linear-response I–V is never mistaken for a finite-bias one | § 5p · § 2a.12 | not started |
 | **W29** | engines / front end | **The first validation of a junction does not exist: nothing checks that the atoms labeled `L-electrode`/`R-electrode` are the FROZEN atoms.** *(user, 2026-09-16, describing the design: "it will look for the labeled left electrodes and make sure that they are the fixed atoms … this is the first validation or check".)*  What exists is a different, LATER gate — `compose.py` checks the electrode atoms did not MOVE, by comparing the cited deck's coordinates against the `.XV`, **after the relaxation has run**. Label the electrodes and forget to freeze them and nothing objects: the relaxation runs, the leads relax, and the junction is unusable at compose time — a wasted relaxation on a metal junction. The closest thing today is a hint inside an unrelated warning (`validation/sidecar.py`: *"If you meant those atoms to be held fixed, assign them to frozen_atoms in /modify"*), which suggests but does not check. Belongs in the settings gate on the OPTIMIZATION of a junction — the run being set up when the mistake is made. Tier 2: detectable before anything runs | § 5p.3g · found 2026-09-16 | **DONE 2026-09-16** — warns rather than refuses; the severity is open to a ruling |
 | **W28** | tests / front end | **`test_build_e2e.py::test_commit_mounts_molview_card` is FLAKY, and it is a race in the test.** It waits for the MolView card and its canvas to mount, then *immediately* reads `.molviewer-selection-count` — which renders slightly later, so on a loaded machine the text has no `" of "` and the split raises `IndexError`. **Measured 2026-09-16, interleaved against a pristine-HEAD worktree under identical load: mine 3/4 pass, HEAD 2/4.** Both flaky, so it is not a regression — and the first, unfair comparison (one HEAD run against three of mine) read it as one. The fix is to wait for the count line as well as the canvas. Recorded rather than fixed: it is a false signal for everyone who runs the suite | found 2026-09-16 while doing TR1 | not started |
@@ -2369,6 +2369,57 @@ the device. That is not an answer: those are items any rung may legitimately
 own, and a flat form cannot say which was meant. **TR7's per-stage surface is
 where the question becomes askable** — and the stage table already exists for
 optimization, which is the whole point of § 5p.1.
+
+### 5p.3l PART OF TR7 — the seal's REASON corrected; the interface half not built
+
+**What was wrong.** Two doors refused a Class A field as a per-stage override
+with the message *"the citation's to say — cite a relaxation that ran with the
+values you want."* § 2a.7 reversed that rule, so by 2026-09-16 the advice was
+**actively misleading**: it sent a person to redo a relaxation when they could
+edit one line of the template.
+
+**The refusal is still right, for a different reason**, and that is the whole
+correction: a value shared by every rung cannot be a per-stage override,
+because that is exactly how the device would come to disagree with its own
+leads. So the guard stays and the reason changes — and the message now names
+**where the value is actually changed**.
+
+**And the form-A/form-B distinction went with it**, which is more than a message
+fix and is recorded as such. The old rule OPENED these fields for a form-B
+citation (a labeled pair, no deck) because the override lane was then the only
+way to state a basis at all. Every transport calculation carries a template now
+— form A filled from the cited deck, form B from the catalogue's defaults — so
+that hole no longer needs to exist, and leaving it would mean **a form-B
+junction could give its device a different basis from its leads**. Verified
+rather than assumed: a form-B calculation does get a template, and stating the
+basis there reaches the deck.
+
+**Four tests changed, and how matters.** Three asserted the *reason*
+(`"citation's to say"`); they now demand the corrected reason **and** that the
+message names where to change the value. The fourth set a stage override to
+prove a pair's basis was stateable — its concern was exact, *"there would be no
+way to state the basis at all"* — so it proves the same thing through the
+template. The concern survived; the mechanism moved.
+
+#### NOT built, and it is the part that needs a decision
+
+The tab still builds its form from `dataclass_to_form_schema(TransportConfig)`
+and still **hides** the Class A fields. Hiding them was correct under the old
+rule — *"a form field the door is guaranteed to refuse is a trap, not a
+control"* — but under § 2a.7 they are the person's to change, so hiding them now
+means **there is no way to change a transport calculation's basis or XC except
+by hand-editing the template file.**
+
+That is § 2a.6's Panel 0, and it carries a real question rather than just work:
+the tab writes **stage overrides** today, and Panel 0 would have to write the
+**template** — a different file, written by `jobset init` from the citation.
+Either the tab edits the template directly, or the Class A values are edited
+through **Task Setup**, where template values already have a home
+(`/api/task-setup/template-values`) and the stage table already exists. The
+second reuses more and touches the Transport tab less.
+
+**Left for a ruling** rather than decided — it is the one remaining piece that
+designs what a person sees rather than what runs.
 
 ### 5p.4 The steps
 

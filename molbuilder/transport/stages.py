@@ -330,20 +330,21 @@ def config_for(task, composed: ComposedJunction, *,
                     f"the description's own field (identity, bias) -- "
                     f"set it where the description sets it, never as a "
                     f"stage override.")
-            if contract_sealed and name in CONTRACT_FIELDS:
-                src = ("the cited junction's own deck"
-                       if composed.deck_text is not None
-                       else "the pair's RECORDED contract "
-                            "(info.calculation -- written from the "
-                            "finished run's deck at export)")
+            if name in CONTRACT_FIELDS:
+                # SHARED, therefore not a per-stage override.  The reason
+                # changed on 2026-09-16 and the refusal did not: § 2a.7
+                # ruled the cited run DEFAULTS these values rather than
+                # sealing them, so "the citation's to say" is no longer
+                # true -- but "every rung shares one value" still is, and
+                # a per-stage override is exactly what would break it.
                 raise StageError(
                     f"stage {bag.name!r} overrides {name!r}, which is "
-                    f"the citation's to say (ruling Q5: the electronic "
-                    f"contract arrives from {src}, so electrode and "
-                    f"device cannot disagree).  Cite a junction that "
-                    f"ran with the values you want -- or cite a plain "
-                    f".xyz+.molstruct pair with no recorded contract, "
-                    f"whose contract fields are open (4.1b).")
+                    f"SHARED by every stage of this calculation -- the "
+                    f"electrode and the device must not be able to "
+                    f"disagree about it.  Change it in the template, "
+                    f"where it applies to all five rungs at once; it was "
+                    f"filled in from the run you cited and it is yours "
+                    f"to change (engines/transport.md 2a.7).")
             # VALIDATED for every rung; APPLIED only for the one asked
             # about, so one rung's tuning cannot reach another's deck.
             # A name this older config does not hold is legitimate and
