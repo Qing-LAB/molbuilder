@@ -395,7 +395,7 @@ Four rules, and each one costs something measurable:
 
 | the rule | what transport does | what it cost |
 |---|---|---|
-| **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set is **fixed in code**: the seed deck `prep` renders carries **13 keywords and 4 blocks** against a template offering **45 deck-reaching items** |
+| **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set was **fixed in code**: the seed deck `prep` rendered carried **13 keywords and 4 blocks** against a template offering **45 deck-reaching items**. **The seed rung is on the seam since 2026-09-15** — see § 3.6a; the other four still render this way |
 | **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json` |
 | **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check |
 | **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines |
@@ -698,6 +698,82 @@ cannot be done first.** Each line is falsifiable.
 
 12. `max_memory_mb` and `num_threads` are `allocation` items, answered at
     `prep`, not fields of a description.
+
+### 3.6a The seed rung, on the seam — what that changed and what it did not
+
+*2026-09-15.  § 3.6 items 1–4, for one of the three deck shapes.*
+
+**The shape of the fix, and why it is not a patch.**  `siesta/input.py::spec_for`
+gained **one** dispatch line for `calculation == "transport"`, and the kind's own
+module (`transport/deck.py`) owns its layout — the exact arrangement PySCF's
+`vibration_deck` has, whose own note states the rule: *"the kind is a RENDER
+ARGUMENT, like the stage token: the seam stays ONE per engine."*  The seam was
+already built for this; `spec_for` has carried `stage_token` and `calculation`
+all along, and the optimization path already passes `calculation=task.calculation`.
+Transport had simply never arrived.
+
+**Nothing was authored for the 21 keywords.**  They are in
+`siesta/layout.py`'s existing sections — `SCF_SECTION`, `SCF_TAIL_SECTION`,
+`FREE_ENERGY_SECTION`, `OUTPUT_SECTION`, `mpi_section`, `spin_section` — and
+the transport seed layout **reuses those objects**.  That is § 3.3's
+measurement made structural: transport is a calculation kind on this engine,
+so its SCF settings are this engine's, not a second copy.  The same goes for
+the syntax door (`layout.line`) and the check gate (`layout.check_rules`).
+
+**The lift boundary, drawn by one question.**  A keyword with a value is a
+**section item**, resolved from its catalogue declaration; structural text is a
+**Block**, lifted whole.  So `_emit_geometry` was lifted and
+`_emit_basis_and_xc` was **not** — its six keywords *are*
+`BASIS_SECTION` + `XC_SECTION` + `electronic_temperature`, and lifting it
+beside them would write each twice, which the check gate now catches.
+
+**What the seed deck gained**, measured: 13 keywords → the engine's SCF,
+convergence, iteration-limit, spin, parallel and output sections plus the
+restart group, each value introduced by its own note; the one writer that
+preserves a reader's USER-CUSTOM block; the read-back check; and the check gate
+(no keyword written twice, the SystemLabel is the identity it was written for,
+the atom count matches the coordinate block). Transport had none of those.
+
+**The restart group is the one the review caught.** `siesta/input.py` records
+the measured reason it is not optional: *"SIESTA reads `<SystemLabel>.DM` when
+the file is there whatever the deck omits."*  A deck that says nothing
+therefore warm-starts from whatever the directory holds — so the old seed's own
+claim to *"start fresh"* was one the file could not keep. It is now written in
+both states, from the same declaration `warm_declaration("seed", …)` promises
+to carry.
+
+**Two defects the migration itself introduced, both caught by review and
+fixed.**
+
+| | |
+|---|---|
+| the `atom-metadata` fence was emitted **twice** | The framework emits it into the record; lifting `_render_seed`'s own call reproduced it in the body, and the reader stops at the first END marker — so the poorer copy won and the framework's was dead text. Two on-disk sources of truth for the region partition. No engine module calls that emitter; transport's must not either |
+| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `gather_transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-prepping a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
+
+**What it did NOT do, stated so nobody reads more into it.**
+
+| | |
+|---|---|
+| the 21 are **present**, not yet **answerable** | `config_for` still validates a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override is refused. They become settable when the override vocabulary becomes the engine's (§ 3.6 items 5–12) |
+| **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1e-05`, `DM.EnergyTolerance 1e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
+| four rungs are still off the seam | `electrode` and `negf` need the `ComposedJunction` — the electrode models and the region partition — which `spec_for(struct, cfg, stage_token=)` does not carry. **What a composite kind hands its renderer is a real seam question**, and it is the next increment's to answer rather than something to work around |
+| `--pipeline-log` is still a no-op here | `_prep_transport` takes a bool and builds no log object; the seed passes `log=None` rather than inventing half a logger |
+| two settings-gate warnings are now visible and both are **wrong for transport** | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warns SIESTA "will refuse to start". (b) `structure.regions`: it says the region labels "do NOT consume / do not shape this calculation" — for transport the region partition is what the entire ladder is built on. Both checks take `(struct, cfg)` and cannot see the kind. The deck now states the pseudopotential provenance itself as a stopgap; making the gate kind-aware is its own piece of work |
+| `calculation="transport"` composes no kind science | `DeckSpec.calculation` is documented as the fact the settings gate reads, but `_KIND_VALIDATORS` holds only `vibration`, so the seed gets the generic + SIESTA-engine gates and no transport pass — notably none of `TransiestaEngine.preflight`'s kz≠1 / region-partition / open-shell checks, which `render_stage_deck` still runs for device and transmission. Not a regression (the old seed ran no gate at all), but passing the kind reads as though a gate exists |
+| `validate_subject` is unanswered, so the gate judges a frame the deck does not express | `_emit_geometry` writes positions shifted by `-resolve_cell_origin()`; the gate validates the world-frame structure. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
+| the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
+| the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
+
+**The two configs, and the one fill.**  Floor 3 resolves a row by
+`getattr(config, name)`, so a deck rendered from a config with different field
+names omits those rows *silently* — which is why the seed must render from
+`SiestaConfig`.  But filling one independently from the citation would create a
+second answer to *what is this junction's electronic contract*, and § 5 exists
+to stop those two disagreeing.  So `config_for` remains the single fill and
+`siesta_config_for` re-expresses its answer; the mapping is six names, four of
+them physics.  It retires with `TransportConfig`.
+
+---
 
 ### 3.7 What this replaces
 

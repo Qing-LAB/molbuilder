@@ -114,6 +114,45 @@ MARKER_RE = re.compile(
 )
 
 
+#: The record fields that change WITHOUT the calculation changing: the
+#: wall-clock moment the deck was generated, the generator's own git sha,
+#: and the atom-metadata fence's ``created_at``.
+#:
+#: Everything else in the record IS the calculation -- the ``regions`` in
+#: that same fence are the partition a transport ladder is built on, so
+#: this masks FIELDS and never whole fences.
+_VOLATILE_RECORD_RE = re.compile(
+    r"^(#\s*generated-at\s+).*$"
+    r"|^(#\s*generator-version\s+).*$"
+    r'|^(#\s*"created_at"\s*:).*$',
+    re.M)
+
+
+def same_calculation(a: str, b: str) -> bool:
+    """Do two decks describe the SAME calculation?
+
+    **Not the same bytes.**  A deck carries a generated-at timestamp and the
+    generator's git sha, and neither says anything about what the engine will
+    compute -- so a byte comparison answers "was this file written by the same
+    invocation", which is a different and much narrower question.
+
+    This exists because the transport DAG asks the useful one.
+    ``jobset/prep.py::gather_transport_inputs`` will only carry a concluded
+    rung's output forward if that rung ran *the deck this composition renders*,
+    and it compared full text: the moment transport's seed rung joined the
+    render pipeline (2026-09-15) and so gained a record section, re-prepping a
+    concluded seed -- or merely committing between the two preps, which moves
+    the sha -- made the device's gather refuse with a message blaming the
+    junction's contract for a changed timestamp.
+
+    Masking fields rather than dropping fences is deliberate: the
+    atom-metadata fence holds the region partition, and two decks that
+    disagree about THAT are emphatically not the same calculation.
+    """
+    return (_VOLATILE_RECORD_RE.sub(r"\1\2\3", a)
+            == _VOLATILE_RECORD_RE.sub(r"\1\2\3", b))
+
+
 # --------------------------------------------------------------------- #
 #  BENCH-MARKS field declarations                                       #
 # --------------------------------------------------------------------- #
@@ -1143,8 +1182,31 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
         # those apart is most of what a reader comes to the log for.
         spoke: List[str] = []
         silent: List[str] = []
+        #: Items this KIND does not have -- distinguished from `silent`
+        #: because "not in this calculation" and "declined for this
+        #: configuration" are different answers and a reader needs both.
+        other_kind: List[str] = []
         for name in section.items:
             param = parameter(name, spec.engine, config=cfg)
+            # THE KIND GATE, and it belongs HERE because a Section is a table
+            # of catalogue ITEM NAMES while which kinds an item belongs to is
+            # the ITEM's own declaration (`engines/template.md` § 6.3's kind
+            # protocol: `calculations = [...]`).  Without this the tag gated
+            # only the FORM, so a section reused by a second kind dragged the
+            # first kind's rows into its deck -- measured 2026-09-15, when
+            # transport's seed reused OUTPUT_SECTION and emitted
+            # `WriteMDhistory` and `WriteMDXmol` into a single-point NEGF
+            # warm-up that has no trajectory to write.
+            #
+            # An untagged row belongs to every kind, which is why the guard
+            # tests for a non-empty declaration first.  `DeckSpec.calculation`
+            # defaults to "optimization", so a spec that names no kind keeps
+            # exactly the items it had.
+            _decl = param.declaration
+            _kinds = tuple(getattr(_decl, "calculations", ()) or ())
+            if _kinds and spec.calculation not in _kinds:
+                other_kind.append(name)
+                continue
             # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY (§ 4.6).  This
             # walk is a walk over the engine's functions, so an exception with
             # no owner on it is the ordinary failure here, not an exotic one.
@@ -1209,6 +1271,9 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             if silent:
                 log.note(f"declined for this configuration: "
                          f"{', '.join(silent)}")
+            if other_kind:
+                log.note(f"not items of calculation "
+                         f"{spec.calculation!r}: {', '.join(other_kind)}")
     return out, emitted
 
 

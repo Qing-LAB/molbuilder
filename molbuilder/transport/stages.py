@@ -18,9 +18,12 @@ This module owns TWO facts and the renders that follow from them:
 The renders reuse the existing emitters whole: the electrode decks are
 the wizard's (:func:`~molbuilder.transport.wizard.render_electrode_fdf`),
 the device and transmission decks are the registered TranSIESTA
-engine's, and the seed deck is assembled from the same emitter pieces
-(geometry / basis+XC / k-mesh) with ``SolutionMethod diagon`` — an
-ordinary periodic pass whose ``.DM`` starts the device SCF.
+engine's, and the SEED deck is no longer rendered here at all: it goes
+through the framework's own pipeline (``siesta.input.spec_for`` with
+``calculation="transport"`` -> :mod:`molbuilder.transport.deck`), which
+is what lets the template's items reach it (`engines/transport.md`
+§ 3.6a).  It is still an ordinary periodic pass whose ``.DM`` starts the
+device SCF.
 
 P5 added the launch half, whose facts also live here: the § 4.2 DAG
 (:func:`stage_inputs`, read by prep's gather), the continuation rows
@@ -282,55 +285,107 @@ def config_for(task, composed: ComposedJunction, *,
         **kw)
 
 
-def _render_seed(struct: Structure, cfg: TransportConfig) -> str:
-    """The seed deck: an ordinary periodic SIESTA pass on the sorted
-    sandwich (§ 4.2 stage 1 — default on, skippable, ruling Q4).
+#: ``TransportConfig`` name -> the catalogue/``SiestaConfig`` name for the
+#: same quantity.  FOUR renamed physics parameters plus two machine ones --
+#: every other field is spelled identically on both sides, which is what
+#: § 3.3's measurement means concretely: transport's vocabulary IS this
+#: engine's, with four words changed.
+_TO_SIESTA_NAME = {
+    "job_name":                 "system_label",
+    "siesta_mesh_cutoff_ry":    "mesh_cutoff",
+    "energy_shift_ry":          "pao_energy_shift",
+    "electronic_temperature_k": "electronic_temperature",
+    "k_mesh_transverse":        "kgrid",
+    "num_threads":              "omp_threads",
+}
 
-    Same geometry, same electronic contract and same transverse k as
-    the device — assembled from the SAME emitter pieces — solved with
-    ``SolutionMethod diagon``.  Its converged ``.DM`` (written under
-    the shared ``SystemLabel``) is what the device SCF starts from;
-    the seed itself starts fresh (§ 4.1a: nothing order-dependent
-    crosses the sort, and there is nothing before the seed anyway).
-    No MD block = a single point, the same convention the electrode
-    deck states.
+
+def siesta_config_for(task, composed: ComposedJunction, *,
+                      stage: str = None, cfg: TransportConfig = None):
+    """:func:`config_for`'s answer, re-expressed in the shape the FRAMEWORK
+    reads — a :class:`~molbuilder.config.siesta.SiestaConfig`.
+
+    **It is that answer PLUS the engine's defaults, and the second half is
+    not cosmetic.**  ``SiestaConfig`` has 66 fields; the projection fills 26
+    from the transport description and the other 40 take
+    ``SiestaConfig()``'s own values.  Those 40 include every one of the 21
+    keywords § 3.2 measured as reaching no transport deck — which is the
+    migration's whole purpose — but they were chosen for *"a system about to
+    be relaxed"* (`config/siesta.py`), not for a metallic junction's warm-up.
+    § 3.6a names the values and says so; do not read this function as a
+    pure change of shape.
+
+    **Why a projection and not a second fill.**  Floor 3 resolves a catalogue
+    row by ``getattr(config, name)``
+    (:func:`~molbuilder.script_emit.parameter`), so a deck rendered from a
+    config whose fields are named differently omits those rows *silently*.
+    Transport's decks must therefore render from this engine's config.  But
+    filling it independently from the citation would create a SECOND answer
+    to "what is this junction's electronic contract", and the two could
+    disagree — which is the one thing § 5 exists to prevent.  So
+    :func:`config_for` stays the single fill and this re-expresses its answer.
+
+    The 21 keywords § 3.2 measured as unreachable arrive here: they are
+    ordinary ``SiestaConfig`` fields with catalogue rows, and the sections in
+    :mod:`molbuilder.siesta.layout` already name them.  Nothing had to be
+    invented for them — transport simply had no config that held them.
+
+    It retires with ``TransportConfig`` (§ 3.6 items 5-12); until then this is
+    the ONE place the two vocabularies meet.
     """
-    from ..script_emit import emit_atom_metadata
-    from .transiesta import (_emit_basis_and_xc, _emit_geometry,
-                             _emit_k_mesh)
-    lines = [
-        "# ================================================================== #",
-        f"#  Transport SEED .fdf — {cfg.job_name}",
-        "#  An ordinary periodic SIESTA single point on the composed,",
-        "#  SORTED junction (transport-design.md 4.2, stage 1).  Its",
-        f"#  converged {cfg.job_name}.DM starts the device NEGF SCF;",
-        "#  scaffolding for convergence, no effect on the converged",
-        "#  answer (skippable -- ruling Q4).",
-        "# ================================================================== #",
-        "",
-        f"SystemLabel            {cfg.job_name}",
-        f"SystemName             Transport seed for {cfg.job_name}",
-        "",
-    ]
-    lines.extend(_emit_geometry(struct))
-    block = emit_atom_metadata(
-        regions=struct.regions or {},
-        annotations=dict(getattr(struct, "annotations", {}) or {}),
-        n_atoms_total=struct.n_atoms,
-    )
-    if block:
-        lines.append(block)
-        lines.append("")
-    lines.extend(_emit_basis_and_xc(cfg))
-    lines.extend(_emit_k_mesh(cfg))
-    lines.extend([
-        "# Ordinary diagonalisation (NOT transiesta): the seed is a",
-        "# periodic warm-up.  SIESTA writes <SystemLabel>.DM as the",
-        "# SCF converges; no MD block = single point.",
-        "SolutionMethod         diagon",
-        "",
-    ])
-    return "\n".join(lines) + "\n"
+    import dataclasses as _dc
+
+    from ..config.siesta import SiestaConfig
+
+    # ONE fill per prep.  `prep` has already called `config_for` inside a
+    # StageError handler; calling it again here would run the override
+    # validation twice AND put the second call outside that handler, so a
+    # StageError would escape as a traceback the day `config_for` stopped
+    # being purely deterministic.
+    tc = cfg if cfg is not None else config_for(task, composed, stage=stage)
+    known = {f.name for f in _dc.fields(SiestaConfig)}
+    kw = {}
+    for f in _dc.fields(type(tc)):
+        target = _TO_SIESTA_NAME.get(f.name, f.name)
+        if target in known:
+            kw[target] = getattr(tc, f.name)
+    # WHAT DOES NOT TRAVEL, and why each is safe -- four fields, named,
+    # because a silent drop is exactly the failure this projection could
+    # hide.  (An `assert` stood here for `engine` alone: it could not fire,
+    # it guarded one of the four, and it would have raised a class `prep`
+    # does not translate -- and vanished under `python -O`.)
+    #
+    #   engine                      the transport BACKEND ("transiesta").
+    #                               Never an fdf keyword; SiestaConfig has
+    #                               no such field.
+    #   transmission_relative_to_ef reaches no deck at all -- see
+    #                               UNRESOLVED_FIELDS above.
+    #   log_level                   no rung writes a verbosity keyword, and
+    #                               the emitters it replaced wrote none.
+    #   bias_voltages_v             `TS.Voltage` is a NEGF keyword, and the
+    #                               seed is the only rung on the seam.  This
+    #                               one WILL matter when the negf shape
+    #                               joins, so it is refused rather than
+    #                               dropped quietly the moment a non-zero
+    #                               bias could reach a deck that cannot say
+    #                               it.
+    if stage in ("device", "transmission") and list(
+            getattr(tc, "bias_voltages_v", ()) or ()) != [0.0]:
+        raise StageError(
+            f"the {stage!r} rung is not on the render seam yet, so a "
+            f"SiestaConfig cannot carry its bias "
+            f"({tc.bias_voltages_v}) -- `TS.Voltage` has no catalogue row "
+            f"and no section writes it.  Until that rung is tabled the "
+            f"bias travels on TransportConfig through "
+            f"`render_stage_deck` (engines/transport.md 3.6).")
+    #
+    # AND THE LARGER HALF, which is not a drop at all: `SiestaConfig` has 66
+    # fields and this fills 26, so 40 take the ENGINE's declared defaults --
+    # every one of the 21 keywords § 3.2 measured as unreachable among them.
+    # That is the point of the migration and also its one behavioural
+    # change; § 3.6a states which values those are and that they were
+    # reviewed for a relaxation, not for a metallic junction seed.
+    return SiestaConfig(**kw)
 
 
 def render_stage_deck(stage: str, composed: ComposedJunction,
@@ -345,7 +400,19 @@ def render_stage_deck(stage: str, composed: ComposedJunction,
 
     dev = composed.sorted.structure
     if stage == "seed":
-        return _render_seed(dev, cfg)
+        # THE SEED IS NOT RENDERED HERE ANY MORE.  It goes through the
+        # framework (`siesta.input.spec_for` -> `transport.deck` ->
+        # `prepare_deck`), which is what lets the template's items reach it
+        # (engines/transport.md 3.6a).  `_render_seed` is DELETED rather
+        # than left beside its replacement: two renderers for one deck can
+        # disagree, and the only thing that kept them from doing so was
+        # `prep` happening to branch before this call.
+        raise StageError(
+            "the seed deck renders through the framework, not here -- "
+            "`prep` routes that rung to `siesta.input.spec_for("
+            "calculation='transport')` (engines/transport.md 3.6a).  "
+            "Reaching this line means a caller asked `render_stage_deck` "
+            "for a rung that is on the render seam.")
     if stage in ("electrode_L", "electrode_R"):
         model = (composed.electrode_left if stage == "electrode_L"
                  else composed.electrode_right)

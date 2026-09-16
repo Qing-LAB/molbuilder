@@ -1,0 +1,366 @@
+"""The transport calculation's deck — SIESTA, on the framework's seam.
+
+Contract: [`engines/transport.md`](?doc=engines/transport.md) §§ 3.2, 3.6, 6.1
+(what transport's decks are and why they were not on the seam) +
+`script-preparation.md` § 4 (the seam this serves).
+
+WHAT THIS IS.  ``transport_spec(struct, cfg, stage_token)`` returns the
+:class:`~molbuilder.script_emit.DeckSpec` for ``calculation = "transport"``.
+It is the exact shape :mod:`molbuilder.pyscf.vibration_deck` has for
+``calculation = "vibration"``: the KIND is a render argument, the seam stays
+ONE per engine, and the kind's own module owns its layout.
+
+WHY IT EXISTS.  `transport.md` § 3.2 measured the cost of transport never
+joining floor 3: ``transport/transiesta.py::render_script`` (2026-06-10)
+predates the render pipeline (2026-08-19) and concatenates literal
+f-strings, so the keyword set is fixed in code — **13 keywords and 4 blocks
+against a template offering 45 deck-reaching items**.  Twenty-one SIESTA
+keywords with catalogue rows could reach no transport deck at all, among them
+``MaxSCFIterations`` and ``DM.Tolerance``: absent from the file, so SIESTA
+used its own defaults and a seed ran to 1000 iterations and died
+``SCF_NOT_CONV`` with no way for anyone to ask for a looser budget.
+
+THE LIFT, and its boundary.  :mod:`molbuilder.pyscf.vibration_deck` set the
+direction — *"a move, not a rewrite"* — and that holds for the one piece where
+it can: ``_emit_geometry`` is imported and composed unchanged.  **The other two
+blocks are honest rewrites**, and saying otherwise would be this module lying
+about itself: ``_emit_seed_header`` restates the old header's text and
+``_emit_kgrid_block`` restates ``_emit_k_mesh``, both because their originals
+read a ``TransportConfig`` and these read the engine's own config.  The old
+seed emitter is DELETED rather than left beside them, so the reflowed text
+exists in one place.
+The boundary is drawn by a single question, and it is the question
+`script-preparation.md` § 4.1 asks:
+
+* **a keyword with a value is a SECTION ITEM**, resolved from its catalogue
+  declaration.  This is the whole fix: the 21 arrive because
+  :mod:`molbuilder.siesta.layout`'s sections already name them, and transport
+  is a calculation KIND on the siesta engine (39 shared rows, measured in
+  § 3.3) so it reuses those sections rather than restating them.
+* **structural text is a BLOCK** — the coordinate table, ``%block TS.Elecs``,
+  the contour blocks.  Those are lifted whole.
+
+``_emit_basis_and_xc`` is therefore NOT lifted: its six keywords are exactly
+``BASIS_SECTION`` + ``XC_SECTION`` + ``electronic_temperature``, and lifting
+it beside them would write each twice — which ``layout.check_rules`` now
+catches ("written twice with different values"), because a migrated deck gets
+the engine's check gate for the first time.
+
+THE ADAPTER, and why it is here rather than in the emitters.  The lifted
+emitters read four names the shared config spells differently —
+``siesta_mesh_cutoff_ry``, ``energy_shift_ry``, ``electronic_temperature_k``,
+``k_mesh_transverse`` against the catalogue's ``mesh_cutoff``,
+``pao_energy_shift``, ``electronic_temperature``, ``kgrid``.  That is the same
+count and the same shape as vibration's four, and vibration's module records
+why the adapter is the seam's right answer: *"the kind's science and the
+emitters both read one view, so a check and the deck it checks cannot
+disagree about a value"*.  Renaming inside the old emitters instead would be
+repatching the old path.
+
+**MIGRATION STATE, stated so nobody reads more into it.**  Three deck shapes
+serve the five rungs (§ 6.1), and only ``seed`` is on the seam.  ``electrode``
+and ``negf`` still render through ``stages.render_stage_deck``, because tabling
+them needs the ``ComposedJunction`` — the electrode models and the region
+partition — and ``spec_for(struct, cfg, stage_token=)`` does not carry it.
+That is a real seam question (what a composite kind hands its renderer) and it
+is the next increment's to answer, not something to smuggle past here: a
+``Block`` that reached for the junction some other way would be the patching
+this migration exists to undo.
+
+Which shape a rung gets is a TABLE (:data:`SHAPE_OF_RUNG`).  Choosing the
+LAYOUT for a shape is still a branch in :func:`transport_spec`, and will be
+until all three are tabled — so tabling the next one edits that branch as well
+as adding a layout.  An un-tabled shape is refused BY NAME rather than rendered
+partially; `prep` translates that refusal, so it reaches a person as a message
+and not a traceback.
+
+"""
+from __future__ import annotations
+
+import dataclasses as _dc
+from typing import Optional
+
+from .. import script_emit as _sc
+from ..siesta import layout as _sl
+from ..structure import Structure
+
+#: Which deck SHAPE each rung renders — a table, because THREE texts serve
+#: FIVE rungs (`engines/transport.md` § 6.1) and which text a rung gets is a
+#: fact about the ladder, not a decision to re-derive per call.
+#:
+#: The device and the transmission share one shape deliberately: the same
+#: bytes serve both, and only ``Resources.program`` differs, so the two runs
+#: cannot drift apart in geometry, basis or electrode identity.
+SHAPE_OF_RUNG = {
+    "seed":         "seed",
+    "electrode_L":  "electrode",
+    "electrode_R":  "electrode",
+    "device":       "negf",
+    "transmission": "negf",
+}
+
+
+def rung_of(stage_token: Optional[str]) -> str:
+    """The rung name inside a ``<NN>_<name>`` stage token.
+
+    ``prep`` holds the :class:`~molbuilder.identity.StageRef` and hands the
+    token down as a render argument (`engines/stages.md` § 1.1 — the emitter
+    never learns the word), so this reads the name back out rather than being
+    told it twice.
+    """
+    tok = str(stage_token or "")
+    head, sep, tail = tok.partition("_")
+    return tail if (sep and head.isdigit()) else tok
+
+
+# ===================================================================== #
+#  The layouts, as tables.                                              #
+# ===================================================================== #
+
+def _seed_layout(derived):
+    """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
+
+    Read down it and you have read the deck's SCIENCE, in order.  Not the
+    whole file: the framework adds the banner, the USER-CUSTOM fence and the
+    record sections around this, and those are about half the lines.
+    Everything after the geometry is the SIESTA engine's own section set — which is the measured claim of § 3.3 made structural:
+    transport is a kind on this engine, so its SCF, its convergence pair, its
+    iteration limit, its spin, its parallel split and its output group are
+    that engine's, not a second copy.
+    """
+    return (
+        _sc.Block("identity and the seed's purpose", _emit_seed_header),
+        _sc.Block("cell, coordinates and region metadata", _emit_geometry_block),
+        _sl.BASIS_SECTION,
+        _sl.XC_SECTION,
+        _sc.Block("the transverse k-mesh (kz forced to 1)", _emit_kgrid_block),
+        _sc.Block("what the seed's solver must be, and must not",
+                  _emit_solver_note),
+        _sc.Block("the restart group", _emit_restart_group),
+        _sl.SCF_SECTION,
+        _sl.FREE_ENERGY_SECTION,
+        _sl.SCF_TAIL_SECTION,
+        _sl.spin_section(polarized=derived["spin_polarized"],
+                         fixed=derived["spin_fixed"]),
+        _sl.mpi_section(block_size=derived.get("block_size"),
+                        algorithm=derived.get("algorithm")),
+        _sl.OUTPUT_SECTION,
+    )
+
+
+# ===================================================================== #
+#  The blocks — structural text, lifted.                                #
+# ===================================================================== #
+
+def _emit_seed_header(struct, cfg) -> str:
+    label = cfg.system_label
+    return "\n".join([
+        "# ================================================================== #",
+        f"#  Transport SEED .fdf — {label}",
+        "#  An ordinary periodic SIESTA single point on the composed,",
+        "#  SORTED junction (engines/transport.md 4.2, stage 1).  Its",
+        f"#  converged {label}.DM starts the device NEGF SCF; scaffolding",
+        "#  for convergence, no effect on the converged answer",
+        "#  (skippable -- ruling Q4).",
+        "# ================================================================== #",
+        "",
+        f"SystemLabel            {label}",
+        f"SystemName             Transport seed for {label}",
+    ])
+
+
+def _emit_geometry_block(struct, cfg) -> str:
+    """Cell + coordinates + the region/annotation metadata.
+
+    Lifted whole: no parameter models a coordinate table, which is what
+    :class:`~molbuilder.script_emit.Block` is for.
+    """
+    from .transiesta import _emit_geometry
+
+    # NO `emit_atom_metadata` CALL HERE.  The FRAMEWORK emits that fence
+    # once, in the record section (`script_emit.py`, the only caller among
+    # the engines).  `_render_seed` called it itself because it was not on
+    # the seam and nothing else would; lifting that call produced the fence
+    # TWICE with different provenance, and `_extract_atom_metadata_dict`
+    # stops at the first END marker -- so the in-body copy won and the
+    # framework's richer one was dead text.  Two on-disk sources of truth
+    # for the region partition the whole ladder is built on.
+    return "\n".join(_emit_geometry(struct))
+
+
+def _emit_restart_group(struct, cfg) -> str:
+    """``DM.UseSaveDM`` / ``MD.UseSaveXV`` — written in BOTH states.
+
+    `siesta/input.py` records the measured reason this is not optional:
+    *"SIESTA reads `<SystemLabel>.DM` when the file is there whatever the deck
+    omits."*  A deck that says nothing therefore warm-starts from whatever the
+    directory happens to hold, which is how a rung told to start clean
+    silently continued.  The old transport seed omitted the group entirely and
+    its own docstring claimed *"the seed itself starts fresh"* — a claim the
+    file could not keep.
+
+    The keys and the on/off come from the ONE declaration
+    (:func:`molbuilder.siesta.input._restart_group_lines`), so this cannot
+    drift from what `warm_declaration("seed", …)` promises to carry.
+    """
+    from ..siesta.input import _restart_group_lines
+
+    return "\n".join([
+        "# --- Restart: what this rung reads if it is there ---",
+        "#",
+        "# Written in BOTH states on purpose: SIESTA reads <SystemLabel>.DM",
+        "# whenever the file exists, whatever the deck leaves out, so an",
+        "# omitted group means 'warm-start from whatever is in this",
+        "# directory' rather than 'start clean'.",
+        "#",
+        "# For the SEED the file in question is its OWN previous attempt's",
+        "# density, which is what `--from` carries and what makes re-running",
+        "# an unconverged seed cheap.  It is never the device's: the arrow",
+        "# runs the other way (seed .DM -> device SCF).",
+        *_restart_group_lines(cfg),
+        "",
+    ])
+
+
+def _emit_solver_note(struct, cfg) -> str:
+    """Why the seed solves with ``diagon`` — restored from the deck this
+    layout replaced.
+
+    ``SCF_SECTION`` is the ENGINE's object, shared with every other kind, so
+    its ``solution_method`` help is necessarily a generic three-option menu.
+    The transport-specific half — *the seed must NOT be transiesta* — lived at
+    the keyword in the old hand-written deck and was lost when the generic
+    section took over.  It goes back adjacent to the value, because that is
+    where someone about to edit the value will read it, and it is a Block
+    rather than a note on the section because mutating a shared section would
+    put this text into every kind's deck.
+    """
+    return "\n".join([
+        "# --- The seed's solver: ordinary diagonalisation, NOT transiesta ---",
+        "#",
+        "# This rung is a periodic WARM-UP, not the NEGF calculation.  Leave",
+        "# `SolutionMethod` at `diagon` below: setting it to `transiesta`",
+        "# here would make the seed attempt an open-boundary solve with no",
+        "# electrode self-energies defined, which is not what this deck is",
+        "# and not what the ladder needs from it.",
+        "#",
+        "# SIESTA writes <SystemLabel>.DM as this SCF converges, and that",
+        "# file -- nothing else from this rung -- is what the device stage",
+        "# reads as its starting density.  There is no MD block anywhere in",
+        "# this deck, and that absence is what makes it a single point: the",
+        "# geometry was relaxed upstream and moving it here would invalidate",
+        "# the electrode partition the whole ladder is built on.",
+        "#",
+        "# PSEUDOPOTENTIALS: this rung does not name a `psml_lib`.  Its",
+        "# .psml files travel with the CITED junction -- `prep` copies them",
+        "# into the calculation's `pseudos/` directory beside this deck, and",
+        "# `jobset init` refuses a --psml-lib for a transport calculation",
+        "# for exactly that reason.  If SIESTA cannot find a pseudo, the",
+        "# citation did not carry it; do not add a library path here.",
+        "",
+    ])
+
+
+def _emit_kgrid_block(struct, cfg) -> str:
+    """``%block kgrid_Monkhorst_Pack`` with the transport axis forced to 1.
+
+    A ``%block`` is structural, so it is a block — but the VALUE is the
+    template's ``kgrid`` row, and the forced third component is a DERIVED
+    value, which has its own framework door
+    (:func:`~molbuilder.script_emit.parameter` with ``value=``) rather than
+    falling to free-form text where the note-with-the-value rule cannot reach
+    it.
+    """
+    kx, ky, _kz = tuple(cfg.kgrid or (1, 1, 1))
+    p = _sc.parameter("kgrid", "siesta", value=(int(kx), int(ky), 1))
+    out = list(p.note())
+    out += [
+        "# The transport direction is NOT BZ-summed -- NEGF handles it, and",
+        "# the engine preflight refuses kz != 1 -- so the third component is",
+        "# 1 whatever the citation's own k-grid said.  (`config_for` already",
+        "# forced it when it read the citation; this writes what it was",
+        "# given and is not a second enforcer.)",
+        "#",
+        "# THE TRANSVERSE COUNTS ARE YOURS, AND 1 x 1 IS RARELY RIGHT.",
+        "# For a finite molecule between leads, (1, 1) is correct.  For a",
+        "# laterally PERIODIC electrode -- an Au(111) surface cell, a",
+        "# nanowire -- set Nx, Ny to that lead's periodicities: a metallic",
+        "# lead sampled 1 x 1 is badly under-converged, and the error lands",
+        "# in the interface charge the device SCF then has to reproduce.",
+        "# Nz stays 1 regardless.  (This deck's transverse pair comes from",
+        "# the cited junction's own k-grid -- see the note above the value.)",
+        "%block kgrid_Monkhorst_Pack",
+        f"  {int(kx):>3}    0    0      0.0",
+        f"    0  {int(ky):>3}    0      0.0",
+        "    0    0    1      0.0",
+        "%endblock kgrid_Monkhorst_Pack",
+    ]
+    return "\n".join(out)
+
+
+# ===================================================================== #
+#  The spec.                                                            #
+# ===================================================================== #
+
+def transport_spec(struct: Structure, cfg, *,
+                   stage_token: Optional[str] = None) -> "_sc.DeckSpec":
+    """The ``DeckSpec`` for one transport rung.
+
+    *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
+    transport description's own answers where it has them and this engine's
+    declared defaults for the other 40 fields
+    (:func:`molbuilder.transport.stages.siesta_config_for`) — because the
+    sections above name catalogue rows and
+    :func:`~molbuilder.script_emit.parameter` resolves a row by
+    ``getattr(config, name)``.  That is not a preference: an item whose name
+    is not a field on the config resolves to ``None`` *silently*, so a
+    transport deck rendered from a config with different field names would
+    quietly omit every one of the 21 rather than fail.
+    """
+    rung = rung_of(stage_token)
+    shape = SHAPE_OF_RUNG.get(rung)
+    if shape is None:
+        raise ValueError(
+            f"{rung!r} is not a transport rung; the ladder is "
+            f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
+            f"`prep` names the rung and hands it down as `stage_token`.")
+
+    if shape != "seed":
+        raise ValueError(
+            f"the transport {shape!r} deck is not on the seam yet, so rung "
+            f"{rung!r} still renders through `stages.render_stage_deck` "
+            f"(engines/transport.md 3.6, items 1-4).  Tabling it needs the "
+            f"ComposedJunction -- the electrode models and the region "
+            f"partition -- which `spec_for(struct, cfg, stage_token=)` does "
+            f"not carry; that seam question is the next increment's, not "
+            f"something to work around here.")
+
+    derived = _derived_for(struct, cfg)
+    layout = _seed_layout(derived)
+    return _sc.DeckSpec(
+        engine="siesta",
+        calculation="transport",
+        layout=layout,
+        line=_sl.line(derived),
+        derived=derived,
+        note_lead=_sl.note_lead,
+        check_rules=_sl.check_rules,
+        created_by="molbuilder transport prep",
+    )
+
+
+def _derived_for(struct, cfg) -> dict:
+    """What this deck worked out — W10's one per-render context.
+
+    DECLARED on the form rather than only closed over, so a reader outside
+    this module can see where a value came from.  The three groups
+    :func:`molbuilder.siesta.layout.line` needs are the same ones the
+    optimization deck derives; they are computed by the engine's own helper so
+    the two kinds cannot answer them differently.
+    """
+    from ..siesta.input import _parallel_facts, _spin_facts
+
+    derived = {}
+    derived.update(_spin_facts(cfg))
+    derived.update(_parallel_facts(cfg))
+    return derived

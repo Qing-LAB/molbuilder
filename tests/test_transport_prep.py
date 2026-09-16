@@ -31,6 +31,7 @@ Properties under guard, each named for its failure:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 
 import numpy as np
@@ -63,6 +64,22 @@ ElectronicTemperature 200.0 K
   0 0 2 0.0
 %endblock kgrid_Monkhorst_Pack
 """
+
+
+def _says(text: str, keyword: str, value: str) -> bool:
+    """Does *text* set *keyword* to *value*?  **Whitespace-insensitive.**
+
+    The column alignment of a deck line belongs to whoever wrote it: the
+    hand-written transport emitters padded to a fixed column, the framework's
+    syntax door (`siesta/layout.py::line`) does not, and libfdf cares about
+    neither.  Asserting the PAIR rather than the spacing is what lets these
+    tests mean the same thing before and after a rung moves onto the seam
+    (`engines/transport.md` § 3.6) -- otherwise every migrated rung breaks a
+    science assertion for a reason that has nothing to do with science.
+    """
+    pattern = r"^" + r"\s+".join(
+        re.escape(w) for w in (keyword + " " + value).split()) + r"\s*$"
+    return re.search(pattern, text, re.M) is not None
 
 
 def _junction_struct(*, order="canonical", buffers=False):
@@ -180,6 +197,106 @@ def calc(tmp_path):
     return _describe_transport(root)
 
 
+#: The SIESTA keywords `engines/transport.md` § 3.2 measured as reaching NO
+#: transport deck -- the ones a hand-written emitter's fixed list left out.
+#: `MaxSCFIterations` and `DM.Tolerance` are the two that cost a real run: a
+#: seed ran to 1000 iterations and died SCF_NOT_CONV because neither was in
+#: the file, so SIESTA used its own defaults and nobody could ask otherwise.
+UNREACHABLE_BEFORE_THE_SEAM = (
+    "MaxSCFIterations", "DM.Tolerance", "DM.EnergyTolerance",
+    "SCF.Mixer.Weight", "SCF.Mixer.History", "SCF.FreeE.Converge",
+    "WriteForces", "WriteCoorStep", "WriteCoorXmol", "Diag.ParallelOverK",
+)
+
+
+class TestTheSeedIsOnTheSeam:
+    """§ 3.6 items 1-4: the seed rung renders through `spec_for` ->
+    `prepare_deck`, so the template's items reach it.
+
+    What this pins is the MIGRATION, not one keyword: the same list is
+    absent from the rungs that still render through their own emitter, and
+    that contrast is what makes the assertion mean "this rung is on the
+    seam" rather than "SIESTA decks tend to have SCF settings".
+    """
+
+    def test_the_template_items_reach_the_seed_deck(self, calc):
+        prep_calculation(calc, "seed")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        missing = [k for k in UNREACHABLE_BEFORE_THE_SEAM
+                   if not re.search(r"^" + re.escape(k) + r"\s", seed, re.M)]
+        assert not missing, (
+            f"the seed renders through the framework now, so these should "
+            f"be in its deck: {missing}")
+
+    def test_the_un_migrated_rungs_still_lack_them(self, calc):
+        """THE DISCRIMINATING HALF.  Remove it and the test above passes on
+        any SIESTA-ish deck; with it, the pair measures the seam.
+
+        Delete this when the electrode rung is tabled -- at which point it
+        should fail, and that failure is the migration being done.
+        """
+        prep_calculation(calc, "electrode_L")
+        elec = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        present = [k for k in UNREACHABLE_BEFORE_THE_SEAM
+                   if re.search(r"^" + re.escape(k) + r"\s", elec, re.M)]
+        assert not present, (
+            f"the electrode rung is NOT on the seam yet, so it cannot carry "
+            f"{present} -- if it does, it was tabled and this test is the "
+            f"thing to delete (engines/transport.md 3.6)")
+
+    def test_another_kinds_rows_do_not_reach_this_deck(self, calc):
+        """THE KIND GATE (`script_emit._render_sections`).
+
+        A `Section` is a table of catalogue ITEM NAMES, and which kinds an
+        item belongs to is the item's own declaration
+        (`engines/template.md` § 6.3: `calculations = [...]`).  Reusing the
+        engine's `OUTPUT_SECTION` for transport therefore has to skip the
+        rows tagged for `optimization` only -- otherwise a single-point NEGF
+        warm-up, which has no trajectory at all, emits `WriteMDhistory` and
+        `WriteMDXmol`.  It did, until the gate was added 2026-09-15.
+
+        The positive half matters as much as the negative: the section's
+        UNTAGGED rows must still arrive, or "the gate works" would also be
+        satisfied by dropping the whole section.
+        """
+        prep_calculation(calc, "seed")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        for optimization_only in ("WriteMDhistory", "WriteMDXmol"):
+            assert not re.search(r"^" + optimization_only + r"\s", seed, re.M), (
+                f"{optimization_only} is tagged calculations=['optimization'] "
+                f"and must not reach a transport deck")
+        for shared in ("WriteForces", "WriteCoorStep", "WriteCoorXmol"):
+            assert re.search(r"^" + shared + r"\s", seed, re.M), (
+                f"{shared} is untagged, so it belongs to every kind and must "
+                f"still be here -- without this half the test above would "
+                f"pass on an empty output section")
+
+    def test_the_atom_metadata_fence_is_written_once(self, calc):
+        """ONE on-disk source of truth for the region partition.
+
+        `script_emit` emits the fence in the record section; the un-migrated
+        transport emitters emit their own because nothing else would.  Lifting
+        that call into the layout produced it TWICE with different provenance,
+        and the reader (`_extract_atom_metadata_dict`) stops at the first END
+        marker -- so the poorer copy won and the framework's was dead text.
+        The partition is what the whole ladder is built on, so two copies with
+        a first-wins reader is the defect even while they agree.
+        """
+        prep_calculation(calc, "seed")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert seed.count("molbuilder atom-metadata BEGIN") == 1
+
+    def test_every_value_arrives_with_its_reason(self, calc):
+        """The note-with-the-value rule, which a literal f-string cannot
+        keep: each item is written through its declaration, so the deck
+        explains itself."""
+        prep_calculation(calc, "seed")
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        for kw in ("MaxSCFIterations", "DM.Tolerance"):
+            assert re.search(r"^#\s*" + re.escape(kw) + r"\s*$", seed, re.M), (
+                f"{kw} should be introduced by its own note line")
+
+
 class TestTheLadderPreps:
 
     def test_seed_preps_end_to_end(self, calc):
@@ -207,7 +324,7 @@ class TestTheLadderPreps:
         deck = calc / "01_seed" / "T_01_seed.fdf"
         assert deck.is_file(), "the deck is born in its stage directory"
         text = deck.read_text()
-        assert "SolutionMethod         diagon" in text
+        assert _says(text, "SolutionMethod", "diagon")
         assert "SystemLabel            T" in text, (
             "the seed shares the task label so its .DM is what the "
             "device stage will read")
@@ -344,11 +461,11 @@ class TestTheLadderPreps:
         dev = (calc / "04_device" / "T_04_device.fdf").read_text()
         for text, who in ((seed, "seed"), (elec, "electrode"),
                           (dev, "device")):
-            assert "PAO.BasisSize          TZP" in text, who
-            assert "XC.authors             revPBE" in text, who
-            assert "MeshCutoff             250 Ry" in text, who
-            assert "PAO.EnergyShift        0.02 Ry" in text, who
-            assert "ElectronicTemperature  200.0 K" in text, who
+            assert _says(text, "PAO.BasisSize", "TZP"), who
+            assert _says(text, "XC.authors", "revPBE"), who
+            assert _says(text, "MeshCutoff", "250 Ry"), who
+            assert _says(text, "PAO.EnergyShift", "0.02 Ry"), who
+            assert _says(text, "ElectronicTemperature", "200.0 K"), who
         # transverse k = the relaxation's (4, 4), transport axis 1
         assert "    0    0    1      0.0" in dev, (
             "the device kz is forced to 1 (open boundary)")
@@ -634,6 +751,54 @@ def _conclude(calc, stage, files, *, deck_text=None, point=None):
 class TestTheGather:
     """`gather_transport_inputs` — the § 4.2 DAG's inputs, copied in at
     prep with three gates per input (P5)."""
+
+    def test_a_re_prepped_seed_still_satisfies_the_device(self, calc):
+        """THE DAG GATE ASKS "same calculation", NOT "same bytes".
+
+        A deck that renders through the framework carries a `generated-at`
+        timestamp and the generator's git sha.  The gate compared full text,
+        so once the seed rung joined the render pipeline (2026-09-15) two
+        ordinary things broke the device's gather: re-prepping a concluded
+        seed (a different allocation, a different `--target`, or just running
+        the command twice), and committing between the two preps, which moves
+        the sha.  It refused with *"the junction citation or its contract
+        changed"* -- false, and it pointed the reader at the science.
+
+        Mutation check: revert the gate to `read_text() == read_text()` and
+        this fails, because the re-prep genuinely rewrites the timestamp.
+
+        Contract: `engines/transport.md` § 4.2 (the DAG) + `script_emit.
+        same_calculation`.
+        """
+        prep_calculation(calc, "seed")
+        prep_calculation(calc, "electrode_L")
+        prep_calculation(calc, "electrode_R")
+        before = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+
+        # ...and now the seed is prepped again, which is what a person does
+        # when they change an allocation.  Only the record moves.
+        prep_calculation(calc, "seed")
+        after = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert after != before, (
+            "this test is vacuous unless the re-prep really did rewrite the "
+            "deck -- if the deck became deterministic, delete the test")
+        from molbuilder.script_emit import same_calculation
+        assert same_calculation(before, after), (
+            "a re-prep changed something other than the record; that is a "
+            "different bug from the one this test is about")
+
+        from molbuilder.jobset.prep import gather_transport_inputs
+        dest = calc / "device-attempt"
+        dest.mkdir()
+        got = gather_transport_inputs(calc, self._task(calc), "device", dest)
+        assert sorted(fn for _s, fn in got) == [
+            "T.DM", "T_L-electrode.TSHS", "T_R-electrode.TSHS"], (
+            "the re-prepped seed's .DM must still be gathered: only its "
+            "record moved, so it answers the same calculation")
+
 
     def _task(self, calc):
         from molbuilder.task import read_task

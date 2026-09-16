@@ -1276,6 +1276,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     from ..transport.stages import (TRANSPORT_STAGES, StageError,
                                     bias_points, bias_token, config_for,
                                     render_stage_deck, warm_declaration)
+    from ..siesta.input import spec_for as _siesta_spec_for
     from ..paths import Shape
 
     base = Path(base_dir).resolve()
@@ -1375,15 +1376,54 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # TS.Voltage.
     points = (bias_points(task)
               if stage in ("device", "transmission") else ())
-    try:
-        if points:
-            cfg0 = dataclasses.replace(cfg, bias_voltages_v=[points[0]])
-            deck_text = render_stage_deck(stage, composed, cfg0)
-        else:
-            deck_text = render_stage_deck(stage, composed, cfg)
-    except StageError as exc:
-        raise PrepError(str(exc)) from exc
-    (_jdir / script).write_text(deck_text, encoding="utf-8")
+    # THE SEED RUNG IS ON THE FRAMEWORK'S SEAM (`engines/transport.md`
+    # § 3.6, items 1-4).  It goes through the SAME step 3 the optimization
+    # path takes -- `spec_for` -> `prepare_deck` -- so it gets what a
+    # hand-written `write_text` cannot: the template's items (the 21
+    # keywords § 3.2 measured as unreachable, `MaxSCFIterations` and
+    # `DM.Tolerance` among them), the one writer that preserves a reader's
+    # USER-CUSTOM block, the read-back check, and the engine's check gate.
+    #
+    # The other four rungs still render through `render_stage_deck`: tabling
+    # them needs the ComposedJunction, which `spec_for` does not carry, and
+    # that seam question is the next increment's.  The split is HERE, at the
+    # conductor, and named -- not hidden inside a renderer that pretends to
+    # serve all five.
+    if stage == "seed":
+        from ..transport.stages import siesta_config_for
+        scfg = siesta_config_for(task, composed, stage=stage,
+                                 cfg=cfg)
+        # NO pipeline log: `_prep_transport` takes `pipeline_log` as a bool
+        # and builds no log object, which § 3.2 records as a documented
+        # no-op.  Passing `log=None` keeps that true rather than inventing
+        # half a logger here; wiring the real one is part of making
+        # `--pipeline-log` mean something for this path.
+        with _user_error_as_prep():
+            try:
+                spec = _siesta_spec_for(composed.sorted.structure, scfg,
+                                        stage_token=(token or None),
+                                        calculation="transport")
+            except ValueError as exc:
+                # `transport_spec` refuses an un-tabled rung with a message
+                # written FOR a person, and `_user_error_as_prep` translates
+                # only ValidationError / RuntimeConfigError / WrapperError --
+                # deliberately, so a TypeError still looks like the bug it
+                # is.  Without this the carefully worded refusal would reach
+                # the user as a raw traceback the moment the next increment
+                # widens the call site above.
+                raise PrepError(str(exc)) from exc
+            _sc.prepare_deck(spec, composed.sorted.structure, scfg,
+                             _jdir / script, log=None)
+    else:
+        try:
+            if points:
+                cfg0 = dataclasses.replace(cfg, bias_voltages_v=[points[0]])
+                deck_text = render_stage_deck(stage, composed, cfg0)
+            else:
+                deck_text = render_stage_deck(stage, composed, cfg)
+        except StageError as exc:
+            raise PrepError(str(exc)) from exc
+        (_jdir / script).write_text(deck_text, encoding="utf-8")
     for v in points:
         vdir = _jdir / bias_token(v)
         vdir.mkdir(parents=True, exist_ok=True)
@@ -1497,10 +1537,22 @@ def gather_transport_inputs(base_dir, task, stage: str,
                 f"launched, is still running, or was force-stopped (the "
                 f"last two look identical on disk; project-layout.md "
                 f"1.6).  Let it finish, or {run_first}")
+        # THE SAME CALCULATION, not the same bytes.  A deck that renders
+        # through the framework carries a generated-at timestamp and the
+        # generator's git sha, and neither says anything about what the
+        # engine computes -- so a byte comparison here refused a perfectly
+        # good upstream result because the seed had been re-prepped, or
+        # merely because a commit landed between the two preps.  It said
+        # "the junction citation or its contract changed", which was false
+        # and pointed the reader at the science.
+        #
+        # `same_calculation` masks exactly those fields and keeps every
+        # other byte, the region partition included (`script_emit`).
         matching = [d for d in concluded
                     if (d / current_deck.name).is_file()
-                    and (d / current_deck.name).read_text()
-                    == current_deck.read_text()]
+                    and _sc.same_calculation(
+                        (d / current_deck.name).read_text(),
+                        current_deck.read_text())]
         if not matching:
             raise PrepError(
                 f"{upstream} has {len(concluded)} concluded attempt(s), "

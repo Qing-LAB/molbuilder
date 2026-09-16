@@ -756,11 +756,25 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     case atom coordinates are passed through unchanged, since a user-supplied cell
     typically goes with a known atom frame (e.g. crystallographic positions).
     """
+    if calculation == "transport":
+        # The kind is a RENDER ARGUMENT, like the stage token: the seam
+        # stays ONE per engine, and the transport deck is this engine
+        # learning a second calculation -- the same shape PySCF's
+        # vibration arm has (`engines/transport.md` § 3.6).
+        #
+        # Transport IS a kind on this engine, not a second engine: 39 of
+        # its 56 template items are this catalogue's shared rows (§ 3.3),
+        # and its decks reuse THIS module's sections and syntax door
+        # rather than restating them.
+        from ..transport.deck import transport_spec
+        return transport_spec(struct, config or SiestaConfig(),
+                              stage_token=stage_token)
     if calculation != "optimization":
         raise ValueError(
-            f"SIESTA has no {calculation!r} deck yet; the vibration kind "
-            f"is PySCF-first (spectra-migration plan § 2 -- the "
-            f"engine-agnostic shape admits a SIESTA arm later).")
+            f"SIESTA renders 'optimization' and 'transport'; it has no "
+            f"{calculation!r} deck.  The vibration kind is PySCF-first "
+            f"(spectra-migration plan § 2 -- the engine-agnostic shape "
+            f"admits a SIESTA arm later).")
     # WHAT THIS DECK WRITES is not collected here.  It is read off the
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
