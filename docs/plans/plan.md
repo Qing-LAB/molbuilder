@@ -2421,6 +2421,40 @@ second reuses more and touches the Transport tab less.
 **Left for a ruling** rather than decided — it is the one remaining piece that
 designs what a person sees rather than what runs.
 
+### 5p.3m FIXED — a description made in the browser had no template
+
+**A regression of mine, from TR1, live for several steps.**
+
+TR1 made `jobset init` write `<label>.template.toml`. The **web describe door
+does not write files — it RETURNS them** for the browser to write, and it
+returned only `task.json`. So a transport calculation created in the browser
+had no shared electronic description, and `prep` refused it by name: *"this
+transport calculation has no template, so there is nothing to resolve."*
+
+Fixed: the door returns both, the template's values defaulted from the cited
+run.
+
+#### Why four sweeps missed it, which is the part worth keeping
+
+The test that would have caught it **immediately** is
+`test_task_setup_tab.py::test_transport_describe_answers_the_finished_description`
+— it posts to `/api/transport/describe` and asserted the response's file list.
+
+**My sweeps selected files by NAME**: `-k transport` never matched
+`test_task_setup_tab.py`. The tests that exercise a surface are not always in
+the file named for it, and a filter chosen from names measures the names.
+Corrected by running every non-browser file that *mentions* transport
+(`grep -rln transport tests/*.py`), which is 12 files beyond the ones named for
+it, and all pass.
+
+#### Three tests in that unswept file, each saying something
+
+| | |
+|---|---|
+| `== ["task.json"]`, *"floor 2 is task.json ALONE"* | the sealed design encoded as an assertion — **the same phrase flagged twice already in this programme**. Now asserts both files, and that the template is real: the reader `prep` uses accepts it and it carries the cited values |
+| `"citation's to say"` in the refusal | the message § 2a.7 reversed. Now demands the corrected reason **and** that the message names where the value is changed — a refusal with nowhere to go is not a refusal, it is a dead end |
+| the override lands on `device` | TR8 working: `transmission_n_points` goes to the **transmission** now. Asserts that, and that the device does *not* also get it |
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later

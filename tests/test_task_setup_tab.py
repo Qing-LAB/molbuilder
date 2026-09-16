@@ -1080,8 +1080,23 @@ def test_transport_describe_answers_the_finished_description(web_client, isolate
         out = r.get_json()
         assert out["ok"] is True
         files = out["files"]
-        assert [f["name"] for f in files] == ["task.json"], (
-            "floor 2 is task.json ALONE")
+        assert [f["name"] for f in files] == ["task.json", "T.template.toml"], (
+            "a transport description is task.json AND a template, like every "
+            "other kind's (TR1).  This asserted `== ['task.json']` with the "
+            "comment 'floor 2 is task.json ALONE' until 2026-09-16 -- the "
+            "SEALED design, where the electronic description was re-read "
+            "from the cited run at every prep and so had nowhere to be "
+            "written down.  `engines/transport.md` § 2a.7 ruled the other "
+            "way and a shared baseline needs a file to live in")
+        # ...and the template is REAL: the same reader `prep` opens it with
+        # accepts it, and it carries the cited run's own values.
+        from molbuilder.template import one as _one
+        from molbuilder.template import read_template as _read_tmpl
+        _tmpl = _read_tmpl(files[1]["text"])
+        assert _one(_tmpl, "basis_size").value is not None, (
+            "the template must carry the electronic description, defaulted "
+            "from the cited run -- an empty one would leave `prep` with "
+            "nothing to resolve")
         # the text is a real description: the shipped reader accepts it
         from molbuilder.task import read_task
         with _tf.TemporaryDirectory() as td:
@@ -1095,8 +1110,16 @@ def test_transport_describe_answers_the_finished_description(web_client, isolate
         assert [s.name for s in task.stages] == [
             "seed", "electrode_L", "electrode_R", "device",
             "transmission"]
-        dev = next(s for s in task.stages if s.name == "device")
-        assert dev.overrides == {"transmission_n_points": 101}
+        # ROUTED TO THE RUNG THAT OWNS IT (TR8, `engines/template.md`
+        # § 6.4's `stages` declaration).  This asserted the value landed on
+        # the DEVICE until 2026-09-16, which is where every override went
+        # whatever it was -- so a person's T(E) point count was written into
+        # the deck siesta runs, where the keyword is inert, and not into the
+        # deck tbtrans runs.  Silently.
+        by_rung = {s.name: dict(s.overrides) for s in task.stages}
+        assert by_rung["transmission"] == {"transmission_n_points": 101}
+        assert by_rung["device"] == {}, (
+            "the device must not carry a parameter it does not own")
         assert task.varies == ("transmission_n_points",)
     finally:
         pass    # tmp_path removes the tree
@@ -1240,7 +1263,19 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolat
             junction=_T_CITE, bias=[0.0],
             overrides={"basis_size": "DZP"}))
         assert r.status_code == 400
-        assert "citation's to say" in r.get_json()["error"]
+        msg = r.get_json()["error"]
+        # THE REASON CHANGED, THE REFUSAL DID NOT.  It said "the citation's
+        # to say -- cite a relaxation that ran with the values you want"
+        # until 2026-09-16, which § 2a.7 reversed: the cited run DEFAULTS
+        # these values.  By then it was misleading advice -- redo a
+        # relaxation, when one line of the template would do.  What stays
+        # true is that the value is SHARED by every rung, so giving one rung
+        # its own is how the device comes to disagree with its leads.
+        assert "shared" in msg.lower(), (
+            f"the refusal must say why -- the value is shared: {msg}")
+        assert "template" in msg, (
+            f"...and where it IS changed, or the person is refused with "
+            f"nowhere to go: {msg}")
     finally:
         pass    # tmp_path removes the tree
 

@@ -329,6 +329,9 @@ def api_transport_describe() -> Any:
     from molbuilder.task import FILENAME as TASK_FILENAME
     from molbuilder.task import Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
+    from molbuilder import template as _T
+    from molbuilder.transport.citation_defaults import (
+        siesta_config_from_citation)
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
                                              TRANSPORT_STAGES,
@@ -430,8 +433,25 @@ def api_transport_describe() -> Any:
     return jsonify({
         "ok": True,
         "label": task.label,
+        # TWO FILES, and the second was missing until 2026-09-16.
+        #
+        # A transport description is `task.json` AND a template, like every
+        # other kind's (TR1).  The CLI's `jobset init` wrote both; this door
+        # returned only the first, so a description made in the browser had
+        # no shared electronic description and `prep` refused it by name.
+        # The regression was mine and the tests did not catch it because
+        # they build a description through the fixture rather than through
+        # this endpoint -- the door a person actually uses.
+        #
+        # Its values are DEFAULTED FROM THE CITED RUN (§ 2a.7, ruling 1) and
+        # are the person's to change afterwards.
         "files": [{"name": TASK_FILENAME,
-                   "text": json_text(task.to_dict())}],
+                   "text": json_text(task.to_dict())},
+                  {"name": _T.template_filename(task.label),
+                   "text": _T.template_with_values(
+                       siesta_config_from_citation(cited.path,
+                                                   label=task.label),
+                       engine="siesta", calculation="transport")}],
         "notices": [],
     })
 
