@@ -21,7 +21,11 @@
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
-<body data-sidebars="projects">
+<body data-sidebars="projects" data-schema-label-layout="reviewed"
+      data-content-links="accent">
+{#- `data-schema-label-layout` opts THIS page into the reviewed label
+    rules in `lib/form-schema.css` (its own banner says what each one
+    fixes and why the other two form tabs are left alone). -#}
 
 {% set active_tab = "transport-calculation" %}
 {% include "_app_header.html" %}
@@ -54,7 +58,7 @@
       A directory qualifies by its <strong>files</strong>, not its name
       or location, in one of two shapes:
     </p>
-    <ul class="hint">
+    <ul>
       <li><code>.fdf</code> + <code>.XV</code> — a relaxation that
           concluded.  Its deck also fixes basis, functional and mesh,
           so step 3 leaves those alone.</li>
@@ -77,7 +81,7 @@
       <em>name</em>, so labelling them the other way round biases the
       other lead.  That case is detected below and offers a rename.
     </p>
-    <p class="hint hint-ref">
+    <p class="hint">
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
@@ -106,17 +110,14 @@
   </section>
 
   {#- ===================== 2. Analyze chemistry ===================== -#}
-  {% set hint %}<p><strong>Read the cited structure back before you
+  {% set hint %}<strong>Read the cited structure back before you
       spend any compute on it.</strong>  Two things are reported: the
       open-shell-metal check — whether this system wants a
       spin-polarised run — and a count of the atoms carrying each
       region label.  It runs automatically when you cite a junction;
-      the button re-runs it.</p>
-      <p>Nothing here changes a setting: the panel is a reading, and
-      acting on it means editing step 3 or relabelling in
-      <a href="/molbuilder">Molbuilder</a>.  The same check runs on
-      <a href="/structure-optimization">Structure optimization</a> and
-      <a href="/spectrum-calculation">Spectrum calculation</a>.</p>{% endset %}
+      the button re-runs it.  Nothing here changes a setting: the panel
+      is a reading, and acting on it means editing step 3 or
+      relabelling in <a href="/molbuilder">Molbuilder</a>.{% endset %}
   {% set title = "Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited." %}
   {% set button_label = "Re-analyze chemistry" %}
   {% include "_analyze_chemistry_card.html" %}
@@ -129,7 +130,7 @@
         the density contour is inert, and more than one value turns the
         run into a chain of attempt ladders.  It sat in card 4 beside
         the Describe button until 2026-09-15, which read as though it
-        were a property of SAVING (`engines/transport.md` § 3.4.3). -#}
+        were a property of SAVING (`engines/transport.md` 3.4). -#}
     <div class="action-row" id="transport-bias-row">
       <label for="transport-bias"><strong>Bias list (V):</strong></label>
       <input id="transport-bias" type="text" value="0.0"
@@ -160,7 +161,7 @@
       cannot attach.  They appear here only for a citation that carries
       no deck.
     </p>
-    <p class="hint hint-ref">
+    <p class="hint">
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:
@@ -187,7 +188,7 @@
       junction: a calculation does not live inside its own input.  Make
       one under this project and select it in the sidebar.
     </p>
-    <p class="hint hint-ref">
+    <p class="hint">
       Reference —
       <a href="/documents?doc=engines/transport.md" target="_blank"
          rel="noopener">Transport contract</a>:

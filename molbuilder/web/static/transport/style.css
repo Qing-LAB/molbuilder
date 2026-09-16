@@ -51,26 +51,3 @@
    (`lib/molview/molview.css`, `.molviewer-host`) -- it was this same 18-line
    comment and one declaration in TWO tab sheets, differing only in the id.
    `ui-contract.md` § 1: a widget used on more than one page has one owner. */
-
-
-/* The "Reference -- <document>" line that closes each card's
- * explanation (2026-09-15).  Every step on this tab is governed by a
- * section of `engines/transport.md`, and the user asked for the text in
- * these boxes to say WHICH.  Set apart from the prose above it so the
- * eye can skip it while reading and find it when looking: quieter,
- * smaller, and hung under a hairline.
- *
- * It lives in the PAGE sheet because this page is its only user.  A
- * second tab wanting the same line moves it to `form-components.css`
- * beside `.hint`, which owns the family -- one home, on the second
- * user, not in anticipation of one (`ui-contract.md` 1). */
-.hint-ref {
-    margin-top: var(--space-sm2);
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--border-soft);
-    font-size: var(--text-xs);
-    /* `--text-muted` (#6c7280) is ~3.3:1 on a card and this line has to
-     * be READ, not merely noticed.  Secondary is the quietest tone that
-     * clears 4.5:1. */
-    color: var(--text-secondary);
-}

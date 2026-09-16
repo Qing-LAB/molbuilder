@@ -124,7 +124,8 @@ def is_electrode_label(label: str) -> bool:
 @dataclass
 class TransportConfig:
     # Form-section render order -- and it is a SCIENTIFIC order, not a
-    # historical one (2026-09-15, `engines/transport.md` § 3.3).  It was
+    # historical one (2026-09-15).  RETIRED BY `engines/transport.md` 3.6: this whole
+    # dataclass is replaced by catalogue rows + SiestaConfig.  It was
     # System / Electrodes / Transmission / NEGF / Runtime, with the
     # electronic contract sitting inside "NEGF" where it never belonged and
     # nothing at all for the transverse k-grid, the broadening or the
@@ -566,19 +567,17 @@ class TransportConfig:
                    "here replaces it rather than restating it.  Only "
                    "relevant under bias.",
     })
-    negf_neq_fermi_cutoff_ev: float = field(default=0.0, metadata={
-        "section": "NEGF density contour",
-        "workflow_group": "stage",
-        "label":   "Non-equilibrium Fermi cutoff (0 = engine default)",
-        "unit":    "eV",
-        "range":   (0.0, 10.0),
-        "tier":    "advanced",
-        "engine_key": 'TS.Contours.nEq.Fermi.Cutoff  (transiesta)',
-        "help":    "how far beyond the bias window the non-equilibrium "
-                   "integration runs.  0 leaves the engine's default of "
-                   "5 kB T, which scales with the electronic "
-                   "temperature -- a number here fixes it instead.",
-    })
+    # `TS.Contours.nEq.Fermi.Cutoff` WITHDRAWN 2026-09-15.  It was added
+    # here on 2026-09-15 with `"unit": "eV"` and `"range": (0.0, 10.0)`,
+    # and both are wrong: the keyword is a DIMENSIONLESS multiple of
+    # k_B T, read by `m_ts_contour_neq` with no unit argument, and
+    # TranSIESTA `die`s below 2.5 -- so roughly a quarter of the range
+    # this form offered was a hard abort at startup, and every other
+    # value was out by ~39x at 300 K.  The help string asserted the
+    # exact inverse of the code ("a number here fixes it instead" of
+    # scaling with temperature; it still scales, because it is in kT).
+    # It comes back as a catalogue row with the right dimension and a
+    # floor of 2.5 when the surface is rebuilt (`transport.md` 3.5).
 
     # ================= Leads =================
 
@@ -594,21 +593,18 @@ class TransportConfig:
                    "is right whenever the electrode really is bulk-like, "
                    "which is what the region labels assert.",
     })
-    electrode_bloch: Tuple[int, int, int] = field(
-        default=(1, 1, 1), metadata={
-            "section": "Leads",
-            "workflow_group": "stage",
-            "label":   "Bloch expansion of the electrode cell",
-            "tier":    "advanced",
-            "engine_key": 'bloch  (inside %block TS.Elec.<name>)',
-            "help":    "how many times the electrode's own unit cell is "
-                       "repeated to tile the device's cross-section.  "
-                       "1 1 1 means the electrode cell already matches; "
-                       "expanding a SMALLER electrode cell is the "
-                       "standard cost saving, and it must match the "
-                       "device geometry exactly or the lead will not "
-                       "attach.",
-        })
+    # `bloch` WITHDRAWN 2026-09-15 -- a control that could only do harm.
+    # It wrote `bloch` into `%block TS.Elec.<name>` and NOTHING else in
+    # the tree responded: `wizard.py` still writes the device's kx, ky
+    # verbatim into the electrode deck, so any value but 1 1 1 left the
+    # lead computed on a transverse grid the device does not share --
+    # breaking invariant #3 (`transport.md` 0.4), unguarded.  tbtrans
+    # says so itself: "To match electrode Bloch expansion and system
+    # k-points / then the electrode k-grid should probably be:".  And
+    # because molbuilder DERIVES the electrode from the junction's own
+    # labelled atoms, the electrode cell already equals the device
+    # cross-section -- so 1 1 1 is the only correct value and there was
+    # nothing for a control to offer.  The emitter writes it fixed.
 
     # THE TWO PySCF FIELDS LEFT HERE ON 2026-09-15.
     #

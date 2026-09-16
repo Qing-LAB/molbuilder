@@ -1142,7 +1142,7 @@ async function loadFolder(projects, dir) {
         // `task.json` through its own door -- so somebody who had just
         // described a transport calculation was told about a route they did
         // not take and not about the one they did
-        // (`engines/transport.md` § 3.4.4).
+        // (`engines/transport.md` 3.4).
         setState("empty", "No description here yet",
                  "This folder carries no task.json and no hand-over.  Send "
                  + "parameters here from Structure optimization or Spectrum "

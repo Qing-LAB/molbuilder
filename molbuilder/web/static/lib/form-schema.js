@@ -427,31 +427,25 @@
                     + "until both are answered, and every output file is "
                     + "named after the first.",
         },
-        // The subtitles say what the GROUP means, so they must hold for
-        // every engine that renders one.  "profile" listed SIESTA's own
-        // fields -- "charge, spin, metallic vs organic, smearing, and
-        // the functional" -- until 2026-09-15, and on the transport tab
-        // that card holds the spin channel and the log verbosity: four
-        // of the five named things were not on the page.  What each
-        // FIELD is for is the section description's job, one level down.
         "profile": {
             title:    "Run profile",
-            subtitle: "WHAT you're computing — the physical character of "
-                    + "the system.  Set once per run; it does not change "
-                    + "between stages.",
+            subtitle: "WHAT you're computing \u2014 the physical character of "
+                    + "the system: charge, spin, metallic vs organic, "
+                    + "smearing, and the functional.  Set once per run; "
+                    + "doesn't change between stages.",
         },
         "stage": {
             title:    "Convergence targets",
-            subtitle: "What counts as CONVERGED — the settings a staged "
-                    + "sequence tightens as it goes.  The staging surface "
-                    + "steps these; nothing on this page does.",
+            subtitle: "What counts as converged \u2014 the knobs a staged "
+                    + "sequence TIGHTENS as it goes.  This is the set the "
+                    + "staging surface steps; nothing on this page steps it.",
         },
         "budget": {
             title:    "Compute & budget",
             subtitle: "How much compute am I willing to spend?  "
-                    + "Iteration caps and the parallel layout.  Scales "
-                    + "with system size; does NOT change what counts "
-                    + "as converged.",
+                    + "Iteration caps + parallel layout (MPI ranks, "
+                    + "OMP threads, memory).  Scales with system size; "
+                    + "does NOT change what counts as converged.",
         },
         // Added 2026-08-15.  Not a home for leftovers: FOUR of these were
         // already on the form, mis-filed under "what you're computing"

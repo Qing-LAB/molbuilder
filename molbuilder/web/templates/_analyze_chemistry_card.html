@@ -20,11 +20,7 @@
          `.auto-detect-panel`. -#}
 <section class="card" id="analyze-card">
   <h2>2. Analyze chemistry</h2>
-  {#- A DIV, not a <p> (2026-09-15): the hint is a prose BLOCK and a
-      caller with two things to say had to join them with <br/>, which
-      renders as a line break inside one paragraph rather than as a
-      paragraph.  `.hint` styles both the same. -#}
-  <div class="hint">{{ hint }}</div>
+  <p class="hint">{{ hint }}</p>
   <div class="auto-detect-bar">
     <button id="auto-detect-btn" type="button" disabled title="{{ title }}">
       {{ button_label | default("Auto-detect defaults") }}

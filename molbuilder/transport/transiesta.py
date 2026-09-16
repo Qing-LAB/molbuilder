@@ -550,7 +550,7 @@ def _emit_transiesta_block(struct: Structure,
         # ALWAYS, because the manual lists it among the four lines a
         # `%block TS.Elec.<name>` MUST carry -- HS, semi-inf-dir,
         # electrode-pos, chem-pot (SIESTA 5.4.0 manual;
-        # `engines/transport.md` § 3.3.6).
+        # `engines/transport.md` 3.3).
         #
         # This sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
         # junction -- no buffer atoms -- got two electrode blocks without
@@ -573,8 +573,14 @@ def _emit_transiesta_block(struct: Structure,
             # -(n_total - max).
             lines.append(f"  elec-pos end       "
                          f"{-(n_total - max(idxs))}")
-        bl = getattr(cfg, "electrode_bloch", (1, 1, 1))
-        lines.append(f"  bloch              {bl[0]} {bl[1]} {bl[2]}")
+        # `bloch 1 1 1`, FIXED, not a control (the field was withdrawn
+        # 2026-09-15 -- see `config/transport.py`).  molbuilder derives
+        # the electrode from the junction's own labelled atoms, so the
+        # electrode cell IS the device cross-section and no expansion
+        # applies; and nothing here adjusts the electrode's transverse
+        # grid to match one, which is what made any other value a
+        # silently mismatched lead.
+        lines.append("  bloch              1 1 1")
         lines.append(f"  semi-inf-direction {sid}")
         lines.append(f"%endblock TS.Elec.{block_name}")
         lines.append("")
@@ -681,15 +687,12 @@ def _emit_transiesta_block(struct: Structure,
         "# Defaults are the SIESTA 5.4.0 manual's; a 0 above means \"leave",
         "# it to the engine\" for the two whose default is a FORMULA rather",
         "# than a number, and nothing is emitted for those",
-        "# (`engines/transport.md` § 3.3).",
+        "# (`engines/transport.md` 3.3 -- the template shape).",
         f"TS.Contours.Eq.Pole    {cfg.negf_eq_pole_ev:.4f} eV",
         f"TS.Elecs.Bulk          "
         f"{'true' if cfg.elecs_bulk else 'false'}",
     ] + ([f"TS.Contours.nEq.Eta    {cfg.negf_neq_eta_ev:.6f} eV"]
-         if cfg.negf_neq_eta_ev > 0 else []) + (
-        [f"TS.Contours.nEq.Fermi.Cutoff  "
-         f"{cfg.negf_neq_fermi_cutoff_ev:.4f} eV"]
-        if cfg.negf_neq_fermi_cutoff_ev > 0 else []) + [
+         if cfg.negf_neq_eta_ev > 0 else []) + [
         "",
         "# TBtrans transmission post-processing.",
         "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
@@ -724,7 +727,7 @@ def _emit_transiesta_block(struct: Structure,
         "     method mid-rule",
         "%endblock TBT.Contour.window",
         "",
-        "# THE REST OF TBTRANS'S OWN SURFACE (`engines/transport.md` § 3.3).",
+        "# THE REST OF TBTRANS'S OWN SURFACE (`engines/transport.md` 3.3).",
         "#",
         "# `TBT.k` IS THE ONE THAT MATTERS.  tbtrans inherits the SCF's",
         "# kgrid_Monkhorst_Pack, and a grid converged for a total energy is",

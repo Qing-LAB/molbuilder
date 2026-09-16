@@ -173,7 +173,7 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
 
     `elec-pos` sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
     junction -- no buffer atoms -- got two electrode blocks without it
-    (`engines/transport.md` § 3.3.6). It was probably harmless, and that is
+    (`engines/transport.md` 3.3). It was probably harmless, and that is
     exactly why it needs a test rather than a reading: molbuilder sorts the
     junction so the electrodes ARE the first and last atoms, which is where
     an omitted position would land anyway, so the deck relied on an
