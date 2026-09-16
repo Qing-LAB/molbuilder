@@ -1243,6 +1243,56 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     _screen_pseudos(species, cfg, pdir)
 
 
+def _resolve_transport(base, task, stage: str, allocation,
+                       *, log=None):
+    """Floor 3's step 2 for a transport rung — the template ⊕ its overrides.
+
+    **The same `resolve` every other kind uses.** It was unreachable for
+    transport until TR1, for a plain reason: `resolve` reads a template and a
+    transport calculation did not have one. Now it does, so the arm that
+    `engines/transport.md` § 3.2 measured as *"a second conductor that
+    decides"* can hand its deciding back to the one that already exists.
+
+    Returns the rung's :class:`~molbuilder.config.siesta.SiestaConfig`. What
+    is gained over assembling it by hand is **provenance**: every value says
+    whether the template, the stage or a pin set it, which is the whole of
+    what `--pipeline-log` had nothing to print.
+    """
+    from ..config.siesta import SiestaConfig
+    from ..resolve import ResolveError, resolve
+    from ..template import find_template
+
+    tmpl = find_template(base)
+    if tmpl is None:
+        raise PrepError(
+            f"this transport calculation has no template, so there is "
+            f"nothing to resolve.  `jobset init` has written one since "
+            f"2026-09-16 (TR1) -- a description made before that carries "
+            f"only task.json.  Re-describe it, or write "
+            f"{task.label}.template.toml beside task.json with the "
+            f"electronic values the cited run used.")
+    if log is not None:
+        log.phase("STEP 2 · RESOLVE — the description becomes a ParameterSet")
+        log.received("template", tmpl.name)
+        log.received("stage", stage)
+    try:
+        ps = resolve(tmpl.read_text(encoding="utf-8"), task, SiestaConfig,
+                     allocation=allocation, stage=stage)
+    except ResolveError as exc:
+        raise PrepError(str(exc)) from exc
+    # ONE ELEMENT.  A transport rung is a production run; its one axis is the
+    # bias, and that is the device's own directory level rather than a sweep
+    # (`transport-design.md` § 4.3).  `resolve` still returns a list, because
+    # the length is the whole of the difference between a run and a sweep and
+    # no reader below floor 7 may branch on which.
+    element = ps.elements[0]
+    if log is not None:
+        log.produced("elements", f"{len(ps)} (a run, not a sweep)")
+        for _name, _src in sorted(element.provenance.items()):
+            log.chose(_name, getattr(element.values, _name, None), _src)
+    return element.values
+
+
 def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     allocation=None, env: str = None,
                     emit_sbatch: bool = True,
@@ -1295,13 +1345,6 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             "(transport-design.md 4.3; the per-point device decks land "
             "with the P5 warm chain).")
 
-    if pipeline_log:
-        # An observer, never a step (`script-preparation.md` § 4.5):
-        # saying so beats silently eating the flag.
-        import sys as _sys
-        print("  note: --log is not wired for the transport arm yet; "
-              "prep proceeds without it.", file=_sys.stderr)
-
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)
 
@@ -1314,6 +1357,25 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             f"{', '.join(TRANSPORT_STAGES)} (transport-design.md 4.2).  "
             f"Start with `molbuilder jobset prep run seed`.")
     token = token_for(task, stage)          # refuses an unknown stage by name
+
+    # THE PIPELINE LOG (TR4).  This arm printed "not wired for the transport
+    # arm yet" until 2026-09-16 -- honest, and a documented no-op is still a
+    # no-op.  What made it possible was TR1: a transport calculation has a
+    # template now, so there IS a resolve step whose inputs and outputs are
+    # worth recording.  Opened here rather than at step 1 because it is named
+    # for the rung, and the rung is not known until the description is read.
+    _tlog = None
+    if pipeline_log:
+        from ..pipeline_log import PipelineLog as _PL
+        _tlog = _PL.open(base, label=task.label, token=token,
+                         engine=task.engine, shape=task.shape)
+        _tlog.phase("STEP 1 · MACHINE — where this job will run")
+        _tlog.received("calculation", str(base))
+        _tlog.received(TASK_FILENAME,
+                       f"{task.label} · transport · {task.shape} · "
+                       f"{len(task.stages or ())} stage(s)")
+        for _g, _l in _environment_rows(environment):
+            _tlog.produced(_g, _l)
     stage_ref = next(s for s in task.stages if s.name == stage)
     if not stage_ref.enabled:
         raise PrepError(
@@ -1390,9 +1452,17 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # conductor, and named -- not hidden inside a renderer that pretends to
     # serve all five.
     if stage == "seed":
-        from ..transport.stages import siesta_config_for
-        scfg = siesta_config_for(task, composed, stage=stage,
-                                 cfg=cfg, base_dir=base)
+        # RESOLVED, not assembled (TR4).  `resolve` is floor 3's own step 2 --
+        # the template ⊕ this rung's overrides, with `provenance` recording
+        # which source set each value, which is what makes
+        # `project-layout.md` M3's "the numbers were wrong" answerable.
+        #
+        # TR1 is what made this reachable, and it also made it SUFFICIENT:
+        # the template carries every item this kind has, the transport-only
+        # rows included, so there is nothing left for a hand-built
+        # projection to add.
+        scfg = _resolve_transport(base, task, stage,
+                                  allocation or Resources(), log=_tlog)
         # NO pipeline log: `_prep_transport` takes `pipeline_log` as a bool
         # and builds no log object, which § 3.2 records as a documented
         # no-op.  Passing `log=None` keeps that true rather than inventing

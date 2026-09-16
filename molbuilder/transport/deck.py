@@ -307,10 +307,9 @@ def transport_spec(struct: Structure, cfg, *,
     """The ``DeckSpec`` for one transport rung.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
-    transport description's own answers where it has them and this engine's
-    declared defaults for the other 40 fields
-    (:func:`molbuilder.transport.stages.siesta_config_for`) — because the
-    sections above name catalogue rows and
+    calculation's own template ⊕ this rung's overrides, as
+    :func:`molbuilder.jobset.prep._resolve_transport` resolves it (TR4) —
+    because the sections above name catalogue rows and
     :func:`~molbuilder.script_emit.parameter` resolves a row by
     ``getattr(config, name)``.  That is not a preference: an item whose name
     is not a field on the config resolves to ``None`` *silently*, so a

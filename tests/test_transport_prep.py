@@ -244,6 +244,56 @@ UNREACHABLE_BEFORE_THE_SEAM = (
 )
 
 
+class TestTheTransportArmResolves:
+    """TR4 — `prep`'s transport arm hands its deciding to `resolve`.
+
+    `engines/transport.md` § 3.2 measured the arm as *"a second conductor
+    that decides"*: it composed, gated, extracted and rendered, so there was
+    no `ParameterSet`, no provenance, and `--pipeline-log` was a documented
+    no-op.  TR1 is what made the fix reachable -- `resolve` reads a template
+    and a transport calculation did not have one.
+    """
+
+    def _log(self, calc):
+        return next(calc.rglob("*.pipeline.log"), None)
+
+    def test_the_pipeline_log_is_written_and_names_the_resolve_step(self, calc):
+        prep_calculation(calc, "seed", pipeline_log=True)
+        log = self._log(calc)
+        assert log is not None, (
+            "--log printed 'not wired for the transport arm yet' until "
+            "2026-09-16; it must write a file now")
+        text = log.read_text()
+        assert "STEP 2 · RESOLVE" in text
+
+    def test_every_value_names_the_source_that_set_it(self, calc):
+        """PROVENANCE -- what the arm had nothing to print.
+
+        `project-layout.md` M3's *"the numbers were wrong"* is answerable
+        only if each value says where it came from.
+        """
+        prep_calculation(calc, "seed", pipeline_log=True)
+        text = self._log(calc).read_text()
+        for name in ("basis_size", "dm_tolerance", "max_scf_iter",
+                     "electronic_temperature"):
+            assert re.search(r"^\s*⊕\s+" + name + r"\s+\S.*<- \w+$",
+                             text, re.M), (
+                f"{name} reached the deck with no recorded source")
+
+    def test_a_description_with_no_template_is_refused_by_name(self, calc):
+        """The honest failure for a description written before TR1.
+
+        Refused with what to do, rather than falling back to re-reading the
+        citation -- which would be the sealed behaviour returning by the
+        back door, silently.
+        """
+        from molbuilder.template import find_template
+        find_template(calc).unlink()
+        with pytest.raises(PrepError) as e:
+            prep_calculation(calc, "seed")
+        assert "template" in str(e.value) and "TR1" in str(e.value)
+
+
 class TestTheTransportAxisIsNotSettable:
     """TR3 — the k-grid's three components fall in three classes, and the
     third is not the person's.
