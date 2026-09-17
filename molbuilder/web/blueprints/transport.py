@@ -112,7 +112,7 @@ def api_transport_describe_attempt() -> Any:
                                               compose_junction,
                                               labeled_citation_structure,
                                               recorded_contract_of)
-    from molbuilder.transport.preflight import parse_fdf_params
+    from molbuilder.parse.fdf import parse_fdf_params
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
 

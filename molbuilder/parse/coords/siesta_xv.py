@@ -32,7 +32,8 @@ from ._helpers import build_structure_result
 
 
 # 1 Bohr in Ångström, from the one place it is spelled.  This module and
-# `transport.preflight` both read `.XV` files and carried DIFFERENT
+# the fdf reader (then `transport.preflight`, now `parse.fdf`) both read
+# `.XV` files and carried DIFFERENT
 # values (0.5291772108 here, 0.529177 there), so the same file gave
 # coordinates 4e-7 apart depending on which reader was asked.
 from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR

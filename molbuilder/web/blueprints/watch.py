@@ -146,26 +146,23 @@ def _remove_temp_quietly(path: str) -> None:
 # --------------------------------------------------------------------- #
 
 
-# SystemLabel may appear with or without the dotted form; SIESTA's own
-# parser accepts both.  Match on a single token (no spaces) so we
-# don't capture trailing comments.
-_FDF_SYSTEM_LABEL_RE = re.compile(
-    # Bound the capture to the job-layout basename charset; SIESTA's
-    # SystemLabel must be filesystem-safe anyway and trusting an
-    # arbitrary \S+ here would let a malformed FDF inject path
-    # fragments into the discovery chain's os.path.join() below.
-    # Same charset as the basename validator in
-    # molbuilder/config/siesta.py (see _BASENAME_RE).
-    r"^\s*SystemLabel(?:\s|\.)\s*([A-Za-z0-9_\-]+)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-# molbuilder-generated PySCF scripts set ``JOB = "..."`` near the top
-# (see pyscf/input.py:329).  The regex anchors on the LHS to avoid
-# catching incidental strings further down.
-_PY_JOB_NAME_RE = re.compile(
-    r"^\s*JOB\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
-    re.MULTILINE,
-)
+# THE TWO LABEL READERS ARE NOT HERE ANY MORE (2026-09-17).
+#
+# This module carried a regex for each: `SystemLabel` bounded to the basename
+# charset, and `JOB = "..."` anchored on the LHS.  Both were hand-rolled, both
+# were narrower than the formats they read -- the fdf one matched `SystemLabel`
+# and `SystemLabel.` but NOT `System.Label` or `system_label`, which fdf treats
+# as the same keyword and SIESTA accepts.  A deck spelled either way resolved
+# to nothing here and the tab found no trajectory.
+#
+# They are one call each now, to the reader that owns each format:
+#   `parse.fdf.system_label`   -- fdf's real matching rule, quotes stripped as
+#                                 SIESTA strips them
+#   `pyscf.input.job_name`     -- the writer reading back its own literal
+#                                 (`model/parse.md` § 1a)
+#
+# Eight readers of deck content were measured across the tree on 2026-09-17;
+# this pair was two of them.
 
 
 def _read_text_safely(path: str, max_bytes: int = 65536) -> str:
@@ -183,15 +180,13 @@ def _read_text_safely(path: str, max_bytes: int = 65536) -> str:
 
 
 def _basename_from_fdf(path: str) -> Optional[str]:
-    text = _read_text_safely(path)
-    m = _FDF_SYSTEM_LABEL_RE.search(text)
-    return m.group(1) if m else None
+    from molbuilder.parse.fdf import system_label
+    return system_label(_read_text_safely(path))
 
 
 def _basename_from_py(path: str) -> Optional[str]:
-    text = _read_text_safely(path)
-    m = _PY_JOB_NAME_RE.search(text)
-    return m.group(1) if m else None
+    from molbuilder.pyscf.input import job_name
+    return job_name(_read_text_safely(path))
 
 
 def _by_role(directory: str, role: str) -> "List[Any]":

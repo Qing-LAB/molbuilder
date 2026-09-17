@@ -31,7 +31,7 @@ from ..chemistry import symbol_for_z
 from ..config.transport import (REGION_LEFT_ELECTRODE,
                                 REGION_RIGHT_ELECTRODE)
 from ..structure import Structure
-from .preflight import _BOHR_ANG, parse_fdf_params
+from ..parse.fdf import _BOHR_ANG, parse_fdf_params
 from .sort import SortResult, categorical_sort
 from .wizard import ElectrodeModel, extract_electrode_model
 

@@ -1,20 +1,38 @@
-"""TranSIESTA consistency preflight -- the cross-run contract gates.
+"""SIESTA's ``.fdf`` format, read back — scalars and blocks, one reader.
 
-A TranSIESTA conductance run is three coupled calculations (relax -> bulk
-electrode ``.TSHS`` -> NEGF device) whose CORRECTNESS hinges on the device
-and electrode runs sharing one numerical contract + a geometric clone +
-commensurate k, with the electrode a dense-``kz`` bulk and the device
-``kz=1``.  Humans break exactly these couplings; this module turns the
-prose "Golden Rule" (docs/engines/transport.md) into
-hard gates over the two ``.fdf`` files that will actually run.
+**What fdf's keyword rule actually is, and why one reader is worth having.**
+fdf matches a keyword case-insensitively AND ignoring ``.``, ``-`` and ``_``,
+so ``SystemLabel``, ``system_label``, ``System.Label`` and ``SYSTEMLABEL`` are
+one keyword.  :func:`_norm` is that rule; every other reader of a deck in this
+tree has been a hand-rolled regex that implements part of it.  Measured
+2026-09-17: **eight readers of deck content, and this was the only correct
+one** — four awk inside the emitted wrapper (`SystemLabel`, `JOB`, the GPU
+flag, a ``%block`` line counter) and four Python (`NumberOfAtoms`,
+``Diag.ELPA.(Use)?GPU``, `web/blueprints/watch.py`'s label pair, and this).
 
-It parses BOTH fdfs and reports OK / WARN / ERROR per check.  It validates
-*consistency*, not physics it can't see -- so it is engine-truthful: it
-catches the device-vs-electrode mismatches that silently give wrong
-transmission, before any compute is spent.
+**Why it is HERE.**  The fdf format is SIESTA's, not molbuilder's, so reading
+it is `parse/`'s by `model/parse.md` § 1a — the same footing as
+:mod:`molbuilder.parse.ion` (SIESTA's ``.ion``), which `transport/compose.py`
+reads across exactly this boundary.  It sat in ``transport/preflight.py``
+until 2026-09-17 because that is where it was first needed, and
+`parse/contract.py` had to reach INTO the transport package for it with a
+function-level import whose comment apologised for doing so.  *(§ 1a's rule
+that "a block belongs to its writer" governs molbuilder's OWN reserved blocks
+— provenance, USER-CUSTOM, atom metadata — which `script_emit` both writes and
+reads.  A SIESTA keyword is not one of those.)*
 
-Scientific basis + the parameter rationale: ``engines/transport.md`` § 5 (the
-invariant set, each gate traced to its reference) and § 7.
+**What the old module was named for is gone.**  It was the TranSIESTA
+cross-run consistency preflight: it parsed two finished ``.fdf`` files and
+reported OK/WARN/ERROR per gate, because under the hand-assembly workflow a
+person wrote both decks and nothing else compared them.  The composite derives
+both from one citation, so there is no second deck to disagree with; the verb,
+the gates and the report formatter were deleted 2026-09-17 and § 5's
+invariants are held by construction or by ``_validate_transport_kind``.  Every
+symbol that survived is fdf parsing, which is what this module always was.
+
+Callers: `parse/contract.py` (the recorded electronic contract),
+`transport/compose.py` and `transport/citation_defaults.py` (what the cited
+deck states), `web/blueprints/transport.py`.
 """
 
 from __future__ import annotations
@@ -252,4 +270,40 @@ def parse_fdf_params(text: str) -> FdfParams:
 #  one lost its subject.
 # ===================================================================== #
 
-__all__ = ["FdfParams", "parse_fdf_params"]
+def system_label(text: str) -> Optional[str]:
+    """The deck's ``SystemLabel``, or ``None`` when it states none.
+
+    **The one spelling-correct reader of this keyword.**  SIESTA names its
+    output and warm-restart files from it, so it is what the wrapper's
+    cold-restart sweep and the Results discovery chain both need — and both
+    used to hand-roll a regex for it.  Through :func:`_parse_fdf`, so fdf's
+    real matching rule applies: ``SystemLabel``, ``system_label`` and
+    ``System.Label`` are one keyword, which a regex anchored on the literal
+    word is not (measured 2026-09-17: neither hand-rolled reader matched the
+    last two).
+
+    **A surrounding pair of quotes is stripped, because SIESTA strips it.**
+    ``SystemLabel "foo"`` is legal fdf and the engine then writes ``foo.DM``,
+    so a reader that returned ``"foo"`` would look for files that do not
+    exist -- measured: the wrapper's cold sweep missed the warm files and
+    would have overwritten them without a word.  molbuilder never emits a
+    quoted label (`config/siesta.py::_validate_basename` refuses anything
+    outside ``[A-Za-z0-9_-]+`` before it can reach a deck), so this only ever
+    matters for a hand-edited deck -- which is exactly when a reader must
+    agree with the engine rather than with the generator.
+
+    Stripped HERE and not in :func:`_parse_fdf`, which returns values as
+    written: its four other consumers read numbers and enumerations, and
+    widening the parser for one string field would change all of them in a
+    commit about something else.
+    """
+    got = _parse_fdf(text)[0].get("systemlabel")
+    if not got:
+        return None
+    val = got[0]
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+    return val or None
+
+
+__all__ = ["FdfParams", "parse_fdf_params", "system_label"]

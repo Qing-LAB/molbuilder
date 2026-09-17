@@ -35,7 +35,7 @@ if TYPE_CHECKING:                                    # pragma: no cover
 
 #: What the cited deck answers -> the catalogue's own spelling for it.
 #:
-#: The left side is :class:`~molbuilder.transport.preflight.FdfParams`, which
+#: The left side is :class:`~molbuilder.parse.fdf.FdfParams`, which
 #: reads an `.fdf`; the right is :class:`SiestaConfig`, which is the
 #: catalogue's vocabulary. The pairs are the seven rows tagged
 #: ``citation = ["transport"]`` — *this* is the list that marker names, and
@@ -66,7 +66,7 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
     """
     from ..config.siesta import SiestaConfig
     from .compose import classify_citation
-    from .preflight import parse_fdf_params
+    from ..parse.fdf import parse_fdf_params
 
     kw = {}
     cited = classify_citation(Path(cite_dir))

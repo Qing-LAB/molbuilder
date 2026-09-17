@@ -50,10 +50,7 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
 
 
 def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
-    # Function-level import: parse_fdf_params lives with the transport
-    # preflight for history; this module only needs the pure text
-    # parser.
-    from molbuilder.transport.preflight import parse_fdf_params
+    from .fdf import parse_fdf_params
     try:
         text = deck.read_text(encoding="utf-8")
     except OSError:

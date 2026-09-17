@@ -10,11 +10,11 @@ times in three different values**::
 
     0.529177210903   makov_payne · pyscf/vibration_emitters · siesta_mdnc
     0.5291772108     parse/coords/siesta_xv · parse/dirs · parse/engines/pyscf
-    0.529177         transport/preflight · parse/ion
+    0.529177         parse/fdf · parse/ion
 
 The consequence was not theoretical.  Two modules read the same SIESTA
 ``.XV`` file — ``parse.coords.siesta_xv`` and ``transport.compose`` (through
-``transport.preflight``) — using the first and third of those, so **the same
+what is now ``parse.fdf``) — using the first and third of those, so **the same
 file gave coordinates 4e-7 apart depending on which reader was asked**.  That
 surfaced as a test comparing the two answers and failing by 1.6e-6 Å on a gold
 lattice constant.

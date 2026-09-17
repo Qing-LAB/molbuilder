@@ -274,7 +274,7 @@ def test_each_electrode_block_declares_its_REGION_SIZE():
 
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.structure import Structure
-    from molbuilder.transport.preflight import _parse_fdf
+    from molbuilder.parse.fdf import _parse_fdf
     from molbuilder import script_emit as _sc
     from molbuilder.siesta.input import spec_for
 
@@ -313,7 +313,7 @@ def test_the_device_deck_states_its_identity_and_method():
     the emitter's column spacing is not part of the contract.
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.transport.preflight import _parse_fdf
+    from molbuilder.parse.fdf import _parse_fdf
     cfg = SiestaConfig(system_label="au_bdt_au_test")
     scalars, _blocks = _parse_fdf(_live_device_deck(cfg.system_label))
     assert scalars.get("systemlabel") == [cfg.system_label]
@@ -327,7 +327,7 @@ def test_the_transmission_window_carries_the_configured_point_count():
     """TBtrans' contour window is a BLOCK, and its ``points`` row must be the
     value the config asks for -- compared against the config, not a literal."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.transport.preflight import _parse_fdf
+    from molbuilder.parse.fdf import _parse_fdf
     cfg = SiestaConfig(system_label="au_bdt_au_test")
     _scalars, blocks = _parse_fdf(_live_device_deck(cfg.system_label))
     window = blocks.get("tbtcontourwindow")
@@ -348,7 +348,7 @@ def test_species_block_carries_every_element_with_its_true_Z():
     this fixture while being wrong for any other structure.
     """
     from molbuilder.chemistry import atomic_number
-    from molbuilder.transport.preflight import _parse_fdf
+    from molbuilder.parse.fdf import _parse_fdf
     struct = _struct_with_sidecar()
     _scalars, blocks = _parse_fdf(_live_device_deck())
     rows = blocks.get("chemicalspecieslabel")

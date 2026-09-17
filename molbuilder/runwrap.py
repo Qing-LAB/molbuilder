@@ -375,7 +375,42 @@ def _cold_usage_entry(*, warm_examples: str) -> str:
     )
 
 
-def _cold_restart_block(basename: str, *, engine: str) -> str:
+def _deck_label(script_path: Path) -> str:
+    """The label the DECK declares, read once at prep, or ``""``.
+
+    SIESTA names its warm-restart files from ``SystemLabel`` and PySCF from
+    ``JOB``, and neither is the deck's filename: the label is UNSUFFIXED
+    while a staged deck is ``<label>_<NN>_<stage>``.  The cold-restart sweep
+    and the warm-start banner both need the former.
+
+    **Through the one correct reader of each** -- `parse.fdf.system_label`
+    applies fdf's real keyword rule, and `pyscf.input.job_name` reads back
+    the literal its own emitter wrote (`model/parse.md` § 1a).  The wrapper
+    read this with awk at LAUNCH until 2026-09-17; `gpu.md` G7 is the rule
+    that retired it -- *"the value travels; the deck is not re-read for it"*.
+
+    Returns ``""`` when the deck states none or cannot be read, and the
+    caller falls back to the basename -- the awk's `:-` default, in Python.
+    """
+    try:
+        text = script_path.read_text(errors="replace")
+    except OSError:
+        return ""
+    if script_path.suffix.lower() == ".fdf":
+        from molbuilder.parse.fdf import system_label
+        return system_label(text) or ""
+    from molbuilder.pyscf.input import job_name
+    return job_name(text) or ""
+
+#: The charset a wrapper may put in a filename.  This was a `case` pattern
+#: inside the emitted bash (`*[!A-Za-z0-9._-]*`), guarding a value the awk
+#: had just read out of the deck.  The value is now read at prep, so the
+#: guard moves here with it -- one language, and a deck whose label is not
+#: nameable falls back to the basename instead of warning at launch.
+_WRAPPER_LABEL_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+def _cold_restart_block(basename: str, *, engine: str,
+                        label: str = "") -> str:
     """Bash snippet that NAMES the prior state a cold run would overwrite.
 
     **It reports and stops; ``--force`` proceeds** *(user, 2026-08-18)*.  It
@@ -417,72 +452,43 @@ def _cold_restart_block(basename: str, *, engine: str) -> str:
     Nothing is moved, copied or deleted here.  The engine overwrites what it
     overwrites, once the user has said to.
     """
-    # WHY THIS IS READ AT LAUNCH AND NOT PASSED IN.
+    # THE LABEL IS BAKED, NOT RE-READ.  `execution/gpu.md` G7 -- *"the value
+    # travels; the deck is not re-read for it"*.
     #
-    # The generator knows the label -- `_validate_basename` refused anything
-    # outside `[A-Za-z0-9_-]+` before it reached the deck -- so baking it in
-    # would be correct for the deck WE wrote.  This runs on the deck as it is
-    # at LAUNCH, after a person may have edited it, and a cold-restart sweep
-    # keyed to the wrong label moves aside files the engine will then not
-    # find.  So it is re-read, deliberately, for the same reason the GPU flag
-    # is (`_fdf_requests_gpu`'s awk counterpart below).
+    # SIESTA names its warm files from `SystemLabel` and PySCF from `JOB`, and
+    # neither is the wrapper's own basename: the deck label is UNSUFFIXED while
+    # the wrapper is `<label>_<NN>_<stage>`, so the sweep genuinely needs it.
+    # An awk one-liner read it at LAUNCH until 2026-09-17, on the stated ground
+    # that a person may edit the deck in between.  Measured, that does not hold
+    # up: the deck fences a `user-custom` zone and warns against editing the
+    # rest, and the wrapper's own output naming below is ALREADY a baked
+    # literal -- so a run whose deck label changed after prep is inconsistent
+    # with itself whatever this does.
     #
-    # It lower-cases, strips quotes and ignores trailing columns because it
-    # must survive a hand-edit rather than recover what the generator wrote.
-    # A Python counterpart, `_assembler_helpers.py::extract_system_label`,
-    # was stricter for the opposite and equally deliberate reason -- it
-    # recovered what WE wrote -- and was DELETED 2026-09-06 with its module:
-    # zero callers, and the app never needs it, because the initial geometry
-    # reaches a viewer through the trajectory's frame 0 (`parse.md` § 5c),
-    # not by re-reading the deck.  This is the only reader of the label now.
+    # It is read once at PREP instead, by the caller, through the one
+    # spelling-correct reader of each: `parse.fdf.system_label` applies fdf's
+    # real matching rule (case AND `.`/`-`/`_` insensitive) and
+    # `pyscf.input.job_name` reads the literal its own emitter writes.  The awk
+    # compared `tolower($1) == "systemlabel"`, so `System.Label` and
+    # `system_label` -- both valid fdf, both accepted by SIESTA -- swept under
+    # the wrong name.
     #
-    # PySCF's arm below reads a different mechanism, not a different spelling
-    # of this one: `JOB = "..."` is a Python string literal, so there the
-    # quotes are syntax rather than characters in the name.
-    if engine == "siesta":
-        label_extract = (
-            f'# Read SystemLabel from the .fdf so the sweep matches what\n'
-            f"# SIESTA will look for at startup (not what the wrapper's\n"
-            f"# filename happens to be).  Robustness: lower-case before\n"
-            f"# matching (mawk/BSD awk ignore IGNORECASE); strip quotes;\n"
-            f"# ``|| true`` keeps a missing .fdf from aborting under\n"
-            f"# ``set -euo pipefail``; the :- default guards ``set -u``.\n"
-            f'_warm_label=$(awk \''
-            f'tolower($1) == "systemlabel" '
-            f'{{ gsub(/"/, "", $2); print $2; exit }}'
-            f'\' "{basename}.fdf" 2>/dev/null || true)\n'
-            f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            # J1 2026-06-14 (defense in depth): sanitize the label read
-            # from the .fdf to the wrapper-name charset.  Bash double
-            # quotes already block command substitution -- this is belt +
-            # suspenders for a future emitter that forgets the quotes.
-            'case "$_warm_label" in\n'
-            '    *[!A-Za-z0-9._-]*)\n'
-            f'        echo "[molbuilder] warning: SystemLabel in '
-            f'{basename}.fdf contained disallowed characters; '
-            f'falling back to basename" >&2\n'
-            f'        _warm_label="{basename}"\n'
-            '        ;;\n'
-            'esac\n'
-        )
-    elif engine == "pyscf":
-        label_extract = (
-            f'_warm_label=$(awk -F\'["\\047]\' \''
-            f'/^[[:space:]]*JOB[[:space:]]*=/ '
-            f'{{print $2; exit}}'
-            f'\' "{basename}.py" 2>/dev/null || true)\n'
-            f'_warm_label="${{_warm_label:-{basename}}}"\n'
-            'case "$_warm_label" in\n'
-            '    *[!A-Za-z0-9._-]*)\n'
-            f'        echo "[molbuilder] warning: JOB string in '
-            f'{basename}.py contained disallowed characters; '
-            f'falling back to basename" >&2\n'
-            f'        _warm_label="{basename}"\n'
-            '        ;;\n'
-            'esac\n'
-        )
-    else:                                  # pragma: no cover
+    # `label` falls back to the basename, which is what the awk's `:-` default
+    # did when the deck stated none or could not be read.
+    if engine not in ("siesta", "pyscf"):   # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
+
+    # SANITISED HERE, IN PYTHON, not by a `case` in the emitted bash.  The
+    # awk needed that guard because its value came from the file it had just
+    # read; this one comes from `parse.fdf.system_label` /
+    # `pyscf.input.job_name` at prep, and a value outside the wrapper-name
+    # charset is a deck the generator would not have written -- so the
+    # basename is the honest answer, decided here rather than warned about
+    # at launch.
+    _lbl = label or basename
+    if not _WRAPPER_LABEL_RE.fullmatch(_lbl):
+        _lbl = basename
+    label_extract = '_warm_label="' + _lbl + '"\n'
     # § 4.1's "except what molbuilder wrote", derived from the ONE
     # enumeration (identity.OUR_FILE_PATTERNS) rather than hand-spelled
     # here in a second language (E-1, 2026-08-13).  ``{label}`` becomes a
@@ -1730,15 +1736,24 @@ The wrapper needs the atom count to state its occupancy NOTICE
     OPTIONAL in SIESTA, the coordinates block being authoritative -- and
     the notice is then simply not emitted.
     """
-    import re
+    from molbuilder.parse.fdf import _parse_fdf
     try:
         text = fdf_path.read_text()
     except OSError:
         return None
-    # SIESTA FDF parsing is whitespace-insensitive + case-insensitive
-    # on labels.  Match defensively.
-    m = re.search(r"(?im)^\s*NumberOfAtoms\b\s+(\d+)", text)
-    return int(m.group(1)) if m else None
+    # THROUGH THE ONE READER (2026-09-17).  This was
+    # `re.search(r"(?im)^\s*NumberOfAtoms\b\s+(\d+)")` with a comment saying
+    # *"SIESTA FDF parsing is whitespace-insensitive + case-insensitive on
+    # labels.  Match defensively."* -- which knew the rule and implemented
+    # half of it: `\b` on the literal word does not match `Number.Of.Atoms`
+    # or `number_of_atoms`, and fdf treats all three as one keyword.
+    got = _parse_fdf(text)[0].get("numberofatoms")
+    if not got:
+        return None
+    try:
+        return int(got[0])
+    except ValueError:
+        return None
 
 
 def _effective_parameters_block(script_path: "Path") -> str:
@@ -2624,7 +2639,8 @@ def render_run_wrapper(script_path: Path, *,
             'fi\n'
             f"\n"
             + _run_index_resolver(basename)
-            + _cold_restart_block(basename, engine="siesta")
+            + _cold_restart_block(basename, engine="siesta",
+                                  label=_deck_label(script_path))
             + _runtime_status_block(basename, engine="siesta",
                                      script_name=script_name)
         )
@@ -3196,7 +3212,8 @@ def render_run_wrapper(script_path: Path, *,
             # apart from SIESTA's (which keeps ``.out``).  Per
             # docs/web/tabs.md (Phase C, 2026-06-07).
             + _run_index_resolver(basename, ext=".pyscf.log")
-            + _cold_restart_block(basename, engine="pyscf")
+            + _cold_restart_block(basename, engine="pyscf",
+                                  label=_deck_label(script_path))
             + _runtime_status_block(basename, engine="pyscf",
                                      script_name=script_name)
         )
