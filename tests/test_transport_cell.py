@@ -8,7 +8,7 @@ import pytest
 from molbuilder.config.transport import TransportConfig
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
-from molbuilder.transport.preflight import parse_fdf_params, preflight
+from molbuilder.transport.preflight import parse_fdf_params
 from molbuilder.transport.transiesta import axis_vacuum, _emit_geometry
 
 # A hexagonal Au(111)-like cell: a,b at 60 deg ~17.3 A; c (transport) 40 A.

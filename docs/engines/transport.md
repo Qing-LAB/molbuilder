@@ -1820,21 +1820,21 @@ Break any row and the transmission is *silently* wrong — so the preflight
 (`transport/preflight.py`) encodes each as a machine gate (the `Gate` column is the
 gate `id`; ✓ = guaranteed by the electrode wizard's clone-by-construction instead):
 
-| # | Invariant | Across | Why (physics) | Gate |
+| # | Invariant | Across | Why (physics) | **Held by** *(re-derived 2026-09-17)* |
 |---|---|---|---|---|
-| I1 | XC functional + authors | relax = electrode = device | one Hamiltonian footing; mixing shifts E_F | `contract.xc` |
-| I2 | Pseudopotentials (per species) | all three | different core = different atom | wizard clone ✓ |
-| I3 | MeshCutoff | electrode = device | real-space grids must align for the NEGF coupling | `contract.meshcutoff` |
-| I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | `contract.energyshift` |
-| I5 | Basis tier, per species | frozen-electrode-Au = device-Au | a basis step = spurious back-scattering (§ 7) | `contract.basis` |
-| I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | `cell.transverse` |
-| I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k (commensurate = the two grids share a common factor) | `kgrid.transverse` |
-| I8 | Device kz = 1 | device | open boundary (no periodicity along transport) | `kgrid.device_kz` |
+| I1 | XC functional + authors | relax = electrode = device | one Hamiltonian footing; mixing shifts E_F | **construction** — one template, every rung |
+| I2 | Pseudopotentials (per species) | all three | different core = different atom | **construction** — the lead's atoms ARE the device's (`extract_electrode_model`) |
+| I3 | MeshCutoff | electrode = device | real-space grids must align for the NEGF coupling | **construction** — one template |
+| I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | **construction** — one template |
+| I5 | Basis tier, per species | frozen-electrode-Au = device-Au | a basis step = spurious back-scattering (§ 7) | **construction** — one template |
+| I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | **construction** — the extraction takes the device's `lat_a`/`lat_b` verbatim |
+| I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k (commensurate = the two grids share a common factor) | **construction** — `citation_defaults` carries one transverse pair to both |
+| I8 | Device kz = 1 | device | open boundary (no periodicity along transport) | `config.kgrid` — `_validate_transport_kind`, **error** |
 | I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`config.electrode_kz`** — `_validate_transport_kind`, error at 1 / warn below 20 *(re-homed 2026-09-17)* |
-| I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | wizard clone ✓ |
-| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `electrode.thickness` (warn) |
+| I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
+| I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
 | I12 | z-vacuum ≈ 0 at the leads | device | a gap = severed lead, not a junction | **`cell.transport_vacuum`** — `_validate_transport_kind`, warn *(re-homed 2026-09-17)* |
-| I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | `electrode.saveHS` (warn) |
+| I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
 
 **ELEVEN OF THE THIRTEEN NEED NO GATE UNDER THE COMPOSITE** *(measured
 2026-09-17, `plan.md` § 5p.3p.7)*. Seven hold by construction — every rung
@@ -1851,24 +1851,14 @@ I9 and I12 were the two held only by the verb, and were re-homed to
 calculation KIND, which is what makes them fire on every prep rather than on a
 command somebody remembers to run.
 
-*This paragraph called the verb "the single biggest correctness lever". That was
-true of the hand-assembly workflow it was written for (2026-06-27), where a
-person wrote two decks and nothing else compared them. Under the composite the
-decks are derived from one citation and one template, so the couplings hold by
-construction and the verb's remaining job is checking two finished `.fdf` files
-somebody produced another way.* An illustrative run of it:
-
-```text
-$ molbuilder transport preflight --device run/junc.fdf \
-      --electrode run/junc_L-electrode.fdf
-transport preflight -- device <-> electrode consistency
-  [ok   ] contract.xc              PBE matches device and electrode
-  [ok   ] cell.transverse          lateral cell matches
-  [WARN ] electrode.thickness      3 layers < ~6-layer principal layer (I11)
-  [ERROR] kgrid.device_kz          device kz = 4, must be 1 (open boundary, I8)
-  => 1 error(s), 1 warning(s)
-  FAIL -- fix the ERROR(s) before running TranSIESTA
-```
+*The verb `transport preflight` is DELETED (2026-09-17).* It reported these as
+an error/warn/ok checklist over two finished `.fdf` files, and this paragraph
+called it "the single biggest correctness lever" — true of the hand-assembly
+workflow it was written for on 2026-06-27, where a person wrote both decks and
+nothing else compared them. Under the composite there is no second deck to
+disagree with: both are derived from one citation and resolved from one
+template. The reader it was built on, `parse_fdf_params`, survives and has four
+production callers.
 
 (Messages abbreviated for illustration; the real formatter is
 `preflight.format_report`.)

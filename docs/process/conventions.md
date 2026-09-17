@@ -138,12 +138,20 @@ shared API.
 > ([`stages.md § 1`](?doc=engines/stages.md)); it goes the same way when that
 > path is reworked.
 
-**7 sub-groups:** `envs` (conda-env management → [`ops/installation.md`](?doc=ops/installation.md)),
-`bench` (the CPU-vs-GPU benchmark), `jobset` (staged execution →
-[`execution/job-system.md`](?doc=execution/job-system.md)), `transport`
-(TranSIESTA helpers), `pseudo` (`.psml` screening →
-[`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), `checkpoint`
-(git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON).
+**6 sub-groups** *(re-derived 2026-09-17, not decremented — this row said
+seven and named `bench`, deleted 2026-08-17, and `transport`, deleted
+2026-09-17):* `envs` (conda-env management →
+[`ops/installation.md`](?doc=ops/installation.md)), `jobset` (staged execution →
+[`execution/job-system.md`](?doc=execution/job-system.md)), `pseudo` (`.psml`
+screening → [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)),
+`checkpoint` (git run-checkpoints), `watch` (trajectory parse to JSON/NDJSON),
+`serve` / `jupyter` (the web UI and its notebook — verb groups since 2026-08-28).
+
+**NO CALCULATION KIND HAS A VERB.** There is no `spectra`, no `optimization`,
+no `vibration` — and since 2026-09-17 no `transport`. A kind is described in
+`task.json` and run through `jobset`, which is decision 7 applied to the last
+group that broke it: *"everything is a job set … a second way in is a second way
+to lose your results."*
 
 #### One orchestration lifecycle (the 2026-08-11 problem, closed)
 

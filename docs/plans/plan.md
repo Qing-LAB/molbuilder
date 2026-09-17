@@ -2780,10 +2780,10 @@ the table currently lists 13, names `serve` (now a group) and omits
 disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
 bridge stays and only the command goes.
 
-**Step 9 — remove the `transport` group** once step 2 empties it, on the `bench`
-precedent. *Check:* `molbuilder --help` lists no calculation-kind verb, and
-`conventions.md` § 3's sub-group list drops from 7 to 6 with `bench` (already
-deleted 2026-08-17) no longer named either — that row is stale twice over.
+**Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
+`molbuilder --help` now lists 20 top-level commands and no calculation-KIND
+verb; `conventions.md` § 3 records the rule explicitly rather than leaving it
+to be inferred from the roster.
 
 #### 5p.3p.7 Step 2's review — the invariant set, one by one *(2026-09-17)*
 
@@ -2860,10 +2860,19 @@ I12 itself.
     disabling either gate fails its test. `transport.md` § 5's rows now name
     the live checks, and its "single biggest correctness lever" claim is
     corrected in the same change.
-2c. **Then delete** `preflight_files`, `format_report` and the verb, keeping
-    `parse_fdf_params` and `_BOHR_ANG`. *Check:* all thirteen invariants still
-    have a named holder, and § 5's claim that the verb is *"the single biggest
-    correctness lever"* is corrected — it has not been that since the composite.
+2c. **Delete the comparison and the verb** — **DONE 2026-09-17.** Gone:
+    `Check`, `PreflightReport`, `preflight`, `preflight_files`,
+    `format_report`, `molbuilder/transport/_cli.py`, and the `transport` group
+    itself. Kept: `parse_fdf_params` (four production callers), `_parse_fdf`,
+    `FdfParams`, `_BOHR_ANG` — reading an fdf and COMPARING two of them are
+    different jobs, and only the second lost its subject.
+    *Check, and it FAILED first:* § 5's table named `preflight.py`'s check-ids
+    for eleven of thirteen rows, so "every invariant has a named holder" was
+    false the moment the module went. Every row now names its real holder —
+    seven **construction**, I8/I9/I12 `_validate_transport_kind`, I11
+    `compose.py`. **Step 9 lands with this**: the group is empty, so it goes on
+    the `bench` precedent, and `conventions.md` § 3's roster is re-derived
+    (it said seven sub-groups and named `bench`, deleted 2026-08-17).
 
 #### 5p.3p.5 The standing rule — consolidate, do not patch
 
@@ -2979,10 +2988,10 @@ the table currently lists 13, names `serve` (now a group) and omits
 disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
 bridge stays and only the command goes.
 
-**Step 9 — remove the `transport` group** once step 2 empties it, on the `bench`
-precedent. *Check:* `molbuilder --help` lists no calculation-kind verb, and
-`conventions.md` § 3's sub-group list drops from 7 to 6 with `bench` (already
-deleted 2026-08-17) no longer named either — that row is stale twice over.
+**Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
+`molbuilder --help` now lists 20 top-level commands and no calculation-KIND
+verb; `conventions.md` § 3 records the rule explicitly rather than leaving it
+to be inferred from the roster.
 
 #### 5p.3p.5 The standing rule — consolidate, do not patch
 

@@ -38,7 +38,6 @@ import click
 
 from .diagnostics import initialize as _initialize_diagnostics
 from .envs._cli import envs_group
-from .transport._cli import transport_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
 
@@ -339,9 +338,21 @@ cli.add_command(envs_group)
 from .jobset._cli import jobset_group
 cli.add_command(jobset_group)
 
-# `molbuilder transport ...`  (TranSIESTA workflow helpers; preflight =
-# device<->electrode consistency gates).  See molbuilder/transport/.
-cli.add_command(transport_group)
+# `molbuilder transport ...` DELETED 2026-09-17 -- the last calculation-KIND
+# verb group, and the second half of a closure `bench` already received.
+#
+# `conventions.md` 3 named the problem on 2026-08-11: "`jobset`, `bench` and
+# `transport` each ran calculations their own way".  `bench` was folded into
+# `jobset` on 2026-08-17 with its four verbs deleted and its group removed;
+# transport migrated to the composite on 2026-08-29 and its `bundle` verb went,
+# but the group stayed with the two hand-assembly verbs still in it --
+# `electrode`, which wrote a lead deck from flags, and `preflight`, which
+# compared that deck against a device deck.  Both are gone, so the group is.
+#
+# NO CALCULATION KIND HAS A VERB: there is no `spectra`, no `optimization`, no
+# `vibration`.  A kind is described in `task.json` and run through `jobset` --
+# decision 7, "everything is a job set", and a second way in is a second way to
+# lose your results.
 
 
 # `molbuilder pseudo ...`  (screen a pseudopotential set).

@@ -223,24 +223,9 @@ def test_validate_dispatches_transport_preflight(water_struct):
         "TransportConfig may have lost its registered validator")
 
 
-# --------------------------------------------------------------------- #
-#  V3: the cross-run transport checklist bridges to Issue               #
-# --------------------------------------------------------------------- #
+# `test_preflight_report_to_issues_bridge` deleted 2026-09-17 with
+# `Check`/`PreflightReport`.  They were a CHECKLIST type for the
+# cross-deck comparison -- distinct from `Issue` because they could
+# report a PASSING gate -- and the comparison lost its subject when
+# both decks came to be derived from one citation.
 
-
-def test_preflight_report_to_issues_bridge():
-    """Check/PreflightReport is a distinct CHECKLIST type (it reports
-    passing 'ok' gates Issue can't model), but it bridges to the shared
-    Issue list -- error/warn/info map through, 'ok' passes drop out."""
-    from molbuilder.transport.preflight import Check, PreflightReport
-    rep = PreflightReport(checks=[
-        Check("role.device", "ok", "looks right"),
-        Check("k.commensurate", "error", "device kz must be 1"),
-        Check("cutoff.match", "warn", "MeshCutoff differs"),
-        Check("basis.note", "info", "electrode uses a larger basis"),
-    ])
-    issues = rep.to_issues()
-    assert [i.severity for i in issues] == ["error", "warn", "info"]
-    assert issues[0].where == "k.commensurate"
-    # the 'ok' pass is not an Issue (Issue has no ok state):
-    assert all(i.where != "role.device" for i in issues)
