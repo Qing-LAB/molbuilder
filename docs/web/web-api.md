@@ -90,7 +90,7 @@ caller holds.
 | `/api/structure/save` | `{structure: <envelope>, path, overwrite, frames?}` |
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
-| `/api/transport/render` | `{structure: <envelope>, params, structure_path?}` — the region-labeled device. Took the path as its GEOMETRY with the labels beside it until 2026-08-03; it was the last door on that shape |
+| ~~`/api/transport/render`~~ | **DELETED 2026-09-17.** It rendered a device deck and handed the text back; no browser had called it since 2026-08-29, and a browser renders no deck (`tabs.md`) — the same ruling that retired `/api/build/fdf` and `/api/build/pyscf` on 2026-08-17. It was the last door to take a file PATH as its geometry, which is the migration described in § 2's envelope rule below |
 | `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, atom_metadata?, periodicity?, info?}`. **Not the envelope** — nothing is being sent back, something is being *parsed*. The optional blocks beside the text are **what the caller already knew about these atoms** and the text has no room for — the labels, the cell, and the free `info` store (`?doc=web/molview.md` § 8.4a). A `path` load reads all three off disk and a `{structure}` restore carries them in its envelope; the text branch is the one shape with no document behind it, so a host that knows them states them. `info` must be an object of key → value: a non-object is a 400, never a silent drop. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName, atomName, chainId}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs. `atomName` / `chainId` joined it 2026-09-07: they are what `by_atom_name` and `by_chain_id` match on, and without them the server rebuilt the structure with `Structure`'s defaults — atom name = element symbol, chain = `"A"` — so both rules answered **200 with a wrong answer** rather than refusing (`by_atom_name "CA"` never matched an alpha carbon; `by_chain_id "B"` never matched anything). Both keys are optional and fall back to those same defaults, so an older caller is unaffected |
 
@@ -308,7 +308,8 @@ them.
 > never written it, because a reader checking the contract is told the code has
 > not been brought to it yet and goes looking for the old shapes.
 >
-> `/api/transport/render` was the last door across, and its migration is the
+> `/api/transport/render` was the last door across (the route itself is
+> deleted, 2026-09-17), and its migration is the
 > case the rule is for: it took a file PATH as its geometry with the labels
 > beside it, so one request came from two sources read at two moments — and
 > being the last caller of that shape was the only reason the server still had a
@@ -508,9 +509,11 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 98 routes
+## 3. Endpoint index — all 97 routes
 
-> **98 on every server, supervised or not.** It was 96 until 2026-09-15,
+> **97 on every server, supervised or not.** It was 98 until 2026-09-17, when
+> `POST /api/transport/render` was deleted — a browser renders no deck, and no
+> browser had called it since 2026-08-29. It was 96 until 2026-09-15,
 > because `POST /api/jupyter/start` and `POST /api/jupyter/stop` were
 > registered inside `if os.environ.get(SUPERVISED_ENV) == "1":` — so the URL
 > map itself depended on how the process had been started, and this count

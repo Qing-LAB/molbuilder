@@ -1524,42 +1524,16 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def convert(input_path: str,
-            py_path: str,
-            config: Optional[PySCFConfig] = None) -> dict:
-    """Read an XYZ or PDB, write a runnable PySCF script.
 
-    Returns a summary dict: ``{py, n_atoms, charge, label}``.
-    """
-    cfg = config or PySCFConfig()
-    p = Path(input_path)
-    ext = p.suffix.lower()
-    # THROUGH THE CODEC -- the one reader of a structure AND its sidecar
-    # (`model/structure.md` § 2.4).  This used the bare loader, so a structure
-    # whose `.molstruct.json` names frozen atoms produced a script with NO
-    # geomeTRIC `$freeze` block and relaxed every atom, silently.  `prep` and
-    # the web route have always used the codec; the single-shot converters of
-    # BOTH engines did not.  A bare `.xyz` with no sidecar reads as before.
-    from ..workingcopy_structure import StructureCodec
-    if ext in (".pdb", ".xyz", ""):
-        struct = StructureCodec().load(p)
-    else:
-        raise ValueError(
-            f"unsupported input extension {ext!r}; expected .xyz or .pdb"
-        )
-    out_p = Path(py_path)
-    out_p.parent.mkdir(parents=True, exist_ok=True)
-    # STEP 3, WHOLE, IN ONE CALL -- the same call `prep` makes.
-    # THE CHECK GATE RUNS ON EVERY ROUTE THAT WRITES A DECK: `prep` is not the
-    # only door, this one is the CLI's, and a script that does not parse is no
-    # less broken for having been produced here.  Two routes writing the same
-    # artifact and only one of them checking it is the shape of defect this
-    # layer exists to end -- which is why the order is the framework's and not
-    # restated per route (`script-preparation.md` § 4.3).
-    _sc.prepare_deck(spec_for(struct, cfg), struct, cfg, out_p)
-    return {
-        "py":      str(out_p),
-        "n_atoms": struct.n_atoms,
-        "charge":  _resolve_charge(struct, cfg),
-        "label":   cfg.job_name,
-    }
+# `convert` DELETED 2026-09-17 -- the single-shot "read a structure file, write
+# a deck" worker, and the PySCF half of a symmetric pair.
+#
+# It existed for `molbuilder pyscf`, a command that wrote a finished deck from flags.
+# `molbuilder pyscf` was deleted 2026-09-17, and this has had **no production caller since**
+# -- that command was its only caller.
+#
+# A deck is written by `jobset prep` from a description: `spec_for` ->
+# `prepare_deck`, which is the same three steps this did, with the description
+# in front of them instead of a command line.  `render_script` survives -- it is a
+# thin call over `spec_for` and `engines/pyscf.md` names it as this emitter's public
+# surface.

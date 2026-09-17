@@ -225,27 +225,38 @@ class TestKnownAdvisorySitesAreHTTP200:
     the status code" drift uniformly.
     """
 
-    @pytest.mark.parametrize("path,needle", [
-        # build.py's two advisory sites (api_build_fdf, api_build_pyscf)
-        # were DELETED with those routes on 2026-08-17 -- a browser renders
-        # no deck.  The RULE is unchanged and still pinned at the two live
-        # sites below; what went is two of its instances.
-        # spectra.py's advisory site left with api_spectra_render at
-        # the spectra migration's P3 (2026-08-21) -- same rule, one
-        # fewer instance, exactly like the two build.py sites above.
-        # transport.py::api_transport_render preflight failure.
-        (BLUEPRINT_DIR / "transport.py",
-         '"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'),
-    ])
-    def test_advisory_site_returns_explicit_200(self, path, needle):
-        src = path.read_text()
-        assert needle in src, (
-            f"{path.name}: expected explicit ``, 200`` after the advisory "
-            f"jsonify body.  Snippet searched: {needle!r}.  Per web-api.md "
-            f"§ 1's advisory row, a validator hard-fail returns HTTP 200 with "
-            f"ok:false EXPLICITLY so the intent is visible at the call "
-            f"site."
-        )
+    def test_an_uncitable_directory_is_answered_not_refused(
+            self, web_client, tmp_path, monkeypatch):
+        """The advisory rule, exercised THROUGH THE ROUTE.
+
+        `web-api.md` § 1: a validator hard-fail is answered with HTTP **200**
+        and the refusal as the body, not with a 4xx -- the caller asked a fair
+        question and the answer is "no, and here is what is missing".
+
+        **This replaced a source-text assertion on 2026-09-17.** The old form
+        read a blueprint file and asserted a literal snippet --
+        `'"errors_only": _issues_to_json(errors_only, cfg=cfg),\n        }), 200'`
+        -- including its indentation. It pinned three sites over its life and
+        lost all three to route deletions (build.py's two on 2026-08-17,
+        spectra.py's on 2026-08-21, transport.py's render route on
+        2026-09-17), each time leaving the rule with one fewer instance and
+        the test one edit from asserting nothing at all. A rule about what a
+        caller RECEIVES is checked by calling.
+        """
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        d = tmp_path / "notcitable"
+        d.mkdir()
+        (d / "readme.txt").write_text("nothing citable here")
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
+
+        r = web_client.get("/api/transport/describe_attempt?path=notcitable")
+        assert r.status_code == 200, (
+            "an uncitable directory is a fair question with a negative answer; "
+            "answering it 4xx would make the browser treat a valid reply as a "
+            "transport failure")
+        body = r.get_json()
+        assert body["form"] is None
+        assert body["summary"], "the refusal must NAME what is missing"
 
     # ``test_build_py_has_two_advisory_200_sites`` was deleted 2026-08-17.
     # It counted ``}, 200`` in build.py and required >= 2, naming

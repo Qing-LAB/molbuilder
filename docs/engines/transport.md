@@ -198,7 +198,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
 | 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition, open shell — went silent with it and are not re-homed: see § 3.6a.)* |
-| 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ⚠️ **partly** — the value reaches the deck (measured: the lead renders `0 0 40`) and is editable in the template, but the *warn below 20* still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it. *(This row also said the default was unreachable from any description; that half was fixed on 2026-09-16.)* |
+| 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ✅ **held** — the value reaches the deck (measured: the lead renders `0 0 40`), it is editable in the template, and since 2026-09-17 the gate is in the pass every prep runs: `_validate_transport_kind` refuses `electrode_kz = 1` and warns below 20 (`science/overview.md` § 4). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
 | 3a | the junction is neutral | **error**, `validation._validate_transport_kind` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
@@ -1216,8 +1216,7 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 | `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::_prep_transport` |
 | `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::submit_transport_chain` |
 | `jobset summarize run` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
-| `transport electrode --which L-electrode\|R-electrode` | standalone helper: derive a single bulk-lead `.fdf` (the electrode wizard) | `wizard.electrode_wizard` |
-| `transport preflight` | standalone helper: check the device ↔ electrode contract on decks you hand-edited | `preflight.py` |
+| ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
 **Gotchas:** the citation names a DIRECTORY explicitly (§ 3.1 below) —
 nothing is ever picked for you; a re-pointed citation recomposes and makes
@@ -1788,10 +1787,10 @@ expansion in the shipped 2-terminal scope.)
 > `[lower][bridge][upper]`, each region contiguous. An out-of-order structure
 > produces silently wrong physics with no run-time error. In the composite it
 > cannot fire in anger — prep's categorical sort orders by z before any deck is
-> rendered — and the engine preflight still gates `render_stage_deck` as defense
-> in depth (plus `/api/transport/render`, the validation surface). (Distinct from
-> the cross-run `transport preflight` of § 5, which compares device vs electrode
-> and does *not* check atom order.)
+> rendered — and the engine preflight still gates it as defense in depth.
+> *(`render_stage_deck`, `/api/transport/render` and the cross-run
+> `transport preflight` are all deleted as of 2026-09-17; the preflight reached
+> here is `TransiestaEngine.preflight`, called by `validation`.)*
 
 > **The label convention is checked and WARNED about, never enforced**
 > *(user ruling, 2026-08-29)*. The usual convention is `L-electrode` low z,
@@ -2053,8 +2052,9 @@ the table, and every rung renders through `transport/deck.py`:
 > `wizard.py::render_electrode_fdf` and `transiesta.py::render_script`, dispatched
 > from `stages.render_stage_deck` — which has **no production caller**. A reader
 > fixing a keyword here would have edited code that renders nothing on this path.
-> The two surviving functions are reachable only from their own standalone doors
-> (`molbuilder transport electrodes` and `/api/transport/render`).
+> The two functions that were reachable only from their own standalone doors
+> (`molbuilder transport electrode` and `/api/transport/render`) are **deleted
+> with those doors**, 2026-09-17.
 >
 > The identity is now enforced by the `role` marker rather than by which function
 > runs: `solution_method` carries `role = ["transport"]`, so no transport template

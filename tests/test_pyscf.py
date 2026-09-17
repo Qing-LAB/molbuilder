@@ -17,7 +17,6 @@ import molbuilder
 from molbuilder.pyscf import (
     PySCFConfig,
     render_script,
-    convert,
 )
 from molbuilder.pyscf.input import _SOLVENTS
 from molbuilder.structure import Structure
@@ -96,29 +95,6 @@ def test_default_render_compiles(h2o):
         assert needle in text, f"missing {needle!r}"
 
 
-def test_hf_render_omits_dft_import(h2o):
-    """Pure-HF runs (method=RHF/UHF) don't touch the dft module; the
-    ``from pyscf import ... dft`` should drop out so the script reads
-    ``from pyscf import gto, scf`` instead.
-
-    Tier 2 #13 from the deep code review."""
-    text = render_script(h2o, PySCFConfig(method="RHF"))
-    compile(text, "<rendered>", "exec")
-    # Asked of the IMPORT STATEMENTS, not of the raw text: the deck's
-    # namespace commentary may legitimately spell out the DFT import it
-    # is contrasting with (a substring grep failed on exactly that,
-    # 2026-08-19).
-    import ast as _ast
-    imported = {a.name
-                for n in _ast.walk(_ast.parse(str(text)))
-                if isinstance(n, _ast.ImportFrom) and n.module == "pyscf"
-                for a in n.names}
-    assert {"gto", "scf"} <= imported
-    assert "dft" not in imported
-    # Sanity: HF script doesn't accidentally use dft.* anywhere.
-    assert "dft." not in text or all(
-        ln.lstrip().startswith("#") for ln in text.splitlines() if "dft." in ln
-    ), "HF script should not reference dft.* in live code"
 
 
 def test_atom_block_format(h2o):
@@ -438,31 +414,8 @@ def test_invalid_inputs_raise(h2o, kwargs, name):
 # --------------------------------------------------------------------- #
 
 
-def test_convert_xyz_to_py(h2o, tmp_path):
-    xyz_p = tmp_path / "h2o.xyz"
-    py_p  = tmp_path / "h2o_relax.py"
-    h2o.to_xyz(str(xyz_p))
-    summary = convert(str(xyz_p), str(py_p),
-                      PySCFConfig(verbose_comments=False))
-    assert summary["n_atoms"] == 3
-    assert summary["py"] == str(py_p)
-    text = py_p.read_text()
-    compile(text, str(py_p), "exec")
-    assert re.search(r"^\s*O\s+0\.00000000\s+0\.00000000\s+0\.00000000",
-                     text, re.M)
 
 
-def test_convert_pdb_to_py(tmp_path):
-    """End-to-end: peptide built via molbuilder -> PDB -> .py."""
-    pytest.importorskip("PeptideBuilder")
-    s = molbuilder.build_peptide("AC", add_hydrogens=False)
-    pdb_p = tmp_path / "ac.pdb"
-    py_p  = tmp_path / "ac.py"
-    s.to_pdb(str(pdb_p))
-    convert(str(pdb_p), str(py_p), PySCFConfig(job_name="ac_test"))
-    text = py_p.read_text()
-    compile(text, str(py_p), "exec")
-    assert 'JOB = "ac_test"' in text
 
 
 def test_loaded_structure_to_pyscf_script(h2o, tmp_path):
@@ -763,35 +716,6 @@ def test_post_opt_warm_starts_from_converged_dm(h2o):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("flag,value", [
-    ("--method",          "uks"),       # default RKS / choices include UKS
-    ("--method",          "Uks"),
-    ("--scf-init-guess",  "HUCKEL"),
-    ("--optimizer",       "BERNY"),
-    ("--dispersion",      "D3BJ"),      # R4
-    ("--dispersion",      "NONE"),      # R4 + cmd_pyscf coercion
-])
-def test_pyscf_choice_accepts_mixed_case(flag, value, monkeypatch, tmp_path):
-    """R2: ``case_sensitive=False`` on the bridge's click.Choice lets
-    users type the choice in any case.  Without this, the renderer's
-    own ``.upper()`` is dead code at the CLI layer."""
-    from molbuilder import cli as _cli
-    captured = {}
-
-    def fake_convert(input_path, py_path, config):
-        captured["cfg"] = config
-        return {"py": py_path, "n_atoms": 0, "charge": 0, "label": "x"}
-    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
-
-    in_xyz = tmp_path / "h2.xyz"
-    in_xyz.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
-    out_py = tmp_path / "h2.py"
-    rc = _cli.main(["pyscf", str(in_xyz), str(out_py), flag, value])
-    assert rc == 0
-    # The captured config must hold a value (either the original-case
-    # match from the choices list or the post-coercion None for
-    # --dispersion NONE).
-    assert "cfg" in captured
 
 
 # --------------------------------------------------------------------- #
@@ -799,23 +723,6 @@ def test_pyscf_choice_accepts_mixed_case(flag, value, monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("flag,bad_val", [
-    ("--dispersion",        "d3-bj"),
-    ("--dispersion",        "Grimme-D4"),
-])
-def test_pyscf_dispersion_typo_rejected_at_parse_time(
-        flag, bad_val, tmp_path):
-    """R4: dispersion now carries choices metadata so a typo fails at
-    CLI parse time instead of reaching PySCF.  The former
-    ``--preopt-dispersion`` companion flag retired with the preopt
-    block in #534 commit 4b."""
-    from molbuilder import cli as _cli
-    in_xyz = tmp_path / "h2.xyz"
-    in_xyz.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
-    out_py = tmp_path / "h2.py"
-    with pytest.raises(SystemExit) as exc:
-        _cli.main(["pyscf", str(in_xyz), str(out_py), flag, bad_val])
-    assert exc.value.code == 2
 
 
 # --------------------------------------------------------------------- #

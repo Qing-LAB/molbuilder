@@ -157,6 +157,33 @@ states the *why* so the thresholds don't drift silently.
 | open-shell metal paired with a *closed*-shell SCF | warn | closed-shell SCF on a true open-shell complex converges to a fictitious state — a strong warning, not a block → [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) (`check_open_shell_metal`) |
 | `(charge, spin)` parity mismatch | (engine) | caught pre-emission for a clearer message than PySCF's runtime error |
 
+### Transport, the calculation KIND (`validation/__init__.py::_validate_transport_kind`)
+
+*(Added 2026-09-17. **This section was missing entirely** — seven shipped
+checks, none of them catalogued, found by a review that should have run before
+the two newest were written and did not. `engines/transport.md` § 5 is the
+science; this is where they sit in the pass.)*
+
+Keyed on `task.calculation`, not on a config class — every rung resolves a
+`SiestaConfig`, so a rule keyed on `TransportConfig` would fire for none of
+them. **The transport axis is the recurring subject**, and it is three
+different questions in three places (`transport.md` § 2a.13).
+
+| Check | Severity | Why |
+|---|---|---|
+| `kgrid[2] != 1` | **error** | the device's transport axis is the OPEN boundary, handled by the Green's function, not Brillouin-zone sampled; kz > 1 imposes a fake Bloch periodicity along the wire and the renderer writes 1 anyway — a control that appears to act and does not |
+| `electrode_kz == 1` | **error** | the LEAD is the same axis inverted: a genuinely periodic bulk crystal with a large BZ along z. kz = 1 gives a wrong lead Hamiltonian and the device attaches a self-energy built from it |
+| `electrode_kz < 20` | warn | a floor, not a convergence proof — only a kz sweep shows the lead's Fermi level has settled (§ 4.2) |
+| `cell.transport_vacuum > 3 Å` | warn | a junction's leads continue into the periodic image, so a gap along z is a SEVERED lead, not padding. **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
+| `net_charge != 0` | **error** | deferred by ruling (§ 2a.7) — an open boundary exchanges charge with the reservoirs, so a fixed excess is not the same quantity a closed calculation means by it |
+| `negf_eq_pole_ev` giving < 20 poles | **error** | TranSIESTA derives the pole COUNT from the energy, `int(E / (π·kT))`, and `die`s below 20 — so the refusal is a RELATION with the run's own temperature, not a fixed bound |
+| `tbt_k_grid` transverse < 1, or transport component ≠ 1 | **error** / warn | the transmission integrates over the transverse zone; the transport component is the open axis again |
+
+**I9 and I12 (`electrode_kz`, `transport_vacuum`) were re-homed here on
+2026-09-17** from a standalone CLI verb that compared two finished decks. Under
+the composite both decks derive from one citation, so they belong in the pass
+every prep runs rather than in a command somebody remembers.
+
 ### Config field ranges (`validation/metadata.py`)
 Every dataclass `Config` field carries `range` / `validate=` metadata; the generic
 metadata pass validates each field against it (e.g. `mesh_cutoff` below the

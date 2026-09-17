@@ -56,6 +56,14 @@ flowchart LR
     R --> OUT
 ```
 
+
+> **`convert()` is DELETED (2026-09-17).** It was the single-shot
+> "read a structure file, write a deck" worker behind `molbuilder fdf` (deleted 2026-08-11), and it had no
+> other production caller. A deck is written by `jobset prep` from a
+> description — `spec_for` → `prepare_deck`, the same three steps with the
+> description in front of them instead of a command line. `render_fdf` stays:
+> it is a thin call over `spec_for` and it is this emitter's public surface.
+
 - **Backend (Python / CLI).** `render_fdf` returns the text; `convert(input_path,
   fdf_path, config)` (`:1486`) reads an `.xyz`/`.pdb`, writes the `.fdf`, and copies
   matching pseudopotentials.

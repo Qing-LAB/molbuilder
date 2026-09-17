@@ -11,7 +11,7 @@ import os
 import pytest
 
 import molbuilder
-from molbuilder.siesta import SiestaConfig, render_fdf, convert
+from molbuilder.siesta import SiestaConfig, render_fdf
 
 
 # --------------------------------------------------------------------- #
@@ -567,19 +567,6 @@ def test_a_shift_on_a_single_k_point_axis_is_warned_about():
     assert not [i for i in ok if i.where == "config.kgrid_displacement"]
 
 
-def test_convert_xyz_to_fdf(tmp_path):
-    """End-to-end XYZ -> FDF round-trip."""
-    dna = molbuilder.build_dna("ATGC")
-    xyz_path = tmp_path / "dna.xyz"
-    fdf_path = tmp_path / "out" / "dna.fdf"
-    dna.to_xyz(str(xyz_path))
-    summary = convert(str(xyz_path), str(fdf_path),
-                      SiestaConfig(system_label="dna4",
-                                   kgrid=(2, 2, 1), relax_type="CG"))
-    assert summary["n_atoms"] == dna.n_atoms
-    assert os.path.isfile(str(fdf_path))
-    text = fdf_path.read_text()
-    assert_fdf(text, "SystemLabel", "dna4")
 
 
 # --------------------------------------------------------------------- #
@@ -810,21 +797,6 @@ def test_fdf_no_stage_suffix_when_stage_is_none():
     assert "Stage 0" not in fdf
 
 
-def test_convert_previews_log_named_from_the_label_not_the_stem(tmp_path):
-    """convert() drops a preview log next to the FDF; the filename follows
-    the protocol basename, NOT the FDF stem.  `convert` is the single-shot
-    path and carries no stage (C7, 2026-08-12) -- a ladder's per-stage logs
-    are seeded by `prep`, which holds the token
-    (tests/test_trajectory_log_stage_targets.py)."""
-    import os
-    in_p = tmp_path / "anything.xyz"
-    in_p.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
-    fdf_p = tmp_path / "deliberately_unrelated_name.fdf"
-    summary = convert(str(in_p), str(fdf_p),
-                      SiestaConfig(system_label="my-job"),
-                      vacuum=(12.0, 12.0, 12.0))
-    assert os.path.basename(summary["molwatch_log"]) \
-        == "my-job.molwatch.log"
 
 
 # --------------------------------------------------------------------- #

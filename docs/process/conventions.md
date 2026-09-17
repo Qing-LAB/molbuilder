@@ -99,16 +99,27 @@ shared API.
 
 ### The command catalogue (an index — behaviour lives in the domain docs)
 
-**13 top-level commands:**
+**19 top-level commands** *(re-derived from `cli.commands` 2026-09-17; this
+table said 13, listed `pyscf` — deleted that day — and omitted `notify-token`,
+`checkpoint`, `envs`, `jobset`, `jupyter`, `pseudo` and `watch`):*
 
 | | | |
 |---|---|---|
 | `peptide` `dna` `rna` `smiles` `name` | build a structure | ([`web/tabs.md`](?doc=web/tabs.md)) |
-| `pyscf` | XYZ/PDB → a PySCF run script | ([`execution/`](?doc=execution/overview.md)) |
-| `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
 | `modify` | one structure-edit op per call | |
+| `validate` | geometry (+ optional engine) checks → Issue JSON | ([`science/validation.md`](?doc=science/validation.md)) |
+| `jobset` | **every calculation, every engine** — init / prep / launch / status / summarize | ([`execution/job-system.md`](?doc=execution/job-system.md)) |
+| `envs` `pseudo` `checkpoint` `watch` | the four remaining sub-groups | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→xyz · dump a runtime-info sidecar · watch a job | |
-| `auth-setup` `serve` | generate the auth config · run the web UI | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
+| `auth-setup` `notify-token` `serve` `jupyter` | the auth config · a run-report key · the web UI · its notebook | ([`ops/deployment.md`](?doc=ops/deployment.md)) |
+
+**NO ENGINE HAS A VERB EITHER** *(2026-09-17)*. `molbuilder pyscf` was the last
+one — `fdf`'s surviving twin, taking a structure plus every engine field as a
+flag and writing a finished deck. It kept its flags on the stated grounds that
+*"its ladder runs inside one emitted script"*, and `cli.py` refuted that beside
+it: a ladder is N decks and that command wrote one, which is why
+`--stage-strategy` was taken off it on 2026-08-18. Both engines' single-shot
+`convert()` workers went with their verbs.
 
 > **There is no `molbuilder run`** *(decided 2026-08-11, user)*. **Everything
 > about running a job goes through `molbuilder jobset …`**: `prep` writes the

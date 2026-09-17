@@ -2768,7 +2768,7 @@ is *"STEP 3, WHOLE, IN ONE CALL — the same call `prep` makes."* The verb
 duplicates no mechanism; it is a second **way in**, which is the thing decision 7
 names.
 
-**Step 8 — delete `molbuilder pyscf`.** *Contract:* `conventions.md` § 3
+**Step 8 — delete `molbuilder pyscf`** — **DONE 2026-09-17, and it grew.** *Contract:* `conventions.md` § 3
 (decisions 7 and 34). *What goes with it, measured:* `cmd_pyscf` +
 `_make_pyscf_options_decorator` (~75 lines); **`add_dataclass_options`
 (~168 lines), whose only production consumer is this command**; `pyscf.convert`
@@ -2776,9 +2776,25 @@ names.
 `test_cli.py` group that tests the BRIDGE rather than any behaviour. *Check:*
 `conventions.md` § 3's roster and its count are corrected in the same change —
 the table currently lists 13, names `serve` (now a group) and omits
-`notify-token`, so the count is re-derived, not decremented. *If the check
-disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
-bridge stays and only the command goes.
+`notify-token`, so the count is re-derived, not decremented. *The check found no consumer outside
+`cmd_pyscf`, so the bridge went too.*
+
+**The review found a TWIN nobody had noticed.** `siesta.input.convert` — the
+same single-shot "read a file, write a deck" worker — **has had no production
+caller since `molbuilder fdf` was deleted on 2026-08-11**. One month dead, in
+the engine whose command went first. Both `convert`s are deleted here; the
+symmetry is the finding, and it is why this step is filed as one change rather
+than two.
+
+**`render_fdf` / `render_script` STAY**, and the distinction matters: 43 test
+files call them and *that is not the reason*. They are thin calls over
+`spec_for` and `engines/siesta.md` / `engines/pyscf.md` name them as each
+emitter's public surface. A test never justifies code; a CONTRACT does.
+
+*Rosters re-derived, not decremented:* `conventions.md` § 3 said **13**
+top-level commands, listed `pyscf`, and omitted seven others — it is 19 now,
+measured from `cli.commands`. Both engine contracts and the index carry the
+`convert()` tombstone.
 
 **Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
 `molbuilder --help` now lists 20 top-level commands and no calculation-KIND
@@ -2917,7 +2933,9 @@ this section. It is five questions, top down:
 | date | before step | what was re-read | what changed |
 |---|---|---|---|
 | 2026-09-17 | 2 | `presenters.md`, `model/parse.md` § 5, `conventions.md` § 3, `workflow.md` § 7, the contract index | CLI layer added to the map; Results gap re-framed as one unbuilt door; `pyscf` verb found obsolete by decision 34 (§ 5p.3p.6) |
+| 2026-09-17 | **1, 2b, 2c — RUN LATE** | `model/parse.md` § 4, `job-contracts.md` § 6.1, `science/overview.md` § 4, `conventions.md` § 3 | **These three steps SHIPPED WITHOUT THIS REVIEW**, against the rule two sub-sections above. Run retroactively when asked whether the rule had been followed; the honest answer was no. Step 1: clean, nothing to correct. **Step 2b: the check catalogue (`science/overview.md` § 4) had NO transport section at all** — seven shipped checks uncatalogued, including the two that step added. **Step 2c: five documents still named the deleted verb, and one of them was a claim step 2b itself had falsified** — `transport.md` § 2a.13 row 2 said the warn "lives only in the standalone verb, so a composite run never sees it", hours after the re-homing that moved it. All corrected. *The reviews that ran on time (2 and 8) each changed the step; the three that ran late each found drift the step had introduced and left. That is the cost, measured.* |
 | 2026-09-17 | **2 — STOPPED** | `engines/transport.md` § 5 (the 13 invariants), `compose.py`'s gates, `validation/__init__.py` | **The check disagreed and step 2 does not proceed.** 11 of 13 invariants are held by construction or by a live gate, and I11 is held BETTER (`compose` reads real orbital ranges); **I9 and I12 are held ONLY by the verb step 2 would delete**. I also reported a vacuum defect here and **RETRACTED it the same day** — I had measured a bare test fixture and reported it as the product; the check is correctly gated on `axis_kind`. See § 5p.3p.7 |
+| 2026-09-17 | 8 | `conventions.md` § 3 (decisions 7 + 34), both engine contracts, `cli.py`'s own comments | **Found a twin.** `siesta.input.convert` has had no production caller since 2026-08-11 — the same shape as the PySCF one, dead a month, in the engine whose verb went first. Both deleted together. `render_fdf`/`render_script` kept: 43 test files call them, but the reason they stay is that the engine contracts name them, not the tests |
 | 2026-09-17 | 6 (tests) | the repointed tests themselves, against the live deck | **A repoint is not a free pass.** Four checks were carried over from the deleted writer; three pinned deck TEXT with the emitter's column spacing baked in, and one -- `used-atoms` -- claimed to prove a count was "derived, NOT hardcoded" while asserting the literal `3`. Rewritten to parse the deck and compare against the structure's own regions; **mutation-testing then showed the rewrite STILL passed** against a hardcoded emitter, because the fixture's leads are 3 and 3. Now driven by an asymmetric junction (2 and 4), which is the only shape that can tell a derived count from a constant |
 
 ##### What "done" means for this section
@@ -2976,7 +2994,7 @@ is *"STEP 3, WHOLE, IN ONE CALL — the same call `prep` makes."* The verb
 duplicates no mechanism; it is a second **way in**, which is the thing decision 7
 names.
 
-**Step 8 — delete `molbuilder pyscf`.** *Contract:* `conventions.md` § 3
+**Step 8 — delete `molbuilder pyscf`** — **DONE 2026-09-17, and it grew.** *Contract:* `conventions.md` § 3
 (decisions 7 and 34). *What goes with it, measured:* `cmd_pyscf` +
 `_make_pyscf_options_decorator` (~75 lines); **`add_dataclass_options`
 (~168 lines), whose only production consumer is this command**; `pyscf.convert`
@@ -2984,9 +3002,25 @@ names.
 `test_cli.py` group that tests the BRIDGE rather than any behaviour. *Check:*
 `conventions.md` § 3's roster and its count are corrected in the same change —
 the table currently lists 13, names `serve` (now a group) and omits
-`notify-token`, so the count is re-derived, not decremented. *If the check
-disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
-bridge stays and only the command goes.
+`notify-token`, so the count is re-derived, not decremented. *The check found no consumer outside
+`cmd_pyscf`, so the bridge went too.*
+
+**The review found a TWIN nobody had noticed.** `siesta.input.convert` — the
+same single-shot "read a file, write a deck" worker — **has had no production
+caller since `molbuilder fdf` was deleted on 2026-08-11**. One month dead, in
+the engine whose command went first. Both `convert`s are deleted here; the
+symmetry is the finding, and it is why this step is filed as one change rather
+than two.
+
+**`render_fdf` / `render_script` STAY**, and the distinction matters: 43 test
+files call them and *that is not the reason*. They are thin calls over
+`spec_for` and `engines/siesta.md` / `engines/pyscf.md` name them as each
+emitter's public surface. A test never justifies code; a CONTRACT does.
+
+*Rosters re-derived, not decremented:* `conventions.md` § 3 said **13**
+top-level commands, listed `pyscf`, and omitted seven others — it is 19 now,
+measured from `cli.commands`. Both engine contracts and the index carry the
+`convert()` tombstone.
 
 **Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
 `molbuilder --help` now lists 20 top-level commands and no calculation-KIND

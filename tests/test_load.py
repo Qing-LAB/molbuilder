@@ -194,16 +194,3 @@ def test_the_door_refuses_an_extension_it_does_not_know(tmp_path):
         StructureCodec().load(p)
 
 
-def test_loaded_structure_renders_fdf(tmp_path):
-    """The whole point: load an existing file and feed it to render_fdf."""
-    from molbuilder.siesta import SiestaConfig, convert
-    s = molbuilder.build_peptide("AC")
-    pdb_p = tmp_path / "ac.pdb"
-    s.to_pdb(str(pdb_p))
-    fdf_p = tmp_path / "ac.fdf"
-    summary = convert(str(pdb_p), str(fdf_p),
-                      SiestaConfig(verbose_comments=False, system_label="ac"))
-    assert summary["n_atoms"] == s.n_atoms
-    fdf_text = fdf_p.read_text()
-    assert "%block AtomicCoordinatesAndAtomicSpecies" in fdf_text
-    assert "SystemLabel       ac" in fdf_text

@@ -52,172 +52,18 @@ from .structure import Structure
 # --------------------------------------------------------------------- #
 
 
-def add_dataclass_options(cls, *,
-                          prefix: str = "",
-                          tier: Optional[str] = None,
-                          skip: Iterable[str] = ()):
-    """Decorator factory: convert a dataclass's fields into click.option
-    decorators on the wrapped command function.
-
-    Field-to-option mapping
-    -----------------------
-    * field name ``foo_bar`` -> ``--<prefix>foo-bar``
-    * field metadata ``"help"`` -> click help text
-    * default = field.default (or None for fields with default_factory
-      that doesn't trivially serialise)
-    * type:
-        - ``bool``           -> ``is_flag=True``  (with --foo / --no-foo
-                                pair if default is False / True)
-        - ``int``            -> ``type=int``
-        - ``float``          -> ``type=float``
-        - ``str`` / Optional[str] -> ``type=str``
-        - everything else    -> ``type=str`` (user gets to pass strings)
-
-    The ``tier`` filter accepts only fields whose metadata["tier"]
-    matches (or any field if metadata["tier"] is unset).  Default
-    None -> include all.  ``skip`` is an iterable of field names to
-    exclude (useful when the command already has those options
-    defined manually).
-
-    Returns a decorator that, when applied to a function, stacks
-    @click.option for each kept field on it.  The wrapped function
-    receives the field values as kwargs (same names as the dataclass
-    fields).
-
-    Example
-    -------
-    >>> @cli.command()
-    ... @add_dataclass_options(PySCFConfig, skip=("ecp",))
-    ... def cmd_demo(**fields):
-    ...     cfg = PySCFConfig(**fields)
-    ...     ...
-
-    Why this exists
-    ---------------
-    The pyscf subcommand would otherwise maintain ~50 click.option
-    lines mirroring PySCFConfig fields; every new field would have to
-    land in three places (dataclass, generator, option list).  This
-    helper reads the field metadata directly.  Its only consumer is
-    cmd_pyscf: the SIESTA side stopped meeting click when
-    ``molbuilder fdf`` was deleted (2026-08-11) -- a deck is rendered
-    by `jobset prep` from a description, not from flags.
-    """
-    import dataclasses
-    import types
-    import typing
-
-    skip_set = set(skip)
-    # `fld.type` may be a string when the dataclass module uses
-    # `from __future__ import annotations`.  Resolve once via
-    # get_type_hints so the field-by-field logic below sees real
-    # types (bool / int / float / Optional[str] / ...) instead of
-    # strings.  Fall back gracefully for runtime-only annotations
-    # the resolver can't evaluate.
-    try:
-        resolved_hints = typing.get_type_hints(cls)
-    except Exception:
-        resolved_hints = {}
-
-    def deco(f):
-        for fld in dataclasses.fields(cls):
-            if fld.name in skip_set:
-                continue
-            if fld.metadata.get("skip_cli"):
-                # The dataclass marks this field as having a CLI handler
-                # that's hand-rolled at the call site (custom parsing,
-                # click.Path() type, etc.).  See PySCFConfig.ecp.
-                continue
-            if tier is not None and fld.metadata.get("tier") != tier:
-                continue
-
-            flag = "--" + prefix + fld.name.replace("_", "-")
-            # THE CATALOGUE, not the dataclass's copy -- `template.help_for`
-            # is the one home for what a user reads, and `--help` is one of
-            # the surfaces that used to read the other one.  The first
-            # paragraph only: the catalogue entries carry per-tier tables
-            # below it, which belong in the form's disclosure and not on an
-            # option line.
-            help_text = (_T.help_for(fld.name, first_paragraph=True)
-                         or fld.metadata.get("help")
-                         or fld.metadata.get("label") or "")
-            choices = fld.metadata.get("choices")
-
-            ann = resolved_hints.get(fld.name, fld.type)
-            # Walk Optional[X] / Union[X, None] / X | None.  The last spelling
-            # reports ``types.UnionType`` rather than ``typing.Union``, so a
-            # check for one misses the other and the option would be typed as
-            # the whole union instead of its inner type (audit § 1.1).
-            origin = typing.get_origin(ann)
-            args   = typing.get_args(ann)
-            if origin in (typing.Union, types.UnionType) and type(None) in args:
-                inner = next((a for a in args if a is not type(None)), str)
-                py_t  = inner
-            else:
-                py_t = ann
-
-            # Default: the dataclass field default; MISSING -> None.
-            default = (fld.default
-                       if fld.default is not dataclasses.MISSING
-                       else None)
-
-            # P1: enumerated values get a click.Choice so a typo fails at
-            # CLI parse time instead of waiting for SIESTA / PySCF to
-            # error out at execution time.  The choice list lives in the
-            # dataclass field metadata so the dataclass stays the single
-            # source of truth.  ``case_sensitive=False`` (R2) lets users
-            # type ``--relax-type cg`` interchangeably with ``CG`` --
-            # without it, the renderer's ``.upper()`` is dead code at
-            # the CLI layer because click rejects mismatched case before
-            # the renderer sees the value.
-            if choices is not None:
-                if py_t is bool:
-                    raise TypeError(
-                        f"{cls.__name__}.{fld.name}: 'choices' metadata is "
-                        f"meaningless on a bool field"
-                    )
-                f = click.option(flag, fld.name,
-                                 type=click.Choice(list(choices),
-                                                   case_sensitive=False),
-                                 default=default, show_default=True,
-                                 help=help_text)(f)
-                continue
-
-            if py_t is bool:
-                # Generate --foo / --no-foo pair so the user can flip
-                # either direction regardless of the default.
-                neg_flag = "--no-" + prefix + fld.name.replace("_", "-")
-                f = click.option(f"{flag}/{neg_flag}",
-                                 fld.name,
-                                 default=bool(default),
-                                 help=help_text)(f)
-            elif py_t is int:
-                f = click.option(flag, fld.name, type=int,
-                                 default=default, show_default=True,
-                                 help=help_text)(f)
-            elif py_t is float:
-                f = click.option(flag, fld.name, type=float,
-                                 default=default, show_default=True,
-                                 help=help_text)(f)
-            elif py_t is str:
-                f = click.option(flag, fld.name, type=str,
-                                 default=default,
-                                 show_default=(default is not None),
-                                 help=help_text)(f)
-            else:
-                # P3: bail loudly rather than silently coercing odd types
-                # (Sequence[str], Tuple[int, int, int], dict-of-X, ...) to
-                # str.  Author the field with skip_cli=True and hand-roll
-                # the click.option at the call site, or add support for
-                # the new type to this bridge.
-                raise TypeError(
-                    f"{cls.__name__}.{fld.name!r}: cannot auto-generate a "
-                    f"CLI option for type {py_t!r}.  Mark the field with "
-                    f"metadata={{'skip_cli': True}} and hand-roll a "
-                    f"click.option at the call site, or extend "
-                    f"add_dataclass_options to handle this type."
-                )
-        return f
-    return deco
+# `add_dataclass_options` DELETED 2026-09-17 with its only consumer.
+#
+# A dataclass -> click bridge: it read every PySCFConfig field's metadata and
+# stacked a `click.option` per field, so `molbuilder pyscf` could take the
+# whole engine surface as flags.  ~170 lines whose entire purpose was to make
+# ONE command possible, and that command is the shape decision 34 deleted
+# (`conventions.md` 3: "there is no `molbuilder fdf`" -- user, "obsolete
+# residue from the flat-dir design").
+#
+# A parameter is said in a description, not on a command line.  Nothing else
+# generates options from a dataclass, and the two config files that mention
+# this bridge do so only to explain why a field opts out of it.
 
 
 @contextlib.contextmanager
@@ -514,78 +360,23 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
-def _make_pyscf_options_decorator():
-    """Lazy-import PySCFConfig and apply ``add_dataclass_options``.
-
-    Wrapped in a function so the decorator stack reads naturally and the import
-    happens at command-build time, not at module import.
-
-    Its SIESTA twin went with ``molbuilder fdf`` on 2026-08-11: exposing every
-    engine field as a CLI flag is how a finished deck got rendered straight from
-    the command line, skipping the description entirely.  ``pyscf`` keeps its
-    own only because its ladder runs inside one emitted script, and goes the
-    same way when that path is reworked (decision 34).
-    """
-    from .config.pyscf import PySCFConfig
-    return add_dataclass_options(PySCFConfig)
-
-
-@cli.command("pyscf", short_help="convert XYZ / PDB to a runnable PySCF script")
-@click.argument("input_path", metavar="input")
-@click.argument("py_path",    metavar="py")
-# ``--ecp`` itself is generated by the bridge now (a plain str since
-# 2026-08-13).  Only the atom selector is hand-rolled, because List[str]
-# is past what the bridge generates -- same comma-separated shape as
-# ``--elements`` on ``pseudo check``.
-@click.option("--ecp-atoms", "ecp_atoms", default=None, metavar="PATTERNS",
-              help="comma-separated element patterns that get the ECP: "
-                   "'*' every element present, 'Au' that element, 'A*' "
-                   "every symbol starting with A (e.g. Au,Pt).  Omitted "
-                   "or empty = no ECP.")
-# THIS COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS (`stages.md` § 1.1a),
-# so there is no ``--stages-json`` / ``--stage-strategy`` here -- for the same
-# reason ``molbuilder siesta`` never had them.  A ladder is DECLARED in
-# task.json, and ``jobset init --engine pyscf --stage-strategy ...`` is the
-# one door that writes one.  A second door here would be a second place a
-# ladder could be said, free to disagree with the description.
-@_make_pyscf_options_decorator()
-def cmd_pyscf(input_path, py_path, ecp_atoms, **fields):
-    """Convert an XYZ or PDB structure into a runnable PySCF script.
-
-    Every PySCFConfig field is exposed as a CLI option (auto-generated
-    by ``add_dataclass_options``).  Boolean fields generate a
-    ``--foo / --no-foo`` pair; numeric and string fields take a value.
-    See ``molbuilder/config/pyscf.py`` for the authoritative parameter
-    list and per-field help text.
-
-    One coercion on top of the bridge: ``--dispersion`` accepts the
-    literal ``none`` (case-insensitive) or an empty string as a way to
-    spell ``None`` from the shell.  ``--ecp`` has no such alias -- it is
-    a plain name, and empty means empty.
-    """
-    from .pyscf import PySCFConfig, convert
-
-    def _none_if_empty(s):
-        if s is None:
-            return None
-        return None if s.strip().lower() in ("", "none") else s
-    fields["dispersion"] = _none_if_empty(fields.get("dispersion"))
-    # Same split as ``--elements`` on ``pseudo check``.
-    fields["ecp_atoms"] = [p.strip() for p in (ecp_atoms or "").split(",")
-                           if p.strip()]
-
-    cfg = PySCFConfig(**fields)
-
-    with _resolve_input_path(input_path) as resolved_input:
-        summary = convert(resolved_input, py_path, cfg)
-    click.echo(
-        f"Wrote {summary['py']}: "
-        f"{summary['n_atoms']} atoms, "
-        f"charge={summary['charge']:+d}, "
-        f"label={summary['label']!r}",
-        err=True,
-    )
-    click.echo(f"Run with:  python {summary['py']}", err=True)
+# `molbuilder pyscf` DELETED 2026-09-17 -- `molbuilder fdf`'s surviving twin.
+#
+# Both took a structure plus every engine field as a flag and wrote a finished
+# deck, skipping the description.  `fdf` went on 2026-08-11 as decision 34;
+# this one kept its flags on the stated grounds that "its ladder runs inside
+# one emitted script" -- and the comment beside it refuted that in the same
+# file: "THIS COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS ... there is no
+# `--stages-json` / `--stage-strategy` here ... `jobset init --engine pyscf
+# --stage-strategy ...` is the one door that writes one."  The exemption
+# described PySCF's script SHAPE, not a property of the verb, and
+# `--stage-strategy` was taken off this command on 2026-08-18 for that reason.
+#
+# The framework already covered it: `prep.py` builds a full `EngineSeam` for
+# PySCF, so `jobset prep` renders it through `spec_for` -> `prepare_deck` like
+# any other engine.  It duplicated no mechanism -- it was a second WAY IN,
+# which is what decision 7 names: "everything is a job set ... a second way in
+# is a second way to lose your results."
 
 
 # --------------------------------------------------------------------- #

@@ -1894,114 +1894,17 @@ def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     )
 
 
-def convert(
-    input_path: str,
-    fdf_path: str,
-    config: Optional["SiestaConfig"] = None,
-    vacuum: Optional[Tuple[float, float, float]] = None,
-) -> dict:
-    """Read an XYZ or PDB file, write an FDF, optionally copy psml files.
 
-    ``vacuum`` (Å, per-side gap) sets the structure's isolation padding -- the
-    CLI/convert equivalent of the Modify -> Cell tab, since vacuum comes with the
-    STRUCTURE (structure-periodicity.md), not the config.  Applied only when the
-    input file carries no explicit cell (an imported cell wins).  Without it a
-    flat/linear molecule loaded from a bare XYZ has vacuum 0 -> a degenerate cell
-    (render_fdf raises with an actionable message).
-
-    Returns a summary dict with keys: ``fdf``, ``n_atoms``, ``species``,
-    ``missing_psml``.
-    """
-    cfg = config or SiestaConfig()
-    struct, cell = _struct_from_file(input_path)
-    if vacuum is not None and cell is None:
-        struct.vacuum = tuple(float(v) for v in vacuum)
-
-    species = (list(cfg.species_order) if cfg.species_order
-               else _detect_species(struct.elements))
-    fdf_p = Path(fdf_path)
-    fdf_p.parent.mkdir(parents=True, exist_ok=True)
-    # STEP 3, WHOLE, IN ONE CALL -- the same call `prep` makes.
-    # THE CHECK GATE RUNS ON EVERY ROUTE THAT WRITES A DECK: `prep` is not the
-    # only door, this is the CLI's, and a deck naming a keyword twice is no
-    # less wrong for having been produced here.  The order is the framework's
-    # and is not restated per route (`script-preparation.md` § 4.3).
-    _sc.prepare_deck(spec_for(struct, cfg, cell=cell),
-                     struct, cfg, fdf_p)
-
-    summary = {
-        "fdf": str(fdf_p),
-        "n_atoms": struct.n_atoms,
-        "species": species,
-        "missing_psml": [],
-    }
-
-    # Makov-Payne correction script.  Emitted whenever the input
-    # carries a non-zero net charge so the user can run a single
-    # post-process command after SIESTA finishes and get the
-    # finite-size-corrected total energy.  The FDF header already
-    # tells the user about the artefact; the script makes the
-    # correction numeric instead of "go do the arithmetic
-    # yourself".
-    from .makov_payne import emit_correction_script
-    from ..chemistry import resolve_net_charge
-    try:
-        _q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
-    except Exception:
-        _q = 0
-    if _q != 0:
-        emitted = emit_correction_script(
-            fdf_path=fdf_p,
-            system_label=cfg.system_label,
-            q=_q,
-        )
-        if emitted is not None:
-            summary["makov_payne_script"] = str(emitted)
-
-    if cfg.psml_lib and cfg.copy_psml:
-        # The one anchor rule (job-contracts.md § 2.5a), anchored on the
-        # calculation the .fdf is being written into.  A bare
-        # `Path(...).expanduser()` stood here until 2026-08-21 and made every
-        # relative spelling working-directory-relative -- so `convert` and
-        # `prep` disagreed about what the same template meant.
-        from ..pseudos import (PsmlLibError, describe_psml_anchor,
-                               resolve_psml_lib)
-        try:
-            lib = resolve_psml_lib(str(cfg.psml_lib), dest_dir=fdf_p.parent)
-        except PsmlLibError as exc:
-            lib = None
-            print(f"  WARN: skipping psml copy -- {exc}", file=sys.stderr)
-        if lib is not None and not lib.is_dir():
-            print(f"  WARN: skipping psml copy -- "
-                  f"{describe_psml_anchor(str(cfg.psml_lib), dest_dir=fdf_p.parent)}",
-                  file=sys.stderr)
-        elif lib is not None:
-            summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)
-
-    # Drop a preview <basename>.molwatch.log next to the
-    # .fdf so molwatch can render the initial geometry the moment the
-    # user loads it -- no waiting for SIESTA to write its first
-    # outcoor block.  The file is static (one preview block, no live
-    # updates); for live updates while SIESTA is running, point
-    # molwatch at the .out file instead.
-    #
-    # Filename derives from cfg.system_label (the protocol basename) --
-    # NOT from the FDF's stem (`convert` is the single-shot path and has
-    # no stage; a ladder's logs are seeded by `prep`, which holds the
-    # token).  This
-    # way a user who names the FDF "anything.fdf" still gets the
-    # canonical preview-log name that the Watch tab discovery chain
-    # recognises.  See docs/execution/job-contracts.md.
-    if cfg.write_molwatch_log:
-        from ..trajectory_log import molwatch_log_basename, write_initial_preview
-        mw_path = fdf_p.parent / molwatch_log_basename(
-            cfg.system_label, None)
-        write_initial_preview(
-            struct,
-            mw_path,
-            job=cfg.system_label,
-            engine="siesta",
-        )
-        summary["molwatch_log"] = str(mw_path)
-
-    return summary
+# `convert` DELETED 2026-09-17 -- the single-shot "read a structure file, write
+# a deck" worker, and the SIESTA half of a symmetric pair.
+#
+# It existed for `molbuilder fdf`, a command that wrote a finished deck from flags.
+# `molbuilder fdf` was deleted 2026-08-11 (decision 34), and this has had **no production caller since**
+# -- a month before this was noticed, which is the measurement that put
+# it in the same commit as its PySCF twin.
+#
+# A deck is written by `jobset prep` from a description: `spec_for` ->
+# `prepare_deck`, which is the same three steps this did, with the description
+# in front of them instead of a command line.  `render_fdf` survives -- it is a
+# thin call over `spec_for` and `engines/siesta.md` names it as this emitter's public
+# surface.

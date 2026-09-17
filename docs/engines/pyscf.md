@@ -53,6 +53,14 @@ flowchart LR
     R --> PY --> RUN
 ```
 
+
+> **`convert()` is DELETED (2026-09-17).** It was the single-shot
+> "read a structure file, write a deck" worker behind `molbuilder pyscf`, and it had no
+> other production caller. A deck is written by `jobset prep` from a
+> description — `spec_for` → `prepare_deck`, the same three steps with the
+> description in front of them instead of a command line. `render_script` stays:
+> it is a thin call over `spec_for` and it is this emitter's public surface.
+
 - **Backend.** `render_script` returns the `.py` text; `convert(input_path,
   py_path, config)` reads an `.xyz`/`.pdb` and writes the script,
   returning `{"py", "n_atoms", "charge", "label"}`. Verbose comments are on by

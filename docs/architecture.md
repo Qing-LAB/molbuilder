@@ -186,7 +186,7 @@ current → target status matrix.
 | `envs/` | L2 | the **environments toolkit** (presence + verify-cmd + GPU / CUDA / ELPA readiness) | `molbuilder envs {advise,bootstrap,clean,doctor,install,list,repair,validate}` | [`ops/installation.md`](?doc=ops/installation.md); NEVER build a new doctor |
 | `siesta/`, `pyscf/` | L2 | per-engine input emitters + stage rendering | `siesta.input.render_fdf`; `pyscf.input.render_script` (stage decks render inside `jobset prep` since the fold) | [`engines/siesta.md`](?doc=engines/siesta.md), [`engines/pyscf.md`](?doc=engines/pyscf.md) |
 | `builders/`, `peptide/`, `nucleic`, `smiles`, `pubchem` | L2 | structure synthesis | `build_peptide` / `build_dna` / `build_rna` / `build_from_smiles` / `build_from_name` | [`engines/builders.md`](?doc=engines/builders.md) |
-| `transport/` | L2 | TranSIESTA multi-run workflow + consistency preflight | `molbuilder transport …` | [`engines/transport.md`](?doc=engines/transport.md) |
+| `transport/` | L2 | TranSIESTA multi-run workflow — the composite: one citation → five rungs | `molbuilder jobset …` (no calculation-kind verb since 2026-09-17) | [`engines/transport.md`](?doc=engines/transport.md) |
 
 ### Core types (L1) & surfaces (L3)
 

@@ -23,7 +23,7 @@ import molbuilder
 from molbuilder.trajectory_log import write_initial_preview
 from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 from molbuilder.pyscf import PySCFConfig, render_script
-from molbuilder.siesta import SiestaConfig, convert
+from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure
 
 
@@ -160,46 +160,8 @@ def test_preview_helper_marks_kind_and_nulls(tmp_path, water_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_siesta_convert_emits_molwatch_log_by_default(tmp_path):
-    """Calling siesta.convert() must drop a sibling .molwatch.log so a
-    user can preview the structure in molwatch before SIESTA runs."""
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
-    xyz = tmp_path / "h2.xyz"
-    s.to_xyz(str(xyz))
-    fdf = tmp_path / "h2.fdf"
-    summary = convert(str(xyz), str(fdf), SiestaConfig(system_label="h2"), vacuum=(12.0, 12.0, 12.0))
-    mw = tmp_path / "h2.molwatch.log"
-    assert mw.exists()
-    assert summary["molwatch_log"] == str(mw)
-    text = mw.read_text()
-    assert text.startswith("# molwatch trajectory log v1")
-    assert "# engine: siesta" in text
-    assert "==== molwatch step 0 begin ====" in text
-    assert "==== molwatch step 0 end ====" in text
 
 
-def test_siesta_convert_respects_disable_flag(tmp_path):
-    """cfg.write_molwatch_log = False suppresses the sibling file."""
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
-    xyz = tmp_path / "h2.xyz"
-    s.to_xyz(str(xyz))
-    fdf = tmp_path / "h2.fdf"
-    summary = convert(
-        str(xyz), str(fdf),
-        SiestaConfig(system_label="h2", write_molwatch_log=False),
-        vacuum=(12.0, 12.0, 12.0),
-    )
-    mw = tmp_path / "h2.molwatch.log"
-    assert not mw.exists()
-    assert "molwatch_log" not in summary
 
 
 # --------------------------------------------------------------------- #

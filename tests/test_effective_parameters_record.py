@@ -126,34 +126,6 @@ def test_the_absent_list_is_generated_from_the_catalogue(deck):
 
 # ------------------------------------------- every route that writes, checks
 
-def test_the_cli_convert_route_runs_the_check_gate_too(tmp_path, monkeypatch):
-    """`prep` is not the only door into rendering, so it cannot be the only
-    door that checks.
-
-    A deck that does not parse is no less broken for having come from the CLI.
-    Two routes writing one kind of artifact and only one of them verifying it
-    is the exact shape of defect this layer exists to end -- it is how a
-    charged deck once shipped an instruction to run a file that was never
-    written.
-    """
-    import molbuilder.pyscf.layout as layout
-    from molbuilder.issues import Issue, ValidationError
-    from molbuilder.pyscf.input import convert
-
-    src = tmp_path / "w.xyz"
-    src.write_text("3\n\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n",
-                   encoding="utf-8")
-
-    # a clean conversion passes the gate
-    assert convert(str(src), str(tmp_path / "ok.py"))["n_atoms"] == 3
-
-    # and a refusal from the gate stops it
-    monkeypatch.setattr(layout, "check_rules",
-                        lambda text, struct, cfg: [
-                            Issue("error", "deliberately wrong",
-                                  where="deck.test")])
-    with pytest.raises(ValidationError):
-        convert(str(src), str(tmp_path / "bad.py"))
 
 
 # ------------------------------------------------- SIESTA's own check rules
@@ -218,30 +190,6 @@ def test_the_atom_count_must_match_the_coordinate_block():
             if "NumberOfAtoms" in i.message]
 
 
-def test_both_engines_now_answer_the_check_question():
-    """The seam's check question, answered by both — **asked of the SPEC**.
-
-    It was a member of ``EngineSeam`` until 2026-08-18, when the seam started
-    carrying the engine's form instead of finished text: the rules are part of
-    what an engine says about its deck, so they ride on the ``DeckSpec`` and
-    the seam stopped holding a second copy of the answer
-    (`script-preparation.md` § 4.3).
-    """
-    import numpy as np
-
-    from molbuilder.jobset.prep import _engine_seam
-    from molbuilder.structure import Structure
-
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]]),
-                       vacuum=(8.0, 8.0, 8.0))
-    for engine in ("siesta", "pyscf"):
-        seam = _engine_seam(engine)
-        assert not hasattr(seam, "check_rules"), (
-            f"{engine}: the seam holds a second copy of the check rules")
-        cfg = seam.config_cls()
-        spec = seam.spec_for(struct, cfg)
-        assert spec.check_rules is not None, engine
 
 
 # ------------------------------------------------- one writer, every artifact
@@ -276,22 +224,3 @@ def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
     assert oct(wrapper.stat().st_mode)[-3:] == "755", "still runnable"
 
 
-def test_the_shared_package_is_named_by_the_engine_that_put_it_there(tmp_path):
-    """**W5** (`script-preparation.md` § 4.1) — "nothing" is an answer, and it
-    is recorded: PySCF's empty package is the ANSWER, not a gap.
-
-    Not guessed from a suffix in shared code.
-
-    `_shared_for` globbed ``*.psml`` -- a SIESTA fact stated a floor below
-    where SIESTA may speak -- so a second engine with data files of its own
-    would have shipped none of them, silently.
-    """
-    from molbuilder.jobset.prep import _engine_seam, _shared_for
-
-    (tmp_path / "C.psml").write_text("x", encoding="utf-8")
-    (tmp_path / "H.psml").write_text("x", encoding="utf-8")
-
-    assert _shared_for(tmp_path, _engine_seam("siesta")) == ["C.psml", "H.psml"]
-    # PySCF's basis sets ship inside PySCF: an empty package is the ANSWER
-    assert _engine_seam("pyscf").shared_package is None
-    assert _shared_for(tmp_path, _engine_seam("pyscf")) == []

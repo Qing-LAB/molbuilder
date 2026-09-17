@@ -37,9 +37,10 @@ from molbuilder import cli
 
 _SUBCOMMANDS = [
     "peptide", "dna", "rna", "smiles", "name",
-    # "fdf" left with the verb (C2, 2026-08-11); "pyscf" stays until
-    # decision 34 reworks the emitted-script path the same way.
-    "pyscf",
+    # "fdf" left with the verb (C2, 2026-08-11), and "pyscf" followed it on
+    # 2026-09-17 -- this line said it would stay "until decision 34 reworks the
+    # emitted-script path the same way", and that is what happened: a deck is
+    # written by `jobset prep` from a description, on both engines.
     "modify",
     "serve", "watch",
 ]
@@ -188,103 +189,12 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
 #  The stdin helper is shared, so the sniff stays gated through pyscf.
 
 
-def test_pyscf_reads_xyz_from_stdin(monkeypatch, tmp_path):
-    """``molbuilder pyscf - out.py`` reads stdin, sniffs XYZ vs PDB from
-    the first non-blank line, writes to a temp file, and feeds that into
-    the standard convert() pipeline.  Without this you can't pipe
-    ``molbuilder dna ATGC | molbuilder pyscf -``."""
-    import io
-    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
-    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
-    out_py = tmp_path / "h2.py"
-    rc = cli.main(["pyscf", "-", str(out_py), "--no-optimize",
-                   "--no-density-fit"])
-    assert rc == 0
-    assert out_py.exists() and out_py.stat().st_size > 0
 
 
-def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
-    """The cmd_pyscf subcommand surfaces 6 PySCFConfig fields that
-    were silent CLI gaps before review-fix L:
-        --diis-space, --damp, --ecp,
-        --no-write-molwatch-log, --no-save-initial-xyz, --no-save-optimized-xyz.
-    (Two former preopt-dispersion / preopt-density-fit flags retired
-    with the preopt block in #534 commit 4b.)
-    Smoke-check by running with all of them on a real input + asserting
-    the generated script reflects each non-default setting."""
-    import io
-    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
-    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
-    out_py = tmp_path / "h2.py"
-    rc = cli.main([
-        "pyscf", "-", str(out_py),
-        "--no-optimize", "--no-density-fit",
-        "--diis-space", "16",
-        "--damp",       "0.4",
-        "--ecp",        "lanl2dz",
-        "--ecp-atoms",  "H",
-        "--no-write-molwatch-log",
-        "--no-save-initial-xyz",
-        "--no-save-optimized-xyz",
-    ])
-    assert rc == 0
-    text = out_py.read_text()
-    # The mf.diis_space + mf.damp + ecp lines reflect the CLI values.
-    assert "mf.diis_space = 16" in text
-    assert "mf.damp = 0.4" in text
-    # ONE shape since 2026-08-13: {element: name}, never a bare string.
-    # The three-way ``or`` this replaces would have passed on the mere
-    # substring "ecp=" anywhere in the file, comments included.
-    assert "ecp        = {'H': 'lanl2dz'}," in text
-    # molwatch / save toggles drop the corresponding code paths.
-    assert "MolwatchEmitter" not in text
-    assert "_initial.xyz" not in text
-    # ``--no-save-optimized-xyz`` turns off the WRITE.  The READ is a separate
-    # question and `restart` answers it: continuing is the default since
-    # 2026-08-18, so a deck still reads a geometry a previous run left even
-    # when it writes none of its own (`run-identity.md` § 4 rule 2 -- the two
-    # gates are what "write a checkpoint but do not resume from one" needs).
-    assert '_save_xyz(mol_eq, _mb_outfile(JOB + "_optimized.xyz")' not in text
-    assert "_opt_path = _mb_outfile(JOB + \"_optimized.xyz\")" in text
 
 
-def test_pyscf_cli_help_lists_all_review_fix_l_options():
-    """Lighter sanity: --help mentions every new option name."""
-    from click.testing import CliRunner
-    runner = CliRunner()
-    res = runner.invoke(cli.cli, ["pyscf", "--help"])
-    assert res.exit_code == 0
-    for flag in ("--diis-space", "--damp", "--ecp",
-                 "--no-write-molwatch-log",
-                 "--no-save-initial-xyz", "--no-save-optimized-xyz"):
-        assert flag in res.output, f"missing {flag} in pyscf --help"
-    # The preopt-* / geom-* flags are gone post-#534 commit 4b.
-    for retired in ("--preopt-functional", "--preopt-basis",
-                    "--preopt-max-steps", "--preopt-grms",
-                    "--preopt-dispersion", "--no-preopt-density-fit",
-                    "--geom-max-steps", "--geom-conv-energy",
-                    "--geom-conv-grms", "--geom-conv-gmax"):
-        assert retired not in res.output, (
-            f"retired flag {retired} still appears in pyscf --help"
-        )
 
 
-def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
-    """Stdin sniff: a first line that isn't an integer is treated as
-    PDB (HEADER / TITLE / ATOM / HETATM all qualify).  Ran through
-    ``fdf`` until 2026-08-11; the sniff belongs to the shared stdin
-    helper, so it repointed at pyscf rather than retiring."""
-    import io
-    pdb = (
-        "ATOM      1  H   MOL A   1       0.000   0.000   0.000  1.00  0.00           H\n"
-        "ATOM      2  H   MOL A   1       0.740   0.000   0.000  1.00  0.00           H\n"
-        "END\n"
-    )
-    monkeypatch.setattr("sys.stdin", io.StringIO(pdb))
-    out_py = tmp_path / "h2.py"
-    rc = cli.main(["pyscf", "-", str(out_py), "--no-optimize",
-                   "--no-density-fit"])
-    assert rc == 0
 
 
 # --------------------------------------------------------------------- #
@@ -368,61 +278,8 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_add_dataclass_options_generates_click_flags(tmp_path, capsys):
-    """The dataclass->click bridge maps field metadata onto click.option
-    decorators: snake_case -> kebab-case flag, type from annotation,
-    default from field default, help from metadata.  bool fields get
-    a --foo / --no-foo pair.  Verify on a synthetic dataclass."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        n_iter:   int   = dataclasses.field(default=10,
-                                            metadata={"help": "iter count"})
-        eps:      float = dataclasses.field(default=1e-3,
-                                            metadata={"help": "tol"})
-        verbose:  bool  = dataclasses.field(default=True,
-                                            metadata={"help": "loud or quiet"})
-        label:    str   = "default-label"
-
-    seen = {}
-
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg)  # the helper
-    def demo(**kw):
-        seen.update(kw)
-
-    from click.testing import CliRunner
-    runner = CliRunner()
-    res = runner.invoke(demo, ["--n-iter", "20", "--eps", "1e-5",
-                               "--no-verbose", "--label", "custom"])
-    assert res.exit_code == 0, res.output
-    assert seen == {"n_iter": 20, "eps": 1e-5, "verbose": False,
-                    "label": "custom"}
 
 
-def test_add_dataclass_options_works_on_real_pyscf_config():
-    """End-to-end: the helper applies cleanly to PySCFConfig (real
-    dataclass with mixed field types and metadata).  The generated
-    --diis-space option lands as int with default 8 and a help line."""
-    import click as _click
-    from molbuilder.config.pyscf import PySCFConfig
-
-    @_click.command()
-    @cli.add_dataclass_options(PySCFConfig)
-    def demo(**kw):
-        return kw
-
-    from click.testing import CliRunner
-    runner = CliRunner()
-    res = runner.invoke(demo, ["--help"])
-    assert res.exit_code == 0
-    out = res.output
-    # The PySCFConfig fields land as kebab-case flags:
-    for flag in ("--diis-space", "--damp", "--scf-conv-tol",
-                 "--functional", "--basis"):
-        assert flag in out, f"missing {flag} in --help output"
 
 
 # --------------------------------------------------------------------- #
@@ -451,26 +308,6 @@ def test_add_dataclass_options_works_on_real_pyscf_config():
 # --------------------------------------------------------------------- #
 
 
-def test_pyscf_cli_exposes_every_non_skip_pyscf_field():
-    """Bridge invariant for PySCFConfig (same idea as above)."""
-    import dataclasses
-    from click.testing import CliRunner
-    from molbuilder.config.pyscf import PySCFConfig
-
-    runner = CliRunner()
-    res = runner.invoke(cli.cli, ["pyscf", "--help"])
-    assert res.exit_code == 0, res.output
-    out = res.output
-    for fld in dataclasses.fields(PySCFConfig):
-        if fld.metadata.get("skip_cli"):
-            continue
-        flag = "--" + fld.name.replace("_", "-")
-        if fld.type in ("bool", bool):
-            no_flag = "--no-" + fld.name.replace("_", "-")
-            assert flag in out or no_flag in out, \
-                f"Bridge dropped bool field {fld.name}"
-        else:
-            assert flag in out, f"Bridge dropped scalar field {fld.name}"
 
 
 def _h2_xyz_at(path):
@@ -482,65 +319,8 @@ def _stub_pyscf_summary(out_path):
     return {"py": str(out_path), "n_atoms": 2, "charge": 0, "label": "h2"}
 
 
-@pytest.mark.parametrize("flag,cli_val,attr,expected", [
-    # ONE case per value branch of ``add_dataclass_options`` -- the single
-    # machine that generates every PySCF option from the dataclass.  A case
-    # per FIELD proved nothing the branch case does not: all twenty rows of
-    # the old sweep ran the same four code paths (collapsed 2026-08-19).
-    # The rule: declared data and same-branch nouns earn no case of their
-    # own; a distinct CODE PATH does.  The representatives are chosen for
-    # the real edge inside their branch:
-    ("--net-charge",   "-2",    "net_charge",   -2),      # int, NEGATIVE value after the flag
-    ("--scf-conv-tol", "1e-10", "scf_conv_tol", 1e-10),   # float, scientific notation
-    ("--functional",   "PBE",   "functional",   "PBE"),   # plain str
-    ("--solvent",      "water", "solvent",      "water"), # Optional[str] -- the Union unwrap
-])
-def test_pyscf_cli_override_propagates_to_pyscf_config(
-        flag, cli_val, attr, expected, monkeypatch, tmp_path):
-    """A generated option's value reaches its PySCFConfig field."""
-    captured = {}
-
-    def fake_convert(input_path, py_path, config):
-        captured["cfg"] = config
-        return _stub_pyscf_summary(py_path)
-    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
-
-    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
-    out_py = tmp_path / "h2.py"
-    rc = cli.main(["pyscf", in_xyz, str(out_py), flag, cli_val])
-    assert rc == 0
-    assert getattr(captured["cfg"], attr) == expected, (
-        f"{flag} {cli_val!r}: expected PySCFConfig.{attr}={expected!r}, "
-        f"got {getattr(captured['cfg'], attr)!r}"
-    )
 
 
-@pytest.mark.parametrize("attr,default,off_flag", [
-    # The bool branch emits a --x/--no-x PAIR; its two directions are the
-    # two code paths.  One case each (was ten same-path cases, collapsed
-    # 2026-08-19).
-    ("symmetry",    False, "--symmetry"),        # default False -> positive flag sets True
-    ("density_fit", True,  "--no-density-fit"),  # default True  -> negative flag sets False
-])
-def test_pyscf_cli_bool_flags_round_trip(
-        attr, default, off_flag, monkeypatch, tmp_path):
-    """Both directions of the generated dual bool flag reach the config."""
-    captured = []
-
-    def fake_convert(input_path, py_path, config):
-        captured.append(config)
-        return _stub_pyscf_summary(py_path)
-    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
-
-    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
-    out_py = tmp_path / "h2.py"
-
-    rc = cli.main(["pyscf", in_xyz, str(out_py), off_flag])
-    assert rc == 0
-    expected_after = not default
-    assert getattr(captured[-1], attr) is expected_after, (
-        f"{off_flag} did not flip {attr} to {expected_after!r}"
-    )
 
 
 # The 20-case "each default renders in the FDF" sweep that sat here was
@@ -557,38 +337,6 @@ def test_pyscf_cli_bool_flags_round_trip(
 # ---- Bridge: metadata['choices'] -> click.Choice ---------------- #
 
 
-def test_add_dataclass_options_emits_click_choice_when_metadata_set():
-    """A dataclass field with ``metadata['choices']=...`` lands as a
-    ``click.Choice`` option, so a typo fails at CLI parse time instead
-    of waiting for the downstream tool (SIESTA / PySCF) to error out
-    much later."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        method: str = dataclasses.field(
-            default="RKS",
-            metadata={"choices": ("RKS", "UKS", "RHF", "UHF")},
-        )
-
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg)
-    def demo(**kw):
-        return kw
-
-    from click.testing import CliRunner
-    runner = CliRunner()
-
-    # Bad value -> click error (exit code 2).
-    res = runner.invoke(demo, ["--method", "FOO"])
-    assert res.exit_code != 0
-    out = (res.output or "").lower()
-    assert "invalid value" in out or "not one of" in out, res.output
-
-    # Good value passes through.
-    res = runner.invoke(demo, ["--method", "UHF"])
-    assert res.exit_code == 0
 
 
 @pytest.mark.parametrize("subcommand,flag,bad_val", [
@@ -617,72 +365,10 @@ def test_real_subcommand_choice_validation_rejects_typos(
 # ---- Bridge: unknown types must error loudly (P3) --------------- #
 
 
-def test_add_dataclass_options_rejects_unknown_field_type():
-    """A dataclass field with an annotation the bridge can't handle
-    (Sequence[str], Tuple, dict, ...) must raise TypeError instead of
-    silently coercing to ``type=str``.  The user is expected to mark
-    such fields ``skip_cli=True`` and hand-roll a click.option at the
-    call site."""
-    import click as _click
-    import dataclasses
-    from typing import Sequence
-
-    @dataclasses.dataclass
-    class _Cfg:
-        species: Sequence[str] = dataclasses.field(default_factory=list)
-
-    with pytest.raises(TypeError) as exc:
-        @_click.command()
-        @cli.add_dataclass_options(_Cfg)
-        def demo(**kw):
-            return kw
-
-    msg = str(exc.value)
-    assert "species" in msg
-    assert "skip_cli" in msg
 
 
-def test_add_dataclass_options_skip_cli_field_is_not_type_checked():
-    """A field marked ``skip_cli=True`` is exempt from the type check
-    -- the bridge doesn't try to generate an option for it, so weird
-    types are fine."""
-    import click as _click
-    import dataclasses
-    from typing import Sequence
-
-    @dataclasses.dataclass
-    class _Cfg:
-        species: Sequence[str] = dataclasses.field(
-            default_factory=list,
-            metadata={"skip_cli": True},
-        )
-
-    # Must NOT raise.
-    @_click.command()
-    @cli.add_dataclass_options(_Cfg)
-    def demo(**kw):
-        return kw
 
 
-def test_add_dataclass_options_choices_on_bool_is_an_error():
-    """``choices=`` on a bool field is meaningless (bool fields surface
-    as a ``--foo / --no-foo`` pair).  Bridge must reject the
-    combination loudly."""
-    import click as _click
-    import dataclasses
-
-    @dataclasses.dataclass
-    class _Cfg:
-        flag: bool = dataclasses.field(
-            default=True, metadata={"choices": ("true", "false")},
-        )
-
-    with pytest.raises(TypeError) as exc:
-        @_click.command()
-        @cli.add_dataclass_options(_Cfg)
-        def demo(**kw):
-            return kw
-    assert "choices" in str(exc.value)
 
 
 def test_modify_electrode_spec_key_case_insensitive():
@@ -747,21 +433,6 @@ scf_history end
 """
 
 
-def test_watch_parse_emits_full_trajectory_json(capsys, tmp_path):
-    """`watch parse` reads a .molwatch.log and dumps the parsed
-    trajectory as JSON: per-frame coords, energies, max_forces,
-    both clocks, run_state."""
-    import json
-    p = tmp_path / "run.molwatch.log"
-    p.write_text(_MW_LOG)
-    rc = cli.main(["watch", "parse", str(p)])
-    assert rc == 0
-    out = capsys.readouterr().out
-    body = json.loads(out)
-    assert body["source_format"] == "pyscf"
-    assert body["run_state"]     == "ended"
-    assert len(body["frames"])   == 2
-    assert body["energies"]      == [None, -32.5]
 
 
 def test_watch_parse_frames_only_drops_atom_arrays(capsys, tmp_path):

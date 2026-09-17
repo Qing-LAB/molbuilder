@@ -1,7 +1,7 @@
 """molbuilder.pyscf -- PySCF script generation and trajectory parsing.
 
 Submodules:
-    input  -- render_script / convert / PySCFConfig (script generation)
+    input  -- render_script / spec_for / PySCFConfig (script generation)
 
 The public symbols of ``input`` are re-exported here so existing imports
 ``from molbuilder.pyscf import PySCFConfig`` work after the
@@ -10,12 +10,10 @@ The public symbols of ``input`` are re-exported here so existing imports
 
 from .input import (
     PySCFConfig,
-    convert,
     render_script,
 )
 
 __all__ = [
     "PySCFConfig",
-    "convert",
     "render_script",
 ]

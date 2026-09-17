@@ -288,45 +288,12 @@ class TestEmitScript:
 
 # --------------------------------------------------------------------- #
 #  SIESTA writer integration                                             #
+#
+#  `TestSiestaIntegration` deleted 2026-09-17 with `siesta.input.convert`.
+#  Both of its tests drove that single-shot converter to check whether the
+#  post-process correction script was dropped beside the deck.  `convert` had
+#  had no production caller since `molbuilder fdf` went on 2026-08-11; the
+#  sibling-artifact question belongs to `prep`, which owns
+#  `_siesta_sibling_artifacts`.
 # --------------------------------------------------------------------- #
 
-
-class TestSiestaIntegration:
-    def test_charged_writes_script(self):
-        """``write_siesta_input`` / ``convert`` drops the post-process
-        script next to the FDF whenever the input deck carries a
-        non-zero net charge."""
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.siesta.input import convert
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            xyz = d / "in.xyz"
-            xyz.write_text(
-                "5\nNH4+\nN 0 0 0\n"
-                "H 0.5 0.5 0.5\nH -0.5 0.5 0.5\n"
-                "H 0.5 -0.5 0.5\nH 0.5 0.5 -0.5\n"
-            )
-            fdf = d / "job.fdf"
-            cfg = SiestaConfig(system_label="nh4plus", net_charge=1)
-            summary = convert(str(xyz), str(fdf), config=cfg)
-            assert "makov_payne_script" in summary
-            mp = Path(summary["makov_payne_script"])
-            assert mp.is_file()
-            # The script's NET_CHARGE matches what the wrapper saw.
-            text = mp.read_text()
-            assert "NET_CHARGE   = 1" in text
-
-    def test_neutral_skips_script(self):
-        from molbuilder.config.siesta import SiestaConfig
-        from molbuilder.siesta.input import convert
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            xyz = d / "in.xyz"
-            xyz.write_text("1\nh\nH 0 0 0\n")
-            fdf = d / "job.fdf"
-            cfg = SiestaConfig(system_label="h", net_charge=0)
-            # A single atom's bbox is a point -> give it a vacuum so the derived
-            # cell has a real volume (structure-periodicity.md).
-            summary = convert(str(xyz), str(fdf), config=cfg,
-                              vacuum=(12.0, 12.0, 12.0))
-            assert "makov_payne_script" not in summary
