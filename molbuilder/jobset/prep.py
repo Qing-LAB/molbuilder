@@ -1260,7 +1260,35 @@ def _resolve_transport(base, task, stage: str, allocation,
     """
     from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
-    from ..template import find_template
+    from ..template import catalogue, find_template, select
+
+    # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE, and this is where that is
+    # refused.  `resolve` will not catch it: to `resolve` these are ordinary
+    # schema fields, so a stage naming one would simply get it -- and the
+    # device would be free to disagree with its own leads about the basis
+    # the self-energies were built on, which is the single thing that must
+    # be impossible.
+    #
+    # WHICH items are shared is the catalogue's own answer (`citation`,
+    # `engines/template.md` § 6.4): the rows the cited run fills in at
+    # `init` and every rung then shares.  Asked, not listed here.
+    shared = {i.name for i in select(catalogue(), engine="siesta",
+                                     citation=True)
+              if "transport" in i.citation}
+    for bag in (task.stages or ()):
+        clash = sorted(set(bag.overrides or {}) & shared)
+        if clash:
+            raise PrepError(
+                f"stage {bag.name!r} overrides "
+                f"{', '.join(map(repr, clash))}, which "
+                f"{'is' if len(clash) == 1 else 'are'} SHARED by every "
+                f"stage of this calculation -- the electrode and the "
+                f"device must not be able to disagree about "
+                f"{'it' if len(clash) == 1 else 'them'}.  Change "
+                f"{'it' if len(clash) == 1 else 'them'} in the template, "
+                f"where the value applies to all five rungs at once; it "
+                f"was filled in from the run you cited and it is yours to "
+                f"change (engines/transport.md 2a.7).")
 
     tmpl = find_template(base)
     if tmpl is None:
@@ -1278,7 +1306,12 @@ def _resolve_transport(base, task, stage: str, allocation,
     try:
         ps = resolve(tmpl.read_text(encoding="utf-8"), task, SiestaConfig,
                      allocation=allocation, stage=stage)
-    except ResolveError as exc:
+    except (ResolveError, ValueError) as exc:
+        # ValueError as well, and it is not a net cast wide.  `resolve`'s
+        # own refusals -- an override naming no field, a value outside its
+        # declared range -- come out of `effective_config` as ValueError,
+        # and every one of them is a person's typo in a file they edited.
+        # Uncaught, a misspelled knob reached the user as a traceback.
         raise PrepError(str(exc)) from exc
     # ONE ELEMENT.  A transport rung is a production run; its one axis is the
     # bias, and that is the device's own directory level rather than a sweep
@@ -1300,22 +1333,27 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     target: Optional[str] = None,
                     chosen=None,
                     pipeline_log: bool = False) -> List[Path]:
-    """`prep` for the transport COMPOSITE — the same five steps, with
-    step 2/3's template-resolve replaced by § 4.2's compose sequence:
-    **copy the citation → sort + checks → gates → extract → render this
-    stage's deck.**
+    """`prep` for the transport COMPOSITE — one rung of the ladder.
 
-    Everything after the deck is the shared machinery, un-forked: the
-    stage directory comes from the same :func:`token_for` +
-    ``Shape.stage_dir`` every ladder uses, the allocation folds through
-    the same precedence doors, and steps 4–5 are :func:`prep_jobset`
-    verbatim — wrappers, run directories, ``STAGE-PLAN.md``, the merged
-    root ``job-set.json``.
+    **The same five steps every kind takes**, with one step of its own.
+    Transport's genuinely new input is the CITATION: a finished relaxation
+    whose junction this calculation is built from. Composing it — copy,
+    sort, gate, extract the leads — is step 3a below and belongs to this
+    arm. Everything else is the shared machinery, un-forked::
 
-    What P5 adds, deliberately absent here: the warm-file vocabulary
-    (seed ``.DM`` → device, electrode ``.TSHS`` → device, the ``.TSDE``
-    bias chain) and the per-bias-point device decks — this arm renders
-    the equilibrium point.
+        1  the machine            `_environment_for`
+        2  the description        `read_task`, and WHICH rung
+        3a the citation           compose  (transport's own)
+        3b the data files         the pseudos travel with the citation
+        3c the deck(s)            resolve -> spec_for -> prepare_deck
+        4  the wrappers           `prep_jobset`
+        5  the run directories    `prep_jobset`
+
+    Step 3c is the framework's, not this module's, and that is the point:
+    `engines/transport.md` § 3.2 measured what it cost when it was not —
+    a deck of 13 keywords against a template offering 45, with no
+    validation report and no check gate. Every rung renders through
+    `spec_for` → `DeckSpec` → `prepare_deck` now.
     """
     from ..task import FILENAME as TASK_FILENAME
     from ..task import read_task
@@ -1323,10 +1361,11 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      load_compose_record,
                                      write_compose_record)
     from ..transport.sort import SortError
-    from ..transport.stages import (TRANSPORT_STAGES, StageError,
-                                    bias_points, bias_token, config_for,
-                                    render_stage_deck, warm_declaration)
+    from ..transport.stages import (TRANSPORT_STAGES, bias_points,
+                                    bias_token, warm_declaration)
+    from ..transport.transiesta import electrode_hs_stem
     from ..siesta.input import spec_for as _siesta_spec_for
+    from ..runwrap import write_run_wrapper
     from ..paths import Shape
 
     base = Path(base_dir).resolve()
@@ -1340,10 +1379,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     if sweep is not None or pins or translation is not None:
         raise PrepError(
             "a transport calculation takes no parameter sweep, pins or "
-            "translation: its parameters arrive whole from the citation, "
-            "and its one sweep axis is the bias list in task.json "
-            "(transport-design.md 4.3; the per-point device decks land "
-            "with the P5 warm chain).")
+            "translation.  Its parameters come from its own template, and "
+            "its one axis is the bias -- a list in task.json, rendered as "
+            "one deck per point (engines/transport.md 2a.10: single bias "
+            "is the degenerate case of that axis, one point at zero).")
 
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)
@@ -1413,127 +1452,83 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     except (ComposeError, SortError) as exc:
         raise PrepError(str(exc)) from exc
 
-    # ---- 3b. the one config, and the data files ------------------------ #
-    try:
-        # the rung being prepped, so the ladder's own per-stage
-        # answers apply to THIS deck and not to every deck
-        cfg = config_for(task, composed, stage=stage)
-    except StageError as exc:
-        raise PrepError(str(exc)) from exc
-    _transport_provide_pseudos(composed.sorted.structure, cfg, base,
+    # ---- 3b. render this rung's deck(s) -------------------------------- #
+    #
+    # ONE PATH, and every rung takes it:
+    #
+    #     the template ⊕ this rung's overrides  ->  resolve       -> config
+    #     the structure this rung describes     ->  spec_for      -> DeckSpec
+    #     the DeckSpec                          ->  prepare_deck  -> the .fdf
+    #
+    # Nothing below floor 3 asks which rung this is.  What differs between
+    # rungs is DATA -- WHICH structure it describes (i), and which layout
+    # its shape selects (`transport/deck.py::SHAPE_OF_RUNG`) -- and both are
+    # looked up rather than decided here.
+    shape = Shape.named(task.shape)
+    stage_dir = (base / shape.stage_dir(token)) if token else base
+    script = _rf(task.label, ".fdf", token or None)
+
+    # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
+    # junction, and the lead taken out of it by its region label -- same
+    # atoms, same relaxation, a subset rather than a geometry derived from
+    # anywhere else.  That is what lets the seam stay `spec_for(struct,
+    # cfg, ...)`: a deck describes a structure, and these are two.
+    if stage in ("electrode_L", "electrode_R"):
+        model = (composed.electrode_left if stage == "electrode_L"
+                 else composed.electrode_right)
+        struct = model.as_structure()
+        # The lead's identity IS the .TSHS stem the device deck names --
+        # one spelling, `electrode_hs_stem`, read by both writers.
+        label = electrode_hs_stem(task.label, model.label)
+    else:
+        # The junction -- and for the device it carries the region
+        # partition the NEGF block is built from.
+        struct, label = composed.sorted.structure, task.label
+
+    # (ii) THE CONFIG: the template ⊕ this rung's overrides, with
+    # provenance recording which source set each value.
+    config = _resolve_transport(base, task, stage,
+                                allocation or Resources(), log=_tlog)
+    if label != task.label:
+        config = dataclasses.replace(config, system_label=label)
+
+    # The pseudopotentials travel with the citation, and the screening runs
+    # against THIS config -- the one the deck renders from -- because what
+    # it checks is whether each file's XC family matches the functional the
+    # run will ask for.  Screening against a different config would be
+    # comparing the files to a calculation nobody is doing.
+    _transport_provide_pseudos(composed.sorted.structure, config, base,
                                citation)
 
-    # ---- 3c. render THIS stage's deck, in its own directory ------------ #
-    _shape = Shape.named(task.shape)
-    _sd = _shape.stage_dir(token) if token else "."
-    _jdir = base if _sd == "." else base / _sd
-    _jdir.mkdir(parents=True, exist_ok=True)
-    stem = _rf_stem(task.label, token or None)
-    script = _rf(task.label, ".fdf", token or None)
-    # A BIAS SCAN maps the device and transmission stages over the
-    # points (§ 4.3; layout ruled 2026-08-29: plain v-dirs).  The
-    # stage-dir deck is then the EQUILIBRIUM point's -- the same deck
-    # v0/ holds -- so the job row's script exists where every generic
-    # reader looks, and each point's own deck differs only in
-    # TS.Voltage.
-    points = (bias_points(task)
-              if stage in ("device", "transmission") else ())
-    # THE SEED RUNG IS ON THE FRAMEWORK'S SEAM (`engines/transport.md`
-    # § 3.6, items 1-4).  It goes through the SAME step 3 the optimization
-    # path takes -- `spec_for` -> `prepare_deck` -- so it gets what a
-    # hand-written `write_text` cannot: the template's items (the 21
-    # keywords § 3.2 measured as unreachable, `MaxSCFIterations` and
-    # `DM.Tolerance` among them), the one writer that preserves a reader's
-    # USER-CUSTOM block, the read-back check, and the engine's check gate.
+    # (iii) THE DECKS.  A bias scan renders one per point, a single-bias
+    # calculation one -- and the stage directory always holds the FIRST
+    # point's, because that is where every generic reader looks for a job's
+    # script and § 2a.11 documents it as "the same deck v0/ holds".
     #
-    # The other four rungs still render through `render_stage_deck`: tabling
-    # them needs the ComposedJunction, which `spec_for` does not carry, and
-    # that seam question is the next increment's.  The split is HERE, at the
-    # conductor, and named -- not hidden inside a renderer that pretends to
-    # serve all five.
-    if True:          # EVERY RUNG IS ON THE SEAM (TR5)
-        # EACH RUNG RENDERS THE STRUCTURE IT DESCRIBES (TR5).  The seed
-        # describes the junction; an ELECTRODE rung describes the lead taken
-        # OUT of that same junction by its region label -- same atoms, same
-        # relaxation, a subset rather than a geometry derived from anywhere
-        # else.  That is what lets the framework's seam stay
-        # `spec_for(struct, cfg, ...)`: a deck describes a structure, and
-        # these are two structures out of one file.
-        from ..transport.transiesta import electrode_hs_stem
-        if stage in ("seed", "device", "transmission"):
-            # The junction itself -- and for the device it carries the
-            # region partition the NEGF block is built from.
-            _struct, _label = composed.sorted.structure, task.label
-        else:
-            _model = (composed.electrode_left if stage == "electrode_L"
-                      else composed.electrode_right)
-            _struct = _model.as_structure()
-            # THE LEAD'S IDENTITY IS THE .TSHS STEM the device deck names --
-            # one spelling, `electrode_hs_stem`, read by both writers.
-            _label = electrode_hs_stem(task.label, _model.label)
+    # § 2a.10: *single bias is the degenerate case of the bias axis -- one
+    # point, normally at zero.*  One mechanism, so one loop: the template
+    # declares the parameter and answers the one-point case, and a scan is
+    # that same parameter taking several values.
+    points = bias_points(task) if stage in ("device", "transmission") else ()
+    targets = [(stage_dir, points[0] if points else None)]
+    targets += [(stage_dir / bias_token(v), v) for v in points]
 
-        # RESOLVED, not assembled (TR4).  `resolve` is floor 3's own step 2 --
-        # the template ⊕ this rung's overrides, with `provenance` recording
-        # which source set each value, which is what makes
-        # `project-layout.md` M3's "the numbers were wrong" answerable.
-        #
-        # TR1 is what made this reachable, and it also made it SUFFICIENT:
-        # the template carries every item this kind has, the transport-only
-        # rows included, so there is nothing left for a hand-built
-        # projection to add.
-        scfg = _resolve_transport(base, task, stage,
-                                  allocation or Resources(), log=_tlog)
-        if _label != task.label:
-            scfg = dataclasses.replace(scfg, system_label=_label)
-        # NO pipeline log: `_prep_transport` takes `pipeline_log` as a bool
-        # and builds no log object, which § 3.2 records as a documented
-        # no-op.  Passing `log=None` keeps that true rather than inventing
-        # half a logger here; wiring the real one is part of making
-        # `--pipeline-log` mean something for this path.
-        # THE STAGE-DIRECTORY DECK IS THE FIRST POINT'S when there is an
-        # axis, and it must be: it exists so the job row's script sits where
-        # every generic reader looks, and it is documented as "the same deck
-        # v0/ holds".  Rendering it from the template's own `bias_voltage_v`
-        # instead made it disagree with v0/ -- measured 2026-09-16, the
-        # stage deck saying 0.5 V while v0/ said 0.0.
-        #
-        # `engines/transport.md` § 2a.10: *single bias is the degenerate case
-        # of the bias axis -- one point, normally at zero.*  One mechanism.
-        # The template declares the parameter and answers the one-point case;
-        # a scan is that same parameter taking several values, which is the
-        # framework's own precedence (the template's value ⊕ this point's).
-        _scfg0 = (dataclasses.replace(scfg, bias_voltage_v=float(points[0]))
-                  if points else scfg)
+    for out_dir, volts in targets:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        cfg = (config if volts is None else
+               dataclasses.replace(config, bias_voltage_v=float(volts)))
         with _user_error_as_prep():
             try:
-                spec = _siesta_spec_for(_struct, _scfg0,
+                spec = _siesta_spec_for(struct, cfg,
                                         stage_token=(token or None),
                                         calculation="transport")
             except ValueError as exc:
-                # `transport_spec` refuses an un-tabled rung with a message
+                # `transport_spec` refuses an unknown rung with a message
                 # written FOR a person, and `_user_error_as_prep` translates
                 # only ValidationError / RuntimeConfigError / WrapperError --
-                # deliberately, so a TypeError still looks like the bug it
-                # is.  Without this the carefully worded refusal would reach
-                # the user as a raw traceback the moment the next increment
-                # widens the call site above.
+                # deliberately, so a TypeError still looks like the bug it is.
                 raise PrepError(str(exc)) from exc
-            _sc.prepare_deck(spec, _struct, _scfg0,
-                             _jdir / script, log=_tlog)
-        # A BIAS SCAN'S POINTS each get their own deck, differing only in
-        # the voltage they run at.  The stage-directory deck above is the
-        # EQUILIBRIUM point's, so the job row's script exists where every
-        # generic reader looks.
-        for _v in points:
-            _vdir = _jdir / bias_token(_v)
-            _vdir.mkdir(parents=True, exist_ok=True)
-            _vcfg = dataclasses.replace(scfg, bias_voltage_v=float(_v))
-            with _user_error_as_prep():
-                _vspec = _siesta_spec_for(_struct, _vcfg,
-                                          stage_token=(token or None),
-                                          calculation="transport")
-                _sc.prepare_deck(_vspec, _struct, _vcfg,
-                                 _vdir / script, log=None)
+            _sc.prepare_deck(spec, struct, cfg, out_dir / script, log=_tlog)
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     allocation = _with_notify(
@@ -1546,16 +1541,16 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         res = dataclasses.replace(res, program="tbtrans")
     job = Job(name=stage, script=script, resources=res,
               warm=warm_declaration(stage, task.label, base))
-    # Each bias point's directory gets its own wrapper, beside its own
-    # deck -- the same render the stage-dir deck gets from prep_jobset,
-    # through the same one writer, so a point runs exactly as the stage
-    # would alone (the chain walker only cd's and bashes).
+    # Each bias point's directory gets its own wrapper, beside its own deck
+    # -- the same render `prep_jobset` gives the stage directory, through
+    # the same one writer, so a point runs exactly as the stage would alone
+    # (the chain walker only cd's and bashes).
     for v in points:
         with _user_error_as_prep():
-            from ..runwrap import write_run_wrapper as _wrw
-            _wrw(_jdir / bias_token(v) / script, resources=res, env=env,
-                 emit_sbatch=emit_sbatch, project_dir=base,
-                 machine_record=environment)
+            write_run_wrapper(stage_dir / bias_token(v) / script,
+                              resources=res, env=env,
+                              emit_sbatch=emit_sbatch, project_dir=base,
+                              machine_record=environment)
     js = JobSet(name=task.label, engine=task.engine, kind="ladder",
                 shared=_siesta_shared_package(base), jobs=[job])
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
