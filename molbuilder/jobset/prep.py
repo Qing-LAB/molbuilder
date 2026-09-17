@@ -39,10 +39,9 @@ R8.)*
 from __future__ import annotations
 
 import dataclasses
-import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Sequence
 
 from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize
@@ -174,18 +173,27 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
     Steps, in order:
       1. render each **distinct** ``job.script``'s ``.run.sh`` (and
-         ``.sbatch`` when ``emit_sbatch`` and a scheduler is configured) in
-         the bundle root, from the real file — reusing
-         ``runwrap.write_run_wrapper`` (no reinvention).  The header carries
-         the first-seen job's resources as defaults; ``launch`` overrides
-         per job via CLI flags, so the defaults never decide the answer.
-      2. ``materialize`` — data symlinks (shared package, script, carry).
-      3. symlink each job's wrappers (+ shipped ``mb_monitor.py``) into its
-         ``point-<name>/`` dir, so ``launch`` can ``sbatch``/``bash`` them
-         there.
+         ``.sbatch`` when ``emit_sbatch`` and a scheduler is configured)
+         **in that job's own directory**, beside the deck it launches —
+         reusing ``runwrap.write_run_wrapper`` (no reinvention).  The header
+         carries the first-seen job's resources as defaults; ``launch``
+         overrides per job via CLI flags, so the defaults never decide the
+         answer.  A job that SHARES another's script gets a real copy, not a
+         reference: a run directory holds real files.
+      2. ``materialize`` — the shared package and the warm carry, as real
+         copies into each job directory.
+      3. emit ``STAGE-PLAN.md`` beside the job-set it describes.
 
     Returns the per-job directories.  Raises :class:`PrepError` on an
     invalid JobSet or a script that isn't in the bundle root.
+
+    **This list said something else until 2026-09-16** — wrappers rendered at
+    the bundle root and symlinked into a ``point-<name>/`` dir — which is the
+    design the body deleted on 2026-08-24 (step 1's own header says *IN THE
+    JOB DIR* and step 3's says *(gone)*), and ``point-<name>`` is a directory
+    name ``materialize.job_dir_name`` records retiring before that.  A public
+    entry point whose docstring describes a deleted design misleads at the
+    lines a caller actually reads.
     """
     from ..runwrap import write_run_wrapper
 
@@ -238,12 +246,17 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # still holds its own real copy (L2) -- under the symlink
             # model one root render served every dir by reference, and a
             # directory that references is a directory that does not hold.
-            import shutil as _sh
+            # `_copy2`, not `shutil as _sh`: `_sh` is this function's SHAPE
+            # (line above), and `import shutil as _sh` here rebound that
+            # function-local for the whole body -- so the second job through
+            # this branch handed the shutil MODULE to `trial_work_dir` as a
+            # shape.  One name, two meanings, in one function.
+            from shutil import copy2 as _copy2
             _src_dir = rendered[job.script]
             _stem0 = Path(job.script).stem
             for _fn in (job.script, f"{_stem0}.run.sh", f"{_stem0}.sbatch"):
                 if (_src_dir / _fn).is_file() and not (_jd / _fn).is_file():
-                    _sh.copy2(_src_dir / _fn, _jd / _fn)
+                    _copy2(_src_dir / _fn, _jd / _fn)
             if log is not None:
                 log.note(f"{job.name}: shares {job.script}'s wrapper, "
                          f"copied from {_src_dir.name}/")
@@ -1136,21 +1149,44 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
     # the asymmetry was inside this function, not between two surfaces.
     if kind == "ladder" and stage:
-        from .materialize import prepare_attempt, shape_of as _shape_of
-        _sh = _shape_of(js, base)
-        if _sh is not None and _sh.keeps_attempts_as_directories:
-            # Flat keeps no attempt directories at all (§ 1.5a): its container
-            # IS the run, and `prepare_attempt` refuses it by name.
-            #
-            # Idempotent by `resolve_attempt`'s rule -- reuse the last attempt
-            # until it has been launched, then open the next -- so a caller
-            # that opens one itself (the CLI, passing --from or --cold) lands
-            # on this same directory rather than a second one.
-            prepare_attempt(js, base, stage)
+        _open_attempts(js, base, stage)
 
     if log is not None:
         log.close()
     return dirs
+
+
+def _open_attempts(js: JobSet, base: Path, stage: str,
+                   containers: Sequence[Optional[Path]] = (None,)) -> List:
+    """Open this rung's attempt(s) — **step 6, and both arms take it.**
+
+    Returns the :class:`~molbuilder.jobset.materialize.Attempt` reports, in
+    ``containers`` order, or ``[]`` when the shape keeps no attempts.
+
+    ``containers`` is where each attempt ladder lives. The default — one
+    ``None`` — means the stage's own directory, which is every kind but a
+    transport bias scan; that scan keeps one ladder PER POINT
+    (``04_device/v0.2/run-<n>``; layout ruled 2026-08-29) because the
+    transmission at *v* reads the device at *v*, never another point's
+    converged state.  It is a LIST rather than a flag for that reason: the
+    number of ladders is data the caller already holds, not a shape this
+    function should re-derive.
+
+    Flat keeps no attempt directories at all (§ 1.5a): its container IS the
+    run, and ``prepare_attempt`` refuses it by name — so the shape is asked
+    here once and the refusal never has to fire.
+
+    Idempotent by ``resolve_attempt``'s rule — reuse the last attempt until it
+    has been launched, then open the next — so a caller that opens one itself
+    (the CLI, passing ``--from`` or ``--cold``) lands on this same directory
+    rather than a second one.
+    """
+    from .materialize import prepare_attempt, shape_of as _shape_of
+
+    sh = _shape_of(js, base)
+    if sh is None or not sh.keeps_attempts_as_directories:
+        return []
+    return [prepare_attempt(js, base, stage, container=c) for c in containers]
 
 
 def _require_remote_activation(target: Optional[str], environment) -> None:
@@ -1253,10 +1289,23 @@ def _resolve_transport(base, task, stage: str, allocation,
     `engines/transport.md` § 3.2 measured as *"a second conductor that
     decides"* can hand its deciding back to the one that already exists.
 
-    Returns the rung's :class:`~molbuilder.config.siesta.SiestaConfig`. What
-    is gained over assembling it by hand is **provenance**: every value says
-    whether the template, the stage or a pin set it, which is the whole of
-    what `--pipeline-log` had nothing to print.
+    Returns the rung's :class:`~molbuilder.resolve.ResolvedConfig` — **the
+    whole element, not just its values**. What is gained over assembling it by
+    hand is **provenance**: every value says whether the template, the stage or
+    a pin set it, which is the whole of what `--pipeline-log` had nothing to
+    print.
+
+    THE RESOURCES RIDE ON THE ELEMENT, and returning ``element.values`` alone
+    dropped them (found 2026-09-16). `resolve` folds two riders onto each
+    element's resources — ``continue_retries`` and ``use_gpu``, both config
+    answers that the WRAPPER reads — and this arm rebuilt the allocation by
+    hand afterwards, so neither ever arrived. Measured: ``SiestaConfig``
+    defaults them to ``1`` and ``False`` while ``Resources`` defaults both to
+    ``None``, so every transport wrapper rendered with no warm-retry loop at
+    all, and ``use_gpu`` fell back to GREPPING the deck for ``Diag.ELPA.GPU``
+    — the SIESTA-keyword re-derivation `execution/gpu.md` G7 deleted. That is
+    `resolve.py`'s own A-5 finding (*"travels the whole way was true of one
+    road out of two"*) opening a third road.
     """
     from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
@@ -1323,7 +1372,7 @@ def _resolve_transport(base, task, stage: str, allocation,
         log.produced("elements", f"{len(ps)} (a run, not a sweep)")
         for _name, _src in sorted(element.provenance.items()):
             log.chose(_name, getattr(element.values, _name, None), _src)
-    return element.values
+    return element
 
 
 def _prep_transport(base_dir, stage: Optional[str] = None, *,
@@ -1485,10 +1534,27 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # partition the NEGF block is built from.
         struct, label = composed.sorted.structure, task.label
 
-    # (ii) THE CONFIG: the template ⊕ this rung's overrides, with
+    # (ii) THE ALLOCATION, folded BEFORE the resolve and not after.
+    #
+    # The description's own queue/wall/memory ask and its reporting policy are
+    # part of the allocation `resolve` is handed -- that is the order the
+    # shared arm takes, and the reason is that `resolve` FOLDS RIDERS ONTO
+    # WHAT IT IS GIVEN (`_resolve_transport`'s own note).  Folding afterwards
+    # meant resolve saw a bare `Resources()` and the element's answer was
+    # thrown away, so the two mistakes cancelled and neither was visible.
+    allocation = _with_notify(
+        _under_description(allocation, task.allocation, chosen), task.notify)
+
+    # (iii) THE CONFIG: the template ⊕ this rung's overrides, with
     # provenance recording which source set each value.
-    config = _resolve_transport(base, task, stage,
-                                allocation or Resources(), log=_tlog)
+    element = _resolve_transport(base, task, stage,
+                                 allocation or Resources(), log=_tlog)
+    # WHAT THE DECK WRITER IS HANDED is values ⊕ the allocation-marked fields
+    # (`ResolvedConfig.render_config`), the same object every other kind's
+    # emitter gets.  Rendering from bare `.values` left the emitter blind to
+    # the rank count and the memory ceiling it is supposed to record.
+    config = element.render_config()
+    res = element.resources
     if label != task.label:
         config = dataclasses.replace(config, system_label=label)
 
@@ -1500,7 +1566,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     _transport_provide_pseudos(composed.sorted.structure, config, base,
                                citation)
 
-    # (iii) THE DECKS.  A bias scan renders one per point, a single-bias
+    # (iv) THE DECKS.  A bias scan renders one per point, a single-bias
     # calculation one -- and the stage directory always holds the FIRST
     # point's, because that is where every generic reader looks for a job's
     # script and § 2a.11 documents it as "the same deck v0/ holds".
@@ -1510,10 +1576,14 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # declares the parameter and answers the one-point case, and a scan is
     # that same parameter taking several values.
     points = bias_points(task) if stage in ("device", "transmission") else ()
-    targets = [(stage_dir, points[0] if points else None)]
-    targets += [(stage_dir / bias_token(v), v) for v in points]
+    # ONE SPELLING of where a bias point lives.  Three steps below need it --
+    # the deck, the wrapper and the attempt ladder -- and each composed it
+    # itself until 2026-09-16, which is three chances to disagree about a
+    # directory name.
+    point_dirs = [(stage_dir / bias_token(v), v) for v in points]
 
-    for out_dir, volts in targets:
+    for out_dir, volts in ([(stage_dir, points[0] if points else None)]
+                           + point_dirs):
         out_dir.mkdir(parents=True, exist_ok=True)
         cfg = (config if volts is None else
                dataclasses.replace(config, bias_voltage_v=float(volts)))
@@ -1531,9 +1601,6 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             _sc.prepare_deck(spec, struct, cfg, out_dir / script, log=_tlog)
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
-    allocation = _with_notify(
-        _under_description(allocation, task.allocation, chosen), task.notify)
-    res = allocation or Resources()
     if stage == "transmission":
         # TBtrans post-processes the device run FROM THE SAME DECK TEXT,
         # so the binary cannot be read off the deck -- it rides the
@@ -1541,13 +1608,23 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         res = dataclasses.replace(res, program="tbtrans")
     job = Job(name=stage, script=script, resources=res,
               warm=warm_declaration(stage, task.label, base))
+
+    # BEFORE ANYTHING IS WRITTEN, and that is the whole point of the check.
+    # It stood after the per-point wrapper loop below until 2026-09-16, so
+    # `prep run device --target sol` against a record that states no
+    # activation wrote one wrapper per bias point carrying THIS machine's
+    # activation and only then refused -- and the refusal's own premise
+    # (`_require_remote_activation`: *"refused HERE rather than substituted
+    # downstream"*) is that those files must not exist.
+    _require_remote_activation(target, environment)
+
     # Each bias point's directory gets its own wrapper, beside its own deck
     # -- the same render `prep_jobset` gives the stage directory, through
     # the same one writer, so a point runs exactly as the stage would alone
     # (the chain walker only cd's and bashes).
-    for v in points:
+    for point_dir, _v in point_dirs:
         with _user_error_as_prep():
-            write_run_wrapper(stage_dir / bias_token(v) / script,
+            write_run_wrapper(point_dir / script,
                               resources=res, env=env,
                               emit_sbatch=emit_sbatch, project_dir=base,
                               machine_record=environment)
@@ -1556,9 +1633,38 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
                            ladder=frozenset(s.name for s in task.stages))
     js.write(base / JOBSET_FILENAME)
-    _require_remote_activation(target, environment)
-    return prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=base, machine_record=environment)
+    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
+                       record_dir=base, log=_tlog, machine_record=environment)
+    # STEP 6, through the SAME door the shared arm uses.  `prep` is what sets
+    # a stage up to run: `_launch_dir` refuses a hierarchical stage with no
+    # attempt open precisely because opening one is not `launch`'s job, and
+    # this arm ended at `prep_jobset` until 2026-09-16 -- so a transport prep
+    # from the browser (`web/blueprints/build.py` calls `prep_calculation`
+    # directly) reported success and handed back a folder the launcher would
+    # not take, naming the command that had just run.  The CLI compensated
+    # and no other caller could.
+    #
+    # A scan's containers are this arm's one genuine difference -- one attempt
+    # ladder per point (`04_device/v0.2/run-<n>`), because the transmission at
+    # v reads the device at v -- and they are DATA on the call rather than a
+    # shape the helper re-derives.
+    #
+    # THE DAG GATHER IS NOT HERE, deliberately.  `gather_transport_inputs`
+    # copies the upstream rungs' products in, and its three gates refuse an
+    # upstream that has not CONCLUDED -- so calling it here would make `prep
+    # run device` fail until the leads had actually run, and you could no
+    # longer render the device deck to READ it before spending the queue.
+    # That is the split `prepare_attempt` names in its own words ("preparing
+    # is still design and the split from starting is what gives you somewhere
+    # to look before committing cluster time"), so the gather stays where the
+    # chain is assembled.  It runs on the CLI road only, which is a real gap
+    # on the browser road and a question about what `prep` MEANS, not a
+    # defect to close by widening it here.
+    _open_attempts(js, base, stage,
+                   containers=[d for d, _ in point_dirs] or (None,))
+    if _tlog is not None:
+        _tlog.close()
+    return dirs
 
 
 def gather_transport_inputs(base_dir, task, stage: str,

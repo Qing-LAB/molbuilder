@@ -1236,11 +1236,15 @@ class TestTheGather:
         # electrode_L has an OPEN attempt -- deck in place, product even
         # written, but no conclusion marker: launched-and-still-running
         # (or force-stopped) must refuse exactly like never-launched.
-        stage_dir = calc / "02_electrode_L"
-        run0 = stage_dir / "run-0"
-        run0.mkdir()
-        shutil.copy2(stage_dir / "T_02_electrode_L.fdf",
-                     run0 / "T_02_electrode_L.fdf")
+        #
+        # PREP OPENS THE ATTEMPT AND LAYS THE DECK IN, since 2026-09-16 --
+        # it did not until then, on the transport arm only, so this test
+        # built `run-0` by hand.  Only the half-written product is the
+        # test's own now; the rest is what prep really produces.
+        run0 = calc / "02_electrode_L" / "run-0"
+        assert (run0 / "T_02_electrode_L.fdf").is_file(), (
+            "prep must open the rung's attempt and bring its deck in -- "
+            "a folder with no attempt is one `launch` refuses")
         (run0 / "T_L-electrode.TSHS").write_bytes(b"\0half-written\0")
         dest = tmp_path / "d"
         dest.mkdir()
