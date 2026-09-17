@@ -252,13 +252,40 @@ guarded.** **485 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, and 485 once `help` moved out —
 the only fall in the series, and it came from deleting a home rather than from
 adding a check).
-**Nothing compares the two homes today, and this paragraph said the opposite
-until 2026-09-16.** It read *"`tests/test_catalogue_agreement.py` compares every
-one of them on every run, so the two cannot drift apart without a red test
-naming the item and the key"* — which stopped being true on 2026-09-10, when
-`082ba979` retired `test_every_mirrored_fact_agrees` in a sweep aimed at tests
-that assert where code lives. That file says so in its own docstring; only this
-sentence, the one a reader of the contract acts on, was left standing.
+**The six mirrored facts are compared on every run** — `MIRRORED` plus
+`workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
+the item and the key and printing both values. What it does **not** do is
+compare every key: `restart` declares `kind = deck` in the shared catalogue row
+and `produce` on the PySCF dataclass, correctly, and a blanket check would have
+to know that exception. `kind`, `default` and `expands` are therefore unguarded,
+and the `use_gpu` divergence below is one of those.
+
+*This paragraph claimed the comparison existed while it did not, from 2026-09-10
+to 2026-09-17.* `082ba979` retired the test in a sweep aimed at tests that
+assert where code lives; the file said so in its own docstring and this
+sentence — the one a reader of the contract acts on — went on promising the
+guard. Restored 2026-09-17, scoped to what was actually claimed, and
+mutation-tested: widening `mesh_cutoff`'s range on the class alone turns it red.
+
+**And there is a SECOND duplication this section has never named: 20 field
+names are declared in both `SiestaConfig` and `TransportConfig`** — `basis_size`,
+`xc_functional`, `xc_authors`, `max_memory_mb`, `negf_eq_pole_ev`,
+`negf_neq_eta_ev`, `elecs_bulk`, the six `tbt_*` flags, `tbt_k_grid`,
+`tbt_spin`, `tbt_elecs_eta_ev`, `tbt_contours_eta_ev`, `tbt_t_eig`, and the
+three `transmission_*` items (measured 2026-09-17). This is class-against-class,
+not catalogue-against-class, so `MIRRORED` does not reach it and neither does
+the test above — and `default`, the key that matters most here, is not a
+mirrored fact in the first place.
+
+It has already cost a run. `negf_eq_pole_ev` was corrected to `0.0` on the
+SIESTA class on 2026-09-16 and left at `1.5` on the transport class, which is
+18 poles against TranSIESTA's minimum of 20 at the 300 K the same config ships
+— so every deck rendered through `transiesta.render_script` stopped before the
+SCF loop. Fixed 2026-09-17; `max_memory_mb` (`None` against `8000`) is the one
+remaining divergence and is inert, because the live seam resolves the SIESTA
+class and only the legacy renderer reads the transport one. **Whether that
+second renderer should exist at all is the open question** — a home that
+nothing reads is a home that drifts until something does.
 
 The cost is measured, not hypothetical: on 2026-09-14 a fix to the dataclass
 half of `engine`'s `item_kind` passed three tests while the catalogue half
@@ -955,10 +982,21 @@ keyword, so tell me what it is.*
 
 The catalogue is the master (§ 2.1), but the live form still reads the
 dataclass, so the same fact has two homes until that debt is paid (§ 2.1a).
-`tests/test_template_roundtrip.py` derives items from the classes and compares;
-`tests/test_catalogue_agreement.py` compares the mirrored facts. **Editing one
-home and not the other is caught, loudly, by name** — which is the only reason
-the duplication is survivable.
+
+**What is caught, and what is not — and the difference matters most for the two
+keys this section is about.** `test_every_mirrored_fact_agrees` compares the six
+mirrored facts (`label`, `range`, `unit`, `choices`, `engine_key`,
+`workflow_group`) and goes red naming the item and the key. **`kind` and
+`anchor` are not compared**, because `restart` declares `kind = deck` in the
+shared catalogue row and `produce` on the PySCF dataclass, correctly, and no
+document states that exception. `tests/test_template_roundtrip.py` checks that
+every field *declares* a kind, not that the two homes agree on it.
+
+So for the keys in the table above, **editing one home and not the other is
+caught by nothing**, and that is not hypothetical: § 2.1a records 2026-09-14,
+when a fix to the dataclass half of `engine`'s `item_kind` passed three tests
+while the catalogue half stayed wrong, and only a mutation test noticed. Edit
+both, and read the diff — the guard you have is the six facts, not these two.
 
 #### Recipes — the four cases, end to end
 

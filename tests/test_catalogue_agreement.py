@@ -21,24 +21,26 @@ That breaks D3 (*each value is stored once*), and D3's own reasoning says what
 happens next: *"then a hand edit of one is silently ignored — the file
 disagreeing with itself."*
 
-**So this file is the interim contract** -- but READ WHAT IT STILL CHECKS.
-It used to say it made drift "impossible … without a red test naming the item
-and the key". That stopped being true on 2026-09-10, when `082ba979` retired
-`test_every_mirrored_fact_agrees` in a sweep aimed at tests that assert where
-code lives. Nothing compares the two homes on any key today; `MIRRORED` and
-`RENAMED` below are read only by the debt count in `test_doc_claims.py`.
+**So this file is the interim contract**, and drift in the six mirrored facts
+goes red naming the item and the key -- :func:`test_every_mirrored_fact_agrees`.
+Between 2026-09-10 and 2026-09-17 it did not: `082ba979` retired that test in a
+sweep aimed at tests that assert where code lives, and nothing compared the two
+homes on any key, while `template.md` §§ 5.1 and 6.0 went on saying the
+comparison was *"the only reason the duplication is survivable"*. The cost of
+the gap was measured on 2026-09-14 -- a fix to the dataclass half of `engine`'s
+`item_kind` passed three tests while the catalogue half stayed wrong, and only
+a mutation test noticed.
 
-What survives here is narrower: category ORDER, declared TYPE, orphan items,
-and panel presence. The cost of the gap was measured on 2026-09-14 -- a fix to
-the dataclass half of `engine`'s `item_kind` passed three tests while the
-catalogue half stayed wrong, and only a mutation test noticed.
+Beside it: category ORDER, declared TYPE, orphan items, and panel presence.
 
-**Restoring a blanket agreement check would be wrong**, which is why this note
-and not a test: `restart` legitimately declares `deck` in the shared catalogue
-row and `produce` in the PySCF dataclass, because it expands three keywords on
-SIESTA and none on PySCF. Of 109 shared items that is the only `kind`
-disagreement, and it is correct. An agreement test would have to know that,
-and no document states the exception.
+**A BLANKET agreement check would still be wrong**, and the restored one is
+deliberately not that. `restart` declares `kind = deck` in the shared catalogue
+row and `produce` in the PySCF dataclass, correctly, because it expands three
+keywords on SIESTA and none on PySCF; of 109 shared items that is the only
+`kind` disagreement, and no document states the exception. `kind` is not in
+:data:`MIRRORED`. The six facts that ARE there have no legitimate exception --
+measured 2026-09-17, zero disagreements across both engines -- so the check
+needs to know about nothing.
 
 When the form moves onto the catalogue, the metadata is deleted and this file
 goes with it.
@@ -97,6 +99,79 @@ def test_the_category_agrees_in_ORDER_not_only_in_membership(engine, cls):
             bad.append(f"{f.name}: class={tuple(f.metadata['category'])} "
                        f"catalogue={tuple(item.category)}")
     assert not bad, "category order disagrees:\n  " + "\n  ".join(bad)
+
+
+def _same(a, b) -> bool:
+    """Compare two spellings of one fact.  A list and a tuple of the same
+    values are the same fact: TOML gives the catalogue a list where the field
+    metadata is written as a tuple, and that difference is the file format's,
+    not the parameter's."""
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return tuple(a) == tuple(b)
+    return a == b
+
+
+def _declared(v) -> bool:
+    """Is this side carrying a value at all?  Absent is not a disagreement."""
+    return v not in (None, "", (), [])
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_every_mirrored_fact_agrees(engine, cls):
+    """THE GUARANTEE THREE SECTIONS OF THE CONTRACT PROMISE.
+
+    `template.md` § 6.0 says editing one home and not the other is *"caught,
+    loudly, by name -- which is the only reason the duplication is
+    survivable"*, and § 5.1 says this file *"keeps the two in step"*.  Between
+    2026-09-10 and 2026-09-17 neither was true: `082ba979` retired this test
+    in a sweep aimed at tests that assert where code lives, and 485 facts sat
+    in two homes with nothing comparing them.  Restored, and scoped to the
+    thing that was actually claimed.
+
+    **Why this exists** (the admission question, and the answer has to be a
+    failure nothing else catches): a surface reads these six facts off
+    whichever home it came through.  `range` disagreeing means a form accepts
+    a value the other door then refuses; `choices` disagreeing means a valid
+    setting is rejected depending on the tab; `engine_key` disagreeing means
+    the deck gets a different keyword.  And `workflow_group` is measured, not
+    hypothetical -- § 2.1a records twenty-three fields whose control sat on
+    one card while their findings landed on another, because the panels were
+    filled in on the catalogue side only.  No other test compares these keys.
+
+    **Why SCOPED and not blanket.**  This file's header argues a blanket
+    agreement check would be wrong, and it is right: `restart` declares
+    `kind = deck` in the shared catalogue row and `produce` on the PySCF
+    dataclass, correctly, because it expands three keywords on SIESTA and
+    none on PySCF -- and no document states that exception.  `kind` is not in
+    :data:`MIRRORED`.  This compares the six facts the contract names, where
+    there is no legitimate exception and, measured today, no disagreement.
+
+    **One-sided is NOT a failure.**  Five PySCF items carry a catalogue label
+    and no class copy, which is the debt being PAID -- one home, the direction
+    `help` went in 2026-09-16 when 150 duplicated strings were deleted.  A
+    test that demanded both sides carry a copy would push the count up and
+    call it progress.
+    """
+    cat = _catalogue()
+    bad = []
+    for f in dataclasses.fields(cls):
+        item = cat.get(f.name)
+        if item is None:
+            continue
+        for ckey in MIRRORED + tuple(RENAMED):
+            fkey = RENAMED.get(ckey, ckey)
+            cv, fv = getattr(item, ckey, None), f.metadata.get(fkey)
+            if not (_declared(cv) and _declared(fv)):
+                continue
+            if not _same(cv, fv):
+                bad.append(f"{f.name}.{ckey}: catalogue={cv!r} class={fv!r}"
+                           + (f"  (class spells it {fkey!r})"
+                              if fkey != ckey else ""))
+    assert not bad, (
+        f"the two homes disagree for {engine}, by item and key:\n  "
+        + "\n  ".join(bad)
+        + "\n\nThe CATALOGUE is the master (`template.md` § 2.1): fix the "
+          "dataclass metadata unless the catalogue row is the wrong one.")
 
 
 
