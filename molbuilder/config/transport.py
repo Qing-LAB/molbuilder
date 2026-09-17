@@ -241,8 +241,6 @@ class TransportConfig:
         # pseudopotential-scale atom counts).
         "choices": ("transiesta",),
         "engine_key": '(molbuilder: backend selector)',
-        "help":    "NEGF transport engine.  TranSIESTA: periodic "
-                   "junctions with pseudopotentials, GGA/LDA.",
     })
     job_name: str = field(default="transport", metadata={
         "section":   "System",
@@ -251,10 +249,6 @@ class TransportConfig:
         "id_suffix": "job-name",
         "pattern":   r"^[A-Za-z0-9_\-]+$",
         "engine_key": '(transiesta) SystemLabel / (molbuilder) filename basename',
-        "help":      "filesystem-safe basename for emitted files "
-                     "(transport.py + transport.json + transmission.dat).  "
-                     "Same rule as SIESTA SystemLabel / PySCF job_name "
-                     "-- see docs/execution/job-contracts.md.",
         "validate":  _validate_basename("job_name"),
     })
 
@@ -323,12 +317,6 @@ class TransportConfig:
         "unit":    "eV",
         "range":   (-10.0, 0.0),
         "engine_key": '%block TBT.Contour.window -> from  (transiesta)',
-        "help":    "lower edge of the T(E) energy window.  Relative "
-                   "to E_F when ``transmission_relative_to_ef`` is on "
-                   "(the default).  ±2 eV is the standard window for "
-                   "low-bias junction characterisation; widen for high-"
-                   "bias or for sigma-states / resonances further from "
-                   "E_F.",
     })
     transmission_emax_ev: float = field(default=2.0, metadata={
         "section": "Transmission",
@@ -337,8 +325,6 @@ class TransportConfig:
         "unit":    "eV",
         "range":   (0.0, 10.0),
         "engine_key": '%block TBT.Contour.window -> to  (transiesta)',
-        "help":    "upper edge of the T(E) energy window.  See "
-                   "``transmission_emin_ev`` for sign conventions.",
     })
     transmission_n_points: int = field(default=401, metadata={
         "section": "Transmission",
@@ -346,12 +332,6 @@ class TransportConfig:
         "label":   "Energy grid points",
         "range":   (51, 4001),
         "engine_key": '%block TBT.Contour.window -> points  (transiesta)',
-        "help":    "number of evenly-spaced energies at which T(E) is "
-                   "computed.  Resolution = (emax - emin) / (N - 1); "
-                   "default 401 over a 4 eV window = 10 meV/point, "
-                   "fine enough to resolve typical Au-thiol "
-                   "transmission features in the ±1 V conductance "
-                   "window.",
     })
     #: NOT EMITTED, and not rendered -- `UNRESOLVED_FIELDS` below.
     #:
@@ -386,18 +366,6 @@ class TransportConfig:
             "workflow_group": "stage",
             "label":   "Transverse k-grid for T(E)  (0 0 0 = inherit the SCF's)",
             "engine_key": 'TBT.k  (tbtrans)',
-            "help":    "THE CONVERGENCE KNOB THIS TAB COULD NOT EXPRESS "
-                       "until 2026-09-15.  tbtrans inherits the SCF's "
-                       "kgrid_Monkhorst_Pack, and a grid converged for a "
-                       "total ENERGY is routinely far too coarse for "
-                       "transmission: T(E) is an integral over the "
-                       "transverse Brillouin zone and its features sharpen "
-                       "with k-density.  The standard study is T(E_F) "
-                       "against this grid with everything else fixed -- so "
-                       "it is usually DENSER than the SCF's, and the "
-                       "transport direction stays 1.  0 0 0 inherits, "
-                       "which is the old behaviour and rarely the right "
-                       "answer.",
         })
     # ================= Spin channel =================
     #
@@ -419,10 +387,6 @@ class TransportConfig:
         "range":   (0, 2),
         "tier":    "advanced",
         "engine_key": 'TBT.Spin  (tbtrans)',
-        "help":    "1 selects spin-up and 2 spin-down; 0 (the engine's "
-                   "default) does both.  Only meaningful for a "
-                   "spin-polarised device run, which the chemistry "
-                   "analysis flags when it finds an open-shell metal.",
     })
 
     # ================= Broadening =================
@@ -435,11 +399,6 @@ class TransportConfig:
         "range":   (0.0, 1.0),
         "tier":    "advanced",
         "engine_key": 'TBT.Elecs.Eta  (tbtrans)',
-        "help":    "the imaginary part in the lead surface Green "
-                   "function.  The manual's default is 1 meV.  It sets "
-                   "the T(E) LINESHAPE: too large smears resonances "
-                   "into a featureless curve, too small turns them into "
-                   "numerical noise.",
     })
     tbt_contours_eta_ev: float = field(default=0.0, metadata={
         "section": "Broadening",
@@ -449,10 +408,6 @@ class TransportConfig:
         "range":   (0.0, 1.0),
         "tier":    "advanced",
         "engine_key": 'TBT.Contours.Eta  (tbtrans)',
-        "help":    "broadening on tbtrans's own energy contour.  0 "
-                   "leaves the engine's default, min(eta_electrode)/10 "
-                   "-- a FORMULA that tracks the field above, so a "
-                   "number here decouples them.",
     })
 
     # ================= Outputs =================
@@ -468,26 +423,18 @@ class TransportConfig:
         "workflow_group": "stage",
         "label":   "Green-function DOS",
         "engine_key": 'TBT.DOS.Gf  (tbtrans)',
-        "help":    "writes the device DOS from the full Green function, "
-                   "bound states included (DOS / AVDOS files).",
     })
     tbt_dos_a: bool = field(default=False, metadata={
         "section": "Outputs",
         "workflow_group": "stage",
         "label":   "Spectral DOS per electrode",
         "engine_key": 'TBT.DOS.A  (tbtrans)',
-        "help":    "writes the spectral-function DOS, i.e. the DOS each "
-                   "lead injects (ADOS / AVADOS).  This is what a "
-                   "per-lead PDOS plot reads.",
     })
     tbt_dos_elecs: bool = field(default=False, metadata={
         "section": "Outputs",
         "workflow_group": "stage",
         "label":   "Bulk electrode DOS",
         "engine_key": 'TBT.DOS.Elecs  (tbtrans)',
-        "help":    "writes the pristine bulk lead DOS (BDOS / AVBDOS) -- "
-                   "the reference a transmission feature is judged "
-                   "against.",
     })
     tbt_t_eig: int = field(default=0, metadata={
         "section": "Outputs",
@@ -495,11 +442,6 @@ class TransportConfig:
         "label":   "Transmission eigenchannels",
         "range":   (0, 20),
         "engine_key": 'TBT.T.Eig  (tbtrans)',
-        "help":    "how many transmission EIGENVALUES to write (TEIG / "
-                   "AVTEIG).  0 is the engine's default.  The "
-                   "eigenchannel decomposition is what says WHICH "
-                   "orbital carries the current, and it is the usual "
-                   "next question after T(E).",
     })
     tbt_t_bulk: bool = field(default=False, metadata={
         "section": "Outputs",
@@ -507,8 +449,6 @@ class TransportConfig:
         "label":   "Bulk transmission",
         "tier":    "advanced",
         "engine_key": 'TBT.T.Bulk  (tbtrans)',
-        "help":    "writes each lead's own bulk transmission (BTRANS) -- "
-                   "the ballistic ceiling the junction is compared to.",
     })
     tbt_t_all: bool = field(default=False, metadata={
         "section": "Outputs",
@@ -516,10 +456,6 @@ class TransportConfig:
         "label":   "All electrode pairs",
         "tier":    "advanced",
         "engine_key": 'TBT.T.All  (tbtrans)',
-        "help":    "writes every ordered electrode pair rather than "
-                   "assuming T_ij = T_ji.  For two terminals at "
-                   "equilibrium the assumption holds; under bias, or "
-                   "with three or more leads, it does not.",
     })
 
     # ================= NEGF density contour =================
@@ -547,11 +483,6 @@ class TransportConfig:
         "range":   (0.1, 10.0),
         "tier":    "advanced",
         "engine_key": 'TS.Contours.Eq.Pole  (transiesta)',
-        "help":    "the energy at which the equilibrium contour's poles "
-                   "sit, which fixes how many Matsubara poles the "
-                   "residue sum carries.  The manual's default, 1.5 eV, "
-                   "is the production value; raising it costs poles and "
-                   "buys accuracy in the occupied density.",
     })
     negf_neq_eta_ev: float = field(default=0.0, metadata={
         "section": "NEGF density contour",
@@ -561,11 +492,6 @@ class TransportConfig:
         "range":   (0.0, 1.0),
         "tier":    "advanced",
         "engine_key": 'TS.Contours.nEq.Eta  (transiesta)',
-        "help":    "imaginary part on the non-equilibrium (real-axis) "
-                   "contour.  0 leaves the engine's own default, which "
-                   "is min[eta_electrode]/10 -- a FORMULA, so a number "
-                   "here replaces it rather than restating it.  Only "
-                   "relevant under bias.",
     })
     # `TS.Contours.nEq.Fermi.Cutoff` WITHDRAWN 2026-09-15.  It was added
     # here on 2026-09-15 with `"unit": "eV"` and `"range": (0.0, 10.0)`,
@@ -587,11 +513,6 @@ class TransportConfig:
         "label":   "Use the electrode's own bulk Hamiltonian",
         "tier":    "advanced",
         "engine_key": 'TS.Elecs.Bulk  (transiesta)',
-        "help":    "on (the manual's default), the lead region uses the "
-                   "Hamiltonian from the ELECTRODE calculation; off, it "
-                   "uses the scattering region's own elements there.  On "
-                   "is right whenever the electrode really is bulk-like, "
-                   "which is what the region labels assert.",
     })
     # `bloch` WITHDRAWN 2026-09-15 -- a control that could only do harm.
     # It wrote `bloch` into `%block TS.Elec.<name>` and NOTHING else in
@@ -639,10 +560,6 @@ class TransportConfig:
         "tier":    "advanced",
         "choices": ("SZ", "SZP", "DZ", "DZP", "TZP"),
         "engine_key": 'PAO.BasisSize  (transiesta)',
-        "help":    "(engine=transiesta only) PAO basis for every stage "
-                   "of the transport ladder — electrode, seed and device "
-                   "share it by construction.  In the transport composite "
-                   "this is filled from the cited junction's own .fdf.",
     })
     energy_shift_ry: float = field(default=0.01, metadata={
         "section": "Electronic contract",
@@ -664,10 +581,6 @@ class TransportConfig:
         "tier":    "advanced",
         "choices": ("LDA", "GGA", "VDW"),
         "engine_key": 'XC.functional  (transiesta)',
-        "help":    "(engine=transiesta only) exchange-correlation family; "
-                   "shared by every stage of the transport ladder.  In "
-                   "the transport composite this is filled from the cited "
-                   "junction's own .fdf.",
     })
     xc_authors: str = field(default="PBE", metadata={
         "section": "Electronic contract",
@@ -675,10 +588,6 @@ class TransportConfig:
         "label":   "XC authors",
         "tier":    "advanced",
         "engine_key": 'XC.authors  (transiesta)',
-        "help":    "(engine=transiesta only) the flavour within the XC "
-                   "family (PBE, revPBE, CA, ...); shared by every stage "
-                   "of the transport ladder.  In the transport composite "
-                   "this is filled from the cited junction's own .fdf.",
     })
 
     siesta_mesh_cutoff_ry: int = field(default=300, metadata={
@@ -714,9 +623,6 @@ class TransportConfig:
         "unit":    "MB",
         "range":   (1000, 256000),
         "engine_key": '(runner) ulimit -v',
-        "help":    "soft memory ceiling for the engine.  The runner "
-                   "applies it as `ulimit -v`, and SIESTA-MPI splits "
-                   "the budget across MPI ranks.",
     })
     num_threads: int = field(default=4, metadata={
         "section": "Runtime",

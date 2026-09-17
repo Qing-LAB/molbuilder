@@ -708,7 +708,11 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         stages=_stages,
         kind=kind,
         type=type_,
-        help=str(f.metadata.get("help", "") or ""),
+        # THE CATALOGUE FIRST -- `help_for` is the one home for what a user
+        # reads, and a dataclass keeps its own copy only for the few fields
+        # that have no row.  This read the copy until 2026-09-16, when there
+        # were two of them and they had drifted apart on 149 of 158 fields.
+        help=(help_for(f.name) or str(f.metadata.get("help", "") or "")),
         default=(f.default if f.default is not dataclasses.MISSING else None),
         anchor=(anchor if kind == "engine" else ""),
         # The FULL spelling, whatever the kind -- a wrapper or produce item
@@ -1353,6 +1357,41 @@ def _item_from(name: str, body: Any) -> Item:
     )
 
 
+@functools.lru_cache(maxsize=1)
+def _help_index() -> Dict[str, str]:
+    """``{item name: help}`` from the master catalogue, read once."""
+    try:
+        return {i.name: (i.help or "") for i in catalogue().items}
+    except Exception:                                        # noqa: BLE001
+        return {}          # a broken catalogue must not break a form or --help
+
+
+def help_for(name: str, *, first_paragraph: bool = False) -> str:
+    """The catalogue's help for one item — **the one home for what a user reads.**
+
+    Every surface that shows a person what a setting means asks this, rather
+    than reading the copy in a config dataclass's ``metadata["help"]``. There
+    were two homes until 2026-09-16 and they had drifted to 149 of 158 fields
+    carrying different text, so which version somebody saw depended only on
+    which door they came through: the Build tab read the catalogue, the
+    Spectra and Transport tabs read the dataclass, and ``--help`` read the
+    dataclass too.
+
+    ``first_paragraph`` takes the opening sentence only, which is what a CLI
+    option line wants — the catalogue's entries carry per-tier tables and
+    worked consequences below that, and a `--help` screen is not where those
+    belong. Item names are unique across the catalogue, so no engine argument
+    is needed to resolve one.
+
+    Returns ``""`` for a name the catalogue does not declare; the caller then
+    falls back to whatever it has (a handful of fields have no row).
+    """
+    text = _help_index().get(name, "")
+    if first_paragraph and text:
+        return text.split("\n\n", 1)[0].strip()
+    return text
+
+
 def template_fields(config_cls) -> set:
     """The field names a TEMPLATE may carry — the schema minus the machine
     facts.
@@ -1583,7 +1622,7 @@ def config_from_template(text: str, config_cls):
 #: hard-code them or reach past this line (audit § 1.5).
 __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "Item", "Template",
-           "declaration_for", "declarations_for",
+           "declaration_for", "declarations_for", "help_for",
            "select", "one",
            "CATALOGUE", "catalogue", "load_catalogue",
            "template_with_values",

@@ -230,18 +230,28 @@ Both questions this section used to pose are now answered.
 
 **What a config class still carries.** In principle: a name, a Python type, and
 its validators — enough to hold a value on the way to the engine. In practice it
-still carries copies of the template's facts — `label`, `help`, `range`,
-`unit`, `choices`, `engine_key` and `workflow_group`, which is
+still carries copies of the template's facts — `label`, `range`, `unit`,
+`choices`, `engine_key` and `workflow_group`, which is
 `tests/test_catalogue_agreement.py`'s `MIRRORED` set and the one place that
 list is defined — because two consumers still read them off the class rather
 than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
-**That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **613 facts live in two places** (measured 2026-08-20, re-counted
-2026-09-15 when the transport kind's 17 rows landed;
-307 when this was written, and the growth is the point — the debt compounds
-with every parameter added).
+**`help` is no longer among them** *(2026-09-16)*. It is the fact a user
+actually reads, and it had the worst drift of the six: 149 of 158 fields
+carried different text in the two homes, so which version somebody saw
+depended only on which door they came through — the Build tab read the
+catalogue, the Spectra and Transport tabs read the dataclass, and `--help`
+read the dataclass too. Every surface now asks `template.help_for`, and the
+150 duplicated strings are deleted. Eight fields keep their own copy because
+they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
+`log_level`); `help_for` returns `""` for those and the caller falls back.
+
+**The rest of that duplication is the debt, and it is measured rather than
+guarded.** **485 facts live in two places** (measured 2026-08-20 at 307, 618
+on 2026-09-15 when the transport rows landed, and 485 once `help` moved out —
+the only fall in the series, and it came from deleting a home rather than from
+adding a check).
 **Nothing compares the two homes today, and this paragraph said the opposite
 until 2026-09-16.** It read *"`tests/test_catalogue_agreement.py` compares every
 one of them on every run, so the two cannot drift apart without a red test

@@ -59,7 +59,12 @@ ENGINES = [("siesta", SiestaConfig), ("pyscf", PySCFConfig)]
 #: ``category`` is compared as a set — the catalogue writes a list and the
 #: metadata a tuple, and the ORDER is meaningful (first = the panel), so it is
 #: compared as a sequence rather than a set.
-MIRRORED = ("help", "range", "unit", "choices", "label", "engine_key")
+#: ``help`` left this set on 2026-09-16: every surface now asks
+#: ``template.help_for`` and the 150 duplicated strings are gone, so it is no
+#: longer a fact with two homes.  It was the worst of the six -- 149 of 158
+#: fields carried different text -- and the count below fell for the first
+#: time when it went.
+MIRRORED = ("range", "unit", "choices", "label", "engine_key")
 
 #: Facts the catalogue spells one way and a dataclass field spells another.
 #: ``group`` is the CARD, and the two homes are read by different consumers:

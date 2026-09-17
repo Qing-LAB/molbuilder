@@ -59,13 +59,27 @@ class TestFieldMetadata:
             assert "section" in f.metadata, f"{f.name}: missing section"
             assert "label"   in f.metadata, f"{f.name}: missing label"
 
-    def test_every_field_has_help(self):
-        """Help text drives both the UI tooltip and the Methods-text
-        generator; a missing help means a knob ships undocumented."""
-        for f in fields(TransportConfig):
-            assert "help" in f.metadata, f"{f.name}: missing help"
-            assert len(f.metadata["help"]) > 10, \
-                f"{f.name}: help is too short to be useful"
+    def test_every_field_the_form_offers_has_help(self):
+        """A knob must not ship undocumented -- asserted where the user READS it.
+
+        This checked `f.metadata["help"]` until 2026-09-16, which was the
+        wrong place twice over: it is not what the form serves, and it was the
+        DUPLICATE home. The catalogue row is the one home now, and the
+        dataclass keeps a copy only for the handful of fields that have no
+        row -- so a per-field metadata assertion would fail on exactly the
+        fields that are correct.
+
+        What matters is the property, not where it is stored: everything the
+        form offers arrives carrying help.
+        """
+        from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+        schema = dataclass_to_form_schema(TransportConfig, "t")
+        offered = [f for s in schema.get("sections", [])
+                   for f in s.get("fields", [])]
+        assert offered, "no fields served -- this test would pass vacuously"
+        for f in offered:
+            assert len(f.get("help", "")) > 10, (
+                f"{f['name']}: the form offers it with no usable help")
 
     def test_sections_match_declared_order(self):
         declared = set(TransportConfig._form_section_order)

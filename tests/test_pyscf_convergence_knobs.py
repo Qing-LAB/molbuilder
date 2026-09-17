@@ -71,7 +71,10 @@ def test_the_field_exists_with_ui_metadata():
     # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.conv_tol_grad"
     assert f.metadata["label"]
-    assert f.metadata["help"]
+    # The help lives in the CATALOGUE since 2026-09-16 -- one home, asked
+    # through `template.help_for`, which is what every surface reads.
+    from molbuilder.template import help_for
+    assert help_for("scf_conv_tol_grad")
     # Tightens stage-to-stage, exactly like the energy tolerance it
     # qualifies -- not a one-off profile choice.
     assert f.metadata["workflow_group"] == "stage"
@@ -141,7 +144,10 @@ def test_soscf_field_exists_with_ui_metadata():
     # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.newton()"
     assert f.metadata["label"]
-    assert f.metadata["help"]
+    # The help lives in the CATALOGUE since 2026-09-16 -- one home, asked
+    # through `template.help_for`, which is what every surface reads.
+    from molbuilder.template import help_for
+    assert help_for("scf_conv_tol_grad")
     # An SCF-algorithm choice made with the system, like level_shift.
     assert f.metadata["workflow_group"] == "profile"
 

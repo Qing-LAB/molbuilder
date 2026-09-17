@@ -28,6 +28,8 @@ import contextlib
 import json
 import os
 import sys
+
+from . import template as _T
 import tempfile
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
@@ -130,7 +132,15 @@ def add_dataclass_options(cls, *,
                 continue
 
             flag = "--" + prefix + fld.name.replace("_", "-")
-            help_text = fld.metadata.get("help") or fld.metadata.get("label") or ""
+            # THE CATALOGUE, not the dataclass's copy -- `template.help_for`
+            # is the one home for what a user reads, and `--help` is one of
+            # the surfaces that used to read the other one.  The first
+            # paragraph only: the catalogue entries carry per-tier tables
+            # below it, which belong in the form's disclosure and not on an
+            # option line.
+            help_text = (_T.help_for(fld.name, first_paragraph=True)
+                         or fld.metadata.get("help")
+                         or fld.metadata.get("label") or "")
             choices = fld.metadata.get("choices")
 
             ann = resolved_hints.get(fld.name, fld.type)

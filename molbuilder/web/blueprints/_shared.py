@@ -20,7 +20,6 @@ contracts.
 from __future__ import annotations
 
 import dataclasses
-import functools
 import math
 import re
 import typing
@@ -744,22 +743,15 @@ def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
     }
 
 
-@functools.lru_cache(maxsize=1)
-def _catalogue_help_map() -> Dict[str, str]:
-    """``{item name: help}`` from the master catalogue, read once.
-
-    Names are unique across the catalogue (they ARE the `[item.<name>]`
-    keys), so no engine argument is needed to resolve one.
-    """
-    from molbuilder.template import catalogue
-    try:
-        return {i.name: (i.help or "") for i in catalogue().items}
-    except Exception:                                        # noqa: BLE001
-        return {}                # a broken catalogue must not break the form
-
-
 def _catalogue_help(name: str) -> str:
-    return _catalogue_help_map().get(name, "")
+    """The catalogue's help — asked of `template.help_for`, the one home.
+
+    This kept its own cached index for a few hours; the CLI then needed the
+    same lookup, and a second copy of "where does help come from" is the
+    duplication this whole change is about.
+    """
+    from molbuilder.template import help_for
+    return help_for(name)
 
 
 def _field_to_schema(f: dataclasses.Field,

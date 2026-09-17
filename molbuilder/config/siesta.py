@@ -318,8 +318,6 @@ class SiestaConfig:
         "label":    "System label (output prefix)",
         "engine_key":  'SystemLabel',
         "id_suffix": "system-label",
-        "help":     "FDF SystemLabel; output files get this prefix.  "
-                    "Must match [A-Za-z0-9_-]+ (job-layout v1; no dots).",
         "pattern":  r"^[A-Za-z0-9_\-]+$",
         "validate": _validate_basename("system_label"),
     })
@@ -354,7 +352,6 @@ class SiestaConfig:
         "engine_key":  'PAO.BasisSize',
         "choices": ("SZ", "SZP", "DZ", "DZP", "DZDP",
                     "TZ", "TZP", "TZDP", "TZTP"),
-        "help": "Size of the numerical-orbital basis, roughest to tightest.  S/D/T = single / double / triple zeta (radial functions per valence orbital); P/DP/TP = one / two / three polarisation shells.\nDZP is the production default and what most published SIESTA work uses.  SZ and SZP are screening-grade only.  Go to TZP or beyond for vibrational frequencies, weak interactions and anything where basis-set superposition error matters.\nCost grows steeply -- each step up roughly multiplies the orbital count, and diagonalisation scales as its cube.  All nine are accepted by SIESTA 5.4.2 (basis_specs.f::size_name); the manual's option list mentions only four, which is why four of these were missing here until 2026-08-15.",
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "category": ("method", "accuracy"),
@@ -376,12 +373,6 @@ class SiestaConfig:
         # energies converge to within a few meV instead of tens.
         # Loosen back to 0.02 only for screening; tighten to 0.005
         # for phonon / vibrational work.
-        "help":  """How diffuse the PAO orbitals are, in Ry: the energy rise that defines each orbital's cutoff radius.  Smaller = more diffuse = more accurate = slower.
-Per-tier (Ry):
-  0.05    fast screening only
-  0.01    production (this project's default)
-  0.005   accuracy-critical: band gaps, weak interactions, vdW
-DEVIATION: SIESTA's own default is 0.02 Ry.  This catalogue starts at 0.01, because its targets are molecules and metal-molecule junctions, where the more diffuse tails are what set adsorption geometry and level alignment.""",
     })
 
     # Mesh cutoff lives in the "Basis & grid" section in the form
@@ -410,14 +401,6 @@ DEVIATION: SIESTA's own default is 0.02 Ry.  This catalogue starts at 0.01, beca
         # picking a low-but-not-tiny value see a soft nudge.
         "range": (100.0, 1000.0),
         "tier":  "basic",
-        "help":  """Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses for Hartree + XC potentials, via the plane-wave-equivalent kinetic-energy cutoff.
-Per-tier (Ry):
-  150      screening (sanity-check only)
-  200-250  loose preopt
-  350      publishable -- forces stable to < 0.01 eV/Ang on organic + Au
-  500+     tight / vibrational -- egg-box noise below 0.001 eV/Ang
-           (600 for first-row elements)
-Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule systems; the validator warns below that floor.  Egg-box noise sets the floor for vibrational work — test by varying ±50 Ry.  See docs/engines/tuning.md § 2.6.""",
     })
 
     # XC
@@ -428,25 +411,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         "label":   "XC functional family",
         "engine_key":  'XC.functional',
         "choices": ("LDA", "GGA", "VDW"),
-        "help":    "XC functional family.  GGA (default) is the safe "
-                   "production choice for organic / biomolecule work + "
-                   "metals; LDA over-binds (bond lengths ~2-3% too "
-                   "short, energies ~10 kcal/mol off); VDW adds a "
-                   "non-local dispersion kernel and matters for "
-                   "non-covalent / vdW-stacked systems (DNA bases, "
-                   "MOFs).  IMPORTANT: the pseudopotential MUST match "
-                   "the functional family -- a PBE pseudo on an LDA "
-                   "calculation (or vice versa) silently gives wrong "
-                   "bond lengths.  PseudoDojo ships separate families "
-                   "for PBE / PBEsol / LDA -- pick the matching set.\n"
-                   "DEVIATION: SIESTA's own default is LDA; this "
-                   "catalogue starts at GGA.  The reason is the over-binding above -- "
-                   "LDA's systematic error is large enough that essentially "
-                   "no current published work on molecules or biomolecules "
-                   "uses it for production geometries.  GGA/PBE has been the "
-                   "baseline since Perdew, Burke & Ernzerhof, Phys. Rev. "
-                   "Lett. 77, 3865 (1996).  LDA remains here because it is "
-                   "cheap and legitimate for screening.",
     })
     xc_authors: str = field(default="PBE", metadata={
         "category": ("method",),
@@ -462,22 +426,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         # unusual values via the Python API.
         "choices": ("PBE", "PBEsol", "revPBE", "RPBE", "BLYP",
                     "CA", "PZ", "PW", "DRSLL", "LMKLL"),
-        "help":    "XC parameterisation within the family.  GGA: PBE "
-                   "(default, all-purpose), PBEsol (better lattice "
-                   "constants for solids), revPBE / RPBE (better "
-                   "thermochemistry, slightly different binding), "
-                   "BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / "
-                   "LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, "
-                   "default), PZ, PW.  This name MUST match what your "
-                   "pseudopotential was generated for -- mismatched "
-                   "XC + pseudo gives silently-wrong bond lengths.  "
-                   "PseudoDojo organises downloads by this name.\n"
-                   "DEVIATION: SIESTA's own default is PZ, which is the LDA "
-                   "parameterisation that goes with its LDA default family.  "
-                   "This catalogue starts at PBE because it ships GGA -- the two "
-                   "move together, and a family and a parameterisation that "
-                   "do not belong to each other is not a configuration "
-                   "SIESTA implements.  Change one and check the other.",
     })
 
     # SCF
@@ -491,10 +439,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         "label": "Solution method",
         "engine_key":  'SolutionMethod',
         "choices": ("diagon", "OMM", "transiesta"),
-        "help": """Which solver produces the density matrix each SCF step.
-  diagon      standard diagonalisation, O(N^3) -- the default, and right for almost everything this project runs
-  OMM         order-N; worth it only for systems beyond ~500 atoms
-  transiesta  non-equilibrium transport; requires the TranSIESTA build""",
     })
     mixing_weight: float = field(default=0.02, metadata={
         "category": ("convergence",),
@@ -507,7 +451,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         "engine_key":  'SCF.Mixer.Weight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  'How much of each new SCF solution is mixed in.  SIESTA\'s own default is 0.25; this catalogue starts at 0.02, deliberately, because the systems it targets (metal junctions, open-shell metals) leave the convergence basin at high weights.  The manual backs the direction: "a low value ... is more likely to converge", at the cost of more SCF steps, and the value is "heavily system dependent".\nFIRST THING TO TRY when the SCF oscillates -- lower this before touching anything else (manual: "experimentation with the mixing weight is preferred as a first resort").\nOrganic molecules with no metal converge happily at 0.1-0.25 and will run in far fewer steps; raise it if your system is well-behaved.',
     })
     pulay_history: int = field(default=8, metadata={
         "category": ("convergence",),
@@ -520,7 +463,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         "engine_key":  'SCF.Mixer.History',
         "range": (0, 20),
         "tier":  "advanced",
-        "help":  'How many previous SCF steps the mixer uses to predict the next one.  Higher = steadier convergence, at a few vectors of memory.\n8 because SIESTA\'s manual puts 2-6 in a band where "a too low value (say 2-6) might change the convergence properties a lot", advises "around 6 or above", and notes that two different high values barely differ -- so 8 buys the manual\'s advice with margin, at a cost the manual says is negligible.\nDEVIATION: SIESTA\'s own default is 2.\nRaise to 12-20 if the SCF still oscillates AFTER lowering the mixing weight -- the weight is the first thing to try (manual: "experimentation with the mixing weight is preferred as a first resort").\n',
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "category": ("accuracy",),
@@ -530,14 +472,6 @@ Below 150 Ry the forces / energies are noticeably wrong on organic / biomolecule
         "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
-        "help":  """Density-matrix element convergence threshold for the inner SCF loop.  Forces are derived from the converged density -- sloppy SCF -> noisy forces -> optimizer thrashes.
-Per-tier (dimensionless):
-  1e-3   screening (sanity-check only)
-  1e-4   loose preopt / publishable
-  1e-5   tight (vib / IR / accurate forces)
-  1e-6   very-tight (band structure, phonons)
-DEVIATION: SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
-Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you want at convergence.  See docs/engines/tuning.md § 2.5.""",
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "category": ("accuracy",),
@@ -547,7 +481,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "engine_key":  'DM.EnergyTolerance',
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
-        "help": "How little the total FREE energy must change between SCF cycles before that cycle counts as settled.\nONLY HAS AN EFFECT WHEN THE SWITCH BELOW IS ON.  SIESTA reads this value either way and then ignores it: read_options.F90 loads it into tolerance_FreeE, and siesta_forces.F90 installs it as a criterion only `if (converge_FreeE)`.  Until 2026-08-15 molbuilder wrote this line and never wrote the switch, so the control looked live and could not change any result.\n1e-4 eV is SIESTA's own default, and pairs sensibly with a 1e-5 density-matrix tolerance -- the intent is that the energy test is not the thing that stops you first.",
     })
     # PAIRED WITH THE TOLERANCE ABOVE, and adjacent on purpose: the tolerance
     # does nothing without this switch, and a user meeting one without the
@@ -561,7 +494,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "label": 'Also require the free energy to settle',
         "engine_key":  'SCF.FreeE.Converge',
         "tier":  "advanced",
-        "help": 'Whether the SCF must ALSO see the free energy settle, not just the density matrix.  Off by default, as in SIESTA.\nHOW SIESTA DECIDES AN SCF IS CONVERGED: it checks several things each cycle and requires ALL THE ENABLED ONES to pass -- a plain AND (scfconvergence_test.F).  Density-matrix change, Hamiltonian change and energy-density-matrix change are ON by default; free-energy and Harris-energy convergence are OFF.  So turning this on can only make the SCF stop LATER.  It never makes a result wrong; it refuses to accept one early.\nWHEN IT EARNS ITS COST: systems with many electronic states near the Fermi level -- metals, metal-molecule junctions, and large periodic cells where the spectrum is dense -- especially at a raised ELECTRONIC temperature (the ElectronicTemperature smearing, not the MD temperature).  There the free energy carries an entropy term (F = E - TS) large enough that the density-matrix criterion can go quiet while the energy is still drifting.  For a molecule with a clear HOMO-LUMO gap this changes nothing but the runtime.\nTHE COST LANDS WHERE THE BENEFIT DOES: those are the same systems with the most expensive SCF cycles, so budget for more of them and check max_scf_iter before turning this on.\nSOURCES: the AND-combination, the per-criterion defaults and the gating are from SIESTA 5.4.2\'s source and manual (see engines/template.md 10b).  The F = E - TS argument and the dense-spectrum reasoning are standard DFT, not statements the manual makes; the manual says only that the smearing temperature is "useful specially for metals".',
     })
     max_scf_iter: int = field(default=1000, metadata={
         "category": ("convergence",),
@@ -574,7 +506,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "engine_key":  'MaxSCFIterations',
         "range": (10, 5000),
         "tier":  "advanced",
-        "help": 'INNER loop: the most self-consistency cycles SIESTA will run inside ONE geometry step.  A relaxation runs at most relax_steps outer steps, and each of those runs at most this many inner cycles (or until DM.Tolerance is met).\n1000 is SIESTA\'s own default, and it is the right guard HERE because this catalogue ships mixing_weight 0.02 against SIESTA\'s 0.25: the manual says a low weight "may result in high number of SCF steps but is more likely to converge", so a run that is converging normally needs more cycles than a stock one.\nThis is a RUNAWAY GUARD, not a budget -- the budget is wall time and continue_retries.  The two failure modes are not symmetric: too high wastes some CPU on a run that was going to fail anyway, while too low KILLS A CONVERGING RUN at the cap and throws away that whole geometry step, which compounds over 200 outer steps.  With a 0.02 mixing weight, several hundred cycles is normal for a metal junction -- do not read this number as a target.',
     })
     # A MEASUREMENT'S SWITCH, adjacent to the cap it modifies: what SIESTA
     # does when max_scf_iter is hit without convergence -- abort (its own
@@ -594,7 +525,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "optional": True,
         "engine_key":  'SCF.MustConverge',
         "tier":  "advanced",
-        "help": "What SIESTA does when a geometry step's SCF loop hits max_scf_iter without meeting its tolerances: abort the run (SIESTA's own default, true), or accept the unconverged density and CONTINUE with a warning (false).\nLeave it unset for ordinary work -- an unconverged density means the forces are noise, and a relaxation that keeps walking on noise wastes every step after the first bad one.  The abort is protecting your budget, not enforcing bureaucracy.\nTHE ONE ORDINARY REASON TO SET false: a run that is a MEASUREMENT rather than a result.  A benchmark trial deliberately caps the SCF at a few cycles to time an iteration (project-layout.md section 3.2's pins); with the abort left on, every properly-capped trial ends in ABNORMAL_TERMINATION and the timing machinery must read a 'failed' run.  The bench pins set this false so a capped trial ends cleanly as the single-point measurement it is.  Until 2026-08-19 this keyword had no catalogue item at all -- the retired deck-splicer used to invent the line -- so no described trial could say it, and no sweep could ever produce a verdict (its every point classified incomplete).",
     })
     electronic_temperature: float = field(default=300.0, metadata={
         # PRIMARY category `system`, not `accuracy` (2026-08-15, user).  The
@@ -613,32 +543,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  "How sharply the electronic states fill at the Fermi "
-                 "level -- the width of the Fermi-Dirac smearing.\n"
-                 "THIS IS NOT THE TEMPERATURE OF YOUR SIMULATION.  It is a "
-                 "property of the ELECTRONS and it applies to every run "
-                 "type, including a 0 K geometry relaxation with no atomic "
-                 "motion at all.  Do not confuse it with 'Initial "
-                 "temperature' / 'Target temperature', which are about how "
-                 "fast the ATOMS move and are read only by Verlet / Nose "
-                 "molecular dynamics.  The two are independent: a metal "
-                 "needs smearing whether or not its atoms are moving.\n"
-                 "WHY IT EXISTS: in a metal, states sit right at the Fermi "
-                 "level and swap occupancy between SCF cycles, so the "
-                 "density oscillates and never settles.  Smearing lets "
-                 "states be partially occupied, which damps that.  A "
-                 "molecule with a clear HOMO-LUMO gap does not need it, "
-                 "and for such a system the value barely matters.\n"
-                 "RAISE IT (1000-2000 K) for a metal or a metal-molecule "
-                 "junction whose SCF will not converge -- after lowering "
-                 "the mixing weight, which is the first thing to try.  "
-                 "LOWER IT toward 0 only for an insulator where you want "
-                 "strictly integer occupations.\n"
-                 "COST: a raised smearing temperature adds an entropy term "
-                 "to the free energy (F = E - TS), which is what makes the "
-                 "free-energy convergence criterion worth turning on for "
-                 "exactly these systems -- see 'Also require the free "
-                 "energy to settle'.  300 K is SIESTA's own default.",
     })
 
     # k-grid -- Tuple field with custom CLI parsing; not auto-generated
@@ -662,23 +566,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
-        "help":  ("Monkhorst-Pack sampling of the Brillouin zone, one count "
-                  "per axis.\n"
-                  "  1x1x1          an isolated molecule -- only Gamma "
-                  "matters\n"
-                  "  4x4x4 - 8x8x8  a periodic 3D crystal\n"
-                  "  n x n x 1      a slab; no sampling along the vacuum "
-                  "axis\n"
-                  "\n"
-                  "Cost scales linearly with the number of k-points.  "
-                  "Converge by raising the density ~1.5x per axis: the total "
-                  "energy should move less than 1 meV/atom.\n"
-                  "\n"
-                  "SIESTA reports an EQUIVALENT CUTOFF for whatever mesh you "
-                  "give -- a length that says how dense the sampling really "
-                  "is.  That number, not the counts, is what makes two "
-                  "DIFFERENT cells comparable: the same 4x4x4 on a small and "
-                  "a large cell samples them differently."),
         "skip_cli": True,
         # Bounds PER COMPONENT (validation/metadata.py); the form puts
         # them on each of the three inputs so 0 or -4 cannot be typed.
@@ -721,24 +608,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
             # numbers) and says so as a programmer bug.  ``kgrid`` has the same
             # shape and the same omission.  The [0, 1) bound is per component,
             # so it lives in the validator below.
-            "help": (
-                "Shifts the k-point mesh off Gamma, one value per axis, in "
-                "units of the mesh spacing.  [0,0,0] is Gamma-centred.\n"
-                "\n"
-                "  0.0    Gamma-centred.  Required for a 1x1x1 mesh (an "
-                "isolated molecule), and the safe choice for ODD meshes, "
-                "which already contain Gamma.\n"
-                "  0.5    The classic Monkhorst-Pack shift.  Use on EVEN "
-                "meshes -- it samples better than a Gamma-centred grid of "
-                "the same size, and matters most for metals.\n"
-                "\n"
-                "Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves "
-                "the third on Gamma -- which is what a slab wants when the "
-                "third axis is vacuum.\n"
-                "\n"
-                "TRANSPORT: SIESTA forces this to 0 along the transport "
-                "direction, whatever you set, because that direction is "
-                "sampled at one k-point."),
             "skip_cli": True,
             # Per component.  ADVISORY and inclusive, so the browser box is
             # [0, 1]; the exact half-open rule ([0, 1) and the 1-point-axis
@@ -774,23 +643,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
-        "help": (
-            "MD/relax algorithm.  Per-tier guidance:\n"
-            "  • CG       — robust for loose warm-up stages (far from "
-            "minimum, large forces).  No memory cost.  Oscillates near "
-            "a minimum on stiff / coupled systems (metals, interfaces, "
-            "vdW stacks).\n"
-            "  • Broyden  — quasi-Newton; best for publishable / tight "
-            "stages on organic-on-metal interfaces, surfaces, "
-            "anything where CG oscillates.\n"
-            "  • FIRE     — MD-inspired; robust on rough landscapes "
-            "(random builder guesses).\n"
-            "  • Verlet/Nose — NOT geometry relax; finite-T MD only.\n"
-            "  • none     — single-point (skip MD block entirely).\n"
-            "Recommended workflow: stage 1 CG (warm-up) → stage 2 "
-            "Broyden (refine).  See docs/engines/tuning.md "
-            "§ 2.1 for full algorithm comparison + citations."
-        ),
     })
     relax_steps: int = field(default=200, metadata={
         "category": ("procedure",),
@@ -807,27 +659,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "engine_key":  'MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)',
         "range": (1, 10000),
         "tier":  "advanced",
-        "help": (
-            "OUTER loop: max geometry steps the optimiser is allowed "
-            "(each step = full SCF + forces + atom move). Which keyword "
-            "carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE "
-            "relax and bound the loop with ``MD.Steps``; Verlet / Nose "
-            "integrate and bound it with ``MD.FinalTimeStep`` instead "
-            "(SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn "
-            "1-5 use MD.InitialTimeStep..MD.FinalTimeStep). ``MD.Steps`` "
-            "DEPRECATES the older ``MD.NumCGsteps``, whose CG-prefixed "
-            "name hid that it was never CG-only. Per-tier: loose warm-up "
-            "~50, publishable ~200, tight (vib/IR) ~100 (small "
-            "displacement cap = slow but few steps from a "
-            "publishable-converged starting geometry). See "
-            "docs/engines/tuning.md § 2.10. A well-behaved relaxation "
-            "converges in 30-150 steps, so 200+ is a safety cap rather "
-            "than a target -- it is there to stop a run that is not going "
-            "to converge, not to describe one that is. For molecular "
-            "dynamics the count is not a cap but a duration: steps x "
-            "timestep is the timescale you actually sample, so pick it "
-            "from the physics you want to see."
-        ),
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "category": ("accuracy",),
@@ -838,24 +669,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "id_suffix": "force-tol",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  (
-            "Force-tol stop criterion: max unconstrained atomic force "
-            "below which the relaxation declares success.  Ignored by "
-            "Verlet/Nose (those are MD, not relax).\n"
-            "Per-tier (eV/Å): screening 0.10, loose preopt 0.05, "
-            "publishable 0.04 (Gaussian-OPT default), tight (vib/IR) "
-            "0.01, very-tight (NEB barrier) 0.001.\n"
-            "DEVIATION: SIESTA's own default is 0.04 eV/Å -- the "
-            "'publishable' row above.  This catalogue starts at 0.02, twice as "
-            "tight, because a relaxation that stops at the loose end leaves "
-            "residual forces big enough to contaminate a frequency "
-            "calculation run on top of it, and re-relaxing afterwards costs "
-            "more than the extra steps did.  For a single-point or a "
-            "screening pass, 0.04 is the engine's own answer.\n"
-            "SIESTA only checks max force.  See docs/engines/"
-            "tuning.md § 2.3 for the 5-criteria "
-            "geomeTRIC/Gaussian convention + citations."
-        ),
     })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),
@@ -866,29 +679,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help": (
-            "Displacement cap per optimiser step (Å). Applies across CG, "
-            "Broyden AND FIRE. Hard ceiling that catches line-search "
-            "over-shoot. ``MD.MaxDispl`` DEPRECATES the older "
-            "``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 "
-            "Bohr default, and the CG-prefixed name was never CG-only. "
-            "DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this "
-            "catalogue starts at 0.05 Å, about half. The cap only ever "
-            "LIMITS a step, so a smaller one costs steps and never "
-            "accuracy -- and the oscillation below is what a too-large "
-            "cap looks like. Raise it back toward 0.2 Å for a cheap first "
-            "pass on a structure that starts far from its minimum. "
-            "Per-tier (Å): screening 0.30, loose preopt 0.20, publishable "
-            "0.05, tight (vib/IR) 0.02. Symptom of too-large cap: "
-            "max-force oscillates rather than descends (e.g. 0.09 → 0.44 "
-            "→ 0.13 → 0.31 → ...). Halve the cap. See "
-            "docs/engines/tuning.md § 2.2 + the BDT/Au worked example in "
-            "§ 6. It is a hard ceiling that catches line-search "
-            "over-shoot, not a target. The symptom of one set too large "
-            "is a maximum force that oscillates instead of descending "
-            "(0.09 -> 0.44 -> 0.13 -> 0.31 ...); halve the cap and "
-            "continue."
-        ),
     })
 
     # ``continue_retries`` -- the warm-retry budget.  It arrived here when
@@ -928,11 +718,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
                           "install time; never an .fdf line and never an "
                           "sbatch flag)",
         "tier":           "advanced",
-        "help":           "How many extra relaxation batches the wrapper "
-                          "may run when a job hits its step cap without "
-                          "converging: it re-enters SIESTA with --continue "
-                          "from the current .XV.  Total step budget = "
-                          "relax_steps x (1 + continue_retries).",
     })
 
     # ---- Verlet / Nose dynamics (only emitted when relax_type is in
@@ -960,24 +745,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  ("Temperature the initial atomic velocities are drawn "
-                  "for, in Verlet / Nose molecular dynamics.  IGNORED by "
-                  "CG / Broyden / FIRE geometry relaxation -- those don't "
-                  "have velocities to seed.\n"
-                  "THIS IS ABOUT THE ATOMS, not the electrons.  It is a "
-                  "different quantity from 'Electronic temperature "
-                  "(smearing)', which shares the word and the unit and "
-                  "nothing else: that one sets how sharply electronic "
-                  "states fill at the Fermi level and applies to every "
-                  "run type, including this one.  Setting them to match "
-                  "means nothing -- an MD at 0 K still needs electronic "
-                  "smearing if the system is metallic.\n"
-                  "DEVIATION: SIESTA's own default is 0 K, i.e. start from "
-                  "rest.  This catalogue starts at 300 K because a run seeded at "
-                  "0 K spends its opening picoseconds simply acquiring "
-                  "thermal motion, and 300 K is both room temperature and "
-                  "the condition most reported simulations are run at.  Set "
-                  "it to 0 deliberately if you want the cold start."),
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
         "category": ("procedure",),
@@ -990,8 +757,6 @@ Rule of thumb: keep SCF tol ~10x tighter than the force-precision target you wan
         "null_label": "(use MD.InitialTemperature)",
         "range":      (0.0, 5000.0),       # mirror md_initial_temperature
         "tier":  "advanced",
-        "help":  """Nose-Hoover NVT target temperature (K).  Used ONLY by Nose dynamics; CG / Broyden / FIRE / Verlet ignore it.  Defaults to md_initial_temperature when unset.
-REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and the run QUENCHES instead of equilibrating.""",
     })
     md_length_timestep: float = field(default=1.0, metadata={
         "category": ("procedure",),
@@ -1004,11 +769,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),
         "tier":  "advanced",
-        "help":  ("integration timestep for Verlet/Nose dynamics (fs).  "
-                  "1.0 fs is SIESTA's default and works for systems "
-                  "without H; bonded H typically needs 0.5 fs for "
-                  "stable energy conservation.  IGNORED by CG / "
-                  "Broyden / FIRE geometry relaxation."),
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)
@@ -1045,20 +805,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
                        "flow that reads <JOB>.chk and "
                        "<JOB>_optimized.xyz.  Not a single engine key on "
                        "either)"),
-        "help": (
-            'Whether this run starts from what is already in the folder.\n'
-            '  continue  -- read it (the default).  Nothing there is not an '
-            "error: the engine starts from the deck's own coordinates.\n"
-            '  clean     -- ignore it and start over, OVERWRITING what is there '
-            'as the run proceeds.\n'
-            "Which files that means is the engine's own: SIESTA reads .XV / .DM "
-            '/ .CG, PySCF reads <JOB>_optimized.xyz and <JOB>.chk.\n'
-            'Continuing is the default because a run you start in a folder that '
-            'already holds a result is a run you started after looking at that '
-            'result.  To keep the old state, save it first with `molbuilder '
-            'checkpoint save` -- the launcher warns before a clean run overwrites '
-            'anything and stops unless you pass --force.'
-        ),
     })
 
     # ``use_save_dm`` / ``use_save_cg`` / ``use_save_xv`` are DELETED here
@@ -1096,29 +842,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "profile",
         "label": "Wrap atoms into cell",
         "engine_key":  '(molbuilder: pre-emission positioning)',
-        "help": "Move any atom that sits outside the cell box back inside "
-                "it, by shifting it a whole number of cell vectors.\n"
-                "MOLBUILDER DOES THIS, NOT SIESTA.  It rewrites the "
-                "coordinates that get written into the .fdf, so what you "
-                "see in the deck is what ran.  In a periodic crystal it "
-                "changes nothing physical: shifting an atom by a whole "
-                "lattice vector lands it on an identical position, so the "
-                "energy and forces are the same.  It just keeps the "
-                "numbers tidy and comparable between runs.\n"
-                "WHEN TO TURN IT OFF: a MOLECULE that straddles a cell "
-                "face.  Wrapping moves only the atoms that stuck out, so "
-                "the molecule is split -- half at one edge of the box, "
-                "half at the opposite edge.  The physics is still right "
-                "for a periodic calculation, but the structure LOOKS torn "
-                "in the viewer, and anything that measures geometry "
-                "directly from the coordinates (bond lengths, a centre of "
-                "mass, an RMSD against another frame) reads the "
-                "box-crossing distance instead of the real one.  If your "
-                "system is one molecule in a vacuum box, or a slab with an "
-                "adsorbate near an edge, turn this off.\n"
-                "It has no effect when the cell was built from the "
-                "structure itself: that path already centres the atoms in "
-                "the box, so nothing is outside to fold back.",
     })
     # (center_in_vacuum removed: centring is intrinsic to the structure-derived
     # vacuum box -- render_fdf centres the molecule via resolve_cell_origin.)
@@ -1133,9 +856,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "label": "Verbose inline comments",
         "engine_key":  '(molbuilder: comment-block control in the generated input)',
-        "help": (
-        "Emit inline tuning hints and a Troubleshooting block in the "
-        "generated script, in whatever comment syntax that engine uses."),
     })
 
     # The ``stage`` FIELD left this schema 2026-08-12 (C7): a stage's
@@ -1154,37 +874,12 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write forces each step",
-        "help": 'Write the atomic forces into the main .out at every '
-                'relaxation or MD step, so the force history can be read '
-                'back from the log.\n'
-                'DEVIATION: SIESTA ships this off; we ship it on.  A '
-                'relaxation whose force history was not recorded cannot be '
-                'diagnosed afterwards -- "did it descend or oscillate?" is '
-                'the first question about any run that did not converge, and '
-                'the answer costs a few lines of text per step.\n'
-                'It does NOT control the .FA file.  This help said "write '
-                'forces to the .FA file (required for relaxation)" until '
-                '2026-08-15 and both halves were wrong: the manual says the '
-                'last step\'s forces "can be found in the file .FA" whatever '
-                'this flag is set to, and a relaxation runs perfectly well '
-                'without either.',
             "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
         "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write coordinates each step",
-        "help": 'Write the atomic coordinates into the main .out at every '
-                'relaxation or MD step.\n'
-                'DEVIATION: SIESTA defaults this to LongOutput (off unless '
-                'you asked for verbose output); we ship it on, for the same '
-                'reason as the force history -- the .out is the one file that '
-                'always survives, so the trajectory should be recoverable '
-                'from it alone.\n'
-                'CAUTION -- IT HAS A SIDE EFFECT ON ANOTHER KEYWORD: '
-                'WriteMDXmol (the .ANI animation file) defaults to '
-                '`.not. WriteCoorStep` (read_options.F90), so turning this ON '
-                'turns .ANI OFF unless WriteMDXmol is set explicitly.',
             "engine_key":  'WriteCoorStep',
     })
     write_coor_xmol: bool = field(default=True, metadata={
@@ -1193,17 +888,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "label": "Write XMOL .xyz",
         "engine_key":  'WriteCoorXmol',
-        "help": 'Write an extra <label>.xyz holding the FINAL atomic '
-                'coordinates, in Angstrom whatever input format was used, '
-                'readable by XMol / JMol / Molden.\n'
-                'DEVIATION: SIESTA ships this off; we ship it on, because a '
-                'finished relaxation whose result is only inside the .out '
-                'has to be re-extracted before anything else can open it.\n'
-                'ONE STRUCTURE, NOT A MOVIE.  This help promised ".xyz of '
-                'every relaxation step (movie viewer)" until 2026-08-15; the '
-                'manual is explicit that the file holds the final '
-                'coordinates.  The per-step animation file is .ANI, and it '
-                'comes from a different keyword (WriteMDXmol).',
     })
     write_md_history: bool = field(default=True, metadata={
         "category": ("procedure",),
@@ -1211,22 +895,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "label": "Write MD history (.MD/.MDE)",
         "engine_key":  'WriteMDhistory',
-        "help": 'Accumulate the trajectory into <label>.MD -- positions and '
-                'velocities (and cell, for a variable cell) at every step, '
-                'written UNFORMATTED for post-processing -- plus <label>.MDE, '
-                'a short per-step line of energy, temperature and the like.  '
-                'Both are appended across runs, so a restarted job extends '
-                'them rather than replacing them.\n'
-                'DEVIATION: SIESTA ships this off; we ship it on, because it '
-                'is the only complete record of what the trajectory did.\n'
-                'IT DOES NOT WRITE .ANI.  The label and this help said '
-                '"Write .ANI trajectory ... (xcrysden / vmd / OVITO)" until '
-                '2026-08-15 and that was wrong: read_options.F90 binds this '
-                'keyword to `writmd`, which write_md_record.F routes to '
-                '`iomd` (the .MD file).  .ANI is written by `pixmol` under '
-                '`writpx`, which is the separate WriteMDXmol keyword.\n'
-                'NOTE the .MD file is unformatted, so it is not something a '
-                'viewer opens directly.',
     })
     # THE .ANI FILE, which molbuilder silently switched off for two years.
     # Added 2026-08-15 (user) after the deviation sweep traced why no run
@@ -1239,24 +907,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "label": "Write XMOL animation (.ANI)",
         "engine_key":  'WriteMDXmol',
-        "help": 'Accumulate every step\'s coordinates into <label>.ANI, a '
-                'plain-text multi-frame .xyz in Angstrom that xcrysden, VMD '
-                'and OVITO open directly as an animation.  Appended across '
-                'runs, so a restart extends it.\n'
-                'WHY THIS IS A SWITCH AND NOT JUST ON: SIESTA defaults it to '
-                '`.not. WriteCoorStep` (read_options.F90) -- the two keywords '
-                'are coupled, and nothing in the form said so.  Because this '
-                'project ships WriteCoorStep on, that default resolved to OFF '
-                'and no molbuilder run ever wrote a .ANI, while the form '
-                'advertised one on a different control (fixed the same day).  '
-                'Setting it explicitly is the only way to stop one keyword '
-                'silently deciding another.\n'
-                'MOLBUILDER DOES NOT READ THIS FILE.  Trajectory coordinates '
-                'come from <label>.MD.nc, which carries full double precision '
-                'rather than text; .ANI is listed among a run\'s files but '
-                'never parsed.  So it is purely for opening the trajectory in '
-                'an external viewer -- turn it off if disk matters and you do '
-                'not need that, and nothing inside molbuilder changes.',
     })
     write_hs: bool = field(default=True, metadata={
         "category": ("procedure",),
@@ -1264,17 +914,11 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "output",
         "label": "Write H+S matrices",
         "engine_key":  'SaveHS',
-        "help": 'Write the Hamiltonian and overlap matrices to <label>.HSX.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- and it is what TranSIESTA / TBtrans read for transport.\nDEFAULT CHANGED false -> true on 2026-08-15, to match SIESTA\'s own default (read_options.F90: fdf_get(\'SaveHS\', .true.)).  Shipping it off meant a finished relaxation had no .HSX, so wanting bands, DOS or transport afterwards meant re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run.',
     })
     write_molwatch_log: bool = field(default=True, metadata={
         "workflow_group": "output",
         "category": ("procedure",),
         "label": "Write the molwatch trajectory log",
-        "help": (
-        "Write <job>.molwatch.log alongside the run: per-step "
-        "coordinates, energy and forces, in one additive file the Watch "
-        "tab reads. It exists so a trajectory can be followed while the "
-        "engine is still running."),
             "engine_key":  '(molbuilder: writes <basename>.molwatch.log for the live viewer)',
         # Consumed by the GENERATOR, not the deck: § 7's kind, stated
         # because the engine_key is a molbuilder note (U16).
@@ -1321,27 +965,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
         "range":      (1, 1024),
-        "help":       "MPI rank count baked into ``mpirun -np N siesta`` "
-                      "in the generated run-wrapper.  Pick based on your "
-                      "host: typically N = physical cores; for "
-                      "memory-bound jobs N = sockets x cores_per_socket "
-                      "/ 2 is a common rule of thumb.  Cluster schedulers "
-                      "(Slurm / PBS) usually set this for you; on a "
-                      "workstation you pick it manually.  Leave blank for "
-                      "the auto default (physical_cores).\n\n"
-                      "RUNTIME OVERRIDE: this value bakes a DEFAULT into "
-                      "the wrapper but is not final.  The wrapper accepts "
-                      "``bash run.sh -np N`` and ``MB_NP=N bash run.sh``, "
-                      "so you can experiment with different rank counts "
-                      "WITHOUT regenerating.  This matters because SIESTA "
-                      "can crash with ``propor: ERROR: IMAX = 0`` for "
-                      "certain mpi_np / molecule combinations -- the "
-                      "crash depends on the ProcessorY x ProcessorX grid "
-                      "SIESTA auto-picks for that rank count, which is "
-                      "hard to predict.  If you hit propor, retry with "
-                      "smaller -np (powers of 2 are usually safe).  The "
-                      "wrapper prints a focused diagnostic on the propor "
-                      "crash with specific suggestions.",
         "skip_cli":   True,
     })
 
@@ -1361,16 +984,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
                        "not in .fdf)",
         "null_label": "(machine proposes)",
         "range":      (1, 16),
-        "help":       "How many GPU devices one trial (or run) asks the "
-                      "scheduler for.  Ranks per device follow as "
-                      "mpi_np / G, and the split must be EVEN -- ELPA's "
-                      "own rule is the same rank count on every device "
-                      "(tuning.md 2.12) -- so a bench cell whose mpi_np "
-                      "does not divide by G is dropped by name at prep.  "
-                      "Declared in the bench block it is an axis: "
-                      "gpu_count = [1, 2, 4] measures exactly those "
-                      "device counts.  Leave it out and prep proposes "
-                      "the divisors of each declared rank count.",
         "skip_cli":   True,
     })
 
@@ -1391,36 +1004,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
-        "help": "How many consecutive orbitals go to one MPI rank before "
-                "the distribution moves to the next -- the ScaLAPACK "
-                "block.  It cannot change the answer, only how evenly the "
-                "ranks are fed and therefore how long the run takes.\n"
-                "TWO STATES.  Left as (auto) the keyword is NOT WRITTEN and "
-                "SIESTA uses its own automatic, which is what its manual "
-                "declares as the default.  Set to a number, that number is "
-                "written verbatim -- which is what you want after "
-                "benchmarking, and a benchmark is the only thing that "
-                "really answers this: the best block depends on the matrix "
-                "size, the rank count, the interconnect and the node's "
-                "memory layout at once.\n"
-                "molbuilder DERIVED a value here until 2026-08-15, and it "
-                "should not have: the guess went into the deck as if it "
-                "were a decision, and below four atoms it wrote "
-                "BlockSize 1 -- legal, and the opposite of the cache "
-                "blocking the parameter exists for.\n"
-                "GUIDANCE if you set one by hand: powers of two (16, 32, "
-                "64, 128); smaller for few orbitals, larger for thousands. "
-                "Stay under n_orbitals / ranks or some rank gets no block "
-                "at all.\n"
-                "GPU: with an ELPA diagonaliser on the GPU the block must "
-                "be a power of two or ELPA silently runs on the CPU. `prep` "
-                "realigns it there -- that is the layer that knows the GPU "
-                "flag and the rank count (tuning.md 2.11).\n"
-                "It does NOT fix ``propor: ERROR: IMAX = 0``.  That claim "
-                "was disproved by direct sweep (BS = 1, 2, 4 all crash at "
-                "the same mpi_np); propor is a vector-proportionality check "
-                "in matel_table's MPI-deduplication step.  Lower the rank "
-                "count to clear it.",
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
@@ -1429,7 +1012,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "budget",
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',
-        "help": "MPI parallelise over k-points; None=auto from kgrid",
         "skip_cli": True,
     })
     # OpenMP threads per MPI rank.  Controls the run-wrapper's
@@ -1458,13 +1040,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # value when reading the run back via runtime_info).
         "engine_key":  '(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)',
         "null_label": "(auto: physical cores)",
-        "help":       "OpenMP threads per MPI process.  Default (blank) "
-                      "auto-detects physical cores at run time (divided "
-                      "by N_MPI when applicable).  Set explicitly to "
-                      "bench or leave cores free for other jobs.  The "
-                      "emitted run-wrapper pins BLAS to 1 thread per "
-                      "rank so OMP*BLAS doesn't oversubscribe -- the "
-                      "canonical recipe shared with /spectra + Build PySCF.",
         "skip_cli":   True,
     })
     # SIESTA SystemMemory directive: MB cap for the SCF/diag working
@@ -1494,14 +1069,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # normal state is unset, which means the node's maximum.
         "range":      (100, 1_000_000),
         "null_label": "(no cap)",
-        "help":       (
-        "How much memory this run may use. Left blank -- the normal "
-        "state -- it is the machine's maximum, resolved at prep on the "
-        "node that granted it; set a number only when you need a "
-        "ceiling. Each engine applies it its own way: SIESTA emits a "
-        "SystemMemory hint into the deck and caps the wrapper, PySCF "
-        "passes it to mol.max_memory, which is what it consults to "
-        "choose in-core versus out-of-core."),
         "skip_cli":   True,
     })
     use_gpu: bool = field(default=False, metadata={
@@ -1542,7 +1109,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "expands":     ("Diag.ELPA.GPU",),
         "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
         "id_suffix": "use-gpu",
-        "help":      "OPTIONAL: run the ELPA diagonalization on an NVIDIA CUDA GPU.  This does NOT turn ELPA on -- pick the solver in ``Diagonalizer`` (ELPA-1STAGE / -2STAGE). This toggle only moves that ELPA solve onto the GPU (GPU-only, no CPU fallback).  Requires an ELPA diagonalizer (GPU + ScaLAPACK is rejected) and an NVIDIA GPU on the run machine.  Off = the chosen ELPA solver runs on CPU (or ScaLAPACK if that's selected). This toggle is the ONLY thing that needs the source-built ``molbuilder-siesta-gpu`` env: the packaged SIESTA runs ELPA on CPU perfectly well, but its ELPA is built without the GPU entry.  The wrapper refuses to emit if that env is missing. Affinity hint: GPU favors 1STAGE.\n\nPySCF: run the SCF (and geom-opt forces) on an NVIDIA GPU via the gpu4pyscf extension.  The recipe for ``molbuilder-pySCF`` installs the matching ``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` wheels for the project's pinned CUDA toolkit (see ``molbuilder envs doctor molbuilder-pySCF``); the script probes gpu4pyscf at run start and STOPS with an actionable message if the package isn't importable or the GPU is missing / too old (compute capability < 7.0) -- there is no silent CPU fallback: a run that changed where it executed would report a CPU time under a GPU label.",
     })
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "category": ("execution",),
@@ -1578,26 +1144,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "id_suffix": "diag-algorithm",
         "choices":   ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"),
         "tier":      "advanced",
-        "help":      "Eigensolver for the SCF diagonalization.  ELPA works "
-                     "on CPU AND GPU -- it is NOT GPU-only.  Hardware "
-                     "affinity (a performance hint, not a restriction): "
-                     "GPU favors 1STAGE, CPU favors 2STAGE.\n"
-                     "  * ScaLAPACK: SIESTA's built-in Divide-and-Conquer. "
-                     "Runs in the precompiled ``molbuilder-siesta`` env "
-                     "(no ELPA needed).  The safe default.\n"
-                     "  * ELPA-1STAGE: direct tridiagonalisation in one "
-                     "step.  Faster on NVIDIA GPUs (arXiv:2502.02460 "
-                     "reports ~3x over 2-stage on A100).  Best for GPU.\n"
-                     "  * ELPA-2STAGE: tridiagonalise via a banded form; "
-                     "the band-reduction exposes more BLAS-3 work, so it "
-                     "is typically faster on CPU.  Best for CPU.\n"
-                     "Both ELPA variants are algorithmic strategies, not "
-                     "versions -- one library ships both.  Either runs on "
-                     "CPU in the packaged ``molbuilder-siesta`` env, so "
-                     "this choice needs no particular environment.  Turn "
-                     "``Use GPU`` on to run that ELPA solve on the GPU "
-                     "(GPU-only, no CPU fallback) -- THAT is what needs "
-                     "the source-built ``molbuilder-siesta-gpu``.",
     })
 
     # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
@@ -1614,52 +1160,12 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "label":      "Pseudopotential directory (.psml)",
         "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",
-        "help":       "Path to a directory of .psml pseudopotential "
-                      "files (one per element).  A path INSIDE the "
-                      "projects tree, measured from the tree root: the "
-                      "convention is ``pseudopotential``.  (An absolute "
-                      "path is accepted if it lies inside the tree; "
-                      "``./`` spellings are retired -- pseudos already "
-                      "beside the calculation are used without this "
-                      "field.)  Do NOT write the ``projects/`` prefix: "
-                      "paths are measured from the tree root already.  "
-                      "Tip: use the fil"
-                      "e-picker button next to this field to browse and avoid typing "
-                      "the path by hand.  "
-                      "SIESTA pseudos are "
-                      "NOT bundled with molbuilder -- you have to "
-                      "download them.  RECOMMENDED SOURCE: "
-                      "PseudoDojo (http://www.pseudo-dojo.org) -- "
-                      "well-tested, peer-reviewed, free.  WHICH SET "
-                      "TO PICK from PseudoDojo:\n"
-                      " * Format = PSML (NOT PSP8 -- that's for "
-                      "ABINIT only; PSML is SIESTA's native format).\n"
-                      " * Functional MUST match cfg.xc_authors -- "
-                      "pick the SAME family (PBE-SR for PBE / GGA, "
-                      "PBEsol-SR for PBEsol, PW for LDA, etc.).\n"
-                      " * Relativistic level: SR (scalar-relativistic) "
-                      "for almost everything.  FR (fully-relativistic, "
-                      "with spin-orbit) only when you actually need "
-                      "spin-orbit coupling (heavy-element spectroscopy, "
-                      "topological insulators).  SR is the safe default.\n"
-                      " * NC vs PAW: PseudoDojo only ships NC (norm-"
-                      "conserving) -- right for SIESTA (PAW is for "
-                      "ABINIT / VASP / Quantum ESPRESSO).\n"
-                      " * Standard vs Stringent: 'standard' is "
-                      "production-quality + smaller mesh cutoff (300-"
-                      "400 Ry); 'stringent' is for benchmarking / "
-                      "publication + needs MeshCutoff >= 500 Ry.\n"
-                      "Download recipe for hemeC-like systems: grab "
-                      "the 'PBE-SR / standard / PSML' set for {C, H, "
-                      "N, O, S, Fe}, unzip into one directory, point "
-                      "this field at it.",
         "skip_cli":   True,
     })
     copy_psml: bool = field(default=True, metadata={
         "workflow_group": "output",
         "category": ("procedure",),
         "label": "Stage pseudopotential files",
-        "help": "copy psml files into the output directory (alongside the FDF)",
             "engine_key":  '(molbuilder: triggers .psml staging step)',
         "item_kind": "produce",
     })
@@ -1672,7 +1178,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "workflow_group": "profile",
         "category": ("system",),
         "label": "Species order",
-        "help": "comma-separated species order (e.g. 'C,H,S,Au')",
         "skip_cli": True,
             "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',
         "item_kind": "produce",
@@ -1696,15 +1201,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "null_label": "(auto-detect from phosphates)",
         "range": (-10, 10),
         "tier": "basic",
-        "help": ("Net charge of the system, in units of |e|.  Default "
-                 "(blank) auto-detects from phosphate protonation -- one "
-                 "negative charge per backbone phosphate, which is right "
-                 "for DNA/RNA from tleap.  For everything else (peptide, "
-                 "SMILES, PDB load) auto resolves to 0, so set this "
-                 "EXPLICITLY for a charged species: carboxylates "
-                 "(Asp/Glu), protonated amines (Lys/Arg/His+), "
-                 "sulfonates.  Sign convention: -1 = one extra electron; "
-                 "+1 = one missing electron."),
     })
 
     # HOW SPIN IS TREATED.  Four states, not a boolean (2026-08-15).
@@ -1745,16 +1241,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         "label":       "Spin treatment",
         "choices":     SPIN_TREATMENTS,
         "engine_key":  "Spin",
-        "help":        ("How spin is treated.  non-polarized: spin-"
-                        "degenerate, the cheap default.  polarized: "
-                        "collinear open-shell, required for radicals / "
-                        "transition metals / triplets.  non-colinear: "
-                        "moments may point in any direction (canted or "
-                        "spiral magnetic order).  spin-orbit: couples spin "
-                        "to orbital motion -- matters for heavy elements "
-                        "(Au, Bi, Pt) and REQUIRES fully-relativistic "
-                        "pseudopotentials.  Only 'polarized' can carry a "
-                        "fixed total spin."),
     })
     spin_total: Optional[float] = field(default=None, metadata={
         "category": ("system",),
@@ -1769,8 +1255,6 @@ REQUIRED for the thermostat: without it SIESTA defaults the target to 0 K and th
         # value to fix; Spin.Total without Spin.Fix to gate the
         # constraint).
         "engine_key":  "Spin.Fix + Spin.Total",
-        "help":        """Target total spin moment in mu_B (= the number of unpaired electrons).  Emits BOTH `Spin.Fix .true.` and `Spin.Total <v>`: the first is required or the second is silently ignored, which is why one item writes two keywords.  Only emitted with a polarized spin treatment.
-NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable).  Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer.  Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet.""",
     })
 
     # ================================================================== #
@@ -1802,9 +1286,6 @@ NOTE 0.0 with a POLARIZED treatment asks for a constrained singlet via open-shel
         "unit":        "eV",
         "range":       (-20.0, 0.0),
         "tier":        "basic",
-        "help":        """Lower edge of the energy window T(E) is computed on.  This becomes the `from` line of `%block TBT.Contour.window`.
-
-The window is what you can plot afterwards: a feature outside it does not exist in the output.  Centre it on the Fermi level and open it wide enough to contain the resonances you care about.""",
     })
 
     transmission_emax_ev: float = field(default=2.0, metadata={
@@ -1817,7 +1298,6 @@ The window is what you can plot afterwards: a feature outside it does not exist 
         "unit":        "eV",
         "range":       (0.0, 20.0),
         "tier":        "basic",
-        "help":        """Upper edge of the energy window T(E) is computed on -- the `to` line of `%block TBT.Contour.window`.""",
     })
 
     transmission_n_points: int = field(default=401, metadata={
@@ -1829,9 +1309,6 @@ The window is what you can plot afterwards: a feature outside it does not exist 
         "engine_key":  "%block TBT.Contour.window",
         "range":       (11, 20001),
         "tier":        "basic",
-        "help":        """How many energies T(E) is evaluated at across the window -- the `points` line of `%block TBT.Contour.window`.
-
-A narrow resonance that falls between two points is invisible, so this is the knob a transmission convergence study steps.""",
     })
 
     tbt_k_grid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
@@ -1842,9 +1319,6 @@ A narrow resonance that falls between two points is invisible, so this is the kn
         "engine_key":  "TBT.k",
         "range":       (1, 64),
         "tier":        "basic",
-        "help":        """Monkhorst-Pack grid tbtrans integrates T(E) over.  `0 0 0` inherits the SCF's own grid.
-
-A grid converged for a total ENERGY is routinely far too coarse for a transmission: T(E) is an integral over the transverse Brillouin zone and its features sharpen with k-density.  The transport direction stays 1 -- that axis is the open boundary and is never sampled.""",
     })
 
     tbt_spin: int = field(default=0, metadata={
@@ -1855,7 +1329,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "engine_key":  "TBT.Spin",
         "range":       (0, 2),
         "tier":        "advanced",
-        "help":        """Which spin channel tbtrans reports: 1 selects spin-up, 2 spin-down, and 0 -- the engine's default -- does both.  Only meaningful once the device itself is spin-polarised.""",
     })
 
     tbt_elecs_eta_ev: float = field(default=0.001, metadata={
@@ -1867,7 +1340,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "unit":        "eV",
         "range":       (0.0, 1.0),
         "tier":        "advanced",
-        "help":        """The imaginary part added to the energy when the lead self-energies are built.  Too large smears real resonances into a featureless curve; too small turns them into numerical noise.""",
     })
 
     tbt_contours_eta_ev: float = field(default=0.0, metadata={
@@ -1879,7 +1351,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "unit":        "eV",
         "range":       (0.0, 1.0),
         "tier":        "advanced",
-        "help":        """The imaginary part used on the device Green function.  0 leaves the engine's own default, which is a FORMULA -- min(electrode eta)/10 -- so a number here replaces it rather than restating it.""",
     })
 
     tbt_dos_gf: bool = field(default=False, metadata={
@@ -1889,7 +1360,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write the Green-function DOS",
         "engine_key":  "TBT.DOS.Gf",
         "tier":        "advanced",
-        "help":        """Write the device's Green-function density of states.  Needed to read WHERE on the molecule a transmitting state sits.""",
     })
 
     tbt_dos_a: bool = field(default=False, metadata={
@@ -1899,7 +1369,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write the spectral DOS per electrode",
         "engine_key":  "TBT.DOS.A",
         "tier":        "advanced",
-        "help":        """Write the spectral function density of states, resolved per electrode -- which lead a state is fed from.""",
     })
 
     tbt_dos_elecs: bool = field(default=False, metadata={
@@ -1909,7 +1378,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write the bulk electrode DOS",
         "engine_key":  "TBT.DOS.Elecs",
         "tier":        "advanced",
-        "help":        """Write the density of states of the bulk leads themselves.""",
     })
 
     tbt_t_eig: int = field(default=0, metadata={
@@ -1920,7 +1388,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "engine_key":  "TBT.T.Eig",
         "range":       (0, 20),
         "tier":        "advanced",
-        "help":        """How many transmission eigenchannels to decompose T(E) into.  0 writes none.  The eigenchannels are what turn a single number into a picture of which orbital pathway carries the current.""",
     })
 
     tbt_t_bulk: bool = field(default=False, metadata={
@@ -1930,7 +1397,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write the bulk transmission",
         "engine_key":  "TBT.T.Bulk",
         "tier":        "advanced",
-        "help":        """Write the transmission of the pristine bulk lead, which is the ideal T(E) the junction is measured against.""",
     })
 
     tbt_t_all: bool = field(default=False, metadata={
@@ -1940,7 +1406,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write all electrode pairs",
         "engine_key":  "TBT.T.All",
         "tier":        "advanced",
-        "help":        """Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.""",
     })
 
     negf_eq_pole_ev: float = field(default=0.0, metadata={
@@ -1952,7 +1417,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "unit":        "eV",
         "range":       (0.0, 10.0),
         "tier":        "advanced",
-        "help":        """How far up the imaginary axis the equilibrium contour's poles sit.  0 means LET TRANSIESTA CHOOSE, which is the default and is usually right.\n\nIt is not independent of the electronic temperature.  Read out of SIESTA 5.4.2's own source (`Src/m_ts_chem_pot.F90`), not inferred: a deck that declares `%block TS.ChemPot.<name>` without a `contour.eq` inside it takes the CONTINUED-FRACTION branch (:299), where the pole count is `N = int(E / (pi * kT))` (:319) and the run STOPS when N < 20 (:324) -- "The continued fraction method requires at least 20 poles", after the queue wait.\n\nAt 300 K that makes 1.63 eV the floor.  Confirmed on a live run at every point: 1.5 eV gives 18 poles and dies, 1.7 gives 20, 2.0 gives 24, 3.0 gives 36, 4.0 gives 49.  1.5 was this row's shipped default, so every device run stopped.\n\nLeft at 0 nothing is written and the branch's own default applies -- `E = pi * 60 * kT * 0.7` (:316), about 42 poles -- which scales with the temperature as a fixed number cannot.\n\nThe COUNT cannot be set from here.  `TS.Contours.Eq.Pole.N` is a real keyword (:113) and this branch overwrites it from the energy; only the block-interior `contour.eq.pole.n` (:263) short-circuits that, and this emitter does not write blocks.\n\nMore poles cost SCF time and buy a better-integrated density matrix.""",
     })
 
     bias_voltage_v: float = field(default=0.0, metadata={
@@ -1964,7 +1428,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "unit":        "V",
         "range":       (-5.0, 5.0),
         "tier":        "basic",
-        "help":        """The voltage held across the junction for THIS device run.  At zero bias the device converges once and tbtrans sweeps energy, giving T(E); a genuine finite-bias result re-converges at every voltage, giving T(E, V).  It binds the transmission: each point must read its own point's converged Hamiltonian.""",
     })
 
     ts_hs_save: bool = field(default=False, metadata={
@@ -1974,7 +1437,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Write the TranSIESTA .TSHS",
         "engine_key":  "TS.HS.Save",
         "tier":        "advanced",
-        "help":        """Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.  The ELECTRODE rungs' essential output, and the stage's ROLE rather than a preference: a lead that omits it converges happily and produces nothing the device can attach to.  Not `SaveHS`, which writes the `.HSX` the ladder does not consume.""",
     })
 
     negf_neq_eta_ev: float = field(default=0.0, metadata={
@@ -1986,7 +1448,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "unit":        "eV",
         "range":       (0.0, 1.0),
         "tier":        "advanced",
-        "help":        """The imaginary part on the non-equilibrium contour.  0 leaves the engine's own default.  Inert at zero bias, where there is no non-equilibrium window to integrate.""",
     })
 
     elecs_bulk: bool = field(default=True, metadata={
@@ -1996,7 +1457,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "label":       "Use the electrode's own bulk Hamiltonian",
         "engine_key":  "TS.Elecs.Bulk",
         "tier":        "advanced",
-        "help":        """Use the lead's own converged bulk Hamiltonian inside the electrode region, rather than the device run's values there.  True is right whenever the electrode region really is bulk -- which is what the region labels assert.""",
     })
 
     electrode_kz: int = field(default=40, metadata={
@@ -2007,9 +1467,6 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "engine_key":  "%block kgrid_Monkhorst_Pack",
         "range":       (1, 200),
         "tier":        "basic",
-        "help":        """How many k-points the ELECTRODE runs use along the transport direction.
-
-This is the one axis where the lead and the device deliberately DISAGREE.  The device is an open boundary and is never sampled along transport (kz = 1); the electrode is a genuinely periodic bulk calculation and needs a dense kz for its Fermi level to be well-defined.  Too coarse here and the lead self-energy is built on a badly converged bulk.""",
     })
 
 
