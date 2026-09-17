@@ -112,22 +112,27 @@ const WORKSPACE_TAG = "transport";
         var saved;
         try { saved = JSON.parse(raw); } catch (_) { return; }
         if (!saved || typeof saved !== "object") return;
-        // Walk the form inputs and reapply each saved value.  We
-        // don't use ``collectForm`` here because the form is fresh
-        // and untouched; setting .value + .checked directly is the
-        // cheapest restore path.
-        for (var name in saved) {
-            if (!Object.prototype.hasOwnProperty.call(saved, name)) continue;
-            var els = container.querySelectorAll(
-                '[name="' + CSS.escape(name) + '"]');
-            for (var i = 0; i < els.length; i++) {
-                var el = els[i];
-                if (el.type === "checkbox") {
-                    el.checked = !!saved[name];
-                } else {
-                    el.value = saved[name] != null ? saved[name] : "";
-                }
-            }
+        // BY THE SCHEMA, NOT BY A `name` ATTRIBUTE -- and that is the whole
+        // of this function's history.  It queried `[name="<field>"]`, and
+        // `form-schema.js` sets `id` on every control it builds and `name`
+        // on none of them (makeNumber, makeSelect, makeTriSelect,
+        // makeCheckbox, makeText, makeTriple -- all `id` only).  The two
+        // are not even the same string: the id is `t-transmission-emin-ev`
+        // where the saved key is `transmission_emin_ev`.
+        //
+        // So the restore matched ZERO elements on every load since it was
+        // written, and the module docstring's promise that "a reload
+        // restores the whole describe state" was false: the citation came
+        // back (it rides the workspace note) so the page LOOKED restored,
+        // while every parameter silently sat at its default.
+        //
+        // `setValues` is the renderer's own door and knows how each field
+        // kind is built, which is what stops this drifting again.
+        try {
+            formSchema.setValues(container, schema, saved);
+        } catch (_) {
+            // A saved bag from an older schema can name a field this form
+            // no longer has.  Best-effort, exactly like the write side.
         }
     }
 

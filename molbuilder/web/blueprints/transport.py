@@ -371,10 +371,16 @@ def api_transport_describe() -> Any:
     # sets, same conditions as config_for (4.1b: the contract fields
     # are the citation's ONLY when the citation carries a deck).
     import dataclasses as _dc
-    _known = {f.name for f in _dc.fields(TransportConfig)}
-    from molbuilder.transport.compose import recorded_contract_of
-    _contract_sealed = (cited.form == "relaxation"
-                        or recorded_contract_of(cited) is not None)
+
+    # THE SAME VOCABULARY THE PREP DOOR USES.  Checking against
+    # `TransportConfig` alone refused a person's own lead k-density --
+    # `electrode_kz` is a catalogue row and a `SiestaConfig` field, and the
+    # answer "is not a transport parameter" was simply wrong.  `stages.py`
+    # was fixed on 2026-09-16 and this door was not, so the same override
+    # the CLI accepts was refused in the browser.
+    from molbuilder.config.siesta import SiestaConfig
+    _known = ({f.name for f in _dc.fields(TransportConfig)}
+              | {f.name for f in _dc.fields(SiestaConfig)})
     for _name in overrides:
         if _name not in _known:
             return jsonify({"ok": False,
@@ -484,13 +490,22 @@ def api_transport_schema() -> Any:
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
                                              UNRESOLVED_FIELDS)
-    # ?contract=cited (default) hides the contract fields -- they are
-    # the citation's deck's to say; ?contract=open offers them, for a
-    # form-B citation (a labeled pair carries no deck; 4.1b).  The tab
-    # passes what describe_attempt answered.
-    hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS
-    if str(request.args.get("contract") or "cited") != "open":
-        hidden |= CONTRACT_FIELDS
+    # HIDDEN IN BOTH LANES, and the `?contract=` argument no longer
+    # changes anything here.
+    #
+    # It used to: `cited` hid the contract fields and `open` offered them,
+    # because a form-B citation (a labeled pair, no deck) had nowhere else
+    # to state a basis.  On 2026-09-16 the describe door stopped making
+    # that distinction -- `engines/transport.md` § 2a.7 ruled the cited run
+    # DEFAULTS these values into the calculation's TEMPLATE, which every
+    # form now gets, so they are never a per-stage override for anyone.
+    #
+    # The filter was not updated with the door, and for a few hours the
+    # `open` lane rendered seven controls the door was guaranteed to
+    # refuse -- precisely the trap this docstring says the filter exists
+    # to prevent.  The argument is kept only so an older page that still
+    # sends it is not a 400; it selects nothing.
+    hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS | set(CONTRACT_FIELDS)
     schema = _dataclass_to_form_schema(TransportConfig, "t")
     kept = []
     for sec in schema.get("sections", []):

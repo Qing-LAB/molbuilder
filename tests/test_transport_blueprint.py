@@ -51,19 +51,32 @@ class TestTransportSchemaEndpoint:
             f"the actual engine keyword string otherwise)."
         )
 
-    def test_the_open_lane_offers_the_contract_fields(self, web):
-        """?contract=open (a form-B citation: a labeled pair has no
-        deck) offers the electronic-contract fields; the identity
-        set stays hidden always."""
+    def test_no_lane_offers_the_contract_fields(self, web):
+        """The describe door refuses the electronic-contract fields
+        UNCONDITIONALLY, so no value of ``?contract=`` may offer them.
+
+        This asserted the opposite until 2026-09-16 — that ``open``
+        (a form-B citation: a labeled pair has no deck) offers them —
+        which was the SEALED reading `engines/transport.md` § 2a.7
+        reversed.  Under the ruling the cited run DEFAULTS these values
+        into the calculation's TEMPLATE, which every form gets: form A
+        from the cited deck, form B from the catalogue
+        (``citation_defaults.siesta_config_from_citation``).  They are
+        editable there and are never a per-stage override for anyone,
+        so a lane that rendered them served seven controls the door was
+        guaranteed to 400 — the exact trap this filter exists to stop.
+        """
         from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                                  SEALED_ALWAYS)
-        body = web.get("/api/transport/schema?contract=open").get_json()
-        offered = {f["name"] for s in body["schema"]["sections"]
-                   for f in s["fields"]}
-        assert CONTRACT_FIELDS <= offered, (
-            "the open lane must offer the contract fields -- there is "
-            "no deck to be truth for a labeled-pair citation")
-        assert not (offered & SEALED_ALWAYS)
+        for lane in ("", "?contract=open", "?contract=cited"):
+            body = web.get(f"/api/transport/schema{lane}").get_json()
+            offered = {f["name"] for s in body["schema"]["sections"]
+                       for f in s["fields"]}
+            assert not (offered & CONTRACT_FIELDS), (
+                f"lane {lane or '(default)'!r} offers contract fields "
+                f"{sorted(offered & CONTRACT_FIELDS)} -- the describe "
+                f"door refuses them by name whatever the citation form")
+            assert not (offered & SEALED_ALWAYS)
 
     def test_schema_serves_only_the_override_lane(self, web):
         """The tab's form is the OVERRIDE lane: the electronic contract
@@ -89,8 +102,8 @@ class TestTransportSchemaEndpoint:
         ], (
             "the override lane's sections, in the order a person decides "
             "in.  System and Electrodes are emptied by the seal filter, "
-            "and 'Electronic contract' only appears for a form-B citation "
-            "(?contract=open), which has no deck to be truth")
+            "and 'Electronic contract' appears in NO lane: § 2a.7 makes "
+            "those the template's to answer, never a per-stage override")
         offered = {f["name"] for s in sections for f in s["fields"]}
         leaked = offered & SEALED_TRANSPORT_FIELDS
         assert not leaked, (
