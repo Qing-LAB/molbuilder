@@ -118,30 +118,21 @@ def test_a_typed_value_is_ACCEPTED_because_the_citation_only_DEFAULTS():
     """
     text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
                    engines=("siesta",))
-    cfg = T.config_from_template(text, _Cited, calculation="transport")
+    cfg = T.config_from_template(text, _Cited)
     assert cfg.basis == "TZP", (
         "a transport template answering a cited item is now the ORDINARY "
         "state: it is what `jobset init` writes, defaulted from the cited "
         "run, and what a person edits afterwards")
 
 
-def test_the_SAME_value_is_accepted_for_a_kind_the_citation_does_not_answer():
-    """The half that makes it a per-KIND marker rather than a seal.
-
-    `basis_size` is a shared row: an optimization's person answers it.  If
-    the refusal fired on the name alone, tagging the row for transport would
-    break every optimization that sets a basis.
-    """
-    text = T._emit([dataclasses.replace(_decl("basis"), value="TZP")],
-                   engines=("siesta",))
-    cfg = T.config_from_template(text, _Cited, calculation="optimization")
-    assert cfg.basis == "TZP"
-
-
 def test_the_allocation_exclusion_is_untouched():
-    """`template_fields` still strips machine facts — and NOT citation ones,
-    because that exclusion is kind-dependent and this function has no kind.
-    The transport seal is enforced by `config_from_template`, above."""
+    """`template_fields` still strips machine facts — and NOT citation ones.
+
+    It never did: excluding `basis_size` by name would stop an optimization
+    overriding its own basis, because the row is shared.  This docstring said
+    the exclusion was *kind-dependent* and that `config_from_template` enforced
+    a transport seal; § 2a.7 withdrew the seal, and the kind argument that
+    carried it went with it on 2026-09-16."""
     fields = T.template_fields(_Cited)
     assert "mesh" in fields
     assert "basis" in fields, (

@@ -1502,7 +1502,7 @@ def one(t: "Template", name: str, *, engine: str = None) -> Optional[Item]:
         f"does not apply here (engines/template.md § 8.0).")
 
 
-def config_from_template(text: str, config_cls, *, calculation: str = ""):
+def config_from_template(text: str, config_cls):
     """An ordinary instance of *config_cls*, rebuilt from a template.
 
     What ``prep`` holds before it applies a stage's ``overrides``
@@ -1545,7 +1545,13 @@ def config_from_template(text: str, config_cls, *, calculation: str = ""):
             f"carry (engines/template.md § 7): they arrive as the "
             f"ALLOCATION at `prep`, on the machine that runs the job.  "
             f"Remove them from the template and state them at prep.")
-    # NO CITATION REFUSAL HERE, and its absence is the ruling.
+    # NO CITATION REFUSAL HERE, and its absence is the ruling -- which is
+    # also why this function no longer takes a `calculation`.  It carried one
+    # ONLY to run that refusal, and kept taking it for hours after the refusal
+    # went, read by nothing: a parameter two callers threaded through and the
+    # body never looked at, while `engines/template.md` 6.4 pointed at it as
+    # *the* enforcement site.  A control that does nothing is the defect this
+    # programme keeps finding; it does not get an exemption for being ours.
     #
     # Until 2026-09-16 a template answering a `citation` item was refused:
     # the write side emitted them valueless, so a value was a hand edit, and

@@ -337,9 +337,7 @@ def resolve(template_text: str, task, config_cls, *,
     """
     from .template import config_from_template
 
-    base = config_from_template(template_text, config_cls,
-                                calculation=getattr(task, "calculation", "")
-                                or "")
+    base = config_from_template(template_text, config_cls)
     provenance = {f.name: "template" for f in dataclasses.fields(config_cls)}
 
     # § 7's membership rule, spelled ONCE (template.template_fields): a
@@ -529,9 +527,7 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     found the § 6.6a warning had no production caller at all).
     """
     from .template import config_from_template
-    base = config_from_template(template_text, config_cls,
-                                calculation=getattr(task, "calculation", "")
-                                or "")
+    base = config_from_template(template_text, config_cls)
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
         if not getattr(s, "enabled", True):
