@@ -36,7 +36,7 @@ label = "Basis size"
 help = """
 Size of the numerical-orbital basis, roughest to tightest.  S/D/T = single / double / triple zeta (radial functions per valence orbital); P/DP/TP = one / two / three polarisation shells.
 DZP is the production default and what most published SIESTA work uses.  SZ and SZP are screening-grade only.  Go to TZP or beyond for vibrational frequencies, weak interactions and anything where basis-set superposition error matters.
-Cost grows steeply -- each step up roughly multiplies the orbital count, and diagonalisation scales as its cube.  All nine are accepted by SIESTA 5.4.2 (basis_specs.f::size_name); the manual's option list mentions only four, which is why four of these were missing here until 2026-08-15."""
+Cost grows steeply -- each step up roughly multiplies the orbital count, and diagonalisation scales as its cube.  All nine are accepted by SIESTA 5.4.2 (`basis_specs.f::size_name`), though the manual's option list names only four."""
 
 [item.pao_energy_shift]
 kind = "engine"
@@ -224,7 +224,7 @@ label = "SCF free-energy tolerance"
 tier = "advanced"
 help = """
 How little the total FREE energy must change between SCF cycles before that cycle counts as settled.
-ONLY HAS AN EFFECT WHEN THE SWITCH BELOW IS ON.  SIESTA reads this value either way and then ignores it: read_options.F90 loads it into tolerance_FreeE, and siesta_forces.F90 installs it as a criterion only `if (converge_FreeE)`.  Until 2026-08-15 molbuilder wrote this line and never wrote the switch, so the control looked live and could not change any result.
+ONLY HAS AN EFFECT WHEN THE SWITCH BELOW IS ON.  SIESTA reads this value either way and then ignores it: read_options.F90 loads it into tolerance_FreeE, and siesta_forces.F90 installs it as a criterion only `if (converge_FreeE)`.
 1e-4 eV is SIESTA's own default, and pairs sensibly with a 1e-5 density-matrix tolerance -- the intent is that the energy test is not the thing that stops you first."""
 
 [item.scf_energy_converge]
@@ -283,7 +283,7 @@ tier = "advanced"
 help = """
 What SIESTA does when a geometry step's SCF loop hits max_scf_iter without meeting its tolerances: abort the run (SIESTA's own default, true), or accept the unconverged density and CONTINUE with a warning (false).
 Leave it unset for ordinary work -- an unconverged density means the forces are noise, and a relaxation that keeps walking on noise wastes every step after the first bad one.  The abort is protecting your budget, not enforcing bureaucracy.
-THE ONE ORDINARY REASON TO SET false: a run that is a MEASUREMENT rather than a result.  A benchmark trial deliberately caps the SCF at a few cycles to time an iteration (project-layout.md section 3.2's pins); with the abort left on, every properly-capped trial ends in ABNORMAL_TERMINATION and the timing machinery must read a 'failed' run.  The bench pins set this false so a capped trial ends cleanly as the single-point measurement it is.  Until 2026-08-19 this keyword had no catalogue item at all -- the retired deck-splicer used to invent the line -- so no described trial could say it, and no sweep could ever produce a verdict (its every point classified incomplete)."""
+THE ONE ORDINARY REASON TO SET false: a run that is a MEASUREMENT rather than a result.  A benchmark trial deliberately caps the SCF at a few cycles to time an iteration (project-layout.md section 3.2's pins); with the abort left on, every properly-capped trial ends in ABNORMAL_TERMINATION and the timing machinery must read a 'failed' run.  The bench pins set this false so a capped trial ends cleanly as the single-point measurement it is."""
 
 [item.electronic_temperature]
 kind = "engine"
@@ -397,8 +397,7 @@ tier = "advanced"
 help = """
 OUTER loop: max geometry steps the optimiser is allowed (each step = full SCF + forces + atom move).  Which keyword carries it is decided by MD.TypeOfRun: CG / Broyden / FIRE relax and bound the loop with ``MD.Steps``; Verlet / Nose integrate and bound it with ``MD.FinalTimeStep`` instead (SIESTA 5.4.2, siesta_init.F -- idyn 0 uses MD.Steps, idyn 1-5 use MD.InitialTimeStep..MD.FinalTimeStep).  ``MD.Steps`` DEPRECATES the older ``MD.NumCGsteps``, whose CG-prefixed name hid that it was never CG-only.
 Per-tier: loose warm-up ~50, publishable ~200, tight (vib/IR) ~100 (small displacement cap = slow but few steps from a publishable-converged starting geometry).  See docs/engines/tuning.md § 2.10.
-
-A well-behaved relaxation converges in 30-150 steps, so 200+ is a safety cap rather than a target -- it is there to stop a run that is not going to converge, not to describe one that is. For molecular dynamics the count is not a cap but a duration: steps x timestep is the timescale you actually sample, so pick it from the physics you want to see."""
+A well-behaved relaxation converges in 30-150 steps, so 200 is a safety cap, not a target.  For molecular dynamics it is a duration instead: steps x timestep is the timescale you sample, so pick it from the physics you want to see."""
 
 [item.relax_force_tol]
 kind = "engine"
@@ -442,9 +441,7 @@ help = """
 Displacement cap per optimiser step (Å).  Applies across CG, Broyden AND FIRE.  Hard ceiling that catches line-search over-shoot.  ``MD.MaxDispl`` DEPRECATES the older ``MD.MaxCGDispl`` (SIESTA 5.4.2); same meaning, same 0.2 Bohr default, and the CG-prefixed name was never CG-only.
 DEVIATION: that engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å, about half.  The cap only ever LIMITS a step, so a smaller one costs steps and never accuracy -- and the oscillation below is what a too-large cap looks like.  Raise it back toward 0.2 Å for a cheap first pass on a structure that starts far from its minimum.
 Per-tier (Å): screening 0.30, loose preopt 0.20, publishable 0.05, tight (vib/IR) 0.02.
-Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6.
-
-It is a hard ceiling that catches line-search over-shoot, not a target. The symptom of one set too large is a maximum force that oscillates instead of descending (0.09 -> 0.44 -> 0.13 -> 0.31 ...); halve the cap and continue."""
+Symptom of too-large cap: max-force oscillates rather than descends (e.g. 0.09 → 0.44 → 0.13 → 0.31 → ...).  Halve the cap.  See docs/engines/tuning.md § 2.2 + the BDT/Au worked example in § 6."""
 
 [item.continue_retries]
 kind = "wrapper"
@@ -587,7 +584,7 @@ label = "Write forces each step"
 help = """
 Write the atomic forces into the main .out at every relaxation or MD step, so the force history can be read back from the log.
 DEVIATION: SIESTA ships this off; we ship it on.  A relaxation whose force history was not recorded cannot be diagnosed afterwards -- "did it descend or oscillate?" is the first question about any run that did not converge, and the answer costs a few lines of text per step.
-It does NOT control the .FA file.  This help said "write forces to the .FA file (required for relaxation)" until 2026-08-15 and both halves were wrong: the manual says the last step's forces "can be found in the file .FA" whatever this flag is set to, and a relaxation runs perfectly well without either."""
+It does NOT control the .FA file.  The last step's forces reach the .FA file whatever this is set to, and a relaxation runs without either."""
 
 [item.write_coor_step]
 kind = "engine"
@@ -621,7 +618,7 @@ label = "Write XMOL .xyz"
 help = """
 Write an extra <label>.xyz holding the FINAL atomic coordinates, in Angstrom whatever input format was used, readable by XMol / JMol / Molden.
 DEVIATION: SIESTA ships this off; we ship it on, because a finished relaxation whose result is only inside the .out has to be re-extracted before anything else can open it.
-ONE STRUCTURE, NOT A MOVIE.  This help promised ".xyz of every relaxation step (movie viewer)" until 2026-08-15; the manual is explicit that the file holds the final coordinates.  The per-step animation file is .ANI, and it comes from a different keyword (WriteMDXmol)."""
+ONE STRUCTURE, NOT A MOVIE.  The per-step animation is a different file (.ANI) from a different keyword, WriteMDXmol."""
 
 [item.write_md_history]
 kind = "engine"
@@ -639,7 +636,7 @@ label = "Write MD history (.MD/.MDE)"
 help = """
 Accumulate the trajectory into <label>.MD -- positions and velocities (and cell, for a variable cell) at every step, written UNFORMATTED for post-processing -- plus <label>.MDE, a short per-step line of energy, temperature and the like.  Both are appended across runs, so a restarted job extends them rather than replacing them.
 DEVIATION: SIESTA ships this off; we ship it on, because it is the only complete record of what the trajectory did.
-IT DOES NOT WRITE .ANI.  The label and this help said "Write .ANI trajectory ... (xcrysden / vmd / OVITO)" until 2026-08-15 and that was wrong: read_options.F90 binds this keyword to `writmd`, which write_md_record.F routes to `iomd` (the .MD file).  .ANI is written by `pixmol` under `writpx`, which is the separate WriteMDXmol keyword.
+IT DOES NOT WRITE .ANI.  .ANI comes from the separate WriteMDXmol keyword, not this one.
 NOTE the .MD file is unformatted, so it is not something a viewer opens directly."""
 
 [item.write_md_xmol]
@@ -674,7 +671,7 @@ group = "output"
 label = "Write H+S matrices"
 help = """
 Write the Hamiltonian and overlap matrices to <label>.HSX.  The manual: it "contains all relevant information to construct the Brillouin zone Hamiltonian and can thus be used for subsequent density of states calculations" -- and it is what TranSIESTA / TBtrans read for transport.
-DEFAULT CHANGED false -> true on 2026-08-15, to match SIESTA's own default (read_options.F90: fdf_get('SaveHS', .true.)).  Shipping it off meant a finished relaxation had no .HSX, so wanting bands, DOS or transport afterwards meant re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run."""
+On by default, matching SIESTA's own.  Without it a finished relaxation has no .HSX, so bands, DOS or transport afterwards mean re-running the SCF.  The cost of having it is disk; the cost of not having it is a repeat run."""
 
 [item.write_molwatch_log]
 kind = "produce"
@@ -732,7 +729,6 @@ optional = true
 help = """
 How many consecutive orbitals go to one MPI rank before the distribution moves to the next -- the ScaLAPACK block.  It cannot change the answer, only how evenly the ranks are fed and therefore how long the run takes.
 TWO STATES.  Left as (auto) the keyword is NOT WRITTEN and SIESTA uses its own automatic, which is what its manual declares as the default.  Set to a number, that number is written verbatim -- which is what you want after benchmarking, and a benchmark is the only thing that really answers this: the best block depends on the matrix size, the rank count, the interconnect and the node's memory layout at once.
-molbuilder DERIVED a value here until 2026-08-15, and it should not have: the guess went into the deck as if it were a decision, and below four atoms it wrote BlockSize 1 -- legal, and the opposite of the cache blocking the parameter exists for.
 GUIDANCE if you set one by hand: powers of two (16, 32, 64, 128); smaller for few orbitals, larger for thousands. Stay under n_orbitals / ranks or some rank gets no block at all.
 GPU: with an ELPA diagonaliser on the GPU the block must be a power of two or ELPA silently runs on the CPU. `prep` realigns it there -- that is the layer that knows the GPU flag and the rank count (tuning.md 2.11).
 It does NOT fix ``propor: ERROR: IMAX = 0``.  That claim was disproved by direct sweep (BS = 1, 2, 4 all crash at the same mpi_np); propor is a vector-proportionality check in matel_table's MPI-deduplication step.  Lower the rank count to clear it."""
@@ -1022,7 +1018,7 @@ which program runs the vibrational calculation.
 
 PySCF is the only engine wired to the Spectrum tab today: it supplies the analytic Hessian, the normal modes, and -- through pyscf.prop -- the IR and Raman intensities, and it runs in the managed `molbuilder-pySCF` env.
 
-ONE CHOICE TODAY, AND THAT IS THE POINT.  Until now the engine was a string literal in the browser's send payload, which made a real choice look like a constant and left a second engine nowhere to land.  Naming it here puts it on the form, in the task payload, and in the results sidecar through the same door every other parameter uses."""
+One choice today, named here rather than assumed, so it travels on the form, in the task description and in the results sidecar like every other parameter."""
 
 [item.method]
 kind = "engine"
@@ -1077,7 +1073,6 @@ Per-tier:
   • tight (vib/IR/energy):    def2-TZVPP or def2-QZVP
 WHAT def2-SVP IS AND IS NOT GOOD FOR.  It is a double-zeta set: fine for screening and preoptimisation, and usable for structures when paired with a dispersion correction (this project defaults to D3BJ).  Its real weakness is BASIS-SET SUPERPOSITION ERROR -- for double-zeta sets that can exceed 40% of a binding energy, and it artificially SHORTENS intermolecular distances.  So treat def2-SVP interaction energies and complex geometries as unconverged, and move to def2-TZVP for anything published.  Covalent bond lengths are much less affected: DFT bond-length errors are typically 0.01-0.07 A and are driven more by the functional than by the basis.
 NOTE ON WHAT THIS PROJECT CORRECTS: D3BJ repairs the missing dispersion, not the superposition error -- PySCF applies no geometric counterpoise (gCP).  The composite methods built for exactly this (PBEh-3c, r2SCAN-3c) pair a small basis with BOTH corrections.
-This help claimed a "30% bond-length error in conjugated systems -- NEVER publish" until 2026-08-15.  No source supports it; the figure appears to be a garbled import of the 40%-of-binding-energy BSSE result, which is about noncovalent interactions rather than covalent bonds, and is not specific to conjugation.
 Sources: Weigend & Ahlrichs, Phys. Chem. Chem. Phys. 7, 3297 (2005) for the basis sets themselves; Sure & Grimme, J. Comput. Chem. 34, 1672 (2013) for the small-basis error analysis; Bursch et al., Angew. Chem. Int. Ed. 61, e202205735 (2022) for the best-practice recommendation.  See docs/engines/tuning.md § 2.8."""
 
 [item.auxbasis]
@@ -1498,7 +1493,7 @@ range = [0.0, 5000.0]
 group = "profile"
 label = "Thermochemistry temperature"
 tier = "advanced"
-help = "RRHO temperature for thermo.thermo() (standard: 298.15 K) Re-homed to the vibration calculation kind (spectra-migration plan D2, 2026-08-20): sets the headline (T, P) for the .spectra.json thermo block; the viewer's G/H/S curves run over a documented default temperature grid beside it."
+help = "RRHO temperature for thermo.thermo() (standard: 298.15 K)  Sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S curves run over their own temperature grid."
 
 [item.pressure_atm]
 kind = "engine"
@@ -1516,7 +1511,7 @@ range = [1e-06, 1000.0]
 group = "profile"
 label = "Thermochemistry pressure"
 tier = "advanced"
-help = "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa) Re-homed to the vibration calculation kind (spectra-migration plan D2, 2026-08-20): sets the headline (T, P) for the .spectra.json thermo block; the viewer's G/H/S curves run over a documented default temperature grid beside it."
+help = "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)  Sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S curves run over their own temperature grid."
 
 
 [item.already_relaxed]
@@ -1575,7 +1570,7 @@ COST DEPENDS ON WHAT ELSE YOU TICKED.  With Raman OFF this is nearly free: the d
 
 The slow path is a fallback, not the design: if the env lacks `pyscf.prop.infrared` (never released to PyPI -- `envs doctor` reports it and `envs repair --include-optional` installs it), the deck finite-differences the dipole instead.  Same intensities, 6N extra SCFs.  Which route actually ran is recorded in the results and shown in the viewer's run summary.
 
-VALIDATED: the analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol, and the two routes' derivative tensors agree to 0.02%.  Band-level validation stands from 2026-08-20 (water at B3LYP/def2-SVP in its literature windows: bend ~55 km/mol > asym ~27 > sym ~5)."""
+VALIDATED: the analytic route reproduces Q-Chem's published NH3 intensities to 0.02 km/mol, and the two routes' derivative tensors agree to 0.02%.  Band ordering reproduces the literature for water at B3LYP/def2-SVP (bend ~55 km/mol > asym ~27 > sym ~5)."""
 
 [item.displacement_amplitude_ang]
 kind = "deck"
