@@ -98,13 +98,22 @@ class TestTransportSchemaEndpoint:
         assert [s["name"] for s in sections] == [
             "Transmission", "Transmission k-sampling", "Spin channel",
             "Broadening", "Outputs", "NEGF density contour", "Leads",
-            "Runtime", "Logging",
         ], (
             "the override lane's sections, in the order a person decides "
             "in.  System and Electrodes are emptied by the seal filter, "
             "and 'Electronic contract' appears in NO lane: § 2a.7 makes "
-            "those the template's to answer, never a per-stage override")
+            "those the template's to answer, never a per-stage override.  "
+            "Runtime and Logging went on 2026-09-16: they held only "
+            "`max_memory_mb`, `num_threads` and `log_level`, which `prep` "
+            "cannot resolve -- three controls whose use guaranteed that "
+            "every later prep refused the whole calculation")
         offered = {f["name"] for s in sections for f in s["fields"]}
+        from molbuilder.transport.stages import resolvable_override_names
+        unresolvable = offered - resolvable_override_names()
+        assert not unresolvable, (
+            f"the form offers {sorted(unresolvable)}, which `prep` refuses "
+            f"by name -- a control the door is guaranteed to reject is not "
+            f"a control")
         leaked = offered & SEALED_TRANSPORT_FIELDS
         assert not leaked, (
             f"sealed fields served as form inputs: {sorted(leaked)} — "

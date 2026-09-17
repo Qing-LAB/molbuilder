@@ -372,16 +372,28 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     here, naming the reason, rather than silently corrected downstream.
     """
     out: List[Issue] = []
-    # THE BIAS ADVISORY, re-homed 2026-09-16.  It lived in
-    # `TransiestaEngine.preflight`, which is keyed on `TransportConfig` and so
-    # stopped dispatching for every rung that moved onto the seam -- and bias
-    # is the one axis a transport calculation exists to sweep, so a person
-    # could describe 3 V and be told nothing.  Everything else that preflight
-    # carried survives elsewhere: the region partition and the atom order are
-    # `sort`'s refusals and are structural on the ladder path, and the
-    # open-shell check runs from the siesta validator against the run's REAL
-    # spin treatment rather than this one's hardcoded closed shell.  This
-    # advisory was the remainder.
+    # THE BIAS ADVISORY, restated here for the kind road 2026-09-16 -- and
+    # RESTATED is the honest word: `TransiestaEngine.preflight` still carries
+    # its own copy, and this note said "re-homed" for several hours, which
+    # described a removal that never happened.
+    #
+    # Why the engine's copy stays for now.  It is registered in
+    # `_ENGINE_VALIDATORS` under `TransportConfig`, so it is dead on every
+    # rung (each resolves a `SiestaConfig`) and LIVE on the one surface that
+    # still builds a `TransportConfig` -- `/api/transport/render`.  Deleting
+    # it would take the advisory off that surface; leaving it means one rule
+    # with two homes, kept apart only by a spelling (`bias_voltages_v` there,
+    # `bias_voltage_v` here), which is a poor reason for two homes.  They
+    # rejoin when that surface retires with `TransportConfig`
+    # (`engines/transport.md` 3.7).
+    #
+    # Bias is the one axis a transport calculation exists to sweep, so a
+    # person could describe 3 V and be told nothing on the road that runs.
+    # The rest of what preflight carries survives elsewhere: the region
+    # partition and the atom order are `sort`'s refusals and are structural
+    # on the ladder path, and the open-shell check runs from the siesta
+    # validator against the run's REAL spin treatment rather than that one's
+    # hardcoded closed shell.
     bias = getattr(cfg, "bias_voltage_v", None)
     if bias is not None and abs(float(bias)) > 2.0:
         out.append(Issue(

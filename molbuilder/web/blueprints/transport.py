@@ -335,7 +335,9 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
                                              TRANSPORT_STAGES,
+                                             resolvable_override_names,
                                              stages_for_transport)
+    _RESOLVABLE = resolvable_override_names()
 
     body = request.get_json(silent=True) or {}
     engine = str(body.get("engine") or "siesta").lower()
@@ -372,20 +374,24 @@ def api_transport_describe() -> Any:
     # are the citation's ONLY when the citation carries a deck).
     import dataclasses as _dc
 
-    # THE SAME VOCABULARY THE PREP DOOR USES.  Checking against
-    # `TransportConfig` alone refused a person's own lead k-density --
-    # `electrode_kz` is a catalogue row and a `SiestaConfig` field, and the
-    # answer "is not a transport parameter" was simply wrong.  `stages.py`
-    # was fixed on 2026-09-16 and this door was not, so the same override
-    # the CLI accepts was refused in the browser.
-    from molbuilder.config.siesta import SiestaConfig
-    _known = ({f.name for f in _dc.fields(TransportConfig)}
-              | {f.name for f in _dc.fields(SiestaConfig)})
+    # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
+    # listed (`stages.resolvable_override_names`).  This door checked
+    # `TransportConfig` alone, which refused a person's own lead k-density
+    # (`electrode_kz` is a catalogue row); widening it to the UNION with
+    # `SiestaConfig` fixed that and overshot in the other direction, letting
+    # through three names prep then refuses -- so "Described" succeeded and
+    # every later prep failed, naming a field the person never typed.
     for _name in overrides:
-        if _name not in _known:
+        if _name not in _RESOLVABLE:
             return jsonify({"ok": False,
-                            "error": f"{_name!r} is not a transport "
-                                     f"parameter"}), 400
+                            "error": f"{_name!r} is not a parameter this "
+                                     f"calculation can carry: `prep` "
+                                     f"resolves each rung against the "
+                                     f"SIESTA schema, and either no field "
+                                     f"of it has that name or it is a "
+                                     f"machine fact the description must "
+                                     f"never carry (engines/template.md "
+                                     f"7)."}), 400
         if _name in SEALED_ALWAYS:
             return jsonify({"ok": False,
                             "error": f"{_name!r} is the description's "
@@ -489,7 +495,8 @@ def api_transport_schema() -> Any:
     """
     from molbuilder.transport.stages import (CONTRACT_FIELDS,
                                              SEALED_ALWAYS,
-                                             UNRESOLVED_FIELDS)
+                                             UNRESOLVED_FIELDS,
+                                             resolvable_override_names)
     # HIDDEN IN BOTH LANES, and the `?contract=` argument no longer
     # changes anything here.
     #
@@ -506,6 +513,17 @@ def api_transport_schema() -> Any:
     # to prevent.  The argument is kept only so an older page that still
     # sends it is not a 400; it selects nothing.
     hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS | set(CONTRACT_FIELDS)
+    # AND EVERY CONTROL PREP CANNOT RESOLVE.  The three sets above are the
+    # SEALED question -- what a person may not change.  This is the different
+    # one: what the description is able to CARRY.  `num_threads`, `log_level`
+    # and `max_memory_mb` are `TransportConfig` fields the schema has no row
+    # for, so the door accepted them and every later prep refused the whole
+    # calculation.  A control the door is guaranteed to reject is not a
+    # control, and it is the same trap this filter already exists to close.
+    import dataclasses as _dcs
+    _resolvable = resolvable_override_names()
+    hidden |= {f.name for f in _dcs.fields(TransportConfig)
+               if f.name not in _resolvable}
     schema = _dataclass_to_form_schema(TransportConfig, "t")
     kept = []
     for sec in schema.get("sections", []):

@@ -15,11 +15,20 @@ strings, at the `fdf_get` call sites, so *whether this installation can read
 a label* is a countable fact rather than a recollection. This walks the
 labels a real deck emits and greps the engine's own binary for each.
 
-**Its limit, stated.** A label assembled at runtime from a prefix does not
-appear whole — which is why `TS.ChemPots` counts zero while `ChemPots` and
-`.ChemPot.` are present, and the chempot blocks are *fine*. So the check is
-on the label's STEM, and a miss is reported for a human to read rather than
-treated as proof on its own. It is a smoke alarm, not a judge.
+**Two rules make the comparison honest, and both were measured on 2026-09-16.**
+fdf matches labels through `fdf_utils::packlabel`, which drops `.`, `-` and
+`_` and ignores case — so the check packs both sides, and `WriteForces` is
+recognised as the `Write.Forces` the binary compiles. And a label assembled at
+runtime from a prefix does not appear whole, so the four such forms are listed
+below WITH the literal the binary must carry (`TS.ChemPots` counts zero while
+`ChemPots` is present) rather than excused by a stem rule — which used to be
+this file's answer and let `TS.TBT.Emin`, `TS.TBT.Emax`, `TS.TBT.NumE` and
+`TS.ComplexContour.Emin` through, four of the seven it exists to catch,
+because `Emin` and `NumE` occur inside other keywords SIESTA does know.
+
+**What it covers.** Both the standalone `render_script` deck and, since
+2026-09-16, one case per deck SHAPE of the ladder that actually runs — which
+had never been checked against a binary at all.
 
 **It skips rather than fails when the env is absent**, the way every
 env-dependent test here does: a laptop without `molbuilder-siesta` has
@@ -98,13 +107,41 @@ def _emitted_labels(text: str):
     return labels
 
 
-def _stem(label: str) -> str:
-    """The most specific part of a label -- what survives prefix assembly.
+#: Labels fdf never sees whole, because the deck NAMES them and the engine
+#: assembles the lookup from a prefix plus that name: `%block TS.Elec.L`,
+#: `%block TS.ChemPot.Left`, `%block TBT.Contour.window`.  The prefix is the
+#: part the binary must know; the tail is the deck's own word.  Four entries,
+#: rather than a rule that waves through every label ending in a known word.
+#:
+#: Each entry maps the deck's spelling to **what the binary must contain** --
+#: which is not always the prefix itself: TranSIESTA prepends `TS.` to the
+#: chempot list at runtime, so the compiled literal is `ChemPots`.  The probe
+#: is checked like any other label, so a typo in the fixed half (`TS.Elecs.L`)
+#: is still caught.
+_ASSEMBLED_PREFIXES = {
+    "TS.Elec.":     "TS.Elec.",     # one block per electrode
+    "TS.ChemPot.":  "TS.ChemPot.",  # one block per chemical potential
+    "TBT.Contour.": "TBT.Contour.",  # one block per TBtrans energy contour
+    "TS.ChemPots":  "ChemPots",     # the list block; `TS.` is added at runtime
+}
 
-    `TS.ComplexContour.NumCircle` -> `NumCircle`: if the binary does not
-    contain even that, no prefix arrangement can reach it.
+
+def _packed(text: str) -> str:
+    """The binary's strings as fdf COMPARES them: separators dropped, lowercased.
+
+    fdf does not match a label literally.  `fdf_utils::packlabel` strips ``.``,
+    ``-`` and ``_`` and the comparison is case-insensitive, which is why
+    ``SystemLabel``, ``system-label`` and ``system_label`` are one keyword.
+
+    Without this the check reports a label that WORKS.  Measured 2026-09-16:
+    every molbuilder SIESTA deck writes ``WriteForces``, the binary contains
+    only ``Write.Forces``, and a stem comparison calls that missing.  Run
+    against a real SIESTA it is fine -- its own fdf log answers
+    ``Write.Forces  T`` with no "# default value" marker, i.e. it read the
+    undotted spelling out of the deck.  A guard that cries wolf on a correct
+    keyword is how a real miss gets waved through.
     """
-    return label.rsplit(".", 1)[-1]
+    return re.sub(r"[.\-_]", "", text).lower()
 
 
 def test_every_label_a_device_deck_emits_is_known_to_the_binary(binary_text):
@@ -121,18 +158,82 @@ def test_every_label_a_device_deck_emits_is_known_to_the_binary(binary_text):
         "the deck carries no TBtrans contour block -- this test would pass "
         "vacuously on a deck that had stopped emitting one")
 
+    _refuse_unknown_labels(deck, binary_text, "render_script")
+
+
+def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
+    """Every label WHOLE, not by its last word.
+
+    The check compared only the label's stem until 2026-09-16 — `Emin` for
+    `TS.TBT.Emin` — on the reasoning that a runtime-assembled label does not
+    appear whole. Measured against the seven keywords in `plan.md` § 5o that
+    this file exists to catch, **the stem rule catches three of them**: `Emin`,
+    `Emax` and `NumE` all occur inside OTHER keywords the binary does know, so
+    `TS.TBT.Emin` — the one that silently put T(E) on the wrong energy grid —
+    sailed through the guard written for it. The whole-label rule catches all
+    seven, and on the five real rungs it flags exactly the four assembled
+    forms above.
+    """
+    packed = _packed(binary_text)
     missing = []
     for label in sorted(_emitted_labels(deck)):
-        stem = _stem(label)
-        if stem and stem not in binary_text:
-            missing.append(f"{label}  (stem {stem!r} absent)")
+        probe = next((v for k, v in _ASSEMBLED_PREFIXES.items()
+                      if label == k or label.startswith(k)), label)
+        if probe and _packed(probe) not in packed:
+            missing.append(f"{label}  ({probe!r} absent)")
     assert not missing, (
-        "the deck writes labels the installed SIESTA cannot read, so they "
-        "are SILENTLY IGNORED -- the run completes and the setting does "
-        "nothing (`plan.md` § 5o):\n  " + "\n  ".join(missing)
+        f"the {where} deck writes labels the installed SIESTA cannot read, "
+        f"so they are SILENTLY IGNORED -- the run completes and the setting "
+        f"does nothing (`plan.md` § 5o):\n  " + "\n  ".join(missing)
         + "\n\nIf a label is genuinely assembled at runtime from a prefix, "
           "read the site and add its stem to the binary's vocabulary here "
           "with the reason.")
+
+
+@pytest.mark.parametrize("token,rung", [("01_seed", "seed"),
+                                        ("02_electrode_L", "electrode"),
+                                        ("04_device", "negf")])
+def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
+        binary_text, token, rung):
+    """THE DECKS THAT ACTUALLY RUN — the gap this file had until 2026-09-16.
+
+    The test above renders through ``TransiestaEngine.render_script``, and
+    **no rung uses it**: since the seam migration all five render through
+    ``spec_for`` -> ``DeckSpec`` -> ``prepare_deck`` (`engines/transport.md`
+    § 6.1a), and `render_script` survives only behind `molbuilder transport
+    electrodes` and `/api/transport/render`.
+
+    So the guard written because seven keywords shipped that SIESTA silently
+    ignores was watching the one deck nobody runs, while the ~30 keywords the
+    seam brought to every rung -- `MaxSCFIterations`, `DM.Tolerance`, the
+    `SCF.Mixer` pair, the restart group, `Diag.ParallelOverK`, the whole
+    output section, `TS.Contours.Eq.Pole.N` -- had never been checked against
+    a binary at all.
+
+    One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
+    five rungs onto three texts, and device and transmission are one text.
+    """
+    import numpy as np
+
+    from molbuilder import script_emit as sc
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import spec_for
+    from molbuilder.structure import Structure
+
+    struct = Structure(
+        elements=["Au", "Au", "S", "C", "Au", "Au"],
+        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
+        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 14.0]], dtype=float),
+        regions={"L-electrode": [0, 1], "bridge": [2, 3],
+                 "R-electrode": [4, 5]})
+    cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
+    deck = sc.render_deck(
+        spec_for(struct, cfg, stage_token=token, calculation="transport"),
+        struct, cfg)
+    assert "MaxSCFIterations" in deck, (
+        "this rung carries none of the engine's section set -- the test "
+        "would pass vacuously on a deck that had fallen off the seam")
+    _refuse_unknown_labels(deck, binary_text, rung)
 
 
 def _junction_and_config():

@@ -91,6 +91,41 @@ CONTRACT_FIELDS = frozenset({
 SEALED_TRANSPORT_FIELDS = SEALED_ALWAYS | CONTRACT_FIELDS
 
 
+def resolvable_override_names() -> frozenset:
+    """The names a per-stage override may carry — **asked, never listed.**
+
+    `prep` resolves a rung's config through
+    :func:`molbuilder.resolve.resolve` against
+    :class:`~molbuilder.config.siesta.SiestaConfig`, so a name that is not one
+    of its fields is refused there by name, and an ``allocation``-marked one is
+    refused as *"a machine fact the description must never carry"*
+    (`engines/template.md` § 7). Those two facts are the whole vocabulary, and
+    this is where they are turned into one question both doors ask.
+
+    **Both doors had a different, wider answer, and the gap was measured
+    2026-09-16.** The web form offered nineteen controls and the describe door
+    checked membership of ``TransportConfig ∪ SiestaConfig``; sixteen resolve,
+    and three do not — ``num_threads`` and ``log_level`` are
+    ``TransportConfig`` fields that no catalogue row declares, and
+    ``max_memory_mb`` is a machine fact. A person setting the thread count on
+    the Transport tab got *"Described"*, and then **every** later `prep`, on
+    either road, refused the whole calculation while naming a field they had
+    never typed (*"did you mean 'omp_threads'?"*).
+
+    Which names are the machine's is the catalogue's own answer — this is what
+    ``select(t, allocation=True)`` is for, rather than a fourth frozenset.
+    """
+    import dataclasses
+
+    from ..config.siesta import SiestaConfig
+    from ..template import catalogue, select
+
+    machine = {i.name for i in select(catalogue(), engine="siesta",
+                                      allocation=True)}
+    return frozenset(f.name for f in dataclasses.fields(SiestaConfig)
+                     if f.name not in machine)
+
+
 def bias_token(v: float) -> str:
     """The ONE spelling of a bias point's directory name — ``v0``,
     ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
