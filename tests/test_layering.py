@@ -133,13 +133,12 @@ _L1_MODULES = {
                          # ships with a monitor and no molbuilder installed,
                          # so a path module it cannot import is one it works
                          # around.
-    "ref",               # THE ADDRESS and the three verbs over it
-                         # (`plans/plan.md` § 5l).  L1 because it is layers 2
-                         # and 5 of a stack whose other three are `runfiles`
-                         # (catalogue + grammar) and `paths` (layout), and a
-                         # composite that could not travel where its parts do
-                         # would send the monitor back to an f-string.  It
-                         # imports those two and nothing else.
+    # `ref` stood here -- THE ADDRESS and the three verbs over it.  The
+    # module and this entry are DELETED 2026-09-17 with the retirement of
+    # the paths STANDARD (`plans/plan.md` § 5l, retired by the user).  It
+    # had no production importer in any revision: `runfiles` (catalogue +
+    # grammar) and `paths` (layout) remain the L1 path modules and are
+    # unaffected.
     "runfiles",          # the run-file GRAMMAR, and its reader
                          # (`job-contracts.md` § 2.2a).  L1 on stdlib alone,
                          # which is what lets it travel beside a job.

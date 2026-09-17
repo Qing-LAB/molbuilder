@@ -1537,10 +1537,17 @@ cannot be done first.** Each line is falsifiable.
 1. **Transport renders through `spec_for(struct, cfg, stage_token=…,
    calculation="transport")` → `DeckSpec(layout=…)` → `prepare_deck`**, the
    path `siesta/input` has taken since 2026-08-19.
-   **✅ DONE 2026-09-16 — all five rungs** (§ 2a.14). `render_script` survives
-   only as the lifted NEGF electrode block inside one `Block`, for the reason
+   **✅ DONE 2026-09-16 — all five rungs** (§ 2a.14). What survives of the
+   pre-seam emitter is the lifted NEGF electrode block —
+   `transiesta._emit_transiesta_block`, wrapped in one `Block` — for the reason
    § 2a.14 gives: an off-by-one in a contiguous atom range computes
-   transmission through the wrong region *and converges*.
+   transmission through the wrong region *and converges*. **`render_script`
+   itself is deleted** (2026-09-17): it was a SECOND writer of a device deck,
+   reached only by `/api/transport/render`, and it read `TransportConfig` while
+   the live path reads `SiestaConfig` — so the pole-energy correction of
+   2026-09-16 reached one and not the other, and a deck from it stopped SIESTA
+   before the SCF loop for two days. *(This item said "`render_script` survives"
+   until 2026-09-17.)*
 2. **No keyword's value syntax is written by hand.** A `%block` is written by
    the block emitter, a list by the list emitter. `TBT.k` in a form the parser
    rejects becomes structurally unavailable rather than fixed — and so does
@@ -1782,15 +1789,23 @@ expansion in the shipped 2-terminal scope.)
 > TranSIESTA identifies electrode atoms by their **position** in the coordinates
 > block (first N atoms = first electrode), *not* by region label. The first
 > electrode is the one extending to `-A3`, so the **lower** block must come first;
-> the upper block first would aim its self-energy into the bridge. The **engine
-> preflight** (`transiesta.py::TransiestaEngine.preflight`) **refuses** only that:
-> `[lower][bridge][upper]`, each region contiguous. An out-of-order structure
-> produces silently wrong physics with no run-time error. In the composite it
-> cannot fire in anger — prep's categorical sort orders by z before any deck is
-> rendered — and the engine preflight still gates it as defense in depth.
-> *(`render_stage_deck`, `/api/transport/render` and the cross-run
-> `transport preflight` are all deleted as of 2026-09-17; the preflight reached
-> here is `TransiestaEngine.preflight`, called by `validation`.)*
+> the upper block first would aim its self-energy into the bridge. An
+> out-of-order structure produces silently wrong physics with no run-time error.
+>
+> **It is held by CONSTRUCTION, and that is the whole answer.**
+> `sort.categorical_sort` orders the atoms `[lower][bridge][upper]` before any
+> deck is rendered, and the extracted lead inherits exactly that order — which
+> is what makes the device-block ↔ electrode-calculation correspondence hold.
+> `sort._partition_of` refuses an unlabeled or double-labeled atom, and
+> `categorical_sort` refuses a missing region or two electrode blocks that
+> interleave along z.
+>
+> *(This said the ordering was ALSO gated by `TransiestaEngine.preflight`,
+> *"as defense in depth"*. It was not: that checker was registered under
+> `TransportConfig` and every rung resolves a `SiestaConfig`, so it dispatched
+> for nothing — a gate that never runs is not depth. The class, along with
+> `render_stage_deck`, `/api/transport/render` and the cross-run
+> `transport preflight`, is deleted as of 2026-09-17.)*
 
 > **The label convention is checked and WARNED about, never enforced**
 > *(user ruling, 2026-08-29)*. The usual convention is `L-electrode` low z,
@@ -1814,10 +1829,23 @@ expansion in the shipped 2-terminal scope.)
 
 ## 5. The consistency contract — the invariant set
 
-One numerical contract + one geometry must appear **intact across all three runs**.
-Break any row and the transmission is *silently* wrong — so the preflight
-(`transport/preflight.py`) encodes each as a machine gate (the `Gate` column is the
-gate `id`; ✓ = guaranteed by the electrode wizard's clone-by-construction instead):
+One numerical contract + one geometry must appear **intact across all five rungs**.
+Break any row and the transmission is *silently* wrong — so every row names
+**what holds it today**, and that is the last column.
+
+Three kinds of holder appear there. **construction** means the rung cannot be
+built any other way: one template resolves every rung, and the lead's atoms ARE
+the device's, extracted by region label. **A live gate** means a check runs on
+every prep — `_validate_transport_kind` (keyed on the calculation KIND, so it
+fires whether or not anyone remembers to ask) or `compose`. Nothing here is held
+by a command a person must run.
+
+> *This paragraph said the gates were encoded in `transport/preflight.py`, with
+> a `Gate` column of check-ids and a ✓ meaning "guaranteed by the electrode
+> wizard's clone-by-construction". **The table's rows were re-derived on
+> 2026-09-17 and this sentence above them was not** — both the cross-deck
+> preflight and the electrode wizard are deleted, and the column is now "Held
+> by". § 6a is the general finding this is one instance of.*
 
 | # | Invariant | Across | Why (physics) | **Held by** *(re-derived 2026-09-17)* |
 |---|---|---|---|---|
@@ -1859,8 +1887,10 @@ disagree with: both are derived from one citation and resolved from one
 template. The reader it was built on, `parse_fdf_params`, survives and has four
 production callers.
 
-(Messages abbreviated for illustration; the real formatter is
-`preflight.format_report`.)
+(Messages abbreviated for illustration. `format_report`, which printed that
+checklist, went with the verb — a KIND gate raises `Issue`s and the form and the
+`.validation.txt` render them, so there is nothing left for a second formatter
+to format.)
 
 **Each gate traces to a physical requirement and a reference** (so the design is
 auditable, not asserted): the open-boundary `kgrid.device_kz` (I8) and the
@@ -1874,17 +1904,29 @@ and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
 
 ## 6. The pieces & data flow
 
+**This table names each module and the ROLE it holds — not its function
+list.** That is deliberate, and the reason is recorded in § 6a: the version of
+this table that enumerated functions named six deleted symbols for three weeks,
+because a function list must be hand-swept on every deletion and a role need not
+be.
+
 | Layer | Module | Role |
 |---|---|---|
-| Electrode wizard | `transport/wizard.py` (`electrode_wizard`) | derive a bulk-lead `.fdf` + geometric clone from the labeled device; its z-period comes from `cell.bulk_z_period` (§ 7.1), the same derivation the Junction builder uses |
-| Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars) |
+| Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
+| Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
-| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`) |
-| Consistency preflight | `transport/preflight.py` | the cross-run contract gates (§ 5) |
-| Engine | `transport/transiesta.py` (`TransiestaEngine`) | the NEGF `.fdf` emitter (`render_script`), `preflight`, `parse_output` |
-| Registry | `transport/engine_base.py` | the `TransportEngine` Protocol + `register_engine` (so a PySCF-NEGF backend can join) |
-| Results | `transport/results.py` (`TransportResults`) | engine-agnostic result: `transmission`, `bias_grid_V`/`current_uA`, `conductance_G0` + `to_dict`/`from_dict` |
-| CLI | `transport/_cli.py` (`molbuilder transport`) | the terminal surface |
+| Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry`, `_emit_basis_and_xc` and `_emit_transiesta_block` as its emission library |
+| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I8 (device `kz` = 1), I9 (lead `kz` dense), I12 (z-vacuum at the leads). § 5 names which holder holds which |
+| Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`); a point whose transmission has not run reads as **pending**, never as a failure |
+
+**Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
+(§ 6a): `transport/engine_base.py` (a `Protocol` registry), `transport/results.py`
+(`TransportResults`), `transport/_cli.py` (`molbuilder transport`),
+`wizard.electrode_wizard` / `render_electrode_fdf`,
+`transiesta.render_script` / `parse_output`, `preflight.preflight_files` /
+`format_report`, and `POST /api/transport/render`. What survives in
+`transport/preflight.py` is `parse_fdf_params` — **reading** an fdf, which four
+production callers still do; only **comparing two of them** lost its subject.
 
 **Data flow** — the single numerical contract (§ 5) is baked *identically* into all
 three fdfs; only the geometry and the open-vs-bulk boundary (`kz`,
@@ -1927,6 +1969,67 @@ lands in `<label>.TS.HSX` — SIESTA 5.x; tbtrans must be told with an
 explicit `TBT.HS` line, measured live 2026-08-29 — while the electrode runs
 still write `.TSHS` via `TS.HS.Save`.  `summarize run` writes the record —
 § 8.)
+
+---
+
+### 6a Why this table names roles and not functions *(2026-09-17)*
+
+The version of § 6 above it enumerated each module **and its function list**.
+On 2026-09-17, six of its nine rows named code that had been deleted that same
+week — `electrode_wizard`, `render_script`, `parse_output`, the `TransportEngine`
+Protocol, `TransportResults`, `transport/_cli.py`. A reader asking *"where is an
+electrode derived?"* was sent to a symbol that does not exist.
+
+**The same failure, the same week, in three other documents** — and this is the
+point, because it means the cause is not transport:
+
+| the list | declared | measured | what was missed |
+|---|---|---|---|
+| `process/conventions.md` § 3 | 13 commands | 19 | seven never added; `serve` had become a group |
+| `web/presenters.md` § 1 | 5 viewers, 3 results | **6 and 4** | `bench-summary` — a whole presenter with its own category |
+| `engines/overview.md` § 5 | *"engines self-register with `@register_engine`"* | no registry exists | the mechanism was deleted under the instruction |
+| `engines/transport.md` § 6 | 9 modules | 3 of 9 rows true | the June era, listed as current |
+
+**An enumeration must be hand-swept on every deletion; a rule need not be.**
+Each of those four is a list maintained by hand, and each was missed by the very
+sweep that correctly updated the *rules* around it — § 5's invariant table was
+corrected on 2026-09-17 while § 6, twenty lines below it, was not.
+
+**So the rule this section adds:** a contract enumerates only where **the list
+itself is the guarantee**. § 5's thirteen invariants are a list because the SET
+is what is promised — drop one and the promise changes. The catalogue's rows are
+a list because a missing row is a missing keyword. A *pieces* table is not that:
+it is a map for a reader, and a map stays true longer when it names **where a
+role lives** than when it names **which functions implement it**, because roles
+outlive refactors and function lists do not.
+
+**And what to DO about it, which is two things, not a principle.**
+
+**One: reduce the lists.** § 6 above names roles, not function lists — three
+fewer things to keep true per module. That is the part that needed no mechanism.
+
+**Two: assert the lists that must remain, by MEMBERSHIP.** Some enumerations
+genuinely are the contract and cannot be dissolved — the six presenters, the 97
+routes, the 19 commands. For those the repo already has the answer, proven:
+`tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
+compares `architecture.md`'s L1 index against `test_layering.py`'s enforced set
+in both directions, and on 2026-09-17 it failed **the moment** a module was
+deleted without the document being swept. That is the pattern; the work is to
+put the other three under it (`plans/plan.md` § 5p.3p.8).
+
+> **Membership, never a count — the count hides an even number of errors.**
+> `web-api.md` § 3's heading says *"all 97 routes"* and a test asserts that
+> number against Flask's URL map. On 2026-09-17 it **passed** while the index
+> listed a route deleted that week *and* omitted a live one: the extra and the
+> missing cancelled. The same shape appeared in `test_aggregator.py`, which
+> asserted the validator registry with `<=` — a subset check, under which a dead
+> row can sit forever. Both are now equality over the SET.
+
+**What is NOT the answer**, measured so nobody re-proposes it: a general lint
+resolving every backticked symbol in every document produced **6,318 candidate
+findings** on its first run here, almost all English words in backticks and
+frozen archive text. Doc-citation hygiene at that scale is not work. The three
+named tables are, because each one is a contract a reader acts on.
 
 ---
 
@@ -2061,21 +2164,28 @@ the table, and every rung renders through `transport/deck.py`:
 > answers it and the rung's own emitter writes it. Measured — seed and lead render
 > `diagon`, device renders `transiesta`.
 
-There is no valid output of `render_script` that says `diagon` — that would be
-an ordinary closed-boundary single-point which converges and means nothing
-(§ 2).  So the stage → value mapping is **already structurally guaranteed by
-the dispatch**.  Turning it into a config field converted a fact that *cannot
-be wrong* into a default that *is* wrong for every caller which does not set
-it — and two real callers do not: the Transport tab's render endpoint
-(`web/blueprints/transport.py`, which builds a config from the form) and
-`engine_base`'s own documented usage.  The measured symptom was a rendered
-device script that solved with `diagon`.
+There is no valid device deck that says `diagon` — that would be an ordinary
+closed-boundary single-point which converges and means nothing (§ 2).  So the
+stage → value mapping is **already structurally guaranteed by the dispatch**.
+Turning it into a config field converted a fact that *cannot be wrong* into a
+default that *is* wrong for every caller which does not set it.
 
-**The test that catches it.**
-`test_transport_au_bdt_au_validation.py::test_render_script_emits_correct_atom_counts`
-asserts `SolutionMethod transiesta` against a bare `TransportConfig()`.  That
-assertion is not incidental: it pins that the emitter's *identity* does not
-depend on a caller.
+> **The two callers that proved it are both gone, and the rule outlived them.**
+> The measured symptom in 2026-08 was a rendered device script that solved with
+> `diagon`, from two callers which built a config without setting the field:
+> the Transport tab's render endpoint and `engine_base`'s own documented usage.
+> `POST /api/transport/render` and `transport/engine_base.py` were **deleted
+> 2026-09-17**, so neither can reproduce it — *and that is exactly why the rule
+> is stated here rather than left to the callers.* A fact about the RUNG is not
+> a default a caller may forget; it is `role = ["transport"]`, and the rung's
+> own emitter writes it.
+
+**The test that holds it.**
+`test_transport_au_bdt_au_validation.py::test_the_device_deck_states_its_identity_and_method`
+asserts `SolutionMethod transiesta` on the device deck the live path renders.
+That assertion is not incidental: it pins that the deck's *identity* does not
+depend on a caller.  *(It was named `…::test_render_script_emits_correct_atom_counts`
+and drove the deleted renderer until 2026-09-17.)*
 
 **The general rule this is an instance of.**  Before giving a keyword a
 parameter, ask which emitters can write it.  If exactly one emitter writes it
@@ -2247,9 +2357,14 @@ single-point, or a relaxation if those layers are not frozen.
 >
 - **Shipped:** the transport COMPOSITE (`--calculation transport`: citation →
   sort → gates → five derived stages → bias chain → `summarize run` →
-  `<label>.transport.json`), the electrode wizard, the `electrode`/`preflight`
-  helper CLI, and the region-label-driven derivation.  The finite-bias scan
-  ships with it (the `.TSDE`-chained walker).
+  `<label>.transport.json`) and the region-label-driven derivation.  The
+  finite-bias scan ships with it (the `.TSDE`-chained walker).
+  *(This bullet also listed "the electrode wizard" and "the
+  `electrode`/`preflight` helper CLI" until 2026-09-17.  Both were the June
+  2026 hand-assembly era and are **deleted** — a lead is DERIVED from the
+  citation at prep by `extract_electrode_model`, and § 5's invariants are held
+  by construction or by `_validate_transport_kind`.  § 6a records why a list
+  like this one goes stale.)*
 - **Web tab (rewired 2026-08-29, P7b + same-day review):** the tab is the
   composite's WHOLE describe surface — cite the junction through the
   shared tree-picker (ANY directory choosable — what qualifies it is the § 3.1 FILE condition, and the meta line classifies each selection, reading
@@ -2264,16 +2379,25 @@ single-point, or a relaxation if those layers are not frozen.
   both doors (the citation's to say).  **The parameters card is one panel
   per ENGINE** since 2026-09-15 — § 3.2, and the follow-up below is where
   its second panel comes from.  Task setup reads the saved
-  description as the run surface (machine, queue, prep).  The render
-  endpoint (`/api/transport/render`) remains as the engine's validation
-  surface.
+  description as the run surface (machine, queue, prep).  **The tab's live
+  routes are four** — `/describe`, `/describe_attempt`, `/schema` and
+  `/swap_electrodes` (`web-api.md` § 3).  *(This said "the render endpoint
+  (`/api/transport/render`) remains as the engine's validation surface" until
+  2026-09-17.  That route is deleted: no browser had called it since
+  2026-08-29, and the "engine" whose validation surface it was is not a
+  registry — see the next bullet.)*
 - **Follow-up** (`plans/plan.md` § 5f, **S13**): a **convergence sweep** mode (auto-vary
   transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops
   moving); the **Results-tab transmission inspector** (T(E) + I–V charts read
   from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —
-  which arrives as a registered engine, its OWN config dataclass and the
-  panel that renders it (§ 3.2), all in one commit.  Until then its sub-tab
-  is drawn and disabled, and `TransportConfig` carries none of its fields.
+  which arrives as **a `spec_for` arm and a set of catalogue rows**, its OWN
+  config dataclass and the panel that renders it (§ 3.2), all in one commit.
+  Until then its sub-tab is drawn and disabled, and `TransportConfig` carries
+  none of its fields.  *(This said the backend "arrives as a registered
+  engine".  There is no engine registry: `transport/engine_base.py` was deleted
+  2026-09-17 and spectra's went at its migration's P3 —
+  [`overview.md`](?doc=engines/overview.md) § 5 is the live statement of how an
+  engine joins.)*
   *(This bullet said the backend "adds its engine choice back to
   `TransportConfig`" — true of the selector, and it was read as licence to
   keep two PySCF PARAMETERS in that dataclass, which is what § 3.2 was

@@ -339,7 +339,7 @@ the ones worth naming here:
 | File | Written by | Read by | Purpose |
 |---|---|---|---|
 | `my-job.fdf` | **`prep`** (§ 2.6), from the template | SIESTA | input deck (SIESTA) |
-| `my-job.py` | **`prep`** (§ 2.6), from the template; `molbuilder pyscf` for a standalone deck | Python | input script (PySCF) |
+| `my-job.py` | **`prep`** (§ 2.6), from the template — the only writer since `molbuilder pyscf` was deleted 2026-09-17 | Python | input script (PySCF) |
 | `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
 | `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
@@ -1445,8 +1445,7 @@ TranSIESTA stage deck has no USER-CUSTOM section to type into.
 |---|---|
 | the web Build tab, regenerating | **preserved** — merged twice over, harmlessly |
 | the web Build tab, edit-save | **preserved** — the merge is skipped on purpose, because you are committing your own text and a merge would undo edits *inside* the zone |
-| `molbuilder siesta` / `molbuilder pyscf` | **preserved** — `prepare_deck` → `write_script` |
-| `jobset prep` (SIESTA / PySCF), re-prepping over an existing deck | **preserved** — same path |
+| `jobset prep` (SIESTA / PySCF), re-prepping over an existing deck | **preserved** — `prepare_deck` → `write_script` |
 | `jobset prep` (SIESTA / PySCF), into a directory with no previous deck | **empty** — there is nothing to read back |
 | `jobset prep` **(transport)** | **no zone exists** — and if you add the markers by hand, the next prep overwrites the file wholesale |
 

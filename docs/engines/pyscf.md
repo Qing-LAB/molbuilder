@@ -39,7 +39,6 @@ flowchart LR
         S["Structure"]
         C["PySCFConfig<br/>(config/pyscf.py)"]
     end
-    CLI["CLI: molbuilder pyscf …"]
     PREP["CLI: molbuilder jobset prep<br/>(via the template)"]
     WEB["web Structure-optimization tab<br/><i>collects parameters only —<br/>renders no script</i>"]
     R["render_script(struct, config)<br/>pyscf/input.py"]
@@ -47,41 +46,53 @@ flowchart LR
     RUN["running it → job.log · job.chk ·<br/>*_optimized.xyz · job.molwatch.log · …"]
     S --> R
     C --> R
-    CLI --> R
     PREP --> R
     WEB -.->|"the parameters it collected,<br/>via the template"| PREP
     R --> PY --> RUN
 ```
 
 
-> **`convert()` is DELETED (2026-09-17).** It was the single-shot
-> "read a structure file, write a deck" worker behind `molbuilder pyscf`, and it had no
-> other production caller. A deck is written by `jobset prep` from a
-> description — `spec_for` → `prepare_deck`, the same three steps with the
-> description in front of them instead of a command line. `render_script` stays:
-> it is a thin call over `spec_for` and it is this emitter's public surface.
+> **`molbuilder pyscf` and `convert()` are both DELETED (2026-09-17).**
+> `convert()` was the single-shot "read a structure file, write a deck" worker;
+> `cmd_pyscf` was its command line. **No engine has a verb** — the ruling is
+> `conventions.md` § 3, decisions 7 and 34 (*"everything is a job set… a second
+> way in is a second way to lose your results"*, and *"there is no `molbuilder
+> fdf`"*), and this was `fdf`'s surviving twin: a structure plus every engine
+> field as a flag → a finished deck, skipping the description. `cli.py` had
+> claimed an exemption — *"`pyscf` keeps its own only because its ladder runs
+> inside one emitted script"* — and refuted it two comments later: *"THIS
+> COMMAND WRITES ONE DECK, AND A LADDER IS N DECKS."*
+>
+> A deck is written by `jobset prep` from a description — `spec_for` →
+> `prepare_deck`, the same three steps with the description in front of them
+> instead of a command line; `prep.py:651` already builds a full `EngineSeam`
+> for PySCF, so nothing had to be built to replace the verb.
+> **`render_script` stays**: it is a thin call over `spec_for` and it is this
+> emitter's public surface, named as such by this contract. *(It stays for that
+> reason and not because 43 test files call it — a test never justifies code.)*
 
-- **Backend.** `render_script` returns the `.py` text; `convert(input_path,
-  py_path, config)` reads an `.xyz`/`.pdb` and writes the script,
-  returning `{"py", "n_atoms", "charge", "label"}`. Verbose comments are on by
-  default so the script reads as documentation of its own choices. The CLI
-  (`cmd_pyscf`, `cli.py`) writes the script from a structure file:
+- **Backend.** `render_script(struct, config)` returns the `.py` text, and
+  that is the whole public surface. Verbose comments are on by default so the
+  script reads as documentation of its own choices. A deck reaches disk one
+  way — `jobset prep`, which calls `spec_for` → `prepare_deck` on the machine
+  that will run it:
 
   ```bash
-  # every config field is a flag (--basis, --functional, …), plus --ecp-atoms
-  molbuilder pyscf input.xyz job.py --basis def2-TZVP
+  molbuilder jobset init --engine pyscf --stage-strategy single-point
+  molbuilder jobset prep <job-set-dir>
   ```
 
-  **It writes ONE deck, and it has no ladder flags** — a ladder is N decks
-  (§ 1.1a), declared in `task.json` and built by
+  **A ladder is N decks** (§ 1.1a), declared in `task.json` and built by
   `jobset init --engine pyscf --stage-strategy …`, which is the one door
-  either engine's ladder is authored through.
+  either engine's ladder is authored through. *(`--stage-strategy` was taken
+  off the deleted `pyscf` verb on 2026-08-18 for exactly this reason, which
+  was the first half of the argument that finished it.)*
 
 - **Frontend.** The Structure-optimization tab **collects parameters and
   produces no artifact**: `/api/build/schema/pyscf` renders its form **from the
   catalogue** (`_shared.catalogue_to_form_schema`, the same generator SIESTA's
   form uses), and `/api/build/preflight` validates live. A script comes from
-  `prep`, or from the standalone `molbuilder pyscf` command above.
+  `prep` — there is no second producer, and since 2026-09-17 no second door.
 
   > *(This bullet said both tabs post to `/api/build/pyscf` and that
   > **`PySCFConfig`'s field metadata drives the form**, until 2026-08-16.

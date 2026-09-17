@@ -16,10 +16,18 @@ done with the configured knobs; post-run (``results`` provided)
 real numbers from the run replace the configuration placeholders
 (actual mode count, n_atoms / n_free from the parsed structure).
 
-Engine-specific fragments come from
-:meth:`SpectraEngine.methods_fragment` -- the composer here is
-deliberately ignorant of which engine ran the job so a future
-SIESTA engine plugs in without changing this file.
+Engine-specific fragments are PASSED IN as ``fragment_md`` by the
+caller that knows its own engine (today the vibration deck, with
+:func:`molbuilder.pyscf.vibration_emitters.pyscf_methods_fragment`).
+The composer here stays ignorant of which engine ran the job, so a
+future SIESTA engine adds a producer without changing this file.
+
+*(This named ``SpectraEngine.methods_fragment`` and a registry
+lookup until 2026-09-17.  That class and ``spectra/engine_base.py``
+were deleted at the spectra migration's P3, 2026-08-21 -- there is
+no engine registry anywhere in the tree; see ``engines/overview.md``
+§ 5.  The ``fragment_md`` parameter below has described the real
+mechanism the whole time.)*
 
 Citation keys appear inline as ``[KeyName]`` markers (e.g.
 ``[Sun2020]``).  Every key cited here must resolve against

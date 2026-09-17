@@ -12,11 +12,12 @@ set of emitters the two live writers reach into, plus the engine preflight:
 * :func:`electrode_hs_stem` — the ONE spelling of an electrode run's
   identity, so the device deck's ``HS`` line and the electrode deck's
   ``SystemLabel`` cannot disagree.
-* :meth:`TransiestaEngine.preflight` — region/order/kz gates, called
-  directly by `validation/__init__.py`.  There was a `TransportEngine`
-  Protocol and a registry in front of it until 2026-09-17: four declared
-  members of which one survived, one registered engine, and one caller, so
-  the lookup could only ever return the class below.
+This module emits NO deck of its own and holds NO gate.  ``TransiestaEngine``
+and its ``preflight`` were deleted 2026-09-17 (the tombstone at the foot of the
+file lists every check and where it lives now), as were the ``TransportEngine``
+Protocol and its registry before them.  Transport's science is the KIND's —
+``_KIND_VALIDATORS["transport"]`` — and its decks are written by
+``transport/deck.py`` through ``spec_for`` → ``prepare_deck``.
 
 ``render_script``, ``_emit_header`` and ``_emit_k_mesh`` were a SECOND
 device-deck writer and are deleted; so are ``parse_output`` (which raised
@@ -717,309 +718,42 @@ def _emit_transiesta_block(struct: Structure,
 # --------------------------------------------------------------------- #
 
 
-class TransiestaEngine:
-    """The TranSIESTA NEGF engine (the composite's deck emitter).
-
-    See the module docstring for the deck contract; the composite's
-    stage renders drive this through ``transport/stages.py``.  The
-    engine self-registers via the ``@register_engine`` decorator
-    on import; the production import path is
-    ``molbuilder.web.blueprints.__init__`` (mirrors the chemistry
-    adapters).
-    """
-
-    name = "transiesta"
-    label = "TranSIESTA (NEGF, pseudopotentials)"
-
-    # `render_script` DELETED 2026-09-17 -- the SECOND writer of a device
-    # deck.  The framework's own pipeline writes all five rungs
-    # (`siesta.input.spec_for(calculation="transport")` ->
-    # `transport/deck.py` -> `prepare_deck`), and this one was reached only
-    # by `/api/transport/render`, a route no browser calls.
-    #
-    # The two homes had already disagreed, with a run-killing result: this
-    # path read `TransportConfig` while the live path reads `SiestaConfig`,
-    # so the pole-energy correction of 2026-09-16 reached one and not the
-    # other, and a deck rendered here stopped SIESTA before the SCF loop
-    # ("requires at least 20 poles") for two days.
-    #
-    # `_emit_geometry`, `_emit_basis_and_xc`, `_emit_transiesta_block` and
-    # `_find_electrode_regions` all SURVIVE: the live deck path reuses the
-    # first and third, and the electrode wizard reuses the second and
-    # fourth.  What went with this method is `_emit_header` and
-    # `_emit_k_mesh`, which nothing else called.
-
-    @classmethod
-    def preflight(cls, struct: Structure,
-                  cfg: TransportConfig,
-                  prior=None,   # accepted, never passed non-None
-                  ) -> List[Issue]:
-        """Basic sidecar-region validation + cross-engine chemistry.
-
-        Errors block generation; warnings are informational and
-        the user can override (the form-rendering layer surfaces
-        them inline).
-        """
-        issues: List[Issue] = []
-        regions = struct.regions or {}
-
-        # Device transport-axis k-points MUST be 1 (SCIENTIFIC-AUDIT FIX).
-        # The transport direction (A3 = index 2) is treated by NEGF as an OPEN
-        # boundary (semi-infinite leads); it is NOT part of the BZ sum.  kz > 1
-        # imposes a fake Bloch periodicity along the wire -> physically WRONG
-        # transmission with NO runtime error.  _emit_k_mesh writes
-        # cfg.k_mesh_transverse[2] straight into the device kgrid, and
-        # TransportConfig has no validator, so a bad preset (e.g. (4,4,2))
-        # silently shipped a Bloch-periodic 'transport' run.  The cross-run
-        # `transport preflight` CLI catches this (preflight.py C2), but the web
-        # Generate path dispatches to THIS engine preflight -- so the invariant
-        # must live here too (`engines/transport.md` § 5, I8).
-        try:
-            kz = int(cfg.k_mesh_transverse[2])
-        except (TypeError, ValueError, IndexError):
-            kz = 1
-        if kz != 1:
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    f"Device transport-axis k-points = {kz} (must be 1).  The "
-                    f"transport direction is handled by NEGF as an open "
-                    f"boundary and is NOT Brillouin-zone sampled; kz > 1 "
-                    f"imposes a fake Bloch periodicity along the wire and "
-                    f"gives physically wrong transmission.  Set "
-                    f"k_mesh_transverse = (Nx, Ny, 1) (only the two TRANSVERSE "
-                    f"directions are sampled)."
-                ),
-                where="config.k_mesh_transverse",
-            ))
-
-        # No silent absorption (`engines/transport.md` § 4): TranSIESTA
-        # consumes only the canonical 2-terminal region labels.  A
-        # structure carrying any OTHER region label has it silently
-        # ignored unless we say so -- warn (don't drop quietly) so the
-        # user knows that label plays no part in this calculation.
-        # Emitted before the missing-region early return so it surfaces
-        # even on an otherwise-incomplete region set.
-        # ``buffer`` joined the consumed set 2026-08-28: the emitter
-        # writes it as TS.Atoms.Buffer (`engines/transport.md` § 4), so
-        # warning that it is ignored would be false.
-        consumed = set(EXPECTED_REGIONS_2T) | {REGION_BUFFER}
-        unknown_regions = [r for r in regions if r not in consumed]
-        if unknown_regions:
-            issues.append(Issue(
-                severity="warn",
-                message=(
-                    f"TranSIESTA preflight: structure carries region "
-                    f"label(s) {sorted(unknown_regions)} that TranSIESTA "
-                    f"does not consume (it uses only "
-                    f"{sorted(consumed)}).  They are ignored "
-                    f"for this calculation."
-                ),
-                where="struct.regions",
-            ))
-
-        # Required region labels for a 2-terminal calculation.
-        missing = [r for r in EXPECTED_REGIONS_2T if r not in regions]
-        if missing:
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    f"TranSIESTA preflight: missing required region "
-                    f"labels {missing}.  Assign them on the Molbuilder "
-                    f"tab (region picker) before generating; the "
-                    f".molstruct.json sidecar carries them through "
-                    f"to the engine."
-                ),
-                where="struct.regions",
-            ))
-            # Without region labels we cannot validate further.
-            return issues
-
-        # Non-empty electrode atom counts.
-        for r in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
-            n = len(regions.get(r, []))
-            if n == 0:
-                issues.append(Issue(
-                    severity="error",
-                    message=(
-                        f"TranSIESTA preflight: region {r!r} is empty.  "
-                        f"Each electrode region must contain at least "
-                        f"one atom."
-                    ),
-                    where=f"struct.regions.{r}",
-                ))
-
-        # Non-empty bridge.
-        n_bridge = len(regions.get(REGION_BRIDGE, []))
-        if n_bridge == 0:
-            issues.append(Issue(
-                severity="error",
-                message=(
-                    f"TranSIESTA preflight: region {REGION_BRIDGE!r} is "
-                    f"empty.  The device region (bridge) must contain "
-                    f"at least one atom — typically the molecule between "
-                    f"the two electrodes."
-                ),
-                where=f"struct.regions.{REGION_BRIDGE}",
-            ))
-
-        # CRITICAL — atom ordering for TS.NumUsedAtomsLeft / Right.
-        #
-        # TranSIESTA reads ``TS.NumUsedAtomsLeft = N`` as "the FIRST
-        # N atoms in the AtomicCoordinatesAndAtomicSpecies block are
-        # the left electrode."  Same for Right (last M atoms).  If
-        # the user's input XYZ has atoms in any order other than
-        # [L-electrode][bridge][R-electrode], the .fdf SILENTLY
-        # misidentifies which atoms go into which electrode self-
-        # energy — producing chemically wrong transmission curves
-        # with no run-time error.
-        #
-        # Reference: Brandbyge et al., Phys. Rev. B 65, 165401
-        # (2002) § III; TranSIESTA manual ``TS.NumUsedAtomsLeft``
-        # description.
-        #
-        # Block emission with an error so the user re-exports a
-        # contiguous-ordered structure from the Molbuilder tab
-        # (a "reorder for transport" affordance is a planned
-        # follow-up).
-        left_idx   = sorted(regions.get(REGION_LEFT_ELECTRODE, []))
-        bridge_idx = sorted(regions.get(REGION_BRIDGE, []))
-        right_idx  = sorted(regions.get(REGION_RIGHT_ELECTRODE, []))
-        if left_idx and bridge_idx and right_idx:
-            # WHICH BLOCK MUST COME FIRST IS GEOMETRY, not the label
-            # (transport-design.md 4.1a): the block TranSIESTA reads as
-            # the first electrode is the one that extends to -A3, and
-            # that is the LOWER one.  A junction labeled the other way
-            # round still sorts and still runs (the warning below says
-            # what it means); what may never happen is the upper block
-            # sitting first, because its lead would then point down
-            # into the bridge.
-            pos_z = np.asarray(struct.positions, dtype=float)[:, 2]
-            _zl = float(np.mean(pos_z[left_idx]))
-            _zr = float(np.mean(pos_z[right_idx]))
-            lower_lab, upper_lab = ((REGION_LEFT_ELECTRODE,
-                                     REGION_RIGHT_ELECTRODE) if _zl <= _zr
-                                    else (REGION_RIGHT_ELECTRODE,
-                                          REGION_LEFT_ELECTRODE))
-            first_idx, last_idx = ((left_idx, right_idx) if _zl <= _zr
-                                   else (right_idx, left_idx))
-            ordering_ok = (
-                first_idx[-1] < bridge_idx[0] and
-                bridge_idx[-1] < last_idx[0] and
-                # Each region must be contiguous (no gaps); a non-
-                # contiguous electrode would also break the
-                # "first N atoms" assumption.
-                first_idx  == list(range(first_idx[0],
-                                          first_idx[-1] + 1)) and
-                bridge_idx == list(range(bridge_idx[0],
-                                          bridge_idx[-1] + 1)) and
-                last_idx   == list(range(last_idx[0],
-                                          last_idx[-1] + 1))
-            )
-            if not ordering_ok:
-                issues.append(Issue(
-                    severity="error",
-                    message=(
-                        f"TranSIESTA preflight: atoms must be ordered "
-                        f"as [{lower_lab}][{REGION_BRIDGE}]"
-                        f"[{upper_lab}] in the AtomicCoordinates block "
-                        f"-- the LOWER electrode block first -- with "
-                        f"each region contiguous (no gaps).  TranSIESTA "
-                        f"identifies electrode atoms POSITIONALLY (first "
-                        f"N atoms = the first electrode, the -A3 lead); "
-                        f"out-of-order labels produce SILENTLY WRONG "
-                        f"transmission with no run-time error.  Got: "
-                        f"{REGION_LEFT_ELECTRODE}={left_idx[0]}.."
-                        f"{left_idx[-1]}, "
-                        f"{REGION_BRIDGE}={bridge_idx[0]}.."
-                        f"{bridge_idx[-1]}, "
-                        f"{REGION_RIGHT_ELECTRODE}={right_idx[0]}.."
-                        f"{right_idx[-1]}.  Run transport prep (it sorts "
-                        f"by geometry), or re-export the structure in "
-                        f"that order."
-                    ),
-                    where="struct.regions",
-                ))
-
-        # THE CONVENTION, CHECKED AND REPORTED -- never enforced (user
-        # ruling, 2026-08-29).  An inverted junction is a valid
-        # experiment whose author biased the other end; only they can
-        # say which end they meant, so this states the measurement and
-        # its consequence and leaves the decision where it belongs.
-        # THE SAME DOOR the sort and the tab read (sort.py), never a
-        # second derivation of the rule here.
-        if left_idx and right_idx:
-            from .sort import (ORDER_INVERTED, electrode_orientation,
-                               inverted_note)
-            if electrode_orientation(struct) == ORDER_INVERTED:
-                issues.append(Issue(
-                    severity="warn",
-                    message=("TranSIESTA preflight: "
-                             + inverted_note(struct)),
-                    where="struct.regions",
-                ))
-
-        # High-bias INFO: Landauer linear-response regime breaks
-        # down above ~2 V for typical molecular junctions (di Ventra,
-        # Electrical Transport in Nanoscale Systems, 2008).  Surface
-        # so users interpret high-bias results as snapshots of a
-        # nonlinear I-V, NOT linearized conductance.
-        if cfg.bias_voltages_v:
-            max_v = max(abs(v) for v in cfg.bias_voltages_v)
-            if max_v > 2.0:
-                issues.append(Issue(
-                    severity="warn",
-                    message=(
-                        f"Bias voltage |V| = {max_v:.2f} V is above the "
-                        f"~2 V linear-response limit for typical "
-                        f"molecular junctions.  TranSIESTA will still "
-                        f"converge but the result should be interpreted "
-                        f"as a single point on a nonlinear I-V curve, "
-                        f"NOT a linearized Landauer conductance.  "
-                        f"Consult Reed et al. 2006 / di Ventra 2008 "
-                        f"for nonlinear-regime interpretation guidance."
-                    ),
-                    where="config.bias_voltages_v",
-                ))
-
-        # Multi-bias note: THIS single-deck render emits point 0 only.
-        # The composite renders one deck per point at prep and launches
-        # the .TSDE-chained walker (jobset/submit.py) -- this surface
-        # (/api/transport/render) validates a single deck.
-        if len(cfg.bias_voltages_v) > 1:
-            issues.append(Issue(
-                severity="warn",
-                message=(
-                    f"This validation render emits ONE deck, at "
-                    f"V = {cfg.bias_voltages_v[0]:.4f} V.  A scan over "
-                    f"{list(cfg.bias_voltages_v)} is the COMPOSITE's "
-                    f"job: describe it (--bias) and prep renders one "
-                    f"deck per point, launched as one chain."
-                ),
-                where="config.bias_voltages_v",
-            ))
-
-        # Cross-engine chemistry: shared open-shell-metal check.
-        # TransportConfig doesn't carry a spin treatment today;
-        # treat the run as closed-shell unless future config adds
-        # spin handling.  The check returns [] when there's no
-        # open-shell metal present, so it's harmless on organics.
-        from ..validation import check_open_shell_metal
-        issues.extend(check_open_shell_metal(
-            struct,
-            is_closed_shell=True,
-            engine_label="TranSIESTA (this Transport calculation)",
-        ))
-
-        return issues
-
-    # `parse_output` and `methods_fragment` DELETED 2026-09-17.  Neither had
-    # a caller anywhere; the first raised `NotImplementedError` and the
-    # second returned a paragraph ending "(Full Methods paragraph deferred
-    # to the follow-up release...)".  Both were declared on the Protocol as
-    # future work, and a placeholder that nothing calls is not a contract --
-    # it is a promise stored in the wrong place.  The record the first would
-    # have read does exist (`transport/record.py` writes
-    # `<label>.transport.json`), so when a transmission inspector lands it
-    # reads that file; it does not need a stub kept warm here.
-
+# `TransiestaEngine` DELETED 2026-09-17 -- the last of the June 2026 era.
+#
+# The class ended as one classmethod, `preflight`, reached only through
+# `_ENGINE_VALIDATORS[TransportConfig]` in `validation/__init__.py`.  **Nothing
+# validates a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
+# (`engines/transport.md` 2a.14), and the two sites that still BUILD a
+# `TransportConfig` -- `deck.py::_transport_view` and `stages.py::config_for` --
+# build it as a projection to feed the lifted NEGF block emitter and never
+# validate it.  So the registration dispatched for nothing.
+#
+# It was kept after that became true because one surface still built a
+# `TransportConfig` and validated it: `POST /api/transport/render`.  That route
+# was deleted 2026-09-17, and with it the last reason.
+#
+# EVERY CHECK IT CARRIED HAS A NAMED LIVE HOLDER, verified one by one before
+# this deletion (`engines/transport.md` 5 names them, and none named this):
+#
+#   device kz = 1 ................. `_validate_transport_kind`, error on
+#                                   `config.kgrid` (I8)
+#   unknown region labels ......... `validation/sidecar.py::
+#                                   check_unconsumed_region_labels`, run by
+#                                   `_validate_siesta` -- which every rung
+#                                   reaches, because every rung IS a SiestaConfig
+#   missing / empty L, bridge, R .. `sort.py::categorical_sort` REFUSES
+#   unlabeled or double-labeled ... `sort.py::_partition_of` REFUSES
+#   interleaved electrodes ........ `sort.py::categorical_sort` REFUSES
+#   atom order [lower][bridge][upper]
+#                                   held by CONSTRUCTION -- `compose` runs the
+#                                   categorical sort before any deck is
+#                                   rendered, and the extracted lead inherits
+#                                   that order
+#   |V| > 2 V advisory ............ `_validate_transport_kind`, warn on
+#                                   `config.bias_voltage_v` (re-homed 2026-09-16)
+#
+# What the module still exports is the emission library the live deck path
+# reuses -- `_emit_geometry`, `_emit_basis_and_xc`, `_emit_transiesta_block`,
+# `_find_electrode_regions`, `electrode_hs_stem`, `_compute_cell_from_extents`,
+# `axis_vacuum`, `_lattice_block`.  Those have real callers in
+# `transport/deck.py` and `transport/wizard.py`.

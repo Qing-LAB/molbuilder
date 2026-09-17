@@ -203,7 +203,12 @@ def test_no_prefix_when_trajectory_off(small_struct):
     """Spec: when write_trajectory=False, no optimize() call should set
     prefix= (we're not asking geomeTRIC for a streaming file)."""
     cfg = PySCFConfig(write_trajectory=False)
-    for body in _optimize_calls(render_script(small_struct, cfg)):
+    bodies = list(_optimize_calls(render_script(small_struct, cfg)))
+    # Guard the loop, not just its body: `optimize` defaults True so there
+    # ARE calls here, but an emitter that stopped writing them would make
+    # every assertion below unreachable and this test green over it.
+    assert bodies, "no optimize() call to inspect -- the check below is moot"
+    for body in bodies:
         assert "prefix" not in body, (
             f"optimize() set prefix= even though write_trajectory=False:\n"
             f"{body}"

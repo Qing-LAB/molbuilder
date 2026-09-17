@@ -11,8 +11,8 @@ the `/api/watch/*` and `/api/system/load` routes.
 You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
 becomes *whatever viewer fits the file you picked* — a 3D structure, a trajectory
-movie, or a spectrum. The tab itself draws nothing; it delegates every file type
-to a viewer.
+movie, a spectrum, or a bench sweep. The tab itself draws nothing; it delegates
+every file type to a viewer.
 
 ## 1. What the page is
 
@@ -31,7 +31,7 @@ flowchart TD
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
-  ENG --> S["a 3D structure · a trajectory movie + plots · a spectrum + modes"]
+  ENG --> S["a 3D structure · a trajectory movie + plots · a spectrum + modes · a bench sweep"]
   ENG -. "if the run is still going" .-> POLL["it polls for new data — every 15s (trajectory) / 2s (spectra)"]
   POLL -. "new data" .-> ENG
 ```
@@ -153,6 +153,35 @@ Two rules keep this from hiding anything:
 > its satellites means stripping the stage token first
 > (`execution/job-contracts.md § 2.2a`).
 
+> **And absorption cannot express a LADDER — transport is the first run that
+> needs it** *(2026-09-17)*. Everything above is about one directory: a master
+> and the satellites beside it. A transport run is **five directories that are
+> one result** — seed, both leads, device, transmission — each holding a real
+> SIESTA run with its own `.out` and `.molwatch.log`. Point the picker at one
+> and three things happen, none of which this section's rules can fix:
+>
+> - the deliverable, `<label>.transport.json`, **matches no `isResult`
+>   presenter**, so `pickResult` returns null and the menu drops it entirely;
+> - each rung's `.out` is claimed by the trajectory presenter, so the ladder
+>   lists as five unrelated entries under *SIESTA optimization*;
+> - `absorbs` is asked *"does this master subsume that sibling?"* — a question
+>   about one folder. It has no way to say *"these five folders are one run."*
+>
+> The first is a missing presenter and is owed by
+> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5. **The other two are not
+> a presenter's to fix.** The picker guesses a directory's meaning from
+> filenames because there is no door to ask: `model/parse.md` § 5 specifies
+> `JobDirParser` → `RunDirResult`, carrying `engine`, `files`, `openable` (what
+> a VIEWER should load) and `active` — **specified and not built**, so
+> `parse_dir()` can only raise, and `/api/results/contract` answers
+> `info.calculation` and five other fields. That migration is § 5c, and the
+> Results picker is a consumer its caller map does not list.
+>
+> **One question there is genuinely new and has no home yet:** `openable` is
+> one answer per DIRECTORY, and a ladder needs one answer across five. Neither
+> `absorbs` nor `RunDirResult` can state it today. It reaches every multi-rung
+> calculation, not just transport, so it wants deciding before code moves.
+
 > **✅ That rename landed on 2026-08-10 and this section was not updated
 > until 2026-09-08.** The trajectory log is named for **the deck that produced
 > it** — `<label>_<stage>.molwatch.log`, the same name whether stages share a
@@ -186,11 +215,22 @@ drops an opaque **"parsing…" cover** over the panel so the *previous* scene ca
 be mistaken for the new result while it loads; the cover lifts when the viewer
 signals it has painted (or after a 15-second safety timeout).
 
-The three viewers you can land in:
+The viewers you can land in — **four from the result dropdown**, and two more
+reachable from the sidebar ([`presenters.md`](?doc=web/presenters.md) § 1 is the
+registry's own list):
 
-- a **read-only 3D structure** for a `.xyz`/`.pdb` ([`presenters.md`](?doc=web/presenters.md)),
+- a **read-only 3D structure** for a `.xyz`/`.pdb`,
 - a **trajectory movie + plots** for an optimization log (`trajectory.md`),
-- a **spectrum chart + modes** for a `.spectra.json` (`spectra.md`).
+- a **spectrum chart + modes** for a `.spectra.json` (`spectra.md`),
+- a **bench sweep summary + chart** for a `job-set.json` (`bench-summary.md`),
+- and from the sidebar only: a **markdown editor** for a `.md`, and a **plain
+  paginated text pane** for everything else — which is what a
+  `<label>.transport.json` lands in today, because no presenter claims it
+  (§ 2.3).
+
+*(This said "the three viewers" and listed the first three until 2026-09-17,
+omitting the bench-summary presenter that had been registering the whole time —
+the same count `presenters.md` § 1 was carrying.)*
 
 ## 4. What a mounted viewer remembers
 
@@ -484,10 +524,19 @@ page shows, and what an Export → Data writes, is the run's stated intent
 rather than a browser guess *(2026-08-20; before this, every trajectory
 export claimed all-isolated beside its own lattice)*. Because the run is
 still going, the viewer polls `/api/watch/data` every
-15 seconds and appends new frames live. When it converges you click **Bundle**,
-and Results writes `handoff.xyz` + `handoff.molstruct.json` into
-`projects/BDT/opt/handoff/`; the sidebar jumps there so you can load the
-converged, labeled geometry into your next calculation.
+15 seconds and appends new frames live.
+
+When it converges, **you do nothing here** — the next calculation CITES this one.
+You open the tab that owns it (Transport, for a junction) and pick this attempt;
+`prep` fuses the final geometry with the labels itself, with the sort and the
+gates a hand-made copy never had (§ 5).
+
+> *This example ended **"you click Bundle, and Results writes `handoff.xyz` +
+> `handoff.molstruct.json`"** until 2026-09-17 — a button § 5 of this same
+> document records as deleted on 2026-08-29, three weeks earlier. § 5 was
+> written and the worked example was not swept, so the document said both
+> things at once. Nothing writes a `handoff/` directory today; the grep confirms
+> no Bundle card and no handoff route survives.*
 
 ## 8. When there's nothing to show
 

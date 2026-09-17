@@ -384,20 +384,12 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     here, naming the reason, rather than silently corrected downstream.
     """
     out: List[Issue] = []
-    # THE BIAS ADVISORY, restated here for the kind road 2026-09-16 -- and
-    # RESTATED is the honest word: `TransiestaEngine.preflight` still carries
-    # its own copy, and this note said "re-homed" for several hours, which
-    # described a removal that never happened.
-    #
-    # Why the engine's copy stays for now.  It is registered in
-    # `_ENGINE_VALIDATORS` under `TransportConfig`, so it is dead on every
-    # rung (each resolves a `SiestaConfig`) and LIVE on the one surface that
-    # still builds a `TransportConfig` -- `/api/transport/render`.  Deleting
-    # it would take the advisory off that surface; leaving it means one rule
-    # with two homes, kept apart only by a spelling (`bias_voltages_v` there,
-    # `bias_voltage_v` here), which is a poor reason for two homes.  They
-    # rejoin when that surface retires with `TransportConfig`
-    # (`engines/transport.md` 3.7).
+    # THE BIAS ADVISORY.  It had two homes from 2026-09-16 to 2026-09-17:
+    # here, and a copy in `TransiestaEngine.preflight` kept alive by the one
+    # surface that built and validated a `TransportConfig`,
+    # `POST /api/transport/render`.  That route and that class are both
+    # deleted, so this is the only home and the spelling split
+    # (`bias_voltages_v` there, `bias_voltage_v` here) is gone with it.
     #
     # Bias is the one axis a transport calculation exists to sweep, so a
     # person could describe 3 V and be told nothing on the road that runs.
@@ -609,16 +601,6 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     return out
 
 
-def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
-    # CALLED DIRECTLY, not looked up.  This read
-    # `get_engine(cfg.engine).preflight(...)` through a Protocol + registry
-    # in `transport/engine_base.py`, deleted 2026-09-17: one registered
-    # engine, one surviving member, and this was its only caller, so the
-    # dispatch could only ever return the class named here.
-    from ..transport.transiesta import TransiestaEngine
-    return list(TransiestaEngine.preflight(struct, cfg, prior=prior))
-
-
 def _register_default_engines() -> None:
     """Late binding to avoid an import cycle: the engine config classes
     live in modules that themselves import from validation.  Importing
@@ -643,11 +625,16 @@ def _register_default_engines() -> None:
     # stood here keyed on `SpectraConfig`, a class nothing in production
     # ever constructed, so it only ever dispatched for a caller holding one
     # by hand.  Retired with the class, 2026-08-22.
-    try:
-        from ..config.transport import TransportConfig
-        _ENGINE_VALIDATORS[TransportConfig] = _validate_transport
-    except ImportError:
-        pass
+    # NO TRANSPORT ROW EITHER, and for the same reason one step later.
+    # It keyed on `TransportConfig` and ran `TransiestaEngine.preflight`.
+    # Every transport rung resolves a `SiestaConfig` (`engines/transport.md`
+    # 2a.14), so it dispatched for nothing; the two sites that still build a
+    # `TransportConfig` build it as a projection for the lifted NEGF emitter
+    # and never validate it.  It survived that because ONE surface did both
+    # -- `POST /api/transport/render` -- and that route was deleted
+    # 2026-09-17.  Transport's science is the KIND's, below.  Every check the
+    # engine preflight carried has a named live holder; the tombstone in
+    # `transport/transiesta.py` lists them one by one.
     _KIND_VALIDATORS["vibration"] = _validate_vibration_kind
     _KIND_VALIDATORS["transport"] = _validate_transport_kind
 

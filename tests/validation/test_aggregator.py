@@ -170,16 +170,29 @@ def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_every_engine_config_is_registered():
-    from molbuilder.validation import _ENGINE_VALIDATORS
-    from molbuilder.config.transport import TransportConfig
-    registered = {c.__name__ for c in _ENGINE_VALIDATORS}
-    # THREE, not four.  `SpectraConfig` was retired 2026-08-22: a
-    # vibration's science is the KIND's, not an engine row's.
-    assert {"SiestaConfig", "PySCFConfig",
-            "TransportConfig"} <= registered, (
-        f"an engine validator was dropped from the registry: {registered} "
-        "-- /spectra or /transport would silently skip its science")
+def test_the_two_registries_hold_what_the_contract_says():
+    """`science/validation.md`: an ENGINE row keys on a config class, a KIND
+    row on `task.calculation` -- and which registry a science belongs in is
+    decided by whether production constructs that class.
+
+    TWO engine rows, not four.  Both retirements were the same finding a year
+    apart in code time: `SpectraConfig` 2026-08-22 and `TransportConfig`
+    2026-09-17 each keyed on a class no production caller validates, so the
+    row dispatched for nothing.  A vibration's science and a junction's are
+    the KIND's.
+
+    Asserted by EQUALITY, not containment.  The version before 2026-09-17
+    used `<=`, so a row could be added and never noticed -- and the row this
+    one lost had been dead for a day under exactly that subset check.
+    """
+    from molbuilder.validation import _ENGINE_VALIDATORS, _KIND_VALIDATORS
+    assert {c.__name__ for c in _ENGINE_VALIDATORS} == {
+        "SiestaConfig", "PySCFConfig"}, (
+        "the engine registry no longer matches `science/validation.md`; a row "
+        "added here must name a config class production actually validates")
+    assert set(_KIND_VALIDATORS) == {"vibration", "transport"}, (
+        "a calculation kind lost its science -- this is the road a transport "
+        "or vibration prep actually travels")
 
 
 def test_the_render_gate_carries_the_science_but_not_the_selector(water_struct):
@@ -206,21 +219,19 @@ def test_the_render_gate_carries_the_science_but_not_the_selector(water_struct):
         "the top_n selector soft-dep leaked into the render gate")
 
 
-def test_validate_dispatches_transport_preflight(water_struct):
-    """validate(struct, transport_cfg) reaches the transport engine's
-    region/electrode checks through the registered validator (V1/V2)."""
-    from molbuilder.config.transport import TransportConfig
-    # A bare water struct has no transport regions -> the preflight emits
-    # its "missing electrode region" finding; the point is that SOME
-    # transport-specific issue surfaces through validate() at all.
-    cfg = TransportConfig()
-    issues = validate(water_struct, cfg)
-    assert any("transiesta" in (i.message or "").lower()
-               or "electrode" in (i.message or "").lower()
-               or "region" in (i.message or "").lower()
-               for i in issues), (
-        "no transport-preflight finding surfaced through validate() -- "
-        "TransportConfig may have lost its registered validator")
+# `test_validate_dispatches_transport_preflight` deleted 2026-09-17 with
+# `TransiestaEngine`.  It called `validate(water_struct, TransportConfig())`
+# and asked only that SOME transport-flavoured word appeared -- its own
+# comment said so.  **No production caller ever made that call**: every
+# transport rung resolves a `SiestaConfig`, and the two sites that build a
+# `TransportConfig` build it as a projection for the NEGF block emitter and
+# never validate it.  So the test pinned a dispatch that existed only for
+# the test, and kept the dead registration alive for a day after the last
+# real caller (`POST /api/transport/render`) was deleted.
+#
+# What a transport prep actually sees is `_KIND_VALIDATORS["transport"]`,
+# covered by `tests/validation/test_transport_kind.py` -- each check there
+# carrying a discriminating half and mutation-tested.
 
 
 # `test_preflight_report_to_issues_bridge` deleted 2026-09-17 with

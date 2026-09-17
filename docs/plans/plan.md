@@ -101,16 +101,16 @@ the same day, with what it turned out to be.
 | **B4** | run-decision round | *(priority P3)*  | **MEASURED 2026-09-03; the envelope half is done, the fixture half is proposed and NOT applied.** The `_envelope()` count was seven, and only **three** were re-implementations: `test_pseudos.py` and `test_task_setup_tab.py` hand-listed the envelope's fields (so a field the envelope grows would never reach them) and both now go through the one builder — which immediately surfaced a real defect: a test built a 2-atom envelope and overwrote `elements` to three, leaving `atom_names` describing the old atoms, and the route's own guard caught it the moment the canonical dict was used. The third was `test_structure_envelope_protocol.py`, carrying TWO docstrings back to back (the second was dead). The remaining four are a delegating alias and one-line `struct.to_dict()` calls — not the hand-rolled XYZ parsers the helper was written against. **`flask_server`: DONE 2026-09-03, without touching a single scope.** 18 of the 20 now call one context manager, `tests/support/live_server.py::serve()`; each module keeps its own `@pytest.fixture(...)` line, because a scope is a decision about how much state a file's tests share and a de-duplication does not get to change it for them. ~230 lines and 18 now-unused `import threading` go with it. The two left alone pass a non-default app config, which is a real difference. **`_node_esm`: 24 of 47 `*_js.py` files drive it** (the row said 7 of 48), and 13 more shell out to `node` themselves | 3 done · 16 proposed |
 | **S1** | architecture seams | **`runwrap` reaches into the engines.** The wrapper writer branches on which engine it is writing for — what a cold restart clears, how the label is read back out of a deck, how the launch line is formed. Until it moves, *adding an engine edits `runwrap.py`*, which is exactly what `generator.md` § 7's *"adding an engine adds files and edits none"* exists to catch | `backend-architecture.md` § 5 (its **W1**) | **measured open** — four branches, `runwrap.py:420 / 446 / 645 / 728`, the same four counted 2026-08-19; 128 engine-name literals in the file |
 | **S3** | architecture seams | **`runtime_config`'s untyped scheduler dicts + mixed concerns** | `backend-architecture.md` § 5 (**W3**) | **OPEN — verified 2026-09-06.** `runtime_config._validate_scheduler` still returns `Dict[str, Any]`; overlaps **S6** |
-| **S4** | architecture seams | **Transport bypasses the framework.** Gated on a branching workflow, which has no representation today and would arrive as something a person asks for at launch, never as a field a description stores | `backend-architecture.md` § 5 (**W4**) | **MOSTLY WRONG — verified 2026-09-06.** Transport preps through the jobset door (`prep.py::_prep_transport`, reached from `prep_calculation`), and `transport/wizard.py` RENDERS (`render_electrode_fdf`) rather than writing — no `write_text` in it at all. Re-scope or retire; the parked wizard task needs re-deriving before it is acted on |
+| **S4** | architecture seams | **Transport bypasses the framework.** Gated on a branching workflow, which has no representation today and would arrive as something a person asks for at launch, never as a field a description stores | `backend-architecture.md` § 5 (**W4**) | **RETIRED 2026-09-17.** It was already *mostly wrong* when verified 2026-09-06 — transport preps through the jobset door (`prep.py::_prep_transport`, reached from `prep_calculation`) — and the remainder is now moot: `render_electrode_fdf` is deleted, and `wizard.py` neither renders nor writes. It holds `ElectrodeModel` + `extract_electrode_model`, which DERIVE a lead (`as_structure()` hands `prep` a `Structure`, rendered by the one writer like every other rung). The one path that did write outside the framework, `transport/_cli.py`'s `write_text`, went with the verb. **The "parked wizard task" is closed by deletion, not by re-deriving.** |
 | **S6** | architecture seams | **The scheduler menu is handed out as plain dictionaries**, so the typed record and the code using it never meet — how `gpu_partition` came to redirect GPU work from inside an unexamined bag | roadmap § 7.6 phase 3 | **measured partly** — the *record* is typed (`Domain`, `Device`, `Topology`, `Site` in `scheduler/record.py`); the *menu* is not (`known_machines() -> List[Dict[str, object]]`, `Domain.to_row() -> Dict[str, Any]`). Phases 1, 2, 4, 5 are done — phase 2 landed as `scheduler/admit.py`, split out so the check cannot drift from the record it checks |
 | **S7** | architecture seams | **The preparation layer against its contract** — **P1** the enforced floor map puts `runwrap` and `jobset/prep` on floor 5; **P3** nothing names the shared package (`jobset/prep._shared_for` globs); **P5** PySCF's seam entry. P2, P4, P6 closed 2026-08-18 | `execution/script-preparation.md` | **P3 CLOSED — verified 2026-09-06**: `_shared_for` calls `seam.shared_package(base)`, and the code names the glob it retired as *'an accident of which suffix the glob happened to name'*. P1 and P5 not re-derived |
 | **S16** | architecture seams | **`molbuilder envs advise` does not do a correct job, and does it in the wrong layer.** It prints MPI-rank / OMP-thread / MPS presets for `molbuilder-siesta-gpu` from inside the INSTALLER's command group, while the jobset already owns resource assignment and `runwrap._gpu_runtime_defaults_block` already emits that policy as bash onto the compute node. The user's position, 2026-09-12: *"i don't see any point of keeping this… it has no business in installation."*  **It is wrong by its own stated contract, measured:** its docstring calls itself the user-facing counterpart to the wrapper's policy and its comments claim to mirror it *"exactly"* and be *"kept in sync"*. It is not. On 8-core/1-socket/MPS the wrapper picks **2 ranks x 3 threads** and advise recommends **4 x 1**; on 64-core/2-socket/no-MPS the wrapper picks **2 x 16** and advise recommends **1 x 32**. Its output is exports a person pastes, so following the advice OVERRIDES the placement the system chose, with nothing saying which is right.  **And it enforces a rule that was overruled:** `advise.py:313` clamps ranks by atom count calling it *"the same rule the wrapper uses"*; `runwrap.py:1495` deleted that clamp on the user's 2026-09-03 ruling because the theory behind it was factually wrong (the `propor IMAX=0` abort was a psml problem, not system size) and because how many ranks to spend is the user's decision. `advise --n-atoms 3` still caps to 3 ranks.  **16 tests in `test_envs_advise.py` pin these numbers and no document states them**, so the wrong answers are held in place by coverage with no admission ticket.  Only two of its rules are actually correct (the core-budget and threads-per-rank arithmetic), and both are restatements of the wrapper's.  **Expected resolution: delete `envs advise`, `molbuilder/envs/advise.py` and `test_envs_advise.py`.** Confirm before removal, since the host-probe helpers may have another reader | found 2026-09-12 by the install review, deferred as out of scope | **DONE 2026-09-12** -- deleted (advise.py, test_envs_advise.py, the CLI command, the shim row, the wrapper's tune hint, and numactl's stated reason, which now names its real consumer) |
 | **S18** | ops / envs / config | **The 2026-09-12 env-installer and config-and-secrets session has its own hand-over file: [`2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).**  80 items, each marked by how it was checked (RAN / READ).  It exists because that session's own commit messages are not reliable: three independent audits were told to FALSIFY them, 14 of 16 behavioural claims held, and the failures were overstatements of scope -- four documentation statements written that day are false, two of them in text `envs init-config` ships into a user's config directory.  Its § 1 is the verified DONE list and exists to stop the next session re-deriving settled work; § 2 is the work, grouped as defects introduced (A), false docs (B), an instruction not implemented (C), sweeps that stopped at the first instance (D), pre-existing finds (E) and decisions for the user (F).  **§ 0 states the TARGET first** -- the installer's two state machines and one runner, and config's one resolver / one name / one writer, as 13 checkable invariants T1-T13 -- so every item reads as a named deviation rather than a patch.  **§ H is the residue of the pre-state-machine design**, swept against those invariants rather than against any diff: one question answered in two or more places four times over, a string where the design says state three times, dead parameters, and a door that never sanitises the environment it dispatches into.  **§ I is the config/secret residue**, and its first lesson is that **A11's own text in `architecture.md` still names a pre-consolidation owner**, so the rule as written licenses the three `.parent` climbs it forbids -- fix the rule before the sites.  § G records what was checked and found clean.  **§ 3 is the MIGRATION PLAN** -- eight phases scoped to `install-env.sh`, the `envs` verbs, deployment and how config is placed and validated, each stating what it closes and which end-state row (Z1-Z9) it realises; § 3.0 states that end state so it can be checked, and § 5 records what is deliberately out of scope.  **Read § 1 before touching § 2, and A0 before anything** -- `envs install molbuilder --clean` currently deletes the env the process is running from, and `envs doctor` prints that command as its remedy for a failed host verify.  No clean full-suite result exists for the work yet (F3) | audited 2026-09-12 | open -- nothing in § 2 started |
 | **S17** | architecture seams | **`run_tool` dispatched into an env without the mamba-1.x workaround every other path applied** -- so on a host whose manager emits the ``exec -- "$@"`` stub, `run_tool("tleap", ...)` died on a shell error about the manager's generated file, naming nothing to do with AmberTools.  **CLOSED 2026-09-12.** The trade that kept it open -- the workaround needs a prefix, and resolving one costs up to four manager subprocesses, which is wrong on a path walked once per structure build -- is resolved by MEASURING rather than predicting: `builds.dispatch_into_env` is now the one door for all three dispatches, the manager's own `run` is the route, and the prefix is resolved only after that stub has actually been seen.  A working manager still pays exactly one subprocess.  Still not reproducible on this machine (conda only), so it is verified by a fake manager emitting that exact signature | found 2026-09-12 by the install review | **done** |
 | **S13** | architecture seams | **Transport convergence sweep** — auto-vary transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops moving. `transport.md` § 2 already tells a reader not to trust a single point blindly, so the document promises what the code does not offer | `engines/transport.md` § 8 | **measured: not built** — the only occurrence in the tree is `transport/wizard.py:65`, a comment naming it |
-| **N5** | paths standard |  | **the uses that change**: `stage_glob` / `_enumerate_files` → partial-address find; `parse_stage_token` deleted; `attempt_concluded` takes an address; `pseudos/` becomes a coordinate | each is its own commit with the behaviour asserted before and after |
-| **N6** | paths standard |  | P-4 (the group launcher) and P-5 (`files.py`), both **blocked on a decision**, not on code | the decision is recorded here first |
-| **N7** | paths standard |  | delete the superseded surface, **one module per commit** — `sidecars.molstruct`, then `identity`, then `materialize`, then `paths`/`runfiles`. Forty functions cannot be retired in one separately-green step | the guard asserts the framework's public surface IS the three verbs plus the catalogue |
+| **N5** | parse / run files | **The three defects § 5l measured, which outlived it** (§ 5l.a). **① LIVE:** every staged run loses its frozen atoms — `_sidecar.read_frozen_atoms` needs a label to strip the rung and three of four callers omit it, so *"Hide frozen atoms"* and `runtime_info["frozen_atoms"]` are empty for every laddered calculation. **② latent:** `identity.parse_stage_token` is a second stage-token reader that disagrees with `runfiles.parse` on two shapes. **③** a phantom rung for an unstaged calculation, fixed by ②. *The migration framing is gone with § 5l — these are ordinary defects in `parse/` and `identity`* | § 5l's inventory, re-measured 2026-09-17 | **open — ① first, and the fix is decided: DERIVE the label from the directory, inside `_sidecar`.** The two options were threading a label down from every caller (which `model/parse.md` § 5.3 forbids — *"folding those in would make every engine parser depend on the directory composer"*) or a role-keyed lookup, which § 5l's `find` would have given and no longer can. Neither is needed: **a folder is ONE calculation** (`project-layout.md` § 1.4), so `read_frozen_atoms` can read the label off its own directory and stay path-only, satisfying § 5.3 without any new vocabulary. ② and ③ are then one deletion: `identity.parse_stage_token` goes, its three callers move to `runfiles.parse`, which is right on both shapes the two disagree about |
+| **N6** | execution / web | **Two decisions § 5l was holding, now standing on their own** (§ 5l.a). **The group launcher:** `submit.py` spells `launch/` at `:1204` and `:1517` and `<name>` is a GROUP, not a calculation — `launch` is one of the two segments `GUARDED_UNDECLARED` holds, so § 5k's live guard already owns it and the question is § 2.6's: does a group become a qualifier on ④, or does the launcher move? **`files.py`:** `_SIDECAR_SUFFIX` at `:260` duplicates `sidecars.molstruct.SUFFIX` behind a narrow-graph reason layering does not require — import the door, or add the parity test `code-audit.md` D4 demands | § 5l, re-measured 2026-09-17 | **both now carry a RECOMMENDATION; neither is blocked on analysis.** *Group launcher:* **move the launcher, do not grow the tree.** `project-layout.md` § 2.6 is the authority on the levels and a submission-time grouping is not one of them — a group is how several calculations are launched together, not a container a calculation lives in; making it a qualifier on ④ would put a scheduling fact in the address every reader of the tree must then understand. *`files.py`:* **import the door and delete the copy.** The written reason is *"to keep its dependency graph narrow"*, and that is a preference, not a constraint — `sidecars` is L2 and `web` is L3, so the import is ordinary and legal. The cost of keeping it is the only duplicated constant of its kind in the tree plus a second copy of the pairing rule; the cost of the alternative is a parity test that exists only to watch two things that need not be two. **Both await a yes, not more measurement** |
+| ~~**N7**~~ | paths standard | ~~delete the superseded surface in favour of the three verbs~~ — **WITHDRAWN 2026-09-17** with § 5l. There is no replacement surface to migrate onto: `ref.py` is deleted, and `runfiles` + `paths` ARE the framework. The ~40 functions § 5l counted stay as they are; whether that number is itself a defect is a question § 5k's rule never raised and nothing has measured since | § 5l | withdrawn |
 | **W23** | front end / ops | **The JupyterNB feature is hand-built where it should be declared — fifteen items, one plan: § 5n.** *(user, 2026-09-15: "why is jupyter.py not following a data-driven design but rather handcrafted jibberish of code?" … "use .json or .jsonl or .toml to help clean this up. this is a systematic design, not some hacking" … "make sure that you don't have other hackish code in the design".)*  The settings a framed Jupyter starts with are expressed three ways inside one function, 40 lines of real Python live inside a string literal no tool can read, the control routes are gated twice on two different facts, the tab's waiting is five ad-hoc timers, and **the whole feature has no test** — 1,610 lines in its own five files, plus the notebook half of `serve_daemon` and six CLI verbs.  The contract, the admission rule that keeps the data file from becoming a dumping ground, the sweep of the other residue, and the order of work are in **§ 5n** | § 5n · found 2026-09-15 | **all fifteen shipped 2026-09-15**, then reviewed with fresh eyes the same day — nine further defects, one of them destructive and one re-creating J13's own bug. § 5n.8 has them and they are fixed; two are recorded as **J16** and **J17** below |
 | **W24** | front end / engines | **The transport tab is one panel per ENGINE, not one badge per field.** *(user, 2026-09-15: "i am confused to see mainly pyscf settings on that page while the main design should be focused on transiesta … let's separate transiesta and pySCF engine completely … why don't we use tab of different engine to separate them rather than marking each parameters".)*  Measured: of the 12 fields the tab renders, **5 name PySCF** and the only two with an engine name in the LABEL are `pyscf_functional` / `pyscf_basis` — in the NEGF section, for an engine `registered_engines()` does not list and `engine`'s own `choices` excludes. They are neither sealed nor contract-locked, so they travelled into `task.json`'s device-stage bag and merged into a config where `engine` is hardcoded `"transiesta"` and nothing reads them — the trap the schema endpoint's own docstring refuses. And card 3 claims the advanced fields "stay collapsed"; `tier: advanced` sets `opacity: 0.85` and a bullet, and collapses nothing | **contract settled in `engines/transport.md` § 3.2** — the `index.html` pattern (one card, a sub-tab strip, one panel and one schema endpoint per engine, one config dataclass per engine, which is what actually separates them: `SiestaConfig` and `PySCFConfig` share no field name). A known engine with no backend is a DISABLED tab saying what would make it live (the user's choice against hiding it and against live fields). `TransportConfig` keeps its name — 14 modules and 16 test files reference it — and loses both `pyscf_*` fields; the override gate's vocabulary becomes the selected engine's, so a PySCF name is refused rather than ignored | not started |
 | **W25** | engines / science | **THE TRANSPORT TAB'S PARAMETER SURFACE IS INERT — measured against the installed binary, not a manual.** `molbuilder-siesta` ships **SIESTA 5.4.2**, whose fdf labels are compiled into `siesta`/`tbtrans` as literal strings, so this is countable. **Of the 12 fields the tab renders, 10 cannot affect the run:** the four transmission scalars write `TS.TBT.Emin` / `Emax` / `NumE` / `Erange.RelToEF` and `tbtrans` contains **zero** occurrences of `Emin`, `Emax`, `NumE`, `Erange` or `RelToEF` in any spelling; the three contour fields name `TS.ComplexContour.NumCircle` / `NumLine` / `Emin`, all **zero** in `siesta` (only the unused legacy `ComplexContour.NPoles` survives); `log_level` claims `WriteVerbosity`, **zero** in `siesta`. Four of those have no consumer in the tree at all, and **`contour_n_circle` reaches only the Methods paragraph**, which reports a contour the deck never carried — the one finding here with a publication consequence. fdf ignores a label nobody queries, so all of this is SILENT: the run completes and T(E) comes out on tbtrans's default grid. **What is sound:** the five-stage ladder is the standard recipe, the electrode→`.TSHS`→device→`TBT.HS` plumbing is correct and was measured live, every `%block TS.Elec.<name>` key is the right 5.x spelling, and the shared-electronic-contract invariant is the right physics. **Missing controls, each verified present in the binary:** `TBT.Contours` + `%block TBT.Contour.<name>`, `TBT.k` / `TBT.kgrid.MonkhorstPack` (T(E) needs a denser transverse grid than the SCF — the standard convergence study, inexpressible today), `TBT.Elecs.Eta`, `TBT.Contours.Eta`, `TBT.ElectronicTemperature`, `TS.Contours.nEq.Eta` / `Eq.Pole` / `nEq.Fermi.Cutoff`, the `TBT.DOS.*`/`TBT.T.*` outputs **W10** would read, `TS.Elecs.Bulk`, `bloch` (hardcoded `1 1 1`), `TBT.Spin` | § 5o · found 2026-09-15 | **contour fix landing; the rest sequenced in § 5o.5** |
@@ -868,408 +868,159 @@ green run had hidden all of them.
 
 ## 5k — CLOSED 2026-09-08
 
-*The paths framework's first program, M1–M8. Its rule lives in [`execution/project-layout.md` § 4.5](?doc=execution/project-layout.md); **§ 5l is the live plan**. Body archived 2026-09-10.*
+*The paths framework's first program, M1–M8. **Its rule is the part that survived**: [`execution/project-layout.md` § 4.5](?doc=execution/project-layout.md), enforced by `tools/classify_path_finders.py --check` and `tests/test_path_framework.py`. The follow-on STANDARD that was to replace the API (§ 5l) is **retired 2026-09-17**; this section's rule and guards are untouched by that. Body archived 2026-09-10.*
 
 ---
 
-## 5l. The paths STANDARD — one address, three verbs *(user ruling, 2026-09-08)*
+## 5l — RETIRED 2026-09-17 *(user ruling)*
 
-**§ 5k's RULE was right and is now enforced. § 5k's METHOD has to stop.** The
-rule — *for every name it composes, the framework owns the search* — closed 24
-handcrafted searches and is guarded (§ 5k.4c). But it was applied by **adding a
-door for whatever question a call site happened to ask**, and the bill came due
-the same day. Measured after M1–M8:
+**The paths STANDARD — one address, three verbs — is retired, and
+`molbuilder/ref.py` and `tests/test_ref_address.py` are deleted with it.**
 
-| the question | how many APIs answer it |
-|---|---|
-| which files are this rung's? | **4** — `runfiles.find(stage=)`, `find_by_role`, `Shape.stage_glob` (returns a glob *string*), `parse.dirs.job._enumerate_files(match)` (another glob) |
-| what is this file called? | **3** — `compose`, `stem` + caller concatenates, `tail` + caller prepends |
-| where does this thing live? | **16, across 3 modules** — `paths` 3, `jobset.materialize` 11, `sidecars.molstruct` 2 |
-| what stage is this file's? | **2** — `runfiles.parse` and `identity.parse_stage_token`, **measured to disagree** (§ 5l.4) |
+**What it was.** After § 5k closed 24 handcrafted searches, the API had been
+grown *"by adding a door for whatever question a call site happened to ask"* —
+~40 public functions, four APIs answering *which files are this rung's*, three
+answering *what is this file called*, sixteen answering *where does this thing
+live*. The user's 2026-09-08 ruling was that the direction of fit must reverse:
+*"don't twist the API design such that you can fit arbitrary kind of need, but
+rather a standardized API that has reasonable extensibility."* § 5l's answer was
+a single `Ref(label, stage, bench, attempt, role, counters, fields)` with
+`compose` / `find` / `parse` over it.
 
-~40 public functions, and **five were added on 2026-09-08 alone, each to fit one
-call site**: `role_matches`, `find_by_role`'s underscore refusal, `sidecars_in`,
-`is_sidecar`, and the `compose`-vs-`tail` split. That is the API being bent to
-arbitrary use — by the framework whose reason to exist is to stop that.
+**What actually happened.** `ref.py` was written — 444 lines, the address and
+all three verbs, layers 2 and 5 of the six-layer stack § 5l.5 specifies. **The
+migration never ran.** N5, N6 and N7 were never started, so in every revision it
+existed the module's only importer was its own test. It was carried as L1 in
+`architecture.md`'s index and in `test_layering.py`'s enforced set, so it read
+as part of the framework while answering nothing.
 
-> **The ruling (user, 2026-09-08).** *"The API should be rigid standard, but
-> accommodating for a certain flexibility — but it cannot allow for any random
-> cases. All real needs, if they need to differentiate and build in a
-> hierarchical system, have to follow the hierarchy of that system to start
-> with. They may have their own labels or design systems, but that's it."* And:
-> *"don't twist the API design such that you can fit arbitrary kind of need,
-> but rather a standardized API that has reasonable extensibility."*
->
-> So the direction of fit reverses. **A use that does not fit the standard is a
-> use that changes** — § 5l.4's third column is the deliverable, not an
-> apology.
+**Why retiring is the right call and not a loss.** The standard's own premise was
+that ~40 functions answering four questions is too many doors. Shipping a
+seventh module implementing a *replacement* vocabulary, and then not migrating,
+made it ~40 functions **plus** a parallel address nobody called — the exact
+failure § 5l was written to end, arrived from the other side.
+`process/testing.md`'s rule names this shape: *"a unification that ADDS has
+usually not unified anything — it has added a layer and kept the old surface."*
 
-### 5l.1 The address — § 2.6's hierarchy, not a new one
+**What stays, and is untouched by this.** § 5k's RULE — *for every name it
+composes, the framework owns the search* — is closed, enforced, and green:
+`tools/classify_path_finders.py` (three axes, in `--check`),
+`tests/test_path_framework.py` (22 tests), and the `GUARDED_UNDECLARED` set that
+holds the two undeclared segments to exactly the ten known sites. None of them
+referenced `ref`. `runfiles` (catalogue + name grammar) and `paths` (layout)
+remain the L1 path modules, and § 5l.7's constraints on them remain true
+independently: **stdlib-only, the shape is DECLARED never inferred, `identity.stage_token`
+is the one speller of `<NN>_<name>`, and `project-layout.md` § 2.6 is the
+authority on the tree.**
 
-**§ 2.6 is already the authority and already numbers the tree.** This framework
-serves it and never redefines it. Five levels:
+### 5l.a What § 5l FOUND that outlives it — re-homed, not dropped
 
-> ① project → ② topic → ③ calculation → ④ stage → ⑤ attempt
+Retiring the standard retires its *answer*. It does not retire the defects the
+inventory measured on the way, and one of them is live and user-facing. **These
+are now `N5` in § 2's open list**, restated here because their original framing
+— *"under § 5l that is `find(root, role=…)`"* — died with the section and a
+reader must not go looking for it.
 
-and § 2.6 is explicit that the benchmark rows get **no circled number** —
-*"they are nested containers inside a stage (④), not levels of the tree."*
-
-**Where the standard starts, and where it stops.** `projects.py` owns ① and ②;
-this standard owns ③–⑤. So an address is **relative to a calculation
-directory**, and the caller supplies that root. Two owners for ①② is the
-duplication this section exists to prevent, and putting them in the address
-would create it.
-
-```
-Ref(label, stage, bench, attempt, role, counters, fields)      # + a root
-```
-
-- **`label` is the FILENAME's label, and it is NOT the folder name.** § 2.6
-  row ③: the calculation folder is *"whatever the user types"* and *"the folder
-  is not derived"* — what makes it a calculation is the `task.json` inside it
-  (`run-identity.md` § 3.0). The two are free to differ, and any door that
-  assumes otherwise is wrong on a folder someone renamed.
-- **`bench` is a qualifier on ④, not a sixth level.** A trial is a stage's
-  sub-container; inside it an attempt is ⑤ exactly as anywhere else. This is the
-  answer § 2.6 gives, and it is why `materialize`'s eleven layout functions can
-  collapse rather than fight the model.
-- **`counters`** are the declared numeric qualifiers (`runfiles.QUALIFIERS`).
-- **`fields`** are the row's own keys — *the bounded flexibility*. This is where
-  a need brings its own label without inventing a level.
-
-**`counters` and `fields` stay separate, and that is § 6.3's rule not a
-preference.** A hyphen announces a COUNTER and an underscore a NAME, which is
-what lets a name be read back at all; collapsing the two into one typed
-dictionary loses the separator rule and the declared ordering that gives one
-name one spelling. Whoever is tempted to unify them should read § 6.3 first.
-
-**An absent coordinate is a STATEMENT, never a default.** `stage=None` means
-*this file crosses rungs*; `attempt=None` means *not attempt-scoped*. That is
-already `runfiles`' rule for `stage` (it refuses `""` rather than reading it as
-None) and it becomes the rule on every axis — which is `process/code-audit.md`
-D1 applied to the address instead of re-learned per parameter.
-
-#### 5l.1a ⑤ and the wrapper's counter are TWO coordinates, not one *(measured 2026-09-09)*
-
-§ 5l.1 lists `attempt` and `counters` side by side without saying how they
-relate, and the two shapes make that question unavoidable. **Measured, not
-reasoned:**
-
-`runwrap._run_index_resolver` (`runwrap.py:127`) says outright what it is:
-
-> *"This one indexes attempts inside ONE directory, which is exactly the flat
-> shape's rule (`project-layout.md` § 1: attempts told apart by an output
-> index). **The hierarchy tells them apart by directory, and that is the layout
-> layer's job, not the wrapper's.**"*
-
-and the bash it emits always writes `-runN`, starting at `-run0` when no prior
-output is present (`runwrap.py:175-215`). A fresh `run-2/` contains no prior
-output, so the file inside it is `bdt_01_coarse-run0.out`.
-
-| | ⑤ `attempt` | the `run` counter in the filename |
-|---|---|---|
-| **hierarchical** | the directory `run-<n>` | the wrapper's index **inside** that directory — starts again at 0 |
-| **flat** | *does not exist as a directory* | the ONLY thing telling attempts apart (§ 1.5a) |
-
-**So `Ref.attempt` is ⑤ and `Ref.counters["run"]` is the wrapper's, and the
-address keeps them apart.** They coincide numerically in flat and diverge in
-hierarchical — `run-2/…-run0.out` is attempt 2, wrapper index 0, and an address
-that folded them would have to report one of those two numbers as the other.
-
-**This is not the `_stage_state(label, stage, out_glob)` fault in a new place.**
-That signature offered two ways to say ONE rung. These are two different
-quantities that happen to agree in one shape: collapsing them loses information
-in the other, which is the opposite failure.
-
-**The consequence for `compose`.** ⑤ is rendered by the LAYOUT (a directory
-component, hierarchical only, via `Shape.keeps_attempts_as_directories`); the
-counter is rendered by the NAME GRAMMAR (`runfiles.compose`'s `run=`). One
-coordinate, one renderer, and § 5l.5's layer boundary is what decides which.
-
-**And the stage token is rendered TWICE, deliberately.** `prep` composes
-`_rf(task.label, ".fdf", token or None)` in both shapes (`prep.py:1365`), so ④
-is in the filename always, and in the directory only in the hierarchy. That is
-redundant in the hierarchy and load-bearing in flat, and the address states it
-once either way.
-
-### 5l.2 Three verbs, and nothing else public
-
-| verb | signature | answers |
-|---|---|---|
-| **compose** | `compose(ref) -> Path` | full coordinates → the one path, directory and filename together |
-| **find** | `find(root, **partial) -> [(Path, Ref)]` | partial coordinates → every match, ordered |
-| **parse** | `parse(path, …) -> Ref \| None` | a path → its coordinates, or None when it is not ours |
-
-**Extensibility is a catalogue row and its fields — never a new function.** If a
-question seems to need a fourth verb, the question is malformed; that is the
-test § 5l.4 applies.
-
-`compose` returning a whole path (not a filename) is deliberate: a caller that
-wants a file wants a path, and the three-call detour (`stage_dir` +
-`attempt_dir` + `compose`) is where a caller starts joining strings.
-
-**The browser is not a fourth verb, and it does not hold an address.** 48k lines
-of JS cannot import this module, so *"one address"* would be false the moment a
-page needed a path. The rule is the one M5 already applied: **a surface ASKS,
-never composes** — the server answers with the path or the list, and the page
-renders it. Four browser re-implementations were deleted on that basis
-(`stage_token`, `/^run-\d+$/`, the flat `_<token>-run` form, and a shape
-inferred from disk); a fifth appearing is a § 5l violation, not a JS problem to
-solve in JS.
-
-### 5l.3 What the standard DELETES that M7/M8 added
-
-| added 2026-09-08 | why the standard removes it |
-|---|---|
-| ~~`runfiles.role_matches`, and patterned roles~~ **— gone, N2** | `.runwrap-*.log` was **not** a role with a wildcard in it. It is role `.runwrap-{stamp}.log` carrying a **`stamp` field**. A glob inside a role is a coordinate that escaped into the vocabulary, and `role_matches` was the machinery built to chase it. |
-| `find_by_role`'s underscore refusal | `find` takes partial coordinates, and the catalogue disambiguates an underscore role — which is already how `parse` does it. The refusal was an internal limitation published as API. |
-| `sidecars_in`, `is_sidecar`, `sidecar_path_for` | `.molstruct.json` is a **role** whose address has no stage and no attempt. Three functions in a second module become three verbs on one address. |
-| the `compose`-vs-`tail` rule | invented to accommodate `attempt_concluded` being handed a foreign stem (`my.relaxation`). **A foreign file is not in the address space.** The caller should be told that, not served — and `tail` should not be the door that makes serving it possible. |
-| `_stage_state(label, stage, out_glob)` | two ways to say one rung, in one signature. `out_glob` goes when `run_status` takes coordinates. **N2 already took half of it**: the `role="*.out"` / `"*.log"` it passed to `find` was the same wildcard fault one layer out, and `runfiles.roles_ending(".out", ".log")` replaced it — the catalogue now says which roles count as output, derived rather than restated, so a new `.log` row joins the set without editing `runstatus`. |
-
-**This is not a retraction of M7/M8.** Both fixed real, measured defects (§ 5k.4c,
-§ 5k.4d) and both are green. What is being retracted is the *method* of adding a
-door per question, and the five above are its residue.
-
-### 5l.4 The inventory — every case, with a verdict
-
-**Three axes, three instruments** — all three shipped as of N1 (2026-09-08),
-all three in `tools/classify_path_finders.py`, all three in `--check`.
-
-| axis | instrument | state 2026-09-08 |
-|---|---|---|
-| searches for a name we compose | `tools/classify_path_finders.py` | 51 sites, **0 handcrafted**, guarded by `tests/test_path_framework.py` |
-| counter-keyed names built by hand | the same tool, `compositions()` | **0**, guarded |
-| hierarchy segments spelled inline | the same tool, `segments()` — **N1, shipped** | **2 undeclared segments over 10 sites**: `pseudos` ×5 (`prep.py` 486, 1225, 1226, 1739, 1740) · `launch` ×5 (`submit.py` 1201, 1341, 1514, 1603, 1652). Guarded as a SET, not a count |
-
-**N1 corrected this row's own numbers, which is why it exists.** The hand-run
-version said *"`pseudos` ×4"* and missed `prep.py:1739` — the `f"pseudos/{p.name}"`
-form, a path built as a string rather than by `Path` division. The real figures
-are **5 and 5**. § 5a, demonstrated on the section that states § 5a.
-
-**What is guarded is the SET of undeclared segments, not the site count.** The
-ten sites go to zero in N5; what must not happen before then is a *third*
-invented segment joining them, because that is a level of the tree created at a
-call site and only § 2.6 may add one. `GUARDED_UNDECLARED` is asserted by
-equality, so closing one is a deliberate edit and not a quiet pass.
-
-**Why the vocabulary is a calculation's containers and nothing more.** A broad
-net — every `X / "plain-name"` — finds **67 distinct segments across 128 sites at
-11% precision**: units (`Ha/`, `eV/`, `n/a`), a MIME type (`application/json`),
-conda's own trees (`bin`, `conda-meta`, `opt`, `envs`), git's (`refs/`), the docs
-tree. That is the nag list this section warns about. **Levels ① and ② are
-`projects.py`'s and are already closed**: `CANONICAL_TOPICS` is declared *and*
-`validate_topic` refuses anything outside it, so a topic cannot be invented — and
-including topics measured 2 false positives out of 2 (`f"transport/v{sv}"` is a
-schema string; `client.get("user/orgs")` is a GitHub endpoint, both flagged
-because `transport` and `user` are also topic names).
-
-**What the throwaway version got wrong, now fixed in the shipped pass:** it
-matched a segment name anywhere in a string and so flagged the Flask routes
-`/api/structure/analyze`, `/api/bench/summary` and `/api/task-setup/attempts`.
-The rule is the FIRST path component — a route starts with `/`, so its first
-component is empty. A test holds that case.
-
-**Two of the four containers are already declared**, which is what makes the
-other two findings: `bench` has `materialize.bench_container` (and `_cli.py`'s
-hardcoded `base/"bench"` was closed 2026-08-13), and the history directory is
-`checkpoint.ARCHIVE_DIR`. A test asserts a declared segment names a door that
-really exists, so a rename cannot leave the claim standing.
-
-Then the uses, each judged against § 5l.1–5l.2 rather than accommodated:
-
-| case | verdict | why |
-|---|---|---|
-| `.runwrap-<stamp>.log` | **regulate — a field** | role `.runwrap.log` + `stamp`; deletes `role_matches` |
-| `.molstruct.json` | **regulate — a catalogue row** | a role whose address has no stage and no attempt |
-| `pseudos/` | **regulate — a coordinate** | § 2.6's shared package. A door exists (`prep._pseudo_dir`), is private, and is bypassed by one of its own module's sites |
-| `Shape.stage_glob`, `_enumerate_files(match)` | **the use changes** | a glob-shaped API becomes a partial-address `find` |
-| `identity.parse_stage_token` | **delete** | verb 3 on a coordinate the address already carries — and it disagrees with `parse` on `<label>_<stage>_geom_optim.xyz` (says the stage is `01_coarse_geom_optim`) and on `<label>_<stage>.runwrap-*.log` (says no stage). `parse` is right in both |
-| `attempt_concluded(foreign stem)` | **the use changes** | reject as not-ours; do not loosen the grammar to serve it |
-| `submit.py`'s `launch/<name>.{run.sh,sbatch}` | **the use changes** (P-4) | `launch/` is an ad-hoc segment and `<name>` is a *group*, not a calculation. Either a group becomes a real qualifier on ④, or the group launcher moves to where a launcher belongs |
-| `web/blueprints/files.py`'s sidecar copy | **the use changes** (P-5) | the ONLY constant collision in the whole tree, sitting behind a decision layering does not require |
-| `workspace_storage`'s `.wc.json` | **out of scope, and stated** | not a run file. Its own grammar, self-consistent, module-local — § 4.5 satisfied already |
-| SIESTA `.XV` and the warm suffixes | **out of scope, and stated** | § 4.2 — molbuilder does not compose them, so no door may claim them |
-| `_geom_optim.xyz` inside emitted script TEXT | **deferred, recorded** | `makov_payne.py` ships beside a job; needs `runfiles` in `runwrap.MONITOR_COMPANIONS` first |
-
-#### 5l.4b `.molstruct.json` does not have ③'s label — found by N4, blocked into N5
-
-§ 5l.3 says `sidecars_in`, `is_sidecar` and `sidecar_path_for` *"become three
-verbs on one address"*, and § 5l.4 files `.molstruct.json` as **regulate — a
-catalogue row**. N4 tried it and stopped at something the inventory had not
-seen. Measured 2026-09-09:
-
-**A sidecar's label is not the calculation's label — it is whatever the
-structure file happens to be called.** `sidecar_path_for` maps
-`relaxed.xyz → relaxed.molstruct.json`, and also
-`job.spectra.xyz → job.spectra.molstruct.json`. A label carrying a dot is
-exactly what `runfiles._LABEL` refuses, *because* allowing it would make `parse`
-ambiguous — so the address cannot name half the files this door legitimately
-names.
-
-**And `sidecars_in(directory)` searches with no label at all**, where
-`ref.find` requires one. That is not an oversight in `find`: the label is a
-coordinate, and "any label" is only decidable for a dotted role, which
-`job.spectra.molstruct.json` shows is not the case here either.
-
-**So the verdict changes, and § 5l.3's line was too quick.** Two things are
-true at once and the inventory conflated them:
-
-- **When a sidecar pairs with a file molbuilder composed**, it *is* a role whose
-  address has no stage and no attempt, and a catalogue row serves it.
-- **When it pairs with a person's own structure file**, it is beside a FOREIGN
-  file, and § 5l.3's own rule applies — *"a foreign file is not in the address
-  space; the caller should be told that, not served."* Loosening the grammar to
-  address `job.spectra` is the `compose`-vs-`tail` accommodation this section
-  exists to retract, arriving from the other side.
-
-**The decision N5 owes**, recorded here so it is not re-derived: does
-`.molstruct.json` become a catalogue row that serves only the composed case —
-leaving `sidecar_path_for` as a declared door for the foreign case, named as
-such rather than as part of the address space — or does the pairing rule move to
-where foreign names are legitimate? **Adding the row is not free either way**:
-`WRITTEN` drives `manifest()`, which is the Task-setup card's list of *files this
-prep will write*, and a sidecar for a person's own structure is not one of them.
-
-### 5l.4a The three LIVE defects, measured — N5's actual content
-
-§ 5l.4's verdict column says *the use changes*; these three are the ones a
-person is already feeling. Each was measured by running it, not by reading it,
-and each measurement is the test N5 must ship.
-
-**① Every staged run loses its frozen atoms.** `parse/engines/_sidecar.read_frozen_atoms`
-rebuilds the sidecar's name by stripping the rung off the artifact's stem, which
-needs the label. All three callers omit it — `engines/molwatch.py:590`,
-`engines/pyscf.py:626`, `engines/siesta.py:1877` — so *"Hide frozen atoms"* and
-`runtime_info["frozen_atoms"]` are empty for every laddered calculation:
+**① Every staged run loses its frozen atoms — LIVE, re-measured 2026-09-17.**
+`parse/engines/_sidecar.read_frozen_atoms(traj_path, label="")` needs the label
+to strip the rung off an artifact stem, and **three of its four callers omit it**
+(`parse/engines/molwatch.py:590`, `parse/engines/pyscf.py:626`,
+`parse/engines/siesta.py:1877`; only `pyscf.py:402` passes one). So
+*"Hide frozen atoms"* and `runtime_info["frozen_atoms"]` are empty for every
+laddered calculation:
 
 | artifact | no label | with label |
 |---|---|---|
 | `bdt.out` | `[5, 6, 7]` | `[5, 6, 7]` |
 | `bdt_01_coarse.out` | `[]` | `[5, 6, 7]` |
 | `bdt_01_coarse.molwatch.log` | `[]` | `[5, 6, 7]` |
-| `bdt_01_coarse.pyscf.log` | `[]` | `[5, 6, 7]` |
 
-**And the obvious fix is the wrong one.** `model/parse.md` § 5.3 says a
-`FileParser` finding its own companion **stays path-only** — *"folding those in
-would make every engine parser depend on the directory composer, inverting § 5's
-own rule."* So threading a label down is against the spec. The fix that satisfies
-both documents: **ask by ROLE, not by reconstructing a stem.** A folder is ONE
-calculation (`project-layout.md` § 1.4), so the sidecar is found by its role, no
-label required, still path-only. Under § 5l that is `find(root, role=…)` with no
-`label` coordinate — the standard answering it directly.
+The function's own comment states the mechanism and why the obvious fix is
+wrong: *"THE LABEL IS REQUIRED TO STRIP THE RUNG, AND GUESSING IT IS A BUG"* —
+`bdt_01_coarse.out` (rung `01_coarse` of `bdt`) and `sample_02_test.out` (an
+unstaged calculation whose label reads that way) are the same shape, and guessing
+handed the second one a **different calculation's sidecar**.
 
-**② The stage token has two readers, and they disagree.** `runfiles.py`'s header
-states the contract — *"every reader that looks one up. Nothing composes or
-splits a run-file name inline"* — and `identity.parse_stage_token` splits one:
+> **And the fix § 5l proposed is no longer available, which is the one real cost
+> of retiring.** It was *"ask by ROLE, not by reconstructing a stem"* —
+> `find(root, role=…)` with no `label` coordinate, satisfying `model/parse.md`
+> § 5.3's rule that a `FileParser` finding its own companion **stays path-only**
+> (*"folding those in would make every engine parser depend on the directory
+> composer, inverting § 5's own rule"*). With no `find`, a fix must either
+> thread the label down (against § 5.3) or give `_sidecar` a role-keyed lookup
+> of its own over `runfiles`. **That choice is N5's first question**, and it is
+> a small one — the folder is ONE calculation (`project-layout.md` § 1.4), so
+> the label is derivable from the directory without any new vocabulary.
+
+**② The stage token has two readers and they disagree — latent.**
+`identity.parse_stage_token` splits a filename inline, which `runfiles.py`'s own
+header forbids (*"nothing composes or splits a run-file name inline"*), and the
+two answer differently:
 
 | filename | `identity.parse_stage_token` | `runfiles.parse` |
 |---|---|---|
 | `bdt_01_coarse_geom_optim.xyz` | stage `01_coarse_geom_optim` | `01_coarse` + role `_geom_optim.xyz` |
 | `bdt_01_coarse.runwrap-…log` | no stage | `01_coarse` |
 
-`runfiles` is right both times: `_geom_optim.xyz` is a *declared* underscore role
-and `parse` documents this exact case. **Latent, not live** — the three callers
-(`parse/dirs/job.py:80`, `materialize.py:384`, `:423`) only feed it deck and
-`.out` names, where the two agree. The duplication is the defect. N5 deletes it.
+`runfiles` is right both times. Latent because the three callers
+(`parse/dirs/job.py:81`, `jobset/materialize.py:394`, `:433` — re-measured
+2026-09-17) feed it only deck and `.out` names, where the two agree. **The
+duplication is the defect**, and deleting the second reader does not need the
+standard.
 
-**③ A phantom rung for an unstaged calculation.** `parse_stage_token("run_01_setup.out")`
-returns `(1, 'setup')` with no label and `None` with it. `parse/dirs/job.py:80`
-(`_detect_stage`) omits it, and it feeds the sort at `job.py:237` that picks
-`active = sorted_outs[-1]` — *which file speaks for the directory* in
-`run_status`. § 5.3's own test says that question **does** need the whole
-directory, so the label is legitimately in hand and threading it breaks no
-boundary. Fixed by ② rather than separately.
+**③ A phantom rung for an unstaged calculation.**
+`parse_stage_token("run_01_setup.out")` returns `(1, "setup")` with no label and
+`None` with it. `parse/dirs/job.py`'s `_detect_stage` omits the label, and it
+feeds the sort that picks `active = sorted_outs[-1]` — *which file speaks for the
+directory* in `run_status`. Fixed by ② rather than separately.
 
-**The two blocked on a decision, kept here so they are not re-derived:**
+**Two decisions § 5l was holding, now standing on their own feet as `N6`:**
 
-- **The group launcher.** `submit.py` builds `<container>/launch/<name>.run.sh`
-  and `.sbatch` at ~8 sites (1201, 1273, 1341, 1392, 1514, 1603, 1609, 1652,
-  1657); `launch_dir = container / "launch"` appears twice. Both roles are in
-  `WRITTEN`, but `<name>` is a *group*, not a calculation, so `compose` is not
-  the door. **Decision: does a group become a real qualifier on ④, or does the
-  group launcher move?** Until that is answered the sites stay.
-- **`web/blueprints/files.py`.** The ONLY duplicated constant in the whole tree
-  (`_SIDECAR_SUFFIX` at :233 against `sidecars.molstruct.SUFFIX`), plus a
-  re-implementation of the pairing rule at :236. It sits behind a written reason
-  — *"the blueprint doesn't import from sidecars/molstruct directly to keep its
-  dependency graph narrow"* — which layering does not require (`sidecars` is L2,
-  `web` L3). **Decision: keep the narrow-graph choice and add the parity test
-  `process/code-audit.md` D4 then demands, or import the door and delete the
-  copy.**
+- **The group launcher.** `jobset/submit.py` builds `<container>/launch/<name>.run.sh`
+  and `.sbatch`; `launch_dir` is spelled at `:1204` (`container / "launch"`) and
+  `:1517` (`stage_dir / "launch"`). `<name>` is a **group**, not a calculation.
+  `launch` is one of the two undeclared segments `GUARDED_UNDECLARED` holds, so
+  **§ 5k's live guard already owns this**, and the question is § 2.6's, not
+  § 5l's: does a group become a real qualifier on ④, or does the group launcher
+  move to where a launcher belongs?
+- **`web/blueprints/files.py`.** `_SIDECAR_SUFFIX = ".molstruct.json"` at `:260`
+  against `sidecars.molstruct.SUFFIX` — re-measured 2026-09-17, still the only
+  duplicated constant of its kind — plus a re-implementation of the pairing rule
+  at `:271`. Its written reason is *"to keep its dependency graph narrow"*, which
+  layering does not require (`sidecars` is L2, `web` L3). Either import the door
+  and delete the copy, or keep the choice and add the parity test
+  `process/code-audit.md` D4 then demands. **This is a code-audit item and never
+  needed the standard.**
 
-#### What N2 established, beyond the one row
+### 5l.b The pattern this is the second instance of *(2026-09-17)*
 
-**A field is declared in two halves, and neither may be guessed.** Its SHAPE
-lives once in `runfiles.FIELD_SHAPES` (`stamp` is `[0-9]{8}-[0-9]{6}`, which is
-`date +%Y%m%d-%H%M%S`); WHICH rows carry it is `Artifact.fields`. `compose`
-refuses a missing field and refuses a value that does not match the shape —
-both would produce a name `parse` cannot read back, and the round trip
-(`parse(name).name == name`) is what makes the template a declaration rather
-than a label.
+§ 5l and `model/parse.md` § 5's `JobDirParser` are mirror images, and both were
+surfaced by the same sweep on the same day:
 
-**`patterns()` is the one place a star is produced, and its output did not
-move.** `identity.OUR_FILE_PATTERNS` and `runwrap`'s `--cold` sweep read that
-view; the family is still `{label}.runwrap-*.log` and `{label}_*.runwrap-*.log`,
-byte for byte. A `--cold` run that stopped recognising the wrapper log would
-leave it to be appended to by the next launch, so a test pins the two views
-together.
-
-**The Task-setup card stopped showing a person a glob.** `manifest()` rendered
-`<label>_<stage>.runwrap-*.log` in a list of *files this prep will write*; it now
-renders `runwrap-<stamp>.log`, which is what actually appears.
-
-**N2 broke `runstatus` and had to fix it, which is the pattern to expect from
-here on.** `_stage_state` passed `role="*.out"` to `find` — a wildcard in a role,
-the very thing being removed, one layer out from the catalogue. Narrowing to the
-exact roles `.out` and `.log` was not open either: it drops `.pyscf.log`, where
-PySCF writes *"and not to .out"*, so a finished PySCF rung would answer **queued**
-(§ 1.6's forbidden line). The fix is the standard's own shape — the catalogue
-answers *which roles are output* — and it is a preview of N5: **each step will
-find residue of the previous one, because the earlier method left it.**
-
-### 5l.5 The dependency order — the workflow the API must have
-
-1. **catalogue** — the roles and their fields. Data; no dependencies.
-2. **address** — the coordinate record; validates a role against the catalogue.
-3. **name grammar** — the filename half of compose/parse.
-4. **layout** — the directory half: a function of (shape, address).
-5. **the three verbs** — compose / find / parse over whole paths.
-6. **everyone else** — calls only the verbs.
-
-Each layer may import only the ones above it. **L1 and stdlib-only throughout**,
-so the monitor still ships beside a job (`runwrap.MONITOR_COMPANIONS`) and runs
-under the job's python.
-
-### 5l.6 Migration — each step separately green
-
-| step | what | done when |
+| | `ref.py` | `JobDirParser` |
 |---|---|---|
+| specified | § 5l | `model/parse.md` § 5 |
+| built | **yes — 444 lines** | no |
+| adopted | **no — zero production callers** | no |
+| named by a contract | **no** — only `architecture.md`'s L1 index, as a bare `ref` in a list | yes |
+| outcome | **retired and deleted 2026-09-17** | still owed — § 5c |
 
-> **N2 was written after N3 in the first draft of this section, and that was an
-> ordering bug** — it deleted `role_matches` and introduced `fields` before
-> anything existed to carry a field. Caught on review the same day. A field
-> shows up *in the filename*, so it belongs to the name grammar (layer 3) and
-> genuinely can precede the address (layer 2's consumer); the corrected N2 says
-> so explicitly rather than leaving the next reader to rediscover it.
-
-**Do N1 and the § 5l.4 re-derivation before N2.** § 5a's rule applies to this
-section as much as any other: every count above was measured on 2026-09-08 and
-will be wrong by the time anyone acts on it.
-
-### 5l.7 What must not change
-
-`runfiles`/`paths` stay stdlib-only; **the shape is DECLARED, never inferred
-from disk**; `identity.stage_token` stays the one speller of `<NN>_<name>`; and
-**§ 2.6 remains the authority on the tree** — this framework serves that
-hierarchy and never invents a level of its own. A migration step that needs one
-of these to move has found a design problem, not a step to push through.
+**A parked deliverable is not free, and the two failure modes are different.**
+`JobDirParser` unbuilt costs a gap a reader can see: `parse_dir()` raises, and
+the Results picker guesses from filenames because there is no door to ask
+(§ 5p.3p.3). `ref.py` built-and-unadopted cost something worse — it read as
+*done* from the L1 index while answering nothing, so the four APIs it was meant
+to replace kept growing beside it. **The lesson is the sequencing rule § 5l.6
+already stated and did not follow: a step is "each step separately GREEN", and a
+module with no caller is not a green step — it is an unmerged branch living in
+`main`.**
 
 ---
 
 ## 5m. The test screen — what the audit found, sequenced *(2026-09-09)*
 
-**§ 5l is the framework; this is the suite.** Two audits ran under
+**§ 5k is the paths framework (§ 5l's standard on top of it was retired
+2026-09-17); this is the suite.** Two audits ran under
 `process/testing.md` § 3b — a four-partition gate over ~3,000 test functions
 (2026-09-08) and a header pass over the ten most-undocumented files
 (2026-09-09). Their EVIDENCE lives in two records and stays there:
@@ -1304,7 +1055,8 @@ lead. `tools/verify_subsumption.py` is what turns one into a decision.
 written as `T1`–`T9` on 2026-09-09 — so an edit keyed on `| **T1** |` hit the
 wrong row and destroyed it. Caught and restored the same hour. The plan has had
 this collision before (`N3`/`N4`/`N5` mean one thing in § 2 and another in
-§ 5l.6); a section that numbers its own rows must prefix them.
+§ 5l.6 before it was retired); a section that numbers its own rows must
+prefix them.
 
 
 | step | what | done when |
@@ -2470,7 +2222,7 @@ acting, and two agent verdicts were wrong in the direction that matters.**
 | the resolved **resources were thrown away** | `_resolve_transport` returned `element.values` and the arm rebuilt the allocation by hand. `resolve` folds two riders onto `element.resources` — `continue_retries` and `use_gpu`. Measured: `SiestaConfig` defaults them `1` / `False`, `Resources` defaults both `None`, so **every transport wrapper rendered with no warm-retry loop** and `use_gpu` fell back to grepping the deck for `Diag.ELPA.GPU` — the re-derivation `gpu.md` G7 deleted. `resolve.py`'s A-5 finding, on a third road | return the element; use `element.resources` and `element.render_config()`; fold the allocation **before** the resolve, as the shared arm does |
 | wrappers were written **past** the remote-activation guard | `prep run device --target sol` against a record stating no activation wrote one wrapper per bias point carrying *this* machine's activation, then refused. The refusal's whole premise is that those files must not exist | the guard moved above the write |
 | `TS.Contours.Eq.Pole.N` **reached no deck** | a catalogue row with an anchor and a default that no section named. *(The fix recorded here — a `CONTOUR_SECTION` naming the row — was **wrong**, and a real run disproved it the next day: there is no such keyword. See § 5p.3o)* | superseded |
-| the high-bias advisory **stopped firing** | `TransiestaEngine.preflight` is registered in `_ENGINE_VALIDATORS` keyed on `TransportConfig`; every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Of what it carried, the region partition and atom order are `sort`'s own refusals and structural here, and open-shell runs from the siesta validator against the run's REAL spin treatment. The remainder was the |V| > 2 V advisory — and bias is the one axis transport exists to sweep | re-homed into `_validate_transport_kind`, beside the kz≠1 refusal |
+| the high-bias advisory **stopped firing** | `TransiestaEngine.preflight` is registered in `_ENGINE_VALIDATORS` keyed on `TransportConfig`; every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Of what it carried, the region partition and atom order are `sort`'s own refusals and structural here, and open-shell runs from the siesta validator against the run's REAL spin treatment. The remainder was the \|V\| > 2 V advisory — and bias is the one axis transport exists to sweep | re-homed into `_validate_transport_kind`, beside the kz≠1 refusal. **And the dead checker itself is now GONE — 2026-09-17.** This row said it "dispatches for nothing" and left it standing, because ONE surface still built and validated a `TransportConfig`: `POST /api/transport/render`. Deleting that route (step 2c) removed the last reason, and the holistic review found two documents still calling the checker *"defense in depth"* for an ordering that is held by construction. `TransiestaEngine` is deleted; its tombstone names a live holder for every check it carried, verified one by one |
 | the Methods paragraph named a basis nobody ran | under a docstring reading **"EVERY NUMBER HERE IS NOW ONE THE DECK CARRIES"**, the next line wrote `"a DZP basis, the PBE functional"` as literals. TZP/revPBE produced a paragraph claiming DZP/PBE — the same class the docstring calls *"the one defect with a PUBLICATION consequence"* | read off the config; verified both ways |
 | `_sh` meant two things in one function | `_sh = shape_of(...)`, then `import shutil as _sh` **rebinds that function-local for the whole body**, so a later iteration hands the shutil module to `trial_work_dir` as a shape | `from shutil import copy2 as _copy2` |
 | the electrode deck contradicted itself | a comment saying *"(Not `SaveHS`…)"* two lines above a layout that includes `OUTPUT_SECTION`, whose `write_hs` row has `anchor = "SaveHS"`, `value = true`. Rendered the lead: `SaveHS .true.` is there | the comment says what is true |
@@ -2599,14 +2351,16 @@ first two passes precisely because the work started in the middle.
 |---|---|---|
 | the whole | `workflow.md` § 7 | ✅ records transport as the composite |
 | tab + describe | `web/tabs.md`, `web/form-schema.md` | ✅ four routes, citation-driven |
-| **CLI surface** | **`process/conventions.md` § 3** | ⚠ decision 7 + 34: *"everything is a job set"*, `run` and `fdf` deleted as *"obsolete residue from the flat-dir design"*. **`transport` and `pyscf` are the two survivors of that shape** — see § 5p.3p.6 |
-| **presenters** | **`web/presenters.md`** | ⚠ § 1 declares **five** viewers; **six** register, **four** are results. **No row for a composite result.** A module rename to `presenters` is declared pending (W15) and not started — the code is still `inspectors` |
-| results tab | `web/results.md` | ⚠ says nothing about transport results |
-| HTTP | `web/web-api.md` | — |
+| **CLI surface** | **`process/conventions.md` § 3** | ✅ **closed 2026-09-17.** Decision 7 + 34 (*"everything is a job set"*; `run` and `fdf` deleted as *"obsolete residue from the flat-dir design"*) now holds without exception: `transport` (steps 2c/9) and `pyscf` (step 8) were the two survivors of that shape and both are gone. **19** top-level commands, re-derived from `cli.commands`; no calculation KIND and no engine has a verb, and § 3 states that as a rule rather than leaving it to be inferred from the roster — see § 5p.3p.6 |
+| **presenters** | **`web/presenters.md`** | ⚠ § 1's count CORRECTED 2026-09-17 (six register, four are results — `bench-summary` had been omitted). **Still no row for a composite result**: that row is step 5. A module rename to `presenters` is declared pending (W15) and not started — the code is still `inspectors` |
+| results tab | `web/results.md` | ⚠ § 2.3 now states the LADDER case and § 3 the real viewer count (2026-09-17). Still ⚠ because it describes a gap rather than a behaviour — closes with step 5 + § 5c |
+| HTTP | `web/web-api.md` | ✅ four live transport routes; `/api/transport/render` deleted 2026-09-17 with its orphaned config builder |
 | description | `engines/stages.md`, `execution/job-contracts.md` | ✅ five rungs, hierarchical shape |
 | template | `engines/template.md` | ⚠ 485 facts in two homes; the mirrored guard restored 2026-09-17 |
-| engine / deck | `engines/transport.md` | ⚠ :1880 names a **deleted** chain; :2265 promises an unbuilt inspector |
-| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **specified, NOT BUILT**. `parse_dir()` and `detect(<dir>)` can only raise. Migration is **§ 5c**, agreed 2026-09-04, *not started* |
+| engine / deck | `engines/transport.md` | ✅ § 6 rewritten 2026-09-17 to name ROLES not function lists (§ 6a says why); § 5's holders named at 2c. The unbuilt transmission inspector is now stated as unbuilt, in `results.md` § 2.3 as well |
+| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **specified, NOT BUILT**. `parse_dir()` and `detect(<dir>)` can only raise. Migration is **§ 5c**, agreed 2026-09-04, *not started*. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
+| **engine registry** | **`engines/overview.md` § 5** | ✅ *there is no registry* — spectra's went at P3 (2026-08-21), transport's 2026-09-17. § 5 told a new engine to `@register_engine` against it until corrected 2026-09-17; `spectra/methods.py` and `transiesta.py` carried the same claim in docstrings |
+| **validation dispatch** | **`science/validation.md`** | ✅ **added 2026-09-17, and it is where the day's biggest defect lived.** Two registries, and WHICH one a science belongs in is the whole question: `_ENGINE_VALIDATORS` keys on a **config class**, `_KIND_VALIDATORS` on `task.calculation`. A row in the first is only as live as the callers that CONSTRUCT that class — and transport's keyed on `TransportConfig` while every rung resolves a `SiestaConfig`, so it dispatched for nothing. Now two engine rows (SIESTA / PySCF) and two kind rows (transport / vibration), asserted by **equality** |
 | execution | `execution/script-preparation.md`, `architecture.md` | ✅ |
 
 #### 5p.3p.2 Redundant — tracked, with status
@@ -2618,7 +2372,8 @@ first two passes precisely because the work started in the middle.
 | `molbuilder transport electrode` | `jobset prep` | a deck from flags — what `molbuilder fdf` was deleted for | **DONE** |
 | `engine_base.py` Protocol + registry | a direct call | 4 declared members, 1 implemented, 1 engine, 1 caller | **DONE** |
 | `results.py` + `sidecars/transport.py` + `parse/sidecars/transport.py` (697 lines) | `record.py` | `dump_transport_json`: **zero production callers in every revision**; the reader claimed only `schema_version`, the writer emits `schema` | **DONE** |
-| `preflight_files` + `format_report` + `transport preflight` | `compose` + one resolved contract | gates compare two decks for drift two decks from one config cannot have | **step 2** |
+| `preflight_files` + `format_report` + `transport preflight` | `compose` + one resolved contract | gates compare two decks for drift two decks from one config cannot have | **DONE** (2c) |
+| **`TransiestaEngine` + `TransiestaEngine.preflight`** | `_KIND_VALIDATORS["transport"]` + `sort`'s refusals + construction | **registered in `_ENGINE_VALIDATORS` under `TransportConfig`, and nothing validates a `TransportConfig`** — every rung resolves a `SiestaConfig`, and the two sites that build one build it as a projection for the lifted NEGF emitter. It stayed live only through `POST /api/transport/render`, deleted in 2c; every check it carried has a named holder, verified one by one | **DONE 2026-09-17** |
 | `TransportConfig` behind `_legacy_view` | — | § 5p.3i: *"survives only to feed the lifted block"*; 3 orphan fields, all already in `UNRESOLVED_FIELDS` | **step 3, bookkeeping** |
 
 **NOT redundant, so not deleted by association:** `extract_electrode_model` +
@@ -2626,7 +2381,7 @@ first two passes precisely because the work started in the middle.
 (`deck.py` reuses both; § 5p.3i ruled the NEGF block stays — an off-by-one in an
 electrode range converges while computing the wrong thing);
 `_emit_basis_and_xc`, `_compute_cell_from_extents`, `_find_electrode_regions`,
-`electrode_hs_stem`, `preflight`; `preflight.parse_fdf_params` (four importers);
+`electrode_hs_stem`; `preflight.parse_fdf_params` (four importers);
 `cell.detect_layers` / `bulk_z_period` — this same pattern **done correctly**,
 moved out of the wizard so `add_slab` and the extraction share one copy.
 
@@ -2691,10 +2446,41 @@ fields. *Measured 2026-09-17:* three (`log_level`, `num_threads`,
 documented at `stages.py:110` — the shim leaks nothing. *So this is bookkeeping,
 not a defect*, and the step is to record that, not to act.
 
-**Step 4 — correct the engine contract.** `transport.md` :1880 names `record.py`
-and `molbuilder/transport-result@1`; :2265's promise is restated as unbuilt.
-*Contract:* itself. *Check:* every symbol the Results section names resolves in
-the tree.
+**Re-measured after the `TransiestaEngine` deletion, same day — and the surface
+got smaller.** `TransportConfig` now has **no validation role whatsoever**: the
+`_ENGINE_VALIDATORS` row keyed on it is gone, so nothing anywhere validates one.
+What remains is exactly two jobs, and both are real:
+
+1. **the lifted NEGF emitter's input vocabulary** — built as a projection at
+   `deck.py::_transport_view` and `stages.py::config_for`, consumed by
+   `_emit_transiesta_block`. This is § 2a.14's *"survives only to feed the lifted
+   block"*, unchanged;
+2. **the transport tab's form shape** — `web/blueprints/transport.py` renders
+   `GET /api/transport/schema` from the dataclass and its
+   `_form_section_order`.
+
+So the retirement condition (TR6) is now stateable precisely: **`TransportConfig`
+goes when the NEGF block is tabled AND the tab's schema comes from the
+catalogue** — two things, both already named elsewhere, neither blocked on this
+section.
+
+**Step 4 — correct the engine contract** — **DONE 2026-09-17, and it was not
+two lines.** *Contract:* itself, plus every document its § 6 is restated in.
+*Check:* every symbol the Results section names resolves in the tree.
+**The check found nine documents, not one**, and a shape problem under them:
+§ 6's pieces table enumerated modules AND their function lists, so six of nine
+rows named code deleted that week. Rewritten to name **roles**, with the
+reasoning in the new § 6a — the rule being that a contract enumerates only where
+the list itself is the guarantee (§ 5's thirteen invariants are; a pieces map is
+not). Also corrected: `overview.md` § 5 (no engine registry exists — a new
+engine is described and rendered through `spec_for`, it does not register),
+`script-preparation.md` (its *"what this costs today"* block was entirely about
+deleted code), `parse.md` § 7.9 (four absorption sites → two), `tabs.md` (both
+"still open" items closed by deletion), `presenters.md` § 1 and `results.md`
+§§ 2.3/3 (the six-vs-five count, and the ladder case), and the six documents
+still naming `molbuilder pyscf`. `transiesta.py`'s class docstring and
+`spectra/methods.py`'s module header both described registries that no longer
+exist and were corrected in product code.
 
 **Step 5 — the Results placeholder, and only that.** Register a transport
 presenter matching `*.transport.json`, `isResult: true`, category `"Transport"`,
@@ -2797,9 +2583,75 @@ measured from `cli.commands`. Both engine contracts and the index carry the
 `convert()` tombstone.
 
 **Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
-`molbuilder --help` now lists 20 top-level commands and no calculation-KIND
+`molbuilder --help` lists **19** top-level commands and no calculation-KIND
 verb; `conventions.md` § 3 records the rule explicitly rather than leaving it
-to be inferred from the roster.
+to be inferred from the roster. *(This line said 20. Re-derived from
+`cli.commands` during step 4's review: 19, the same number step 8 recorded two
+sub-sections above — a count written from memory one step after it had been
+measured correctly.)*
+
+#### 5p.3p.8 Steps 10 and 11 — the two fixes the 2026-09-17 sweep OWES *(added 2026-09-17)*
+
+That sweep found nine documents wrong and corrected all nine. **Correcting them
+is not a fix** — they were correct when written and decayed the same way the
+next nine will. These two steps are the mechanism, and both are small because
+the repo already proved the pattern.
+
+**Step 10 — put the three surviving enumerations under a MEMBERSHIP assert.**
+
+*Why these three and no others:* an enumeration earns an assert when a reader
+ACTS on it — picks a route, adds a presenter, runs a command. Prose that merely
+counts something does not (`test_doc_claims.MEASURED` already covers the counts
+that matter).
+
+| # | the list | assert it against | today |
+|---|---|---|---|
+| 10a | `web-api.md` § 3's endpoint index | `app.url_map`, **set equality**, `static` excluded | only the COUNT is asserted — and on 2026-09-17 it passed at 97 while the index carried a deleted route AND omitted a live one. Two errors, cancelling |
+| 10b | `presenters.md` § 1's viewer table | the `register()` calls in `lib/inspectors/`, **set equality** on presenter name + `isResult` | nothing. The table said five viewers / three results for as long as `bench-summary` had been registering |
+| 10c | `conventions.md` § 3's command roster | `cli.commands`, **set equality** | nothing. It said 13 when there were 19, and named a verb deleted that day |
+
+*Model to copy:* `test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
+— it reads the documented set out of the table, reads the enforced set out of
+the code, and asserts **both directions** with a failure naming each side's
+extras. It caught `ref`'s deletion on the first run after it.
+
+*Done when:* deleting a route, a presenter or a command **fails a named test
+that quotes the document and the line**, and each test is mutation-tested by
+doing exactly that.
+
+*The rule each one encodes:* **membership, never a count.** A count is satisfied
+by any two errors that cancel, which is not a hypothetical — it is what 97 was.
+
+**Step 11 — the deletion protocol, because no assert can catch what this
+missed.**
+
+Step 2c deleted `POST /api/transport/render`. That route was the **last live
+caller** of `TransiestaEngine`, so the deletion silently made a whole class
+unreachable — and for a day two contracts went on describing it as a live gate,
+one of them calling it *"defense in depth"* for an ordering held by
+construction. No membership assert would have caught that: the class was still
+imported, still registered, still green.
+
+**So when a step deletes a route, verb, module or public symbol, the same step
+does three things — not the next review, the same step:**
+
+1. **Name what the deletion makes UNREACHABLE one layer away.** Ask it
+   explicitly: *what was this the last caller of?* `/api/transport/render` was
+   the last thing that built a `TransportConfig` **and validated it**, which is
+   the only reason `_ENGINE_VALIDATORS[TransportConfig]` still dispatched. The
+   question was never asked, and the answer was a 316-line class.
+2. **Sweep the documents for the identifier AND its prose name.** A symbol grep
+   for `electrode_wizard` does not match *"the electrode wizard"*; `render_script`
+   does not match *"the render endpoint"*; `engine_base` does not match *"a
+   registered engine"*. **Every miss in the 2026-09-17 sweep was of this shape** —
+   the symbol searches had already been run, four times, and each time the prose
+   survived them. Search both spellings, or the sweep is not done.
+3. **Re-run step 10's membership asserts**, which is one command once they exist.
+
+*Done when:* the protocol is written into `process/code-audit.md` as a numbered
+rule beside D1–D4 — it is a code-audit discipline, not a transport one, and it
+is the third time this exact failure has been paid for (`molbuilder fdf` 2026-08-11,
+spectra's registry 2026-08-21, transport's 2026-09-17).
 
 #### 5p.3p.7 Step 2's review — the invariant set, one by one *(2026-09-17)*
 
@@ -2936,112 +2788,39 @@ this section. It is five questions, top down:
 | 2026-09-17 | **1, 2b, 2c — RUN LATE** | `model/parse.md` § 4, `job-contracts.md` § 6.1, `science/overview.md` § 4, `conventions.md` § 3 | **These three steps SHIPPED WITHOUT THIS REVIEW**, against the rule two sub-sections above. Run retroactively when asked whether the rule had been followed; the honest answer was no. Step 1: clean, nothing to correct. **Step 2b: the check catalogue (`science/overview.md` § 4) had NO transport section at all** — seven shipped checks uncatalogued, including the two that step added. **Step 2c: five documents still named the deleted verb, and one of them was a claim step 2b itself had falsified** — `transport.md` § 2a.13 row 2 said the warn "lives only in the standalone verb, so a composite run never sees it", hours after the re-homing that moved it. All corrected. *The reviews that ran on time (2 and 8) each changed the step; the three that ran late each found drift the step had introduced and left. That is the cost, measured.* |
 | 2026-09-17 | **2 — STOPPED** | `engines/transport.md` § 5 (the 13 invariants), `compose.py`'s gates, `validation/__init__.py` | **The check disagreed and step 2 does not proceed.** 11 of 13 invariants are held by construction or by a live gate, and I11 is held BETTER (`compose` reads real orbital ranges); **I9 and I12 are held ONLY by the verb step 2 would delete**. I also reported a vacuum defect here and **RETRACTED it the same day** — I had measured a bare test fixture and reported it as the product; the check is correctly gated on `axis_kind`. See § 5p.3p.7 |
 | 2026-09-17 | 8 | `conventions.md` § 3 (decisions 7 + 34), both engine contracts, `cli.py`'s own comments | **Found a twin.** `siesta.input.convert` has had no production caller since 2026-08-11 — the same shape as the PySCF one, dead a month, in the engine whose verb went first. Both deleted together. `render_fdf`/`render_script` kept: 43 test files call them, but the reason they stay is that the engine contracts name them, not the tests |
+| 2026-09-17 | **4 — RUN ON TIME** | `engines/transport.md` § 6, `web/results.md`, `web/presenters.md`, `engines/overview.md` § 5, `execution/script-preparation.md`, `model/parse.md`, `web/tabs.md`, `process/conventions.md` § 3 | **The drift is an ENUMERATION problem, and it is not transport's.** Four hand-maintained lists were wrong the same week, each missed by the sweep that correctly fixed the *rules* beside it: § 6's pieces table (6 of 9 rows named deleted code), `presenters.md` § 1 (**5 viewers / 3 results declared, 6 / 4 measured** — `bench-summary` omitted entirely), `results.md` § 3 (*"the three viewers"*), `overview.md` § 5 (told a new engine to `@register_engine` against a Protocol deleted that week). Recorded as `transport.md` § 6a, which also states the rule that follows: **a contract enumerates only where the list IS the guarantee.** Two claims I had restated without resolving turned out never to have existed — `render_checks` on transport's engine base (its Protocol declared `render_script`/`parse_output`/`preflight`/`methods_fragment`) and `molbuilder siesta`. Step 8's sweep was **incomplete**: `engines/pyscf.md` carried a `convert()` tombstone AND, eight lines below it, the live `convert()` docs plus a runnable `molbuilder pyscf` example — six documents still named the deleted verb. One product-code orphan found and removed: `_transport_config_from_params`, zero callers since the route went in 2c |
+| 2026-09-17 | **the § 5l retirement + a whole-document sweep — REVIEW RUN AFTER, and the user had to ask for it** | `plan.md` § 5l end to end, `architecture.md`, `science/validation.md`, `web/presenters.md` + `web/results.md` whole, `engines/transport.md` whole, `engines/pyscf.md` whole, `engines/overview.md` § 5, `execution/script-preparation.md` | **The finding is that SYMBOL-grep cannot see stale PROSE, and four passes of it had left the documents contradicting themselves.** § 8 of `transport.md` still shipped *"the electrode wizard"*, *"the `electrode`/`preflight` helper CLI"*, *"the render endpoint **remains**"* and *"arrives as a **registered engine**"* — every one deleted, none matchable by a symbol search. `results.md` § 7 told a reader to click a **Bundle** button § 5 of the same document records as deleted three weeks earlier. My own `presenters.md` edit that morning fixed ONE count and left **four** other places in that file saying five, and the presenter contract omitted `absorbs` entirely while claiming "two optional". **And the claim I had made that morning — that `ref.py` was named by no document — was FALSE**: `architecture.md`'s L1 index and `test_layering.py` both carried it as a bare `` `ref` `` in a list, which my grep for `molbuilder/ref.py` could not match. **The substantive find: `TransiestaEngine` was entirely dead** — registered under `TransportConfig`, which nothing validates; it had stayed live only through `/api/transport/render`, a route step 2c deleted without anyone noticing the consequence, and two documents were calling it *"defense in depth"* for an ordering held by construction. Deleted after verifying a live holder for every check. Two tests were holding the dead registration up; one pinned a `validate()` call **no production caller makes** and is gone, the other used `<=` so a dead row could hide and is now equality |
 | 2026-09-17 | 6 (tests) | the repointed tests themselves, against the live deck | **A repoint is not a free pass.** Four checks were carried over from the deleted writer; three pinned deck TEXT with the emitter's column spacing baked in, and one -- `used-atoms` -- claimed to prove a count was "derived, NOT hardcoded" while asserting the literal `3`. Rewritten to parse the deck and compare against the structure's own regions; **mutation-testing then showed the rewrite STILL passed** against a hardcoded emitter, because the fixture's leads are 3 and 3. Now driven by an asymmetric junction (2 and 4), which is the only shape that can tell a derived count from a constant |
 
 ##### What "done" means for this section
+
+**Five of the eight reviews logged above ran LATE**, and the pattern is now
+measurable rather than anecdotal: *every review that ran on time changed the
+step; every review that ran late found drift the step itself had introduced and
+left behind.* 2c deleted `/api/transport/render` and thereby killed
+`TransiestaEngine` without noticing — a day later the class was still documented
+as a live gate in two contracts.
+
+**The answer is NOT "run the review harder", and this section should stop
+implying it is.** Five failures out of eight is not a discipline problem to
+exhort away; it is a protocol asking for something at the wrong moment. A review
+that runs *between* steps can only find what the last step broke, after it is
+broken — and the reviewer is the person who just broke it, which is the worst
+moment to ask.
+
+**So the check moves INTO the step: § 5p.3p.8 step 11, the deletion protocol.**
+Three questions asked while the deletion is being written, when the answers are
+in hand — *what was this the last caller of?*, *what is this thing's PROSE name
+in the documents?*, *do the membership asserts still pass?* Each of the three
+corresponds to a specific thing this section paid for on 2026-09-17, and none of
+them needs a review to be scheduled. **The review then does what a review is
+for** — checking the plan against the contracts — instead of standing in for a
+check the step should have made itself.
 
 It is not "the steps are ticked". It is: every row in § 5p.3p.1 reads ✅, every
 row in § 5p.3p.2 is DONE or has a recorded reason to stay, and the three
 documents named in § 5p.3p.3 agree with the tree. Until then this section is
 open, whatever the step list says.
-
-#### 5p.3p.6 The CLI surface — two survivors of a ruling already made
-
-*(Added 2026-09-17 after the layer map was re-read top-down; the CLI was not on
-the first three passes, which is why this is a new sub-section and the map in
-§ 5p.3p.1 gained a row rather than this being a bullet at the bottom.)*
-
-**The ruling exists and is general.** `conventions.md` § 3, decision 7 (user,
-2026-08-11): *"everything is a job set. There is no `molbuilder run` — it is
-deleted, not deprecated, because a second way in is a second way to lose your
-results."* And decision 34, the same day: *"there is no `molbuilder fdf`"* —
-user's words, *"obsolete residue from the flat-dir design"*.
-
-**The verbs sort into four kinds**, measured 2026-09-17: structure construction
-(`peptide` `dna` `rna` `smiles` `name` `modify`), the job pipeline (`jobset`,
-`validate`), machine/ops (`envs` `serve` `jupyter` `checkpoint` `auth-setup`
-`notify-token` `monitor`), and format utilities (`xv2xyz` `runtime-info`
-`watch parse` `pseudo check`). **No calculation KIND has a verb** — there is no
-`spectra`, no `optimization`, no `vibration`; a kind is described in `task.json`
-and run through `jobset`. Two break the pattern.
-
-**`transport` — a calculation-kind group.** `conventions.md` already names this
-as a closed design problem: *"`jobset`, `bench` and `transport` each ran
-calculations their own way"* (2026-08-11). `bench` got the full closure —
-folded into `jobset`, **its four verbs deleted, the group removed**. `transport`
-got half: the `bundle` verb went 2026-08-29, the group stayed. Its two remaining
-verbs are the June hand-assembly workflow's UI: `electrode` *made* an electrode
-deck from flags, `preflight` *checked* it against a device deck. **Both are that
-era.** With `electrode` gone (§ 5p.3p.2) and `preflight` going (step 2), the
-group is empty and follows `bench`'s precedent. *(User ruled 2026-09-17:
-removing the transport verb is correct.)*
-
-**`pyscf` — an engine verb, and `fdf`'s surviving twin.** Same shape: a
-structure plus every engine field as a flag → a finished deck, skipping the
-description. `cli.py` states the exemption itself — *"`pyscf` keeps its own only
-because its ladder runs inside one emitted script"* — and **the same file
-refutes it two comments later**: *"THIS COMMAND WRITES ONE DECK, AND A LADDER IS
-N DECKS … there is no `--stages-json` / `--stage-strategy` here … `jobset init
---engine pyscf --stage-strategy …` is the one door that writes one."* The
-exemption describes PySCF's *script shape*, not a property of the verb — and
-`--stage-strategy` was taken off this command on 2026-08-18 for exactly that
-reason.
-
-The framework already covers it: `prep.py:651` builds a full `EngineSeam` for
-PySCF, so `jobset prep` renders it through `spec_for` → `prepare_deck` like any
-other engine. `render_script` is *"a thin call over `spec_for`"* and `convert`
-is *"STEP 3, WHOLE, IN ONE CALL — the same call `prep` makes."* The verb
-duplicates no mechanism; it is a second **way in**, which is the thing decision 7
-names.
-
-**Step 8 — delete `molbuilder pyscf`** — **DONE 2026-09-17, and it grew.** *Contract:* `conventions.md` § 3
-(decisions 7 and 34). *What goes with it, measured:* `cmd_pyscf` +
-`_make_pyscf_options_decorator` (~75 lines); **`add_dataclass_options`
-(~168 lines), whose only production consumer is this command**; `pyscf.convert`
-(no other caller); `pyscf.render_script` if nothing else points at it; and the
-`test_cli.py` group that tests the BRIDGE rather than any behaviour. *Check:*
-`conventions.md` § 3's roster and its count are corrected in the same change —
-the table currently lists 13, names `serve` (now a group) and omits
-`notify-token`, so the count is re-derived, not decremented. *The check found no consumer outside
-`cmd_pyscf`, so the bridge went too.*
-
-**The review found a TWIN nobody had noticed.** `siesta.input.convert` — the
-same single-shot "read a file, write a deck" worker — **has had no production
-caller since `molbuilder fdf` was deleted on 2026-08-11**. One month dead, in
-the engine whose command went first. Both `convert`s are deleted here; the
-symmetry is the finding, and it is why this step is filed as one change rather
-than two.
-
-**`render_fdf` / `render_script` STAY**, and the distinction matters: 43 test
-files call them and *that is not the reason*. They are thin calls over
-`spec_for` and `engines/siesta.md` / `engines/pyscf.md` name them as each
-emitter's public surface. A test never justifies code; a CONTRACT does.
-
-*Rosters re-derived, not decremented:* `conventions.md` § 3 said **13**
-top-level commands, listed `pyscf`, and omitted seven others — it is 19 now,
-measured from `cli.commands`. Both engine contracts and the index carry the
-`convert()` tombstone.
-
-**Step 9 — remove the `transport` group** — **DONE 2026-09-17 with 2c.**
-`molbuilder --help` now lists 20 top-level commands and no calculation-KIND
-verb; `conventions.md` § 3 records the rule explicitly rather than leaving it
-to be inferred from the roster.
-
-#### 5p.3p.5 The standing rule — consolidate, do not patch
-
-Two passes over this section already **changed** the answer rather than refining
-it: the first said *"no transport inspector exists"* (true, and the least of it);
-the second found the picker drops the record entirely and files the ladder under
-the wrong engine; the third found the cause is a specified-and-unbuilt directory
-door, and that `presenters.md` has no row for a composite result at all. Each
-correction came from reading a **contract** that the previous pass had not
-opened.
-
-So: **at every step or milestone, before the next one starts** — re-read the
-contract that owns the layer being touched, re-measure the claims this section
-makes about it, and if anything has changed, **re-consolidate this section
-rather than appending to it.** A new finding is a reason to rewrite the map in
-§ 5p.3p.1, not to add a bullet at the bottom.
 
 ### 5p.4 The steps
 

@@ -1932,8 +1932,9 @@ than a special case:**
 > "Every generated file goes through it" counts callers of one
 > function, which answers who calls it, not what happens to a deck.** The merge lives in `write_script`, and
 > since the seam migration **every generated file goes through it** —
-> `prepare_deck` writes each deck that way (so `jobset prep` and
-> `molbuilder pyscf` both preserve the zone) and the wrapper writer uses the
+> `prepare_deck` writes each deck that way (so every `jobset prep` preserves
+> the zone — and `molbuilder pyscf`, named here until its deletion on
+> 2026-09-17, went through the same door) and the wrapper writer uses the
 > same door (2026-08-17). `web/blueprints/files.py` additionally chains
 > `merge_user_custom_from_target` on a fresh regenerate; an edit-save
 > bypasses the merge deliberately, because there the user is committing
@@ -1942,8 +1943,7 @@ than a special case:**
 > | path | what happens to your custom text |
 > |---|---|
 > | the web, regenerating | **preserved** — read back from the target |
-> | `molbuilder pyscf` at the terminal | **preserved** — `prepare_deck` → `write_script` merges |
-> | `jobset prep` (the staged path) | **preserved** — same one writer |
+> | `jobset prep` (the staged path) | **preserved** — `prepare_deck` → `write_script` merges; the one writer |
 >
 > *(The last two rows said "lost" until 2026-08-19 — true of the pre-seam
 > writers, which wrote files directly. The second row had already flipped

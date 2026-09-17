@@ -361,11 +361,20 @@ say "the runner side", a runner (`render_siesta_stages_runner`) deleted on
 
 ## 5. Adding a new engine
 
-Engines self-register with an `@register_engine` decorator against a `Protocol`
-(`transport/engine_base.py`; spectra's registry retired at its migration's P3 —
-the vibration kind rides the JobSet seam instead) — the registry is how a future
-backend (e.g. a PySCF-NEGF transport engine) joins without touching the dispatch. To
-satisfy the contracts above, a new engine must:
+**There is no engine registry, and a new engine does not register.** Both
+existed and both are gone: spectra's retired at its migration's P3 (2026-08-21,
+the vibration kind rides the JobSet seam instead), and transport's —
+`transport/engine_base.py`, a `Protocol` with four declared members, one
+implemented, one engine and one caller — was deleted 2026-09-17. This paragraph
+told a reader to `@register_engine` against it for four weeks after the first
+went and for the hours after the second.
+
+A backend joins the way every calculation KIND joins: it is **described** (a
+`task.json` naming the kind, a template carrying its catalogue rows) and
+**rendered** through `spec_for` → `DeckSpec` → `prepare_deck`, which is floor
+3's one writer. A PySCF-NEGF transport engine is a `spec_for` arm and a set of
+catalogue rows, not a registration. To satisfy the contracts above, a new engine
+must:
 
 1. **Declare which sidecar labels it consumes** (in the engine module's docstring) —
    everything else gets a Stage-3B notice.

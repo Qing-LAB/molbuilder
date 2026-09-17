@@ -196,7 +196,10 @@ the `SpectraConfig` validator; run by both the render path and `validate()`) and
 ## 5. Workflow / execution
 
 **Job:** run a set of related jobs on any target — stage laddering, scheduling,
-env dispatch, launcher emission, checkpointing, benchmarking, run-bundle handoff.
+env dispatch, launcher emission, checkpointing, benchmarking. *(It listed
+"run-bundle handoff" until 2026-09-17; that model retired 2026-08-29 — a
+calculation that builds on a finished run **cites** it, and `prep` composes from
+the citation.)*
 The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 **everything after the *producer* is engine-agnostic** — the core never parses a
 `.fdf`, and sees only opaque script filenames.

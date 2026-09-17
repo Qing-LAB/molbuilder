@@ -128,16 +128,21 @@ def test_d3_charged_system_warns_on_thin_vacuum(deprotonated_diester):
 
 def test_d3_neutral_uses_the_structures_vacuum(water_structure):
     import dataclasses
-    import warnings
     from molbuilder.siesta import SiestaConfig, render_fdf
+    from molbuilder.validation import validate
     # The FDF cell note reports the STRUCTURE's vacuum (per side); a sufficient
-    # neutral vacuum (10 >= 8) raises no thin-vacuum warning.
+    # neutral vacuum (10 >= 8) raises no thin-vacuum finding.
     s = dataclasses.replace(water_structure, vacuum=(10.0, 10.0, 10.0))
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        text = render_fdf(s, SiestaConfig(verbose_comments=False))
-    assert "vacuum = (10.0, 10.0, 10.0) A/side" in text, text
-    assert not any("periodic images" in str(x.message) for x in w)
+    cfg = SiestaConfig(verbose_comments=False)
+    assert "vacuum = (10.0, 10.0, 10.0) A/side" in render_fdf(s, cfg), "cell note"
+    # Asked of the door that ANSWERS it.  This caught a `warnings.warn` raised
+    # inside `render_fdf` until 2026-09-17 -- a mechanism contract R5 retired
+    # (`science/validation.md` § 4.1: a complaint is an `Issue`, because a
+    # `warnings.warn` reaches the server's stderr and no web user ever sees
+    # it).  Once the warn went, the recorder was always empty and the assert
+    # could not fail.
+    assert not [i for i in validate(s, cfg) if i.where == "cell.vacuum_thin"], (
+        "a 10 A/side vacuum was called thin")
 
 
 # --------------------------------------------------------------------- #

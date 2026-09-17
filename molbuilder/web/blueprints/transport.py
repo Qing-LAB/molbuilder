@@ -37,7 +37,6 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
-    config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
 )
@@ -538,31 +537,9 @@ def api_transport_schema() -> Any:
     return jsonify(response)
 
 
-# ===================================================================== #
-# /api/transport/render  --  dispatch via engine registry               #
-# ===================================================================== #
-
-
-def _transport_config_from_params(params: Dict[str, Any]) -> TransportConfig:
-    """Build a :class:`TransportConfig` from a JSON form-values dict.
-
-    Routes through ``config_from_params`` so per-field type coercion
-    (``Sequence[float]`` for ``bias_voltages_v``, ``Tuple[int,int,int]``
-    for ``k_mesh_transverse``, the standard numeric coercers) fires
-    BEFORE the dataclass constructor sees the raw form values.
-
-    Field-name lock-step with TransportConfig is the contract; if
-    the form ever renames a field the JSON shape must follow.
-    Unknown keys are silently dropped by ``config_from_params``
-    (forward-compat with a UI that sends extras).
-    """
-    import typing as _typing
-    hints = _typing.get_type_hints(TransportConfig)
-    clean = {k: v for k, v in (params or {}).items() if v is not None}
-    return config_from_params(TransportConfig, clean, hints)
-
-
-# `POST /api/transport/render` DELETED 2026-09-17.
+# `POST /api/transport/render` DELETED 2026-09-17, and with it
+# `_transport_config_from_params`, which built the `TransportConfig` the
+# route coerced its form values into and had no other caller.
 #
 # It rendered a device deck through `TransiestaEngine.render_script` and
 # handed the text back as JSON.  No browser called it: `lib/transport/core.js`

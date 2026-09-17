@@ -534,8 +534,11 @@ this table exists to rule out)*:
 no gate ① for a few hours until the kind-aware preflight landed 2026-08-21
 — the Spectrum tab now runs the same live check Build does — and transport
 rode its own pre-JobSet render path until the composite migration on
-2026-08-29: its decks now render through prep like every other kind, with
-the TransiestaEngine preflight as its own extra gate.)*
+2026-08-29: its decks now render through prep like every other kind, and its
+own science is the KIND's — `_KIND_VALIDATORS["transport"]`, which fires on
+every rung.  *(This named "the TransiestaEngine preflight as its own extra
+gate"; that checker was keyed on `TransportConfig`, dispatched for no rung,
+and was deleted 2026-09-17.)*)*
 
 ### Where the details live — the drill-down for each arrow
 

@@ -657,9 +657,12 @@ the next run continues from, so making a name unique to avoid a clash would
 throw away the geometry the user is trying to keep. Rewriting decks does not
 touch them, and nothing in this document ever moves a file to make room.
 
-*(the handoff writer this sentence cited retired 2026-08-29 with the bundle machinery — citations replaced it).*
-That is a **different** case and keeps its refusal: a handoff bundle is a single
-artifact being replaced wholesale, not a folder being worked in.
+*(This paragraph cited the handoff writer's own refusal as the contrasting
+case. That writer retired 2026-08-29 with the bundle machinery — citations
+replaced it — so the contrast no longer has a live subject. What survives is the
+distinction it was drawn to make: **replacing one artifact wholesale is not the
+same as working inside a folder**, and only the second is what "never rename"
+governs.)*
 
 ---
 

@@ -912,10 +912,14 @@ These stop the next round of parallel parse paths:
    AND flagged — a `ParseWarning` (§ 2), or a refusal where the value is
    load-bearing — never quietly accepted as what the run did. A future print
    shape from an engine must surface as something a reader can see; the
-   alternative is a value that looks measured and is not. Four sites across
-   three modules carry it today (`parse/engines/siesta.py` ×2,
-   `parse/sidecars/transport.py`, `transport/results.py`), each naming the
-   vocabulary it validated against.
+   alternative is a value that looks measured and is not. **Two sites, one
+   module** carry it today (`parse/engines/siesta.py` ×2), each naming the
+   vocabulary it validated against. *(It said four sites across three modules
+   until 2026-09-17; the other two lived in `parse/sidecars/transport.py` and
+   `transport/results.py`, deleted with the transport results chain — the
+   reader claimed a `schema_version` the writer had never emitted, and
+   `dump_transport_json` had zero production callers in every revision it
+   existed. `transport/record.py` writes the record now.)*
 
 ---
 

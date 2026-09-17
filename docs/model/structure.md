@@ -354,14 +354,16 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 ### 2.5 CLI
 
 ```bash
-molbuilder dna ATGC | molbuilder pyscf - out.py     # Structure over stdin/stdout
 molbuilder peptide ASEQ                            # → XYZ on stdout
+molbuilder dna ATGC > seq.xyz                      # Structure on stdout
 ```
 
-**Both sides of the CLI now go through the door.** Reads:
-`siesta/input.py:1805, 1829` and `pyscf/input.py:1529` call
-`StructureCodec().load`, so `molbuilder pyscf` and the `fdf` path see regions
-and frozen atoms and emit `Geometry.Constraints`. Writes: `_emit` and
+**Both sides of the CLI now go through the door.** Reads: `siesta/input.py`
+and `pyscf/input.py` call `StructureCodec().load`, so every emitter sees regions
+and frozen atoms and emits `Geometry.Constraints`. *(This named `molbuilder
+pyscf` and "the `fdf` path" as the two readers; both verbs are deleted — `fdf`
+2026-08-11, `pyscf` 2026-09-17 — and the door they went through is now reached
+only by `jobset prep`.)* Writes: `_emit` and
 `molbuilder modify` call `StructureCodec().write`, so a CLI save emits the
 **pair** — and the two surfaces now agree about what saving a structure means.
 

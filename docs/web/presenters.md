@@ -5,17 +5,20 @@
 **Companions:** [`molview.md`](?doc=web/molview.md) — the structure viewer one
 presenter mounts; [`projects.md`](?doc=web/projects.md) — the file layer every
 presenter reads through. `results.md` — the Results tab that *uses* this
-registry (its file picker, state, and bundle handoff live there, web wave); the
+registry (its file picker and viewer state live there; the Bundle card it also
+used to name retired 2026-08-29 with the whole hand-over model — a calculation
+CITES a finished run now); the
 trajectory-engine and spectra docs — the heavy rendering engines two presenters
 wrap. [`plans/plan.md`](?doc=plans/plan.md) **W15** — the pending ESM + rename of this
 module.
 
 When you open a file on the **Results** tab, something has to pick the right way
 to show it — a 3D structure for a `.xyz`, a trajectory movie for a
-`.molwatch.log`, a spectrum for a `.spectra.json`, a markdown editor for a
-`.md`, a plain scrollable text pane for a `.log` or `.fdf`. This module is that
-switchboard: a small **registry** of **presenters**, one per file type, and the
-rule that picks the matching one and mounts it.
+`.molwatch.log`, a spectrum for a `.spectra.json`, a sweep summary for a
+`job-set.json`, a markdown editor for a `.md`, a plain scrollable text pane for
+a `.log` or `.fdf`. This module is that switchboard: a small **registry** of
+**presenters**, one per file type, and the rule that picks the matching one and
+mounts it.
 
 > **Current → target.** In the code today this module is still
 > `window.molbuilder.inspectors` (in `lib/inspectors/`), and most of its files
@@ -29,28 +32,47 @@ rule that picks the matching one and mounts it.
 > This doc uses the target name **presenter**; where it points at code it uses
 > today's `inspectors` names.
 
-## 1. The pieces — a switchboard and five viewers
+## 1. The pieces — a switchboard and six viewers
 
 The **registry** is the switchboard. Each **presenter** is a small self-contained
-viewer for one kind of file. Today there are five:
+viewer for one kind of file. Today there are six:
 
 | The file you open | The viewer you get | Shows in the Results dropdown? |
 |---|---|---|
-| `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes |
-| `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes |
-| `.spectra.json` | a spectrum **chart** + a modes table | yes |
+| `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
+| `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
+| `.spectra.json` | a spectrum **chart** + a modes table | yes — *PySCF spectrum* |
+| `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `.md` | a markdown **editor** with a live preview + Save | no |
 | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
 
-The three that say "yes" mark themselves as *results*, so they show up in the
+The four that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are
 catch-alls — if they claimed a spot in the dropdown they would flood it with
 config files and READMEs.
 
+> *This table said **five** viewers and **three** results until 2026-09-17,
+> omitting `bench-summary` — a presenter with its own result category that had
+> been registering the whole time. Two of the four also never write
+> `isResult` at all: `trajectory` and `spectra` are built by
+> `makePartialInspector`, which **defaults it to `true`**, so reading the
+> registration alone under-counts them. The count here is now derived from the
+> six `register()` calls in `lib/inspectors/`, not from this table's memory.*
+
+> **There is no row for a composite result, and transport is the first one.**
+> A finished junction writes `<label>.transport.json`, which matches no
+> `isResult` presenter, so the picker drops it; its five rungs' `.out` files are
+> each claimed by the trajectory viewer under *SIESTA optimization*, so a
+> five-rung ladder lists as five unrelated optimizations. The row is owed by
+> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5; the deeper reason the
+> picker has to guess at all — there is no server door that answers *what is in
+> this directory* — is [`model/parse.md`](?doc=model/parse.md) § 5's
+> `JobDirParser`, **specified and not built**, owned by § 5c.
+
 ## 2. How a viewer is chosen — the presenter contract
 
 The registry doesn't hard-code the file types. Each presenter is a small object
-that declares four things (and two optional ones), and calls `register` once:
+that declares four things (and three optional ones), and calls `register` once:
 
 - `name` — a unique key.
 - `displayName` — the label a user sees.
@@ -61,7 +83,17 @@ that declares four things (and two optional ones), and calls `register` once:
 - *(optional)* `isResult` — `true` puts this presenter's files in the Results
   dropdown.
 - *(optional)* `resultCategory(file)` — the group heading the dropdown files sit
-  under.
+  under. Defaults to `displayName`. A presenter matching more than one
+  workflow's outputs discriminates per file here — `trajectory` claims `.out`,
+  `.molwatch.log` and `*_optim.xyz` and files them under three different
+  headings.
+- *(optional)* `absorbs(master, other)` — **"`master` subsumes `other`"**: both
+  are result-class files in the SAME directory and `other` is a working part of
+  the run `master` reports, so only the master gets a dropdown entry
+  ([`results.md`](?doc=web/results.md) § 2.3). *This bullet was missing until
+  2026-09-17 and the count above said "two optional" — `absorbs` is what makes
+  one PySCF relaxation one menu line instead of five, and it is also the rule
+  that CANNOT express a five-directory transport ladder.*
 
 The registry's own surface is small: `register`, `pick` (the first presenter
 whose `match` is true), `pickResult` (same but only presenters marked
@@ -88,7 +120,7 @@ flowchart TB
     REG -->|"the matching viewer"| CTRL
     CTRL -->|"put away the old viewer, then mount the chosen one"| PANEL["the viewer, in the panel"]
     PANEL -->|"reads the file's bytes through the shared reader"| PROJ["projects.readFile / readRange"]
-    PANEL --> OUT["draws it: 3D structure · trajectory movie · spectrum · text · markdown"]
+    PANEL --> OUT["draws it: 3D structure · trajectory movie · spectrum · bench sweep · text · markdown"]
 ```
 
 1. The controller asks the registry which presenter matches the filename.
@@ -106,7 +138,7 @@ shared renderer** (`markdown-render.js`), not through this registry.
 
 ## 4. Thin viewers over heavy engines
 
-Three of the five presenters are simple, but two — **trajectory** and
+Four of the six presenters are simple, but two — **trajectory** and
 **spectra** — are *thin adapters* over big rendering engines:
 
 - the **structure** presenter mounts the whole MolView viewer read-only in one
@@ -118,6 +150,8 @@ Three of the five presenters are simple, but two — **trajectory** and
   SCF plots;
 - the **spectra** presenter hands off the same way to the spectrum engine
   (`lib/spectra/core.js`) — the chart and modes table;
+- **bench-summary** is self-contained: it reads a `job-set.json`, renders the
+  sweep's trials and a chart, and re-polls on its own cadence;
 - **source** (plain text) and **markdown** are small and self-contained.
 
 The two engines are large enough to be their own subject — this doc names them
@@ -157,13 +191,20 @@ This module is the file-viewer registry that is being renamed and modernized
 |---|---|---|
 | `structure.js` | hybrid — imports, but registers via the global | clean ES module, renamed to `presenters` |
 | `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global | clean ES module, renamed |
-| `registry.js`, `_partial_inspector_factory.js`, `trajectory.js`, `spectra.js`, `source.js`, `markdown.js` | classic scripts | converted to ES modules + renamed |
+| `registry.js`, `_partial_inspector_factory.js`, `trajectory.js`, `spectra.js`, `source.js`, `markdown.js`, `bench-summary.js`, `lifecycle.js` | classic scripts | converted to ES modules + renamed |
 | `lib/spectra/core.js` (engine) | classic script | converted |
 
-So two of the module's nine files already import as modules (still global-registered
-= hybrid), and the rest are classic; converting them all — plus the
-`molbuilder.inspectors` → `presenters` rename — is the pending pass. See
-[`plans/plan.md`](?doc=plans/plan.md) **W15**.
+So two of the module's **eleven** files already import as modules (still
+global-registered = hybrid), and the rest are classic; converting them all —
+plus the `molbuilder.inspectors` → `presenters` rename — is the pending pass.
+See [`plans/plan.md`](?doc=plans/plan.md) **W15**.
+
+> *This table listed seven files and said "nine" until 2026-09-17, omitting
+> `bench-summary.js` and `lifecycle.js`. The real set is the **nine** files in
+> `lib/inspectors/` plus the **two** engines outside it. `lifecycle.js` is not a
+> presenter — it is the mount/listen/dispose helper both engine cores share,
+> which is why it was easy to leave out of a list of viewers and why a list of
+> FILES must not be written from a list of viewers.*
 
 ## 8. Test map
 

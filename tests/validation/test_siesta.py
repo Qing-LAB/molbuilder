@@ -557,29 +557,41 @@ class TestSpinPolarizedNeedsSpinTotal:
         )
 
     def test_no_spin_treatment_no_check(self):
-        """spin_treatment="non-polarized" -> no propor invocation at SIESTA setup
-        time, so the check shouldn't fire (the open-shell-metal WARN
-        from check_open_shell_metal is the right complaint there)."""
+        """A non-polarized SCF has no moment to target, so the check is silent.
+
+        The open-shell-metal WARN from `check_open_shell_metal` is the right
+        complaint for this structure, and it lands at a different `where`.
+
+        Same filter bug as the sibling above, found a day later: this read
+        `and "propor" in i.message`, and no Issue in the tree has ever
+        carried that word -- the mechanism it named was retracted 2026-09-17
+        (`science/validation.md`), and the message never quoted it before
+        that either. The filter matched nothing, so the assert was vacuous.
+        """
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(), SiestaConfig())  # spin_treatment default = False
-        propor_errs = [i for i in issues
-                        if i.where == "config.spin_total"
-                        and "propor" in i.message]
-        assert not propor_errs
+        assert not [i for i in issues if i.where == "config.spin_total"], (
+            "the spin-target check fired on a NON-POLARIZED calculation, "
+            "which has no spin moment to set"
+        )
 
     def test_no_metal_no_check(self):
-        """Pure organic structure -- propor wouldn't fail even without
-        Spin.Total, since closed-shell atoms split trivially.  Check
-        must NOT fire."""
+        """No open-shell metal, so there is no moment worth guessing at.
+
+        The check is gated on `detect_open_shell_metals`; an all-organic
+        structure returns none, so a polarized SCF here is left alone to find
+        its own moment.  (Same vacuous `"propor" in i.message` filter as the
+        two above until 2026-09-17.)
+        """
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._organic_only(),
                            SiestaConfig(spin_treatment="polarized"))
-        propor_errs = [i for i in issues
-                        if i.where == "config.spin_total"
-                        and "propor" in i.message]
-        assert not propor_errs
+        assert not [i for i in issues if i.where == "config.spin_total"], (
+            "the spin-target check fired on a structure with no open-shell "
+            "metal, where nothing motivates a guessed moment"
+        )
 
 
 # --------------------------------------------------------------------- #

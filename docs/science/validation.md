@@ -521,11 +521,21 @@ Two rules make this safe to extend: **the call order inside `_validate_siesta` /
 tests count issues by position — and a helper **loses its `_` prefix when it
 gains a cross-module caller** (e.g. `check_open_shell_metal` is public; the
 others stay private until a PR forces the promotion, no back-compat shim). The
-engine registry (`_ENGINE_VALIDATORS`, populated at import) holds all four
-configs (SIESTA / PySCF / spectra / transport), and the calculation-kind
+engine registry (`_ENGINE_VALIDATORS`, populated at import) holds **two**
+configs (SIESTA / PySCF), and the calculation-kind
 registry (`_KIND_VALIDATORS`) composes a kind's own science from the
 described fact — `validate(struct, cfg, calculation=…)` is the
 one per-engine gate. Tests mirror the layout under `tests/validation/`.
+
+> *This said **four** configs (SIESTA / PySCF / spectra / transport). Both of
+> the others keyed on a config class nothing in production validates, and both
+> retired for the same reason one year apart in code time: `SpectraConfig`
+> 2026-08-22 (a vibration's science is the KIND's), `TransportConfig`
+> 2026-09-17 (every transport rung resolves a `SiestaConfig`, so the row
+> dispatched for nothing). **A registry keyed on a class is only as live as the
+> callers that construct that class** — which is the difference between
+> `_ENGINE_VALIDATORS` and `_KIND_VALIDATORS`, and the reason transport's
+> science moved to the second.*
 
 ---
 

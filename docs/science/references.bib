@@ -15,8 +15,13 @@
 %
 % Adding a new citation:
 %   1. Add the verified BibTeX entry here.
-%   2. Reference the key in spec.md (§ 11.x or § 14) AND in the
-%      engine's `methods_fragment()` output.
+%   2. Reference the key wherever the claim is made: the domain contract
+%      under docs/ that states it, AND the methods paragraph a deck carries
+%      (`pyscf/vibration_emitters.py::pyscf_methods_fragment`, composed by
+%      `spectra/methods.py`).  This said "spec.md (SS 11.x or SS 14)" and
+%      "the engine's `methods_fragment()`" -- docs/spec.md was split into
+%      the docs/ tree, and the per-engine method retired with the engine
+%      registries (spectra 2026-08-21, transport 2026-09-17).
 %   3. Cross-check the DOI resolves.
 
 % ----- Canonical vibrational-spectroscopy reference -----

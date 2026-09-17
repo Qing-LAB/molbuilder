@@ -271,11 +271,19 @@ A unification that *adds* tests has usually not unified anything — it has adde
 layer and kept the old surface, and the test count is the first place that shows.
 
 *This section exists because the opposite happened. The paths framework
-(`plans/plan.md` § 5l) was undertaken to reduce complexity, and the migration
+(`plans/plan.md` § 5k) was undertaken to reduce complexity, and the migration
 shipped **five new test files in one day** — one test per migrated call site,
 alongside the guard that already made most of them unnecessary. The count is
 evidence: it went up while the API was being unified, which is precisely the
 signal this rule names.*
+
+> **And the follow-on proves the rule twice.** § 5l answered the same problem by
+> specifying a replacement API — one address, three verbs — and `ref.py` shipped
+> with a full test file and **no production caller at all**. For over a week the
+> repo carried a module and its tests that answered nothing, while the ~40
+> functions it was meant to replace kept being used. **A test file is not
+> evidence that a unification landed**; a retired call site is. The standard was
+> retired and both files deleted 2026-09-17 (`plans/plan.md` § 5l).
 
 ### How to review a test for retirement
 

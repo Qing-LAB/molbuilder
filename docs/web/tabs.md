@@ -233,11 +233,20 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
    Task setup then reads it as an ordinary description (the run surface,
    not a hand-over target).
 
-**Still open** (honest residue): the Results-tab transmission inspector
-(reading the shipped `<label>.transport.json`), and
-`TransiestaEngine.parse_output`, which raises by design and points at the
-record.  `POST /api/transport/render` survives as the engine registry's
-validation surface only — no UI calls it.
+**Still open** (honest residue): the Results-tab transmission presenter.
+A finished junction ships `<label>.transport.json`, and **no presenter matches
+it** — `pickResult` returns null and the picker drops the file, so the
+deliverable of a five-rung run is invisible on the tab that exists to show
+results (`presenters.md` § 1; [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p
+step 5).
+
+*Two items stood here and are now closed by deletion, not by work:*
+`TransiestaEngine.parse_output` — which raised by design and pointed at the
+record — **and `POST /api/transport/render`**, described here as *"the engine
+registry's validation surface"*. There is no engine registry; the route's last
+browser caller stopped on 2026-08-29 and both went on 2026-09-17. The tab's
+four live routes are `/describe`, `/describe_attempt`, `/schema` and
+`/swap_electrodes`.
 
 ## 5. Documents — the in-app reader (this page)
 

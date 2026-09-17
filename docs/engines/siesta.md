@@ -555,8 +555,10 @@ verb names its stage, on a one-rung ladder exactly as on three
   surface or edited by hand; there is no flag that takes a ladder inline.
   *(This bullet described `--stages-json` and a single-stage `--stage {1,2,3}`
   overlay until 2026-08-16 — flags of the `molbuilder fdf` verb, deleted
-  2026-08-11 (§ 1). Both spellings survive today only on the standalone
-  `molbuilder pyscf` command, which is a different route.)* The
+  2026-08-11 (§ 1). It then said both spellings survived on `molbuilder pyscf`;
+  that command was deleted 2026-09-17, so **neither spelling exists anywhere**.
+  A ladder is declared in `task.json` and built by `jobset init
+  --stage-strategy …`.)* The
   `SystemLabel` stays unsuffixed across stages so SIESTA's `.XV`/`.DM`/`.CG`
   warm-restart files carry forward — which is what lets a later stage find an
   earlier one's geometry with nobody instructing it

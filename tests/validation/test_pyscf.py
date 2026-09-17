@@ -224,11 +224,20 @@ def test_pyscf_validator_nudges_odd_electrons_when_charge_was_guessed():
 
 def test_pyscf_validator_silent_on_odd_electrons_with_uks_spin1():
     """The legitimate fix (UKS + spin=1 on the same odd-electron
-    system) must NOT trip the new R3 warn."""
+    system) must NOT trip the R3 finding.
+
+    This and the two below filtered on ``"odd electron" in i.message``
+    until 2026-09-17.  `check_spin_charge_parity` says *"Electron-count
+    parity mismatch"* and has never said "odd electron", so all three
+    filters matched nothing and the asserts were vacuous -- they would
+    have passed however loudly the check fired.  The discriminator is
+    now the one the POSITIVE test above already proves the message
+    carries.
+    """
     cfg = PySCFConfig(method="UKS", spin=1, net_charge=0)
     issues = validate(_ch3_radical_struct(), cfg)
-    odd_warns = [i for i in issues if "odd electron" in i.message]
-    assert odd_warns == []
+    parity = [i for i in issues if "parity" in i.message]
+    assert parity == [], f"the parity check fired: {parity}"
 
 
 
@@ -245,8 +254,8 @@ def test_pyscf_validator_silent_on_even_electrons_with_rks():
     )
     cfg = PySCFConfig(method="RKS", spin=0, net_charge=0)
     issues = validate(s, cfg)
-    odd_warns = [i for i in issues if "odd electron" in i.message]
-    assert odd_warns == []
+    parity = [i for i in issues if "parity" in i.message]
+    assert parity == [], f"the parity check fired: {parity}"
 
 
 
@@ -256,8 +265,8 @@ def test_pyscf_validator_silent_when_user_overrode_charge_to_make_even():
     a closed-shell carbocation), R3 must NOT warn."""
     cfg = PySCFConfig(method="RKS", spin=0, net_charge=1)
     issues = validate(_ch3_radical_struct(), cfg)
-    odd_warns = [i for i in issues if "odd electron" in i.message]
-    assert odd_warns == []
+    parity = [i for i in issues if "parity" in i.message]
+    assert parity == [], f"the parity check fired: {parity}"
 
 
 def test_basis_adequacy_fires_for_closed_shell_metal():

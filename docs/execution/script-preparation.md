@@ -235,11 +235,16 @@ type, its severity model, and `report()`, so a refusal here reads like every
 other refusal in the tree. What is new is only the **subject**: no check in this
 tree has ever read a produced artifact.
 
-> *(`render_checks` on TRANSPORT's engine base is named as though
-> it were this, and is not: it takes `(struct, cfg)` and runs before emission. It
-> is a config gate with a misleading name.  Spectra's engine base died at P3;
-> its science lives as `validation/spectra.py::spectra_render_checks`, run by
-> the ONE settings gate.)*
+> *(Spectra's `validation/spectra.py::spectra_render_checks` is named as
+> though it were this, and is not: it takes `(struct, cfg)` and runs before
+> emission — a config gate, run by the ONE settings gate, with a name that
+> reads like an artifact one. Spectra's engine base died at P3 and its science
+> moved there. This note also claimed transport's engine base carried a
+> `render_checks`; it never did — that `Protocol` declared `render_script`,
+> `parse_output`, `preflight` and `methods_fragment`, and the whole file went
+> on 2026-09-17, followed the same day by `TransiestaEngine` itself. What
+> TranSIESTA has today is no gate of its own: its science is the KIND's,
+> `_KIND_VALIDATORS["transport"]`.)*
 
 ### 3.2 The three rules inside step 3
 
@@ -782,34 +787,39 @@ its render tests rather than by the framework walk.*
 > Assembling it beside one instead is how geomeTRIC's prefix carried the stage
 > token in the wrong place, in two decks, for five weeks (§ 2.2a).
 
-**Spectra crossed over** (spectra-migration plan, P0–P3 landed 2026-08-21):
-a vibrational spectrum is the `vibration` calculation KIND — described,
-prepped and run like any stage, with the old `spectra/engine_base.py`
-registry and its `render_script(struct, cfg) -> str` generator deleted.
-TranSIESTA is the one writer still on the old shape — a `Protocol` registry
-in `transport/engine_base.py` whose central method returns finished
-**text**, which is exactly the shape this seam had until 2026-08-18 and
-gave up for the reason § 4.3 records: given text, the conductor has nothing
-to pass on, so the order is written down once per route and is free to
-drift.
+**Both crossed over, and the old shape is gone.** A vibrational spectrum
+became the `vibration` calculation KIND at the spectra migration's P0–P3
+(2026-08-21) — described, prepped and run like any stage, with
+`spectra/engine_base.py` and its `render_script(struct, cfg) -> str` generator
+deleted. **Transport followed on 2026-09-17**: `transport/engine_base.py` (the
+`Protocol` registry), `transiesta.render_script` (the generator that returned
+finished text) and `transport/_cli.py` (which wrote an `.fdf` with a plain
+`write_text`, outside W4's one-writer rule) are all deleted. All five rungs of a
+junction now render through `siesta.input.spec_for(..., calculation="transport")`
+→ `transport/deck.py` → `prepare_deck`, so every transport deck carries a
+`USER-CUSTOM` block and a provenance record like any other.
 
-**Why they are not simply migrated, stated plainly.** The seam has two halves
-(§ 4) and those engines have neither. `parameter()` — the door that makes W2
-structural — reads a catalogue declaration, and the catalogue carries no
-`transport` or `spectra` rows at all. So the door is shut before the code
-question is even reached, which is why a parallel abstraction was the only way
-to build them. Opening it is `template.md`'s own unification direction —
-*a template describes a CALCULATION, not an engine* — and is a scheduled
-piece of work, not a sweep.
+> **This paragraph described the opposite until 2026-09-17**, naming TranSIESTA
+> as *"the one writer still on the old shape"* and costing it out in a block
+> that has been quoted since: `transport/_cli.py`'s unmediated `write_text`, and
+> a `render_checks` method *"named as though it were the artifact gate"*. The
+> first subject is deleted; the second **never existed on transport at all** —
+> that `Protocol` declared `render_script`, `parse_output`, `preflight` and
+> `methods_fragment`, and the name was carried across from spectra's real
+> `spectra_render_checks` (§ 3.1). A restated symbol that was never resolved
+> against the tree survived here for weeks. **Nothing remains of that engine
+> class**: `TransiestaEngine` was deleted the same day, once removing the
+> render route showed that its one surviving classmethod dispatched for no
+> rung — every rung resolves a `SiestaConfig`, and the registration was keyed
+> on `TransportConfig`.
 
-> **What this costs today, concretely.** `transport/_cli.py` writes an `.fdf`
-> with a plain `write_text`, so W4's one-writer rule does not hold there; those
-> decks carry no `USER-CUSTOM` block, no provenance record, and are never read
-> back after writing. And `render_checks` on transport's engine base (the
-> one that remains — spectra's died at P3) is named as
-> though it were the artifact gate and is not — it takes `(struct, cfg)` and
-> runs before any text exists, which makes it a second config gate with a
-> misleading name.
+**What the catalogue still owes.** The seam has two halves (§ 4), and
+`parameter()` — the door that makes W2 structural — reads a catalogue
+declaration. The catalogue carries **transport rows** since 2026-09-16
+(`template.md`; the ladder's Class A values default from the cited relaxation),
+which is what let the five rungs move onto `spec_for`. Vibration rides the
+JobSet seam. The unification direction `template.md` states — *a template
+describes a CALCULATION, not an engine* — is the remaining scheduled work.
 
 ## 4.5 The pipeline log — reading the run back afterwards
 

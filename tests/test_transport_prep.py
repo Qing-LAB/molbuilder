@@ -860,22 +860,36 @@ class TestTheLadderPreps:
             "the device kz is forced to 1 (open boundary)")
         assert "  4    0    0" in dev and "  4    0    0" in seed
 
-    def test_the_emitters_order_preflight_never_fires(self, tmp_path):
-        """THE P4 gate: a source whose atom order would trip the
-        emitter's ordering error preps clean, because prep sorted."""
-        from molbuilder.transport.stages import config_for  # noqa: F401
-        from molbuilder.transport.transiesta import TransiestaEngine
+    def test_a_scrambled_source_preps_clean_because_prep_sorted(self, tmp_path):
+        """THE P4 gate: a source whose atom order TranSIESTA would
+        misread preps clean, because prep sorts before any deck exists.
+
+        TranSIESTA reads ``TS.NumUsedAtomsLeft = N`` as *"the first N atoms
+        in the coordinates block are the left electrode"*, so an order other
+        than ``[lower][bridge][upper]`` builds the lead self-energies from
+        the wrong atoms -- and converges while doing it.
+
+        *(The discriminating half drove `TransiestaEngine.preflight` until
+        2026-09-17.  That class is deleted: it dispatched for nothing, since
+        every rung resolves a `SiestaConfig`.  The live refusal is
+        `sort.categorical_sort`, which is also what makes the claim TRUE --
+        the order is held by construction, not by a gate.)*
+        """
+        from molbuilder.transport.sort import categorical_sort
         root = tmp_path / "projects"
         scrambled = _junction_struct(order="scrambled")
         _write_junction(root, scrambled)
         dest = _describe_transport(root)
-        # the fixture genuinely trips the preflight when unsorted --
-        # without this half, the test would pass on a tame fixture
-        from molbuilder.config.transport import TransportConfig
-        raw = TransiestaEngine.preflight(scrambled, TransportConfig())
-        assert any("ordered" in i.message for i in raw
-                   if i.severity == "error"), (
-            "the scrambled fixture must be one the emitter refuses raw")
+
+        # The discriminating half: this fixture is genuinely out of order,
+        # so the test cannot pass on a tame one.  `categorical_sort` returns
+        # the permutation it applied; identity would mean nothing moved.
+        moved = categorical_sort(scrambled)
+        assert list(moved.original_to_sorted) != list(
+                range(len(moved.original_to_sorted))), (
+            "the scrambled fixture is already in canonical order -- this "
+            "test would pass without prep sorting anything")
+
         prep_calculation(dest, "device")     # must not raise
         text = (dest / "04_device" / "T_04_device.fdf").read_text()
         assert "SolutionMethod         transiesta" in text

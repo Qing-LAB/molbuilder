@@ -9,12 +9,16 @@ These tests pin:
 
 1. The committed XYZ + sidecar load cleanly into a Structure
    with the right region labels.
-2. ``TransiestaEngine.preflight`` returns NO errors on this
-   labeled, correctly-ordered structure (sanity check for the
-   atom-ordering check from BLOCKER fix 033ae1b).
-3. ``TransiestaEngine.render_script`` emits a runnable .fdf
-   carrying every required keyword + the right
-   ``TS.NumUsedAtomsLeft / Right`` counts (3 and 3).
+2. ``validate(struct, SiestaConfig(), calculation="transport")`` — the gate
+   a real prep runs — returns NO errors on this labeled, correctly-ordered
+   structure.
+3. The deck the live path renders carries every required keyword and
+   ``TS.NumUsedAtomsLeft / Right`` counts DERIVED from the structure's own
+   regions (checked on an asymmetric junction, so a hardcoded count fails).
+
+*(2 and 3 drove ``TransiestaEngine.preflight`` and ``.render_script`` until
+2026-09-17; both are deleted — the first dispatched for nothing, the second
+was a second writer of a deck the framework already writes.)*
 4. The committed geometry CAN be regenerated from textbook bond
    lengths (Bilic-Reimers 2002 S-Au=2.38, etc.), so a future
    bond-length update + fixture refresh is auditable.
@@ -219,26 +223,35 @@ def _live_device_deck(label="au_bdt_au_test"):
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
-def test_preflight_clean_on_au_bdt_au_fixture():
-    """The whole point of the BLOCKER fix from 033ae1b: a
-    correctly-ordered, properly-labeled Au-BDT-Au junction passes
-    preflight with no errors.  Pin so a future preflight refactor
-    that over-fires on this canonical system surfaces.
+def test_the_canonical_junction_validates_clean():
+    """A correctly-ordered, properly-labeled Au-BDT-Au junction raises no
+    error from the gate a real prep runs.
 
-    Au has no entry in the open-shell-metals set (5d¹⁰ closed),
-    so the shared open-shell-metal check also returns clean —
-    confirming the cross-engine consistency rule from science/chemistry-correctness.md
-    § 2 doesn't false-positive on closed-shell transition
-    metals.
+    Asked THROUGH THE LIVE DOOR: `validate(struct, SiestaConfig(),
+    calculation="transport")` is what `prepare_deck` calls for every rung,
+    so this pins that the canonical system does not trip the SIESTA
+    validator, the shared checks, or `_validate_transport_kind`.
+
+    Au has no entry in the open-shell-metals set (5d¹⁰ closed), so the
+    shared open-shell-metal check also returns clean — confirming the
+    cross-engine rule in `science/chemistry-correctness.md` § 2 does not
+    false-positive on closed-shell transition metals.
+
+    *(This drove `TransiestaEngine.preflight` and a bare `TransportConfig()`
+    until 2026-09-17.  That class is deleted — it was registered under
+    `TransportConfig` and every rung resolves a `SiestaConfig`, so it
+    dispatched for nothing, and the one surface that did validate a
+    `TransportConfig` was `/api/transport/render`, deleted the same day.
+    Asking the dead checker told us nothing about what a prep sees.)*
     """
-    from molbuilder.config.transport import TransportConfig
-    from molbuilder.transport.transiesta import TransiestaEngine
-    cfg = TransportConfig(job_name="au_bdt_au_test")
-    issues = TransiestaEngine.preflight(_struct_with_sidecar(), cfg)
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    issues = validate(_struct_with_sidecar(), SiestaConfig(),
+                      calculation="transport")
     errs = [i for i in issues if i.severity == "error"]
     assert not errs, (
-        f"clean Au-BDT-Au junction triggered preflight errors: "
-        f"{[e.message[:80] for e in errs]}"
+        f"clean Au-BDT-Au junction triggered validation errors: "
+        f"{[(e.where, e.message[:70]) for e in errs]}"
     )
 
 

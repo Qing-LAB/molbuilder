@@ -1644,13 +1644,22 @@ class TestTheDefaultVacuumGap:
         assert "6 Å" in msg, f"the image gap is not named: {msg}"
 
     def test_a_set_vacuum_is_not_announced(self):
-        """Nothing was defaulted, so there is nothing to disclose."""
+        """Nothing was defaulted, so there is nothing to disclose.
+
+        BY ITS ID, for the reason the test above states in full -- and this
+        one is why that reason is not theoretical.  It matched the prose
+        ``"no vacuum was set"``; the note says *"No vacuum set"*, with no
+        "was", so the filter matched nothing and the assert was vacuous from
+        the day it was written.  A negative test that cannot see the thing it
+        denies passes whatever the code does.
+        """
         s = self._planar()
         s.vacuum = (5.0, 5.0, 5.0)
         s.__post_init__()
         _, notes = validate_periodicity(s)
         assert not [n for n in notes
-                    if "no vacuum was set" in n["message"].lower()]
+                    if n["where"] == "cell.vacuum_defaulted"], (
+            "a vacuum the user SET was announced as defaulted")
 
     # -- clearing it back to unset ------------------------------------------ #
 

@@ -162,16 +162,21 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/runfiles.py",
         "the READER half of the shape `_STAGE` declares -- 'does this "
         "directory name look like a rung'.  Added 2026-09-08 (N3) so the "
-        "address layer could ask instead of carrying the pattern; it answers "
-        "about SHAPE only, and `identity.StageRef` still owns whether a token "
-        "names a rung this description actually has"),
-    "_stage_dirs": (
-        None, "molbuilder/ref.py",
-        "enumerates the stage directories present under a calculation root, "
-        "for `ref.find` when the stage is left open.  Hierarchical only -- in "
-        "flat the stage is in the FILENAME, so there is nothing on disk to "
-        "walk and `runfiles.find(stage=)` answers it.  Reads what is there "
-        "rather than a description, because floor 1 cannot see the ladder"),
+        "address layer could ask instead of carrying the pattern; that layer "
+        "(`ref.py`) was retired 2026-09-17 and this OUTLIVED it -- "
+        "`jobset/runstatus.py:205` is the live caller, walking a stem "
+        "rightwards to find where the token starts.  It answers about SHAPE "
+        "only, and `identity.StageRef` still owns whether a token names a "
+        "rung this description actually has"),
+    # `_stage_dirs` was the eleventh row here until 2026-09-17
+    # ("enumerates the stage directories present under a calculation root,
+    # for `ref.find` when the stage is left open", `molbuilder/ref.py`).
+    # It retired with the paths STANDARD (`plans/plan.md` SS 5l, retired by
+    # the user): `ref.py` had no production importer in any revision it
+    # existed, and the module is deleted.  `runfiles.find(stage=)` answers
+    # the same question in both shapes.  Deleted rather than commented out
+    # per this file's own rule -- the absence IS the subtraction, and the
+    # guard below fails if the name comes back.
     "parse_stage_token": (
         None, "molbuilder/identity.py",
         "reads it back.  The decoder used to keep its own `-stage(N)` regex, "
