@@ -2493,7 +2493,11 @@ tier = "advanced"
 help = """
 Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.
 This is the ELECTRODE rungs' essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So the ladder turns it on for the two electrode rungs and nobody is offered a switch.
-Not to be confused with `SaveHS`, which writes `.HSX` -- a post-processing file the transport ladder does not consume.
+Three similar names, and only this one is the lead's job:
+
+  TS.HS.Save   this row -- writes `.TSHS`, the Hamiltonian the device attaches to.
+  SaveHS       writes `.HSX`, a post-processing file the ladder does not consume.  On by default for every SIESTA run; it costs disk, not correctness.
+  TS.DE.Save   writes the lead's DENSITY MATRIX.  TranSIESTA asks for it only when `TS.Elecs.DM.Init` is `bulk` or `force-bulk` AND the device runs at zero bias -- the default chain lands on `diagon`, and a finite bias switches it off regardless -- so this ladder never reads it.
 """
 
 [item.negf_neq_eta_ev]

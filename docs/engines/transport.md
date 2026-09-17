@@ -1155,19 +1155,35 @@ warm-start from stale state without being asked. In practice `prep` opens a
 pick up unless a person explicitly asked for it with `--from`. The exposure is
 a hand-run wrapper inside an already-used attempt, which is outside the ladder.
 
-**What is genuinely open.** The binary carries a message this ladder can
-provoke and does not answer:
+**Does the lead need `TS.DE.Save`? No — settled from the source**
+*(`Src/m_ts_options.F90`, SIESTA 5.4.2)*. The binary carries a message this
+ladder could in principle provoke:
 
 > *"Please add `TS.DE.Save T` to the electrode calculation or specify the exact
 > file position using `TSDE-file` in the `TS.Elec` block."*
 
-The electrode rung writes `TS.HS.Save true` and **not** `TS.DE.Save`. With
-`TS.Elecs.Bulk true` — which every deck this ladder writes — the device builds
-the lead self-energy from the Hamiltonian alone and does not need the
-electrode's density matrix, so the message should not fire. That reasoning is
-**not measured against a run**, and it is the kind of thing that costs a queue
-wait when it is wrong. Verifying it, and writing `TS.DE.Save` on the lead if
-the answer is yes, is the open item.
+It is guarded by one condition — `:1571`, `if ( Elecs(i)%DM_init > 0 .and.
+.not. file_exist(...) )` — and `DM_init` is above zero only when **both** of
+these hold:
+
+| | |
+|---|---|
+| `TS.Elecs.DM.Init` is `bulk` or `force-bulk` | `:450-459`. Its default is the value of `TS_scf_mode`, which is 0 unless `SCF.Initialize` or `TS.SCF.Initialize` says `transiesta` (`:194-202`) — and their own default is `diagon`. So the default chain lands on `diagon`, i.e. `DM_init = 0` |
+| the run is at **zero bias** | `:460-468`. At finite bias `IsVolt` forces `DM_init = 0` outright, whatever was asked for, with *"Will default to not read in electrode DM, only applicable for V = 0 calculations"* |
+
+This ladder writes none of those three keywords, so `DM_init` is 0 on every
+rung and the electrode's `.TSDE` is never read. The lead's `TS.HS.Save true`
+is the whole of what the device needs from it.
+
+*Two corrections to how this was first answered here.* It was attributed to
+`TS.Elecs.Bulk true`, which is a different option entirely — that one selects
+whether the self-energy is built from the bulk Hamiltonian
+(`m_ts_elec_se.F90:49`) and has nothing to do with the density-matrix file.
+And it was settled by running a junction and observing that nothing asked for
+a TSDE, which is evidence about one configuration rather than a rule. The
+governing option is `TS.Elecs.DM.Init`, and a person who sets it to `bulk` at
+zero bias **would** need `TS.DE.Save` on the lead run — which is the case worth
+knowing, and the one a run of the default deck could never have revealed.
 
 ## 3. How to run it (the CLI)
 
