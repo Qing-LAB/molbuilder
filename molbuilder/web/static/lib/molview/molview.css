@@ -179,6 +179,7 @@
     --molviewer-color-warn:                      var(--warn, #fbbf24);
     --molviewer-color-warn-bg:                   var(--warning-bg, rgba(251, 191, 36, 0.18));
     --molviewer-font-mono:                       var(--font-mono, ui-monospace, "SF Mono", Consolas, monospace);
+    --molviewer-font-ui:                         var(--font-sans, system-ui, sans-serif);
     --molviewer-line-normal:                     var(--line-normal, 1.5);
     --molviewer-line-snug:                       var(--line-snug, 1.4);
     --molviewer-space-lg:                        var(--space-lg, 20px);
@@ -2169,7 +2170,7 @@
 }
 .molviewer-export-dialog-field input,
 .molviewer-export-dialog-field select {
-    box-sizing:     var(--molviewer-control-box);
+    box-sizing:     border-box;
     height:         var(--molviewer-control-height);
     padding:        var(--molviewer-control-pad-y)
                     var(--molviewer-control-pad-x);
@@ -2178,7 +2179,7 @@
     color:          inherit;
     border:         1px solid var(--molviewer-color-edge-soft);
     border-radius:  var(--molviewer-radius-sm);
-    font:           var(--molviewer-control-font);
+    font-size:      var(--molviewer-control-font);
 }
 .molviewer-export-dialog-actions {
     display:        flex;

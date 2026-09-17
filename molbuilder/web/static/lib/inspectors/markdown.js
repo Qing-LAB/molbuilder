@@ -261,10 +261,12 @@
         // Register BEFORE source.js by relying on the registry's
         // first-match-wins-for-ties policy (registry.js § match).
         root.molbuilder.inspectors.register(inspector);
-    } else {
-        // Registry not loaded yet -- queue.
-        root.molbuilder.inspectors._pending =
-            root.molbuilder.inspectors._pending || [];
-        root.molbuilder.inspectors._pending.push(inspector);
     }
+    // THE LOAD ORDER IS THE CONTRACT, and a bare guard is the whole of it --
+    // the shape `structure.js` uses.  `registry.js` is a plain classic script,
+    // so it runs during parsing ahead of every deferred inspector
+    // (`results.html` 203 against 240), and
+    // `tests/test_inspector_registration_order.py` pins that order.
+    // Queueing for a later drain is wrong HERE: a presenter parked in a queue
+    // is a `.md` file served by the read-only text viewer, and silently.
 })(typeof window !== "undefined" ? window : globalThis);
