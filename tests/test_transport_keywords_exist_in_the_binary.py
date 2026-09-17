@@ -157,22 +157,7 @@ def _packed(text: str) -> str:
     return re.sub(r"[.\-_]", "", text).lower()
 
 
-def test_every_label_a_device_deck_emits_is_known_to_the_binary(binary_text):
-    """THE ASSERTION THE SEVEN DEAD KEYWORDS WOULD HAVE TRIPPED.
-
-    Rendered through the engine's registered door, so it is the text a run
-    would actually receive -- not a list of keywords maintained beside it.
-    """
-    from molbuilder.transport import get_engine
-    rendered = get_engine("transiesta").render_script(*_junction_and_config())
-    deck = ("\n".join(rendered) if isinstance(rendered, (list, tuple))
-            else str(rendered))
-    assert "TBT.Contour" in deck, (
-        "the deck carries no TBtrans contour block -- this test would pass "
-        "vacuously on a deck that had stopped emitting one")
-
-    _refuse_unknown_labels(deck, binary_text, "render_script")
-
+# deleted 2026-09-17 with `render_script`; the PREPPED-RUNG sibling below covers the decks that run.
 
 def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
     """Every label WHOLE, not by its last word.
@@ -300,12 +285,13 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
 
     import numpy as np
 
+    from molbuilder import script_emit as _sc
+    from molbuilder.config.siesta import SiestaConfig
     from molbuilder.config.transport import (REGION_BRIDGE,
                                              REGION_LEFT_ELECTRODE,
-                                             REGION_RIGHT_ELECTRODE,
-                                             TransportConfig)
+                                             REGION_RIGHT_ELECTRODE)
+    from molbuilder.siesta.input import spec_for
     from molbuilder.structure import Structure
-    from molbuilder.transport import get_engine
 
     if with_buffer:
         n, regions = 7, {"buffer": [0], REGION_LEFT_ELECTRODE: [1, 2],
@@ -317,10 +303,16 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
         elements=["Au"] * n,
         positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
         regions=regions)
-    rendered = get_engine("transiesta").render_script(
-        struct, TransportConfig(job_name="J"))
-    deck = ("\n".join(rendered) if isinstance(rendered, (list, tuple))
-            else str(rendered))
+    # THE LIVE DECK.  `_emit_transiesta_block` -- the emitter this checks --
+    # survives and is reached through `transport/deck.py`; what went on
+    # 2026-09-17 is the second writer that used to call it here.  The
+    # `elec-pos begin` / `elec-pos end` pairing below is real science
+    # (an off-by-one computes transmission through the wrong region and
+    # converges while doing it), so the check follows the emitter rather
+    # than the deleted route.
+    cfg = SiestaConfig(system_label="J")
+    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
     blocks = re.findall(r"%block TS\.Elec\.(\w+)(.*?)%endblock", deck, re.S)
     assert len(blocks) == 2, f"expected two electrode blocks, got {len(blocks)}"

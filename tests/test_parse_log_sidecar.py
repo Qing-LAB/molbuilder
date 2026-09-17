@@ -162,68 +162,6 @@ def test_parse_warnings_appear_in_log(tmp_path, monkeypatch):
 # ----------------------------------------------------------------- #
 
 
-def test_transport_sidecar_parser_writes_log(tmp_path, monkeypatch):
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
-    from molbuilder.transport.results import TransportResults
-    from molbuilder.sidecars.transport import dump_transport_json
-    from molbuilder.parse.sidecars.transport import _parse_transport_json
-
-    results = TransportResults(
-        energy_grid_eV=np.array([-1.0, 0.0, 1.0]),
-        transmission=np.array([0.1, 0.5, 0.9]),
-        regions={"L-electrode": [0, 1], "R-electrode": [5, 6]},
-        frozen_atoms=[0, 1, 5, 6],
-        complete=True,
-    )
-    p = tmp_path / "job.transport.json"
-    dump_transport_json(results, p)
-    parsed = _parse_transport_json(str(p))
-    assert parsed.regions["L-electrode"] == [0, 1]
-
-    log = tmp_path / "job.transport.parse.log"
-    assert log.exists()
-    body = log.read_text()
-    assert "transport-sidecar scan begin" in body
-    assert "schema_version='2'" in body
-    assert "2 regions" in body
-    assert "4 frozen atoms" in body
-
-
-def test_transport_sidecar_logs_v1_rejection(tmp_path, monkeypatch):
-    """v1 sidecars are rejected (user directive 2026-06-25); the
-    log must record the rejection cleanly."""
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
-    from molbuilder.parse.sidecars.transport import _parse_transport_json
-    from molbuilder.sidecars.transport import TransportJsonSchemaError
-
-    p = tmp_path / "old.transport.json"
-    p.write_text(json.dumps({
-        "schema_version": "1",
-        "metadata": {},
-        "energy_grid_eV": [],
-        "transmission": [],
-        "fermi_energy_eV": 0.0,
-        "conductance_G0": 0.0,
-        "pdos": {},
-        "bias_grid_V": None,
-        "current_uA": None,
-        "methods_text": "",
-        "bibliography_keys": [],
-        "complete": False,
-    }))
-    with pytest.raises(TransportJsonSchemaError):
-        _parse_transport_json(str(p))
-    body = (tmp_path / "old.transport.parse.log").read_text()
-    assert "schema_version='1'" in body
-    # Scan-aborted line carries the exception type + message.
-    assert ("ERROR" in body or "aborted" in body)
-
-
-# ----------------------------------------------------------------- #
-#  ParseLogger direct API                                            #
-# ----------------------------------------------------------------- #
-
-
 def test_parse_logger_warn_carries_line_and_snippet(tmp_path, monkeypatch):
     monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
     out = tmp_path / "x.out"
@@ -238,3 +176,11 @@ def test_parse_logger_warn_carries_line_and_snippet(tmp_path, monkeypatch):
     assert "float() failed" in body
     # Snippet quoted in the warning line.
     assert "-1.5XX23" in body
+
+
+# `test_transport_sidecar_parser_writes_log` and
+# `test_transport_sidecar_logs_v1_rejection` deleted 2026-09-17 with the
+# transport sidecar parser.  Both drove `dump_transport_json`, a writer with
+# no production caller in any revision, to prove the parse log was written
+# and that a v1 payload was rejected.  The molstruct and spectra sidecars
+# still cover the log; the v1 shape is a format molbuilder never wrote.

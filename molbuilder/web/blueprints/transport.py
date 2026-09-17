@@ -43,7 +43,6 @@ from ._shared import (
 )
 
 from molbuilder.config.transport import TransportConfig
-from molbuilder.transport import get_engine, UnknownEngineError
 from molbuilder.validation import validate as _validate
 
 
@@ -563,212 +562,19 @@ def _transport_config_from_params(params: Dict[str, Any]) -> TransportConfig:
     return config_from_params(TransportConfig, clean, hints)
 
 
-@bp.route("/api/transport/render", methods=["POST"])
-def api_transport_render() -> Any:
-    """Render the device script for the selected Transport engine.
-
-    Body (JSON)::
-
-      {
-        "params":          {<TransportConfig field values>},
-        "structure_path":  "/abs/path/to/relaxed.xyz",
-      }
-
-    Returns::
-
-      {
-        "ok":          True,
-        "engine":      "transiesta",
-        "script":      "<.fdf text>",
-        "filename":    "<jobname>.fdf",
-        "issues":      [{"severity": "warn", "message": "...", "where": "..."}],
-        "errors_only": []
-      }
-
-    On preflight errors (``severity = "error"``) the endpoint
-    returns ``ok = False`` with ``errors_only`` populated;
-    ``script`` is not emitted (generating an incorrect .fdf would
-    risk a silent runtime failure for the user).
-
-    ``errors_only`` is the pre-filtered error-severity subset of
-    ``issues`` — see the field-meaning comment block below the
-    preflight-error branch for the full envelope shape.
-
-    Engine dispatch goes through the registry — adding a new
-    engine = drop ``molbuilder/transport/<engine>.py`` with an
-    ``@register_engine`` decorator + import it in
-    ``molbuilder/transport/__init__.py``.  This endpoint needs no
-    change.
-    """
-    from .files import _PickerError
-    # Pattern-B notice (regions_pattern_b_notice from _shared) is
-    # NOT imported here: it fires when an engine doesn't consume
-    # struct.regions (Build/Spectra are the consumers).  Transport
-    # IS the consumer of region labels — they drive the entire
-    # device/electrode separation — so the Pattern-B path doesn't
-    # apply.  Documented for clarity (2026-06-10 post-review).
-
-    body = request.get_json(silent=True) or {}
-    params: Dict[str, Any] = body.get("params") or {}
-
-    # THE STRUCTURE ARRIVES AS DATA, in the one envelope every structure door
-    # takes (web-api.md § 1): the atoms as numbers with the labels and the cell
-    # beside them, all read together by `molview.exportFile()`.
-    #
-    # A second place labels can arrive from is a place they can be dropped from
-    # without anyone noticing (#41); the way to close that is to stop having a
-    # second place, not to rank the two.
-    if not isinstance(body.get("structure"), dict):
-        # Said here rather than left to the shared helper, whose fallback is the
-        # legacy `xyz` text field and whose complaint is therefore about `xyz` --
-        # a field this route's only caller has never sent.
-        return jsonify({
-            "ok": False,
-            "error": "no 'structure' provided (the region-labeled device)",
-        }), 400
-    from ._shared import struct_from_body
-    try:
-        struct = struct_from_body(body)
-    except (ValueError, TypeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # PROVENANCE, NOT GEOMETRY.  `structure_path` says which file this came from
-    # so a message can name it.  It is optional and nothing is read from it;
-    # still checked against the picker roots when present, so a path the caller
-    # invented cannot be echoed back into a response.
-    structure_path_raw = (body.get("structure_path") or "").strip()
-    if structure_path_raw:
-        try:
-            from .build import _resolve_path_within_roots
-            _resolve_path_within_roots(structure_path_raw, require="file")
-        except _PickerError as exc:
-            return jsonify({"ok": False, "error": exc.message}), exc.status
-
-    # The labels arrived WITH the structure and were applied by
-    # `Structure.from_dict` -- the one deserialiser, which validates through the
-    # same `__post_init__` a freshly built Structure runs.  Nothing to apply
-    # here, and no second copy to rank against the first.
-    from ._shared import periodicity_checked_for_emit
-    struct = periodicity_checked_for_emit(struct)
-
-    # Build the config.  Unknown-field protection + dataclass
-    # validation surfaces a clean 400 for bad params instead of a
-    # TypeError stack trace.
-    try:
-        cfg = _transport_config_from_params(params)
-    except Exception as exc:    # noqa: BLE001
-        return jsonify({
-            "ok": False,
-            "error": f"bad parameters: {exc}",
-        }), 400
-
-    # Dispatch via the registry.
-    try:
-        engine = get_engine(cfg.engine)
-    except UnknownEngineError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # SINGLE validation gate (V1/V2, 2026-07): validate() runs
-    # validate_geometry + _validate_config_metadata + the registered
-    # engine validator.  TransportConfig is now registered (its validator
-    # dispatches to the transport engine's preflight -- region-label
-    # presence/unknown, device transport-axis kz=1, and cross-engine
-    # chemistry checks), so there is no separate engine.preflight() pass
-    # to hand-concatenate and forget.
-    issues = list(_validate(struct, cfg))
-
-    # What each field on this response means — written down here so
-    # anyone reading the code later does not mistake the names for
-    # each other:
-    #
-    #   error        — a short string for the status banner at the
-    #                  top of the form, e.g. "preflight failed; see
-    #                  issues".  Not present on a successful run.
-    #                  Same field that /api/build/fdf, /api/build/
-    #                  pyscf, and /api/spectra/render use.
-    #
-    #   issues       — the full list of things found while preparing
-    #                  the script: errors, warnings, and notes
-    #                  mixed together (each carries a severity).
-    #                  The UI shows this as the colour-coded list
-    #                  under the banner.
-    #
-    #   errors_only  — the same list as `issues`, with only the
-    #                  error-severity items kept.  Always emitted as
-    #                  a list, including [] on success.  The browser
-    #                  does not read this today; it stays on the
-    #                  wire so a future caller (a CI script, a
-    #                  future "show only errors" button) can read
-    #                  the blockers without doing the severity
-    #                  filter on its own.
-    #
-    # Do not delete `errors_only` thinking it duplicates `error` or
-    # `issues`.  It does not: `error` is one string, `issues` is the
-    # mixed-severity list, `errors_only` is the pre-filtered
-    # error-severity slice of `issues`.
-    errors_only = [i for i in issues if i.severity == "error"]
-    if errors_only:
-        # Omit the `script` key entirely on preflight failure
-        # (instead of returning `script: None`) — the JS detects
-        # absence to drive the script-preview card visibility.
-        # Mirrors /api/build/fdf, /api/build/pyscf,
-        # /api/spectra/render.
-        # web-api.md § 1, *Status codes* -- a scientific advisory is
-        # HTTP 200 with ok:false, carrying the findings rather than a
-        # bare error string.
-        #
-        # NO BROWSER READS THIS TODAY, corrected 2026-09-11.  This said
-        # "the form's workflow cards render the findings inline", which
-        # was true until the tab's Generate lane was retired on
-        # 2026-08-29: `lib/transport/core.js` no longer POSTs here and
-        # `transport_calculation.html` carries no findings panel at all.
-        # The route remains the engine's validation surface
-        # (`engines/transport.md` § 8) for the CLI and the tests.  If a
-        # browser lane returns, the findings go through the one renderer
-        # (`science/validation.md` § 4.1 R2) like every other surface --
-        # they are NOT to be shown as `error`'s text, which is why that
-        # string says "see issues".
-        return jsonify({
-            "ok":          False,
-            "engine":      cfg.engine,
-            "error":       "preflight failed; see issues",
-            "issues":      _issues_to_json(issues, cfg=cfg),
-            "errors_only": _issues_to_json(errors_only, cfg=cfg),
-        }), 200
-
-    # Emit the script.  Engine-side rendering is pure (no I/O); the
-    # web layer writes the file separately via /api/files/write if
-    # the JS path persists it.
-    try:
-        script = engine.render_script(struct, cfg)
-    except NotImplementedError as exc:
-        return jsonify({
-            "ok":      False,
-            "engine":  cfg.engine,
-            "error":   str(exc),
-        }), 501
-    except Exception as exc:    # noqa: BLE001
-        return jsonify({
-            "ok":      False,
-            "engine":  cfg.engine,
-            "error":   f"render failed: {exc}",
-        }), 500
-
-    # Extension routing: SIESTA family → .fdf; PySCF family → .py.
-    # Today's only registered engine is transiesta; the
-    # if-chain shape leaves room for pyscf-negf to drop in.
-    if cfg.engine == "transiesta":
-        filename = f"{cfg.job_name}.fdf"
-    else:
-        filename = f"{cfg.job_name}.py"
-
-    return jsonify({
-        "ok":          True,
-        "engine":      cfg.engine,
-        "script":      script,
-        "filename":    filename,
-        "issues":      _issues_to_json(issues, cfg=cfg),
-        # See the field-meaning comment near the preflight-error
-        # branch above for what `errors_only` is for.
-        "errors_only": [],
-    })
+# `POST /api/transport/render` DELETED 2026-09-17.
+#
+# It rendered a device deck through `TransiestaEngine.render_script` and
+# handed the text back as JSON.  No browser called it: `lib/transport/core.js`
+# stopped POSTing here on 2026-08-29 and the tab has fetched `/describe`,
+# `/schema`, `/describe_attempt` and `/swap_electrodes` ever since.  It was
+# the last caller of that renderer, and the renderer was a second writer of a
+# deck the framework already writes -- one that read a different config class,
+# so the pole-energy correction of 2026-09-16 never reached it and a deck from
+# this route stopped SIESTA before the SCF loop.
+#
+# A BROWSER RENDERS NO DECK (`tabs.md`): a deck is rendered by `jobset prep`
+# from a description, which is why `/api/build/fdf` and `/api/build/pyscf`
+# went the same way on 2026-08-17.  The preflight this route also ran is not
+# lost -- `validation` reaches it through the engine registry, which is the
+# path the Generate button already used.

@@ -89,9 +89,10 @@ def test_emitted_fdf_parses_cleanly_in_siesta_5_4_2(tmp_path):
     exist" errors; failure must be at TSHS-read (the only step our
     empty placeholders block).
     """
-    from molbuilder.config.transport import TransportConfig
+    from molbuilder import script_emit as _sc
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import spec_for
     from molbuilder.structure import Structure
-    from molbuilder.transport.transiesta import TransiestaEngine
 
     # 1. Load the Au-BDT-Au fixture.
     xyz_lines = _AU_BDT_XYZ.read_text().splitlines()
@@ -108,10 +109,17 @@ def test_emitted_fdf_parses_cleanly_in_siesta_5_4_2(tmp_path):
         regions=regions,
     )
 
-    # 2. Emit the device .fdf.
-    cfg = TransportConfig(job_name="au_bdt_au_smoke")
-    fdf = TransiestaEngine.render_script(struct, cfg)
-    (tmp_path / "device.fdf").write_text(fdf)
+    # 2. Emit the device .fdf THROUGH THE LIVE PATH -- the same call `prep`
+    #    makes: `spec_for(..., calculation="transport")` -> `transport/deck.py`
+    #    -> `prepare_deck`.  It rendered through `TransiestaEngine.render_script`
+    #    until 2026-09-17, which is the SECOND writer that has since been
+    #    deleted; this check is only worth having against the deck a person
+    #    actually gets, and pointing it at the dead one is how a run-killing
+    #    pole value survived in that writer for two days while the live path
+    #    was correct.
+    cfg = SiestaConfig(system_label="au_bdt_au_smoke")
+    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    _sc.prepare_deck(spec, struct, cfg, tmp_path / "device.fdf")
 
     # 3. Stage pseudos (symlinks to the in-repo PSML set).
     for elem in ("Au", "C", "H", "S"):
@@ -119,10 +127,10 @@ def test_emitted_fdf_parses_cleanly_in_siesta_5_4_2(tmp_path):
 
     # 4. Empty placeholder .TSHS files.  Names match what the
     #    emitter wrote into ``TS.Elec.<name>.HS`` lines:
-    #    ``<job_name>_<region-label>.TSHS``.  Au-BDT-Au has
-    #    L-electrode + R-electrode regions.
-    (tmp_path / f"{cfg.job_name}_L-electrode.TSHS").touch()
-    (tmp_path / f"{cfg.job_name}_R-electrode.TSHS").touch()
+    #    ``<system_label>_<region-label>.TSHS`` -- `electrode_hs_stem`, the
+    #    one spelling both the device deck and the electrode rung use.
+    (tmp_path / f"{cfg.system_label}_L-electrode.TSHS").touch()
+    (tmp_path / f"{cfg.system_label}_R-electrode.TSHS").touch()
 
     # 5. Run SIESTA.  Expect non-zero exit; capture output.
     result = subprocess.run(

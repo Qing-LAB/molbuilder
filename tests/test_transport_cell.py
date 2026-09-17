@@ -9,10 +9,7 @@ from molbuilder.config.transport import TransportConfig
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
 from molbuilder.transport.preflight import parse_fdf_params, preflight
-from molbuilder.transport.transiesta import (
-    TransiestaEngine, axis_vacuum, _emit_geometry,
-)
-from molbuilder.transport.wizard import electrode_wizard, extract_electrode_model
+from molbuilder.transport.transiesta import axis_vacuum, _emit_geometry
 
 # A hexagonal Au(111)-like cell: a,b at 60 deg ~17.3 A; c (transport) 40 A.
 HEX = np.array([[17.30, 0.0, 0.0],
@@ -128,18 +125,8 @@ def test_axis_vacuum_flags_transport_axis_gap():
 # ------------------------------------------------------------------ #
 
 
-def test_wizard_uses_device_hex_lateral_vectors():
-    m = extract_electrode_model(_hex_device(), "L-electrode")
-    assert np.allclose(m.lat_a, [17.30, 0.0, 0.0])
-    assert np.allclose(m.lat_b, [8.65, 14.98, 0.0])
 
-
-def test_hex_device_and_electrode_pass_preflight():
-    dev = _hex_device()
-    cfg = TransportConfig(job_name="hex", siesta_mesh_cutoff_ry=400,
-                          k_mesh_transverse=(2, 2, 1))
-    device_fdf = TransiestaEngine.render_script(dev, cfg)
-    _job, ele_fdf, _m = electrode_wizard(dev, cfg, which="L-electrode")[0]
-    rep = preflight(parse_fdf_params(device_fdf), parse_fdf_params(ele_fdf))
-    errs = {c.id for c in rep.checks if c.severity == "error"}
-    assert "cell.transverse" not in errs        # hex lateral vectors match
+# The two wizard tests below this line went with `electrode_wizard`
+# (2026-09-17).  `_emit_geometry` above is the LIVE emitter -- `deck.py`
+# reuses it for every rung -- so the hexagonal-cell checks still guard the
+# deck a person actually gets.

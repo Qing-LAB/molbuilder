@@ -530,8 +530,13 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
 
 
 def _validate_transport(struct: Structure, cfg, cell, *, prior=None, **_) -> List[Issue]:
-    from ..transport import get_engine
-    return list(get_engine(cfg.engine).preflight(struct, cfg, prior=prior))
+    # CALLED DIRECTLY, not looked up.  This read
+    # `get_engine(cfg.engine).preflight(...)` through a Protocol + registry
+    # in `transport/engine_base.py`, deleted 2026-09-17: one registered
+    # engine, one surviving member, and this was its only caller, so the
+    # dispatch could only ever return the class named here.
+    from ..transport.transiesta import TransiestaEngine
+    return list(TransiestaEngine.preflight(struct, cfg, prior=prior))
 
 
 def _register_default_engines() -> None:

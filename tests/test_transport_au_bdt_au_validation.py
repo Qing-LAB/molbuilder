@@ -203,6 +203,22 @@ def _struct_with_sidecar():
     return struct
 
 
+def _live_device_deck(label="au_bdt_au_test"):
+    """The device deck through the LIVE path -- the same call `prep` makes.
+
+    These three checks rendered through `TransiestaEngine.render_script` until
+    2026-09-17.  That was a SECOND writer of this deck and is deleted; the
+    checks are about the deck a person gets, so they follow the framework.
+    """
+    from molbuilder import script_emit as _sc
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import spec_for
+    struct = _struct_with_sidecar()
+    cfg = SiestaConfig(system_label=label)
+    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
+
+
 def test_preflight_clean_on_au_bdt_au_fixture():
     """The whole point of the BLOCKER fix from 033ae1b: a
     correctly-ordered, properly-labeled Au-BDT-Au junction passes
@@ -216,10 +232,9 @@ def test_preflight_clean_on_au_bdt_au_fixture():
     metals.
     """
     from molbuilder.config.transport import TransportConfig
-    from molbuilder.transport import get_engine
+    from molbuilder.transport.transiesta import TransiestaEngine
     cfg = TransportConfig(job_name="au_bdt_au_test")
-    issues = get_engine("transiesta").preflight(
-        _struct_with_sidecar(), cfg)
+    issues = TransiestaEngine.preflight(_struct_with_sidecar(), cfg)
     errs = [i for i in issues if i.severity == "error"]
     assert not errs, (
         f"clean Au-BDT-Au junction triggered preflight errors: "
@@ -227,67 +242,107 @@ def test_preflight_clean_on_au_bdt_au_fixture():
     )
 
 
-def test_render_script_emits_correct_atom_counts():
-    """The emitted .fdf must carry ``used-atoms 3`` inside both
-    electrode blocks — derived from the sidecar's region sizes,
-    NOT from a hardcoded constant.  Pin so a future refactor that
-    hardcodes these silently passes for OUR fixture but breaks on
-    user structures.
+def test_each_electrode_block_declares_its_REGION_SIZE():
+    """Each ``%block TS.Elec.<name>`` declares ``used-atoms`` equal to that
+    electrode region's real size.
 
-    2026-06-18: modern TranSIESTA syntax (SIESTA 4.1+ / 5.x) uses
-    ``%block TS.Elec.<name>`` with a ``used-atoms <N>`` line
-    instead of the legacy ``TS.NumUsedAtomsLeft = N`` / Right
-    flat keys.  Empirically verified against SIESTA 5.4.2; see
-    ``tests/test_transiesta_siesta_smoke_l4.py``.
+    **ASYMMETRIC ON PURPOSE (2 and 4), and that is the whole test.** The
+    Au-BDT-Au fixture has three atoms in each lead, so a hardcoded ``3`` in
+    the emitter satisfies any check written against it -- measured: mutating
+    the emitter to a literal 3 left this test green when it used the fixture.
+    A junction whose leads differ in size is the only shape that can tell a
+    derived count from a constant.
+
+    Its predecessor asserted the literal string ``"used-atoms         3"``
+    twice, which pinned the emitter's column spacing as well and still could
+    not have caught the mutation.
     """
-    from molbuilder.config.transport import TransportConfig
-    from molbuilder.transport import get_engine
-    cfg = TransportConfig(job_name="au_bdt_au_test")
-    script = get_engine("transiesta").render_script(
-        _struct_with_sidecar(), cfg)
-    # Au-BDT-Au has 3 atoms in each electrode region — both modern
-    # ``used-atoms`` lines must say 3.  Pinning both occurrences so a
-    # future refactor that hardcodes one but breaks the other surfaces.
-    assert script.count("used-atoms         3") == 2, (
-        "expected ``used-atoms 3`` on EACH electrode block (2 total) "
-        "in the modern TS.Elec.<name> emission; got "
-        f"{script.count('used-atoms         3')} occurrences"
+    import numpy as np
+
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.structure import Structure
+    from molbuilder.transport.preflight import _parse_fdf
+    from molbuilder import script_emit as _sc
+    from molbuilder.siesta.input import spec_for
+
+    # [L x2][bridge x2][R x4] along z, contiguous and ordered as the engine
+    # reads them (lower lead first -- the -A3 end).
+    n_l, n_b, n_r = 2, 2, 4
+    n = n_l + n_b + n_r
+    struct = Structure(
+        elements=["Au"] * n,
+        positions=np.array([[0.0, 0.0, 2.0 * i] for i in range(n)]),
+        regions={"L-electrode": list(range(n_l)),
+                 "bridge":      list(range(n_l, n_l + n_b)),
+                 "R-electrode": list(range(n_l + n_b, n))},
     )
-    # SystemLabel echoes the job_name.
-    assert "SystemLabel            au_bdt_au_test" in script
-    # NEGF block emitted (modern syntax — only the top-level
-    # SolutionMethod, NOT TS.SolutionMethod which 5.4.2 rejects
-    # with "Unrecognized TranSiesta solution method").
-    assert "SolutionMethod         transiesta" in script
-    # TBtrans transmission window -- a CONTOUR BLOCK, and the default 401
-    # points are its `points` line.
-    #
-    # This asserted `TS.TBT.NumE 401` until 2026-09-15, a SIESTA-3.x
-    # spelling the installed 5.4.2 tbtrans cannot read (`plan.md` § 5o) --
-    # so it pinned the bug.  Note the assertion two lines up, which DID
-    # measure `SolutionMethod` against 5.4.2 and says so: one keyword in
-    # this file was checked against the binary and the other was not, which
-    # is what `test_transport_keywords_exist_in_the_binary.py` now removes
-    # the possibility of.
-    assert "%block TBT.Contour.window" in script
-    assert "points 401" in script
+    cfg = SiestaConfig(system_label="asym")
+    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    deck = _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
+
+    _scalars, blocks = _parse_fdf(deck)
+    elec = {k: rows for k, rows in blocks.items()
+            if k.startswith("tselec") and k != "tselecs"}
+    assert len(elec) == 2, f"expected two electrode blocks, got {sorted(elec)}"
+
+    got = sorted(int(dict((r[0].lower(), r[1]) for r in rows)["used-atoms"])
+                 for rows in elec.values())
+    assert got == sorted([n_l, n_r]), (
+        f"electrode blocks declare used-atoms {got}; the structure's leads "
+        f"hold {sorted([n_l, n_r])} atoms -- a count that does not track the "
+        f"regions is hardcoded")
 
 
-def test_render_script_has_correct_species_block():
-    """ChemicalSpeciesLabel must list Au (Z=79), C (Z=6), H (Z=1),
-    S (Z=16) — every element present in the fixture."""
-    from molbuilder.config.transport import TransportConfig
-    from molbuilder.transport import get_engine
-    cfg = TransportConfig(job_name="au_bdt_au_test")
-    script = get_engine("transiesta").render_script(
-        _struct_with_sidecar(), cfg)
-    block_start = script.index("%block ChemicalSpeciesLabel")
-    block_end   = script.index("%endblock ChemicalSpeciesLabel")
-    block = script[block_start:block_end]
-    for sym, z in [("Au", 79), ("C", 6), ("H", 1), ("S", 16)]:
-        assert f"  {z}  {sym}" in block or f"{z}  {sym}" in block, (
-            f"missing ChemicalSpeciesLabel entry for {sym} (Z={z})"
-        )
+def test_the_device_deck_states_its_identity_and_method():
+    """SystemLabel is the config's label and the solver is the NEGF one.
+
+    Read back through the fdf parser rather than matched as substrings, so
+    the emitter's column spacing is not part of the contract.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.transport.preflight import _parse_fdf
+    cfg = SiestaConfig(system_label="au_bdt_au_test")
+    scalars, _blocks = _parse_fdf(_live_device_deck(cfg.system_label))
+    assert scalars.get("systemlabel") == [cfg.system_label]
+    # `SolutionMethod transiesta`, NOT `TS.SolutionMethod` -- 5.4.2 rejects
+    # the latter with "Unrecognized TranSiesta solution method" (measured).
+    assert scalars.get("solutionmethod") == ["transiesta"]
+    assert "tssolutionmethod" not in scalars
+
+
+def test_the_transmission_window_carries_the_configured_point_count():
+    """TBtrans' contour window is a BLOCK, and its ``points`` row must be the
+    value the config asks for -- compared against the config, not a literal."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.transport.preflight import _parse_fdf
+    cfg = SiestaConfig(system_label="au_bdt_au_test")
+    _scalars, blocks = _parse_fdf(_live_device_deck(cfg.system_label))
+    window = blocks.get("tbtcontourwindow")
+    assert window, "no %block TBT.Contour.window in the device deck"
+    rows = dict((r[0].lower(), r[1:]) for r in window)
+    assert rows.get("points") == [str(cfg.transmission_n_points)]
+    assert rows.get("part") == ["line"], (
+        "tbtrans refuses anything but a line part for this contour")
+
+
+def test_species_block_carries_every_element_with_its_true_Z():
+    """``ChemicalSpeciesLabel`` must list every element in the structure with
+    the atomic number the chemistry layer gives it.
+
+    Both sides derived: the elements come from the fixture, the Z from
+    ``chemistry.atomic_number``. This asserted four hand-written
+    ``(Z, symbol)`` pairs until 2026-09-17 -- which would keep passing for
+    this fixture while being wrong for any other structure.
+    """
+    from molbuilder.chemistry import atomic_number
+    from molbuilder.transport.preflight import _parse_fdf
+    struct = _struct_with_sidecar()
+    _scalars, blocks = _parse_fdf(_live_device_deck())
+    rows = blocks.get("chemicalspecieslabel")
+    assert rows, "no %block ChemicalSpeciesLabel in the device deck"
+    got = {sym: int(z) for _idx, z, sym in rows}
+    expected = {el: atomic_number(el) for el in set(struct.elements)}
+    assert got == expected
 
 
 # --------------------------------------------------------------------- #

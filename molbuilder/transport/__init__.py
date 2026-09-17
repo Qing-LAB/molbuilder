@@ -29,15 +29,6 @@ choice to ``TransportConfig.engine`` in the same commit — the form
 offers only registered engines.
 """
 
-from .engine_base import (
-    TransportEngine,
-    UnknownEngineError,
-    register_engine,
-    get_engine,
-    registered_engines,
-    unregister_engine,
-)
-from .results import TransportResults
 
 # Concrete engines self-register on import via the
 # ``@register_engine`` decorator.  Importing the module here at
@@ -47,12 +38,3 @@ from .results import TransportResults
 # from the chemistry middle layer.
 from . import transiesta as _transiesta  # noqa: F401
 
-__all__ = [
-    "TransportEngine",
-    "UnknownEngineError",
-    "register_engine",
-    "get_engine",
-    "registered_engines",
-    "unregister_engine",
-    "TransportResults",
-]

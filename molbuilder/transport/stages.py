@@ -16,11 +16,13 @@ This module owns TWO facts and the renders that follow from them:
 through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
 ``SHAPE_OF_RUNG`` tables the three deck shapes — which is what lets the
-template's items reach them.  :func:`render_stage_deck` and
-:func:`config_for` below are what is LEFT of the pre-seam path: neither
-has a production caller (`engines/transport.md` § 6.1a), and the
-electronic contract is resolved by ``prep._resolve_transport`` from the
-calculation's own template.
+template's items reach them.  :func:`config_for` below is what is LEFT of
+the pre-seam path: it has no production caller
+(`engines/transport.md` § 6.1a), and the electronic contract is resolved
+by ``prep._resolve_transport`` from the calculation's own template.
+:func:`render_stage_deck` stood beside it until 2026-09-17 and is deleted;
+the tombstone at the end of this file says why a second renderer could not
+be left standing.
 
 That template is also why ruling Q5 no longer holds as written: § 2a.7
 reversed it.  The cited relaxation DEFAULTS the electronic description
@@ -395,55 +397,19 @@ def config_for(task, composed: ComposedJunction, *,
         **kw)
 
 
-def render_stage_deck(stage: str, composed: ComposedJunction,
-                      cfg: TransportConfig) -> str:
-    """One stage's deck text, from the composed junction + the one
-    config.  Raises :class:`StageError` naming what blocks — including
-    the engine preflight's errors for the device/transmission decks,
-    surfaced here so `prep` refuses before anything lands on disk.
-    """
-    from .transiesta import TransiestaEngine, electrode_hs_stem
-    from .wizard import render_electrode_fdf
-
-    dev = composed.sorted.structure
-    if stage == "seed":
-        # THE SEED IS NOT RENDERED HERE ANY MORE.  It goes through the
-        # framework (`siesta.input.spec_for` -> `transport.deck` ->
-        # `prepare_deck`), which is what lets the template's items reach it
-        # (engines/transport.md 3.6a).  `_render_seed` is DELETED rather
-        # than left beside its replacement: two renderers for one deck can
-        # disagree, and the only thing that kept them from doing so was
-        # `prep` happening to branch before this call.
-        raise StageError(
-            "the seed deck renders through the framework, not here -- "
-            "`prep` routes that rung to `siesta.input.spec_for("
-            "calculation='transport')` (engines/transport.md 3.6a).  "
-            "Reaching this line means a caller asked `render_stage_deck` "
-            "for a rung that is on the render seam.")
-    if stage in ("electrode_L", "electrode_R"):
-        model = (composed.electrode_left if stage == "electrode_L"
-                 else composed.electrode_right)
-        # The SystemLabel IS the .TSHS stem the device deck references
-        # -- one spelling, `electrode_hs_stem`, both writers.
-        return render_electrode_fdf(
-            model, cfg,
-            job_name=electrode_hs_stem(cfg.job_name, model.label))
-    if stage in ("device", "transmission"):
-        # The engine's own preflight runs first; prep sorted the atoms,
-        # so its ordering error can never fire -- everything else it
-        # checks (kz=1, regions, open-shell chemistry) still gates.
-        errors = [i for i in TransiestaEngine.preflight(dev, cfg)
-                  if i.severity == "error"]
-        if errors:
-            raise StageError(
-                f"the {stage} deck cannot render:\n  - "
-                + "\n  - ".join(i.message for i in errors))
-        # The transmission deck is the SAME text: TBtrans reads the
-        # device deck (geometry + TS.Elecs + the `%block TBT.Contour`
-        # window -- four dead `TS.TBT.*` scalars until 2026-09-15) and
-        # post-processes the converged device's files; only the binary
-        # differs, and the binary is launch routing (P5).
-        return TransiestaEngine.render_script(dev, cfg)
-    raise StageError(
-        f"{stage!r} is not a transport stage; the ladder is "
-        f"{', '.join(TRANSPORT_STAGES)} (transport-design.md 4.2).")
+# `render_stage_deck` DELETED 2026-09-17 -- a SECOND writer of the transport
+# decks, with no caller left.
+#
+# It rendered the electrode rungs through `wizard.render_electrode_fdf` and the
+# device/transmission rungs through `transiesta.render_script`, and its seed arm
+# already raised: "the seed deck renders through the framework, not here".  The
+# rest of the ladder followed the seed onto that framework on 2026-09-16, which
+# left this function with nothing calling it and its own warning applying to
+# every arm.
+#
+# Deleted rather than kept beside its replacement, for the reason its seed arm
+# gave: two renderers for one deck can disagree, and the only thing stopping
+# them was `prep` happening to branch before this call.  They HAD disagreed --
+# the pole energy this path emitted stopped SIESTA before the SCF loop for two
+# days, while the live path was correct, because the two read different config
+# classes (`template.md` 2.1a, the second duplication).

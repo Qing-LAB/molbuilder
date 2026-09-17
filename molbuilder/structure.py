@@ -1865,10 +1865,16 @@ class Structure:
         # concatenating, e.g. add_slab builds onto a base
         # structure).  The caller owns making the cell big enough for
         # the merged atoms — concat can't infer a new lattice.
-        base_cell = next((s.cell for s in structures if s.cell is not None),
-                         None)
-        base_pbc = next((s.pbc for s in structures if s.cell is not None),
-                        None)
+        #
+        # THE WHOLE LATTICE, THROUGH THE ONE DOOR.  This picked `cell` and
+        # `pbc` out by hand and dropped the other three, so appending to a
+        # slab turned its TRANSPORT axis back into an ordinary periodic one,
+        # forgot the stored cell corner and the vacuum, and reported nothing.
+        # `_carry_periodicity` is the single list of the non-atom lattice
+        # fields and every other op-helper already spreads it; `concat` was
+        # written before that rule and never joined it.
+        base = next((s for s in structures if s.cell is not None), None)
+        lattice = base._carry_periodicity() if base is not None else {}
         return cls(
             elements      = elements,
             positions     = np.vstack(positions),
@@ -1879,9 +1885,7 @@ class Structure:
             title         = title,
             regions       = regions,
             annotations   = annotations,
-            cell          = (base_cell.copy() if base_cell is not None
-                             else None),
-            pbc           = base_pbc,
+            **lattice,
         )
 
 

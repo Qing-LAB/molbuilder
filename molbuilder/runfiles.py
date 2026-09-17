@@ -809,6 +809,28 @@ WRITTEN: "tuple[Artifact, ...]" = (
              attempt="maybe"),
     Artifact(".scf-timing.log", "wall time per SCF iteration",
              attempt="always"),
+    # MOLBUILDER'S OWN READING LOG, and the THIRD time this table has been
+    # missing a row for a file we write ourselves (`.out` in 2026-08-13,
+    # `_geom.log` above in 2026-09-07).  The parser opens one beside whatever
+    # it reads, on by default, so merely LOOKING at a folder -- one `jobset
+    # status`, one Watch-tab poll -- creates it.  Undeclared, `is_ours` said
+    # no, and `warm_files_present` answers by subtraction, so a folder where
+    # nothing had ever run reported that the engine had left state in it.
+    #
+    # Three spellings because the name is built off the file being read, not
+    # off the label: `job.out` gives `job.parse.log`, and the two sidecars
+    # keep their own middle segment.
+    Artifact(".parse.log", "molbuilder's log of reading the run's output"),
+    Artifact(".molwatch.parse.log",
+             "the same, for the trajectory log"),
+    Artifact(".transport.parse.log",
+             "the same, for the transport results sidecar"),
+    # The summary `jobset summarize run` writes.  Ours, and undeclared until
+    # 2026-09-17: it never produced a false "something ran here" because it
+    # only exists after a run, but `--cold` builds its keep-list from the same
+    # table, so the wrapper named this file as engine state it was about to
+    # destroy and refused until --force.
+    Artifact(".transport.json", "the transport results, summarised"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and

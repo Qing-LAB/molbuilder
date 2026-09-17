@@ -187,6 +187,7 @@ def test_transport_help_carries_worked_examples():
     assert "--calculation transport" in r.output, (
         "the help's quickstart is the COMPOSITE now")
     assert "--slot junction=" in r.output
-    for sub in ("preflight", "electrode"):
-        rs = CliRunner().invoke(transport_group, [sub, "-h"])
-        assert "EXAMPLE" in rs.output and "molbuilder transport" in rs.output
+    # `electrode` was in this loop until 2026-09-17; the verb is deleted --
+    # it rendered a deck from flags, the shape `molbuilder fdf` went for.
+    rs = CliRunner().invoke(transport_group, ["preflight", "-h"])
+    assert "EXAMPLE" in rs.output and "molbuilder transport" in rs.output

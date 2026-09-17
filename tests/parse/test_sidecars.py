@@ -17,7 +17,6 @@ from molbuilder.parse import SidecarResult, detect, parse
 from molbuilder.parse.sidecars import (
     MolstructSidecarFileParser,
     SpectraSidecarFileParser,
-    TransportSidecarFileParser,
 )
 from molbuilder.parse.registry import _registered_file_parsers
 
@@ -53,7 +52,6 @@ def test_sidecar_parsers_registered():
     names = {p.name for p in _registered_file_parsers()}
     assert "molstruct-json" in names
     assert "spectra-json"   in names
-    assert "transport-json" in names
 
 
 def test_molstruct_parser_claims_suffix():

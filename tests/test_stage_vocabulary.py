@@ -315,12 +315,9 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "2026-09-16, whatever it was, so a transmission energy window was "
         "written into the deck siesta runs -- where the keyword is inert -- "
         "and not into the deck tbtrans runs, silently"),
-    "render_stage_deck": (
-        None, "molbuilder/transport/stages.py",
-        "renders ONE transport rung's deck from the composed junction + "
-        "the one TransportConfig (P4b).  Not a mechanism for expressing "
-        "stages -- it consumes the ladder above the way prep's SIESTA arm "
-        "consumes spec_for"),
+    # `render_stage_deck` row deleted 2026-09-17 with the function -- the
+    # second transport deck writer, left with no caller once the whole ladder
+    # joined the framework's pipeline on 2026-09-16.
     "StageError": (
         None, "molbuilder/transport/stages.py",
         "the refusal class for a transport rung that cannot render -- "
@@ -330,8 +327,8 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         None, "molbuilder/transport/stages.py",
         "the transport composite's § 4.2 DAG as data -- which files a "
         "rung CONSUMES from the concluded attempts of the rungs before "
-        "it (P5's gather reads it).  Consumes the ladder like "
-        "render_stage_deck; not a way of expressing stages"),
+        "it (P5's gather reads it).  Consumes the ladder rather than "
+        "expressing one"),
     # Mechanism 3 -- ``--stages-json``, ``stages_from_dicts`` and
     # ``stages_from_configs`` -- and mechanism 8 -- ``StageSpec``,
     # ``_default_stages``, ``validate_stages`` -- are RETIRED (2026-08-18).

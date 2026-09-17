@@ -2064,16 +2064,5 @@ class TestARefusedCellIsA400:
             "structure": s.to_dict(), "name": "refused"}),
             "/api/structure/export")
 
-    def test_the_transport_door_refuses(self, client_with_root):
-        """Transport takes the structure as DATA since 2026-08-03 -- it used to
-        take a file path as its geometry, with the labels riding beside it."""
-        client, tmp = client_with_root
-        xyz = tmp / "refused.xyz"
-        xyz.write_text(self.XYZ)
-        s = Structure(elements=["H"], positions=np.zeros((1, 3)))
-        s.cell = self.LEFT_HANDED
-        s.__post_init__()
-        self._assert_refused(client.post("/api/transport/render", json={
-            "structure": s.to_dict(), "structure_path": str(xyz),
-            "params": {}}),
-            "/api/transport/render")
+    # `test_the_transport_door_refuses` deleted 2026-09-17 with POST /api/transport/render.
+

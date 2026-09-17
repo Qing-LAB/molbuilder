@@ -2576,6 +2576,349 @@ with the arithmetic in the message — 1.7 eV passes at 300 K and is refused at
 1000 K. A deck rendered with the new defaults now runs to completion: 42 poles,
 `Job completed`.
 
+### 5p.3p TWO ERAS IN ONE PACKAGE — the composite's residue, and the layers below it *(2026-09-17)*
+
+**The nature, in one sentence.** Transport was built twice. The FIRST build
+(2026-06-10 to 06-27) assembled a junction **by hand** — you wrote a device
+deck, derived an electrode deck, and a preflight compared the two because
+*"humans break exactly these couplings"* (`transport/preflight.py`). The SECOND
+— the composite, migrated 2026-08-29 (`workflow.md` § 7), finished by TR5b
+(§ 5p.3i) — **derives everything from one cited junction**. The second shipped;
+**the first was never removed.**
+
+This section tracks that removal AND the layers underneath it that the removal
+exposed. It is re-consolidated at every milestone (§ 5p.3p.5), because two
+passes over it already changed the answer rather than refining it.
+
+#### 5p.3p.1 The layer map, top down — contract, and state
+
+Read this before touching anything here. Two of these layers were missed on the
+first two passes precisely because the work started in the middle.
+
+| layer | contract | state |
+|---|---|---|
+| the whole | `workflow.md` § 7 | ✅ records transport as the composite |
+| tab + describe | `web/tabs.md`, `web/form-schema.md` | ✅ four routes, citation-driven |
+| **CLI surface** | **`process/conventions.md` § 3** | ⚠ decision 7 + 34: *"everything is a job set"*, `run` and `fdf` deleted as *"obsolete residue from the flat-dir design"*. **`transport` and `pyscf` are the two survivors of that shape** — see § 5p.3p.6 |
+| **presenters** | **`web/presenters.md`** | ⚠ § 1 declares **five** viewers; **six** register, **four** are results. **No row for a composite result.** A module rename to `presenters` is declared pending (W15) and not started — the code is still `inspectors` |
+| results tab | `web/results.md` | ⚠ says nothing about transport results |
+| HTTP | `web/web-api.md` | — |
+| description | `engines/stages.md`, `execution/job-contracts.md` | ✅ five rungs, hierarchical shape |
+| template | `engines/template.md` | ⚠ 485 facts in two homes; the mirrored guard restored 2026-09-17 |
+| engine / deck | `engines/transport.md` | ⚠ :1880 names a **deleted** chain; :2265 promises an unbuilt inspector |
+| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **specified, NOT BUILT**. `parse_dir()` and `detect(<dir>)` can only raise. Migration is **§ 5c**, agreed 2026-09-04, *not started* |
+| execution | `execution/script-preparation.md`, `architecture.md` | ✅ |
+
+#### 5p.3p.2 Redundant — tracked, with status
+
+| the June piece | replaced by | evidence | status |
+|---|---|---|---|
+| `render_script` + `_emit_header` + `_emit_k_mesh` | `deck.py` (negf shape) | only caller was `/api/transport/render`; no browser POSTed there since 2026-08-29 | **DONE** |
+| `render_electrode_fdf` + `electrode_wizard` + `format_models` | `_electrode_layout` via `as_structure()` | `prep.py:1528` is `as_structure`'s only caller | **DONE** |
+| `molbuilder transport electrode` | `jobset prep` | a deck from flags — what `molbuilder fdf` was deleted for | **DONE** |
+| `engine_base.py` Protocol + registry | a direct call | 4 declared members, 1 implemented, 1 engine, 1 caller | **DONE** |
+| `results.py` + `sidecars/transport.py` + `parse/sidecars/transport.py` (697 lines) | `record.py` | `dump_transport_json`: **zero production callers in every revision**; the reader claimed only `schema_version`, the writer emits `schema` | **DONE** |
+| `preflight_files` + `format_report` + `transport preflight` | `compose` + one resolved contract | gates compare two decks for drift two decks from one config cannot have | **step 2** |
+| `TransportConfig` behind `_legacy_view` | — | § 5p.3i: *"survives only to feed the lifted block"*; 3 orphan fields, all already in `UNRESOLVED_FIELDS` | **step 3, bookkeeping** |
+
+**NOT redundant, so not deleted by association:** `extract_electrode_model` +
+`ElectrodeModel` (`compose.py:570`); `_emit_transiesta_block` + `_emit_geometry`
+(`deck.py` reuses both; § 5p.3i ruled the NEGF block stays — an off-by-one in an
+electrode range converges while computing the wrong thing);
+`_emit_basis_and_xc`, `_compute_cell_from_extents`, `_find_electrode_regions`,
+`electrode_hs_stem`, `preflight`; `preflight.parse_fdf_params` (four importers);
+`cell.detect_layers` / `bulk_z_period` — this same pattern **done correctly**,
+moved out of the wizard so `add_slab` and the extraction share one copy.
+
+#### 5p.3p.3 The Results gap is a MISSING LAYER, not three defects
+
+The tab is a dispatch shell; all dispatch is client-side. `file-picker.js`
+enumerates a directory, keeps what an `isResult` presenter matches, applies
+`absorbs`, groups by `resultCategory`. Point it at a finished five-rung junction:
+
+1. **The result is invisible** — `<label>.transport.json` matches no `isResult`
+   presenter, so `pickResult` returns null and the picker drops it.
+2. **The ladder lists as a pile of optimizations** — every rung's `.out` and
+   `.molwatch.log` are claimed by `trajectory.js` under *"SIESTA optimization"*.
+3. **`absorbs` cannot express a ladder** — it collapses siblings in ONE
+   directory; a ladder is five directories that are one run.
+4. **From the sidebar it is a text pager** — and by `presenters.md` § 1's own
+   table, *a `.json` gets a plain text pane*. **The code conforms; the contract
+   has no row for a composite result.**
+
+**The cause is one door that was never built.** `model/parse.md` § 5 specifies
+`RunDirResult` with `engine` (which engine ran), `files` (what is here),
+`openable` (**what a VIEWER should load**) and `active` — § 5.1 draws exactly
+the distinction this menu needs and calls conflating them *"the trap this
+section exists to mark"*. The picker guesses all of it from filenames in JS
+because **there is no server door to ask**: `/api/results/contract` answers
+`info.calculation`, one of six fields.
+
+**The Results picker is a SEVENTH consumer and § 5c's caller map does not list
+it** — every row there is server-side. Transport is not the cause; it is the
+first result that is neither a trajectory nor a spectrum, so the guess stops
+producing a plausible answer.
+
+**One question is genuinely new**: `openable` is one answer per DIRECTORY; a
+ladder is five. Neither `absorbs` nor `RunDirResult` can say so. It reaches every
+multi-rung calculation and needs a home before code moves.
+
+#### 5p.3p.4 The steps — each one validates against its contract before moving
+
+**Every step has the same three parts: the change, the contract it is checked
+against, and what to do when the check disagrees.** A disagreement is not a
+blocker to route around — it sends the step back to § 5p.3p.5.
+
+**Step 1 — delete the results chain.** *(DONE 2026-09-17)*
+*Contract:* `model/parse.md` § 4 (the registry), `job-contracts.md` § 6.1 (the
+record's owner). *Check:* the parse registry builds and no longer lists
+`transport-json`; `record.py` still writes. *Result:* passed — 163 tests in the
+parse layer green; 697 product lines and their tests gone.
+
+**Step 2 — delete the cross-deck comparison.** `preflight_files`,
+`format_report`, the `transport preflight` verb; keep `parse_fdf_params` and
+`_BOHR_ANG`. *Contract:* `engines/transport.md` § 5 (the invariant set) — read it
+first and record, invariant by invariant, **which are now held by construction
+by `compose` + one resolved config and which are not**. *Check:* every invariant
+either has a construction-time guarantee named, or a reason it still needs a
+runtime gate. *If the check disagrees* — an invariant with neither — the verb
+does not go; the invariant gets re-homed first and § 5p.3p.2 is corrected.
+
+**Step 3 — settle `TransportConfig`.** *Contract:* `engines/template.md` § 2.1a
+(the two-homes debt) and § 5p.3i's open item. *Check:* re-measure the orphan
+fields. *Measured 2026-09-17:* three (`log_level`, `num_threads`,
+`transmission_relative_to_ef`), all already in `stages.UNRESOLVED_FIELDS` or
+documented at `stages.py:110` — the shim leaks nothing. *So this is bookkeeping,
+not a defect*, and the step is to record that, not to act.
+
+**Step 4 — correct the engine contract.** `transport.md` :1880 names `record.py`
+and `molbuilder/transport-result@1`; :2265's promise is restated as unbuilt.
+*Contract:* itself. *Check:* every symbol the Results section names resolves in
+the tree.
+
+**Step 5 — the Results placeholder, and only that.** Register a transport
+presenter matching `*.transport.json`, `isResult: true`, category `"Transport"`,
+that reads the record through `ctx.readFile`, names it, shows the I–V table the
+record already carries, and states that the transmission surface is not built.
+*Contract:* `web/presenters.md` § 2 (the presenter contract) — and **§ 1's table
+gains a row in the same change**, because that table is the declaration of what
+is presented. *Check:* the table's count matches the registry's; a finished
+junction appears in its own menu. *If the check disagrees* — e.g. the six-vs-five
+drift means the table has other gaps — fix the table wholly, not this row alone.
+
+**Step 6 — kill the tests pinning the retired design**, with the code and not
+before it. *Contract:* the admission question (default ZERO). *Check:* every
+deletion names the product symbol it pinned. *Already done for steps 1 and the
+June writers;* the audit of 2026-09-17 lists the rest, of which the ones that
+matter are the tests that **cannot fail** (`test_siesta.py:559`/`:571`,
+`test_pyscf.py:225`/`:235`/`:253`).
+
+**Step 7 — `JobDirParser`, which is NOT this section's to do.** It belongs to
+**§ 5c**. What this section owes § 5c is two additions, made now and not
+deferred: the **Results picker as a seventh consumer** with a server door to ask,
+and the **ladder question** (five directories, one run), which § 5c does not
+cover. Items 1–3 of § 5p.3p.3 close when § 5c lands and not before.
+
+#### 5p.3p.6 The CLI surface — two survivors of a ruling already made
+
+*(Added 2026-09-17 after the layer map was re-read top-down; the CLI was not on
+the first three passes, which is why this is a new sub-section and the map in
+§ 5p.3p.1 gained a row rather than this being a bullet at the bottom.)*
+
+**The ruling exists and is general.** `conventions.md` § 3, decision 7 (user,
+2026-08-11): *"everything is a job set. There is no `molbuilder run` — it is
+deleted, not deprecated, because a second way in is a second way to lose your
+results."* And decision 34, the same day: *"there is no `molbuilder fdf`"* —
+user's words, *"obsolete residue from the flat-dir design"*.
+
+**The verbs sort into four kinds**, measured 2026-09-17: structure construction
+(`peptide` `dna` `rna` `smiles` `name` `modify`), the job pipeline (`jobset`,
+`validate`), machine/ops (`envs` `serve` `jupyter` `checkpoint` `auth-setup`
+`notify-token` `monitor`), and format utilities (`xv2xyz` `runtime-info`
+`watch parse` `pseudo check`). **No calculation KIND has a verb** — there is no
+`spectra`, no `optimization`, no `vibration`; a kind is described in `task.json`
+and run through `jobset`. Two break the pattern.
+
+**`transport` — a calculation-kind group.** `conventions.md` already names this
+as a closed design problem: *"`jobset`, `bench` and `transport` each ran
+calculations their own way"* (2026-08-11). `bench` got the full closure —
+folded into `jobset`, **its four verbs deleted, the group removed**. `transport`
+got half: the `bundle` verb went 2026-08-29, the group stayed. Its two remaining
+verbs are the June hand-assembly workflow's UI: `electrode` *made* an electrode
+deck from flags, `preflight` *checked* it against a device deck. **Both are that
+era.** With `electrode` gone (§ 5p.3p.2) and `preflight` going (step 2), the
+group is empty and follows `bench`'s precedent. *(User ruled 2026-09-17:
+removing the transport verb is correct.)*
+
+**`pyscf` — an engine verb, and `fdf`'s surviving twin.** Same shape: a
+structure plus every engine field as a flag → a finished deck, skipping the
+description. `cli.py` states the exemption itself — *"`pyscf` keeps its own only
+because its ladder runs inside one emitted script"* — and **the same file
+refutes it two comments later**: *"THIS COMMAND WRITES ONE DECK, AND A LADDER IS
+N DECKS … there is no `--stages-json` / `--stage-strategy` here … `jobset init
+--engine pyscf --stage-strategy …` is the one door that writes one."* The
+exemption describes PySCF's *script shape*, not a property of the verb — and
+`--stage-strategy` was taken off this command on 2026-08-18 for exactly that
+reason.
+
+The framework already covers it: `prep.py:651` builds a full `EngineSeam` for
+PySCF, so `jobset prep` renders it through `spec_for` → `prepare_deck` like any
+other engine. `render_script` is *"a thin call over `spec_for`"* and `convert`
+is *"STEP 3, WHOLE, IN ONE CALL — the same call `prep` makes."* The verb
+duplicates no mechanism; it is a second **way in**, which is the thing decision 7
+names.
+
+**Step 8 — delete `molbuilder pyscf`.** *Contract:* `conventions.md` § 3
+(decisions 7 and 34). *What goes with it, measured:* `cmd_pyscf` +
+`_make_pyscf_options_decorator` (~75 lines); **`add_dataclass_options`
+(~168 lines), whose only production consumer is this command**; `pyscf.convert`
+(no other caller); `pyscf.render_script` if nothing else points at it; and the
+`test_cli.py` group that tests the BRIDGE rather than any behaviour. *Check:*
+`conventions.md` § 3's roster and its count are corrected in the same change —
+the table currently lists 13, names `serve` (now a group) and omits
+`notify-token`, so the count is re-derived, not decremented. *If the check
+disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
+bridge stays and only the command goes.
+
+**Step 9 — remove the `transport` group** once step 2 empties it, on the `bench`
+precedent. *Check:* `molbuilder --help` lists no calculation-kind verb, and
+`conventions.md` § 3's sub-group list drops from 7 to 6 with `bench` (already
+deleted 2026-08-17) no longer named either — that row is stale twice over.
+
+#### 5p.3p.5 The standing rule — consolidate, do not patch
+
+**Four passes over this section have each CHANGED the answer rather than
+refining it**, and every correction came from opening a contract the previous
+pass had not:
+
+| pass | what it said | what the next contract showed |
+|---|---|---|
+| 1 | *"no transport inspector exists"* | true, and the least of it |
+| 2 | the picker drops the record and mis-files the ladder | `presenters.md` — the code CONFORMS; the contract has no row |
+| 3 | three Results defects | `model/parse.md` § 5 — one unbuilt door underneath all three |
+| 4 | the transport package | `conventions.md` § 3 — the CLI layer was never on the map |
+
+That is the argument for the protocol below. It is not process for its own
+sake; it is what four wrong answers cost.
+
+##### The milestone review — run it BEFORE each step, and record the result
+
+A step does not start until this has been done and its outcome written into
+this section. It is five questions, top down:
+
+1. **Re-read the contract that owns the layer being touched** — the row in
+   § 5p.3p.1. Not the code first. The code is what the contract is checked
+   against, never the source of the answer.
+2. **Re-measure every claim § 5p.3p.2 makes about that layer.** A count in this
+   plan is a hypothesis until re-derived. Anything that moved is corrected in
+   place, with the date.
+3. **Ask whether a LAYER is missing from § 5p.3p.1** — the failure that
+   produced passes 3 and 4. The test: name the document that owns each layer
+   the change touches; if a layer has no row, add it before proceeding.
+4. **Check for drift** — does the code still do what the contract says, and does
+   the contract still describe what shipped? Both directions. A disagreement is
+   recorded as a finding here, not fixed silently in passing.
+5. **If anything from 2–4 changed the picture, STOP and re-consolidate** —
+   rewrite § 5p.3p.1 and § 5p.3p.2, renumber the steps if their order no longer
+   holds. **Never append a bullet to the bottom.** A plan that grows by
+   accretion is the thing this section exists to end.
+
+##### The log — every review, recorded
+
+| date | before step | what was re-read | what changed |
+|---|---|---|---|
+| 2026-09-17 | 2 | `presenters.md`, `model/parse.md` § 5, `conventions.md` § 3, `workflow.md` § 7, the contract index | CLI layer added to the map; Results gap re-framed as one unbuilt door; `pyscf` verb found obsolete by decision 34 (§ 5p.3p.6) |
+| 2026-09-17 | 6 (tests) | the repointed tests themselves, against the live deck | **A repoint is not a free pass.** Four checks were carried over from the deleted writer; three pinned deck TEXT with the emitter's column spacing baked in, and one -- `used-atoms` -- claimed to prove a count was "derived, NOT hardcoded" while asserting the literal `3`. Rewritten to parse the deck and compare against the structure's own regions; **mutation-testing then showed the rewrite STILL passed** against a hardcoded emitter, because the fixture's leads are 3 and 3. Now driven by an asymmetric junction (2 and 4), which is the only shape that can tell a derived count from a constant |
+
+##### What "done" means for this section
+
+It is not "the steps are ticked". It is: every row in § 5p.3p.1 reads ✅, every
+row in § 5p.3p.2 is DONE or has a recorded reason to stay, and the three
+documents named in § 5p.3p.3 agree with the tree. Until then this section is
+open, whatever the step list says.
+
+#### 5p.3p.6 The CLI surface — two survivors of a ruling already made
+
+*(Added 2026-09-17 after the layer map was re-read top-down; the CLI was not on
+the first three passes, which is why this is a new sub-section and the map in
+§ 5p.3p.1 gained a row rather than this being a bullet at the bottom.)*
+
+**The ruling exists and is general.** `conventions.md` § 3, decision 7 (user,
+2026-08-11): *"everything is a job set. There is no `molbuilder run` — it is
+deleted, not deprecated, because a second way in is a second way to lose your
+results."* And decision 34, the same day: *"there is no `molbuilder fdf`"* —
+user's words, *"obsolete residue from the flat-dir design"*.
+
+**The verbs sort into four kinds**, measured 2026-09-17: structure construction
+(`peptide` `dna` `rna` `smiles` `name` `modify`), the job pipeline (`jobset`,
+`validate`), machine/ops (`envs` `serve` `jupyter` `checkpoint` `auth-setup`
+`notify-token` `monitor`), and format utilities (`xv2xyz` `runtime-info`
+`watch parse` `pseudo check`). **No calculation KIND has a verb** — there is no
+`spectra`, no `optimization`, no `vibration`; a kind is described in `task.json`
+and run through `jobset`. Two break the pattern.
+
+**`transport` — a calculation-kind group.** `conventions.md` already names this
+as a closed design problem: *"`jobset`, `bench` and `transport` each ran
+calculations their own way"* (2026-08-11). `bench` got the full closure —
+folded into `jobset`, **its four verbs deleted, the group removed**. `transport`
+got half: the `bundle` verb went 2026-08-29, the group stayed. Its two remaining
+verbs are the June hand-assembly workflow's UI: `electrode` *made* an electrode
+deck from flags, `preflight` *checked* it against a device deck. **Both are that
+era.** With `electrode` gone (§ 5p.3p.2) and `preflight` going (step 2), the
+group is empty and follows `bench`'s precedent. *(User ruled 2026-09-17:
+removing the transport verb is correct.)*
+
+**`pyscf` — an engine verb, and `fdf`'s surviving twin.** Same shape: a
+structure plus every engine field as a flag → a finished deck, skipping the
+description. `cli.py` states the exemption itself — *"`pyscf` keeps its own only
+because its ladder runs inside one emitted script"* — and **the same file
+refutes it two comments later**: *"THIS COMMAND WRITES ONE DECK, AND A LADDER IS
+N DECKS … there is no `--stages-json` / `--stage-strategy` here … `jobset init
+--engine pyscf --stage-strategy …` is the one door that writes one."* The
+exemption describes PySCF's *script shape*, not a property of the verb — and
+`--stage-strategy` was taken off this command on 2026-08-18 for exactly that
+reason.
+
+The framework already covers it: `prep.py:651` builds a full `EngineSeam` for
+PySCF, so `jobset prep` renders it through `spec_for` → `prepare_deck` like any
+other engine. `render_script` is *"a thin call over `spec_for`"* and `convert`
+is *"STEP 3, WHOLE, IN ONE CALL — the same call `prep` makes."* The verb
+duplicates no mechanism; it is a second **way in**, which is the thing decision 7
+names.
+
+**Step 8 — delete `molbuilder pyscf`.** *Contract:* `conventions.md` § 3
+(decisions 7 and 34). *What goes with it, measured:* `cmd_pyscf` +
+`_make_pyscf_options_decorator` (~75 lines); **`add_dataclass_options`
+(~168 lines), whose only production consumer is this command**; `pyscf.convert`
+(no other caller); `pyscf.render_script` if nothing else points at it; and the
+`test_cli.py` group that tests the BRIDGE rather than any behaviour. *Check:*
+`conventions.md` § 3's roster and its count are corrected in the same change —
+the table currently lists 13, names `serve` (now a group) and omits
+`notify-token`, so the count is re-derived, not decremented. *If the check
+disagrees* — a consumer of `add_dataclass_options` outside `cmd_pyscf` — the
+bridge stays and only the command goes.
+
+**Step 9 — remove the `transport` group** once step 2 empties it, on the `bench`
+precedent. *Check:* `molbuilder --help` lists no calculation-kind verb, and
+`conventions.md` § 3's sub-group list drops from 7 to 6 with `bench` (already
+deleted 2026-08-17) no longer named either — that row is stale twice over.
+
+#### 5p.3p.5 The standing rule — consolidate, do not patch
+
+Two passes over this section already **changed** the answer rather than refining
+it: the first said *"no transport inspector exists"* (true, and the least of it);
+the second found the picker drops the record entirely and files the ladder under
+the wrong engine; the third found the cause is a specified-and-unbuilt directory
+door, and that `presenters.md` has no row for a composite result at all. Each
+correction came from reading a **contract** that the previous pass had not
+opened.
+
+So: **at every step or milestone, before the next one starts** — re-read the
+contract that owns the layer being touched, re-measure the claims this section
+makes about it, and if anything has changed, **re-consolidate this section
+rather than appending to it.** A new finding is a reason to rewrite the map in
+§ 5p.3p.1, not to add a bullet at the bottom.
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later

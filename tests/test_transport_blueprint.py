@@ -121,27 +121,7 @@ class TestTransportSchemaEndpoint:
             f"them is a guaranteed 400"
         )
 
-    def test_engine_choices_are_registered_engines(self):
-        """Every engine the form could offer must be one the registry
-        answers for — a choice ``get_engine`` refuses
-        (``UnknownEngineError``) is a trap, not an option.  Until
-        2026-08-29 the metadata offered ``pyscf-negf``, which no
-        backend ever registered."""
-        from dataclasses import fields as _fields
-        import molbuilder.transport  # noqa: F401 -- registration side-effect
-        from molbuilder.config.transport import TransportConfig
-        from molbuilder.transport.engine_base import registered_engines
-        engine_field = next(f for f in _fields(TransportConfig)
-                            if f.name == "engine")
-        choices = engine_field.metadata["choices"]
-        registered = set(registered_engines())
-        unknown = [c for c in choices if c not in registered]
-        assert not unknown, (
-            f"engine choices offer unregistered backends: {unknown} "
-            f"(registered: {sorted(registered)}).  A backend that "
-            f"registers itself adds its choice back in the same commit."
-        )
-        assert "transiesta" in choices
+    # `test_engine_choices_are_registered_engines` deleted 2026-09-17 with the engine registry.
 
     def test_schema_carries_field_metadata_for_render(self, web):
         """Every field must carry the metadata form-schema.js needs
