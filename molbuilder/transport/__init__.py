@@ -6,9 +6,13 @@ here:
 
   * :mod:`.compose`   — resolve the citation, extract + gate the
     electrodes, the travelling compose record.
-  * :mod:`.stages`    — TRANSPORT_STAGES, the per-stage input DAG,
-    ``config_for`` (the electronic contract read from the citation's
-    own deck) and ``render_stage_deck``.
+  * :mod:`.stages`    — TRANSPORT_STAGES, the per-stage input DAG, and
+    ``route_overrides`` (which rung owns each override).
+  * :mod:`.deck`      — ``transport_spec``: the ``DeckSpec`` every one of
+    the five rungs renders through, and ``SHAPE_OF_RUNG``, the table
+    saying which of the three deck shapes each rung gets.
+  * :mod:`.citation_defaults` — what the cited run contributes to the
+    template, once, at ``jobset init``.
   * :mod:`.record`    — ``summarize run``'s ``<label>.transport.json``
     (``molbuilder/transport-result@1``).
   * :mod:`.transiesta` — the TranSIESTA deck emitter + preflight

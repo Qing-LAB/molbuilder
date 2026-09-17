@@ -52,7 +52,7 @@ artefacts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 # Shared with the other config modules -- one regex, one rule for the
 # job-layout basename pattern.

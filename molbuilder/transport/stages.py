@@ -7,23 +7,25 @@ This module owns TWO facts and the renders that follow from them:
   dependency order.  Fixed by design, not configurable — skipping is
   the per-stage ``enabled`` flag in ``task.json`` (the seed's Q4 skip),
   never a different ladder.
-* **The one config** (:func:`config_for`): every stage's deck renders
-  from a single :class:`~molbuilder.config.transport.TransportConfig`,
-  filled from the composed junction's own ``.fdf`` snapshot — the deck
-  that actually ran is the truth about a result — which is what makes
-  basis · XC · mesh · electronic T identical between electrode, seed
-  and device BY CONSTRUCTION (§ 3, ruling Q5: one template governs
-  everything).
+* **Which rung owns an override** (:func:`route_overrides`,
+  :func:`stages_for_transport`): the catalogue's ``stages`` declaration,
+  read.  This is what puts a person's T(E) window into the deck
+  ``tbtrans`` runs rather than the one ``siesta`` runs.
 
-The renders reuse the existing emitters whole: the electrode decks are
-the wizard's (:func:`~molbuilder.transport.wizard.render_electrode_fdf`),
-the device and transmission decks are the registered TranSIESTA
-engine's, and the SEED deck is no longer rendered here at all: it goes
-through the framework's own pipeline (``siesta.input.spec_for`` with
-``calculation="transport"`` -> :mod:`molbuilder.transport.deck`), which
-is what lets the template's items reach it (`engines/transport.md`
-§ 3.6a).  It is still an ordinary periodic pass whose ``.DM`` starts the
-device SCF.
+**NOTHING IN THIS MODULE RENDERS A DECK ANY MORE.**  All five rungs go
+through the framework's own pipeline — ``siesta.input.spec_for`` with
+``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
+``SHAPE_OF_RUNG`` tables the three deck shapes — which is what lets the
+template's items reach them.  :func:`render_stage_deck` and
+:func:`config_for` below are what is LEFT of the pre-seam path: neither
+has a production caller (`engines/transport.md` § 6.1a), and the
+electronic contract is resolved by ``prep._resolve_transport`` from the
+calculation's own template.
+
+That template is also why ruling Q5 no longer holds as written: § 2a.7
+reversed it.  The cited relaxation DEFAULTS the electronic description
+at ``jobset init``; it does not seal it.  The invariant survives untouched,
+because ONE value shared by five rungs cannot disagree with itself.
 
 P5 added the launch half, whose facts also live here: the § 4.2 DAG
 (:func:`stage_inputs`, read by prep's gather), the continuation rows
@@ -37,7 +39,6 @@ from __future__ import annotations
 from typing import Tuple
 
 from ..config.transport import TransportConfig
-from ..structure import Structure
 from .compose import ComposedJunction
 
 #: The composite's fixed ladder (§ 4.2) -- the five stages in
@@ -247,8 +248,6 @@ def config_for(task, composed: ComposedJunction, *,
     fdf = composed.fdf_params
     kw = {}
     recorded = getattr(composed, "recorded_contract", None)
-    contract_sealed = (composed.deck_text is not None
-                       or recorded is not None)
     if recorded is not None and composed.deck_text is None:
         # The RECORDED contract (4.1b's third shade, structure-info-plan
         # I6): the pair's sidecar carries the finished run's own values

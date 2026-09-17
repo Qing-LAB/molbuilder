@@ -1890,96 +1890,95 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         # must too -- a shape-flag gate here left the hand-built-ladder
         # lane refusing where it should continue (found writing the pin).
         _sh = shape_of(jobset, base)
-        if True:
-            _names = job_dir_names(jobset, _sh)
-            _skip = set()
-            for _j in jobset.jobs:
-                _d = base / _names[_j.name]
-                _ns = attempts(_d)
-                if not _ns or not was_launched(attempt_dir(_d, _ns[-1])):
-                    continue
-                _mark = attempt_concluded(
-                    attempt_dir(_d, _ns[-1]), Path(_j.script).stem)
-                if _mark is None and not (dry_run or mode == "ask"
-                                          or continue_unconcluded):
-                    # LAUNCHED BUT NEVER CONCLUDED -- still running, or
-                    # force-stopped (walltime, kill, node death); the
-                    # files alone cannot tell those apart, and the two
-                    # deserve opposite acts: continuing a RUNNING attempt
-                    # copies torn warm files under a live engine, while
-                    # continuing a WALLTIME-KILLED one is exactly what a
-                    # person wants -- the saved state is valid.  So the
-                    # user judges (project-layout.md 1.6, the other
-                    # file); molbuilder never decides over them.
-                    raise SubmitError(
-                        f"{_j.name}: {_names[_j.name]}/"
-                        f"{attempt_name(_ns[-1])} was "
-                        f"launched and never CONCLUDED -- it may still be "
-                        f"RUNNING, or it was force-stopped (walltime, "
-                        f"kill).\n"
-                        f"  Continuing copies its warm files AS THEY ARE: "
-                        f"valid after a forced stop, torn if it is still "
-                        f"running.  Check `molbuilder jobset status` and "
-                        f"the queue first.\n"
-                        f"  Then: re-run this launch with --yes to record "
-                        f"your judgement and continue.")
-                if dry_run or mode == "ask":
-                    # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
-                    # dry_run took this arm, so `--mode ask` over a
-                    # launched stage physically opened run-<n+1> and
-                    # copied the warm files -- from an attempt that could
-                    # still be RUNNING (a torn .DM/.XV copy), and the
-                    # fresh empty attempt then hid the running one from
-                    # `status`, which reports the latest.  Asking when a
-                    # job would start had changed what the tree says.
-                    continued.append(JobResult(
-                        _j.name, [],
-                        f"WOULD continue {_names[_j.name]}/"
-                        f"{attempt_name(_ns[-1])} into "
-                        f"{attempt_name(_ns[-1] + 1)} (warm), then "
-                        f"launch it"))
-                    _skip.add(_j.name)
-                    continue
-                try:
-                    _rep = prepare_attempt(
-                        jobset, base, _j.name,
-                        # THE ATTEMPT'S NAME COMES FROM ITS COMPOSER.  This
-                        # is not a message -- it is the path `prepare_attempt`
-                        # continues FROM, spelled by hand on the live
-                        # continue-a-run path (§ 4.5).
-                        continue_from=(f"{_names[_j.name]}/"
-                                       f"{attempt_name(_ns[-1])}"))
-                except ValueError as _e:
-                    # continuing is impossible -- no state to carry, or
-                    # the stage's deck would not read it.  Both are
-                    # SIGNALS (a launched run that left nothing likely
-                    # died at startup), so the door refuses with the
-                    # story rather than silently starting fresh.
-                    raise SubmitError(
-                        f"{_j.name}: {attempt_name(_ns[-1])} was "
-                        f"launched, so "
-                        f"re-submission continues by default -- but "
-                        f"continuing is impossible here:\n  {_e}\n"
-                        f"  Look at that run's logs; a FRESH attempt "
-                        f"is:  molbuilder jobset prep run {_j.name}  "
-                        f"(then submit).") from _e
-                _how = (f"concluded ({_mark.splitlines()[0]})"
-                        if _mark is not None else
-                        "NOT concluded -- continued on your judgement")
+        _names = job_dir_names(jobset, _sh)
+        _skip = set()
+        for _j in jobset.jobs:
+            _d = base / _names[_j.name]
+            _ns = attempts(_d)
+            if not _ns or not was_launched(attempt_dir(_d, _ns[-1])):
+                continue
+            _mark = attempt_concluded(
+                attempt_dir(_d, _ns[-1]), Path(_j.script).stem)
+            if _mark is None and not (dry_run or mode == "ask"
+                                      or continue_unconcluded):
+                # LAUNCHED BUT NEVER CONCLUDED -- still running, or
+                # force-stopped (walltime, kill, node death); the
+                # files alone cannot tell those apart, and the two
+                # deserve opposite acts: continuing a RUNNING attempt
+                # copies torn warm files under a live engine, while
+                # continuing a WALLTIME-KILLED one is exactly what a
+                # person wants -- the saved state is valid.  So the
+                # user judges (project-layout.md 1.6, the other
+                # file); molbuilder never decides over them.
+                raise SubmitError(
+                    f"{_j.name}: {_names[_j.name]}/"
+                    f"{attempt_name(_ns[-1])} was "
+                    f"launched and never CONCLUDED -- it may still be "
+                    f"RUNNING, or it was force-stopped (walltime, "
+                    f"kill).\n"
+                    f"  Continuing copies its warm files AS THEY ARE: "
+                    f"valid after a forced stop, torn if it is still "
+                    f"running.  Check `molbuilder jobset status` and "
+                    f"the queue first.\n"
+                    f"  Then: re-run this launch with --yes to record "
+                    f"your judgement and continue.")
+            if dry_run or mode == "ask":
+                # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
+                # dry_run took this arm, so `--mode ask` over a
+                # launched stage physically opened run-<n+1> and
+                # copied the warm files -- from an attempt that could
+                # still be RUNNING (a torn .DM/.XV copy), and the
+                # fresh empty attempt then hid the running one from
+                # `status`, which reports the latest.  Asking when a
+                # job would start had changed what the tree says.
                 continued.append(JobResult(
                     _j.name, [],
-                    f"{_how}: "
-                    f"continuing {_names[_j.name]}/"
-                    f"{attempt_name(_ns[-1])} -> "
-                    f"{_rep.dir.name} (copied: "
-                    f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
-                    f"Fresh instead: prep run {_j.name} first."))
-            if _skip:
-                import dataclasses as _dc2
-                jobset = _dc2.replace(jobset, jobs=[
-                    j for j in jobset.jobs if j.name not in _skip])
-                if not jobset.jobs:
-                    return continued
+                    f"WOULD continue {_names[_j.name]}/"
+                    f"{attempt_name(_ns[-1])} into "
+                    f"{attempt_name(_ns[-1] + 1)} (warm), then "
+                    f"launch it"))
+                _skip.add(_j.name)
+                continue
+            try:
+                _rep = prepare_attempt(
+                    jobset, base, _j.name,
+                    # THE ATTEMPT'S NAME COMES FROM ITS COMPOSER.  This
+                    # is not a message -- it is the path `prepare_attempt`
+                    # continues FROM, spelled by hand on the live
+                    # continue-a-run path (§ 4.5).
+                    continue_from=(f"{_names[_j.name]}/"
+                                   f"{attempt_name(_ns[-1])}"))
+            except ValueError as _e:
+                # continuing is impossible -- no state to carry, or
+                # the stage's deck would not read it.  Both are
+                # SIGNALS (a launched run that left nothing likely
+                # died at startup), so the door refuses with the
+                # story rather than silently starting fresh.
+                raise SubmitError(
+                    f"{_j.name}: {attempt_name(_ns[-1])} was "
+                    f"launched, so "
+                    f"re-submission continues by default -- but "
+                    f"continuing is impossible here:\n  {_e}\n"
+                    f"  Look at that run's logs; a FRESH attempt "
+                    f"is:  molbuilder jobset prep run {_j.name}  "
+                    f"(then submit).") from _e
+            _how = (f"concluded ({_mark.splitlines()[0]})"
+                    if _mark is not None else
+                    "NOT concluded -- continued on your judgement")
+            continued.append(JobResult(
+                _j.name, [],
+                f"{_how}: "
+                f"continuing {_names[_j.name]}/"
+                f"{attempt_name(_ns[-1])} -> "
+                f"{_rep.dir.name} (copied: "
+                f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
+                f"Fresh instead: prep run {_j.name} first."))
+        if _skip:
+            import dataclasses as _dc2
+            jobset = _dc2.replace(jobset, jobs=[
+                j for j in jobset.jobs if j.name not in _skip])
+            if not jobset.jobs:
+                return continued
 
     # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a ladder is launched
     # one stage at a time, in EVERY mode -- direct running stages in order

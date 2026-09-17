@@ -19,7 +19,6 @@ invariant set, each gate traced to its reference) and § 7.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
