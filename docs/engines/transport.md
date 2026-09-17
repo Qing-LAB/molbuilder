@@ -19,10 +19,11 @@ engine contract).
 > walk). The pre-framework `transport bundle` driver this banner once
 > guarded is deleted; § 8 records the closure.
 
-> **The design is [§ 2a](#2a-the-parameter-map)** *(agreed 2026-09-16, not yet
-> built)*: what each stage decides, what it binds downstream, how strongly each
-> consistency rule can be guaranteed, the directory structure, and the full
-> parameter map. Read it before changing a parameter's home or adding one.
+> **The design is [§ 2a](#2a-the-parameter-map)** *(agreed 2026-09-16; what
+> landed is measured in [§ 2a.14](#2a14-what-landed))*: what each stage decides,
+> what it binds downstream, how strongly each consistency rule can be
+> guaranteed, the directory structure, and the full parameter map. Read it
+> before changing a parameter's home or adding one.
 
 This is how molbuilder computes **electron transport** (conductance) through a
 molecular junction — e.g. a single benzene-1,4-dithiol molecule bridging two gold
@@ -196,8 +197,8 @@ rather than a crash — which is why they are guards in code and not advice.
 
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
-| 1 | device `kz = 1` | **error**, `TransiestaEngine.preflight` | ✅ reached from `stages.py` |
-| 2 | electrode `kz` dense | default **40** (`wizard.py`); a warn below 20 lives in `transport/preflight.py` | ⚠️ **no** — that warn's only caller is the standalone `molbuilder transport preflight` verb, so a composite run never sees it. And the default is unreachable from any description (§ 3.6 item 8) |
+| 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition, open shell — went silent with it and are not re-homed: see § 3.6a.)* |
+| 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ⚠️ **partly** — the value reaches the deck (measured: the lead renders `0 0 40`) and is editable in the template, but the *warn below 20* still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it. *(This row also said the default was unreachable from any description; that half was fixed on 2026-09-16.)* |
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
@@ -225,7 +226,7 @@ TranSIESTA expects a *metallic* electrode and that fixing the boundary is
 | device k | `2 2 1` — transverse 2×2, **transport 1** |
 | electrode k | `2 2 40` — the same 2×2, **transport dense** (the wizard's default) |
 | bias | `0.0` → equilibrium, so the non-equilibrium contour settings are inert |
-| what prep writes | `01_seed` … `05_transmission`, **a deck each — and no validation file**: the transport arm writes with `write_text` rather than going through `prepare_deck`, so the validate → render → read-back-check → report chain every other kind gets does not run here (§ 3.6 item 5) |
+| what prep writes | `01_seed` … `05_transmission`, **a deck each plus its `.validation.txt`** — every rung goes through `spec_for` → `DeckSpec` → `prepare_deck`, so the validate → render → read-back-check → report chain is the same one every other kind gets (§ 2a.14). *(This row said the opposite, describing a `write_text` arm deleted on 2026-09-16.)* |
 | the deliverable | `<label>.transport.json` — T(E) per bias, G(E_F), the I–V table |
 
 ## 1. The mental model — one citation → five derived stages
@@ -1580,10 +1581,10 @@ fixed.**
 |---|---|
 | the 21 are **present**, not yet **answerable** | `config_for` still validates a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override is refused. They become settable when the override vocabulary becomes the engine's (§ 3.6 items 5–12) |
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1e-05`, `DM.EnergyTolerance 1e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
-| four rungs are still off the seam | `electrode` and `negf` need the `ComposedJunction` — the electrode models and the region partition — which `spec_for(struct, cfg, stage_token=)` does not carry. **What a composite kind hands its renderer is a real seam question**, and it is the next increment's to answer rather than something to work around |
-| `--pipeline-log` is still a no-op here | `_prep_transport` takes a bool and builds no log object; the seed passes `log=None` rather than inventing half a logger |
+| ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
+| ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
 | two settings-gate warnings are now visible and both are **wrong for transport** | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warns SIESTA "will refuse to start". (b) `structure.regions`: it says the region labels "do NOT consume / do not shape this calculation" — for transport the region partition is what the entire ladder is built on. Both checks take `(struct, cfg)` and cannot see the kind. The deck now states the pseudopotential provenance itself as a stopgap; making the gate kind-aware is its own piece of work |
-| `calculation="transport"` composes no kind science | `DeckSpec.calculation` is documented as the fact the settings gate reads, but `_KIND_VALIDATORS` holds only `vibration`, so the seed gets the generic + SIESTA-engine gates and no transport pass — notably none of `TransiestaEngine.preflight`'s kz≠1 / region-partition / open-shell checks, which `render_stage_deck` still runs for device and transmission. Not a regression (the old seed ran no gate at all), but passing the kind reads as though a gate exists |
+| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and open-shell runs from the siesta validator against the run's REAL spin treatment instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | `_emit_geometry` writes positions shifted by `-resolve_cell_origin()`; the gate validates the world-frame structure. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
 | the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
@@ -1878,9 +1879,9 @@ Two things are easy to get wrong and both are visible here:
 flowchart TB
     subgraph TXT["the three deck TEXTS (floor 3's output)"]
       direction LR
-      T1["seed text<br/><i>stages.py::_render_seed</i><br/>SolutionMethod diagon"]
-      T2["electrode text (x2, one per side)<br/><i>wizard.py::render_electrode_fdf</i><br/>diagon · dense kz · TS.HS.Save"]
-      T3["device text<br/><i>transiesta.py::render_script</i><br/>SolutionMethod transiesta + TBT.* block"]
+      T1["seed text<br/><i>deck.py::_seed_layout</i><br/>SolutionMethod diagon"]
+      T2["electrode text (x2, one per side)<br/><i>deck.py::_electrode_layout</i><br/>diagon · dense kz · TS.HS.Save"]
+      T3["device text<br/><i>deck.py::_negf_layout</i><br/>SolutionMethod transiesta + TBT.* block"]
     end
 
     T1 --> S1
@@ -1954,13 +1955,26 @@ device — so it reads like a parameter whose unit of resolution should be the
 sealed against the person.  That was built, and it was wrong.
 
 **These values are not parameters.  They are the identity of three emitters.**
-`render_stage_deck`'s dispatch is *total and exclusive* over the five rungs:
+The dispatch is *total and exclusive* over the five rungs — `SHAPE_OF_RUNG` is
+the table, and every rung renders through `transport/deck.py`:
 
-| rung | the only emitter that renders it | and therefore |
-|---|---|---|
-| seed | `stages.py::_render_seed` | `SolutionMethod diagon` is what makes it *the seed deck* |
-| electrode_L / electrode_R | `wizard.py::render_electrode_fdf` | `diagon` + `TS.HS.Save true` is what makes it *an electrode deck* |
-| device / transmission | `transiesta.py::TransiestaEngine.render_script` | `SolutionMethod transiesta` is what makes it *an NEGF deck* |
+| rung | shape | the layout that renders it | and therefore |
+|---|---|---|---|
+| seed | `seed` | `deck.py::_seed_layout` | `SolutionMethod diagon` is what makes it *the seed deck* |
+| electrode_L / electrode_R | `electrode` | `deck.py::_electrode_layout` | `diagon` + `TS.HS.Save true` is what makes it *an electrode deck* |
+| device / transmission | `negf` | `deck.py::_negf_layout` | `SolutionMethod transiesta` is what makes it *an NEGF deck* |
+
+> **Corrected 2026-09-16.** This table named `stages.py::_render_seed` (deleted),
+> `wizard.py::render_electrode_fdf` and `transiesta.py::render_script`, dispatched
+> from `stages.render_stage_deck` — which has **no production caller**. A reader
+> fixing a keyword here would have edited code that renders nothing on this path.
+> The two surviving functions are reachable only from their own standalone doors
+> (`molbuilder transport electrodes` and `/api/transport/render`).
+>
+> The identity is now enforced by the `role` marker rather than by which function
+> runs: `solution_method` carries `role = ["transport"]`, so no transport template
+> answers it and the rung's own emitter writes it. Measured — seed and lead render
+> `diagon`, device renders `transiesta`.
 
 There is no valid output of `render_script` that says `diagon` — that would be
 an ordinary closed-boundary single-point which converges and means nothing
@@ -2020,12 +2034,19 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | Electrode thickness | **~6 Au(111) layers** | the *electronic* principal layer, not the 3-layer geometric repeat |
 | z-vacuum | **0** | slab-junction model; nonzero ⇒ cluster model |
 
-> **Which of these are knobs today.** The transverse k (`--kx`/`--ky`), electrode kz
-> (`--electrode-kz`), `MeshCutoff`, and electronic temperature are form/CLI-driven, but
-> the **basis / XC block is hardcoded** — `_emit_basis_and_xc` writes
-> `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`, and `XC GGA-PBE` with no cfg hook. So
-> "converge the basis / EnergyShift / XC" means editing the emitted `.fdf` until those
-> become form fields (a planned follow-up, flagged in the code).
+> **Which of these are knobs today: all of them.** Every value in the table above
+> is a catalogue row in the calculation's own template, defaulted from the cited
+> run at `jobset init` (§ 2a.7) and editable there — including the basis, the
+> EnergyShift and the XC pair, which the three layouts render through
+> `BASIS_SECTION` and `XC_SECTION` like any other section item. Measured on a
+> rendered device deck: `PAO.BasisSize DZP`, `PAO.EnergyShift 0.01 Ry`,
+> `XC.functional GGA`, `XC.authors PBE`, each with its own provenance note.
+>
+> *(This paragraph said the basis/XC block was hardcoded in `_emit_basis_and_xc`
+> "with no cfg hook", and told the reader to converge it by editing the emitted
+> `.fdf` — advice the read-back gate would now refuse. `_emit_basis_and_xc` is
+> deliberately NOT part of any transport layout: writing it beside those sections
+> would emit each keyword twice, which `layout.check_rules` catches.)*
 
 Three corrections that catch real mistakes:
 

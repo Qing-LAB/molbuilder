@@ -1350,16 +1350,36 @@ generalised.
 
 **There are two answerers outside floor 2, not one** *(ruled 2026-09-15)*.
 `allocation` marks an item the **scheduler** answers; `citation` marks one a
-**cited run** answers. The state above is identical — declared, valueless,
-filled at `prep` — and only the source and the refusal's wording differ.
-`select(t, allocation=True)` / `select(t, citation=True)` are how a layer asks
-which is which instead of carrying its own list of names.
+**cited run** answers. `select(t, allocation=True)` / `select(t, citation=True)`
+are how a layer asks which is which instead of carrying its own list of names.
 
-The second one exists because the transport kind's electronic contract — basis,
-XC, mesh, energy shift, transverse k, electronic temperature — is read from the
-relaxation it cites, so the electrode and the device cannot disagree about it.
-Before the marker, that rule lived in two frozensets and a predicate written
-twice, in two files, with formulations that did not match.
+**But their STATES differ, and that is the 2026-09-16 correction.**
+
+| marker | who answers | when | what the template holds |
+|---|---|---|---|
+| `allocation` | the scheduler | at `prep`, on the machine that runs it | nothing — declared, valueless |
+| `citation` | the cited run | at **`jobset init`**, once | **a value**, which the person may then change |
+
+The `citation` row said *"declared, valueless, filled at `prep`"* until
+2026-09-16, and that was the SEALED reading. `engines/transport.md` § 2a.7
+reversed it: the cited relaxation **DEFAULTS** these values into the
+calculation's own template, and after that the template is the answer.
+`transport/citation_defaults.py` is the whole of the filling, it runs once at
+`init`, and `prep` reads the file rather than the citation.
+
+The invariant the seal protected is untouched, because it never needed the
+seal: the electrode and the device cannot disagree when there is **one** value
+shared by every stage — which is what a single template is. What is withdrawn
+is the claim that the value must come from the cited run. Relaxing with DZP
+because it is cheap and adequate for geometry, then transporting with TZP
+because the longer orbital tails carry the metal–molecule coupling, is ordinary
+practice and is now expressible.
+
+The second marker exists because the transport kind's electronic contract —
+basis, XC, mesh, energy shift, transverse k, electronic temperature — must be
+**one** value across the five rungs. Before the marker, that rule lived in two
+frozensets and a predicate written twice, in two files, with formulations that
+did not match.
 
 **And it is a LIST of kinds, where `allocation` is a boolean** — the one place
 the two differ, and it is forced rather than chosen. A rank count is a machine
@@ -1368,13 +1388,17 @@ catalogue rows** an optimization uses, where the person answers them: only for
 transport does the citation. So the item says *for which kinds*, and absence
 means *never*.
 
-That is also why the seal is enforced where the KIND is known — by
-`config_from_template`, which the caller hands `task.calculation` — and not by
-`read_template`. The master catalogue carries both the marker and a value (86
-of its 103 rows carry one), so a reader with no kind cannot tell a legitimate
-optimization default from a transport template answering what it must not.
-For the same reason `template_fields` does **not** strip these names: excluding
-`basis_size` by name would stop an optimization overriding its own basis.
+**Nothing enforces a seal, and that absence is the ruling.**
+`config_from_template` refused a transport template that answered a `citation`
+item until 2026-09-16; the refusal is gone, and with it the `calculation`
+argument that existed only to carry the kind to it. `template_fields` does
+**not** strip these names either, and never did: excluding `basis_size` by name
+would stop an optimization overriding its own basis, because the row is shared.
+
+What the marker still drives is the WRITE side. `template_with_values` asks the
+kind whether each item is answered elsewhere, and the master catalogue carries
+both the marker and a value, so a reader with no kind could not otherwise tell
+a legitimate optimization default from a transport row.
 
 A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`

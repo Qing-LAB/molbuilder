@@ -2455,6 +2455,70 @@ it, and all pass.
 | `"citation's to say"` in the refusal | the message § 2a.7 reversed. Now demands the corrected reason **and** that the message names where the value is changed — a refusal with nowhere to go is not a refusal, it is a dead end |
 | the override lands on `device` | TR8 working: `transmission_n_points` goes to the **transmission** now. Asserts that, and that the device does *not* also get it |
 
+### 5p.3n FULL-TEXT REVIEW — what four agents found, verified, and fixed *(2026-09-16)*
+
+Asked for after *"I don't trust your work at all"*: read every document, every
+backend file and the UI **in full text**, find redundant code, duplicates,
+magic numbers, hacks, and doc-vs-code disagreement. Four agents read
+~12,000 lines. **Every claim below I re-derived against the code myself before
+acting, and two agent verdicts were wrong in the direction that matters.**
+
+#### The live defects, each measured
+
+| | what was measured | fixed by |
+|---|---|---|
+| `_prep_transport` opened **no attempt** | it ended at `prep_jobset`; the CLI opened one itself. `web/blueprints/build.py:1656` calls `prep_calculation` directly, so the browser's Prep button reported success and handed back a folder `submit._launch_dir` refuses — *naming the command that had just run*. The shared arm's own 27-line note calls this out: *"A verb that is only finished by one of its callers is not a verb."* It reintroduced exactly that | one `_open_attempts(js, base, stage, containers=…)` that **both arms** call; the scan's per-point ladders are DATA on the call |
+| the resolved **resources were thrown away** | `_resolve_transport` returned `element.values` and the arm rebuilt the allocation by hand. `resolve` folds two riders onto `element.resources` — `continue_retries` and `use_gpu`. Measured: `SiestaConfig` defaults them `1` / `False`, `Resources` defaults both `None`, so **every transport wrapper rendered with no warm-retry loop** and `use_gpu` fell back to grepping the deck for `Diag.ELPA.GPU` — the re-derivation `gpu.md` G7 deleted. `resolve.py`'s A-5 finding, on a third road | return the element; use `element.resources` and `element.render_config()`; fold the allocation **before** the resolve, as the shared arm does |
+| wrappers were written **past** the remote-activation guard | `prep run device --target sol` against a record stating no activation wrote one wrapper per bias point carrying *this* machine's activation, then refused. The refusal's whole premise is that those files must not exist | the guard moved above the write |
+| `TS.Contours.Eq.Pole.N` **reached no deck** | a catalogue row with an anchor, an `engine_key`, a default of 20 and a range — and no section or block named it. Its own help says the cost: *"a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait."* Rendered a device deck and confirmed absent | a `CONTOUR_SECTION` naming the row — the framework's own mechanism, not a literal. Re-rendered: `TS.Contours.Eq.Pole.N 20` |
+| the high-bias advisory **stopped firing** | `TransiestaEngine.preflight` is registered in `_ENGINE_VALIDATORS` keyed on `TransportConfig`; every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Of what it carried, the region partition and atom order are `sort`'s own refusals and structural here, and open-shell runs from the siesta validator against the run's REAL spin treatment. The remainder was the |V| > 2 V advisory — and bias is the one axis transport exists to sweep | re-homed into `_validate_transport_kind`, beside the kz≠1 refusal |
+| the Methods paragraph named a basis nobody ran | under a docstring reading **"EVERY NUMBER HERE IS NOW ONE THE DECK CARRIES"**, the next line wrote `"a DZP basis, the PBE functional"` as literals. TZP/revPBE produced a paragraph claiming DZP/PBE — the same class the docstring calls *"the one defect with a PUBLICATION consequence"* | read off the config; verified both ways |
+| `_sh` meant two things in one function | `_sh = shape_of(...)`, then `import shutil as _sh` **rebinds that function-local for the whole body**, so a later iteration hands the shutil module to `trial_work_dir` as a shape | `from shutil import copy2 as _copy2` |
+| the electrode deck contradicted itself | a comment saying *"(Not `SaveHS`…)"* two lines above a layout that includes `OUTPUT_SECTION`, whose `write_hs` row has `anchor = "SaveHS"`, `value = true`. Rendered the lead: `SaveHS .true.` is there | the comment says what is true |
+| `?contract=open` was a trap | the schema endpoint un-hid the seven contract fields for that lane while the describe door refuses them **unconditionally** — seven controls guaranteed to 400. `?contract=open` now selects nothing | the filter hides them in both lanes; the test that asserted the old rule rewritten to the shipped one, and mutation-tested |
+| form persistence matched **zero elements** | `_restoreFormValues` queried `[name=…]`; `form-schema.js` sets `id` only, on all four builders | calls `formSchema.setValues`, the renderer's own door |
+| the web door refused what the CLI accepts | `_known` checked `TransportConfig` only; `electrode_kz` is a `SiestaConfig` field and a catalogue row | widened to the union, the same vocabulary `prep` uses |
+| dead code | `stages.render_stage_deck`'s unreachable refusal in `transport_spec` (9 lines), `if True:` wrapping 90 lines in `submit.py`, `contract_sealed`, six dead imports, two placeholder-less f-strings in emitted deck text | deleted |
+| a **parameter that did nothing** | `config_from_template(..., calculation=)` — threaded by two callers, read by the body **never**, while `template.md` § 6.4 pointed at it as *the* enforcement site | deleted; its two tests became one |
+
+#### Two agent verdicts I did not take
+
+* *"`select(role=)` / `select(stages=)` have zero callers — dead."* True of
+  production and the **wrong verdict**: `tests/test_template_role_and_stages.py`
+  uses both as the reading API, and the alternative is every reader
+  hand-filtering the catalogue. Kept. Six lines that earn themselves.
+* *"Fold the DAG gather into `prep`."* I did, and **19 tests failed** — correctly.
+  `gather_transport_inputs` refuses an upstream that has not CONCLUDED, so
+  calling it at prep means you can no longer render the device deck to READ it
+  before spending the queue. That is the split `prepare_attempt` names in its own
+  words. Backed out; the browser-road gap is recorded below as a question about
+  what `prep` MEANS, not a defect to close by widening it.
+
+#### The documents
+
+`template.md` § 6.4 is the `citation` marker's ONE HOME and still stated the
+**sealed** reading § 2a.7 reversed — in three sentences, pointing at the dead
+parameter above as the enforcement. Under this project's own convention every
+other restatement points there, so the one home being wrong is what made the
+other sites unfixable one at a time. Corrected first, then the restatements:
+`transport.md` § 0.4 rows 1–2, § 0.5 (*"and no validation file… writes with
+`write_text`"* — measured false: every rung goes through `prepare_deck` and
+writes its `.validation.txt`), § 3.6a's three residue rows, § 6.1's diagram and
+§ 6.1a's table (which named three renderers, **none** on the composite path, so
+a reader fixing a keyword would have edited dead code), § 7's *"the basis / XC
+block is hardcoded… edit the emitted `.fdf`"* — advice the read-back gate would
+now refuse — and the module docstrings of `transport/stages.py`,
+`transport/__init__.py` and `transport/deck.py`.
+
+#### Open, and NOT closed by me
+
+| | |
+|---|---|
+| the DAG gather runs on the CLI road only | a browser prep opens the attempt but never carries the upstream `.TSHS`/`.DM` in. Closing it means deciding what `prep` means — see above |
+| `stages.render_stage_deck` (52 lines) and `config_for` (140) are production-dead | `config_for` still has three tests. Deleting it retires them; that is a call about what those tests are for |
+| ~20 doc counts have drifted | "13 keywords / 45 items", "32 fields", "49 siesta items", "the 21 keywords". Historical measurements stated in the present tense. `test_doc_claims.py` pins some and not these |
+| `wrap_into_cell` declares `role = ["transport"]` and nothing answers it | inert today because `_emit_geometry` never wraps. A decorative declaration |
+
 ### 5p.4 The steps
 
 Ordered so each one is verifiable on its own and nothing depends on a later
