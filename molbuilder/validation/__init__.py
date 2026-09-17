@@ -439,18 +439,25 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"OPTIMIZATION, where the keyword is honoured.",
             where="config.net_charge"))
     # THE POLE ENERGY AND THE TEMPERATURE ARE ONE QUESTION, so neither can be
-    # checked alone.  TranSIESTA derives the equilibrium contour's pole COUNT
-    # from `TS.Contours.Eq.Pole` and kT as N = E / (pi kT) and refuses fewer
-    # than 20 -- *"The continued fraction method requires at least 20 poles"*,
-    # which stops the run after the queue wait.
+    # checked alone.  This is not a fitted rule: it is TranSIESTA's own, read
+    # out of SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred.
     #
-    # MEASURED on a real device run against SIESTA 5.4.2, 2026-09-16: 1.5 eV
-    # -> 18 poles, abort; 1.7 -> 20; 2.0 -> 24; 4.0 -> 49.  1.5 was the
-    # SHIPPED default, so every device run stopped.  Zero now means "let the
-    # engine choose", and its choice scales with the temperature (42 poles at
-    # 300 K) in a way a fixed number cannot -- but a person may still name an
-    # energy, and naming one too small for their own temperature is the case
-    # this refuses, with the arithmetic, before anything is queued.
+    # Our decks declare `%block TS.ChemPot.<name>` with no `contour.eq` inside
+    # it, which selects the CONTINUED-FRACTION branch (`:299`).  There the pole
+    # count comes from the ENERGY at `:319`
+    #
+    #     this%N_poles = int( E_pole / Pi / this%kT )
+    #
+    # and `:324` stops the run when it is under twenty -- *"The continued
+    # fraction method requires at least 20 poles"* -- after the queue wait,
+    # having read the electrodes.
+    #
+    # The branch's own default is `:316`, `E = Pi * 60 * kT * 0.7`, i.e. about
+    # 42 poles, and it scales with the temperature as a fixed number cannot.
+    # That is why 0 (write nothing) is the right default and why this refuses
+    # only a value a person NAMED.  Confirmed against a live run at every
+    # point: 1.5 eV -> 18 and dies, 1.7 -> 20, 2.0 -> 24, 3.0 -> 36, 4.0 -> 49,
+    # nothing written -> 42.  1.5 was this project's shipped default.
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
     if pole and temp:

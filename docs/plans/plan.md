@@ -2531,8 +2531,25 @@ run on SIESTA 5.4.2, its `.TSHS` handed to the device, and the device run.
 | question | answer | how |
 |---|---|---|
 | does the lead need `TS.DE.Save`? | **No.** | the device completed (`Job completed`, exit 0) with no electrode `.TSDE` present and never asked for one. `L/R principal cell is perfect!` — the electrodes were read and validated. With `TS.Elecs.Bulk true` the self-energy is built from the Hamiltonian alone, which was the reasoning; now it is a measurement |
-| is `TS.Contours.Eq.Pole.N` a keyword? | **No.** | the deck asked for 40 poles; the engine used its own 42. Twice — with the line written, and with the energy removed so only the count remained. The count is DERIVED, `N = E / (pi kT)`, and SIESTA echoes it as the block-interior `contour.eq.pole.n` |
+| is `TS.Contours.Eq.Pole.N` a keyword? | **Yes — and it cannot act here.** | it is a real `fdf_get` (`m_ts_chem_pot.F90:113`). Our deck shape takes the continued-fraction branch (`:299`), where the count is overwritten from the ENERGY at `:319` and the branch default is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) can set it. *(I first reported this as "not a keyword" on the strength of the run alone — see below)* |
 | why did the device abort? | **our own default** | `negf_eq_pole_ev = 1.5` eV is 18 poles at 300 K, and TranSIESTA refuses fewer than 20. Measured: 1.5 → abort, 1.7 → 20, 2.0 → 24, 4.0 → 49, nothing written → 42 |
+
+**And then the METHOD was wrong too, which is the lesson worth keeping.** I
+established all of the above by poking the binary — running decks and reading
+what came back — when the source was one `curl` away and the project's own rule
+says *"let me try X and see about code I can open IS the violation"*. The user
+said so, and reading `Src/m_ts_chem_pot.F90` changed two of the three answers:
+the keyword is real (it simply cannot act on this deck shape), and the rule is
+`N = int(E / (pi * kT))` with a `< 20` die at `:324` — which is what the
+validator now cites, rather than the curve I had fitted to five data points.
+The fitted curve happened to be right. It was right by luck, and a fitted curve
+that is right by luck is indistinguishable from one that is not.
+
+A third fact only the source gives: an energy written INSIDE the chempot block
+means something different from the same energy written at the top level —
+`:312` applies a 0.7 factor *"only up to 70% as they become sparse"*. No
+amount of running our own decks would have surfaced that, because our decks
+never write it.
 
 **So the fix shipped the day before was wrong.** § 5p.3n added a
 `CONTOUR_SECTION` emitting `TS.Contours.Eq.Pole.N`, on the strength of a
