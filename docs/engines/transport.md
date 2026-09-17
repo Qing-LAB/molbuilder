@@ -1108,6 +1108,67 @@ validated that geometry was the moment this work put a gate in front of it.
 ---
 
 
+### 2a.15 What `restart` means for a ladder *(defined 2026-09-16)*
+
+`restart` is a property of an **iterative** calculation: *when this run starts,
+does it pick up where a previous one left off, or begin from the atomic
+densities?* The optimization ladder is where the question was designed, and
+there it governs a relaxation that may take days.
+
+A transport ladder is **four single points and one post-processing step**, so
+the question does not mean the same thing on every rung, and on one of them it
+means nothing at all.
+
+| rung | does it iterate? | the state a restart would pick up | is "continue vs clean" worth asking? |
+|---|---|---|---|
+| `seed` | an ordinary SCF | its own previous attempt's `<label>.DM` | barely — its whole output *is* a `.DM`, and re-running it is cheap |
+| `electrode_L` / `electrode_R` | an ordinary SCF on a bulk lead | its own `.DM` | barely — a few metal layers; cheap |
+| `device` | **the NEGF SCF — the expensive one** | its own previous `<label>.TSDE`, **and** the seed's `.DM` as a starting density | **yes. This is the rung the question is for** |
+| `transmission` | **no SCF at all** — `tbtrans` reads a converged Hamiltonian and integrates | nothing | **no. There is no state to continue** |
+
+**So the answer is not "transport has no restart", it is "the device has one."**
+The other three rungs are cheap enough that re-running beats reasoning about
+what is in the directory, and the transmission has no iteration to resume.
+
+**What the two mechanisms are, and they are different.**
+
+* The seed's `.DM` reaches the device through `DM.UseSaveDM`, which the device
+  deck writes. That is a *hand-over between rungs*, not a restart — the arrow
+  runs seed → device and never back.
+* The device's own restart state is `<label>.TSDE`, and **TranSIESTA reads it
+  by presence**: there is no keyword to set, so a deck cannot decline it. The
+  binary's own words, measured 2026-09-16: *"Attempting to read DM, EDM from
+  TSDE file"*, and *"Forcefully requested initialization of the DM, however the
+  DM/TSDE file does not exist!"*
+
+**Is `DM.UseSaveDM` honoured in a TranSIESTA run?** Measured against SIESTA
+5.4.2's own binary: yes. The one path that overrides it is a geometry
+relaxation — *"DM re-use not allowed. Resetting DM at every geometry step /
+DM.UseSaveDM overridden!!"* — and a transport rung is never that: none of the
+five decks carries an `MD` block, by design (§ 4.2 stage 1).
+
+**Why the missing keyword is not the hazard it looks like.** The electrode
+rungs write no restart keyword at all, and SIESTA reads `<label>.DM` whenever
+the file is there whatever the deck omits — so in principle a lead could
+warm-start from stale state without being asked. In practice `prep` opens a
+**fresh `run-<n>`** for every launch, so there is nothing in the directory to
+pick up unless a person explicitly asked for it with `--from`. The exposure is
+a hand-run wrapper inside an already-used attempt, which is outside the ladder.
+
+**What is genuinely open.** The binary carries a message this ladder can
+provoke and does not answer:
+
+> *"Please add `TS.DE.Save T` to the electrode calculation or specify the exact
+> file position using `TSDE-file` in the `TS.Elec` block."*
+
+The electrode rung writes `TS.HS.Save true` and **not** `TS.DE.Save`. With
+`TS.Elecs.Bulk true` — which every deck this ladder writes — the device builds
+the lead self-energy from the Hamiltonian alone and does not need the
+electrode's density matrix, so the message should not fire. That reasoning is
+**not measured against a run**, and it is the kind of thing that costs a queue
+wait when it is wrong. Verifying it, and writing `TS.DE.Save` on the lead if
+the answer is yes, is the open item.
+
 ## 3. How to run it (the CLI)
 
 The road is the composite, through the ordinary `jobset` verbs:
