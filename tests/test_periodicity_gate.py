@@ -1862,8 +1862,11 @@ class TestEveryOpIsChecked:
         # no `indices` to have something to do.  It replaced `electrode`,
         # which centred on a picked group; that route went 2026-09-01 and its
         # row here with it.
+        # 2 x 2 is the smallest slab the builder accepts -- a one-wide
+        # surface cell puts anything on it in contact with its own image.
+        # The size is incidental here; this fixture is about the gate.
         "/api/modify/slab":        {"element": "Au", "plane": "111",
-                                    "m": 1, "n": 1, "layers": 2},
+                                    "m": 2, "n": 2, "layers": 2},
         # Adding one structure into another (user, 2026-09-07).  It takes a
         # SECOND envelope beside the one every op takes, and reads no selection
         # -- the incoming fragment is placed on the world origin.

@@ -944,6 +944,23 @@ def add_slab(
     m, n, n_layers = (int(v) for v in size)
     if n_layers <= 0:
         return struct.copy()
+    # A SLAB IS AT LEAST 2 x 2 SURFACE CELLS.  A one-wide cell puts whatever
+    # sits on the surface in contact with its OWN periodic image at the
+    # nearest-neighbour spacing, so nothing placed on it is isolated: an
+    # adsorbate binds to a row of copies of itself, and a transport bridge
+    # couples to its images across the cell rather than through the junction.
+    # There is no geometry a 1 x 1 slab models correctly, so it is refused
+    # here rather than warned about later.
+    if m < 2 or n < 2:
+        raise ValueError(
+            f"a slab is at least 2 x 2 surface cells; got {m} x {n}.  A "
+            f"one-wide cell puts anything on the surface in contact with its "
+            f"own periodic image at the nearest-neighbour spacing -- an "
+            f"adsorbate would bind to a row of copies of itself, and a "
+            f"transport bridge would couple to its images across the cell "
+            f"instead of through the junction.  Raise m and n to 2 or more "
+            f"(and further until the thing you are placing stops feeling "
+            f"its neighbours).")
     if grow not in ("+z", "-z"):
         raise ValueError(f"grow must be '+z' or '-z'; got {grow!r}")
     if sequence not in ("ABC", "ACB"):

@@ -83,6 +83,38 @@ def _offsets(pos):
     return [np.round(xy.mean(axis=0) - whole, 6) for _, xy in _by_layer(pos)]
 
 
+class TestASlabIsAtLeastTwoByTwo:
+    """A one-wide surface cell models nothing correctly.
+
+    Whatever sits on the surface is then in contact with its OWN periodic
+    image at the nearest-neighbour spacing: an adsorbate binds to a row of
+    copies of itself, and a transport bridge couples to its images across the
+    cell rather than through the junction. There is no calculation a 1 x 1
+    slab is the right cell for, so it is refused at the builder -- which is
+    the one door the browser, the CLI and the library all pass through.
+    """
+
+    @pytest.mark.parametrize("size", [(1, 1, 3), (2, 1, 3), (1, 2, 3)])
+    def test_a_cell_narrower_than_two_is_refused(self, size):
+        with pytest.raises(ValueError, match="at least 2 x 2"):
+            _slab(size=size)
+
+    @pytest.mark.parametrize("size", [(2, 2, 1), (2, 2, 3), (3, 4, 2)])
+    def test_two_by_two_and_wider_build(self, size):
+        """The half that stops a rule refusing every slab from passing above.
+
+        2 x 2 x 1 is the smallest real slab -- one layer of the minimum cell.
+        """
+        out = _metal(_slab(size=size))
+        assert len(out) == size[0] * size[1] * size[2]
+
+    def test_zero_layers_is_still_a_no_op_rather_than_a_refusal(self):
+        """Asking for no slab is not asking for a slab that is too small."""
+        base = _base()
+        out = _slab(struct=base, size=(2, 2, 0))
+        assert list(out.elements) == list(base.elements)
+
+
 class TestTheFactThatDecidedTheDesign:
 
     @pytest.mark.parametrize("size", [(1, 1, 6), (2, 2, 6), (3, 3, 6)])
