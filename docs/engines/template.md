@@ -242,12 +242,31 @@ tolerated quietly.** **618 facts live in two places** (measured 2026-08-20, re-c
 2026-09-15 when the transport kind's 17 rows landed;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).
-`tests/test_catalogue_agreement.py` compares every one of them on every run, so
-the two cannot drift apart without a red test naming the item and the key. It
-has already earned its place several times — it caught 23 stale labels when the
-catalogue landed, and three merged items whose prose still described only
-SIESTA. When the remaining two consumers move onto the catalogue, the metadata
-is deleted and that test file goes with it.
+**Nothing compares the two homes today, and this paragraph said the opposite
+until 2026-09-16.** It read *"`tests/test_catalogue_agreement.py` compares every
+one of them on every run, so the two cannot drift apart without a red test
+naming the item and the key"* — which stopped being true on 2026-09-10, when
+`082ba979` retired `test_every_mirrored_fact_agrees` in a sweep aimed at tests
+that assert where code lives. That file says so in its own docstring; only this
+sentence, the one a reader of the contract acts on, was left standing.
+
+The cost is measured, not hypothetical: on 2026-09-14 a fix to the dataclass
+half of `engine`'s `item_kind` passed three tests while the catalogue half
+stayed wrong, and only a mutation test noticed. A live instance stands today —
+`use_gpu` declares `expands = ["Diag.ELPA.GPU", "gpu4pyscf"]` in the catalogue
+and `("Diag.ELPA.GPU",)` on the field. It is inert because the catalogue wins
+in production; what is gone is the thing that would have told anyone.
+
+What that file still checks is narrower and worth having: category ORDER,
+declared TYPE, orphan items, panel presence. `MIRRORED` and `RENAMED` survive
+in it as the one place the set is NAMED, read now only by the debt count here.
+**Restoring a blanket agreement check would be wrong** and the file argues why:
+`restart` legitimately declares `deck` in the shared row and `produce` on the
+PySCF dataclass, because it expands three keywords on SIESTA and none on
+PySCF — one correct disagreement out of 109 shared items, which no document
+states as an exception. So the honest position is that the duplication is
+measured and **unguarded**, and that is the argument for deleting it rather
+than for writing a test that has to know that exception.
 
 > **The number above is asserted, not typed.** A count stated in prose is a
 > claim about the code, and this one had been wrong by 145 for three days
