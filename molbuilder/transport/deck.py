@@ -57,22 +57,21 @@ emitters both read one view, so a check and the deck it checks cannot
 disagree about a value"*.  Renaming inside the old emitters instead would be
 repatching the old path.
 
-**MIGRATION STATE, stated so nobody reads more into it.**  Three deck shapes
-serve the five rungs (§ 6.1), and only ``seed`` is on the seam.  ``electrode``
-and ``negf`` still render through ``stages.render_stage_deck``, because tabling
-them needs the ``ComposedJunction`` — the electrode models and the region
-partition — and ``spec_for(struct, cfg, stage_token=)`` does not carry it.
-That is a real seam question (what a composite kind hands its renderer) and it
-is the next increment's to answer, not something to smuggle past here: a
-``Block`` that reached for the junction some other way would be the patching
-this migration exists to undo.
+**ALL FIVE RUNGS ARE ON THE SEAM.**  Three deck shapes serve them
+(:data:`SHAPE_OF_RUNG`), and each is a layout in this module.  The seam
+question that held ``electrode`` and ``negf`` back — *what does a composite
+kind hand its renderer, when the deck describes something the citation was
+composed into?* — is answered, and the answer is that it hands a
+**structure**, like every other kind: `prep` picks WHICH structure the rung
+describes (the junction, or the lead taken out of it by its region label) and
+``spec_for(struct, cfg, stage_token=)`` is unchanged.  Nothing reaches for the
+``ComposedJunction`` from inside here.
 
-Which shape a rung gets is a TABLE (:data:`SHAPE_OF_RUNG`).  Choosing the
-LAYOUT for a shape is still a branch in :func:`transport_spec`, and will be
-until all three are tabled — so tabling the next one edits that branch as well
-as adding a layout.  An un-tabled shape is refused BY NAME rather than rendered
-partially; `prep` translates that refusal, so it reaches a person as a message
-and not a traceback.
+Which shape a rung gets is a TABLE.  Choosing the LAYOUT for a shape is a
+dispatch in :func:`transport_spec` over that table's three values.  A rung the
+table does not name is refused BY NAME rather than rendered partially; `prep`
+translates that refusal, so it reaches a person as a message and not a
+traceback.
 
 """
 from __future__ import annotations
@@ -88,9 +87,12 @@ from ..structure import Structure
 #: FIVE rungs (`engines/transport.md` § 6.1) and which text a rung gets is a
 #: fact about the ladder, not a decision to re-derive per call.
 #:
-#: The device and the transmission share one shape deliberately: the same
-#: bytes serve both, and only ``Resources.program`` differs, so the two runs
-#: cannot drift apart in geometry, basis or electrode identity.
+#: The device and the transmission share one SHAPE deliberately -- not the
+#: same bytes, which is a retired claim (`_negf_layout`): each rung resolves
+#: its own config, so a tuned transmission parameter makes the two decks
+#: differ in exactly that value.  What the shared shape buys is that they
+#: cannot drift apart about what the junction IS -- same geometry, same
+#: electrode declarations, same electronic description.
 SHAPE_OF_RUNG = {
     "seed":         "seed",
     "electrode_L":  "electrode",
@@ -154,9 +156,34 @@ def _negf_layout(derived):
                          fixed=derived["spin_fixed"]),
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
+        CONTOUR_SECTION,
         _sc.Block("the NEGF electrode declarations", _emit_negf_block),
         _sl.OUTPUT_SECTION,
     )
+
+
+#: The equilibrium contour's POLE COUNT — a keyword with a value, therefore a
+#: section item and not part of the lifted block beside it.
+#:
+#: The block below writes ``TS.Contours.Eq.Pole``, the pole ENERGY, and by this
+#: module's own boundary rule that belongs here too -- it stays there because
+#: the block has a SECOND caller, ``transiesta.render_script`` (the
+#: `/api/transport/render` validation surface), which composes no sections at
+#: all.  Moving the line would drop the keyword from that deck silently, and
+#: writing it in both places is what ``layout.check_rules`` refuses.  The two
+#: rejoin when that surface retires.
+#:
+#: The COUNT is a different keyword and a ``SiestaConfig`` field, so the
+#: projection in :func:`_legacy_view` never carried it and no layout named it:
+#: the catalogue declared ``TS.Contours.Eq.Pole.N`` with an anchor, a default
+#: of 20 and a range, and **nothing wrote it into any deck** (2026-09-16).
+#: The row's own help says what that cost — *"a device run could abort with
+#: `the continued fraction method requires at least 20 poles` after the queue
+#: wait: the count fell back to a default the deck never stated and could not
+#: raise."*
+CONTOUR_SECTION = _sc.Section(
+    "The equilibrium contour's pole COUNT (its energy is in the block below)",
+    ("negf_eq_pole_n",))
 
 
 def _emit_negf_header(struct, cfg) -> str:
@@ -195,7 +222,6 @@ def _emit_negf_block(struct, cfg) -> str:
     emitter that produces it has been measured against a live 5.4.2 binary;
     a second implementation would have to earn that again for no gain.
     """
-    from ..config.transport import TransportConfig
     from .transiesta import _emit_transiesta_block
 
     # The lifted emitter reads a TransportConfig.  It is projected here, at
@@ -217,8 +243,6 @@ def _legacy_view(cfg):
     template made it unnecessary, and this one goes when the NEGF block is
     tabled.
     """
-    import dataclasses as _dc
-
     from ..config.transport import TransportConfig
 
     known = {f.name for f in _dc.fields(TransportConfig)}
@@ -287,14 +311,14 @@ def _emit_electrode_header(struct, cfg) -> str:
         "#  A single point on the lead region taken OUT of the cited",
         "#  junction by its label -- same atoms, same relaxation, a subset",
         "#  rather than a geometry derived from somewhere else.  That is what",
-        f"#  makes this lead and the device consistent by construction.",
+        "#  makes this lead and the device consistent by construction.",
         "#",
         f"#  Writes {label}.TSHS, which the device deck's TS.Elec reference",
         "#  reads to build this lead's self-energy.",
         "# ================================================================== #",
         "",
         f"SystemLabel            {label}",
-        f"SystemName             Bulk electrode for transport",
+        "SystemName             Bulk electrode for transport",
     ])
 
 
@@ -313,8 +337,16 @@ def _emit_electrode_kgrid_block(struct, cfg) -> str:
     that same point.
     """
     kx, ky, _ = tuple(cfg.kgrid or (1, 1, 1))
-    kz = int(getattr(cfg, "electrode_kz", 40) or 40)
+    # ONE READ, and it is the framework's.  `parameter(..., config=cfg)`
+    # resolves the row by `getattr(config, name)` and the value it resolved is
+    # what the note states -- so reading the field a second time here could
+    # print one number and write another.  It also spelled a literal `40` that
+    # already had three homes (the catalogue row, the `SiestaConfig` default
+    # and `wizard.DEFAULT_ELECTRODE_KZ`), behind a `getattr` default for a
+    # field that certainly exists, with an `or` that silently rewrote a
+    # deliberate 0.
     p = _sc.parameter("electrode_kz", "siesta", config=cfg)
+    kz = int(p.value)
     out = list(p.note())
     out += [
         "%block kgrid_Monkhorst_Pack",
@@ -343,8 +375,10 @@ def _emit_electrode_outputs(struct, cfg) -> str:
         "# than a setting: `TS.HS.Save` writes <SystemLabel>.TSHS, which the",
         "# device deck names in its TS.Elec block.",
         "#",
-        "# (Not `SaveHS`, which writes the .HSX a post-processor reads and",
-        "# this ladder does not consume.)",
+        "# NOT the same keyword as `SaveHS` further down, which writes the",
+        "# .HSX a post-processor reads.  That one is the engine's own output",
+        "# group and is on by default for every SIESTA run; this ladder does",
+        "# not consume it, and it costs disk, not correctness.",
         "TS.HS.Save             true",
         "",
         "# An ordinary diagonalisation: a lead is a periodic bulk crystal,",
@@ -569,16 +603,10 @@ def transport_spec(struct: Structure, cfg, *,
             f"{', '.join(SHAPE_OF_RUNG)} (engines/transport.md 4.2).  "
             f"`prep` names the rung and hands it down as `stage_token`.")
 
-    if shape not in ("seed", "electrode", "negf"):
-        raise ValueError(
-            f"the transport {shape!r} deck is not on the seam yet, so rung "
-            f"{rung!r} still renders through `stages.render_stage_deck` "
-            f"(engines/transport.md 3.6, items 1-4).  Tabling it needs the "
-            f"ComposedJunction -- the electrode models and the region "
-            f"partition -- which `spec_for(struct, cfg, stage_token=)` does "
-            f"not carry; that seam question is the next increment's, not "
-            f"something to work around here.")
-
+    # NO SECOND REFUSAL HERE.  One stood between these two lines, for a shape
+    # "not on the seam yet" -- and `SHAPE_OF_RUNG`'s value set is exactly the
+    # three keys below, so it could not fire.  It was the last text describing
+    # a migration this module has finished.
     derived = _derived_for(struct, cfg)
     layout = {"seed": _seed_layout,
               "electrode": _electrode_layout,

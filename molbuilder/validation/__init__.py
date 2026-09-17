@@ -372,6 +372,27 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     here, naming the reason, rather than silently corrected downstream.
     """
     out: List[Issue] = []
+    # THE BIAS ADVISORY, re-homed 2026-09-16.  It lived in
+    # `TransiestaEngine.preflight`, which is keyed on `TransportConfig` and so
+    # stopped dispatching for every rung that moved onto the seam -- and bias
+    # is the one axis a transport calculation exists to sweep, so a person
+    # could describe 3 V and be told nothing.  Everything else that preflight
+    # carried survives elsewhere: the region partition and the atom order are
+    # `sort`'s refusals and are structural on the ladder path, and the
+    # open-shell check runs from the siesta validator against the run's REAL
+    # spin treatment rather than this one's hardcoded closed shell.  This
+    # advisory was the remainder.
+    bias = getattr(cfg, "bias_voltage_v", None)
+    if bias is not None and abs(float(bias)) > 2.0:
+        out.append(Issue(
+            "warn",
+            f"bias |V| = {abs(float(bias)):.2f} V is above the ~2 V "
+            f"linear-response limit for typical molecular junctions.  "
+            f"TranSIESTA will still converge, but read the result as a "
+            f"single point on a NONLINEAR I-V curve, not as a linearized "
+            f"Landauer conductance (di Ventra, Electrical Transport in "
+            f"Nanoscale Systems, 2008; Reed et al. 2006).",
+            where="config.bias_voltage_v"))
     kgrid = getattr(cfg, "kgrid", None)
     if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
         out.append(Issue(

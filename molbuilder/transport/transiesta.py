@@ -43,7 +43,7 @@ from ..config.transport import (
 )
 from ..issues import Issue
 from ..structure import Structure
-from .engine_base import TransportEngine, register_engine
+from .engine_base import register_engine
 from .results import TransportResults
 
 
@@ -1113,19 +1113,27 @@ class TransiestaEngine:
         actual run parameters from ``results``, which doesn't exist
         yet for TranSIESTA).
 
-        **EVERY NUMBER HERE IS NOW ONE THE DECK CARRIES.**  This reported
-        `contour_n_circle` -- a field written into no deck, so the sentence
-        claimed a contour the calculation never received, which is the one
-        defect in this area with a PUBLICATION consequence
+        **EVERY NUMBER HERE IS ONE THE DECK CARRIES, and every WORD too.**
+        This reported `contour_n_circle` -- a field written into no deck, so
+        the sentence claimed a contour the calculation never received, which
+        is the one defect in this area with a PUBLICATION consequence
         (`plan.md` § 5o).  The pole energy, the transmission window, its
         point count and the broadening are all emitted keywords now, and
         "relative to E_F" is the reference the TBtrans manual states for a
         contour by default.
+
+        The basis and the functional were the same defect in the same
+        sentence, spelled as the literals "DZP" and "PBE" directly under that
+        claim (found 2026-09-16): a junction run with TZP or revPBE -- both
+        ordinary choices the template offers -- produced a Methods paragraph
+        naming the description it did NOT use.  They are read off the config
+        now, like every other value here.
         """
         return (
             f"Transport calculations were performed with TranSIESTA "
             f"[CITE:transiesta_brandbyge_2002] from the SIESTA suite, "
-            f"using a DZP basis, the PBE functional, and a "
+            f"using a {cfg.basis_size} basis, the {cfg.xc_authors} "
+            f"functional, and a "
             f"{cfg.siesta_mesh_cutoff_ry} Ry real-space mesh cutoff.  "
             f"NEGF density integration used a complex contour with "
             f"poles at {cfg.negf_eq_pole_ev:g} eV "
