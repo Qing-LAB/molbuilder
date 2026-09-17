@@ -30,6 +30,16 @@ because `Emin` and `NumE` occur inside other keywords SIESTA does know.
 2026-09-16, one case per deck SHAPE of the ladder that actually runs — which
 had never been checked against a binary at all.
 
+**WHAT IT CANNOT DO, measured the same day.** A string in the binary is not
+proof that SIESTA reads it as an fdf label. `TS.Contours.Eq.Pole.N` is in the
+binary, this file passed it, and a real run proved SIESTA never queries it: the
+deck asked for 40 poles and the engine used its own 42, twice, with the value
+written and with it removed. The pole COUNT is derived from the pole ENERGY and
+the temperature and has no keyword at all. So this stays what its author called
+it -- a smoke alarm, not a judge. The only thing that settles a keyword is
+running the engine, which is `test_transiesta_siesta_smoke_l4.py`'s job and,
+for anything with a numerical consequence, a person's.
+
 **It skips rather than fails when the env is absent**, the way every
 env-dependent test here does: a laptop without `molbuilder-siesta` has
 nothing to measure, and a skipped alarm is honest where a green one is not.

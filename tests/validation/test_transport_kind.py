@@ -116,6 +116,64 @@ class TestANetChargeIsRefusedRatherThanDropped:
                          "config.net_charge")
 
 
+class TestThePoleEnergyIsTiedToTheTemperature:
+    """The equilibrium contour's pole COUNT is derived, and 20 is a floor.
+
+    TranSIESTA computes N = E / (pi kT) from the pole energy and refuses fewer
+    than twenty, stopping with *"The continued fraction method requires at
+    least 20 poles"* -- after the queue wait, having read the electrodes.
+
+    MEASURED against SIESTA 5.4.2 on a real device run, 2026-09-16: 1.5 eV
+    gives 18 poles and aborts; 1.7 gives 20; 2.0 gives 24; 4.0 gives 49; with
+    nothing written the engine picks 42. **1.5 was the shipped default**, so
+    every device run stopped.
+
+    This is the one rule in this file that is a RELATION rather than a
+    constant, which is why the second case below exists: a check hard-coded to
+    1.63 eV would pass at 300 K and miss every other temperature.
+    """
+
+    @pytest.mark.parametrize("pole,temp,poles", [(1.5, 300.0, 18),
+                                                 (1.7, 1000.0, 6)])
+    def test_too_few_poles_is_refused_with_the_arithmetic(
+            self, junction, pole, temp, poles):
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
+                           negf_eq_pole_ev=pole, electronic_temperature=temp)
+        found = _find(validate(junction, cfg, calculation="transport"),
+                      "config.negf_eq_pole_ev", "error")
+        assert found, f"{pole} eV at {temp} K is {poles} poles, under 20"
+        assert f"{poles} poles" in found[0].message, (
+            "the refusal must show the arithmetic -- a person told only "
+            "'too small' cannot tell what to raise it to")
+
+    @pytest.mark.parametrize("pole,temp", [(1.7, 300.0), (2.0, 300.0),
+                                           (6.0, 1000.0)])
+    def test_an_adequate_energy_passes(self, junction, pole, temp):
+        """The half without which refusing everything would pass.
+
+        1.7 eV at 300 K is the measured boundary -- exactly 20 poles -- so it
+        also pins that the check is not off by one against the engine.
+        """
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
+                           negf_eq_pole_ev=pole, electronic_temperature=temp)
+        assert not _find(validate(junction, cfg, calculation="transport"),
+                         "config.negf_eq_pole_ev", "error")
+
+    def test_zero_means_the_engine_chooses_and_is_never_refused(self,
+                                                                junction):
+        """The default, and the escape from the relation.
+
+        The engine's own choice scales with the temperature; a fixed number
+        cannot. A check that refused 0 would refuse every shipped default.
+        """
+        for temp in (300.0, 1000.0):
+            cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
+                               negf_eq_pole_ev=0.0,
+                               electronic_temperature=temp)
+            assert not _find(validate(junction, cfg, calculation="transport"),
+                             "config.negf_eq_pole_ev", "error"), temp
+
+
 class TestTheLinearResponseAdvisory:
     """|V| > 2 V is outside the Landauer regime — a warn, never a refusal.
 

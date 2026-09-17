@@ -238,7 +238,7 @@ than off the catalogue: the legacy form builder that Spectra and Transport use,
 and the code that decides which card a validator finding lands on.
 
 **That duplication is the debt, and it is measured and guarded rather than
-tolerated quietly.** **618 facts live in two places** (measured 2026-08-20, re-counted
+tolerated quietly.** **613 facts live in two places** (measured 2026-08-20, re-counted
 2026-09-15 when the transport kind's 17 rows landed;
 307 when this was written, and the growth is the point — the debt compounds
 with every parameter added).

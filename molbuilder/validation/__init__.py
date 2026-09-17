@@ -49,6 +49,7 @@ exactly as it imported from the flat module.
 
 from __future__ import annotations
 
+import math
 import sys
 from typing import Callable, Dict, List, Optional, Type
 
@@ -437,6 +438,38 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"calculation's template, or relax the charged species as an "
             f"OPTIMIZATION, where the keyword is honoured.",
             where="config.net_charge"))
+    # THE POLE ENERGY AND THE TEMPERATURE ARE ONE QUESTION, so neither can be
+    # checked alone.  TranSIESTA derives the equilibrium contour's pole COUNT
+    # from `TS.Contours.Eq.Pole` and kT as N = E / (pi kT) and refuses fewer
+    # than 20 -- *"The continued fraction method requires at least 20 poles"*,
+    # which stops the run after the queue wait.
+    #
+    # MEASURED on a real device run against SIESTA 5.4.2, 2026-09-16: 1.5 eV
+    # -> 18 poles, abort; 1.7 -> 20; 2.0 -> 24; 4.0 -> 49.  1.5 was the
+    # SHIPPED default, so every device run stopped.  Zero now means "let the
+    # engine choose", and its choice scales with the temperature (42 poles at
+    # 300 K) in a way a fixed number cannot -- but a person may still name an
+    # energy, and naming one too small for their own temperature is the case
+    # this refuses, with the arithmetic, before anything is queued.
+    pole = getattr(cfg, "negf_eq_pole_ev", None)
+    temp = getattr(cfg, "electronic_temperature", None)
+    if pole and temp:
+        kT = 8.617333262e-5 * float(temp)          # eV
+        n = int(float(pole) / (math.pi * kT))
+        if n < 20:
+            need = 20.0 * math.pi * kT
+            out.append(Issue(
+                "error",
+                f"the equilibrium contour's pole energy is "
+                f"{float(pole):g} eV, which at {float(temp):g} K gives {n} "
+                f"poles -- TranSIESTA needs at least 20 and stops with "
+                f"\"the continued fraction method requires at least 20 "
+                f"poles\", after the queue wait.  The count is DERIVED, "
+                f"N = E / (pi kT), so it moves with the temperature: at "
+                f"{float(temp):g} K you need at least {need:.2f} eV.  Raise "
+                f"it, or set it to 0 and let the engine choose an energy "
+                f"that scales with the temperature by itself.",
+                where="config.negf_eq_pole_ev"))
     kgrid = getattr(cfg, "kgrid", None)
     if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
         out.append(Issue(

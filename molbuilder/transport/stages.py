@@ -335,7 +335,7 @@ def config_for(task, composed: ComposedJunction, *,
     # accepted beside it only while that class survives.
     #
     # An override names a CATALOGUE row now -- `electrode_kz`,
-    # `transmission_emin_ev`, `negf_eq_pole_n` -- because that is what the
+    # `transmission_emin_ev`, `negf_eq_pole_ev` -- because that is what the
     # template declares and what `resolve` resolves.  Checking against
     # `TransportConfig` alone refused a person's own lead k-density by
     # telling them it "is not a transport parameter", which it plainly is

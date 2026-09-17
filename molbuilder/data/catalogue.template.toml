@@ -2154,39 +2154,21 @@ anchor = "TS.Contours.Eq.Pole"
 engine_key = "TS.Contours.Eq.Pole"
 manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
 type = "float"
-value = 1.5
-default = 1.5
+value = 0.0
+default = 0.0
 unit = "eV"
-range = [0.5, 10.0]
+range = [0.0, 10.0]
 group = "stage"
 label = "Equilibrium pole energy"
 tier = "advanced"
 help = """
-How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.
-"""
+How far up the imaginary axis the equilibrium contour's poles sit.  0 means LET TRANSIESTA CHOOSE, which is the default and is usually right.
 
-[item.negf_eq_pole_n]
-stages = ["device"]
-kind = "engine"
-category = ["convergence"]
-engines = ["siesta"]
-calculations = ["transport"]
-anchor = "TS.Contours.Eq.Pole.N"
-engine_key = "TS.Contours.Eq.Pole.N"
-manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
-type = "int"
-value = 20
-default = 20
-range = [10, 80]
-group = "stage"
-label = "Equilibrium contour poles"
-tier = "advanced"
-help = """
-How MANY poles the equilibrium contour uses -- distinct from the pole ENERGY beside it, which says how far up the imaginary axis they sit.
+It is not independent of the electronic temperature.  TranSIESTA derives the pole COUNT from this energy as N = E / (pi * kT) and refuses fewer than 20 -- "The continued fraction method requires at least 20 poles" -- so at 300 K anything below ~1.63 eV stops the run, after the queue wait.
 
-Both are needed and only the energy was ever written, which is why a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait: the count fell back to a default the deck never stated and could not raise.
+MEASURED against SIESTA 5.4.2 on 2026-09-16, on a real device run: 1.5 eV gives 18 poles and aborts; 1.7 gives 20; 2.0 gives 24; 4.0 gives 49; and with nothing written the engine picks 42.  1.5 was this row's shipped default, so every device run stopped.  Left at 0 the engine's choice scales with the temperature and stays valid, which a fixed number cannot.
 
-More poles cost SCF time and buy a better-integrated density matrix; the engine refuses fewer than its method needs, so this is a floor to respect rather than a knob to minimise.
+More poles cost SCF time and buy a better-integrated density matrix.
 """
 
 [item.bias_voltage_v]

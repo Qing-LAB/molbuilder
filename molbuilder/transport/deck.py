@@ -156,34 +156,11 @@ def _negf_layout(derived):
                          fixed=derived["spin_fixed"]),
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
-        CONTOUR_SECTION,
         _sc.Block("the NEGF electrode declarations", _emit_negf_block),
         _sl.OUTPUT_SECTION,
     )
 
 
-#: The equilibrium contour's POLE COUNT — a keyword with a value, therefore a
-#: section item and not part of the lifted block beside it.
-#:
-#: The block below writes ``TS.Contours.Eq.Pole``, the pole ENERGY, and by this
-#: module's own boundary rule that belongs here too -- it stays there because
-#: the block has a SECOND caller, ``transiesta.render_script`` (the
-#: `/api/transport/render` validation surface), which composes no sections at
-#: all.  Moving the line would drop the keyword from that deck silently, and
-#: writing it in both places is what ``layout.check_rules`` refuses.  The two
-#: rejoin when that surface retires.
-#:
-#: The COUNT is a different keyword and a ``SiestaConfig`` field, so the
-#: projection in :func:`_legacy_view` never carried it and no layout named it:
-#: the catalogue declared ``TS.Contours.Eq.Pole.N`` with an anchor, a default
-#: of 20 and a range, and **nothing wrote it into any deck** (2026-09-16).
-#: The row's own help says what that cost — *"a device run could abort with
-#: `the continued fraction method requires at least 20 poles` after the queue
-#: wait: the count fell back to a default the deck never stated and could not
-#: raise."*
-CONTOUR_SECTION = _sc.Section(
-    "The equilibrium contour's pole COUNT (its energy is in the block below)",
-    ("negf_eq_pole_n",))
 
 
 def _emit_negf_header(struct, cfg) -> str:

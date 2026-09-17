@@ -2038,7 +2038,7 @@ the manager's own door:
 | keyword | in `siesta` | in `tbtrans` | row |
 |---|---|---|---|
 | `TS.Voltage` | 4 | 2 | `bias_voltage_v` — Class C, the **device**'s, binding its own transmission point |
-| `TS.Contours.Eq.Pole.N` | 1 | 1 | `negf_eq_pole_n` — the **count**, distinct from the pole ENERGY beside it. Only the energy was ever written, which is how a device run could abort with *"the continued fraction method requires at least 20 poles"* after the queue wait |
+| ~~`TS.Contours.Eq.Pole.N`~~ | — | — | **Withdrawn 2026-09-16: there is no such keyword.** SIESTA has the string and never queries it; the pole count is derived as `N = E / (pi kT)`. The abort came from `negf_eq_pole_ev = 1.5` eV shipping as the default — 18 poles at 300 K. See `engines/transport.md` § 3.6 |
 | `TS.HS.Save` | 1 | 0 | `ts_hs_save` — the **electrodes**', and marked `role`: a lead that omits it converges happily and produces nothing the device can attach to, so nobody is offered a switch |
 
 **TR3 — smaller than this plan predicted, and the difference is the finding.**
@@ -2338,7 +2338,6 @@ declaration, `engines/template.md` § 6.4) and puts the value there:
 |---|---|
 | `transmission_emin_ev` | the **transmission** |
 | `electrode_kz` | **both** electrodes — a junction has two leads, and routing to one would leave the self-energies built on different Fermi-level resolutions |
-| `negf_eq_pole_n` | the device |
 
 **Verified:** three tests, all mutation-proven — revert the routing and all
 three fail, reproducing the original defect. One exists to make this a
@@ -2470,7 +2469,7 @@ acting, and two agent verdicts were wrong in the direction that matters.**
 | `_prep_transport` opened **no attempt** | it ended at `prep_jobset`; the CLI opened one itself. `web/blueprints/build.py:1656` calls `prep_calculation` directly, so the browser's Prep button reported success and handed back a folder `submit._launch_dir` refuses — *naming the command that had just run*. The shared arm's own 27-line note calls this out: *"A verb that is only finished by one of its callers is not a verb."* It reintroduced exactly that | one `_open_attempts(js, base, stage, containers=…)` that **both arms** call; the scan's per-point ladders are DATA on the call |
 | the resolved **resources were thrown away** | `_resolve_transport` returned `element.values` and the arm rebuilt the allocation by hand. `resolve` folds two riders onto `element.resources` — `continue_retries` and `use_gpu`. Measured: `SiestaConfig` defaults them `1` / `False`, `Resources` defaults both `None`, so **every transport wrapper rendered with no warm-retry loop** and `use_gpu` fell back to grepping the deck for `Diag.ELPA.GPU` — the re-derivation `gpu.md` G7 deleted. `resolve.py`'s A-5 finding, on a third road | return the element; use `element.resources` and `element.render_config()`; fold the allocation **before** the resolve, as the shared arm does |
 | wrappers were written **past** the remote-activation guard | `prep run device --target sol` against a record stating no activation wrote one wrapper per bias point carrying *this* machine's activation, then refused. The refusal's whole premise is that those files must not exist | the guard moved above the write |
-| `TS.Contours.Eq.Pole.N` **reached no deck** | a catalogue row with an anchor, an `engine_key`, a default of 20 and a range — and no section or block named it. Its own help says the cost: *"a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait."* Rendered a device deck and confirmed absent | a `CONTOUR_SECTION` naming the row — the framework's own mechanism, not a literal. Re-rendered: `TS.Contours.Eq.Pole.N 20` |
+| `TS.Contours.Eq.Pole.N` **reached no deck** | a catalogue row with an anchor and a default that no section named. *(The fix recorded here — a `CONTOUR_SECTION` naming the row — was **wrong**, and a real run disproved it the next day: there is no such keyword. See § 5p.3o)* | superseded |
 | the high-bias advisory **stopped firing** | `TransiestaEngine.preflight` is registered in `_ENGINE_VALIDATORS` keyed on `TransportConfig`; every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Of what it carried, the region partition and atom order are `sort`'s own refusals and structural here, and open-shell runs from the siesta validator against the run's REAL spin treatment. The remainder was the |V| > 2 V advisory — and bias is the one axis transport exists to sweep | re-homed into `_validate_transport_kind`, beside the kz≠1 refusal |
 | the Methods paragraph named a basis nobody ran | under a docstring reading **"EVERY NUMBER HERE IS NOW ONE THE DECK CARRIES"**, the next line wrote `"a DZP basis, the PBE functional"` as literals. TZP/revPBE produced a paragraph claiming DZP/PBE — the same class the docstring calls *"the one defect with a PUBLICATION consequence"* | read off the config; verified both ways |
 | `_sh` meant two things in one function | `_sh = shape_of(...)`, then `import shutil as _sh` **rebinds that function-local for the whole body**, so a later iteration hands the shutil module to `trial_work_dir` as a shape | `from shutil import copy2 as _copy2` |
@@ -2518,6 +2517,47 @@ now refuse — and the module docstrings of `transport/stages.py`,
 | `stages.render_stage_deck` (52 lines) and `config_for` (140) are production-dead | `config_for` still has three tests. Deleting it retires them; that is a call about what those tests are for |
 | ~20 doc counts have drifted | "13 keywords / 45 items", "32 fields", "49 siesta items", "the 21 keywords". Historical measurements stated in the present tense. `test_doc_claims.py` pins some and not these |
 | `wrap_into_cell` declares `role = ["transport"]` and nothing answers it | inert today because `_emit_geometry` never wraps. A decorative declaration |
+
+### 5p.3o MEASURED ON THE ENGINE — the pole keyword is not a keyword, and our default aborted every device run *(2026-09-16)*
+
+Asked to verify one thing (does the electrode rung need `TS.DE.Save`?), which
+needed a real TranSIESTA run. The run answered that question and two others
+nobody had asked.
+
+**The method, because it is the point.** A 12-atom Au wire junction, decks
+rendered through molbuilder's own emitters — not hand-written — then the lead
+run on SIESTA 5.4.2, its `.TSHS` handed to the device, and the device run.
+
+| question | answer | how |
+|---|---|---|
+| does the lead need `TS.DE.Save`? | **No.** | the device completed (`Job completed`, exit 0) with no electrode `.TSDE` present and never asked for one. `L/R principal cell is perfect!` — the electrodes were read and validated. With `TS.Elecs.Bulk true` the self-energy is built from the Hamiltonian alone, which was the reasoning; now it is a measurement |
+| is `TS.Contours.Eq.Pole.N` a keyword? | **No.** | the deck asked for 40 poles; the engine used its own 42. Twice — with the line written, and with the energy removed so only the count remained. The count is DERIVED, `N = E / (pi kT)`, and SIESTA echoes it as the block-interior `contour.eq.pole.n` |
+| why did the device abort? | **our own default** | `negf_eq_pole_ev = 1.5` eV is 18 poles at 300 K, and TranSIESTA refuses fewer than 20. Measured: 1.5 → abort, 1.7 → 20, 2.0 → 24, 4.0 → 49, nothing written → 42 |
+
+**So the fix shipped the day before was wrong.** § 5p.3n added a
+`CONTOUR_SECTION` emitting `TS.Contours.Eq.Pole.N`, on the strength of a
+catalogue row whose help text asserted the diagnosis and a binary-strings check
+that passed the label. Both were wrong in the same direction, and neither could
+have been right: **a string in a binary is not proof that fdf queries it.**
+That is now written into the guard's own docstring, because the guard passed
+this keyword and will pass the next one of its kind.
+
+The real defect was one line away from the one I fixed, and worse: a shipped
+default that stops every device run after the queue wait, having read the
+electrodes.
+
+**What landed.** `negf_eq_pole_n` deleted — the field, the catalogue row and
+the section. `negf_eq_pole_ev` defaults to **0 = let the engine choose**, the
+established "0 means the engine's formula" pattern this very block already uses
+for `TS.Contours.nEq.Eta`, and the emitter writes the line only when a person
+names a value. The engine's choice scales with the temperature; a fixed number
+cannot, which is the argument against simply raising 1.5 to 2.0.
+
+And because the threshold is a RELATION, `_validate_transport_kind` refuses a
+stated energy that gives fewer than 20 poles **at the run's own temperature**,
+with the arithmetic in the message — 1.7 eV passes at 300 K and is refused at
+1000 K. A deck rendered with the new defaults now runs to completion: 42 poles,
+`Job completed`.
 
 ### 5p.4 The steps
 

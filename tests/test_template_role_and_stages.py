@@ -117,9 +117,8 @@ class TestStages:
                               "device", "transmission")}
         assert owned["electrode_L"] == owned["electrode_R"] == {
             "electrode_kz", "ts_hs_save"}
-        assert owned["device"] == {"negf_eq_pole_ev", "negf_eq_pole_n",
-                                   "negf_neq_eta_ev", "elecs_bulk",
-                                   "bias_voltage_v"}
+        assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
+                                   "elecs_bulk", "bias_voltage_v"}
         assert owned["seed"] == set(), (
             "the seed owns nothing of its own -- it only obeys")
         assert "transmission_emin_ev" in owned["transmission"]

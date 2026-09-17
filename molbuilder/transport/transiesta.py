@@ -688,10 +688,11 @@ def _emit_transiesta_block(struct: Structure,
         "# it to the engine\" for the two whose default is a FORMULA rather",
         "# than a number, and nothing is emitted for those",
         "# (`engines/transport.md` 3.3 -- the template shape).",
-        f"TS.Contours.Eq.Pole    {cfg.negf_eq_pole_ev:.4f} eV",
         f"TS.Elecs.Bulk          "
         f"{'true' if cfg.elecs_bulk else 'false'}",
-    ] + ([f"TS.Contours.nEq.Eta    {cfg.negf_neq_eta_ev:.6f} eV"]
+    ] + ([f"TS.Contours.Eq.Pole    {cfg.negf_eq_pole_ev:.4f} eV"]
+         if cfg.negf_eq_pole_ev > 0 else []) + (
+        [f"TS.Contours.nEq.Eta    {cfg.negf_neq_eta_ev:.6f} eV"]
          if cfg.negf_neq_eta_ev > 0 else []) + [
         "",
         "# TBtrans transmission post-processing.",
@@ -1135,9 +1136,11 @@ class TransiestaEngine:
             f"using a {cfg.basis_size} basis, the {cfg.xc_authors} "
             f"functional, and a "
             f"{cfg.siesta_mesh_cutoff_ry} Ry real-space mesh cutoff.  "
-            f"NEGF density integration used a complex contour with "
-            f"poles at {cfg.negf_eq_pole_ev:g} eV "
-            f"(Brandbyge et al. 2002 § IV).  "
+            f"NEGF density integration used a complex contour "
+            + (f"with poles at {cfg.negf_eq_pole_ev:g} eV "
+               if cfg.negf_eq_pole_ev > 0 else
+               "with the engine's own pole placement ")
+            + f"(Brandbyge et al. 2002 § IV).  "
             f"Transmission was evaluated on "
             f"{cfg.transmission_n_points} energies from "
             f"{cfg.transmission_emin_ev:g} to "

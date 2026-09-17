@@ -1943,27 +1943,16 @@ A grid converged for a total ENERGY is routinely far too coarse for a transmissi
         "help":        """Write the transmission between every pair of electrodes, not only the first pair.  For a two-terminal junction the two are the same.""",
     })
 
-    negf_eq_pole_ev: float = field(default=1.5, metadata={
+    negf_eq_pole_ev: float = field(default=0.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
         "label":       "Equilibrium pole energy",
         "engine_key":  "TS.Contours.Eq.Pole",
         "unit":        "eV",
-        "range":       (0.5, 10.0),
+        "range":       (0.0, 10.0),
         "tier":        "advanced",
-        "help":        """How far up the imaginary axis the equilibrium contour's poles are placed when the non-equilibrium density matrix is integrated.""",
-    })
-
-    negf_eq_pole_n: int = field(default=20, metadata={
-        "category": ("convergence", ),
-        "item_kind":  "engine",
-        "workflow_group": "stage",
-        "label":       "Equilibrium contour poles",
-        "engine_key":  "TS.Contours.Eq.Pole.N",
-        "range":       (10, 80),
-        "tier":        "advanced",
-        "help":        """How MANY poles the equilibrium contour uses -- distinct from the pole ENERGY beside it, which says how far up the imaginary axis they sit.  Only the energy was ever written, which is why a device run could abort with `the continued fraction method requires at least 20 poles` after the queue wait.""",
+        "help":        """How far up the imaginary axis the equilibrium contour's poles sit.  **0 means let TranSIESTA choose**, which is the default and is usually right.\n\nIt is not independent of the electronic temperature.  TranSIESTA derives the pole COUNT from this energy as N = E / (pi * kT) and REFUSES fewer than 20 -- "The continued fraction method requires at least 20 poles" -- so at 300 K anything below ~1.63 eV aborts the run after the queue wait.  Measured against SIESTA 5.4.2 on 2026-09-16: 1.5 eV gives 18 poles and stops; 1.7 gives 20; 2.0 gives 24; 4.0 gives 49.  Left at 0 the engine picks an energy that scales with the temperature and stays valid (42 poles at 300 K), which a fixed number cannot.\n\nMore poles cost SCF time and buy a better-integrated density matrix.""",
     })
 
     bias_voltage_v: float = field(default=0.0, metadata={
