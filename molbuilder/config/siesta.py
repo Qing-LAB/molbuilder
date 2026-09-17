@@ -1834,13 +1834,13 @@ The window is what you can plot afterwards: a feature outside it does not exist 
 A narrow resonance that falls between two points is invisible, so this is the knob a transmission convergence study steps.""",
     })
 
-    tbt_k_grid: Tuple[int, int, int] = field(default=(0, 0, 0), metadata={
+    tbt_k_grid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
         "category": ("accuracy", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
         "label":       "Transverse k-grid for T(E)",
         "engine_key":  "TBT.k",
-        "range":       (0, 64),
+        "range":       (1, 64),
         "tier":        "basic",
         "help":        """Monkhorst-Pack grid tbtrans integrates T(E) over.  `0 0 0` inherits the SCF's own grid.
 

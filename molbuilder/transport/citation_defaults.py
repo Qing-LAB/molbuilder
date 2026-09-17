@@ -87,6 +87,20 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
             # downstream by each consumer.
             kx, ky, _kz = p.kgrid
             kw["kgrid"] = (int(kx), int(ky), 1)
+            # AND THE TRANSMISSION GRID, to the same transverse pair.
+            #
+            # tbtrans would fall back to the SCF's grid on its own if the deck
+            # said nothing (`m_tbt_kpoint.F90:800-812`), and that fallback used
+            # to be spelled `0 0 0` in the form -- a sentinel sitting in a
+            # field labelled "k-grid", where every value is a scientific fact
+            # and `0 0 0` is not one of them.  The grid is KNOWN at this
+            # moment, so it is written down instead of implied, and the deck
+            # states what it integrates over.
+            #
+            # It is a starting point, not an answer: a grid converged for a
+            # total energy is routinely too coarse for a transmission, and the
+            # row's help says how to converge it.
+            kw["tbt_k_grid"] = (int(kx), int(ky), 1)
 
     # `mesh_cutoff` is declared as a float and an .fdf usually states an
     # integer; the type is the catalogue's to decide, not the deck's.

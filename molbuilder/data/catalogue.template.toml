@@ -2223,18 +2223,20 @@ anchor = "TBT.k"
 engine_key = "TBT.k"
 manual = "SIESTA 5.4.2 TBtrans §'k-point sampling'"
 type = "int3"
-value = [0, 0, 0]
-default = [0, 0, 0]
-range = [0, 64]
+value = [1, 1, 1]
+default = [1, 1, 1]
+range = [1, 64]
 group = "stage"
 label = "Transverse k-grid for T(E)"
 tier = "basic"
 help = """
-The Monkhorst-Pack grid of transverse k-points tbtrans integrates T(E) over.  The third number is the transport direction and stays 1 -- that axis is the open boundary and is never Brillouin-zone sampled.
+How densely the transverse Brillouin zone is sampled when tbtrans evaluates T(E).  Two counts you choose, and a third that is always 1.
 
-`0 0 0` means "use the SCF's own grid", which is where to start.
+The third number is the transport direction.  It is 1 because that axis is the open boundary, handled by the Green's function rather than by a Brillouin-zone sum -- the same reason the SCF grid's third component is 1.
 
-Then converge it, because T(E) is an integral over the transverse zone and its features sharpen with k-density: raise the two transverse counts together, roughly doubling the density each time, until T(E_F) stops moving.  It normally settles denser than the grid you converged the total energy on, so expect to leave `0 0 0` behind.
+`jobset init` sets the two transverse counts to whatever the cited run used, so this starts out matching the SCF and the deck states it explicitly.  That is a starting point, not an answer: T(E) is an integral over the transverse zone and its features sharpen with k-density, so a grid converged for a total energy is routinely too coarse for a transmission.
+
+Converge it before you trust the shape of the curve -- raise both counts together, roughly doubling the density each time, until T(E_F) stops moving.  It normally settles denser than the SCF's.
 """
 
 [item.tbt_spin]

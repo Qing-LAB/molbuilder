@@ -116,6 +116,49 @@ class TestANetChargeIsRefusedRatherThanDropped:
                          "config.net_charge")
 
 
+class TestTheTransmissionGridIsAGrid:
+    """Every value in this field is a real k-grid -- there is no sentinel.
+
+    It shipped `0 0 0` meaning "inherit the SCF's grid" until 2026-09-16: a
+    triple of zeros in a field labelled k-grid, where every value is a
+    scientific fact and that is not one of them. The range admitted a zero per
+    AXIS and the emitter gated on `any(...)`, so `0 4 1` and `4 4 0` were
+    written into the deck verbatim -- asking tbtrans for zero k-points along
+    an axis.
+
+    `jobset init` fills it from the cited run's transverse pair and the deck
+    always states it, so what is left to refuse is a grid that is not one.
+    """
+
+    @pytest.mark.parametrize("grid", [(0, 4, 1), (4, 0, 1)])
+    def test_fewer_than_one_k_point_on_a_transverse_axis_is_refused(
+            self, junction, grid):
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
+        found = _find(validate(junction, cfg, calculation="transport"),
+                      "config.tbt_k_grid", "error")
+        assert found and "zero" in found[0].message
+
+    @pytest.mark.parametrize("grid", [(4, 4, 0), (4, 4, 2)])
+    def test_the_transport_component_must_be_one(self, junction, grid):
+        """Same physics as the SCF grid's kz: that axis is not sampled."""
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
+        found = _find(validate(junction, cfg, calculation="transport"),
+                      "config.tbt_k_grid", "error")
+        assert found and "TRANSPORT" in found[0].message
+
+    @pytest.mark.parametrize("grid", [(1, 1, 1), (4, 4, 1), (12, 12, 1)])
+    def test_a_real_grid_passes(self, junction, grid):
+        """Without this a rule refusing every grid would satisfy the two above.
+
+        `1 1 1` is the shipped default -- Gamma-only transverse, right for a
+        finite molecule between leads -- so refusing it would refuse every
+        untouched description.
+        """
+        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
+        assert not _find(validate(junction, cfg, calculation="transport"),
+                         "config.tbt_k_grid", "error")
+
+
 class TestThePoleEnergyIsTiedToTheTemperature:
     """The equilibrium contour's pole COUNT is derived, and 20 is a floor.
 

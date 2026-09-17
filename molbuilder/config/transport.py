@@ -381,7 +381,7 @@ class TransportConfig:
     # ================= Transmission k-sampling =================
 
     tbt_k_grid: Tuple[int, int, int] = field(
-        default=(0, 0, 0), metadata={
+        default=(1, 1, 1), metadata={
             "section": "Transmission k-sampling",
             "workflow_group": "stage",
             "label":   "Transverse k-grid for T(E)  (0 0 0 = inherit the SCF's)",

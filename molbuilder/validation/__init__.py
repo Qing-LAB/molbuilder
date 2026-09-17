@@ -477,6 +477,40 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
                 f"it, or set it to 0 and let the engine choose an energy "
                 f"that scales with the temperature by itself.",
                 where="config.negf_eq_pole_ev"))
+    # THE TRANSMISSION GRID IS A GRID, not a mode.  It carried `0 0 0` as a
+    # sentinel for "inherit the SCF's" until 2026-09-16 -- a triple of zeros
+    # sitting in a field labelled k-grid, where every value is a scientific
+    # fact and that is not one of them.  Worse, the range admitted a zero per
+    # AXIS, and the emitter gated on `any(...)`, so `0 4 1` and `4 4 0` were
+    # written into the deck verbatim, asking tbtrans for zero k-points along
+    # an axis.
+    #
+    # `jobset init` now fills it from the cited run's own transverse pair and
+    # the deck always states it, so the only thing left to refuse is the
+    # transport component: that axis is the open boundary, handled by the
+    # Green's function rather than by a Brillouin-zone sum, which is the same
+    # rule the SCF grid's kz obeys below.
+    tbtk = getattr(cfg, "tbt_k_grid", None)
+    if tbtk is not None and len(tuple(tbtk)) == 3:
+        kx, ky, kz = (int(v) for v in tbtk)
+        if kx < 1 or ky < 1:
+            out.append(Issue(
+                "error",
+                f"the tbtrans k-grid is {(kx, ky, kz)}, which asks for zero "
+                f"or fewer k-points along a transverse axis.  Both "
+                f"transverse counts are at least 1; 1 1 1 samples the zone "
+                f"at Gamma only, which is right for a finite molecule "
+                f"between leads and too coarse for a periodic electrode.",
+                where="config.tbt_k_grid"))
+        elif kz != 1:
+            out.append(Issue(
+                "error",
+                f"the tbtrans k-grid is {(kx, ky, kz)}, but the third "
+                f"component is the TRANSPORT direction and must be 1: that "
+                f"axis is the open boundary, handled by the Green's function "
+                f"rather than by a Brillouin-zone sum.  The transverse pair "
+                f"({kx}, {ky}) is yours to converge.",
+                where="config.tbt_k_grid"))
     kgrid = getattr(cfg, "kgrid", None)
     if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
         out.append(Issue(

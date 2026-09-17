@@ -740,9 +740,14 @@ def _emit_transiesta_block(struct: Structure,
         "# transmission and NOTHING else until 2026-09-15 -- which is why",
         "# the Results transmission inspector had no DOS or eigenchannel",
         "# data to read even in principle.",
-    ] + ([f"TBT.k                  "
-          f"{cfg.tbt_k_grid[0]} {cfg.tbt_k_grid[1]} {cfg.tbt_k_grid[2]}"]
-         if any(cfg.tbt_k_grid) else []) + (
+        # ALWAYS WRITTEN.  This was emitted only `if any(cfg.tbt_k_grid)`,
+        # so an all-zero triple meant "inherit" and a PARTIAL zero -- which
+        # the range allowed -- went into the deck verbatim, asking tbtrans
+        # for zero k-points along an axis.  The grid is a fact the deck
+        # records, like every other number here.
+        f"TBT.k                  "
+        f"{cfg.tbt_k_grid[0]} {cfg.tbt_k_grid[1]} {cfg.tbt_k_grid[2]}",
+    ] + (
         [f"TBT.Spin               {cfg.tbt_spin}"]
         if cfg.tbt_spin else []) + [
         f"TBT.Elecs.Eta          {cfg.tbt_elecs_eta_ev:.6f} eV",
