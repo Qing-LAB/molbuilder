@@ -92,6 +92,7 @@ Real-space integration grid (Ry).  Sets the spacing of the 3D mesh SIESTA uses f
 Per-tier (Ry):
   150      screening (sanity-check only)
   200-250  loose preopt
+  300      general-purpose -- SIESTA's own default, and what ships here
   350      publishable -- forces stable to < 0.01 eV/Ang on organic + Au
   500+     tight / vibrational -- egg-box noise below 0.001 eV/Ang
            (600 for first-row elements)
@@ -142,9 +143,9 @@ label = "XC parameterisation"
 help = """
 Which published parameterisation is used inside the functional family you picked -- the family sets the form, this sets whose numbers go into it.
 
-  - GGA: PBE (default, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted)
+  - GGA: PBE (ships here, all-purpose), PBEsol (better lattice constants for solids), revPBE / RPBE (better thermochemistry, slightly different binding), BLYP (rare but accepted)
   - VDW: DRSLL (vdW-DF1) / LMKLL (vdW-DF2-C09)
-  - LDA: CA (Ceperley-Alder, default), PZ, PW
+  - LDA: CA (Ceperley-Alder, the usual LDA choice), PZ (SIESTA's own default), PW
 
 This name MUST match what your pseudopotential was generated for -- a mismatched XC + pseudo gives silently-wrong bond lengths.  PseudoDojo organises downloads by this name.
 
@@ -233,12 +234,12 @@ help = """
 How little the density-matrix elements may change from one cycle to the next before SIESTA calls the inner SCF loop converged.
 Per-tier (dimensionless):
   1e-3   screening (sanity-check only)
-  1e-4   loose preopt / publishable
-  1e-5   tight (vib / IR / accurate forces)
+  1e-4   loose preopt; publishable for ENERGIES -- SIESTA's own default
+  1e-5   tight -- relaxations, vibrations, IR, accurate forces (ships here)
   1e-6   very-tight (band structure, phonons)
 Forces are derived from the converged density, so a sloppy SCF gives noisy forces and the optimizer thrashes chasing them.
 Rule of thumb: keep the SCF tolerance ~10x tighter than the force-precision target you want at convergence.
-SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For single-point screening, 1e-4 is the engine's own answer and is enough.
+SIESTA's own default is 1e-4; this catalogue starts at 1e-5, one decade tighter.  The work this project is built for is relaxations and vibrational analysis, where the forces come out of the converged density and a loose SCF shows up as force noise the optimiser then chases -- which costs more geometry steps than the extra SCF cycles cost.  For a single-point energy, 1e-4 is the engine's own answer and is enough; it is the forces that want the extra decade.
 """
 
 [item.dm_energy_tolerance]
@@ -1813,9 +1814,12 @@ tier = "advanced"
 help = """
 How far atoms are pushed along each mode eigenvector when probing how the orbitals shift.  Only the per-mode electronic-structure step uses it.
 
-The default 0.02 A sits inside the linear-response regime, where the orbital-energy change is proportional to the displacement, so the slope you extract is the physically meaningful number rather than a finite-difference-amplitude artefact.
+The two ends of the allowed window (0.02-0.20 A) are the two ways this goes wrong, which is why it is narrow:
 
-Push too far and it stops being a slope: above ~0.10 A anharmonic mixing starts to contaminate the response ([Mills1972] section 2.4), and above ~0.20 A the linear-response assumption breaks outright.  Stay small and you pay the other way -- orbital-energy differences shrink to ~meV and need a tight SCF tolerance, which the default scf_conv_tol=1e-9 supplies.
+  too small -- the orbital-energy difference shrinks toward the SCF noise floor and the slope you measure is numerical noise.  0.02 A is the smallest amplitude the default scf_conv_tol=1e-9 resolves cleanly (FD noise on the HOMO shift is ~1e-8 Ha there, well under the signal); below it you must tighten scf_conv_tol as well, and the preflight says so.
+  too large -- the response stops being linear.  Anharmonic mixing becomes noticeable near 0.10 A ([Mills1972] section 2.4), and by 0.20 A the linear-response assumption has broken, so the slope describes the amplitude you chose rather than the mode.
+
+The default sits at the BOTTOM of the window on purpose: inside it, smaller is more linear, so the only reason to raise it is an SCF you cannot tighten.  Treat anything between 0.10 and 0.20 A as contaminated rather than clean.
 """
 
 [item.es_mode_selection]
@@ -2121,7 +2125,7 @@ engine_key = "(molbuilder: max optimize() re-entries when on_nonconvergence=cont
 type = "int"
 value = 1
 default = 1
-range = [1, 5]
+range = [0, 5]
 group = "stage"
 label = "Continue retries"
 tier = "advanced"
@@ -2226,9 +2230,11 @@ group = "stage"
 label = "Transverse k-grid for T(E)"
 tier = "basic"
 help = """
-The Monkhorst-Pack grid of transverse k-points tbtrans integrates T(E) over.  `0 0 0` inherits the SCF's own grid.
+The Monkhorst-Pack grid of transverse k-points tbtrans integrates T(E) over.  The third number is the transport direction and stays 1 -- that axis is the open boundary and is never Brillouin-zone sampled.
 
-A grid converged for a total energy is routinely far too coarse for a transmission: T(E) is an integral over the transverse Brillouin zone and its features sharpen with k-density, so an under-sampled grid gives a curve that is still moving as you refine it.  The transport direction stays 1 -- that axis is the open boundary and is never sampled.
+`0 0 0` means "use the SCF's own grid", which is where to start.
+
+Then converge it, because T(E) is an integral over the transverse zone and its features sharpen with k-density: raise the two transverse counts together, roughly doubling the density each time, until T(E_F) stops moving.  It normally settles denser than the grid you converged the total energy on, so expect to leave `0 0 0` behind.
 """
 
 [item.tbt_spin]

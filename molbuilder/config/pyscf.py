@@ -777,7 +777,7 @@ class PySCFConfig:
         "label": "Continue retries",
         "engine_key": ("(molbuilder: max optimize() re-entries when "
                        "on_nonconvergence=continue)"),
-        "range": (1, 5),
+        "range": (0, 5),
         "tier": "advanced",
         "help": ("only meaningful when on_nonconvergence='continue': how "
                  "many additional max_steps batches to spend before falling "

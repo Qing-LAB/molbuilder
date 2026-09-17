@@ -20,6 +20,7 @@ contracts.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import math
 import re
 import typing
@@ -743,6 +744,24 @@ def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
     }
 
 
+@functools.lru_cache(maxsize=1)
+def _catalogue_help_map() -> Dict[str, str]:
+    """``{item name: help}`` from the master catalogue, read once.
+
+    Names are unique across the catalogue (they ARE the `[item.<name>]`
+    keys), so no engine argument is needed to resolve one.
+    """
+    from molbuilder.template import catalogue
+    try:
+        return {i.name: (i.help or "") for i in catalogue().items}
+    except Exception:                                        # noqa: BLE001
+        return {}                # a broken catalogue must not break the form
+
+
+def _catalogue_help(name: str) -> str:
+    return _catalogue_help_map().get(name, "")
+
+
 def _field_to_schema(f: dataclasses.Field,
                      hints: Dict[str, Any],
                      id_prefix: str) -> Dict[str, Any]:
@@ -768,7 +787,19 @@ def _field_to_schema(f: dataclasses.Field,
         "name":     f.name,
         "id":       f"{id_prefix}-{id_suffix}",
         "label":    md.get("label", f.name.replace("_", " ").capitalize()),
-        "help":     md.get("help", ""),
+        # THE CATALOGUE IS THE ONE HOME FOR WHAT A USER READS.  This took
+        # `md["help"]` -- the dataclass's copy -- until 2026-09-16, and the
+        # two homes had drifted to 149 of 158 fields carrying DIFFERENT text
+        # (`engines/template.md` 2.1a's measured debt, made visible).  Which
+        # version a person saw then depended only on which form builder their
+        # tab used: Build reads the catalogue, Spectra and Transport come
+        # through here, so a help rewrite could land on one tab and not the
+        # other -- which is exactly what happened.
+        #
+        # The dataclass copy stays as the fallback for the handful of fields
+        # that have no catalogue row, and dies with the metadata when the
+        # remaining consumers move across.
+        "help":     _catalogue_help(f.name) or md.get("help", ""),
         "default":  _serialize_default(f, ann),
         "optional": is_optional,
         "tier":     md.get("tier", "basic"),

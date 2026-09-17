@@ -744,7 +744,5 @@ class TransportConfig:
                    "NEGF residuals + density-matrix norms; useful "
                    "when investigating convergence problems.  Maps onto "
                    "TBT.Verbosity, an integer 0-10 defaulting to 5 "
-                   "(TBtrans reference): warning=2, info=5, debug=8.  "
-                   "It claimed `WriteVerbosity` until 2026-09-15, which "
-                   "is zero occurrences in the 5.4.2 binary.",
+                   "(TBtrans reference): warning=2, info=5, debug=8.",
     })
