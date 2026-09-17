@@ -890,9 +890,27 @@ help = "comma-separated species order (e.g. 'C,H,S,Au')"
 # keywords and let the writer pick which one this run calls for.  The check
 # gate demands only the keyword the emitted line actually names, so SIESTA is
 # asked for `NetCharge` and PySCF for `gto.M` -- never each other's.
+#
+# NOT A TRANSPORT PARAMETER, and that is physics rather than a gap.  A
+# transport calculation has OPEN boundaries: the device's electron number is
+# set by the electrodes' chemical potentials and found by the contour
+# integration, not fixed by the deck.  A lead is bulk metal and must stay
+# neutral -- charging it moves the Fermi level that every downstream stage is
+# measured against.  `engines/transport.md` 2a.7 rules net charge and gating
+# DEFERRED for exactly this reason: *"in NEGF the charge is set by the leads'
+# chemical potentials, so for a neutral junction it is moot; a gated or
+# electrochemical junction is separate work."*
+#
+# The ruling was written and the declaration was not changed, so a transport
+# template carried this row, a person could answer it, and no rung wrote it
+# (measured 2026-09-16: `NetCharge -2` in an optimization deck, absent from all
+# five transport decks, while the validation report BESIDE the deck asserted
+# the charge was there).  `calculations` is how the catalogue states a ruling
+# like this one.
 kind = "deck"
 category = ["system"]
 engines = ["siesta", "pyscf"]
+calculations = ["optimization", "vibration"]
 expands = ["NetCharge", "gto.M"]
 engine_key = "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)"
 manual = "SIESTA 5.4.2 §6.23 'Systems with net charge or dipole, and electric fields'; PySCF 2.13 pyscf.gto.mole.MoleBase 'charge'"

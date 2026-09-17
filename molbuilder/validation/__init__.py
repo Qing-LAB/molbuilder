@@ -405,6 +405,38 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"Landauer conductance (di Ventra, Electrical Transport in "
             f"Nanoscale Systems, 2008; Reed et al. 2006).",
             where="config.bias_voltage_v"))
+    # A NET CHARGE IS REFUSED, not dropped.  `engines/transport.md` 2a.7
+    # defers net charge and gating, and the reason is the boundary condition:
+    # a transport calculation is OPEN, so the device's electron number is set
+    # by the electrodes' chemical potentials and found by the contour
+    # integration rather than fixed by the deck -- and a lead is bulk metal
+    # that must stay neutral, because charging it moves the Fermi level every
+    # downstream stage is measured against.
+    #
+    # The ruling was written; the declaration was not changed to match.  So a
+    # transport template carried `net_charge`, a person could answer it, no
+    # rung wrote it, and the validation report beside the deck ASSERTED the
+    # charge was there (measured 2026-09-16).  The row now says the ruling and
+    # this refuses the value a config can still carry -- a hand-edited
+    # template written before today, or a caller building the config
+    # directly.  Silently neutralising someone's charged junction is the
+    # defect; saying so is the fix.
+    charge = getattr(cfg, "net_charge", None)
+    if charge:
+        out.append(Issue(
+            "error",
+            f"net_charge = {int(charge):+d}, and a transport calculation "
+            f"cannot carry one.  Its boundaries are OPEN: the device's "
+            f"electron count is set by the electrodes' chemical potentials "
+            f"and found by the contour integration, not fixed by the deck, "
+            f"and the leads are bulk metal that must stay neutral -- a "
+            f"charged lead moves the Fermi level every stage is measured "
+            f"against.  Net charge and gating are deferred by ruling "
+            f"(engines/transport.md 2a.7); a gated or electrochemical "
+            f"junction is separate work.  Remove net_charge from this "
+            f"calculation's template, or relax the charged species as an "
+            f"OPTIMIZATION, where the keyword is honoured.",
+            where="config.net_charge"))
     kgrid = getattr(cfg, "kgrid", None)
     if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
         out.append(Issue(

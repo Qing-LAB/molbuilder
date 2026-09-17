@@ -200,6 +200,7 @@ rather than a crash — which is why they are guards in code and not advice.
 | 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition, open shell — went silent with it and are not re-homed: see § 3.6a.)* |
 | 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ⚠️ **partly** — the value reaches the deck (measured: the lead renders `0 0 40`) and is editable in the template, but the *warn below 20* still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it. *(This row also said the default was unreachable from any description; that half was fixed on 2026-09-16.)* |
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
+| 3a | the junction is neutral | **error**, `validation._validate_transport_kind` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
 > **Corrected 2026-09-15.** This table said all four were guards in code. Row 2
@@ -995,7 +996,7 @@ nearly free — so these *should* differ across stages.
 
 | parameter | why |
 |---|---|
-| `net_charge` | Held over with gating (§ 2a.7). In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is a separate design |
+| `net_charge` | Held over with gating (§ 2a.7). In NEGF the charge is set by the leads' chemical potentials, so for a neutral junction it is moot; a gated or electrochemical junction is a separate design. **The deferral is declared and enforced since 2026-09-16** — the catalogue row carries `calculations = ["optimization", "vibration"]`, so no transport template offers it, and `_validate_transport_kind` refuses a config that carries one anyway. Until then the ruling was written and the declaration was not: a transport template asked for the charge, the person could answer it, **no rung wrote it**, and the `.validation.txt` beside the deck asserted the charge was there. A charged junction ran neutral, which TranSIESTA does not complain about — the transmission curve is simply for a different molecule |
 
 #### What this map says is missing
 
