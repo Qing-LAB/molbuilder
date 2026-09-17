@@ -397,27 +397,37 @@ def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
 
 def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
                                                     cfg) -> List[Issue]:
-    """SIESTA-specific: spin_treatment=True + spin_total=None + open-
-    shell metal -> ERROR.
+    """SIESTA: spin polarization on, ``spin_total`` unset, an open-shell
+    metal present -> WARN.
 
-    The propor: ERROR: IMAX = 0 failure mode (2026-05-24 hemeC-dithiol
-    incident): SIESTA's initial-DM constructor tries to find a zero-
-    net-spin proportional split for each atom's reference-config
-    electrons.  For a closed-shell atom (H/C/N/O/S) this is trivial.
-    For a transition metal with a semicore-rich pseudo (e.g. Fe with
-    3p⁶3d⁶4s² in the valence) the constraint "exactly zero net spin
-    on a d-shell, distributed over integer orbital indices" has no
-    valid solution -- propor's loop variable IMAX stays at 0, SIESTA
-    aborts before the SCF loop ever runs.
+    **This is about the SCF's STARTING POINT, not about a crash.**  A
+    spin-polarized run with no stated moment begins with zero net spin on
+    every atom.  For an open-d metal that is a poor place to start: the SCF
+    can settle into a state that is not the ground state, or fail to converge
+    at all, and neither announces itself.  Naming a ``Spin.Total`` puts the
+    initial density matrix where the chemistry says it belongs.  The
+    suggestion and its alternatives come from
+    :func:`~molbuilder.chemistry.suggest_spin_total`, so the reader gets
+    numbers rather than a pointer to ligand-field tables.
 
-    Fix: force a non-zero spin_total.  The chemistry-aware suggestion
-    + alternatives come from chemistry.suggest_spin_total() so the
-    user gets actionable numbers instead of having to look up
-    ligand-field rules for the metal in question.
+    **WARN, because nothing here refuses to run** (user ruling 2026-09-16).
+    This was an ERROR that blocked generation, on the stated grounds that
+    SIESTA would abort with ``propor: ERROR: IMAX = 0``.  That mechanism is
+    not real.  ``propor`` is a forty-line vector-proportionality utility
+    (SIESTA ``Src/propor.f``), called only from ``matel_table.F90`` to
+    deduplicate radial-function tables; it takes no spin argument, and
+    ``IMAX = 0`` means it was handed an all-zero table -- a defective
+    pseudopotential.  **That failure is already guarded here, correctly and
+    as an error**, by the ``dead_projector`` status in
+    :func:`_check_pseudopotential_coverage`.
 
-    Why ERROR (not WARN): SIESTA WILL refuse to start.  Failing fast
-    in molbuilder saves the user a 30-second SIESTA startup just to
-    be told ``propor: ERROR: IMAX = 0``.
+    The spin reading was the second of four accounts of one 2026-05-24
+    incident.  The other three were retracted where they lived --
+    ``siesta/input.py::_auto_block_size`` carries the sweep that disproved
+    the BlockSize theory, and ``runwrap.py``'s occupancy notice records
+    deleting a rank clamp because *"that abort came from a PSML problem"*.
+    This one had no earlier home to correct, only a new validator, so it
+    outlived the theory it came from.
     """
     if not (getattr(cfg, "spin_treatment", "non-polarized") != "non-polarized"):
         return []
@@ -436,12 +446,11 @@ def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
         return []
     preferred, alternatives = suggest_spin_total(metals)
     lines = [
-        f"Spin polarized is enabled but spin_total is not set, AND "
-        f"the structure contains open-shell metal(s): "
-        f"{', '.join(metals)}.  SIESTA's initial-DM constructor "
-        f"(propor) cannot find a zero-net-spin split for these atoms "
-        f"with semicore-rich pseudos and will abort with "
-        f"``propor: ERROR: IMAX = 0`` before the SCF loop starts.",
+        f"Spin polarization is on but spin_total is not set, and the "
+        f"structure contains open-shell metal(s): {', '.join(metals)}.  "
+        f"The SCF then starts from zero net spin on every atom, which "
+        f"for an open-shell metal can converge to the wrong spin state "
+        f"or not converge at all -- neither of which announces itself.",
         "",
         f"START HERE: set cfg.spin_total = {preferred}  "
         f"(2S, in μB; SIESTA emits this as ``Spin.Total``).  "
@@ -456,7 +465,7 @@ def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
                       "each, pick lowest-energy SCF):")
         for value, desc in alternatives:
             lines.append(f"  spin_total = {value:>4g}  -- {desc}")
-    return [Issue("error", "\n".join(lines), "config.spin_total")]
+    return [Issue("warn", "\n".join(lines), "config.spin_total")]
 
 
 # --------------------------------------------------------------------- #

@@ -420,10 +420,17 @@ class TestSiestaPseudoCoverageInPreflight:
 
 
 class TestSpinPolarizedNeedsSpinTotal:
-    """The validator should ERROR (not WARN) when the propor IMAX=0
-    failure mode is loaded: spin_treatment="polarized" + spin_total=None +
-    structure contains an open-shell first-row TM.  And it should
-    propose a starting value the user can plug into the form."""
+    """The validator should WARN when spin_treatment="polarized" +
+    spin_total=None + an open-shell metal: the SCF then starts from zero net
+    spin, which can converge to the wrong spin state or not converge.  And it
+    should propose a starting value the user can plug into the form.
+
+    WARN and not ERROR since 2026-09-16 (user ruling).  It blocked generation
+    until then, citing a ``propor: ERROR: IMAX = 0`` abort that spin cannot
+    cause -- ``propor`` is a vector-proportionality utility in SIESTA's
+    matrix-element table code, and ``IMAX = 0`` means a defective
+    pseudopotential, which ``TestPseudopotentialCoverage``'s dead-projector
+    case is what actually guards."""
 
     def _hemeC_like(self):
         """Synthetic Fe + C/H/N/O fragment.  Don't bother with real
@@ -444,36 +451,63 @@ class TestSpinPolarizedNeedsSpinTotal:
                          positions=np.array([[i, 0, 0] for i in range(6)],
                                               dtype=float))
 
-    def test_metal_plus_spinpol_no_spin_total_emits_error(self):
-        """The actual hemeC-dithiol failure mode -- Fe present,
-        spin_treatment="polarized", no spin_total.  Validator must produce
-        an ERROR Issue."""
+    def test_metal_plus_spinpol_no_spin_total_emits_warning(self):
+        """Fe present, spin_treatment="polarized", no spin_total.  The
+        validator must say so -- and must NOT block, because nothing here
+        stops the run."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
                            SiestaConfig(spin_treatment="polarized"))
-        errs = [i for i in issues
-                if i.where == "config.spin_total" and i.severity == "error"]
-        assert errs, (
-            "Validator failed to flag the propor IMAX=0 failure mode "
-            "(Spin polarized + Fe + no spin_total)"
+        mine = [i for i in issues if i.where == "config.spin_total"]
+        assert [i for i in mine if i.severity == "warn"], (
+            "Validator failed to flag Spin polarized + Fe + no spin_total"
+        )
+        assert not [i for i in mine if i.severity == "error"], (
+            "the spin check must not refuse: it is about the SCF's starting "
+            "point, not about anything that stops SIESTA running"
         )
 
-    def test_error_message_names_the_failure(self):
-        """Error message must explain WHAT will go wrong, not just
-        'set spin_total'.  Otherwise users won't connect the molbuilder
-        ERROR to the SIESTA ``propor: ERROR: IMAX = 0`` they'd see at
-        run time."""
+    def test_warning_names_the_failure(self):
+        """The message must explain WHAT will go wrong, not just 'set
+        spin_total' -- and must not name a SIESTA abort, because the one it
+        used to name is caused by a defective pseudopotential, not by spin."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
                            SiestaConfig(spin_treatment="polarized"))
-        err = next(i for i in issues
-                   if i.where == "config.spin_total" and i.severity == "error")
-        # Names the SIESTA error string the user would otherwise see.
-        assert "propor" in err.message and "IMAX = 0" in err.message
-        # Names the metal that triggered the check.
-        assert "Fe" in err.message
+        warn = next(i for i in issues
+                    if i.where == "config.spin_total" and i.severity == "warn")
+        assert "propor" not in warn.message
+        assert "IMAX" not in warn.message
+        # Says what actually goes wrong, and names the metal responsible.
+        assert "spin state" in warn.message
+        assert "Fe" in warn.message
+
+    def test_a_gold_junction_is_not_flagged_at_all(self):
+        """THE REGRESSION THIS CLASS EXISTS TO PIN SINCE 2026-09-16.
+
+        Au is nd10 (n+1)s1 as a free atom and a closed-shell singlet in any
+        extended metallic context -- the standard treatment for a transport
+        junction is spin-restricted.  The check read a flat element set that
+        still carried the noble metals, so Au-BDT-Au with spin polarization
+        on was REFUSED, and told to put 1 uB on it, while
+        ``analyze_structure`` called the same atoms closed-shell and cited
+        the TranSIESTA benchmark for doing so."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.structure import Structure
+        from molbuilder.validation import validate
+        import numpy as np
+        junction = Structure(
+            elements=["Au"] * 6 + ["S", "C", "C", "S"],
+            positions=np.array([[i * 2.4, 0, 0] for i in range(10)],
+                               dtype=float),
+        )
+        issues = validate(junction,
+                          SiestaConfig(spin_treatment="polarized"))
+        assert not [i for i in issues if i.where == "config.spin_total"], (
+            "a gold junction is closed-shell; the spin check must stay quiet"
+        )
 
     def test_error_proposes_a_starting_value(self):
         """User shouldn't have to look up ligand-field rules.  The
@@ -483,7 +517,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         issues = validate(self._hemeC_like(),
                            SiestaConfig(spin_treatment="polarized"))
         err = next(i for i in issues
-                   if i.where == "config.spin_total" and i.severity == "error")
+                   if i.where == "config.spin_total" and i.severity == "warn")
         # The "START HERE: ..." line is the load-bearing UX bit.
         assert "START HERE" in err.message
         # For Fe the recommended starting value is 4.0 (high-spin Fe(II);
@@ -499,7 +533,7 @@ class TestSpinPolarizedNeedsSpinTotal:
         issues = validate(self._hemeC_like(),
                            SiestaConfig(spin_treatment="polarized"))
         err = next(i for i in issues
-                   if i.where == "config.spin_total" and i.severity == "error")
+                   if i.where == "config.spin_total" and i.severity == "warn")
         # All six registered Fe entries (S=0/1/2/3/4/5) should appear.
         for s in (0, 1, 2, 3, 4, 5):
             assert f"spin_total = {s:>4g}" in err.message or \
@@ -508,17 +542,17 @@ class TestSpinPolarizedNeedsSpinTotal:
             )
 
     def test_user_explicit_spin_total_silences_the_check(self):
-        """If user sets spin_total explicitly, the propor failure mode
-        is averted -- check must NOT fire."""
+        """The SCF has its starting moment, so there is nothing to say.
+
+        The filter is `where` ALONE.  It carried `and "propor" in i.message`
+        until 2026-09-16, so once that word left the message the test would
+        have passed however loudly the check fired."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(),
                            SiestaConfig(spin_treatment="polarized", spin_total=4.0))
-        errs = [i for i in issues
-                if i.where == "config.spin_total" and i.severity == "error"
-                and "propor" in i.message]
-        assert not errs, (
-            "Validator wrongly fired the propor-IMAX-0 check even though "
+        assert not [i for i in issues if i.where == "config.spin_total"], (
+            "Validator wrongly fired the spin-target check even though "
             "the user set spin_total explicitly"
         )
 

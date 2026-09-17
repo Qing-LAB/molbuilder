@@ -25,7 +25,7 @@ Public surface (grouped by purpose):
     suggest_spin_total(metals) -> (preferred, alternatives)
         Used by the SIESTA preflight to recommend a Spin.Total when
         the user enables spin polarisation but leaves the target
-        spin unset (catches the propor: ERROR: IMAX = 0 abort).
+        spin unset (a zero-spin start can settle on the wrong state).
 
   ECP selection (PySCF):
     resolve_pyscf_ecp(struct, ecp, basis) -> ECP-or-None
@@ -221,11 +221,12 @@ CLOSED_D10_METALS = frozenset({
                                 # as RKS unless studying magnetism.
 })
 
-# Backward-compat alias.  Old callers that imported the flat set get
-# the union; new code reaches for the categorized sets above.  Keep
-# this alias for the deprecation window — and document the new
-# distinction so callers can migrate.
-OPEN_SHELL_METALS = OPEN_D_TRANSITION_METALS | NOBLE_METALS_S1
+# The flat pre-2026-06-13 union is GONE (2026-09-16).  It survived the split
+# as a "backward-compat alias for the deprecation window", and the only thing
+# that ever read it was `detect_open_shell_metals` — the one caller the split
+# existed to correct.  So the window kept the bug alive rather than a caller:
+# `analyze_structure` called an Au junction closed-shell for three months
+# while the validator refused to generate it.
 
 
 #: A species label is a name plus an optional trailing index: ``Au1`` is
@@ -493,10 +494,10 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
 
 # Per-element "starting value" recommendation for Spin.Total.  Used by
 # the SIESTA preflight when Spin polarized + spin_total=None +
-# the structure contains an open-shell metal.  Without a starting
-# value SIESTA's initial-DM constructor (propor) can't find a
-# zero-net-spin split for d/f shells and aborts with
-# ``propor: ERROR: IMAX = 0`` before the SCF loop ever runs.
+# the structure contains an open-shell metal.  Without a starting value
+# the SCF begins at zero net spin on every atom, and for a d/f shell that
+# is a poor initial guess: it can converge to a state that is not the
+# ground state, or not converge, and say nothing either way.
 #
 # Each entry is (preferred_starting_value, ranked alternatives).  The
 # preferred value is the "most likely correct" guess for a typical
@@ -577,12 +578,11 @@ def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[floa
     containing the named open-shell metals + a ranked alternatives list.
 
     Pick rule when multiple metals are present: take the LARGEST per-
-    element default (most-unpaired starting guess).  Reasoning: SIESTA's
-    propor() failure mode is "can't split a d/f shell into zero net
-    spin", so the safe starting bet is non-zero spin on the most-
-    spin-active atom -- the optimiser can ramp DOWN from there if a
-    lower-spin state is the true ground state.  Ramping UP from zero
-    spin is what triggered the abort in the first place.
+    element default (most-unpaired starting guess).  Reasoning: an SCF
+    started with a moment can relax DOWN to a lower-spin ground state,
+    while one started at zero has no gradient toward a polarised
+    solution and tends to stay where it began -- so the asymmetry
+    favours the most spin-active atom setting the guess.
 
     Args:
       metals: result of detect_open_shell_metals(struct).
@@ -603,7 +603,7 @@ def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[floa
         return 1.0, []
     # Preferred starting value: max per-element default across the
     # metals present.  ``1.0`` is the fallback when a metal isn't
-    # in our table (better than zero -- propor needs non-zero).
+    # in our table (better than zero -- see the ramp-down note above).
     preferred = max(
         (_SPIN_TOTAL_DEFAULTS.get(m, 1.0) for m in metals_seen),
         default=1.0,
@@ -688,29 +688,61 @@ def resolve_pyscf_ecp(struct: Structure,
 
 
 def detect_open_shell_metals(struct: Structure) -> List[str]:
-    """Return the unique open-shell-metal element symbols present in
-    ``struct``, in their first-appearance order.
+    """The metals that make ``struct`` open-shell, in first-appearance order.
 
-    Capitalisation-insensitive: a PDB-loaded "FE" matches "Fe".  Use
-    this in preflight to warn when a closed-shell singlet (spin=0,
-    RKS/RHF) is requested for a molecule containing transition
-    metals -- a common silent cause of unphysical forces / energies
-    (see hemeC-dithiol 2026-05-22 incident).
+    **The noble metals are a question about the SYSTEM, not about the
+    element**, so this asks the structure and not a set.  Cu / Ag / Au are
+    ``nd¹⁰ (n+1)s¹`` as free atoms -- genuinely one unpaired electron -- and
+    closed-shell singlets in any extended metallic context, where the s-band
+    delocalises and the Stoner criterion fails.  A lone Au atom and an Au
+    junction therefore get opposite answers, which is why this is not a
+    membership test.
+
+    **What decides is the electron count's PARITY**: odd leaves one electron
+    unpaired and no amount of metallic bonding pairs it; even lets the s-band
+    close the shell.  :func:`analyze_structure` writes three branches over
+    :data:`_NOBLE_METAL_CLUSTER_THRESHOLD` and the single-atom case, but they
+    differ only in the RATIONALE each reports -- every one of them lands on
+    spin 0 for even and spin 1 for odd.  Reading the outcome off parity here
+    is therefore the same rule, not a second one.
+
+    ONE HOME, shared with :func:`analyze_structure`, which reaches the same
+    conclusion by the same two facts.  They disagreed from 2026-06-13 until
+    2026-09-16: the split that introduced the three categories rewired
+    ``analyze_structure`` and left this function reading the flat pre-split
+    union, so ``analyze_structure`` called an Au junction closed-shell while
+    this called it open -- and `validation/siesta.py` refused to generate it.
+
+    An open-d metal decides for the whole structure (an Fe co-adsorbate makes
+    an Au junction open-shell), and the noble metals present are reported
+    alongside it so the caller's message does not omit them.
+
+    A label names an element, so ``Au1`` / ``Au2`` are both gold.  A label
+    that resolves to nothing is skipped rather than folded -- case is not
+    corrected anywhere (``CA`` would become calcium), and
+    ``validation.chemistry.check_species_labels`` is what reports it.
     """
-    seen = []
-    seen_set: set = set()
+    found: List[str] = []
+    seen: set = set()
     for el in struct.elements:
-        # The ELEMENT a label names -- so a deliberate ``Au1``/``Au2`` is
-        # still gold here.  An unresolvable label is skipped, not folded:
-        # ``validation.chemistry.check_species_labels`` is what reports it.
         try:
             key = resolve_element(el)
         except KeyError:
             continue
-        if key in OPEN_SHELL_METALS and key not in seen_set:
-            seen.append(key)
-            seen_set.add(key)
-    return seen
+        if key in seen:
+            continue
+        if key in OPEN_D_TRANSITION_METALS or key in NOBLE_METALS_S1:
+            seen.add(key)
+            found.append(key)
+    if not found:
+        return []
+    if any(k in OPEN_D_TRANSITION_METALS for k in found):
+        return found
+    # Noble metals only: parity decides, over the NEUTRAL count, because the
+    # charge is the caller's to state and this answers about the structure.
+    if total_electrons(struct, 0) % 2 == 0:
+        return []
+    return found
 
 
 # The full d-block (+ f-block) metal set for basis-adequacy checks: d-orbital
@@ -783,13 +815,13 @@ class MetalHint:
 # two tables have different design goals and may carry different
 # values for the same element:
 #
-#   * ``_SPIN_TOTAL_DEFAULTS`` is the SIESTA propor STARTING-VALUE
-#     table.  When the user selects Spin polarized without setting
-#     spin_total, propor needs a non-zero guess to split d/f shells.
-#     Picks HIGH-SPIN-leaning values so the optimizer can ramp DOWN
-#     to a lower-spin state if that's the true ground state —
-#     ramping UP from zero is what triggered the "propor: ERROR:
-#     IMAX = 0" abort.  Fe→4 (HS), Co→3 (HS), Ni→2 (HS) etc.
+#   * ``_SPIN_TOTAL_DEFAULTS`` is the SCF STARTING-VALUE table.  When
+#     the user selects Spin polarized without setting spin_total, the
+#     run needs a non-zero guess for its d/f shells.  Picks HIGH-SPIN-
+#     leaning values so the SCF can relax DOWN to a lower-spin state if
+#     that is the true ground state — a run started at zero has no
+#     gradient toward a polarised solution and tends to stay there.
+#     Fe→4 (HS), Co→3 (HS), Ni→2 (HS) etc.
 #
 #   * ``_ANALYZER_DEFAULT_SPIN`` (this table) is the chemistry-
 #     conservative default for the Auto-detect UI.  Picks the most

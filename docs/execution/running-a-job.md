@@ -402,15 +402,23 @@ notice at all** rather than one built on an invented number.
 > `NumberOfSpecies` and it stays available for a diagnostic, but a rank count
 > is not refused on a guess about the system.
 >
-> **And `propor: IMAX = 0` has at least three causes, only one of which is
-> ranks.** The wrapper's own failure hint (§ 4.1) already orders them correctly
-> and this section did not: a **defective or XC-mismatched pseudopotential**
-> ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), the rank
-> count against the species/radial tables, and **zero net spin on an open-shell
-> metal** ([`science/overview.md`](?doc=science/overview.md) § 4). Reading § 3.1
-> alone, a user met one cause presented as *the* cause — and it is the one the
-> hint list deliberately ranks **second**, because the pseudopotential is both
-> commoner and cheaper to check.
+> **And `propor: IMAX = 0` has two causes, neither of which is ranks alone.**
+> The wrapper's own failure hint (§ 4.1) already orders them correctly and
+> this section did not: a **defective or XC-mismatched pseudopotential**
+> ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), and the
+> rank count against the species/radial tables. Reading § 3.1 alone, a user
+> met one cause presented as *the* cause — and it is the one the hint list
+> deliberately ranks **second**, because the pseudopotential is both commoner
+> and cheaper to check.
+>
+> **A third cause was listed here until 2026-09-17 — "zero net spin on an
+> open-shell metal" — and it is not one.** `propor` is a forty-line
+> vector-proportionality utility (`Src/propor.f`) called only from
+> `matel_table.F90`, where it deduplicates radial-function tables; it takes no
+> spin argument and never sees the density matrix. `IMAX = 0` is raised when
+> the table handed to it is all zeros, which is the first cause above. Both
+> surviving causes are consistent with that reading, and the spin one never
+> was.
 
 ### 3.2 OMP threads and BLAS
 

@@ -140,9 +140,11 @@ re-do parity work.
 
 ### 2.1 The noble-metal distinction — three categories, not one flat set
 
-The flat `OPEN_SHELL_METALS` set (kept only as a back-compat alias) wrongly
-treated gold junctions as open-shell. The analyzer splits metals into three
-physically-grounded sets (`chemistry.py`; the flat alias follows them):
+The flat `OPEN_SHELL_METALS` set wrongly treated gold junctions as
+open-shell. The analyzer splits metals into three physically-grounded sets
+(`chemistry.py`). The flat set survived the split as a back-compat alias and
+was **deleted 2026-09-17**, once it turned out its only reader was the one
+function the split existed to correct — see § 5:
 
 | Set | Elements | Physics | Treatment |
 |---|---|---|---|
@@ -581,9 +583,22 @@ Three decisions produced this structure (fuller provenance in git history):
 - **`OPEN_SHELL_METALS` split into three sets (2026-06-13).** So the analyzer
   recommends closed-shell singlet for Au junctions (§ 2.1) and
   `check_open_shell_metal` gates on `suggested_treatment` instead of the flat
-  `metals` list — killing the Au-BDT-Au chip-vs-validator contradiction the user
-  reported (the "closed-shell singlet" chip vs a "switch to open-shell" warning on
-  the same form).
+  `metals` list.
+- **The alias deleted, and the split finished (2026-09-17).** The 2026-06-13
+  entry above claimed to have killed the Au-BDT-Au chip-vs-validator
+  contradiction. It killed it on the **chip**. There were three readers of the
+  open-shell question, not two: `analyze_structure` and
+  `check_open_shell_metal` were both migrated, and
+  `detect_open_shell_metals` was left on the flat union behind the
+  "deprecation window" alias. So for three months `analyze_structure` called a
+  gold junction closed-shell while `validation/siesta.py` — reading the alias —
+  **refused to generate it**, advising 1 μB of spin on the system whose own
+  rationale cites the spin-restricted TranSIESTA benchmark. The window
+  preserved the bug rather than a caller, which is what the
+  no-backward-compat rule exists to prevent.  `detect_open_shell_metals` now
+  asks the structure: an open-d metal decides for everything, and a
+  nobles-only system is decided by electron parity — the same rule
+  `analyze_structure` reaches.
 
 ---
 

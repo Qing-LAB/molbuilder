@@ -230,6 +230,16 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the after-produce half: every job's ref, with seq READ BACK off "
         "its own deck.  Total over the JobSet, and the only place the two "
         "kinds are told apart"),
+    "gather_for_stage": (
+        None, "molbuilder/jobset/prep.py",
+        "the step that makes a prepped attempt RUNNABLE, and since "
+        "2026-09-16 the one BOTH roads take.  The CLI had it written out "
+        "by hand once per layout and the browser's Prep button not at "
+        "all, so a folder prepped there held an attempt with nothing "
+        "carried into it.  It READS a rung -- which attempts are open, and "
+        "at which bias point -- and expresses no stage: the points come "
+        "from `transport.stages.bias_points` and the token from "
+        "`bias_token`, so nothing here is a second spelling of either"),
     "_resolve_stage": (
         None, "molbuilder/jobset/_cli.py",
         "the CLI's single door onto the resolver -- which jobs a verb acts "
