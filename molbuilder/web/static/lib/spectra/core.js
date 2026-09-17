@@ -1898,8 +1898,13 @@
     function exportCSV() {
         if (!state.results) return;
         const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
+        // BOTH channels, beside each other.  IR joined the table on
+        // 2026-06-17 and the chart on 2026-09-11 and reached this row builder
+        // on neither, so ticking "Compute IR intensities" produced a file
+        // with every IR number missing and nothing saying so.
         const headers = ["index_1based", "frequency_cm1",
-                         "raman_activity_a4_amu", "has_imag", "has_es"];
+                         "raman_activity_a4_amu", "ir_intensity_km_mol",
+                         "has_imag", "has_es"];
         if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
                                  "gap_eq_ev", "dgap_max_mev");
         const lines = [headers.join(",")];
@@ -1909,6 +1914,8 @@
                 Number(m.frequency_cm1).toFixed(4),
                 m.raman_activity_a4_amu == null ? "" :
                     Number(m.raman_activity_a4_amu).toFixed(4),
+                m.ir_intensity_km_mol == null ? "" :
+                    Number(m.ir_intensity_km_mol).toFixed(4),
                 m.has_imag ? "1" : "0",
                 m.electronic_structure ? "1" : "0",
             ];

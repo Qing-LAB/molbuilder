@@ -131,10 +131,11 @@ all = [
 
 [project.scripts]
 molbuilder = "molbuilder.cli:main"
-# Back-compat shim: pre-merge users had a separate `molwatch` console
-# script.  After the merge, `molbuilder watch serve` is the canonical
-# entry point; `molwatch` is a thin wrapper that calls the same code.
-molwatch   = "molbuilder.cli:_run_watch_serve_entrypoint"
+# `molwatch` DELETED 2026-09-17.  A back-compat shim from the molwatch merge,
+# it ran `main(["serve"])` -- and `serve` became a GROUP on 2026-08-28, where
+# a verb is named and never implied, so a bare group invocation prints help
+# and exits 2.  The shipped script could not start a server.  `molbuilder
+# serve start` is the verb; there is one spelling for one act.
 
 [tool.setuptools.packages.find]
 include = ["molbuilder*"]

@@ -1060,7 +1060,12 @@ async function loadFolder(projects, dir) {
     } catch (_) { /* listing is a nicety here */ }
 
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
-    markFile("ts-f-tmpl", !!templateName, "already here — saving would update it");
+    /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` calls `write_task`
+     * and writes `task.json` alone; the template arrives with the hand-over
+     * from the tab the structure came from, and Save leaves it as it is.
+     * This row said "saving would update it" until 2026-09-17, which is the
+     * one thing a person editing parameter values needs to be right. */
+    markFile("ts-f-tmpl", !!templateName, "already here — Save leaves it alone");
     if (templateName) $("ts-f-tmpl-name").textContent = templateName;
 
     /* THE STRUCTURE, by the name the description itself gives it.  Globbing
@@ -3527,8 +3532,12 @@ async function _save() {
      * after is skipped -- the file is on disk and the page never says so.
      * The confirmation belongs to the write, so it is said before the
      * reload, and a reload failure is reported as its own thing. */
+    /* ONE FILE, because the save door writes one.  This read
+     * `body.template_name` off the save reply, and that key belongs to
+     * `/api/task-setup/handover` -- the save route has never sent it, so the
+     * branch could not fire and the confirmation could not have been wrong
+     * by it.  Removed rather than corrected: there is no second file. */
     const wrote = ["task.json"];
-    if (body.template_name) wrote.push(body.template_name);
     saidSave("Saved " + wrote.join(" + ") + " into this folder"
              + (ckptNote ? " · state kept: \u201c" + ckptNote + "\u201d" : "")
              + ".  `prep` reads this file, so it will use what you just "

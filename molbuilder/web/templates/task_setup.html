@@ -330,8 +330,14 @@
            person checking a description before a week of compute is checking
            the geometry as much as the parameters, and a list that omitted it
            was the page's own claim that the folder had two files in it. #}
-        <p class="hint">What is in the folder. This page writes the first
-          two.</p>
+        {#- SAVE WRITES THE FIRST.  It said "the first two" until 2026-09-17,
+            while `/api/task-setup/save` called `write_task` and wrote
+            `task.json` alone -- so somebody editing parameter values read
+            that the template was being written for them.  The other three
+            arrive together with the hand-over, from the tab the structure
+            came from (`build.py::api_task_setup_handover`). -#}
+        <p class="hint">What is in the folder. Save writes the first; the
+          other three arrive with the structure when you hand it over.</p>
         <ul class="ts-files" id="ts-file-list">
           <li>
             <span class="ts-file-name">task.json</span>

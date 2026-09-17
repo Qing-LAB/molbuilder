@@ -437,6 +437,14 @@ because they are facts about
        nothing -- residue of the layout it was written for. */
 }
 
+/* THE CONTAINER THE QUERY BELOW ASKS ABOUT.  A `@container` condition needs
+   an ancestor that has declared itself one; without this line the query can
+   never match and `.es-body` stays stacked at every width.  It was declared
+   on `.spectrum-and-mode` until the panel was restructured (the query moved
+   to `.es-body` and this did not move with it), so the comment under it said
+   "declared above" of something nothing declared -- restored 2026-09-17. */
+.results-summary { container-type: inline-size; }
+
 .es-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr);   /* stacked, until there is room */

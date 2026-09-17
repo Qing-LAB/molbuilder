@@ -142,8 +142,10 @@ def _type(page, cell, text):
 @pytest.mark.parametrize("typed", ["4,4,1", "4x4x1", "4 4 1"])
 def test_a_typed_k_grid_lands_as_three_numbers(page, flask_server, calc_dir,
                                                typed):
-    """All three spellings, because all three are what ``--kgrid`` takes
-    (`cli.KGridParam`) — what works in the terminal works in the table."""
+    """All three spellings, because a person writes a k-grid all three ways
+    and the field means the same thing each time.  (They came from
+    ``--kgrid``, deleted with `molbuilder fdf`; the table is the only
+    place a k-grid is typed now.)"""
     _open(page, flask_server, calc_dir)
     _type(page, "tight kgrid", typed)
     got = _described(page)["stages"][0]["overrides"]["kgrid"]

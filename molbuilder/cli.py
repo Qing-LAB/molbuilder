@@ -296,27 +296,16 @@ def _emit(struct: Structure, *,
     click.echo(struct.summary(), err=True)
 
 
-class KGridParam(click.ParamType):
-    """`--kgrid 4x4x1` / `4,4,1` / `4 4 1` -> tuple[int, int, int]."""
-    name = "kgrid"
-
-    def convert(self, value, param, ctx):
-        if isinstance(value, tuple):
-            return value
-        cleaned = value.replace("x", " ").replace(",", " ")
-        parts = cleaned.split()
-        if len(parts) != 3:
-            self.fail(
-                f"k-grid must be 3 ints (e.g. '4x4x1'); got {value!r}",
-                param, ctx,
-            )
-        try:
-            return tuple(int(p) for p in parts)
-        except ValueError as e:
-            self.fail(str(e), param, ctx)
-
-
-KGRID = KGridParam()
+# `KGridParam` / `KGRID` DELETED 2026-09-17.  A click ParamType accepting
+# `4x4x1` / `4,4,1` / `4 4 1`, it existed for `molbuilder fdf --kgrid`, and
+# went unused the moment that command was deleted (a038ad11, 2026-08-11) --
+# which removed its only `type=KGRID` and left the type standing.  No command
+# takes a k-grid on the command line: a k-grid is a PARAMETER, so it is said
+# in the description and reaches the deck through the template.
+#
+# Two test docstrings cited it as the terminal's half of a parity claim --
+# "what works in the terminal works in the table".  The browser's parser is
+# the only one now, and those docstrings say so.
 
 
 # --------------------------------------------------------------------- #
@@ -1163,9 +1152,10 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to extended-XYZ.
 
     The periodic cell is preserved on the comment line as an ASE
-    ``Lattice="..."`` header (Å), so a downstream ``molbuilder fdf`` keeps
-    the real cell instead of inventing a vacuum box.  This is the
-    convenient ``.XV`` extraction entry; the underlying API is
+    ``Lattice="..."`` header (Å), so the cell travels with the structure into
+    a description and reaches the deck ``jobset prep`` renders, instead of the
+    geometry arriving as a molecule in a vacuum box.  This is the convenient
+    ``.XV`` extraction entry; the underlying API is
     ``molbuilder.parse.coords.xv_to_xyz``.
     """
     from .parse.coords import xv_to_xyz
@@ -3527,25 +3517,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if asked_for_help:
         sys.exit(rc)
     return rc
-
-
-def _run_watch_serve_entrypoint() -> int:
-    """Console-script shim for the legacy ``molwatch`` entry point.
-
-    Maps to ``molbuilder serve`` with whatever extra args the user
-    passed.  Originally invoked ``molbuilder watch serve``, but that
-    subcommand was removed 2026-05-19 along with the /watch page --
-    ``molbuilder serve`` is the canonical entry point and serves the
-    same blueprints (/api/watch/* remain available for the /results
-    inspector).
-
-    Kept for backwards compatibility with users / scripts that still
-    invoke ``molwatch`` directly after the molbuilder + molwatch
-    merge.  Operators are encouraged to migrate to ``molbuilder
-    serve`` in their scripts; this shim makes the transition silent
-    rather than breaking.
-    """
-    return main(["serve"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

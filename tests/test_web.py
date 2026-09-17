@@ -368,9 +368,12 @@ def test_a_comma_string_coerces_for_every_sequence_shape():
     field declaring ``Tuple[int, int, int]``, and the range check
     downstream could only report it as a programmer bug.
 
-    The three k-grid spellings are the ones ``--kgrid`` itself takes
-    (`cli.KGridParam`), because one product should not accept a value at
-    the terminal and refuse it over HTTP.
+    Three spellings are accepted because a person writes a k-grid all three
+    ways and the field means the same thing each time.  They came from
+    ``--kgrid`` (`cli.KGridParam`), which went with `molbuilder fdf` --
+    a k-grid is a PARAMETER, said in the description, so there is no
+    terminal half of this any more and the browser's parser is the one
+    that has to be right.
     """
     import dataclasses
     import typing
