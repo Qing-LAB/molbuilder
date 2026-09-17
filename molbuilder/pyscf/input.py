@@ -24,9 +24,8 @@ module instead of the actual PySCF library).
 
 from __future__ import annotations
 
-import re
-
 import math
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -1565,4 +1564,10 @@ def job_name(text: str) -> Optional[str]:
     incidental ``JOB`` further down the script cannot match.
     """
     m = _JOB_LITERAL_RE.search(text)
-    return m.group(2) if m else None
+    if m is None:
+        return None
+    # `or None` for the same reason `parse.fdf.system_label` has it: an empty
+    # value is not a label, and two sibling readers of one question must not
+    # answer it differently -- one `""` and one `None` is a caller writing
+    # `x is not None` against one and `if x` against the other.
+    return m.group(2) or None

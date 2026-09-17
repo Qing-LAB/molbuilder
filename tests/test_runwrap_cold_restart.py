@@ -671,6 +671,43 @@ class TestColdBehaviourSystemLabelMismatch:
             assert name in named, f"{name} was not named by --cold"
         assert _no_aside(tmp_path)
 
+    def test_an_unusable_label_falls_back_AND_SAYS_SO(self):
+        """A label that cannot be a filename falls back to the basename,
+        **and the wrapper tells the person it did.**
+
+        The check itself is old -- it was a `case "$_warm_label" in
+        *[!A-Za-z0-9._-]*)` in the emitted bash, guarding a value the awk had
+        just read out of the deck, and it printed a warning before falling
+        back.  The read moved to prep on 2026-09-17 (`gpu.md` G7) and the
+        guard came with it; **the warning did not**, and this test exists
+        because that silence is the dangerous half.
+
+        Silently sweeping under the wrong name means `--cold` finds nothing,
+        reports nothing to clean, and the engine then warm-starts off files
+        the person believed were gone.  A wrong answer with no signal.
+
+        Mutation-tested: with the charset guard disabled nothing else in the
+        suite fails, which is why this is here and not assumed covered.
+        """
+        from molbuilder.runwrap import _cold_restart_block
+        block = _cold_restart_block("job_01_coarse", engine="siesta",
+                                    label="my job")   # a space: unusable
+        assert '_warm_label="job_01_coarse"' in block, (
+            "an unusable label must fall back to the basename")
+        assert "NOTE" in block and "--cold" in block, (
+            "the fallback must be announced -- a silent one lets --cold "
+            "report a clean directory that is not clean")
+
+    def test_a_usable_label_says_nothing(self):
+        """THE DISCRIMINATING HALF.  An ordinary label emits no notice, so
+        the test above cannot pass on a wrapper that warns unconditionally."""
+        from molbuilder.runwrap import _cold_restart_block
+        block = _cold_restart_block("job_01_coarse", engine="siesta",
+                                    label="bdt")
+        assert '_warm_label="bdt"' in block
+        assert "NOTE" not in block, (
+            "a nameable label is not worth a line of output")
+
     def test_quoted_systemlabel_stripped_in_glob(self, tmp_path):
         """SIESTA accepts ``SystemLabel "my job"`` (quoted, with
         embedded space).  The wrapper's awk must strip the surrounding
@@ -857,7 +894,7 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     """
     from molbuilder.runwrap import _cold_restart_block
 
-    block = _cold_restart_block("myjob", engine="pyscf")
+    block = _cold_restart_block("myjob", engine="pyscf", label="myjob")
     line = [l for l in block.splitlines()
             if l.strip().endswith(") continue ;;")]
     assert len(line) == 1, "the exception case arm moved or multiplied"

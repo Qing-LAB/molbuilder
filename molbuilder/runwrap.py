@@ -396,11 +396,19 @@ def _deck_label(script_path: Path) -> str:
         text = script_path.read_text(errors="replace")
     except OSError:
         return ""
-    if script_path.suffix.lower() == ".fdf":
+    # EXPLICIT ON BOTH, with no fall-through.  The first version read the fdf
+    # on `.fdf` and handed EVERYTHING ELSE to the PySCF reader, which is right
+    # only because the two real callers pass a deck -- a third passing
+    # anything else would have got a silently wrong answer rather than an
+    # empty one.
+    suffix = script_path.suffix.lower()
+    if suffix == ".fdf":
         from molbuilder.parse.fdf import system_label
         return system_label(text) or ""
-    from molbuilder.pyscf.input import job_name
-    return job_name(text) or ""
+    if suffix == ".py":
+        from molbuilder.pyscf.input import job_name
+        return job_name(text) or ""
+    return ""
 
 #: The charset a wrapper may put in a filename.  This was a `case` pattern
 #: inside the emitted bash (`*[!A-Za-z0-9._-]*`), guarding a value the awk
@@ -409,8 +417,8 @@ def _deck_label(script_path: Path) -> str:
 #: nameable falls back to the basename instead of warning at launch.
 _WRAPPER_LABEL_RE = re.compile(r"[A-Za-z0-9._-]+")
 
-def _cold_restart_block(basename: str, *, engine: str,
-                        label: str = "") -> str:
+
+def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     """Bash snippet that NAMES the prior state a cold run would overwrite.
 
     **It reports and stops; ``--force`` proceeds** *(user, 2026-08-18)*.  It
@@ -473,22 +481,42 @@ def _cold_restart_block(basename: str, *, engine: str,
     # `system_label` -- both valid fdf, both accepted by SIESTA -- swept under
     # the wrong name.
     #
-    # `label` falls back to the basename, which is what the awk's `:-` default
-    # did when the deck stated none or could not be read.
     if engine not in ("siesta", "pyscf"):   # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
 
-    # SANITISED HERE, IN PYTHON, not by a `case` in the emitted bash.  The
-    # awk needed that guard because its value came from the file it had just
-    # read; this one comes from `parse.fdf.system_label` /
-    # `pyscf.input.job_name` at prep, and a value outside the wrapper-name
-    # charset is a deck the generator would not have written -- so the
-    # basename is the honest answer, decided here rather than warned about
-    # at launch.
+    # DECIDED HERE, TOLD AT LAUNCH -- `_orbitals_per_rank_notice`'s shape,
+    # eight lines down, and for the same reason.
+    #
+    # `label` falls back to the basename when the deck states none or could
+    # not be read, which is what the awk's `:-` default did.  The charset
+    # check was a `case` in the emitted bash, guarding a value the awk had
+    # just read; the value is read at prep now, so the check comes with it.
+    #
+    # **But the fallback must still be VISIBLE.**  The bash printed
+    # "[molbuilder] warning: ... contained disallowed characters; falling
+    # back to basename" and my first version dropped that, so a hand-edited
+    # label that cannot be used in a filename silently swept under the wrong
+    # name: `--cold` would find nothing, report nothing to clean, and the
+    # engine would warm-start off files the person believed were gone.  The
+    # notice is BAKED here rather than re-derived at launch -- G7 governs
+    # where the DECISION is made, not whether the person hears about it.
     _lbl = label or basename
+    _label_notice = ""
     if not _WRAPPER_LABEL_RE.fullmatch(_lbl):
+        _keyword = "SystemLabel" if engine == "siesta" else "JOB"
+        _label_notice = (
+            # Single quotes around the name INSIDE the double-quoted echo:
+            # an apostrophe is literal there, needs no escaping, and does not
+            # end the string.  The first version wrote \" and relied on bash
+            # re-joining the fragments -- which produced the right sentence by
+            # accident and would not have survived a name with a space in it.
+            f"echo \"molbuilder: NOTE -- {_keyword} in the deck is not "
+            f"usable in a filename; using '{basename}' for the name sweep. "
+            f"Files written under the deck's own name will NOT be found by "
+            f"--cold.\" >&2\n"
+        )
         _lbl = basename
-    label_extract = '_warm_label="' + _lbl + '"\n'
+    label_extract = _label_notice + '_warm_label="' + _lbl + '"\n'
     # § 4.1's "except what molbuilder wrote", derived from the ONE
     # enumeration (identity.OUR_FILE_PATTERNS) rather than hand-spelled
     # here in a second language (E-1, 2026-08-13).  ``{label}`` becomes a
