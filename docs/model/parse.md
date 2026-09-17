@@ -586,13 +586,34 @@ with the chain so the message cannot drift from the search.
 
 **A file parser finding its own companion stays where it is** — § 5a's sibling
 upgrade. `engines/_sidecar._siesta_fdf_path_for`,
-`engines/pyscf._resolve_job_token` and `engines/siesta_mdnc.sibling_md_nc`
-each locate one file from another *of their own format*. Folding those in
-would make every engine parser depend on the directory composer, inverting
-§ 5's own rule that a DirParser composes FileParsers and never the reverse.
+`engines/_sidecar.read_frozen_atoms`, `engines/pyscf._resolve_job_token` and
+`engines/siesta_mdnc.sibling_md_nc` each locate one file from another *of their
+own format*. Folding those in would make every engine parser depend on the
+directory composer, inverting § 5's own rule that a DirParser composes
+FileParsers and never the reverse.
 
 The test is: **does the question need to see the whole directory?** "Which
 file is the status" does. "Where is my `.out`'s `.fdf`" does not.
+
+> **And the shape they share is: compose the exact name, then fall back to a
+> LONE file of that kind in the directory.** `_siesta_fdf_path_for` has done
+> both since 2026-06-14. `read_frozen_atoms` had only the first until
+> 2026-09-17, and so returned nothing for **every laddered calculation** — the
+> sidecar is written once per calculation and stemmed on the bare label, so no
+> name composed from `bdt_01_coarse` can reach `bdt.molstruct.json`. Listing a
+> directory is not "seeing the whole directory" in this section's sense: the
+> question is still *where is my companion*, answered without parsing anything
+> else.
+>
+> **The fallback is licensed by `project-layout.md` § 1.4** — a directory is a
+> container or a run, and a run holds *"what that invocation produced, and
+> nothing else holds that"* — so a lone sidecar beside an artifact is that
+> run's. It is guarded on both sides: the lone file's label must be a prefix of
+> the artifact's on a `_` boundary, and **two candidates decline rather than
+> pick**. Guessing from the NAME stays forbidden, because it is undecidable —
+> measured: `runfiles.parse` reads a stage token off both `bdt_01_coarse` (rung
+> `01_coarse` of `bdt`) and `sample_02_test` (a whole label), so no rule over
+> the filename separates them.
 
 ### 5.4 Every DirParser must
 

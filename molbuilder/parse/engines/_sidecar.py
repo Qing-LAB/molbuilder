@@ -87,6 +87,54 @@ def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
                   for sfx in (".molstruct.json", ".source.molstruct.json")]
     sidecar_path = next(
         (p for p in candidates if os.path.isfile(p)), None)
+
+    # THE RUNG FALLBACK -- one sidecar in the directory is THIS run's.
+    #
+    # Everything above composes a NAME and tests it.  That answers
+    # `bdt.out` and fails every laddered artifact: the sidecar is written
+    # once per calculation and stemmed on the bare label, so nothing
+    # composed from `bdt_01_coarse` can name `bdt.molstruct.json`, and
+    # stripping the rung needs a label the caller usually does not pass.
+    # Measured 2026-09-08 and again 2026-09-17: `bdt.out` returned
+    # `{5, 6, 7}` and `bdt_01_coarse.out`, `.molwatch.log`, `.pyscf.log`
+    # and `-run0.out` all returned nothing -- so "Hide frozen atoms" and
+    # `runtime_info["frozen_atoms"]` were empty for EVERY staged run.
+    #
+    # Guessing the label is a bug and stays one (see above).  Looking is
+    # not guessing: `project-layout.md` 1.4 -- a directory is a container
+    # or a RUN, and a run holds "what that invocation produced, and
+    # nothing else holds that" -- so a lone sidecar beside the artifact
+    # is that calculation's, whatever it is called.
+    #
+    # This is `_siesta_fdf_path_for`'s own pattern, in this same module:
+    # try the exact stem, then fall back to a single `*.fdf` in the
+    # directory.  `model/parse.md` 5.3 names that function as the shape
+    # a companion lookup may legitimately take -- it stays path-only and
+    # does not invert 5's rule.  Asked through the framework's search
+    # (`sidecars_in`), not a hand-rolled glob (`project-layout.md` 4.5).
+    #
+    # STRICTLY ADDITIVE: it runs only where the answer was already
+    # nothing, and only when the directory is unambiguous.  Two sidecars
+    # or none and this returns empty exactly as before.
+    if sidecar_path is None:
+        from molbuilder.sidecars.molstruct import SUFFIX, sidecars_in
+        found = sidecars_in(base or ".")
+        if len(found) == 1:
+            # AND its label must be a PREFIX of this artifact's, on a `_`
+            # boundary.  That is the half that costs nothing: it refuses an
+            # unrelated lone sidecar (`other.molstruct.json` beside
+            # `bdt_01_coarse.out`) while keeping every rung.  What it cannot
+            # decide is `sample_02_test.out` beside `sample.molstruct.json`
+            # -- measured, `runfiles.parse` reads a stage off BOTH spellings,
+            # so no rule over the NAME separates them.  Only the directory
+            # does, and 1.4 is what lets it.
+            sc_stem = found[0].name[: -len(SUFFIX)]
+            if sc_stem.endswith(".source"):
+                sc_stem = sc_stem[: -len(".source")]
+            if any(_s == sc_stem or _s.startswith(sc_stem + "_")
+                   for _s in stems):
+                sidecar_path = str(found[0])
+
     if sidecar_path is None:
         return set()
     try:

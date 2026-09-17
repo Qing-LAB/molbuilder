@@ -355,26 +355,65 @@ class TestTheSidecarPathLearnsTheSameLesson:
         "bdt_02_electrode_L-run3.out",        # a stage name carrying `_`
         "bdt_01_coarse_geom_optim.xyz",       # geomeTRIC's trajectory
     ])
-    def test_a_run_artifact_finds_the_sidecar_when_the_label_is_known(
-            self, tmp_path, artifact):
+    @pytest.mark.parametrize("label", [None, "bdt"],
+                             ids=["no-label", "label-known"])
+    def test_a_run_artifact_finds_the_sidecar(
+            self, tmp_path, artifact, label):
+        """BOTH WAYS ROUND, and the no-label half is the fix of 2026-09-17.
+
+        Passing the label was the only way through until then, and **three of
+        the function's four production callers do not pass one**
+        (`parse/engines/molwatch.py`, `pyscf.py`, `siesta.py`) -- so "Hide
+        frozen atoms" and `runtime_info["frozen_atoms"]` were empty for every
+        laddered calculation while this test was green.  A test whose fixture
+        supplies what production omits proves the code works for the test.
+        """
         from molbuilder.parse.engines._sidecar import read_frozen_atoms
         self._sidecar(tmp_path, "bdt.molstruct.json", [0, 2])
         (tmp_path / artifact).touch()
-        assert read_frozen_atoms(str(tmp_path / artifact), "bdt") == {0, 2}
+        args = (str(tmp_path / artifact),) + ((label,) if label else ())
+        assert read_frozen_atoms(*args) == {0, 2}
 
-    def test_without_a_label_it_refuses_to_guess_which_part_is_the_rung(
-            self, tmp_path):
-        """THE REGRESSION PIN.  `sample_02_test` is a whole label, not
-        `sample` + rung `02_test`, and nothing in the filename says which.
-        Guessing gave this artifact a neighbour's frozen atoms."""
+    def test_it_still_refuses_to_guess_from_the_NAME(self, tmp_path):
+        """THE REGRESSION PIN, and it survives the 2026-09-17 fix intact.
+
+        `sample_02_test` is a whole label, not `sample` + rung `02_test`, and
+        **nothing in the filename says which** -- measured: `runfiles.parse`
+        reads a stage token off BOTH spellings.  So no rule over the name may
+        strip a rung, and passing the artifact's real label still yields
+        nothing, because its own sidecar does not exist and a neighbour's is
+        not a substitute.
+        """
         from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "sample_02_test.molstruct.json", [1, 4])
         self._sidecar(tmp_path, "sample.molstruct.json", [5, 6, 7])
         (tmp_path / "sample_02_test.out").touch()
-        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out")) == set()
-        # …and with the real label it is still nothing: this artifact's own
-        # sidecar does not exist, and the neighbour's is not a substitute.
+        # its OWN sidecar is taken, never the shorter neighbour's
+        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out")) == {1, 4}
         assert read_frozen_atoms(str(tmp_path / "sample_02_test.out"),
-                                 "sample_02_test") == set()
+                                 "sample_02_test") == {1, 4}
+
+    def test_an_unrelated_lone_sidecar_is_refused(self, tmp_path):
+        """THE GUARD ON THE FIX.  The rung fallback takes a lone sidecar only
+        when its label is a prefix of the artifact's on a `_` boundary, so a
+        sidecar that simply happens to be the only one in the folder is not
+        handed over.  Without this the fallback would be the old guess with a
+        wider net."""
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "other.molstruct.json", [5, 6, 7])
+        (tmp_path / "bdt_01_coarse.out").touch()
+        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out")) == set()
+
+    def test_two_candidate_sidecars_decline_rather_than_pick(self, tmp_path):
+        """AMBIGUITY DECLINES.  The fallback is licensed by
+        `project-layout.md` § 1.4 -- a run directory holds one invocation's
+        output, so ONE sidecar beside the artifact is that run's.  Two is not
+        that directory, and picking would be guessing again."""
+        from molbuilder.parse.engines._sidecar import read_frozen_atoms
+        self._sidecar(tmp_path, "bdt.molstruct.json", [5, 6, 7])
+        self._sidecar(tmp_path, "bdt_other.molstruct.json", [1, 2])
+        (tmp_path / "bdt_01_coarse.out").touch()
+        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out")) == set()
 
     def test_a_prepped_bundle_spells_it_source_and_that_is_also_found(
             self, tmp_path):
@@ -397,3 +436,4 @@ class TestTheSidecarPathLearnsTheSameLesson:
         (tmp_path / "bdt_01_coarse.out").touch()
         assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out"),
                                  "bdt") == {7}
+
