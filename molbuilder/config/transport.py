@@ -475,12 +475,29 @@ class TransportConfig:
     # defaults to 0 meaning *leave it to the engine*, and nothing is emitted
     # -- writing a number there would silently replace a formula.
 
-    negf_eq_pole_ev: float = field(default=1.5, metadata={
+    # 0, PER THE POLICY STATED DIRECTLY ABOVE: this keyword's SIESTA default
+    # IS a formula -- `Pi * 60 * kT * 0.7` (`m_ts_chem_pot.F90:316`) -- so the
+    # field leaves it to the engine and emits nothing.
+    #
+    # It shipped as 1.5 from 2026-09-15 until 2026-09-17, which is the one
+    # region of the old (0.1, 10.0) range that kills the run at the
+    # temperature this config also ships.  TranSIESTA derives the pole COUNT
+    # from the energy, `n = int(E / (Pi * kT))` (`:319`), and `die`s below 20
+    # (`:324`).  At the default 300 K that is int(1.5 / 0.0812) = 18, so every
+    # device deck rendered from this config aborted before the SCF loop --
+    # "The continued fraction method requires at least 20 poles."  1.5 eV
+    # needs T <= 277 K to clear the bar.
+    #
+    # `config/siesta.py`'s copy of this field was corrected on 2026-09-16 and
+    # this one was not, which is the two-homes debt (`template.md` 2.1a)
+    # charging for itself: the live seam reads that one, and only the legacy
+    # `transiesta.render_script` reads this one.
+    negf_eq_pole_ev: float = field(default=0.0, metadata={
         "section": "NEGF density contour",
         "workflow_group": "stage",
-        "label":   "Equilibrium pole energy",
+        "label":   "Equilibrium pole energy (0 = engine default)",
         "unit":    "eV",
-        "range":   (0.1, 10.0),
+        "range":   (0.0, 10.0),
         "tier":    "advanced",
         "engine_key": 'TS.Contours.Eq.Pole  (transiesta)',
     })
