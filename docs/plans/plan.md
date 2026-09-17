@@ -2785,6 +2785,86 @@ precedent. *Check:* `molbuilder --help` lists no calculation-kind verb, and
 `conventions.md` § 3's sub-group list drops from 7 to 6 with `bench` (already
 deleted 2026-08-17) no longer named either — that row is stale twice over.
 
+#### 5p.3p.7 Step 2's review — the invariant set, one by one *(2026-09-17)*
+
+`transport.md` § 5 declares thirteen invariants and says `transport preflight`
+*"turns the prose Golden Rule into automated gates — the single biggest
+correctness lever."* Step 2 proposed deleting that verb. **The review says
+not yet**, and found a defect while checking.
+
+| | invariant | held today by |
+|---|---|---|
+| I1 | XC functional + authors | **construction** — every rung resolves from one template |
+| I2 | pseudopotentials | **construction** — the lead's atoms ARE the device's, extracted |
+| I3 | MeshCutoff | **construction** — one template |
+| I4 | PAO.EnergyShift | **construction** — one template |
+| I5 | basis tier | **construction** — one template |
+| I6 | lateral cell (a, b) | **construction** — `extract_electrode_model` takes the device's `lat_a`/`lat_b` verbatim |
+| I7 | transverse k commensurate | **construction** — `citation_defaults` carries the transverse pair to both |
+| I8 | device kz = 1 | **live gate** — `validation/__init__.py:528`, error |
+| I9 | electrode kz dense | ⚠ **only `preflight.py:357-361`** |
+| I10 | electrode geom = device frozen layers | **construction** — the extraction clones them |
+| I11 | thickness ≥ principal layer | **`compose.py:596-640`, and BETTER** — it reads real orbital ranges from the citation's `.ion` files and refuses with the numbers. Its own comment retires the preflight's 12 Å floor as *"a GUESS made before anything was read … wrong about exactly the leads this measurement exists to judge"* |
+| I12 | z-vacuum ≈ 0 at the leads | ⚠ **only `preflight.py:404-408`** |
+| I13 | electrode writes its HS | **construction** — `TS.HS.Save` is a role item on the electrode rung |
+
+**Eleven of thirteen are held without the verb, and one is held better.** Two
+are not held at all once it goes.
+
+**~~And I12 exposed a live defect~~ — RETRACTED the same day, 2026-09-17.**
+
+I reported that `cell.vacuum_thin` fires on a transport device and advises
+≥ 8 Å per side on the transport axis — the edit I12 says severs the lead. That
+was **wrong**, and it is recorded here rather than deleted because the way it
+was wrong is the point.
+
+The check already filters on `axis_kind == "isolated"`, and `compose.py:777` /
+`sort.py:326` both carry `axis_kind` through. Measured: the same atoms declared
+as a junction (`periodic, periodic, transport`) produce **no vacuum finding at
+all**. It fired only on a bare test fixture that carries no cell and no
+`axis_kind` — a structure that declares itself an isolated molecule, which the
+check then correctly described.
+
+**I measured a fixture and reported it as the product.** Had the "fix" gone in,
+it would have broken correct advice for every isolated molecule — nearly every
+other calculation — to repair nothing. *(User caught the cross-task risk before
+the edit: "make sure this is not conflicting with other tasks — these
+suggestion is correct in those context.")*
+
+What survives is smaller and real: **nothing requires a transport structure to
+declare a transport axis.** `_validate_transport_kind` gates bias, net charge,
+the pole energy, `tbt_k_grid` and `kgrid`, and not this. A junction with no
+declared axes still renders — `_lattice_block` fabricates a vacuum box and says
+so loudly IN THE DECK, but no validation Issue is raised, so nothing reaches the
+form. That is a candidate gate, not a defect, and it is I12-adjacent rather than
+I12 itself.
+
+**Revised step 2, in three parts:**
+
+2a. ~~Fix the vacuum advice~~ — **VOID**, the finding was retracted above. The
+    check is correctly gated on `axis_kind` and needs no change. *Optional, and
+    separable:* a gate requiring a transport structure to declare a transport
+    axis, beside I8 in `_validate_transport_kind`. It is not a prerequisite for
+    2b or 2c.
+2b. **Re-home I9 and I12** — **DONE 2026-09-17.** Both now live in
+    `_validate_transport_kind`, beside I8, keyed on the calculation KIND so they
+    fire on every prep rather than on a command somebody remembers to run.
+    I9 → `config.electrode_kz` (error at 1, warn below 20); I12 →
+    `cell.transport_vacuum` (warn above 3 Å). Both thresholds are
+    `preflight.py`'s own numbers, kept so the re-homing changed no verdict.
+    *Check, passed:* seven tests in `tests/validation/test_transport_kind.py`,
+    each carrying its discriminating half — the shipped `electrode_kz` default
+    says nothing, a seamless cell says nothing, and **neither rule reaches a
+    non-transport calculation**, which matters because I12 is the REVERSE of
+    what `cell.vacuum_thin` tells an isolated molecule. Mutation-tested:
+    disabling either gate fails its test. `transport.md` § 5's rows now name
+    the live checks, and its "single biggest correctness lever" claim is
+    corrected in the same change.
+2c. **Then delete** `preflight_files`, `format_report` and the verb, keeping
+    `parse_fdf_params` and `_BOHR_ANG`. *Check:* all thirteen invariants still
+    have a named holder, and § 5's claim that the verb is *"the single biggest
+    correctness lever"* is corrected — it has not been that since the composite.
+
 #### 5p.3p.5 The standing rule — consolidate, do not patch
 
 **Four passes over this section have each CHANGED the answer rather than
@@ -2828,6 +2908,7 @@ this section. It is five questions, top down:
 | date | before step | what was re-read | what changed |
 |---|---|---|---|
 | 2026-09-17 | 2 | `presenters.md`, `model/parse.md` § 5, `conventions.md` § 3, `workflow.md` § 7, the contract index | CLI layer added to the map; Results gap re-framed as one unbuilt door; `pyscf` verb found obsolete by decision 34 (§ 5p.3p.6) |
+| 2026-09-17 | **2 — STOPPED** | `engines/transport.md` § 5 (the 13 invariants), `compose.py`'s gates, `validation/__init__.py` | **The check disagreed and step 2 does not proceed.** 11 of 13 invariants are held by construction or by a live gate, and I11 is held BETTER (`compose` reads real orbital ranges); **I9 and I12 are held ONLY by the verb step 2 would delete**. I also reported a vacuum defect here and **RETRACTED it the same day** — I had measured a bare test fixture and reported it as the product; the check is correctly gated on `axis_kind`. See § 5p.3p.7 |
 | 2026-09-17 | 6 (tests) | the repointed tests themselves, against the live deck | **A repoint is not a free pass.** Four checks were carried over from the deleted writer; three pinned deck TEXT with the emitter's column spacing baked in, and one -- `used-atoms` -- claimed to prove a count was "derived, NOT hardcoded" while asserting the literal `3`. Rewritten to parse the deck and compare against the structure's own regions; **mutation-testing then showed the rewrite STILL passed** against a hardcoded emitter, because the fixture's leads are 3 and 3. Now driven by an asymmetric junction (2 and 4), which is the only shape that can tell a derived count from a constant |
 
 ##### What "done" means for this section

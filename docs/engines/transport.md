@@ -1830,16 +1830,33 @@ gate `id`; ✓ = guaranteed by the electrode wizard's clone-by-construction inst
 | I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | `cell.transverse` |
 | I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k (commensurate = the two grids share a common factor) | `kgrid.transverse` |
 | I8 | Device kz = 1 | device | open boundary (no periodicity along transport) | `kgrid.device_kz` |
-| I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | `kgrid.electrode_kz` |
+| I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`config.electrode_kz`** — `_validate_transport_kind`, error at 1 / warn below 20 *(re-homed 2026-09-17)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | wizard clone ✓ |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `electrode.thickness` (warn) |
-| I12 | z-vacuum ≈ 0 at the leads | device | a gap = severed lead, not a junction | `device.z_vacuum` (warn) |
+| I12 | z-vacuum ≈ 0 at the leads | device | a gap = severed lead, not a junction | **`cell.transport_vacuum`** — `_validate_transport_kind`, warn *(re-homed 2026-09-17)* |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | `electrode.saveHS` (warn) |
 
-`transport preflight` reports these as `error`/`warn`/`ok` Issues (a
-`PreflightReport`, `preflight.py`) and refuses to proceed on any error. This
-turns the prose "Golden Rule" into automated gates — the single biggest correctness
-lever, since these are exactly the silent failures. An illustrative run:
+**ELEVEN OF THE THIRTEEN NEED NO GATE UNDER THE COMPOSITE** *(measured
+2026-09-17, `plan.md` § 5p.3p.7)*. Seven hold by construction — every rung
+resolves from ONE template, so I1/I3/I4/I5 cannot differ; the lead's atoms ARE
+the device's, extracted by `compose`, so I2/I10 hold; and the lead takes the
+device's lateral vectors verbatim (I6). I7 rides `citation_defaults`. I13 is a
+`role` item on the electrode rung. I8 is an error in `_validate_transport_kind`,
+and **I11 is held BETTER** by `compose.py`, which reads real orbital ranges from
+the citation's `.ion` files and refuses with the numbers — retiring the ~12 Å
+floor `preflight.py` used, which passes a 4.8 Å three-layer Au block.
+
+I9 and I12 were the two held only by the verb, and were re-homed to
+`_validate_transport_kind` on 2026-09-17 — the one validator keyed on the
+calculation KIND, which is what makes them fire on every prep rather than on a
+command somebody remembers to run.
+
+*This paragraph called the verb "the single biggest correctness lever". That was
+true of the hand-assembly workflow it was written for (2026-06-27), where a
+person wrote two decks and nothing else compared them. Under the composite the
+decks are derived from one citation and one template, so the couplings hold by
+construction and the verb's remaining job is checking two finished `.fdf` files
+somebody produced another way.* An illustrative run of it:
 
 ```text
 $ molbuilder transport preflight --device run/junc.fdf \

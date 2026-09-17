@@ -349,6 +349,17 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     return list(spectra_render_checks(struct, science_view(cfg, struct)))
 
 
+#: Below this the lead's transport sampling is called thin (I9).  It is the
+#: floor `transport/preflight.py` used before that verb was retired, kept so
+#: re-homing changed no verdict -- and it is a FLOOR, never a convergence
+#: proof: `engines/transport.md` § 4.2 asks for a kz sweep.
+_ELECTRODE_KZ_THIN = 20
+
+#: More than this much empty space along transport and the cell no longer
+#: wraps (I12).  Also `preflight.py`'s number, for the same reason.
+_DEVICE_Z_VACUUM_MAX = 3.0
+
+
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
                              prior=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
@@ -526,6 +537,75 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"there, and that density is what resolves its Fermi level "
             f"(engines/transport.md 2a.13).",
             where="config.kgrid"))
+
+    # ---- I9: the LEAD's transport sampling (`engines/transport.md` § 5) ----
+    #
+    # RE-HOMED 2026-09-17 from `transport/preflight.py`, which compared two
+    # finished decks.  Under the composite both decks resolve from one
+    # template, so eleven of § 5's thirteen invariants hold by construction
+    # and this is one of the two that did not -- it was held ONLY by a verb
+    # that is going (`plan.md` § 5p.3p.7).
+    #
+    # The three k components are three different classes (§ 2a.13): the
+    # transverse pair is shared, the DEVICE's transport axis is fixed at 1
+    # above because it is the open boundary, and the LEAD's is its own field.
+    # A lead is a genuinely periodic bulk crystal, and a thin lead cell has a
+    # large Brillouin zone along transport -- so it needs DENSE sampling, the
+    # opposite of the device.
+    ekz = getattr(cfg, "electrode_kz", None)
+    if ekz is not None:
+        try:
+            ekz = int(ekz)
+        except (TypeError, ValueError):
+            ekz = None
+    if ekz is not None and ekz <= 1:
+        out.append(Issue(
+            "error",
+            f"electrode_kz is {ekz}, but an electrode rung is a PERIODIC BULK "
+            f"calculation: its transport axis IS Brillouin-zone sampled, and "
+            f"densely.  kz = 1 gives a wrong lead Hamiltonian, and the device "
+            f"then attaches a self-energy built from it -- a wrong "
+            f"transmission with no runtime error.  This is the device's rule "
+            f"inverted, not repeated (engines/transport.md 2a.13): the device "
+            f"axis is open and fixed at 1; the lead axis is periodic and "
+            f"wants many.",
+            where="config.electrode_kz"))
+    elif ekz is not None and ekz < _ELECTRODE_KZ_THIN:
+        out.append(Issue(
+            "warn",
+            f"electrode_kz is {ekz}, which is low for a bulk lead -- the "
+            f"shipped default is 40 and a thin lead cell wants more.  This is "
+            f"a FLOOR, not a convergence proof: only a kz sweep shows the "
+            f"lead's Fermi level has settled (engines/transport.md 4.2).",
+            where="config.electrode_kz"))
+
+    # ---- I12: no vacuum along transport (`engines/transport.md` § 5) ----
+    #
+    # The other invariant the verb held alone.  A junction's cell must wrap
+    # seamlessly along z: the leads continue into the periodic image, so a gap
+    # there is not padding, it is a SEVERED lead.  This is the reverse of the
+    # advice an isolated molecule gets, which is why it is keyed on the
+    # calculation kind and not on the cell alone -- `cell.vacuum_thin` is
+    # right for a molecule and is correctly gated on `axis_kind`.
+    _cell = cell if cell is not None else getattr(struct, "cell", None)
+    if _cell is not None and getattr(struct, "n_atoms", 0):
+        try:
+            import numpy as _np
+            c_len = float(_np.linalg.norm(_np.asarray(_cell, dtype=float)[2]))
+            z = _np.asarray(struct.positions, dtype=float)[:, 2]
+            gap = c_len - float(z.max() - z.min())
+        except Exception:
+            gap = None
+        if gap is not None and gap > _DEVICE_Z_VACUUM_MAX:
+            out.append(Issue(
+                "warn",
+                f"the cell leaves ~{gap:.1f} Å of vacuum along the transport "
+                f"axis (cell c = {c_len:.1f} Å, atoms span "
+                f"{c_len - gap:.1f} Å).  A junction wraps seamlessly along z "
+                f"-- the lead continues into the periodic image -- so a gap "
+                f"there is a severed lead rather than padding.  Extend the "
+                f"cell by the bulk interlayer spacing instead, so z closes.",
+                where="cell.transport_vacuum"))
     return out
 
 

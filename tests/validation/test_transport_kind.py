@@ -242,3 +242,93 @@ class TestTheLinearResponseAdvisory:
                                bias_voltage_v=v)
             assert not _find(validate(junction, cfg, calculation="transport"),
                              "config.bias_voltage_v"), f"V={v}"
+
+
+class TestTheLeadIsSampledDenselyAlongTransport:
+    """I9, re-homed 2026-09-17 from `transport preflight`.
+
+    **The device's rule, INVERTED** — and that is why it needs its own test.
+    The device's transport axis is fixed at 1 because it is the open boundary;
+    the lead's is a genuinely periodic bulk crystal with a large Brillouin zone
+    along z, so it wants many. A validator that simply refused every non-1
+    transport sampling would satisfy `TestTheTransportAxisIsNotSampled` above
+    and be exactly wrong here.
+    """
+
+    def test_a_lead_sampled_once_is_refused(self, junction):
+        cfg = SiestaConfig(system_label="j", electrode_kz=1)
+        assert _find(validate(junction, cfg, calculation="transport"),
+                     "config.electrode_kz", "error"), (
+            "electrode_kz = 1 gives a wrong lead Hamiltonian, and the device "
+            "then attaches a self-energy built from it -- a plausible "
+            "transmission with no runtime error")
+
+    def test_a_thin_lead_sampling_is_advised_not_refused(self, junction):
+        """A floor, not a convergence proof: only a sweep shows the lead's
+        Fermi level has settled, so this says so and does not block."""
+        got = validate(junction, SiestaConfig(system_label="j",
+                                              electrode_kz=5),
+                       calculation="transport")
+        assert _find(got, "config.electrode_kz", "warn")
+        assert not _find(got, "config.electrode_kz", "error")
+
+    def test_the_shipped_default_says_nothing(self, junction):
+        """The discriminating half: without it a rule that flagged EVERY
+        electrode_kz would pass both tests above."""
+        cfg = SiestaConfig(system_label="j")          # electrode_kz default 40
+        assert not _find(validate(junction, cfg, calculation="transport"),
+                         "config.electrode_kz")
+
+    def test_it_is_the_KIND_s_rule_and_not_every_calculation_s(self, junction):
+        """An optimization has no lead to sample; the rule must not reach it."""
+        cfg = SiestaConfig(system_label="j", electrode_kz=1)
+        assert not _find(validate(junction, cfg, calculation="optimization"),
+                         "config.electrode_kz")
+
+
+class TestTheCellWrapsAlongTransport:
+    """I12, re-homed 2026-09-17 from `transport preflight`.
+
+    A junction's leads continue into the periodic image, so empty space along
+    z is a SEVERED lead rather than padding. This is the reverse of what an
+    isolated molecule is told, which is the reason it is keyed on the
+    calculation kind: `cell.vacuum_thin` asks a molecule for *more* vacuum and
+    is right to.
+    """
+
+    @staticmethod
+    def _with_c(junction, c_ang):
+        s = Structure(elements=list(junction.elements),
+                      positions=junction.positions.copy(),
+                      cell=np.array([[8.65, 0, 0], [0, 8.65, 0], [0, 0, c_ang]]),
+                      regions=dict(junction.regions))
+        return s
+
+    def test_a_gap_along_transport_is_flagged(self, junction):
+        span = float(junction.positions[:, 2].max()
+                     - junction.positions[:, 2].min())
+        s = self._with_c(junction, span + 9.0)
+        assert _find(validate(s, SiestaConfig(system_label="j"),
+                              calculation="transport"),
+                     "cell.transport_vacuum", "warn")
+
+    def test_a_seamless_cell_says_nothing(self, junction):
+        """The discriminating half -- and the number is derived from the
+        structure, so the test cannot pass by agreeing with a constant."""
+        span = float(junction.positions[:, 2].max()
+                     - junction.positions[:, 2].min())
+        s = self._with_c(junction, span + 2.36)      # one interlayer spacing
+        assert not _find(validate(s, SiestaConfig(system_label="j"),
+                                  calculation="transport"),
+                         "cell.transport_vacuum")
+
+    def test_an_isolated_molecule_is_not_told_the_opposite(self, junction):
+        """The same roomy cell, as an OPTIMIZATION, draws no transport
+        complaint -- the two pieces of advice contradict each other and must
+        never both fire."""
+        span = float(junction.positions[:, 2].max()
+                     - junction.positions[:, 2].min())
+        s = self._with_c(junction, span + 9.0)
+        assert not _find(validate(s, SiestaConfig(system_label="j"),
+                                  calculation="optimization"),
+                         "cell.transport_vacuum")
