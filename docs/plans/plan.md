@@ -997,6 +997,147 @@ directory* in `run_status`. Fixed by ② rather than separately.
   `process/code-audit.md` D4 then demands. **This is a code-audit item and never
   needed the standard.**
 
+### 5l.c "What label does this deck carry?" — one fact, three readers, and where it belongs *(investigated 2026-09-17)*
+
+**Why this section exists.** N5 ②/③ need the calculation's label to call
+`runfiles.parse`, and one caller (`parse/dirs/job.py`) has none. I first
+concluded that no door answered *"what calculation is this directory for?"* and
+that I would have to add one. **That was wrong** — the question is answered in
+three places already. The investigation is here because the ANSWER is a layer
+question, not a missing function.
+
+| # | reader | where it runs | how it reads | live? |
+|---|---|---|---|---|
+| 1 | `runwrap.py`'s awk, inside the generated wrapper | the **compute node**, at LAUNCH | lower-cases, strips quotes, takes `$2`, then sanitises to `[A-Za-z0-9._-]` or falls back to the basename | ✅ |
+| 2 | `web/blueprints/watch.py::_basename_from_fdf` / `_basename_from_py` | the server, at read time | case-insensitive, allows the dotted spelling, restricts the value charset | ✅ — called at `:269` and `:285` |
+| 3 | `parse/dirs/_assembler_helpers.py::extract_system_label` | — | case-SENSITIVE, requires whitespace, accepts any non-space value | ❌ **deleted 2026-09-06**, "six helpers, zero callers" |
+
+**Two of them disagreed**, and the one that survived is in a web blueprint.
+
+#### The awk one is NOT irreplaceable — it is G7's surviving violation
+
+**`execution/gpu.md` G7 already ruled on this exact class, 2026-08-23:**
+
+> **"G7 — The value travels; the deck is not re-read for it."** *`use_gpu`
+> declares `read_by = ["wrapper"]` precisely so the wrapper can be **handed**
+> the value… The deck scan remains only for a caller that states nothing,
+> which is not re-deriving: that path has no allocation to ask.*
+
+**The label is the same case and was never converted.** Measured 2026-09-17:
+`[item.system_label]` is already a catalogue item carrying
+`anchor = "SystemLabel"` / `engine_key = "SystemLabel"`, and **exactly one row
+in the whole catalogue declares `read_by = ["wrapper"]`** — `use_gpu`, G7's own
+landing. `system_label` does not, which is the only reason the wrapper digs for
+a value `prep` has in hand. G7's escape clause does not cover it: there is no
+caller here that states nothing.
+
+**So the earlier reasoning in this section is superseded, all of it.** I argued
+in turn that the awk (a) could not be replaced because molbuilder is not
+importable there — false, the env is activated 210 lines earlier; (b) had to be
+lax because decks get hand-edited — false, the deck fences a `user-custom` zone
+and warns against the rest; (c) was justified because the *value* can change
+after prep — true but worthless, because the wrapper's own output naming is a
+baked literal, so such a run is already inconsistent with itself. **The real
+answer was a ruling already on the books.**
+
+#### What the awk's comment gets right, and what it gets wrong
+
+*Its stated reason:* it re-reads at launch rather than having the label baked in,
+because the wrapper runs *"on the deck as it is at LAUNCH, after a person may
+have edited it, and a cold-restart sweep keyed to the wrong label moves aside
+files the engine will then not find."* **That premise still holds** — `prep`
+writes, `launch` runs later, and the USER-CUSTOM zone plus the web edit-save
+path exist precisely so a person may edit a deck in between. A sweep keyed to
+the prep-time label would move the wrong files, and SIESTA looks up
+`SystemLabel`, not the wrapper's filename. Its laxness follows from the same
+premise: fdf is case-insensitive and mawk/BSD awk have no `IGNORECASE`, so
+lower-casing is required, not sloppy; and the sanitiser downstream re-imposes
+the charset the generator would have guaranteed.
+
+**I claimed a structural reason here and it was FALSE — corrected 2026-09-17
+after the user challenged it.** I wrote that *"molbuilder is NOT IMPORTABLE
+where that code runs, so the awk cannot call a Python reader."* **Measured in a
+real emitted wrapper** (`projects/claude-audit/optimization/benzene-flat/…run.sh`):
+`conda activate` is at line **210**, the awk is at line **420**. The environment
+is live when the label is read; Python is available. And molbuilder not being
+importable in the ENGINE's env is precisely why `mb_monitor.py` and
+`config_dir.py` ship beside a job — a mechanism that proves a standalone reader
+*could* travel, not that it couldn't.
+
+**So the second implementation is a CHOICE, and these are its real grounds:**
+
+* **Blast radius, measured.** Adding a companion file has cost a production
+  outage in this repo: two hand-kept lists of what travels with the monitor
+  drifted, `config_dir.py` went into one and not the other, and *"every
+  production run's monitor died at import, stderr to /dev/null: no [MACHINE],
+  no status, no util.csv, no reports"* — found only by a bench run that happened
+  to have all four files (`runwrap.py:4156-4164`). A third companion to recover
+  one string is a poor trade against one line of awk.
+* **It feeds shell control flow.** `$_warm_label` is consumed by a `case`
+  pattern and a glob loop in the same script; a Python reader means spawning an
+  interpreter to capture one word.
+* ~~**They answer DIFFERENT questions, so they are allowed to differ.**~~
+  **WITHDRAWN 2026-09-17, same day, user: *"i don't buy the reason for why it
+  has to be forgiving and it's just a fucking pattern matching of names. what
+  kind of shit argument is this?"*** — and that is correct. I argued the awk
+  must be lax because it reads a possibly hand-edited deck. **molbuilder writes
+  the keyword**, the deck fences a `user-custom` zone for edits and says *"Do
+  not hand-edit it"* about the rest, and nobody renames `SystemLabel` to
+  `System.Label` by accident. The laxness is not earned by that story; it is
+  two regexes written on different days.
+
+  **What survives is narrower and real: the VALUE can legitimately change.** A
+  person may rename the job in the deck between `prep` and `launch`, and a
+  sweep keyed to the baked-in old value moves the wrong files. *That* is why it
+  re-reads. It says nothing about how the keyword is matched.
+
+**Recorded so it is not "unified" later:** a future reader who sees only the
+similarity will merge these and break the wrapper. The rule is the third bullet
+— *the wrapper reads the deck AS LAUNCHED; the framework reads what it wrote* —
+and it belongs in the awk's own comment (N5d).
+
+**And its comment carries a claim that was false when written.** It says
+*"This is the only reader of the label now"* — written 2026-09-06 at reader 3's
+deletion, while reader 2 was live in `watch.py` and had been for months. Same
+class as everything else the 2026-09-17 sweep found: a claim made AT a deletion,
+about the thing being deleted, never checked against the rest of the tree.
+
+#### Where the PYTHON reader belongs — `model/parse.md` § 1a settles it
+
+> *"A reserved block in a molbuilder-generated script is not foreign.
+> molbuilder writes it, into a file molbuilder generated... **A block belongs to
+> its writer** — `script_emit` owns the emitting and the reading of what it
+> emitted."*
+
+We write `SystemLabel` and `JOB = "…"`. So reading them back is the **writer's**,
+and `script_emit` already demonstrates the shape with five of them —
+`_extract_header_text`, `_extract_provenance_dict`, `_extract_user_custom_inner`,
+`_extract_atom_metadata_dict`, `_extract_bench_marks_dict`.
+
+**This is also the retrospective explanation for reader 3.** It was deleted for
+having zero callers; the deeper fact is that it was in `parse/` — the layer for
+FOREIGN formats — reading something molbuilder itself had written. Re-creating
+it there, which is what I was about to propose, would have rebuilt the same
+mistake with a caller attached to excuse it.
+
+#### The solution — an EXTENSION of two existing surfaces, no new module
+
+| step | change | why it is not a patch |
+|---|---|---|
+| **N5a** | ~~give each emitter a label reader~~ — **WITHDRAWN: that would be a FIFTH reader.** Instead: **move the one correct fdf reader out of `transport/preflight.py`**, where it is a leftover of the deleted cross-deck comparison, to where reading an engine's format belongs | `_parse_fdf` + `_norm` is the ONLY reader in the tree that implements fdf's real keyword rule (lower-case AND strip `.`/`-`/`_`). `parse/contract.py` already reaches across a package boundary for it with an apologetic function-level import; `watch.py` and `runwrap._parse_fdf_n_atoms` each hand-rolled a narrower one |
+| **N5b** | `watch.py` deletes `_FDF_SYSTEM_LABEL_RE` / `_PY_JOB_NAME_RE` and asks the moved reader; the label is then `scalars["systemlabel"]` — **no new regex anywhere** | four fdf readers become one, and the borrow in `parse/contract.py` stops crossing a package boundary |
+| **N5c** | `parse/dirs/job.py` asks N5a for the label, then `runfiles.parse`; **`identity.parse_stage_token` is DELETED**, its `materialize.py` callers moving to `runfiles.parse` + a token splitter (the inverse of `identity.stage_token`, taking a TOKEN not a filename) | kills the second FILENAME reader, which is N5 ② — and ③ falls out, because the phantom rung came from parsing with no label |
+| **N5d** | **apply G7 to the label — BUT IT IS NOT TWO DECLARATIONS.** ⚠ *I described this as trivial before running the review; the review says otherwise.* `read_by = ["wrapper"]` **documents** a dependency, it does not carry a value: G7 was reached *"by carrying the answer rather than by importing the catalogue into the wrapper"* — `resolve` puts `use_gpu` on `Resources`, which already travels. Measured: `render_wrappers` / `write_run_wrapper` receive `(script_path, resources, env, emit_sbatch, project_dir, machine_record)` and **not** the unsuffixed label; A8 forbids adding a loose kwarg (it exists because eleven were removed). So the label reaches the wrapper only by **a new `Resources` field** — and `Resources` is identity-free today, carrying allocation, retry, notify and `program`. **That is a design decision, not a mechanical application**, and it waits for a yes | `gpu.md` G7 + `architecture.md` A8. The alternative — prep reads the deck once with the consolidated parser and bakes a literal — needs no new field and no plumbing, and is what N5f makes possible |
+| **N5f** | the remaining deck readers consolidate onto the one correct parser: `runwrap._parse_fdf_n_atoms`, `runwrap._fdf_requests_gpu`'s residual scan, and `watch.py`'s pair | **eight readers of deck content measured** — four awk in the wrapper (label ×2, GPU flag, a `%block` line counter), four Python — and only `_parse_fdf` + `_norm` implements fdf's real keyword rule |
+| **N5e** | `RunDirResult` gains `label`, reader named per § 5.0 | **§ 5c's, recorded not built** — the directory-level question is the door's, and N5c's call is the same one the door will make |
+
+**What this deliberately does NOT do:** build a `label_of(directory)` door now.
+That is a question *about a directory*, which § 5 says goes through
+`JobDirParser`, and building it anywhere else is how a seventh consumer with its
+own answer appears — the exact shape § 5l was retired for.
+
+---
+
 ### 5l.b The pattern this is the second instance of *(2026-09-17)*
 
 § 5l and `model/parse.md` § 5's `JobDirParser` are mirror images, and both were
@@ -2365,6 +2506,7 @@ first two passes precisely because the work started in the middle.
 | engine / deck | `engines/transport.md` | ✅ § 6 rewritten 2026-09-17 to name ROLES not function lists (§ 6a says why); § 5's holders named at 2c. The unbuilt transmission inspector is now stated as unbuilt, in `results.md` § 2.3 as well |
 | **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **specified, NOT BUILT**. `parse_dir()` and `detect(<dir>)` can only raise. Migration is **§ 5c**, agreed 2026-09-04, *not started*. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
 | **engine registry** | **`engines/overview.md` § 5** | ✅ *there is no registry* — spectra's went at P3 (2026-08-21), transport's 2026-09-17. § 5 told a new engine to `@register_engine` against it until corrected 2026-09-17; `spectra/methods.py` and `transiesta.py` carried the same claim in docstrings |
+| **what the wrapper is HANDED vs re-reads** | **`execution/gpu.md` G7 + `execution/architecture.md` A8** | ⚠ **added 2026-09-17, and it is what stopped step N5d being trivial.** G7: *"the value travels; the deck is not re-read for it"* — reached 2026-08-23 **by carrying the answer on `Resources`**, not by a declaration alone. A8: the allocation *"arrives whole"* — `render_wrappers` was cut from eleven loose kwargs to one record on 2026-08-17. So handing the wrapper a value means a `Resources` field or nothing; there is no third door |
 | **validation dispatch** | **`science/validation.md`** | ✅ **added 2026-09-17, and it is where the day's biggest defect lived.** Two registries, and WHICH one a science belongs in is the whole question: `_ENGINE_VALIDATORS` keys on a **config class**, `_KIND_VALIDATORS` on `task.calculation`. A row in the first is only as live as the callers that CONSTRUCT that class — and transport's keyed on `TransportConfig` while every rung resolves a `SiestaConfig`, so it dispatched for nothing. Now two engine rows (SIESTA / PySCF) and two kind rows (transport / vibration), asserted by **equality** |
 | execution | `execution/script-preparation.md`, `architecture.md` | ✅ |
 
@@ -2386,7 +2528,9 @@ first two passes precisely because the work started in the middle.
 (`deck.py` reuses both; § 5p.3i ruled the NEGF block stays — an off-by-one in an
 electrode range converges while computing the wrong thing);
 `_emit_basis_and_xc`, `_compute_cell_from_extents`, `_find_electrode_regions`,
-`electrode_hs_stem`; `preflight.parse_fdf_params` (four importers);
+`electrode_hs_stem`; `preflight.parse_fdf_params` (**six production import
+sites**, re-measured 2026-09-17 — `citation_defaults`, `compose` ×2 symbols,
+`parse/contract`, `web/blueprints/transport`; it said four);
 `cell.detect_layers` / `bulk_z_period` — this same pattern **done correctly**,
 moved out of the wizard so `add_slab` and the extraction share one copy.
 
@@ -2794,6 +2938,7 @@ this section. It is five questions, top down:
 | 2026-09-17 | **2 — STOPPED** | `engines/transport.md` § 5 (the 13 invariants), `compose.py`'s gates, `validation/__init__.py` | **The check disagreed and step 2 does not proceed.** 11 of 13 invariants are held by construction or by a live gate, and I11 is held BETTER (`compose` reads real orbital ranges); **I9 and I12 are held ONLY by the verb step 2 would delete**. I also reported a vacuum defect here and **RETRACTED it the same day** — I had measured a bare test fixture and reported it as the product; the check is correctly gated on `axis_kind`. See § 5p.3p.7 |
 | 2026-09-17 | 8 | `conventions.md` § 3 (decisions 7 + 34), both engine contracts, `cli.py`'s own comments | **Found a twin.** `siesta.input.convert` has had no production caller since 2026-08-11 — the same shape as the PySCF one, dead a month, in the engine whose verb went first. Both deleted together. `render_fdf`/`render_script` kept: 43 test files call them, but the reason they stay is that the engine contracts name them, not the tests |
 | 2026-09-17 | **4 — RUN ON TIME** | `engines/transport.md` § 6, `web/results.md`, `web/presenters.md`, `engines/overview.md` § 5, `execution/script-preparation.md`, `model/parse.md`, `web/tabs.md`, `process/conventions.md` § 3 | **The drift is an ENUMERATION problem, and it is not transport's.** Four hand-maintained lists were wrong the same week, each missed by the sweep that correctly fixed the *rules* beside it: § 6's pieces table (6 of 9 rows named deleted code), `presenters.md` § 1 (**5 viewers / 3 results declared, 6 / 4 measured** — `bench-summary` omitted entirely), `results.md` § 3 (*"the three viewers"*), `overview.md` § 5 (told a new engine to `@register_engine` against a Protocol deleted that week). Recorded as `transport.md` § 6a, which also states the rule that follows: **a contract enumerates only where the list IS the guarantee.** Two claims I had restated without resolving turned out never to have existed — `render_checks` on transport's engine base (its Protocol declared `render_script`/`parse_output`/`preflight`/`methods_fragment`) and `molbuilder siesta`. Step 8's sweep was **incomplete**: `engines/pyscf.md` carried a `convert()` tombstone AND, eight lines below it, the live `convert()` docs plus a runnable `molbuilder pyscf` example — six documents still named the deleted verb. One product-code orphan found and removed: `_transport_config_from_params`, zero callers since the route went in 2c |
+| 2026-09-17 | **the fdf consolidation (N5a/b/d/f) — RUN BEFORE, on demand** *(user: "you are ignoring the rule we set for every step again")* | `engines/template.md` § 6.1 (`read_by`), `execution/gpu.md` G7, `execution/architecture.md` A8, `model/parse.md` §§ 1a + 4, `tests/test_layering.py`'s enforced sets | **It changed the step, which is the whole argument for the rule.** I had written N5d as *"two declarations on existing catalogue rows"* and was about to build it. § 6.1 says `read_by` **documents** a dependency and does not carry a value — G7 landed *"by carrying the answer"*, `resolve` putting `use_gpu` on `Resources`. Measured: neither `render_wrappers` nor `write_run_wrapper` receives the unsuffixed label, and **A8 forbids the loose kwarg** (that signature exists because eleven were removed 2026-08-17). So the label reaches the wrapper only via a new `Resources` field — identity riding a record that carries allocation/retry/notify — which is a **design decision awaiting a yes**, not a mechanical change. Also: § 5p.3p.2 said `parse_fdf_params` had *four* importers; it has **six**. Also: a LAYER was missing from § 5p.3p.1 — *what the wrapper is handed vs what it re-reads* — and it is precisely the layer that made the step non-trivial. **N5a (the move) is unaffected and stays first**, and it is what makes the cheap alternative to N5d possible |
 | 2026-09-17 | **the § 5l retirement + a whole-document sweep — REVIEW RUN AFTER, and the user had to ask for it** | `plan.md` § 5l end to end, `architecture.md`, `science/validation.md`, `web/presenters.md` + `web/results.md` whole, `engines/transport.md` whole, `engines/pyscf.md` whole, `engines/overview.md` § 5, `execution/script-preparation.md` | **The finding is that SYMBOL-grep cannot see stale PROSE, and four passes of it had left the documents contradicting themselves.** § 8 of `transport.md` still shipped *"the electrode wizard"*, *"the `electrode`/`preflight` helper CLI"*, *"the render endpoint **remains**"* and *"arrives as a **registered engine**"* — every one deleted, none matchable by a symbol search. `results.md` § 7 told a reader to click a **Bundle** button § 5 of the same document records as deleted three weeks earlier. My own `presenters.md` edit that morning fixed ONE count and left **four** other places in that file saying five, and the presenter contract omitted `absorbs` entirely while claiming "two optional". **And the claim I had made that morning — that `ref.py` was named by no document — was FALSE**: `architecture.md`'s L1 index and `test_layering.py` both carried it as a bare `` `ref` `` in a list, which my grep for `molbuilder/ref.py` could not match. **The substantive find: `TransiestaEngine` was entirely dead** — registered under `TransportConfig`, which nothing validates; it had stayed live only through `/api/transport/render`, a route step 2c deleted without anyone noticing the consequence, and two documents were calling it *"defense in depth"* for an ordering held by construction. Deleted after verifying a live holder for every check. Two tests were holding the dead registration up; one pinned a `validate()` call **no production caller makes** and is gone, the other used `<=` so a dead row could hide and is now equality |
 | 2026-09-17 | 6 (tests) | the repointed tests themselves, against the live deck | **A repoint is not a free pass.** Four checks were carried over from the deleted writer; three pinned deck TEXT with the emitter's column spacing baked in, and one -- `used-atoms` -- claimed to prove a count was "derived, NOT hardcoded" while asserting the literal `3`. Rewritten to parse the deck and compare against the structure's own regions; **mutation-testing then showed the rewrite STILL passed** against a hardcoded emitter, because the fixture's leads are 3 and 3. Now driven by an asymmetric junction (2 and 4), which is the only shape that can tell a derived count from a constant |
 
