@@ -41,7 +41,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
 from .materialize import job_dir_names, shape_of, materialize
@@ -1649,17 +1649,23 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # v reads the device at v -- and they are DATA on the call rather than a
     # shape the helper re-derives.
     #
-    # THE DAG GATHER IS NOT HERE, deliberately.  `gather_transport_inputs`
-    # copies the upstream rungs' products in, and its three gates refuse an
-    # upstream that has not CONCLUDED -- so calling it here would make `prep
-    # run device` fail until the leads had actually run, and you could no
-    # longer render the device deck to READ it before spending the queue.
-    # That is the split `prepare_attempt` names in its own words ("preparing
-    # is still design and the split from starting is what gives you somewhere
-    # to look before committing cluster time"), so the gather stays where the
-    # chain is assembled.  It runs on the CLI road only, which is a real gap
-    # on the browser road and a question about what `prep` MEANS, not a
-    # defect to close by widening it here.
+    # THE DAG GATHER IS NOT HERE, deliberately -- and it is not missing
+    # either.  `gather_transport_inputs` refuses an upstream that has not
+    # CONCLUDED, so calling it here would make `prep run device` fail until
+    # the leads had actually run, and you could no longer render the device
+    # deck to READ it before spending the queue.  That is the split
+    # `prepare_attempt` names in its own words ("preparing is still design and
+    # the split from starting is what gives you somewhere to look before
+    # committing cluster time"), and nineteen tests in `test_transport_prep`
+    # read a device deck without running a lead.  They are right to.
+    #
+    # It is a step of its own, `prep.gather_for_stage`, and BOTH surfaces take
+    # it: the CLI after this returns, and `web/blueprints/build.py` at the same
+    # point.  It ran on the CLI road alone until 2026-09-16, which was
+    # survivable only while this arm opened no attempt -- `launch` refused the
+    # folder by name and that refusal was accidentally the guard.  Opening the
+    # attempt (above, the same day) removed the symptom and left the gap, so a
+    # device job could reach the node and die for want of an electrode `.TSHS`.
     _open_attempts(js, base, stage,
                    containers=[d for d, _ in point_dirs] or (None,))
     if _tlog is not None:
@@ -1777,6 +1783,67 @@ def gather_transport_inputs(base_dir, task, stage: str,
             "".join(f"{fn} <- {src}\n" for src, fn in gathered),
             encoding="utf-8")
     return gathered
+
+
+def gather_for_stage(base_dir, task, stage: str) -> List[Tuple[Path, Optional[float], List[tuple]]]:
+    """Carry the DAG's inputs into **every attempt this rung has open**.
+
+    Returns ``[(attempt_dir, volts, [(source_rel, filename), ...]), ...]`` —
+    one entry per attempt, so a caller can report what landed where and say
+    which bias point it was. ``volts`` is ``None`` for a rung with no bias
+    axis, and it is CARRIED rather than parsed back out of the directory name:
+    this function already knows it, and a caller re-deriving it would be a
+    second reader of a spelling `bias_token` owns.
+
+    A bias scan has one attempt per point and each is gathered against **its
+    own** voltage: the transmission at *v* reads the device at *v*, never
+    another point's converged state.
+
+    **THE STEP THAT MAKES A PREPPED ATTEMPT RUNNABLE, and it is not `prep`'s.**
+    `prep_calculation` renders the decks and opens the attempt without asking
+    whether the rungs before it have finished, deliberately: a deck is the
+    reviewable artifact, and *"preparing is still design and the split from
+    starting is what gives you somewhere to look before committing cluster
+    time."* Nineteen tests read a device deck without running a lead, and they
+    are right to.
+
+    Carrying the inputs is the other half, and it cannot be folded into that
+    one because :func:`gather_transport_inputs` refuses an upstream that has
+    not CONCLUDED — which is correct, and would make the decks unreadable
+    until the whole chain had run.
+
+    So it is a step of its own, and **the point of this function is that there
+    is now ONE of it.** It ran only on the CLI road until 2026-09-16 (twice,
+    hand-written, once per layout), so `web/blueprints/build.py` — the
+    browser's Prep button — opened an attempt and carried nothing into it. That
+    used to be survivable: the folder had no attempt at all, so `launch`
+    refused it by name, and the refusal was accidentally the guard. Opening the
+    attempt removed the symptom and left the gap, so a device job could reach
+    the node and die for want of an electrode `.TSHS` — after the queue wait.
+    """
+    from ..paths import Shape
+    from ..paths import attempt_dir as _adir
+    from ..paths import attempts_in as _ain
+    from ..transport.stages import bias_points, bias_token
+
+    base = Path(base_dir)
+    stage_dir = base / Shape.named(task.shape).stage_dir(token_for(task, stage))
+    points = bias_points(task) if stage in ("device", "transmission") else ()
+    # A point's ladder lives under its own v-dir; a single-bias rung's lives
+    # under the stage directory.  Same two containers the deck and the wrapper
+    # were written into.
+    containers = ([(stage_dir / bias_token(v), v) for v in points] if points
+                  else [(stage_dir, None)])
+    out: List[Tuple[Path, Optional[float], List[tuple]]] = []
+    for container, volts in containers:
+        ns = _ain(container)
+        if not ns:
+            continue          # nothing open here: prep has not run for it
+        att = _adir(container, ns[-1])
+        out.append((att, volts,
+                    gather_transport_inputs(base, task, stage, att,
+                                            bias=volts)))
+    return out
 
 
 def _merge_run_jobset(path: Path, new: JobSet,

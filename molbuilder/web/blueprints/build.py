@@ -1671,11 +1671,41 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": f"{type(exc).__name__}: {exc}"}), 500
 
+    # THE COMPOSITE'S OTHER CARRY, and until 2026-09-16 this door did not
+    # take it.  `prep_calculation` renders the decks and opens the attempt;
+    # for a transport rung the § 4.2 DAG's inputs -- the leads' `.TSHS`, the
+    # seed's `.DM`, the device's `.TS.HSX` -- still have to be copied in, and
+    # only the CLI did it.
+    #
+    # It used to be survivable by accident: the transport arm opened no
+    # attempt at all, so `launch` refused the folder by name and that refusal
+    # was the guard.  Opening the attempt (the same day, for a different
+    # reason) removed the symptom and left the gap standing -- a device job
+    # could reach the node and die for want of an electrode `.TSHS`, after
+    # the queue wait.  One fix made the other reachable.
+    #
+    # `gather_for_stage` is the door the CLI takes too, so the two roads now
+    # do the same thing and its three gates -- upstream prepped, CONCLUDED,
+    # and running the deck this composition renders -- refuse HERE, in the
+    # browser, with the sentence the terminal gives.
+    carried = []
+    if (task.calculation or "") == "transport":
+        from molbuilder.jobset.prep import gather_for_stage
+        try:
+            carried = [
+                {"attempt": str(att.relative_to(dest)),
+                 "gathered": [{"file": fn, "from": src} for src, fn in got]}
+                for att, _v, got in gather_for_stage(dest, task, stage)
+            ]
+        except (PrepError, ValueError, KeyError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
     return jsonify({
         "ok": True, "kind": kind, "stage": stage,
         "machine": "(this machine)" if target == LOCAL_TARGET
                    else (target or "(this machine)"),
         "dirs": [str(pathlib.Path(d).relative_to(dest)) for d in dirs],
+        "carried": carried,
     })
 
 

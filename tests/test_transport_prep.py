@@ -1498,6 +1498,100 @@ class TestTheCliRoute:
                 assert (run0 / n).is_file(), f"{point}/{n}"
         assert "prepared device @ v0.2" in r.output
 
+
+class TestTheBrowserRoute:
+    """`POST /api/task-setup/prep` on a transport rung — the SAME steps.
+
+    The browser's Prep button calls `prep_calculation` directly, so every step
+    the CLI adds afterwards is a step this road did not take. Until 2026-09-16
+    the DAG gather was one of them, and it was survivable only by accident: the
+    transport arm opened no attempt at all, so `launch` refused the folder by
+    name. Opening the attempt -- the same day, for a different reason -- removed
+    that refusal and left the gap standing, which is how one fix makes another
+    bug reachable.
+    """
+
+    def _prep(self, calc, root, monkeypatch, stage):
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        from molbuilder.scheduler.record import LOCAL_TARGET
+        from molbuilder.web.app import create_app
+        # The app serves the developer's real `projects/` by default, and the
+        # door's own path fence refuses anything outside it -- correctly.
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        client = create_app(config={}).test_client()
+        return client.post("/api/task-setup/prep", json={
+            "dest": str(calc), "kind": "run", "stage": stage,
+            "target": LOCAL_TARGET})
+
+    def test_the_browser_gathers_what_the_device_consumes(
+            self, calc, tmp_path, monkeypatch):
+        """The leads' `.TSHS` and the seed's `.DM` land in the attempt.
+
+        Without this the browser reports success and hands back an attempt
+        holding a deck, a wrapper and nothing to read -- so the job reaches the
+        node and dies for want of an electrode Hamiltonian, after the queue
+        wait. The terminal road has always carried them; this asserts the two
+        roads produce the same directory rather than the same message.
+        """
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])
+        _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
+        _conclude(calc, "electrode_R", ["T_R-electrode.TSHS"])
+
+        r = self._prep(calc, tmp_path / "projects", monkeypatch, "device")
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["ok"] is True
+        # bias=(0.0, 0.2) is a scan: one attempt ladder per point, each
+        # gathered against ITS OWN voltage.
+        for point in ("v0", "v0.2"):
+            run0 = calc / "04_device" / point / "run-0"
+            for n in ("T.DM", "T_L-electrode.TSHS", "T_R-electrode.TSHS"):
+                assert (run0 / n).is_file(), f"{point}/{n} was not carried in"
+        carried = {c["attempt"] for c in body["carried"]}
+        assert any("v0.2" in c for c in carried), (
+            "the response must say what landed where -- a person who cannot "
+            "see the carry cannot tell this apart from the old silence")
+
+    def test_an_unready_device_is_refused_here_too(self, calc, tmp_path,
+                                                   monkeypatch):
+        """The same three gates, in the browser, before the queue is spent.
+
+        The half that makes the test above mean something: a road that
+        gathered when it could and shrugged when it could not would pass it.
+        `gather_transport_inputs` refuses an upstream that has not CONCLUDED,
+        and that refusal has to reach the browser as a refusal.
+        """
+        for st in ("seed", "electrode_L", "electrode_R"):
+            prep_calculation(calc, st)
+        _conclude(calc, "seed", ["T.DM"])      # the electrodes stay unconcluded
+        r = self._prep(calc, tmp_path / "projects", monkeypatch, "device")
+        assert r.status_code == 400
+        msg = r.get_json()["error"]
+        assert "electrode_L" in msg and "CONCLUDED" in msg, msg
+
+    def test_a_rung_with_no_upstream_still_preps(self, calc, tmp_path,
+                                                 monkeypatch):
+        """The seed consumes nothing, so the gather must be a no-op for it.
+
+        Without this half the gather could refuse everything and the test above
+        would still pass.
+        """
+        r = self._prep(calc, tmp_path / "projects", monkeypatch, "seed")
+        assert r.status_code == 200, r.get_json()
+        assert (calc / "01_seed" / "run-0" / "T_01_seed.fdf").is_file()
+
+
+class TestTheCliRouteRefusal:
+
+    def _invoke(self, args, root, monkeypatch):
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        return CliRunner().invoke(jobset_group, args)
+
     def test_prep_device_refuses_through_the_cli_too(self, calc,
                                                      tmp_path,
                                                      monkeypatch):

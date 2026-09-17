@@ -2544,21 +2544,18 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                 "one per point -- per-point continuation is not named "
                 "yet (transport-design.md 4.3; re-prep opens fresh "
                 "attempts for every point).")
+        # `prep_calculation` opened one attempt per point already; this
+        # carries the DAG's inputs into each, through the ONE door the
+        # browser road now uses too (`prep.gather_for_stage`).
+        from .prep import gather_for_stage
+        try:
+            carried = gather_for_stage(base, _pf_task, stage)
+        except PrepError as e:
+            raise click.ClickException(str(e))
         from ..transport.stages import bias_token as _bias_token
-        from .prep import gather_transport_inputs
-        from .prep import token_for as _token_for
-        _stage_dir = base / _token_for(_pf_task, stage)
-        for _v in _scan:
-            try:
-                rep = prepare_attempt(
-                    js, base, attempt_target,
-                    container=_stage_dir / _bias_token(_v))
-                gathered = gather_transport_inputs(
-                    base, _pf_task, rep.stage, rep.dir, bias=_v)
-            except (ValueError, PrepError) as e:
-                raise click.ClickException(str(e))
-            click.echo(f"prepared {rep.stage} @ {_bias_token(_v)}: "
-                       f"{rep.dir.relative_to(base)}")
+        for _att, _v, gathered in carried:
+            _at = f" @ {_bias_token(_v)}" if _v is not None else ""
+            click.echo(f"prepared {stage}{_at}: {_att.relative_to(base)}")
             for _src, _fn in gathered:
                 click.echo(f"  gathered: {_fn} <- {_src}")
         click.echo("next: molbuilder jobset launch run "
@@ -2585,15 +2582,16 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     if _is_transport:
         # The composite's OTHER carry: the § 4.2 DAG's inputs, from the
         # concluded upstream attempts into this one (gather's own three
-        # gates refuse anything stale or unconcluded, by name).
-        from .prep import gather_transport_inputs
+        # gates refuse anything stale or unconcluded, by name).  Through the
+        # ONE door, so the browser's Prep button takes the same step.
+        from .prep import gather_for_stage
         try:
-            gathered = gather_transport_inputs(base, _pf_task, rep.stage,
-                                               rep.dir)
+            carried = gather_for_stage(base, _pf_task, rep.stage)
         except PrepError as e:
             raise click.ClickException(str(e))
-        for _src, _fn in gathered:
-            click.echo(f"  gathered: {_fn} <- {_src}")
+        for _att, _v, gathered in carried:
+            for _src, _fn in gathered:
+                click.echo(f"  gathered: {_fn} <- {_src}")
     _echo_resolved(js, base, rep.stage, rep.dir)
     click.echo("next: molbuilder jobset launch run "
                + (f"{stage} " if stage is not None else "")
