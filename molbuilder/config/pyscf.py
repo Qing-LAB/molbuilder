@@ -981,7 +981,7 @@ class PySCFConfig:
         "workflow_group": "output",
         "category": ("procedure",),
         "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
-            "engine_key":  '(molbuilder: writes <job>_opt.xyz post-relax)',
+            "engine_key":  '(molbuilder: writes <job>_optimized.xyz after the relaxation)',
     })
     save_initial_xyz: bool = field(default=True, metadata={
         # molbuilder's own doing, not a PySCF keyword: it shapes
@@ -990,7 +990,7 @@ class PySCFConfig:
         "workflow_group": "output",
         "category": ("procedure",),
         "help": "snapshot the input geometry to <job>_initial.xyz",
-            "engine_key":  '(molbuilder: writes <job>_init.xyz pre-relax)',
+            "engine_key":  '(molbuilder: writes <job>_initial.xyz before the relaxation)',
     })
     write_trajectory: bool = field(default=True, metadata={
         # molbuilder's own doing, not a PySCF keyword: it shapes
