@@ -288,6 +288,12 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # forgotten by one of them.*
             write_run_wrapper(
                 script_path,
+                # THE LABEL TRAVELS (`gpu.md` G7).  `jobset.name` is
+                # `task.label` -- the SystemLabel / JOB literal and the stem
+                # of every file -- so the wrapper is TOLD the name its sweep
+                # keys on.  It opened the deck and read it back until
+                # 2026-09-17, which is re-deriving a value we are holding.
+                label=jobset.name,
                 resources=job.resources,
                 env=env,
                 emit_sbatch=emit_sbatch,
@@ -1625,6 +1631,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     for point_dir, _v in point_dirs:
         with _user_error_as_prep():
             write_run_wrapper(point_dir / script,
+                              label=task.label,     # G7: told, not read
                               resources=res, env=env,
                               emit_sbatch=emit_sbatch, project_dir=base,
                               machine_record=environment)

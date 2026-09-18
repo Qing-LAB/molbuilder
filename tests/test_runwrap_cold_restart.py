@@ -388,7 +388,8 @@ class TestTrialLabelledCold:
             "SystemLabel JOB-G1K4C6\nNumberOfAtoms 1\n"
             "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
             "%endblock AtomicCoordinatesAndAtomicSpecies\n")
-        wrapper = write_run_wrapper(script, resources=Resources())
+        wrapper = write_run_wrapper(script, label="JOB-G1K4C6",
+                                    resources=Resources())
         text = _strip_preamble_activation(wrapper.read_text())
         cut = text.find("mpirun")
         if cut < 0:
@@ -607,7 +608,13 @@ class TestColdBehaviourSystemLabelMismatch:
             f"0 0 0 1\n"
             f"%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
-        wrapper = write_run_wrapper(script, resources=Resources())
+        # THE LABEL IS TOLD, NOT READ (2026-09-17).  `prep` holds it --
+        # `task.label` is "the SystemLabel / JOB literal, and the stem of
+        # every file" -- so the writer is handed it, as production does.
+        # This relied on the writer OPENING the deck to recover the name,
+        # which is the re-read `gpu.md` G7 forbids.
+        wrapper = write_run_wrapper(script, label=system_label,
+                                    resources=Resources())
         text = _strip_preamble_activation(wrapper.read_text())
         # Truncate AFTER the closing banner separator (which prints
         # the Mode + Constraints lines we want to observe).  The
@@ -708,68 +715,25 @@ class TestColdBehaviourSystemLabelMismatch:
         assert "NOTE" not in block, (
             "a nameable label is not worth a line of output")
 
-    def test_quoted_systemlabel_stripped_in_glob(self, tmp_path):
-        """SIESTA accepts ``SystemLabel "my job"`` (quoted, with
-        embedded space).  The wrapper's awk must strip the surrounding
-        quotes BEFORE using the label as a glob anchor -- otherwise
-        ``"my`` becomes the prefix and the warm-start files are
-        missed.  Embedded spaces are a separate concern (the wrapper's
-        SAFE_WRAPPER_NAME_RE rejects them at emission time) so we
-        only test the quote-strip here."""
-        wrapper = self._truncated_siesta_with_label(
-            tmp_path,
-            fdf_basename="job-stage1",
-            system_label='"foo"',  # quoted label
-        )
-        # Plant warm-start files keyed on the UNQUOTED label.
-        (tmp_path / "foo.DM").write_text("fake")
-        (tmp_path / "foo.XV").write_text("fake")
-
-        proc, named = _cold(wrapper, tmp_path)
-        assert proc.returncode == 1, proc.stderr
-        assert "foo.DM" in named, (
-            "quoted SystemLabel must be quote-stripped before globbing "
-            "-- pre-fix the glob looked for ``\"foo\".DM`` and missed "
-            "the unquoted filename SIESTA actually wrote, so the file "
-            "would be overwritten with no warning."
-        )
-        assert "foo.XV" in named
-
-    def test_lowercase_systemlabel_keyword_still_matched(
-            self, tmp_path):
-        """Replaces gawk's ``IGNORECASE`` with ``tolower($1) ==
-        "systemlabel"`` for awk portability.  Pin that a .fdf
-        whose ``systemlabel`` keyword is lowercase (or any other
-        case) still drives the glob.  Pre-fix mawk / BSD awk
-        silently ignored IGNORECASE and the glob fell back to
-        wrapper basename -- the exact bug the SystemLabel
-        extraction was added to fix."""
-        # Author the .fdf manually so we can pick the keyword case.
-        _bind()
-        script = tmp_path / "job-stage1.fdf"
-        script.write_text(
-            "systemlabel foo\n"   # lowercase keyword
-            "NumberOfAtoms 1\n"
-            "%block AtomicCoordinatesAndAtomicSpecies\n"
-            "0 0 0 1\n"
-            "%endblock AtomicCoordinatesAndAtomicSpecies\n"
-        )
-        wrapper = write_run_wrapper(script, resources=Resources())
-        text = _strip_preamble_activation(wrapper.read_text())
-        end = text.find('echo "================================')
-        if end < 0:
-            end = text.find("mpirun")
-        end = text.find("\n", end) + 1
-        wrapper.write_text(text[:end] + "\nexit 0\n")
-        (tmp_path / "foo.DM").write_text("fake")
-
-        proc, named = _cold(wrapper, tmp_path)
-        assert proc.returncode == 1, proc.stderr
-        assert "foo.DM" in named, (
-            "lowercase ``systemlabel`` keyword must still be matched "
-            "by the awk (uses tolower($1) for portability across "
-            "gawk / mawk / BSD awk)"
-        )
+    # `test_quoted_systemlabel_stripped_in_glob` and
+    # `test_lowercase_systemlabel_keyword_still_matched` stood here until
+    # 2026-09-17.  Both pinned an AWK that read `SystemLabel` out of the deck
+    # at LAUNCH -- one that a quoted value was unquoted before globbing, the
+    # other that `tolower($1) == "systemlabel"` matched a lowercase keyword
+    # where mawk/BSD awk ignore gawk's IGNORECASE.
+    #
+    # **The awk is deleted and the wrapper is TOLD its label** (`gpu.md` G7:
+    # the value travels, the deck is not re-read for it).  `task.label` is a
+    # validated basename, so it can be neither quoted nor oddly-cased, and no
+    # keyword is matched here at all any more.  These tested a mechanism, and
+    # the mechanism is gone.
+    #
+    # **The behaviours are not gone, and neither is their coverage.**  Both
+    # still matter to `parse/fdf.system_label`, which `web/blueprints/watch.py`
+    # runs over a directory a person points at -- no description to ask, the
+    # deck is all there is.  They moved to `tests/parse/test_fdf.py`, which is
+    # also where the reader finally got tests of its own: it was added on
+    # 2026-09-17 with none.
 
     def test_status_banner_detects_systemlabel_keyed_files(self, tmp_path):
         """When the user runs WITHOUT --cold but

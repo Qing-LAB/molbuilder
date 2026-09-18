@@ -1159,6 +1159,50 @@ own answer appears — the exact shape § 5l was retired for.
 
 ---
 
+### 5l.d Reading back a deck we just wrote *(2026-09-17)*
+
+**The question that closed this thread, and it was not the one I kept
+answering.** I spent several rounds on *which reader wins when a keyword
+appears twice*. The user's actual question was **why anything re-reads the deck
+at all** — every value in it was known when it was written, and the layers had
+already resolved each one to a single value with provenance. Reading it back to
+recover what we were holding is the defect; who wins a tie is noise.
+
+**Two different things, and I had been treating them as one:**
+
+| | reads | verdict |
+|---|---|---|
+| a **cited** deck — someone's finished run from last week | `parse/contract.py`, `transport/compose.py`, `transport/citation_defaults.py` | **legitimate.** That file is the only record of what they ran; there is no description to ask |
+| a deck **we just wrote, in this operation** | `runwrap._deck_label`, `_parse_fdf_n_atoms`, `_fdf_requests_gpu` | **re-derivation.** `gpu.md` G7: *"the value travels; the deck is not re-read for it"* |
+
+**`_deck_label` is DONE, and it was mine, added the same day.** Told to bake the
+label in as a literal, I implemented it by opening the deck at prep and reading
+`SystemLabel` back out — the same defect as the awk it replaced, one step
+earlier. The value was `task.label` the whole time. It now travels:
+`prep` → `write_run_wrapper(label=…)` → `render_wrappers` → `render_run_wrapper`
+→ `_cold_restart_block`, and `runwrap` reads no label from any deck.
+
+> **A8 never forbade that parameter, which is why the first attempt went the
+> wrong way.** I read A8 as *no new arguments* and designed around it. A8 says a
+> door taking one of § 3's objects *"may not also name that object's FIELDS"* —
+> it forbids destructuring `Resources`, not adding a parameter. `label` is not
+> one of its fields. **The rule I invented to avoid was not the rule.**
+
+**Still open, same class, each needing its own value threaded:**
+
+* `_parse_fdf_n_atoms` reads `NumberOfAtoms` — known as `len(struct.elements)`;
+* `_fdf_requests_gpu` reads `Diag.ELPA.GPU` — known as `resources.use_gpu`, and
+  G7 already made that the preferred path; this is the documented fallback for
+  *"a deck someone points at"*, which has no allocation. **Whether that fallback
+  should exist at all is the open question** — not, as I claimed three times,
+  which occurrence it picks.
+
+**And the keyword rule is written twice more:** `siesta/layout.py::check_rules`
+spells `lower().replace(".","")…` inline, and it is the same rule as
+`parse/fdf._norm`. One of them should call the other.
+
+---
+
 ### 5l.b The pattern this is the second instance of *(2026-09-17)*
 
 § 5l and `model/parse.md` § 5's `JobDirParser` are mirror images, and both were

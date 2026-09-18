@@ -375,40 +375,19 @@ def _cold_usage_entry(*, warm_examples: str) -> str:
     )
 
 
-def _deck_label(script_path: Path) -> str:
-    """The label the DECK declares, read once at prep, or ``""``.
-
-    SIESTA names its warm-restart files from ``SystemLabel`` and PySCF from
-    ``JOB``, and neither is the deck's filename: the label is UNSUFFIXED
-    while a staged deck is ``<label>_<NN>_<stage>``.  The cold-restart sweep
-    and the warm-start banner both need the former.
-
-    **Through the one correct reader of each** -- `parse.fdf.system_label`
-    applies fdf's real keyword rule, and `pyscf.input.job_name` reads back
-    the literal its own emitter wrote (`model/parse.md` § 1a).  The wrapper
-    read this with awk at LAUNCH until 2026-09-17; `gpu.md` G7 is the rule
-    that retired it -- *"the value travels; the deck is not re-read for it"*.
-
-    Returns ``""`` when the deck states none or cannot be read, and the
-    caller falls back to the basename -- the awk's `:-` default, in Python.
-    """
-    try:
-        text = script_path.read_text(errors="replace")
-    except OSError:
-        return ""
-    # EXPLICIT ON BOTH, with no fall-through.  The first version read the fdf
-    # on `.fdf` and handed EVERYTHING ELSE to the PySCF reader, which is right
-    # only because the two real callers pass a deck -- a third passing
-    # anything else would have got a silently wrong answer rather than an
-    # empty one.
-    suffix = script_path.suffix.lower()
-    if suffix == ".fdf":
-        from molbuilder.parse.fdf import system_label
-        return system_label(text) or ""
-    if suffix == ".py":
-        from molbuilder.pyscf.input import job_name
-        return job_name(text) or ""
-    return ""
+# `_deck_label` DELETED 2026-09-17, the day it was added.
+#
+# It opened the deck and read `SystemLabel` / `JOB` back out of it, at prep
+# instead of at launch -- which is the SAME defect the awk had, one step
+# earlier.  `execution/gpu.md` G7 is about not re-reading the deck at all,
+# not about when: the value was in the description the whole time
+# (`task.label` -- "the SystemLabel / JOB literal, and the stem of every
+# file", `task.py`), and it now travels here as `label`.
+#
+# A8 does NOT forbid that parameter, which is why the first version went the
+# wrong way: A8 says a door taking one of § 3's objects "may not also name
+# that object's FIELDS".  `label` is not a field of `Resources`, the only
+# such object this door takes, so passing it destructures nothing.
 
 #: The charset a wrapper may put in a filename.  This was a `case` pattern
 #: inside the emitted bash (`*[!A-Za-z0-9._-]*`), guarding a value the awk
@@ -473,13 +452,12 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     # literal -- so a run whose deck label changed after prep is inconsistent
     # with itself whatever this does.
     #
-    # It is read once at PREP instead, by the caller, through the one
-    # spelling-correct reader of each: `parse.fdf.system_label` applies fdf's
-    # real matching rule (case AND `.`/`-`/`_` insensitive) and
-    # `pyscf.input.job_name` reads the literal its own emitter writes.  The awk
-    # compared `tolower($1) == "systemlabel"`, so `System.Label` and
-    # `system_label` -- both valid fdf, both accepted by SIESTA -- swept under
-    # the wrong name.
+    # THE VALUE TRAVELS.  `label` is `task.label` -- the description's own
+    # name for this calculation, which is what the emitter wrote into the deck
+    # in the first place.  Nothing here opens the deck: reading back a file we
+    # just wrote, to recover a value we were holding when we wrote it, is the
+    # defect G7 names, and doing it at prep rather than at launch does not
+    # make it a different one.
     #
     if engine not in ("siesta", "pyscf"):   # pragma: no cover
         raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
@@ -1884,6 +1862,7 @@ def _preamble_source_targets(chunks) -> List[str]:
 
 
 def render_run_wrapper(script_path: Path, *,
+                       label: str = "",
                         resources: "Resources",
                         env: Optional[str] = None,
                         n_atoms: Optional[int] = None,
@@ -2667,8 +2646,7 @@ def render_run_wrapper(script_path: Path, *,
             'fi\n'
             f"\n"
             + _run_index_resolver(basename)
-            + _cold_restart_block(basename, engine="siesta",
-                                  label=_deck_label(script_path))
+            + _cold_restart_block(basename, engine="siesta", label=label)
             + _runtime_status_block(basename, engine="siesta",
                                      script_name=script_name)
         )
@@ -3240,8 +3218,7 @@ def render_run_wrapper(script_path: Path, *,
             # apart from SIESTA's (which keeps ``.out``).  Per
             # docs/web/tabs.md (Phase C, 2026-06-07).
             + _run_index_resolver(basename, ext=".pyscf.log")
-            + _cold_restart_block(basename, engine="pyscf",
-                                  label=_deck_label(script_path))
+            + _cold_restart_block(basename, engine="pyscf", label=label)
             + _runtime_status_block(basename, engine="pyscf",
                                      script_name=script_name)
         )
@@ -4134,6 +4111,7 @@ class RenderedWrapper:
 
 
 def render_wrappers(script_path: Path, *,
+                    label: str = "",
                     resources: "Resources",
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
@@ -4187,7 +4165,7 @@ def render_wrappers(script_path: Path, *,
     n_atoms = (_parse_fdf_n_atoms(script_path)
                if script_path.suffix.lower() == ".fdf" else None)
     text = render_run_wrapper(
-        script_path, resources=r, env=env, n_atoms=n_atoms,
+        script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
@@ -4229,6 +4207,7 @@ def render_wrappers(script_path: Path, *,
 
 
 def write_run_wrapper(script_path: Path, *,
+                      label: str = "",
                       resources: "Resources",
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
@@ -4252,7 +4231,7 @@ def write_run_wrapper(script_path: Path, *,
     Overwrites whatever is there.
     """
     from . import script_emit as _sc_write
-    rendered = render_wrappers(script_path, resources=resources,
+    rendered = render_wrappers(script_path, label=label, resources=resources,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir)
