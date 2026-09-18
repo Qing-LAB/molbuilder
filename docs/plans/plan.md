@@ -292,6 +292,48 @@ checkable rather than hopeful:
 | `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
 | `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |
 | `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | unchanged — its own verb, over `.files["fdf"]` if the door is handy |
+| **the Results file picker** — `lib/results/file-picker.js` | **the BROWSER**, ×1 per folder listing | **`.files` + `.openable`** — *and this is the row that changes the shape of the work* |
+
+> **The seventh consumer is a BROWSER, and every other row here is
+> server-side** *(added 2026-09-18, owed by § 5p.3p step 7 since 2026-09-17 and
+> deferred twice while other work went in)*.
+>
+> The picker enumerates a folder and decides what to list **from filenames, in
+> JavaScript** — it asks no server door, because none answers *what is in this
+> directory*. `/api/results/contract` answers `info.calculation` and five other
+> fields, none of which is *what should a viewer open here*.
+>
+> **That guess is why a finished transport run is invisible.**
+> `<label>.transport.json` matches no presenter, so the picker drops it; the
+> five rungs' `.out` files are each claimed by the trajectory viewer, so the
+> ladder lists as five unrelated optimizations (§ 5p.3p.3, items 1–2).
+> Transport is not the cause — it is the first result that is neither a
+> trajectory nor a spectrum, so the guess stops producing a plausible answer.
+>
+> **What this row costs § 5c:** the door needs an HTTP surface, not just a
+> Python one. Every other consumer imports it; this one must fetch it.
+
+#### 5c.1 `openable` is one answer per DIRECTORY, and a ladder is five
+
+*Owed by § 5p.3p step 7, same date, same deferral.*
+
+`RunDirResult.openable` answers *what should a viewer load here*, once, for one
+directory. **A transport run is five directories that are one result** — seed,
+both leads, device, transmission — each a real SIESTA run with its own `.out`.
+
+Neither mechanism in play can say so. `absorbs` (`web/presenters.md` § 2)
+collapses siblings **within one directory**; it is asked *"does this master
+subsume that sibling?"* and has no way to express *"these five folders are one
+run."* `RunDirResult` as § 5.0 specifies it is per-directory by construction.
+
+**This is not transport's question.** It reaches every multi-rung calculation —
+a staged optimization is the same shape and only looks fine today because each
+rung's log is independently interesting. It needs a home **before** code moves,
+because the answer decides whether the door returns one result per directory
+(and something above composes them) or learns about runs that span several.
+
+**It is genuinely open.** No recommendation is recorded here on purpose: the two
+shapes differ in what the door IS, not in how it is written.
 
 **Two rows were in this table and are removed, both invented by me and
 both caught by re-reading the code** *(2026-09-04, second pass)*:
@@ -2713,9 +2755,13 @@ June writers;* the audit of 2026-09-17 lists the rest, of which the ones that
 matter are the tests that **cannot fail** (`test_siesta.py:559`/`:571`,
 `test_pyscf.py:225`/`:235`/`:253`).
 
-**Step 7 — `JobDirParser`, which is NOT this section's to do.** It belongs to
-**§ 5c**. What this section owes § 5c is two additions, made now and not
-deferred: the **Results picker as a seventh consumer** with a server door to ask,
+**Step 7 — `JobDirParser`, which is NOT this section's to do** — **the two
+additions LANDED 2026-09-18**, having been written as *"made now and not
+deferred"* on 2026-09-17 and then deferred twice while six other commits went
+in. They are § 5c's caller-map row for the Results picker and § 5c.1 for the
+ladder question. *The instruction to do it now was in this sentence the whole
+time; I re-derived the same finding twice instead of reading it.* It belongs to
+**§ 5c**. What this section owed § 5c: the **Results picker as a seventh consumer** with a server door to ask,
 and the **ladder question** (five directories, one run), which § 5c does not
 cover. Items 1–3 of § 5p.3p.3 close when § 5c lands and not before.
 
