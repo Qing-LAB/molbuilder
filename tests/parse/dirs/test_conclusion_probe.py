@@ -114,3 +114,38 @@ class TestTheStatusUsesIt:
         old = time.time() - 3600
         os.utime(tmp_path / "bdt-run0.out", (old, old))
         assert run_status(tmp_path).state == "stale"
+
+
+class TestTheEnginesOwnMarkerCountsForACitation:
+    """SIESTA writes `0_NORMAL_EXIT` as its last act on a clean exit, so a
+    run carrying it ran to its own end whatever launched it — or nothing
+    did.  `engines/transport.md`: *"evidence is FILES, never a marker
+    spelling of ours."*
+
+    **This guards a regression that shipped and broke a citation.**
+    `classify_citation` weighed this marker itself until the 2026-09-18
+    migration onto `run_status` deleted the fallback; the revert restored
+    the call and not the fallback, so `attempt_concluded` — which cannot
+    see an unlabelled marker — answered `None` for every SIESTA-only run.
+    Measured: 5 of 5 citable directories in the checkout refused to
+    compose, and the Transport tab printed "NOT CONCLUDED — still running,
+    or force-stopped" for a finished relaxation.
+    """
+
+    def test_a_siesta_only_relaxation_reads_as_concluded(self, tmp_path):
+        from molbuilder.transport.compose import classify_citation
+        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
+        (tmp_path / "relax.XV").write_text("x\n")
+        (tmp_path / "0_NORMAL_EXIT").write_text("")
+        cited = classify_citation(tmp_path)
+        assert cited.concluded == "0_NORMAL_EXIT", (
+            "SIESTA's own clean-exit marker did not count -- a finished "
+            f"relaxation reads as still running: {cited}")
+
+    def test_without_it_the_same_directory_is_not_concluded(self, tmp_path):
+        """Anti-vacuity: the assertion above must not pass by calling
+        everything concluded."""
+        from molbuilder.transport.compose import classify_citation
+        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
+        (tmp_path / "relax.XV").write_text("x\n")
+        assert classify_citation(tmp_path).concluded is None

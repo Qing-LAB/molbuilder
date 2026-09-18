@@ -231,6 +231,26 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         # runtime (a full parse of every `.out`, discarded) and appended a
         # `.parse.log` into the person's finished directory on every browse.
         concluded = attempt_concluded(cite_dir, deck.stem)
+        # THE ENGINE'S OWN GOODBYE COUNTS.  `transport.md`: *"evidence is
+        # FILES, never a marker spelling of ours"* -- SIESTA writes
+        # `0_NORMAL_EXIT` as its last act on a clean exit, so a run carrying
+        # it ran to its own end whatever launched it, or nothing did.
+        # molbuilder's own marker answers first because it carries the rc.
+        #
+        # `attempt_concluded` CANNOT answer this: the marker has no label.
+        # It belongs here rather than there because form A has already
+        # required exactly one `.fdf` and one `.XV` above -- which is the
+        # unambiguous directory an unlabelled marker needs.
+        #
+        # RESTORED 2026-09-18.  `dada356a` deleted these lines when it moved
+        # this to `run_status`; the revert put the call back and not the
+        # fallback, so `attempt_concluded` answered None for every
+        # SIESTA-only run.  Measured: 5 of 5 citable directories in the
+        # checkout refused, the tab said "NOT CONCLUDED -- still running, or
+        # force-stopped" for a finished relaxation, and prep declined the
+        # citation.  A shipped test was failing on main.
+        if concluded is None and (cite_dir / "0_NORMAL_EXIT").is_file():
+            concluded = "0_NORMAL_EXIT"
         # A molbuilder attempt mid-run HAS record files that do not
         # conclude; `attempt_concluded` answers None for both that and
         # no-record-at-all.  This third clause is LOAD-BEARING, not

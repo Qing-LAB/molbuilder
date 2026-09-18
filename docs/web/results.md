@@ -177,7 +177,14 @@ Two rules keep this from hiding anything:
 > `/api/results/contract` still answers `info.calculation` and five other
 > fields and no route offers the directory's own answer. The picker is the
 > seventh consumer in § 5c's caller map and the only browser-side one; it is
-> served by a ROUTE over `parse_dir`, which is that plan's to add.
+> served by a ROUTE over **`jobset/runstatus.py::jobset_status`**, the LADDER
+> door — not over `parse_dir`. `plan.md` § 5c is explicit that
+> `JobDirParser`, handed a bare path, **cannot** answer the picker's question
+> and must not be extended to try: the picker asks *"these five directories
+> are one run"*, and `openable` answers about one directory by construction.
+> `stages.md` § 6.7 puts the layout in `task.json` and forbids inferring it
+> from data. *(This sentence said "a ROUTE over `parse_dir`" for part of
+> 2026-09-18 — which would have built the one shape § 5c measured as wrong.)*
 >
 > **One question there is genuinely new and has no home yet:** `openable` is
 > one answer per DIRECTORY, and a ladder needs one answer across five. Neither

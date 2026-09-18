@@ -1,8 +1,15 @@
 """What solver path a SIESTA run took -- the regexes, and a cheap way to ask.
 
-Contract: `model/parse.md` § 2b.  This module owns the DIAG patterns and
-nothing else; both readers share them, which is P-S4's "one reader per
-question" made structural rather than aspirational.  The shape is
+Contract: `model/parse.md` § 2b.  This module owns the DIAG patterns, so a
+pattern has one home instead of two.
+
+**It is one home, NOT a shared table.**  The two halves have one importer
+each -- `REQUESTED`/`GPU_DEVICE` by `engines/siesta.py`, `ran_facts` (over
+`RAN`) by `bench/result.py` -- and neither reads the other's half.  So
+nothing here makes the two READERS agree; it makes neither able to drift
+from a pattern written elsewhere.  *(This claimed "both readers share them,
+which is P-S4's one reader per question made structural" until 2026-09-18.
+No object in this module has two readers.)*  The shape is
 :mod:`~molbuilder.parse.engines._run_ending`'s, for the same reason: the
 full parser builds Frames and needs numpy, a caller that wants the solver
 line does not.

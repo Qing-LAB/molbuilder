@@ -80,7 +80,10 @@ config files and READMEs.
 > directory and transport runs hierarchical, so each rung is a folder below the
 > record. That is true of the flat shape only.)* And the reason the picker must guess at all is that no server door
 > answers *what is in this directory*: it decides from filenames, in the
-> browser, which makes it § 5c's **seventh consumer** and the only one that is
+> browser.  *(This called it "§ 5c's seventh consumer" until 2026-09-18, when
+> that row was STRUCK: the picker is not a caller of the directory door at all
+> — its question is the ladder's, answered by `jobset_status`.)*  It is the
+> only judgement here that is not
 > not server-side.
 
 ## 2. How a viewer is chosen — the presenter contract

@@ -1,6 +1,6 @@
 """``run_status`` — how a run directory is doing.
 
-``{state, detail, last_change_at, active_source}``, and nothing else.
+``{state, detail, last_change_at, active_source, concluded}``.
 
 **The status is the parsers' own answer.**  Every engine parser already
 reports how its file ended -- ``run_state``, ``model/parse.md`` § 2b --
@@ -290,10 +290,14 @@ class RunStatus:
     active_source:  "Optional[str]" = None
     #: What the run's PROCESS said on its way out -- "rc=0",
     #: "rc=1 (walltime)", "0_NORMAL_EXIT" -- or None if it never said
-    #: goodbye.  Reported BESIDE the state, not folded into it, so a caller
-    #: that must distinguish *concluded* from *force-stopped* (the Transport
-    #: tab does, before a person spends a queue slot) reads the evidence
-    #: rather than re-deriving it.  See `_process_conclusion`.
+    #: goodbye.  Reported BESIDE the state, not folded into it.
+    #:
+    #: **NO PRODUCTION READER TODAY.**  Added for the Transport tab, which
+    #: was then reverted off it: `classify_citation` asks about a DECK
+    #: (`attempt_concluded(dir, deck.stem)`) and this answers about a
+    #: DIRECTORY -- measured, a neighbour rung's marker reported for a
+    #: citation that concluded cleanly.  The state machine above still uses
+    #: the evidence, so it is not dead; the FIELD is unread.
     concluded:      "Optional[str]" = None
 
     def __post_init__(self) -> None:
@@ -345,17 +349,39 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
 
 
 def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
-    """Each ``.out``'s run-state, by filename, straight from its parser.
+    """Each ``.out``'s run-state, by filename, through the CHEAP door.
 
-    Fail-soft, exactly as the molwatch sibling is: a file the registry
-    cannot read contributes nothing rather than taking the walk down.
+    `_run_ending.scan_ending` and the full parser read the SAME marker
+    table -- `siesta.py` builds its fatal rules from `FATAL_MARKERS` by
+    comprehension -- so there is no second list to drift, and this is the
+    door `jobset/summarize.py` already asks the same question through.
+
+    **Why the cheap one.** The full parser builds every Frame -- positions
+    and forces as numpy arrays -- and this keeps one string.  That is the
+    shape this module's own docstring says got the previous decoder
+    deleted: *"parsing every `.out` to build plot data and then throwing
+    the plots away"*.  It was re-entered here through the registry, which
+    § 5.4 asks for, and § 2b's cost table says a caller that wants the
+    ending uses the scanner.
+
+    Measured 2026-09-18 over every `.out` in `projects/` + `tests/` and
+    then end to end over all 119 real run directories, clock frozen:
+    **119/119 identical verdicts, 8.5x faster** (12x on the reads alone).
+    It also ends this function's `.parse.log` side effect -- the full
+    parser opens a `ParseLogger` that appends beside its input, which is
+    what wrote 177 files into `projects/` on 2026-09-18.
+
+    Fail-soft, exactly as the molwatch sibling is: a file that cannot be
+    read contributes nothing rather than taking the walk down.
     """
-    from molbuilder.parse import detect
+    from molbuilder.parse.engines._run_ending import scan_ending
     from molbuilder.parse.errors import ParseError
     states: Dict[str, str] = {}
     for path in out_paths:
         try:
-            states[path.name] = detect(path).parse(path).run_state or "unknown"
+            states[path.name] = (
+                scan_ending(path.read_text(encoding="utf-8", errors="replace"))
+                .run_state or "unknown")
         except (ParseError, OSError, ValueError):
             continue
     return states

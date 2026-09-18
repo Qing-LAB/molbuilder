@@ -244,8 +244,10 @@ class JobDirParser(DirParser):
             # ACTIVE IS THE STATUS'S OWN PICK -- stage, then mtime (§ 5.1,
             # user ruling 2026-09-04).  It is not recomputed here: two rules
             # for "which file speaks for the directory" is the defect that
-            # ruling settled, and `summarize`'s highest-`-runN` lost because
-            # a run index says nothing about which STAGE a file belongs to.
+            # ruling settled.  `summarize`'s highest-`-runN` rule was
+            # WITHDRAWN, not beaten: it is handed a basename that already
+            # carries the stage, so the stage is not a variable there
+            # (`plan.md` § 5c, `model/parse.md` § 5.1).
             active=st.active_source,
             openable=openable,
             attempts=attempts,

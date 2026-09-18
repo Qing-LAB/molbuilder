@@ -180,6 +180,14 @@ class SidecarResult(ParseResult):
 class RunDirResult(ParseResult):
     """One RUN DIRECTORY -> the four questions anything asks about one.
 
+    **ZERO OF THESE SEVEN FIELDS HAS A PRODUCTION READER (2026-09-18).**  The
+    table below names one for each, and none of them reads this TYPE: they
+    read the underlying functions -- `contract.engine_of`, `job.run_status`,
+    `rundir.openable_in` -- directly.  `parse_dir` has no production caller,
+    so no `RunDirResult` is built outside the tests.  The consumer this was
+    made for is the Results file picker, which is a browser; if that surface
+    is never built, these fields go with it.
+
     `model/parse.md` § 5.0.  **No field is added without naming its reader**
     -- that is the rule the deleted predecessor broke: it answered eleven
     fields, ten of which had no reader anywhere in the tree, and reached the

@@ -405,10 +405,16 @@ STATUS only, which has always used that rule.
 
 The one visible change: **`detect()` on a directory starts resolving
 again.** It had no DirParser between 2026-09-04 and 2026-09-18 and could only
-refuse. *(Measured before shipping it: no call site in the tree passes a
-directory to `detect()` — the three in `parse/dirs/job.py`,
-`transport/record.py` and `engines/pyscf.py` all pass a concrete file — so the
-registration is additive, not a change of answer anywhere.)*
+refuse. *(**That measurement was WRONG, and it cost three CLI verbs.** It said "no
+call site in the tree passes a directory to `detect()`" and named three that
+pass a concrete file. There was a FOURTH: `cli.py`'s `runtime-info`,
+`watch parse` and `watch tail` hand `detect()` whatever path they are given
+and then use the result as a trajectory. Registering `JobDirParser` turned
+their clean `UnknownFormatError` refusal into an `AttributeError` traceback —
+and the first guard written for it raised inside a poll loop that retries
+`ParseError`, turning the traceback into a silent INFINITE HANG. Both fixed
+2026-09-18. **Registering a parser is not additive: it changes what
+`detect()` answers for every caller that does not narrow.**)*
 
 ### What `summarize` actually gets, which is less than first claimed
 

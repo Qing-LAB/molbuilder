@@ -486,9 +486,18 @@ molbuilder/parse/
 
 ## 5. Composer pattern — the DirParser
 
-A DirParser turns a whole run directory into one result. **`JobDirParser` is
-the one door**, and everything that asks a question *about a directory* goes
-through it.
+A DirParser turns a whole run directory into one result. `JobDirParser` is the
+composer for questions that genuinely need the WHOLE directory.
+
+> **It is not "the one door everything goes through", and that sentence stood
+> here until 2026-09-18.** `plan.md` § 5c withdrew five of its six caller rows
+> **with measurements**: `run_status` asks per-RUNG, `_engine_of` is a fallback
+> whose first source is already the one `engine_of` (and two of its three sites
+> have no directory), `summarize` picks a run INDEX for an already-chosen
+> stage. Routing those through a composer means parsing a whole directory to
+> obtain one string — which is what got the predecessor deleted. The honest
+> rule is the narrow one: **a question that must see the whole directory comes
+> here; one that does not, does not.**
 
 > ### Built 2026-09-18 — and the callers have not all moved yet
 >
@@ -561,21 +570,25 @@ it wants the path. *(This block declared both as `Optional[Path]` until
 **No field is added without naming its reader in this table.** That is the rule
 the deleted version broke.
 
-> **Measured 2026-09-18, the day the callers moved: four of the six fields
-> have no production reader yet, and this table must not be read as if they
-> do.** `web/watch` reaches the chain through the module-level
-> `rundir.openable_in`, not through `parse_dir` — correctly, since it wants
-> one field and this composes six — so `openable` + `attempts` are live and
-> `engine`, `status`, `files` and `active` are read by nobody outside the
-> tests. `parse_dir` itself has **no production caller at all**.
+> **Measured 2026-09-18: ZERO of the SEVEN fields have a production reader,
+> and this table must not be read as if any do.** `web/watch` reaches the
+> chain through the module-level `rundir.openable_in`, which returns a tuple —
+> so not even `openable`/`attempts` are read *as fields of this type*. No
+> `RunDirResult` is constructed outside the tests, and `parse_dir` has no
+> production caller at all. *(An earlier version of this note said "four of
+> six … `openable` + `attempts` are live". Both halves were wrong, and the
+> table below has five rows for seven fields — `run_dir` and `status` have no
+> row.)*
 >
 > That is not drift, it is the migration's shape: § 5c's step 2 withdrew
 > five of its six caller rows with measurements (each was asking a question
 > this door does not answer), leaving one consumer — the Results file
-> picker — whose question is the LADDER's (*"these five directories are one
-> run"*), answered by `jobset/runstatus.py::jobset_status`, and served to the
-> browser by an HTTP surface over THAT. `plan.md` § 5c is closed; the surface
-> is § 5p.3p's.
+> picker — which is NOT a consumer of this door.  Its question is the
+> LADDER's (*"these five directories are one run"*), answered by
+> `jobset/runstatus.py::jobset_status`, and served to the browser by an HTTP
+> surface over THAT.  `plan.md` § 5c is closed and that row is struck; the
+> surface belongs to § 5p.3p.  **So these four fields have no reader owed to
+> them by § 5c** — if nothing else claims them they go, which § 5c says.
 >
 > **The rule above stays enforced prospectively**: a field is still added only
 > against a named reader. If that surface is never built, these four fields go
