@@ -124,7 +124,33 @@ def _phys_cores_probe_block() -> str:
     )
 
 
-def _run_index_resolver(basename: str, ext: str = ".out") -> str:
+def _stdout_role_for(deck_suffix: str) -> str:
+    """The role a run of THIS deck writes its stdout to — from the catalogue.
+
+    ``.py`` -> ``.pyscf.log``, ``.fdf`` -> ``.out``, and neither is spelled
+    here.  This was ``".pyscf.log" if suffix == ".py" else ".out"``, an
+    engine-to-role map written a third time one layer below the two in
+    `parse/contract.py` that quoted this very line back at it
+    (`model/parse.md` § 5.5, R-RO1 -- the vocabulary binds WRITERS too).
+
+    Refuses rather than falling back.  The old conditional's ``else`` branch
+    answered ``.out`` for ANY suffix it did not recognise, so a third engine
+    would have had its wrapper redirect into SIESTA's filename in silence --
+    which is the failure mode this section exists to end, in the writer.
+    """
+    from .runfiles import engine_of_role, stdout_roles
+    engine = engine_of_role(deck_suffix)
+    roles = stdout_roles(engine) if engine else ()
+    if len(roles) != 1:
+        raise WrapperError(
+            f"no single stdout role for a {deck_suffix!r} deck (engine "
+            f"{engine!r}, candidates {roles!r}).  The catalogue is "
+            f"`runfiles.WRITTEN`: the deck's row names the engine and the "
+            f"engine's `output=\"stdout\"` row names the file.")
+    return roles[0]
+
+
+def _run_index_resolver(basename: str, ext: str) -> str:
     """Bash block that resolves ``_out_file`` to
     ``{basename}-runN{ext}``.
 
@@ -146,10 +172,11 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
     index).  The hierarchy tells them apart by directory, and that is the
     layout layer's job, not the wrapper's.
 
-    ``ext`` is the output-file suffix (with leading dot).  Defaults
-    to ``.out`` for SIESTA wrappers; PySCF wrappers pass
-    ``.pyscf.log`` so the Results-tab dispatcher can tell PySCF
-    output apart from SIESTA's (Phase C, 2026-06-07).
+    ``ext`` is the output-file ROLE (with leading dot), and it is REQUIRED:
+    it defaulted to ``.out`` until 2026-09-18, which made SIESTA's filename
+    the silent answer for a caller that forgot to say.  Every caller now
+    passes :func:`_stdout_role_for`\'s answer, so the role comes from the
+    catalogue at both sites (`model/parse.md` § 5.5).
 
     Honours two shell variables that the caller (the engine-specific
     args block) is expected to set:
@@ -2647,7 +2674,8 @@ def render_run_wrapper(script_path: Path, *,
             '_omp_source="core budget / rank count (GPU policy)"\n'
             'fi\n'
             f"\n"
-            + _run_index_resolver(basename)
+            # SIESTA's stdout role, asked rather than taken from a default.
+            + _run_index_resolver(basename, ext=_stdout_role_for(".fdf"))
             + _cold_restart_block(basename, engine="siesta", label=label)
             + _runtime_status_block(basename, engine="siesta",
                                      script_name=script_name)
@@ -3215,11 +3243,11 @@ def render_run_wrapper(script_path: Path, *,
               'fi\n'
               'export OMP_NUM_THREADS="$_omp_threads"\n'
               '\n'
-            # PySCF uses ``.pyscf.log`` instead of ``.out`` so the
-            # Results-tab inspector dispatcher can tell PySCF output
-            # apart from SIESTA's (which keeps ``.out``).  Per
-            # docs/web/tabs.md (Phase C, 2026-06-07).
-            + _run_index_resolver(basename, ext=".pyscf.log")
+            # PySCF's stdout role, from the catalogue -- it is not ``.out``
+            # so the Results-tab inspector dispatcher can tell PySCF output
+            # apart from SIESTA's.  Per docs/web/tabs.md (Phase C,
+            # 2026-06-07); the literal left on 2026-09-18.
+            + _run_index_resolver(basename, ext=_stdout_role_for(".py"))
             + _cold_restart_block(basename, engine="pyscf", label=label)
             + _runtime_status_block(basename, engine="pyscf",
                                      script_name=script_name)
@@ -3831,12 +3859,11 @@ def render_run_wrapper(script_path: Path, *,
             f'exit "$_pyscf_exit"\n'
         )
 
-    # Engine-specific output suffix.  SIESTA's wrapper writes
-    # ``-runN.out``; PySCF's writes ``-runN.pyscf.log`` (Phase C
-    # rename, 2026-06-07).  The banner below shows the suffix the
-    # user will actually see so they don't go hunting for the
-    # wrong filename after the first run.  BOMB-6 fix.
-    _ext = ".pyscf.log" if suffix == ".py" else ".out"
+    # Engine-specific output role, ASKED rather than branched on.  The
+    # banner below shows the suffix the user will actually see so they don't
+    # go hunting for the wrong filename after the first run (BOMB-6 fix) --
+    # which is precisely why it must not be a second opinion.
+    _ext = _stdout_role_for(suffix)
     # ----- Script-contract PROVENANCE block -----
     # See docs/execution/job-contracts.md.  PROVENANCE only for the
     # wrapper -- no BENCH-MARKS (wrapper-side parameters are overridden

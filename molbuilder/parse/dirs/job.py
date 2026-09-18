@@ -372,11 +372,15 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
     # rules was two hand-written functions until 2026-09-18, and the seed half
     # was the only one that said WHY.
     speaks = set(stdout_roles())
+    outputs = [p for role in run_output_roles() for p in files[role]]
     return _build_status(
         [p for role in run_output_roles() for p in files[role]
          if role in speaks or states.get(p.name) in CONCLUDED],
         states,
-        _process_conclusion(run_dir, match))
+        _process_conclusion(run_dir, match),
+        # LIVENESS IS NOT THE SPEAKER, so it gets its own list: every
+        # run-output file, INCLUDING the progress log that may not speak.
+        fresh_paths=outputs)
 
 
 
@@ -384,15 +388,28 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
                   concluded: Optional[str] = None,
+                  fresh_paths: "Optional[List[Path]]" = None,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
-    files — every ``.out`` plus each concluded molwatch log
-    (``running-a-job.md`` § 4) — and the run's PROCESS conclusion.
+    files — every ``"stdout"`` run output plus each ``"progress"`` one whose
+    footer concludes (`runfiles.Artifact.output`, `model/parse.md` § 5.5) —
+    and the run's PROCESS conclusion.
 
     **Content first, process second, age last.**  An output that states how
     it ended is the strongest evidence and keeps the answer it always gave.
     The marker speaks where content is silent, which is exactly where the
     age rule used to guess.
+
+    ``out_paths`` are the files that may SPEAK; ``fresh_paths`` is every
+    run-output file and is what STALENESS is measured on.  They are two lists
+    because they answer two questions (§ 5.5, *liveness is not the speaker*):
+    an unconcluded progress log must not outrank a real result, and it is
+    also the only thing proving a block-buffered run alive.
+
+    ``last_change_at`` stays the SPEAKER's mtime, paired with
+    ``active_source`` beside it -- a timestamp taken from a file other than
+    the one named would be a third answer nobody asked for.  The age that
+    decided `stale` is reported in ``detail``.
     """
     if not out_paths:
         # No output at all: the marker is the whole answer.
@@ -414,7 +431,19 @@ def _build_status(out_paths: List[Path],
 
     state = "running"
     detail = "running"
-    age_s = max(0.0, _wall_now() - active.stat().st_mtime)
+    # LIVENESS IS NOT THE SPEAKER (`model/parse.md` § 5.5).  Staleness is
+    # measured on the FRESHEST run-output file, which is not necessarily the
+    # one that speaks: the wrapper runs the engine with no `-u`, so its stdout
+    # is BLOCK-BUFFERED -- a real PySCF log grew 13 KB across 146 s, two
+    # flushes in the whole run -- while the progress log flushes per step and
+    # is deliberately NOT a speaker until its footer concludes.  Taking the
+    # speaker's mtime therefore reported a live run as dead.
+    #
+    # `fresh_paths` defaulting to the speakers is the pre-2026-09-18 answer,
+    # kept only so a caller that has no separate list is not silently given a
+    # different rule than the one it asked for.
+    _fresh = fresh_paths if fresh_paths else out_paths
+    age_s = max(0.0, _wall_now() - max(p.stat().st_mtime for p in _fresh))
     # THIS LAYER SETTLES WHAT CONTENT CANNOT (`model/parse.md` § 2b).  The
     # engine parser reports how the run ENDED from markers alone --
     # "running"|"ended"|"stopped"|"out_of_memory"|"unknown" -- and a file

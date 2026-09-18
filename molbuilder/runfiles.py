@@ -849,8 +849,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # § 5.5).
     Artifact(".out", "the run's output as the engine printed it",
              attempt="maybe", engine="siesta", output="stdout"),
-    Artifact(".pyscf.log", "the same, for PySCF under the wrapper — it "
-                           "writes here and not to .out", attempt="always",
+    # `attempt="maybe"` for the SAME reason `.out` above has it, and it
+    # became true on 2026-09-18: the deck's own banner told a person to run
+    # `python <deck>.py > <label>.out`, so the one unindexed spelling that
+    # existed was SIESTA'S FILENAME.  The banner now names this role, which
+    # makes the unindexed name real -- and undeclared it would have read as
+    # ENGINE state, the fault three rows in this table already record.
+    Artifact(".pyscf.log", "the same, for PySCF — it writes here and not "
+                           "to .out", attempt="maybe",
              engine="pyscf", output="stdout"),
     Artifact(".log", "the engine's verbose log"),
     # GEOMETRIC'S OPT LOG, and the row that recorded the drift this catalogue
@@ -993,6 +999,23 @@ def stdout_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
     return tuple(a.role for a in WRITTEN
                  if a.output == "stdout"
                  and not (engine and a.engine and a.engine != engine))
+
+
+def engine_of_role(role: str) -> Optional[str]:
+    """Which engine writes this role, or None when any of them may.
+
+    The mirror of :func:`stdout_roles`, and what a WRITER asks: the wrapper
+    holds a deck suffix (`.py`, `.fdf`) and needs the role its run will write
+    its stdout to.  Composing the two is the whole derivation, and it replaces
+    `runwrap`'s ``".pyscf.log" if suffix == ".py" else ".out"`` -- an
+    engine-to-role map written a third time, one layer below the two in
+    `parse/contract.py` that quoted it (`model/parse.md` § 5.5, R-RO1: the
+    vocabulary binds writers as well as readers).
+    """
+    for a in WRITTEN:
+        if a.role == role:
+            return a.engine
+    return None
 
 
 def engines() -> "tuple[str, ...]":

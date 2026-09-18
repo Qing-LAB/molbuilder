@@ -37,11 +37,19 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
-from ..runfiles import find, is_stage_token, roles_ending
+from ..runfiles import find, is_stage_token, run_output_roles
 
-#: What "the engine produced something" means, from the catalogue rather than a
-#: glob -- every declared role whose name ends in `.out` or `.log`.
-_OUTPUT_ROLES = roles_ending(".out", ".log")
+#: What "the engine produced something" means -- the catalogue's `output`
+#: COLUMN (`runfiles.Artifact.output`, `model/parse.md` § 5.5), not a suffix
+#: family.
+#:
+#: It was `roles_ending(".out", ".log")` until 2026-09-18, which is 11 roles
+#: and only 3 of them run output.  The eight others include `.parse.log` --
+#: molbuilder's own log of READING a run -- so a queued rung flipped to
+#: `running` the moment molbuilder looked at its directory, and the wrapper's
+#: `.runwrap-{stamp}.log`, written at LAUNCH before the engine starts.  A
+#: suffix family is a guess at the question; the column IS the question.
+_OUTPUT_ROLES = run_output_roles()
 
 
 def _warm_files(engine: str):

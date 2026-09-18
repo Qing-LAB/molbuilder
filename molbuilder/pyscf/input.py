@@ -33,7 +33,8 @@ from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
 from ..identity import continues
-from ..runfiles import compose as _rf, tail as _rf_tail
+from ..runfiles import (compose as _rf, stdout_roles as _stdout_roles,
+                        tail as _rf_tail)
 from ..structure import Structure
 
 #: THE ROLES THIS SCRIPT WRITES, spelled once (`job-contracts.md` § 2.2a).
@@ -64,6 +65,13 @@ ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
 #: caught and reported on the way (a real log carries *"Frequency analysis
 #: FAILED: ..."* three lines above it).
 END_MARKER = "Job complete in"
+
+#: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
+#: derives the same answer from the same catalogue row
+#: (`runwrap._stdout_role_for`), and the banner this module prints is the one
+#: place a PERSON is told the filename.  A literal here is how the two came to
+#: disagree -- see the banner below.
+PYSCF_STDOUT_ROLE = _stdout_roles("pyscf")[0]
 
 #: geomeTRIC does not take a filename -- it takes a PREFIX and appends this.
 #: Naming the tail is what lets the prefix be DERIVED from the role rather than
@@ -272,8 +280,16 @@ def spec_for(struct: Structure,
         out.append("    where and when it ran (`running-a-job.md` section 2).")
         out.append("")
         out.append("Or drive PySCF yourself:")
+        # THE ROLE PySCF'S OWN STDOUT HAS, not SIESTA's.  This said `.out`
+        # until 2026-09-18 -- the one line in the tree that told a person to
+        # write PySCF output into SIESTA's filename, while the catalogue row
+        # for `.out` says the opposite and every reader dispatches on the
+        # role.  A person following it got a file `run_status` read with
+        # SIESTA's markers, so a finished run stayed `running` for ever:
+        # exactly the defect `model/parse.md` § 5.5 was written for, created
+        # by us, in generated text.  R-RO1 binds this site.
         out.append(f"    python {_rf(label, '.py', stage_token)} > "
-                   f"{_rf(label, '.out', stage_token)} 2>&1")
+                   f"{_rf(label, PYSCF_STDOUT_ROLE, stage_token)} 2>&1")
         out.append("")
         out.append("    Perfectly good, and the reason the plain invocation is")
         out.append("    still written here -- but then the environment, the")

@@ -79,17 +79,30 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
 #  engine_of — WHICH ENGINE RAN HERE                                    #
 # --------------------------------------------------------------------- #
 
-#: The engines a run directory can answer.  ``"molwatch"`` is deliberately
-#: NOT here: it is the ``source_format`` a ``.molwatch.log`` reports when
-#: its header did not name an engine -- a FORMAT, and reading it as an
-#: engine is exactly the substitution `running-a-job.md` § 4.2 forbids.
-_ENGINES = ("siesta", "pyscf")
+#: The engines a run directory can answer -- THE CATALOGUE'S OWN LIST, since
+#: an engine becomes known to the run-file layer by having a `WRITTEN` row
+#: (`model/parse.md` § 5.5: adding an engine is two edits).  It was the
+#: literal pair ``("siesta", "pyscf")`` until 2026-09-18.
+#:
+#: ``"molwatch"`` is deliberately NOT here, and cannot be: it is the
+#: ``source_format`` a ``.molwatch.log`` reports when its header did not name
+#: an engine -- a FORMAT, and reading it as an engine is exactly the
+#: substitution `running-a-job.md` § 4.2 forbids.  No `WRITTEN` row names it
+#: as an engine either, so the derivation says the same thing the literal did.
+from ..runfiles import engines as _engines, stdout_roles as _stdout_roles
 
-#: The engine's stdout name, which only the wrapper knows
-#: (`runwrap.py`: ``".pyscf.log" if suffix == ".py" else ".out"``).  It is
-#: the one result-file fact NOT in an engine's warm-file vocabulary,
-#: because a log is never warm-started from.
-_STDOUT_SUFFIX = {"siesta": ".out", "pyscf": ".pyscf.log"}
+_ENGINES = _engines()
+
+# `_STDOUT_SUFFIX` STOOD HERE -- a hand-written
+# ``{"siesta": ".out", "pyscf": ".pyscf.log"}`` whose own docstring quoted
+# `runwrap.py`'s conditional back at it: two spellings of one map in two
+# layers, and `runwrap` had a third.  It is `runfiles.stdout_roles(engine)`,
+# asked where it is used: the stdout role is the one result-file fact NOT in
+# an engine's warm-file vocabulary (a log is never warm-started from), so the
+# CATALOGUE holds it, as the `output` column.
+#
+# A LIST and not one name, deliberately: nothing says an engine writes exactly
+# one, and `[0]` on a tuple is how a second one would be dropped in silence.
 
 
 def engine_of(directory) -> str:
@@ -247,10 +260,18 @@ def _from_cluster(directory: Path) -> set:
     out = set()
     # Declared roles ask the catalogue.  The warm suffixes below cannot:
     # they are the engine's names, in no `runfiles.WRITTEN` row.
+    # THE DECK STAYS A LITERAL, and that is a finding rather than a lapse
+    # (`plans/plan.md` § 5c.2 step e listed it for derivation).  The catalogue
+    # does carry `.fdf -> siesta`, but deriving from it would equally give
+    # `.py -> pyscf` -- and the docstring above records why that is wrong:
+    # `mb_monitor.py` and `config_dir.py` ship beside every flat run, so
+    # `find_by_role(d, ".py")` answers for a SIESTA directory.  The asymmetry
+    # is that one extension is generic and the other is not, which is not a
+    # fact the catalogue holds and does not earn a column for one case.
     if find_by_role(directory, ".fdf"):
         out.add("siesta")               # the deck: EngineSeam.suffix
     for engine in _ENGINES:
-        if find_by_role(directory, _STDOUT_SUFFIX[engine]):
+        if any(find_by_role(directory, r) for r in _stdout_roles(engine)):
             out.add(engine)
         try:
             suffixes = inventory(engine)

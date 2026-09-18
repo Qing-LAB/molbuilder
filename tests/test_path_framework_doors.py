@@ -202,6 +202,39 @@ def test_a_pyscf_rung_that_only_wrote_pyscf_log_is_not_reported_queued(tmp_path)
         "it queued is § 1.6's exact forbidden line")
 
 
+def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_path):
+    """"Has the ENGINE produced anything" is the CATALOGUE'S question, and the
+    catalogue answers it with a column (`runfiles.Artifact.output`).
+
+    Derived from the role FAMILIES `.out` / `.log` it came to 11 roles, eight
+    of which no engine writes -- and one of them is `.parse.log`, molbuilder's
+    own log of READING the run's output.  The parser opens one beside whatever
+    it reads, on by default, so a single `jobset status` or Watch poll creates
+    it.  A queued rung therefore flipped to `running` the moment molbuilder
+    looked at its directory, and the rung's real answer -- "queued as job N",
+    the job id a person needs -- was replaced by "no result file yet".
+
+    Latent when found (0 in `projects/`, because the sweep that would create
+    them is the same sweep that reads them) and one Watch poll away.
+
+    The others are the same class: `.runwrap-{stamp}.log` is written at LAUNCH
+    before the engine starts, `.monitor.log` by the monitor beside it.
+    """
+    from molbuilder.jobset.runstatus import _stage_state
+    _touch(tmp_path, "bdt_01_relax.parse.log")       # molbuilder read this dir
+    state, detail = _stage_state(tmp_path, {"job_id": 481923},
+                                 "bdt", "01_relax", "bdt_01_relax*")
+    assert state == "queued", (
+        f"got {state!r} ({detail!r}) -- molbuilder's own reading log was "
+        f"counted as the engine having produced output")
+    assert "481923" in detail
+
+    # ...and the wrapper's session log, written at launch, is not output either.
+    _touch(tmp_path, "bdt_01_relax.runwrap-20260918-090000.log")
+    assert _stage_state(tmp_path, {"job_id": 481923}, "bdt", "01_relax",
+                        "bdt_01_relax*")[0] == "queued"
+
+
 def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
     """One directory, two rungs: the token in the filename is what selects.
 

@@ -179,6 +179,45 @@ def _wall_now_for_test() -> float:
     return _wall_now()
 
 
+def test_a_live_run_is_not_stale_because_its_stdout_is_block_buffered(tmp_path):
+    """LIVENESS IS NOT THE SPEAKER (`model/parse.md` § 5.5).
+
+    The wrapper runs `python script > $_out_file 2>&1` with no `-u`, so an
+    engine's stdout is BLOCK-BUFFERED: a real PySCF log grew 13 KB across
+    146 s -- two flushes in the whole run.  The progress log flushes per step
+    and is what proves the run alive, but it is deliberately NOT a SPEAKER
+    until its footer concludes (a seed must not outrank a result), so asking
+    the speaker's mtime reports a live run as dead.
+
+    Staleness is therefore measured on the FRESHEST run-output file, while
+    which file SPEAKS is unchanged.
+    """
+    import os
+
+    log = tmp_path / "w_01_coarse-run0.pyscf.log"
+    log.write_text("cycle= 1 E= -76.3\n", encoding="utf-8")   # no end line
+    old = _wall_now_for_test() - 600.0                          # ten minutes
+    os.utime(log, (old, old))
+
+    # No progress log yet: the stdout is all there is, and it has not moved.
+    assert run_status(tmp_path).state == "stale"
+
+    # The run IS alive -- it is stepping, and the step log says so.
+    mw = _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=False)
+    now = _wall_now_for_test()
+    os.utime(mw, (now, now))
+    s = run_status(tmp_path)
+    assert s.state == "running", (
+        f"a run whose progress log moved this second reports {s.state!r} "
+        f"-- liveness was taken from the block-buffered stdout: {s}")
+    # ...and the SPEAKER is still the stdout, not the unconcluded seed.
+    assert s.active_source == "w_01_coarse-run0.pyscf.log"
+
+    # Once nothing grows at all, it is stale again.
+    os.utime(mw, (old, old))
+    assert run_status(tmp_path).state == "stale"
+
+
 def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     """Stage first, mtime second — and only a re-run separates them.
 
