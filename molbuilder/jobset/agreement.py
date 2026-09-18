@@ -177,8 +177,6 @@ def check_trial_starts_cold(job_dir, job) -> None:
     Raises :class:`DeckLaunchMismatch` (the same family as the launch
     agreement -- submission declines to act on a deck that disagrees).
     """
-    import re
-
     deck = Path(job_dir) / os.path.basename(job.script)
     if not deck.is_file():
         # Absence says nothing (the sibling gate's doctrine: a deck that
@@ -187,8 +185,22 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # whether an EXISTING deck would warm-start.
         return
     text = deck.read_text(encoding="utf-8", errors="replace")
-    saves = re.findall(r"^[ \t]*([A-Za-z.]*UseSave[A-Za-z.]*)[ \t]+(\S+)",
-                       text, re.M)
+    # THROUGH THE ONE READER (2026-09-18).  This was
+    # `re.findall(r"^[ \t]*([A-Za-z.]*UseSave[A-Za-z.]*)[ \t]+(\S+)")`, which
+    # knew fdf's rule and implemented part of it: `[A-Za-z.]*` admits `.` and
+    # REFUSES `_` and `-`, so `MD_UseSaveXV true` and `MD-UseSaveXV true` --
+    # both legal fdf, both honoured by SIESTA, both the same keyword as
+    # `MD.UseSaveXV` -- were INVISIBLE to this gate.  A trial written either
+    # way warm-started while submission vouched it cold, which is the one
+    # thing this function exists to prevent: the measurement is then of a
+    # continued run and nothing says so.  `parse/fdf.py::_norm` is fdf's
+    # actual rule (case, `.`, `-`, `_` all ignored), and `_parse_fdf` also
+    # tracks `%block` boundaries, so a block's first token can no longer be
+    # read as a keyword.  Measured, same commit: the old regex saw 1 of the
+    # 3 legal spellings.
+    from ..parse.fdf import _parse_fdf
+    scalars, _blocks = _parse_fdf(text)
+    saves = [(k, v[0]) for k, v in scalars.items() if "usesave" in k and v]
     if not saves:
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} carries no restart group at "
@@ -197,7 +209,18 @@ def check_trial_starts_cold(job_dir, job) -> None:
             f"predates the pin).  Re-prep the bench.")
     warm = [k for k, v in saves
             if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
+    # NAME THE DECK'S OWN SPELLING, not the normalised key.  `_parse_fdf`
+    # squashes `MD.UseSaveXV` to `mdusesavexv`, and the remedy is "go find
+    # that line" -- so the message says what is written there.  Falls back to
+    # the normalised key if the line cannot be recovered.
     if warm:
+        from ..parse.fdf import _norm
+        spelled = {}
+        for line in text.splitlines():
+            tok = line.split("#", 1)[0].split()
+            if tok and _norm(tok[0]) in warm:
+                spelled.setdefault(_norm(tok[0]), tok[0])
+        warm = [spelled.get(k, k) for k in warm]
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "

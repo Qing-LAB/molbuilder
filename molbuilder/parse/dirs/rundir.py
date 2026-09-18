@@ -160,8 +160,15 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
             return cand, attempts
     out_hits = by_role(".out")
     if out_hits:
-        attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
-        return _newest(out_hits), attempts
+        # THE TRAIL NAMES THE FILE THAT IS ACTUALLY RETURNED.  This said
+        # `out_hits[0]` -- first in NAME order -- while returning
+        # `_newest(...)`, newest in MTIME order, so in any directory holding
+        # more than one `.out` the refusal a person reads could name a
+        # different file from the one the viewer opened.  `attempts` is the
+        # body of that message (§ 5.2), so it has to be the same answer.
+        chosen = _newest(out_hits)
+        attempts.append(f"*.out -> picked {os.path.basename(chosen or '')}")
+        return chosen, attempts
     # ONE glob, because there is one spelling: the role is `_geom_optim.xyz`
     # and everything in front of it -- label, and the token when there is one
     # -- is what the star covers.
