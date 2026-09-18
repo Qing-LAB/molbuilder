@@ -916,10 +916,10 @@ def parameter(name: str, engine: str, *, config=None,
 def _deck_answer(decl, deck_text: str):
     """What a RENDERED deck says for this item, or ``None``.
 
-    Reads the first occurrence of the item's own keyword — libfdf's rule, and
-    the rule ``jobset/summarize.deck_value`` already documents: ``fdf_locate``
-    walks from the first line and stops at the first label that matches, so a
-    deck naming a keyword twice is read with its FIRST value.
+    Read through ``parse/fdf.py``, the one fdf reader: it splits ``%block``
+    from the block's name, applies fdf's keyword rule (case and ``.`` / ``-``
+    / ``_`` insignificant) to that name alone, and keeps a block's BODY as its
+    value.  First occurrence wins, as ``fdf_locate`` does.
 
     An item that expands to several keywords answers with the FIRST of them:
     they are one field's expansion and a deck that disagreed with itself
@@ -929,13 +929,23 @@ def _deck_answer(decl, deck_text: str):
             else ((decl.anchor,) if decl.anchor else ()))
     if not keys:
         return None
-    want = keys[0].lower().replace(".", "").replace("_", "").replace("-", "")
-    for line in deck_text.splitlines():
-        toks = line.split("#", 1)[0].split()
-        if len(toks) >= 2 and toks[0].lower().replace(".", "").replace(
-                "_", "").replace("-", "") == want:
-            return toks[1]
-    return None
+    # `parse` imports THIS module (`parse/contract.py`), so the import is
+    # function-level -- the same move that module makes in the other direction.
+    from .parse.fdf import _norm, _parse_fdf
+    scalars, blocks = _parse_fdf(deck_text)
+    key = keys[0]
+    if key.lower().startswith("%block"):
+        # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to take a
+        # second token from: on `%block kgrid_Monkhorst_Pack` that token is the
+        # block's own NAME, which is what this returned until 2026-09-18 -- or
+        # rather never returned, because the anchor was matched whole, spaces
+        # and all, against a single whitespace-split token.
+        return blocks.get(_norm(key[len("%block"):].strip())) or None
+    toks = scalars.get(_norm(key))
+    if toks is None:
+        return None
+    # A keyword present with no value is `.true.` to `fdf_boolean`, not absent.
+    return toks[0] if toks else ".true."
 
 
 

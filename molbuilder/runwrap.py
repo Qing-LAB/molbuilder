@@ -710,32 +710,30 @@ def _runtime_status_block(
         #   * lower-cases the first token for case-insensitive
         #     ``%block`` / ``%endblock`` / ``position`` matching
         #     (portable; replaces gawk's IGNORECASE).
-        #   * accepts BOTH ``Geometry.Constraints`` and
-        #     ``Geometry_Constraints`` for the block name (SIESTA
-        #     treats ``.`` and ``_`` interchangeably).
+        #   * squashes ``.``, ``-`` and ``_`` out of the block name
+        #     before comparing, which is fdf's keyword rule and what
+        #     ``parse/fdf.py::_norm`` does on the Python side.  It
+        #     spelled two of the four legal spellings until
+        #     2026-09-18 and `_sidecar.py` spelled a different two.
         # Two passes so ``_ncon_lines`` and ``_ncon_indices`` come
         # from the same logical scan.  ``|| true`` keeps awk's exit
         # code from aborting under ``set -euo pipefail``.
         _awk_count_program = (
-            r'{ k = tolower($1) } '
-            r'k == "%block" && '
-            r'(tolower($2) == "geometry.constraints" || '
-            r'tolower($2) == "geometry_constraints") '
+            r'{ k = tolower($1); nm = tolower($2); gsub(/[._-]/, "", nm) } '
+            r'k == "%block" && nm == "geometryconstraints" '
             r'{ in_b = 1; next } '
-            r'k == "%endblock" && '
-            r'(tolower($2) == "geometry.constraints" || '
-            r'tolower($2) == "geometry_constraints") '
+            r'k == "%endblock" && nm == "geometryconstraints" '
             r'{ in_b = 0; next } '
             r'in_b && tolower($1) == "position"'
         )
         constraint_detection = (
             f'_constraints="(no Geometry.Constraints block -- all atoms free)"\n'
             f'_fdf_path="{script_name}"\n'
-            # Grep gate: case-insensitive AND tolerant of both
-            # `.` and `_` in the block name.  Same dialect as the
-            # awk below.
+            # Grep gate: case-insensitive and tolerant of all four
+            # legal spellings of the separator.  Same rule as the awk
+            # below.
             f'if [ -e "$_fdf_path" ] && grep -qiE '
-            f'\'^[[:space:]]*%block[[:space:]]+Geometry[._]Constraints\' '
+            f'\'^[[:space:]]*%block[[:space:]]+Geometry[._-]?Constraints\' '
             f'"$_fdf_path"; then\n'
             f'    _ncon_lines=$(awk \'BEGIN{{in_b=0;n=0}} '
             f'{_awk_count_program} '

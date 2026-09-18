@@ -257,3 +257,78 @@ position 5
 
     monkeypatch.setattr("builtins.open", patched_open)
     assert read_frozen_atoms_from_siesta_fdf(out) == set()
+
+
+# --------------------------------------------------------------------- #
+#  fdf's own keyword rule -- all four legal spellings of the block name  #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("sep", [".", "_", "-", ""])
+def test_every_legal_spelling_of_the_block_name_is_found(tmp_path, sep):
+    """fdf holds `.`, `-`, `_` and case insignificant inside a keyword.
+
+    This reader spelled `Geometry\\.?Constraints` and saw two of the four;
+    the wrapper's awk spelled a different two.  Both now ask
+    `parse/fdf.py`, whose `_norm` is the rule itself.
+    """
+    (tmp_path / "run.fdf").write_text(
+        f"%block Geometry{sep}Constraints\n"
+        f"position from 1 to 3\n"
+        f"%endblock Geometry{sep}Constraints\n")
+    assert read_frozen_atoms_from_siesta_fdf(
+        str(tmp_path / "run.out")) == {0, 1, 2}
+
+
+def test_a_directory_named_fdf_does_not_hide_the_real_deck(tmp_path):
+    """`os.listdir` without a file test counted a `*.fdf` DIRECTORY as a
+    second candidate, so a directory holding exactly one real deck
+    answered None and lost its frozen atoms."""
+    (tmp_path / "other.fdf").mkdir()
+    (tmp_path / "deck.fdf").write_text(
+        "%block Geometry.Constraints\nposition 1 2\n"
+        "%endblock Geometry.Constraints\n")
+    assert read_frozen_atoms_from_siesta_fdf(
+        str(tmp_path / "traj.out")) == {0, 1}
+
+
+def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
+    """The wrapper counts constrained atoms in shell, so it cannot import
+    the reader -- the PATTERN has to carry fdf's rule.  Rendered, extracted
+    and run, rather than asserted from the generator's source."""
+    import json
+    import re
+    import subprocess
+    import warnings
+    from molbuilder.jobset.model import Resources
+    from molbuilder.runwrap import render_wrappers
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    (tmp_path / "molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+
+    deck = tmp_path / "JOB.fdf"
+    deck.write_text("SystemName t\nSystemLabel t\nNumberOfAtoms 3\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = render_wrappers(deck, resources=Resources(mpi_np=1,
+                                                        cpus_per_task=1),
+                              project_dir=tmp_path, emit_sbatch=False)
+    wrapper = [t for n, t in out.files if n.endswith(".run.sh")][0]
+    m = re.search(r"_ncon_lines=\$\(awk '(.*?)' \"\$_fdf_path\"", wrapper,
+                  re.S)
+    assert m, "the rendered wrapper no longer counts constrained atoms"
+    prog = tmp_path / "prog.awk"
+    prog.write_text(m.group(1))
+
+    for sep in (".", "_", "-", ""):
+        probe = tmp_path / "probe.fdf"
+        probe.write_text(f"%block Geometry{sep}Constraints\n"
+                         f"position from 1 to 3\nposition 7\n"
+                         f"%endblock Geometry{sep}Constraints\n")
+        got = subprocess.run(["awk", "-f", str(prog), str(probe)],
+                             capture_output=True, text=True).stdout.strip()
+        assert got == "2", f"spelling Geometry{sep}Constraints read {got!r}"

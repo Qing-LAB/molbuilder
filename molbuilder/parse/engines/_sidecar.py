@@ -146,13 +146,6 @@ def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
     return set(molstruct.frozen_atoms(data))
 
 
-_FDF_BLOCK_START_RE = re.compile(
-    r"^\s*%block\s+Geometry\.?Constraints\b", re.IGNORECASE,
-)
-_FDF_BLOCK_END_RE = re.compile(
-    r"^\s*%endblock\s+Geometry\.?Constraints\b", re.IGNORECASE,
-)
-
 _FDF_POSITION_KEYWORD_RE = re.compile(
     r"^\s*position\b\s*(.*)$", re.IGNORECASE,
 )
@@ -277,9 +270,12 @@ def _siesta_fdf_path_for(traj_path: str) -> str | None:
     if os.path.isfile(same_stem):
         return same_stem
     try:
+        # A DIRECTORY NAMED `*.fdf` IS NOT A DECK.  Without the file test one
+        # sitting beside the real deck makes this see two candidates and
+        # answer None -- the frozen atoms lost with a single deck present.
         fdfs = [
-            os.path.join(base, f) for f in os.listdir(base)
-            if f.lower().endswith(".fdf")
+            p for p in (os.path.join(base, f) for f in os.listdir(base))
+            if p.lower().endswith(".fdf") and os.path.isfile(p)
         ]
     except OSError:
         return None
@@ -303,23 +299,22 @@ def read_frozen_atoms_from_siesta_fdf(traj_path: str) -> Set[int]:
         return set()
     try:
         with open(fdf_path, "r", errors="replace") as fh:
-            lines = fh.readlines()
+            text = fh.read()
     except OSError:
         return set()
 
+    # ONE DECK READER (`parse/fdf.py`).  Its `_norm` is fdf's real keyword
+    # rule, so `Geometry_Constraints` and `Geometry-Constraints` are found as
+    # well -- the two spellings the regex here was blind to.
+    from ..fdf import _norm, _parse_fdf
+    _scalars, blocks = _parse_fdf(text)
+    rows = blocks.get(_norm("Geometry.Constraints"))
+    if not rows:
+        return set()
+
     frozen_one_based: Set[int] = set()
-    in_block = False
-    for raw in lines:
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.strip():
-            continue
-        if not in_block:
-            if _FDF_BLOCK_START_RE.match(line):
-                in_block = True
-            continue
-        if _FDF_BLOCK_END_RE.match(line):
-            in_block = False
-            continue
+    for row in rows:
+        line = " ".join(row)
         m_kw = _FDF_POSITION_KEYWORD_RE.match(line)
         if m_kw is None:
             continue

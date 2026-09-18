@@ -103,12 +103,30 @@ def test_siesta_records_what_the_deck_leaves_out_with_its_default(deck):
     assert "relax_force_tol" in block
 
 
-def test_an_item_the_deck_does_carry_is_not_listed_as_absent(deck):
+def test_an_item_the_deck_does_carry_is_not_listed_as_absent(deck, tmp_path):
     block = _effective_parameters_block(deck)
     absent = block.split("the engine default applies")[1]
     assert "mesh_cutoff" not in absent, (
         "mesh_cutoff IS in this deck; listing it as absent would be a lie "
         "about what the engine reads")
+
+    # THE SAME RULE, THE OTHER SHAPE A DECK HAS.  `mesh_cutoff` is a `key
+    # value` line; a k-grid is a `%block`, and the reader matched the
+    # catalogue's `%block kgrid_Monkhorst_Pack` anchor whole -- space and all
+    # -- against a single whitespace-split token, so it could never match.
+    # Every SIESTA run log said "kgrid -- not in the deck" on 132 of 132
+    # decks that set one.  This test held the rule and only ever showed it a
+    # scalar.
+    blocked = tmp_path / "b.fdf"
+    blocked.write_text("SystemLabel t\n"
+                       "%block kgrid_Monkhorst_Pack\n"
+                       "4 0 0 0.0\n0 4 0 0.0\n0 0 1 0.0\n"
+                       "%endblock kgrid_Monkhorst_Pack\n", encoding="utf-8")
+    absent_b = _effective_parameters_block(blocked).split(
+        "the engine default applies")[1]
+    assert "kgrid" not in absent_b, (
+        "this deck sets a k-grid; listing it as absent would be a lie about "
+        "what the engine samples")
 
 
 def test_the_absent_list_is_generated_from_the_catalogue(deck):

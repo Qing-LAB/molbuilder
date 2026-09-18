@@ -935,3 +935,20 @@ def test_the_check_gate_refuses_a_stray_marker_of_either_kind(tmp_path):
         assert any("ambiguous" in i.message for i in found), (
             f"{name}: the refusal does not say what is wrong or how to fix "
             f"it: {[i.message for i in found]}")
+
+
+# --------------------------------------------------------------------- #
+#  Reading a rendered deck back -- `parameter(..., deck_text=)`          #
+# --------------------------------------------------------------------- #
+
+
+def test_a_bare_logical_keyword_is_present_not_absent():
+    """`DM.UseSaveDM` alone on a line is `.true.` to `fdf_boolean`.
+
+    The private matcher required a second token, so a deck that turns a
+    logical on in fdf's shorthand was reported as never having set it.
+    """
+    got = sc.parameter("restart", "siesta",
+                       deck_text="SystemLabel t\nDM.UseSaveDM\n").value
+    assert got is not None
+    assert got.strip().lower() in (".true.", "true", "yes", "t", "y", "1")
