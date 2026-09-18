@@ -2649,8 +2649,16 @@ enumerates a directory, keeps what an `isResult` presenter matches, applies
 
 1. **The result is invisible** — `<label>.transport.json` matches no `isResult`
    presenter, so `pickResult` returns null and the picker drops it.
-2. **The ladder lists as a pile of optimizations** — every rung's `.out` and
-   `.molwatch.log` are claimed by `trajectory.js` under *"SIESTA optimization"*.
+2. ~~**The ladder lists as a pile of optimizations**~~ — **MEASURED WRONG
+   2026-09-18, and it was repeated all day before anyone checked.** The claim
+   was that every rung's `.out` and `.molwatch.log` are claimed by
+   `trajectory.js` under *"SIESTA optimization"*, beside the result.
+   `file-picker.js` calls `projects.listDir(dir)` — **ONE directory, not a
+   walk** — and transport runs `--shape hierarchical` (§ 3, the worked CLI),
+   so each rung is its own folder. The calculation root holds the record and
+   the rungs are one level down; they never appear beside it. *The claim is
+   true of the FLAT shape, where stages share a directory, and was written
+   without asking which shape transport uses.*
 3. **`absorbs` cannot express a ladder** — it collapses siblings in ONE
    directory; a ladder is five directories that are one run.
 4. **From the sidebar it is a text pager** — and by `presenters.md` § 1's own

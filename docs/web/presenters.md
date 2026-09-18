@@ -65,12 +65,12 @@ config files and READMEs.
 > so the picker dropped it — the deliverable of a five-rung run was invisible on
 > this tab.
 >
-> **What that row does NOT fix, and cannot:** the five rungs' `.out` files are
-> each still claimed by the trajectory viewer under *SIESTA optimization*, so a
-> ladder lists as five unrelated entries beside its result. `absorbs` collapses
-> siblings within ONE directory and has no way to say *"these five folders are
-> one run"* — that is [`plans/plan.md`](?doc=plans/plan.md) § 5c.1's open
-> question. And the reason the picker must guess at all is that no server door
+> **What that row does NOT fix:** the rungs are still separate folders you
+> navigate into one at a time — the presenter summarises them, it does not
+> merge them. *(An earlier revision said the five `.out` files list "as five
+> unrelated entries beside its result". They do not: the picker lists ONE
+> directory and transport runs hierarchical, so each rung is a folder below the
+> record. That is true of the flat shape only.)* And the reason the picker must guess at all is that no server door
 > answers *what is in this directory*: it decides from filenames, in the
 > browser, which makes it § 5c's **seventh consumer** and the only one that is
 > not server-side.
