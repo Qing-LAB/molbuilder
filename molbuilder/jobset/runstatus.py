@@ -37,19 +37,26 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
-from ..runfiles import find, is_stage_token, run_output_roles
+from ..runfiles import find, is_stage_token, stdout_roles
 
-#: What "the engine produced something" means -- the catalogue's `output`
-#: COLUMN (`runfiles.Artifact.output`, `model/parse.md` § 5.5), not a suffix
-#: family.
+#: What "THE ENGINE HAS PRODUCED SOMETHING" means -- and it is the narrow half
+#: of the catalogue's `output` column, not the whole of it
+#: (`runfiles.Artifact.output == "stdout"`, `model/parse.md` § 5.5).
 #:
-#: It was `roles_ending(".out", ".log")` until 2026-09-18, which is 11 roles
-#: and only 3 of them run output.  The eight others include `.parse.log` --
-#: molbuilder's own log of READING a run -- so a queued rung flipped to
-#: `running` the moment molbuilder looked at its directory, and the wrapper's
-#: `.runwrap-{stamp}.log`, written at LAUNCH before the engine starts.  A
-#: suffix family is a guess at the question; the column IS the question.
-_OUTPUT_ROLES = run_output_roles()
+#: A ``"stdout"`` file exists BECAUSE THE PROCESS STARTED -- the shell creates
+#: it at the redirect -- which is exactly this question.  A ``"progress"`` file
+#: is SEEDED at prep, before the engine exists, so counting it here reports a
+#: rung you prepared and never launched as `running`.  Measured 2026-09-18
+#: against a CO2 job prepped through the UI and deliberately not launched, and
+#: on 28 of 107 directories in `projects/`.
+#:
+#: TWO WIDENINGS CORRECTED, both on 2026-09-18.  It was
+#: `roles_ending(".out", ".log")` -- 11 roles, 8 of which no engine writes,
+#: including `.parse.log`, molbuilder's own log of READING a run, so a queued
+#: rung flipped to `running` the moment molbuilder looked at its directory.
+#: Narrowing that to `run_output_roles()` fixed those eight and kept the
+#: seeded progress log; this is the second half.
+_OUTPUT_ROLES = stdout_roles()
 
 
 def _warm_files(engine: str):

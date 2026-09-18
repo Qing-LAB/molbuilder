@@ -235,6 +235,34 @@ def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_pa
                         "bdt_01_relax*")[0] == "queued"
 
 
+def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
+    """"Has the ENGINE produced anything" means a file that exists BECAUSE THE
+    PROCESS STARTED — the catalogue's `output == "stdout"` column, and only it.
+
+    A progress log is SEEDED at prep, before the engine exists
+    (`jobset/prep.py::_seed_trajectory_log`), so counting it as output makes a
+    rung you prepared and never launched report `running`.  Measured against a
+    CO2 job prepped through the UI and deliberately not launched: `jobset
+    status` said *"running / no result file yet"* where the true answer is
+    *"prepped, not launched"* — a state this function HAS and could not reach.
+
+    MUTATION THIS MUST FAIL AGAINST: widen the gate back to
+    `run_output_roles()`, which includes the seeded progress log.
+    """
+    from molbuilder.jobset.runstatus import _stage_state
+    _touch(tmp_path, "bdt_01_relax.molwatch.log")     # the prep seed, nothing else
+    state, detail = _stage_state(tmp_path, None, "bdt", "01_relax",
+                                 "bdt_01_relax*")
+    assert state == "pending", (
+        f"got {state!r} ({detail!r}) -- the prep-time seed was counted as the "
+        f"engine having produced output")
+
+    # ...and once the engine's own stdout exists, it HAS started.
+    _touch(tmp_path, "bdt_01_relax-run0.out")
+    assert _stage_state(tmp_path, {"job_id": 7}, "bdt", "01_relax",
+                        "bdt_01_relax*")[0] != "pending"
+
+
 def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
     """One directory, two rungs: the token in the filename is what selects.
 

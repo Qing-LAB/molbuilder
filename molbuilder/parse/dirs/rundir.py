@@ -50,19 +50,6 @@ from ..types import ParseResult, RunDirResult
 from ...pyscf.input import ROLE_GEOM_TRAJ   # noqa: E402  -- re-exported below
 
 
-def _newest(paths: List[str]) -> Optional[str]:
-    """The most recently modified of *paths*, or None when empty.
-
-    Newest wins because a STAGED run leaves one log per rung in the same
-    directory under the flat shape, and the one a person opening the folder
-    means is the one still being written.
-    """
-    real = [p for p in paths if os.path.isfile(p)]
-    if not real:
-        return None
-    return max(real, key=lambda p: os.path.getmtime(p))
-
-
 def _claimed(path: str) -> bool:
     """Does a registered parser claim this file? — the REGISTRY's question.
 
