@@ -3016,21 +3016,41 @@ one of them calling it *"defense in depth"* for an ordering held by
 construction. No membership assert would have caught that: the class was still
 imported, still registered, still green.
 
-**So when a step deletes a route, verb, module or public symbol, the same step
-does three things — not the next review, the same step:**
+**DONE 2026-09-18 — written into
+[`process/code-audit.md`](?doc=process/code-audit.md) § 1d**, beside § 1c, which
+is the other thing review must carry because a test cannot. The three actions
+are unchanged; **point 2's stated reason was wrong and is corrected there**, by
+measurement.
 
-1. **Name what the deletion makes UNREACHABLE one layer away.** Ask it
-   explicitly: *what was this the last caller of?* `/api/transport/render` was
-   the last thing that built a `TransportConfig` **and validated it**, which is
-   the only reason `_ENGINE_VALIDATORS[TransportConfig]` still dispatched. The
-   question was never asked, and the answer was a 316-line class.
-2. **Sweep the documents for the identifier AND its prose name.** A symbol grep
-   for `electrode_wizard` does not match *"the electrode wizard"*; `render_script`
-   does not match *"the render endpoint"*; `engine_base` does not match *"a
-   registered engine"*. **Every miss in the 2026-09-17 sweep was of this shape** —
-   the symbol searches had already been run, four times, and each time the prose
-   survived them. Search both spellings, or the sweep is not done.
-3. **Re-run step 10's membership asserts**, which is one command once they exist.
+1. **Name what the deletion makes UNREACHABLE one layer away.** *What was this
+   the last caller of?* `/api/transport/render` was the last thing that built a
+   `TransportConfig` **and validated it** — the only reason
+   `_ENGINE_VALIDATORS[TransportConfig]` still dispatched. The question was
+   never asked and the answer was a 316-line class. *(A second case landed the
+   same day: `render_electrode_fdf` was the last caller of
+   `_emit_basis_and_xc`, which then outlived it by a day in code and longer in
+   prose — four separate statements asserted callers it did not have.)*
+2. **Sweep for the identifier — and READ every hit, including the ones in
+   docstrings.** This said *"a symbol grep for `electrode_wizard` does not match
+   'the electrode wizard' … **every miss in the 2026-09-17 sweep was of this
+   shape**"*. **Re-derived 2026-09-18 against the actual misses: that is the
+   MINORITY shape.** There are three, and a protocol written against the prose
+   one catches almost none of them:
+   **(a)** the prose name carries no symbol — nothing to match;
+   **(b)** the grep *hits*, in a docstring, and the hit is dismissed as "just
+   prose" — `transport/__init__.py` named three **deleted modules** and a
+   nonexistent decorator, and a grep for any of the four **would have hit it at
+   five lines**, every time, for a day;
+   **(c)** the symbol never existed, so the grep returns one hit — the prose
+   inventing it — and *absence* reads as *nothing to do*: `JobMonitor`,
+   `transport.transiesta.validate`, `deck.py::_transport_view`.
+   The rule is therefore **not "grep harder"**: a hit inside a docstring is a
+   CLAIM, and a claim gets read. Cheapest reliable form — open the package
+   `__init__.py` and the module header of every file the deletion touched.
+3. **Re-run step 10's membership asserts** — one command, and 10b/10c exist
+   now. **Necessary, not sufficient**, which is why § 1d sits beside them: no
+   membership assert would have caught `TransiestaEngine`. It was still
+   imported, still registered, still green.
 
 *Done when:* the protocol is written into `process/code-audit.md` as a numbered
 rule beside D1–D4 — it is a code-audit discipline, not a transport one, and it

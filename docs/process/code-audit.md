@@ -269,6 +269,82 @@ A finding is worth reporting only with the **silent consequence** attached —
 measures the previous folder* — because that consequence is what tells the
 reader whether it is a defect or a deliberate choice.
 
+## 1d. The deletion protocol — what a deletion owes, in the same step *(2026-09-18)*
+
+A deletion is not finished when the code is gone and the suite is green. Two
+things survive it silently: **code one layer away that nothing can reach any
+more**, and **prose that goes on describing it**. Neither is caught by a test,
+because nothing throws — the class is still imported, still registered, still
+green, and the document still reads as current.
+
+**So when a step deletes a route, a verb, a module or a public symbol, the same
+step does three things. Not the next review — the same step.**
+
+### 1. Name what the deletion makes UNREACHABLE one layer away
+
+Ask it in those words: ***what was this the last caller of?*** Deleting a
+caller does not delete its callee, it orphans it, and an orphan looks exactly
+like live code.
+
+- `POST /api/transport/render` was deleted on 2026-09-17. It was the last live
+  caller of `TransiestaEngine` — **a 316-line class** — and the only reason
+  `_ENGINE_VALIDATORS[TransportConfig]` still dispatched. The question was not
+  asked, and for a day two contracts went on calling that gate *"defense in
+  depth"* for an ordering already held by construction.
+- `render_electrode_fdf` went the same day, and with it the last call to
+  `_emit_basis_and_xc`. That function survived **one more day in code and
+  longer in prose**: `wizard.py` imported it without calling it, its module
+  header called it *"reused by `transport/wizard.py`"*, its own tombstone
+  listed it among symbols with *"real callers"*, and the plan listed it under
+  *"NOT redundant"*. Four statements, one dead function.
+
+### 2. Sweep for the identifier **and** read every hit — including the ones in prose
+
+The instinct is to grep the symbol and move on. Three different shapes defeat
+that, and **all three were measured on 2026-09-18**, auditing the 2026-09-17
+sweep — which had already run its symbol searches four times.
+
+| shape | why the grep fails | measured case |
+|---|---|---|
+| **(a) the prose name carries no symbol** | there is nothing to match | `base.py` said *"Three ABCs"* after the third retired. `electrode_wizard` does not match *"the electrode wizard"*; `render_script` does not match *"the render endpoint"* |
+| **(b) the grep HITS, in a docstring, and the hit is dismissed** | a docstring hit reads as "just prose, not code" | `transport/__init__.py` named `:mod:.preflight`, `:mod:.engine_base`, `:mod:.results` — **three deleted modules** — plus `@register_engine`, a decorator that exists nowhere. A grep for any of those four **would have hit it, at five lines**. Every sweep did hit it. Nobody read it, and that docstring is the first thing anyone opening the package reads |
+| **(c) the symbol never existed at all** | the grep returns one hit — the prose inventing it — and "one hit, in a comment" reads as nothing | `registry.py` documented `parse_dir` as *"Used by JobMonitor, Results, and bundle handoff"*. **`JobMonitor` has never existed anywhere in the tree.** So did `transport.transiesta.validate` and `deck.py::_transport_view` |
+
+> ***The plan claimed all of these were shape (a)*** — *"every miss in the
+> 2026-09-17 sweep"* was said to be a prose name a symbol search could not
+> match. Re-derived 2026-09-18 against the actual misses: **(a) is the minority.**
+> Most were (b) — the search found them and the finding was skipped — and (c) is
+> a class a symbol search reports as *absence* when absence is the finding.
+> A protocol written against (a) alone catches almost none of them.
+
+**So the rule is not "grep harder", it is: a hit inside a docstring or comment
+is a CLAIM, and a claim gets read.** The cheapest reliable form is to open the
+package `__init__.py` and the module header of every file the deletion touched,
+and read them — they are short, they are where the design is stated, and they
+are the ones nobody opens.
+
+### 3. Re-run the membership asserts
+
+One command, and they exist for exactly this: `conventions.md` § 3's command
+roster and `presenters.md` § 1's viewer table are set-equal to `cli.commands`
+and to the `register()` calls
+([`plan.md` § 5p.3p](?doc=plans/plan.md) step 10). Deleting a command or a
+presenter now fails a named test that quotes the document.
+
+**They are necessary and not sufficient**, which is the whole reason this
+section exists beside them: no membership assert would have caught
+`TransiestaEngine`. The class was still imported, still registered, still
+green — it had simply become unreachable.
+
+### How to report it
+
+Under R3, with the same honesty § 1c.2 asks for: name what the deletion
+orphaned (or state that you asked and the answer was nothing), name the files
+whose headers you read, and name the ones you did not. *"Asked what
+`/api/transport/render` was the last caller of; read `transport/__init__.py`
+and the four module headers; did not read the web blueprints"* is a report. A
+symbol count is not.
+
 ## 2. The audit dimensions
 
 What there is to audit; each has a checklist in § 5.
