@@ -277,6 +277,20 @@ def collect_record(base_dir, task) -> Dict:
         "energies_relative_to_ef": True,
         # THE LADDER IS THE RESULT'S STRUCTURE, so the record carries it.
         "stages": _stage_facts(base, task, task.label),
+        # WHAT THE RESULT IS ENTITLED TO BE CALLED (§ 2a.10, ruled
+        # 2026-09-16).  The mechanism is identical either way; what differs is
+        # how many device SCFs were paid for, and therefore what may be
+        # claimed.  One slice is T(E), and an I-V read off it is the
+        # LINEAR-RESPONSE approximation -- integrating a zero-bias curve
+        # cannot reproduce a resonance entering the window, nor that
+        # resonance moving under the field.  A re-converged scan is T(E, V)
+        # and its I-V carries no such caveat.
+        #
+        # Recorded here, not decided in the browser: § 2a.12 requires the
+        # treatment NAMED BESIDE THE CURVE and not in metadata, because "the
+        # two kinds of I-V are different claims and look identical on a plot".
+        "treatment": ("finite-bias" if len(points_out) + len(pending) > 1
+                      else "single-bias"),
         "points": points_out,
         "iv": {
             "voltages_v": [p["bias_v"] for p in points_out],

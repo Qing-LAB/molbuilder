@@ -221,3 +221,45 @@ class TestTheTransmissionWalk:
         assert (calc / "05_transmission" / "v0.2" / "run-0" / "RAN"
                 ).is_file(), (
             "independent points: the walk continues past a failure")
+
+
+class TestTheRecordNamesWhatItIsEntitledToBeCalled:
+    """`engines/transport.md` § 2a.10 (user ruling, 2026-09-16): the two bias
+    treatments run the same mechanism and differ in **how many device SCFs
+    were paid for** — so what the result may be CALLED differs.
+
+    * one slice → `T(E)`, and an I–V read off it is the **linear-response
+      approximation**: integrating a zero-bias curve cannot reproduce a
+      resonance entering the bias window, nor that resonance moving under
+      the field.
+    * a re-converged scan → `T(E, V)`, whose I–V carries no such caveat.
+
+    § 2a.12 requires it **named beside the curve and not in metadata**,
+    *"because the two kinds of I–V are different claims and look identical on
+    a plot"* — so the RECORD states it and the presenter reads it rather than
+    the browser inferring it from a point count.
+
+    *(A first version of these tests asserted a COPY of the rule against a
+    local helper, which proves only that the copy matches itself.  They go
+    through `collect_record` now, like every other test in this file.)*
+    """
+
+    def test_a_scan_with_both_points_run_is_finite_bias(self, calc):
+        from molbuilder.task import read_task
+        _ran_transmission(calc, "v0")
+        _ran_transmission(calc, "v0.2")
+        rec = collect_record(calc, read_task(calc / "task.json"))
+        assert len(rec["points"]) == 2
+        assert rec["treatment"] == "finite-bias"
+
+    def test_a_scan_with_one_point_still_queued_is_STILL_finite_bias(
+            self, calc):
+        """A scan whose second voltage has not run is still a scan.  Calling
+        it single-bias because one point is pending would license the
+        linear-response label on a result that never claimed it — and the
+        label is the whole point of recording this."""
+        from molbuilder.task import read_task
+        _ran_transmission(calc, "v0")
+        rec = collect_record(calc, read_task(calc / "task.json"))
+        assert len(rec["points"]) == 1 and len(rec["pending"]) == 1
+        assert rec["treatment"] == "finite-bias"

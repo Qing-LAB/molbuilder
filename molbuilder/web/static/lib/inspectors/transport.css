@@ -81,3 +81,12 @@
     background: var(--surface-recessed);
     font-size: var(--text-sm);
 }
+
+.transport-curve-title { margin: 0; }
+
+/* The curve gets real height: T(E) over a window is the deliverable, and a
+ * squashed strip cannot show a resonance. */
+.transport-curve {
+    width: 100%;
+    min-height: 18rem;
+}

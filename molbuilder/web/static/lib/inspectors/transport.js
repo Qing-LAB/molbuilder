@@ -146,22 +146,99 @@
             }
         }
 
-        /* Say what is NOT here, and say it narrowly.  The curve's numbers ARE
-         * in this file; what is missing is the plot. */
-        const withCurve = pts.filter(
-            (p) => Array.isArray(p.transmission) && p.transmission.length).length;
-        if (withCurve) {
-            wrap.appendChild(_el("p", "transport-note",
-                "The transmission curve T(E) is in this record for "
-                + withCurve + " of " + pts.length + " point"
-                + (pts.length === 1 ? "" : "s")
-                + " — the chart for it is not built yet."));
+        /* THE CURVE -- the deliverable.  `engines/transport.md` 2a.12: the
+         * surface presents T(E) for a single bias, or the family T(E, V) for
+         * a scan, and NAMES ITS TREATMENT beside it. */
+        const curves = pts.filter(
+            (p) => Array.isArray(p.transmission) && p.transmission.length
+                   && Array.isArray(p.energy_ev) && p.energy_ev.length);
+        if (curves.length) {
+            /* The label is the RECORD's, not this file's guess.  2a.10: the
+             * mechanism is the same either way and what differs is how many
+             * device SCFs were paid for -- so an I-V read off ONE zero-bias
+             * slice is the linear-response approximation, and one from a
+             * re-converged scan is not.  2a.12 puts that beside the curve
+             * rather than in metadata, "because the two kinds of I-V are
+             * different claims and look identical on a plot". */
+            const single = rec.treatment === "single-bias";
+            wrap.appendChild(_el("h4", "transport-curve-title",
+                single ? "Transmission T(E) \u2014 single bias"
+                       : "Transmission T(E, V) \u2014 finite bias, "
+                         + curves.length + " slices"));
+            wrap.appendChild(_el("p", "transport-note", single
+                ? "One device SCF. An I\u2013V derived from this curve is the "
+                  + "LINEAR-RESPONSE approximation: integrating a zero-bias "
+                  + "slice cannot reproduce a resonance entering the bias "
+                  + "window, nor that resonance moving under the field."
+                : "The device SCF was re-converged at every voltage, so each "
+                  + "slice is its own solution and the I\u2013V carries no "
+                  + "approximation beyond the method."));
+            const plot = _el("div", "transport-curve");
+            wrap.appendChild(plot);
+            _plotLater(plot, curves);
         }
         if (rec.energies_relative_to_ef) {
             wrap.appendChild(_el("p", "transport-note",
                 "Energies are relative to E_F."));
         }
         host.appendChild(wrap);
+    }
+
+    /* Colours from the tokens, exactly as `lib/trajectory/core.js` does it --
+     * theme-responsive, with a literal fallback for a headless render. */
+    function _themeColors() {
+        const cs = root.getComputedStyle
+            ? root.getComputedStyle(root.document.documentElement) : null;
+        const get = (n, fb) =>
+            ((cs && cs.getPropertyValue(n)) || "").trim() || fb;
+        return { textMuted: get("--text-muted", "#6c7280") };
+    }
+
+    /* One Plotly call, the same shape every other plot in this tree uses
+     * (`trajectory/core.js`, `spectra/core.js`, `spectrumchart/_seal.js`):
+     * `Plotly.react(node, traces, layout, {displayModeBar:false,
+     * responsive:true})`.  There is no wrapper to reach for -- eight call
+     * sites, no abstraction over them -- so this follows the house pattern
+     * rather than inventing a ninth shape. */
+    function _plotLater(el, curves) {
+        /* A tick later: the caller appends `el` to the host right after this
+         * returns, and Plotly measures a node that must already be laid out. */
+        root.setTimeout(function () {
+            if (!root.Plotly || (el.isConnected === false)) return;
+            const theme = _themeColors();
+            const traces = curves.map((p) => ({
+                x: p.energy_ev,
+                y: p.transmission,
+                mode: "lines",
+                line: { width: 1.5 },
+                name: curves.length === 1
+                    ? "T(E)" : (Number(p.bias_v).toFixed(3) + " V"),
+                connectgaps: false,
+            }));
+            root.Plotly.react(el, traces, {
+                margin: { l: 8, r: 12, t: 12, b: 32 },
+                showlegend: curves.length > 1,
+                legend: { font: { size: 9 } },
+                xaxis: {
+                    /* Relative to E_F -- which is the LEAD's, and is why the
+                     * electrode cards above carry it. */
+                    title: { text: "E \u2212 E_F (eV)", standoff: 4 },
+                    zeroline: true, zerolinecolor: theme.textMuted,
+                    automargin: true, nticks: 7,
+                },
+                yaxis: {
+                    /* LOG.  Transmission spans orders of magnitude -- a
+                     * molecular junction runs 1e-6 to 1 -- and on a linear
+                     * axis the whole curve reads as a flat line on zero.
+                     * Plotly drops non-positive points on a log axis, which
+                     * is the honest rendering of T = 0 rather than a floor
+                     * invented to make the plot look continuous. */
+                    title: { text: "T", standoff: 4 },
+                    type: "log", automargin: true, nticks: 5,
+                },
+                font: { family: "system-ui, sans-serif", size: 10 },
+            }, { displayModeBar: false, responsive: true });
+        }, 0);
     }
 
     const inspector = {
@@ -188,7 +265,15 @@
                 if (!disposed) render(host, rec);
             })();
             return {
-                dispose() { disposed = true; host.innerHTML = ""; },
+                dispose() {
+                    disposed = true;
+                    try {
+                        const c = host.querySelector
+                            && host.querySelector(".transport-curve");
+                        if (c && root.Plotly) root.Plotly.purge(c);
+                    } catch (_) { /* it may never have been drawn */ }
+                    host.innerHTML = "";
+                },
             };
         },
     };
