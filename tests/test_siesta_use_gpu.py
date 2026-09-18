@@ -290,14 +290,20 @@ def test_fdf_requests_gpu_missing_keyword(tmp_path):
     assert _runwrap._fdf_requests_gpu(p) is False
 
 
-def test_fdf_requests_gpu_last_assignment_wins(tmp_path):
-    """SIESTA's fdf reader takes the LAST occurrence of a duplicated
-    key (read_options.F90 semantics).  An .fdf that turns GPU on then
-    off must route to the CPU env -- otherwise a user disabling GPU
-    via a trailing override would silently still go to the GPU env."""
+def test_fdf_requests_gpu_first_assignment_wins(tmp_path):
+    """libfdf takes the FIRST occurrence of a duplicated key.
+
+    `fdf_locate` (libfdf `fdf.F90`) walks from `file_in%first` and stops at
+    the first matching label, so a trailing override is the line SIESTA
+    ignores.  This asserted the opposite until 2026-09-18, citing
+    `read_options.F90` -- which reads SIESTA's options THROUGH fdf and does
+    not change the lookup.  `siesta/layout.py::check_rules` states the rule
+    and refuses a deck that names a keyword twice, so a deck reaching this
+    reader carries at most one.
+    """
     body = "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n"
     p = _write_fdf(tmp_path, body)
-    assert _runwrap._fdf_requests_gpu(p) is False
+    assert _runwrap._fdf_requests_gpu(p) is True
 
 
 def test_fdf_requests_gpu_unreadable_returns_false(tmp_path):
@@ -667,13 +673,14 @@ def test_wrapper_emits_fdf_aware_rank_default_selector(
     fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
     # The runtime selector must be emitted -- a literal
-    # ``_mpi_np_default=<int>`` at top level would be the pre-fix
-    # shape.  Since R6 (2026-08-12) the detector is the SAME rule as
-    # generation's _fdf_requests_gpu: both keyword spellings, the fdf_get
-    # truthy set, last occurrence wins -- the old single-spelling
-    # any-occurrence grep re-opened the task-#36 class for UseGPU decks.
-    assert 'tolower($1) == "diag.elpa.gpu"' in wrapper_text
-    assert 'tolower($1) == "diag.elpa.usegpu"' in wrapper_text
+    # ``_mpi_np_default=<int>`` at top level would be the pre-fix shape.
+    # WHAT the selector reads is asserted by RUNNING it, in
+    # `test_both_gpu_detectors_read_one_deck_the_same_way`; here we only
+    # require that it keys on both keywords.  These were two literal awk
+    # clauses until 2026-09-18, which pinned a spelling rather than a rule
+    # and went red when the awk learnt fdf's keyword normalisation.
+    assert "diagelpagpu" in wrapper_text
+    assert "diagelpausegpu" in wrapper_text
     assert ".true.|true|yes|t|y|1)" in wrapper_text
     assert "default mpi_np=$_mpi_np_default" in wrapper_text
     # GPU branch references the runtime-probed default; CPU branch
@@ -707,8 +714,8 @@ def test_cpu_mode_wrapper_falls_back_to_safe_gpu_default_if_toggled(
         fdf.write_text(render_fdf(_mk_struct(), cfg), encoding="utf-8")
         wrapper_text = _runwrap.write_run_wrapper(fdf, resources=Resources()).read_text(encoding="utf-8")
         # The launch-time selector is still emitted (so toggling GPU
-        # works), in its R6 shared-rule form.
-        assert 'tolower($1) == "diag.elpa.usegpu"' in wrapper_text
+        # works).  The keyword, not the awk's spelling of the test.
+        assert "diagelpausegpu" in wrapper_text
         # GPU branch uses the safe hardcoded 4 / 1 -- no reference to
         # _gpu_mpi_np_default because that variable wasn't emitted.
         assert "_mpi_np_default=$_gpu_mpi_np_default" not in wrapper_text
@@ -801,10 +808,11 @@ def test_a_named_env_always_wins_over_the_route(tmp_path, caps_with_gpu_env):
 #  person may have edited the deck in between.  One cannot call the other:
 #  they run on different machines at different times.
 #
-#  So they are not merged, they are COMPARED.  The wrapper's own comment
-#  states the rule they share -- "BOTH keyword spellings, SIESTA fdf_get's
-#  truthy set, LAST occurrence wins" -- and until now nothing checked that the
-#  two obey it the same way.  A drift here is silent and expensive: the header
+#  So they are not merged, they are COMPARED.  The rule they share: BOTH
+#  keyword spellings, SIESTA fdf_get's truthy set, and the FIRST occurrence of
+#  each -- libfdf's `fdf_locate` walks from `file_in%first` and stops at the
+#  first matching label, so a later line never overrides an earlier one.
+#  Either keyword being true means the run wants a GPU, so the two are ORed.  A drift here is silent and expensive: the header
 #  asks for a GPU node and the job then runs on CPU, or the reverse.
 #
 #  The shell is EXTRACTED FROM A RENDERED WRAPPER rather than copied here, so
@@ -823,10 +831,10 @@ _DECKS = [
     ("falsy: .false.",         "Diag.ELPA.GPU .false.\n",                      False),
     ("falsy: no",              "Diag.ELPA.GPU no\n",                           False),
     ("falsy: 0",               "Diag.ELPA.GPU 0\n",                            False),
-    ("last wins: on then off", "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n", False),
-    ("last wins: off then on", "Diag.ELPA.GPU .false.\nDiag.ELPA.GPU .true.\n", True),
-    ("last wins across spellings",
-     "Diag.ELPA.UseGPU .true.\nDiag.ELPA.GPU .false.\n",                       False),
+    ("first wins: on then off", "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n", True),
+    ("first wins: off then on", "Diag.ELPA.GPU .false.\nDiag.ELPA.GPU .true.\n", False),
+    ("either keyword true",
+     "Diag.ELPA.UseGPU .true.\nDiag.ELPA.GPU .false.\n",                       True),
     ("case-insensitive label", "DIAG.elpa.GpU .TRUE.\n",                       True),
     ("leading whitespace",     "    Diag.ELPA.GPU .true.\n",                   True),
     ("longer token is not it", "Diag.ELPA.GPUX .true.\n",                      False),
@@ -865,8 +873,8 @@ def test_both_gpu_detectors_read_one_deck_the_same_way(tmp_path, label, body,
 
     MUTATION THIS MUST FAIL AGAINST: change either side's rule alone --
     drop a truthy value from `_GPU_TRUTHY`, drop the older
-    `Diag.ELPA.UseGPU` spelling from the awk, or make either take the FIRST
-    occurrence instead of the last.
+    `Diag.ELPA.UseGPU` spelling from the awk, or make either take the LAST
+    occurrence instead of the first.
     """
     deck = tmp_path / "job.fdf"
     deck.write_text(body, encoding="utf-8")
