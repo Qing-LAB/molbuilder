@@ -80,10 +80,26 @@ def _require_pyscf_env():
     # Quick probe -- if the env exists but is missing pyscf or
     # geometric, skip with a clear message instead of letting the
     # main subprocess fail with an opaque ImportError.
-    probe = subprocess.run(
-        [str(py), "-c", "import pyscf, geometric; print('ok')"],
-        capture_output=True, text=True, timeout=30,
-    )
+    #
+    # EVERY "NO" FROM THIS GATE IS A SKIP, INCLUDING "TOO SLOW TO ANSWER".
+    # The timeout was 30s and uncaught until 2026-09-18, so an over-budget
+    # probe raised `TimeoutExpired` and FAILED the suite -- which is the one
+    # outcome this helper exists to prevent.  Measured: it fired at the tail
+    # of a 9,203-test run, on `import pyscf, geometric` alone, before the
+    # calculation this test is about had started.  A cold pyscf import pulls
+    # numpy + scipy + libcint on a machine already running the suite; 30s is
+    # a budget that decides by load rather than by whether the env works.
+    try:
+        probe = subprocess.run(
+            [str(py), "-c", "import pyscf, geometric; print('ok')"],
+            capture_output=True, text=True, timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.skip(
+            "molbuilder-pySCF env did not answer `import pyscf, geometric` "
+            "within 180s -- the machine is loaded, not the env broken.  "
+            "Run this file on its own to exercise it."
+        )
     if probe.returncode != 0:
         pytest.skip(
             f"molbuilder-pySCF env exists but missing pyscf/geometric: "
