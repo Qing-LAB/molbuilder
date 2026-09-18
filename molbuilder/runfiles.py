@@ -487,6 +487,42 @@ def _tail(name: str, role: str) -> str:
     return name[-len(role):] if len(role) <= len(name) else name
 
 
+def role_of(name) -> Optional[str]:
+    """The DECLARED role this filename carries, or None — WITHOUT a label.
+
+    :func:`parse` needs the label because a role may contain ``_`` and so may
+    a stage name, and nothing can find the boundary between them from the
+    string alone.  A DOTTED role escapes that, which is the rule
+    :func:`find_by_role` already states — so a caller holding one path and no
+    label can still ask *what IS this file*, which is what
+    `parse.engines._run_ending.ending_of` dispatches on.
+
+    Underscore roles are not answered, for `find_by_role`'s reason: without a
+    label they cannot be told from a stage name.
+
+    **THE LONGEST DECLARED ROLE WINS**, and that is not a tie-break — it is
+    what the file IS.  ``job-run0.pyscf.log`` ends with `.pyscf.log` AND with
+    `.log`, and only the first says which file this is.  Taking the shorter
+    is what `find_by_role` did by comparing against the role it was HANDED:
+    ``find_by_role(d, ".log")`` returned every `.pyscf.log`, `.molwatch.log`
+    and `.parse.log` in the directory, contradicting its own promise of
+    *"EQUALITY on the canonical role"*.  Latent rather than live -- measured
+    2026-09-18, no caller passes `.log` -- and it is the door both this and
+    the run-output readers stand on, so it is fixed here rather than worked
+    around twice.
+    """
+    base = str(name).rsplit("/", 1)[-1]
+    best: Optional[str] = None
+    for a in WRITTEN:
+        if not a.role.startswith("."):
+            continue
+        if canonical_role(_tail(base, a.role))[0] != a.role:
+            continue
+        if best is None or len(a.role) > len(best):
+            best = a.role
+    return best
+
+
 def find(directory, label: str, *,
          role: Optional[str] = None,
          roles: "tuple[str, ...]" = (),
@@ -585,14 +621,15 @@ def find_by_role(directory, role: str) -> "list[Path]":
             + ", ".join(sorted(r for r in known if r.startswith("."))))
     d = Path(directory)
     try:
-        # EQUALITY on the canonical role.  A templated role (`.runwrap-{stamp}.log`)
-        # is matched by mapping each concrete name back to its template, which
-        # is the same reading `parse` does -- so there is one rule, not a
-        # pattern-matcher here and a parser there.  `role_matches` and
-        # `_tail_of` stood here until 2026-09-08 (§ 5l.3).
+        # EQUALITY on the canonical role, through :func:`role_of` -- which
+        # reads each NAME's own role rather than testing it against the one
+        # asked for.  The difference is the `.log` case that function
+        # records: testing against the asked-for role made every longer
+        # `.log` role answer to the shorter one.  `role_matches` and
+        # `_tail_of` stood here until 2026-09-08 (§ 5l.3), and the inline
+        # `canonical_role(_tail(...))` they left until 2026-09-18.
         return sorted(p for p in d.iterdir()
-                      if p.is_file() and canonical_role(_tail(p.name, role))[0]
-                      == role)
+                      if p.is_file() and role_of(p.name) == role)
     except OSError:
         return []
 

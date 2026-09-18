@@ -74,6 +74,20 @@ from ..structure import Structure
 #: The engine display string for deck headers -- was
 #: ``PySCFSpectraEngine.label`` until P3 retired that class.
 PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
+
+#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END, spelled once --
+#: `pyscf/input.py`'s :data:`~molbuilder.pyscf.input.END_MARKER` for the
+#: spectrum deck, which does not print that one.  A format molbuilder
+#: GENERATES does not get a sniffed reader (`model/parse.md` § 5.5), so the
+#: emitter declares the line and `parse/engines/_run_ending.py` imports it.
+#:
+#: **Two lines, not one, and that is the whole reason this constant exists
+#: separately.** The two spectrum runs in the tree end with *"Total wall
+#: time: 5090.8 s"*, not with the relaxation deck's *"Job complete in"* --
+#: and they are exactly the two directories that reported `running` for
+#: months (`plans/plan.md` § 5c.2), because nothing read this file at all.
+END_MARKER = "Total wall time:"
+
 from ..spectra.results import SCHEMA_VERSION
 
 
@@ -1696,7 +1710,7 @@ def _emit_final_summary() -> List[str]:
     out.append("#  Done")
     out.append("# ============================================================")
     out.append("t1 = time.time()")
-    out.append("print(f'Total wall time: {t1 - t0:.1f} s')")
+    out.append("print(f'" + END_MARKER + " {t1 - t0:.1f} s')")
     out.append("print(f'Results: {JSON_PATH}')")
     out.append("")
     return out

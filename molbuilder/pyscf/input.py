@@ -51,6 +51,20 @@ ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
 ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
 
+#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END, spelled once.
+#:
+#: A format molbuilder GENERATES does not get a sniffed reader
+#: (`model/parse.md` § 5.5): the end line is a string WE print, so the
+#: emitter declares it and the reader imports it -- the same rule as
+#: :data:`ROLE_GEOM_TRAJ` above, applied to a line instead of a name.
+#: `parse/engines/_run_ending.py` is the reader.
+#:
+#: It is reached only on the success path, AFTER the final geometry is
+#: written, so it means the run ended -- and it outranks anything the script
+#: caught and reported on the way (a real log carries *"Frequency analysis
+#: FAILED: ..."* three lines above it).
+END_MARKER = "Job complete in"
+
 #: geomeTRIC does not take a filename -- it takes a PREFIX and appends this.
 #: Naming the tail is what lets the prefix be DERIVED from the role rather than
 #: assembled next to it, and assembling it next to it is precisely what put the
@@ -883,7 +897,7 @@ def spec_for(struct: Structure,
             out.append(f'_save_xyz(mol_eq, _mb_outfile(JOB + "{ROLE_OPTIMIZED}"), '
                        f'"Optimized geometry (PySCF)")')
         out.append("")
-        out.append('print(f"\\nJob complete in {time.time() - t0:.1f} s")')
+        out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
 
         # Post-processing hook (gap #6).  Commented call templates for
         # the follow-ups users typically want after a relaxation.
