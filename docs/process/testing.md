@@ -235,7 +235,7 @@ return of the **wrong function**. A thin caller of a door returns the door's
 answer, so a test of that caller observes the DOOR's outcome through a wrapper:
 
 ```
-test_the_watch_resolver_finds_a_molwatch_log_first   -> watch._resolve_run_directory
+test_the_watch_resolver_finds_a_molwatch_log_first   -> parse.dirs.rundir.openable_in
 test_find_template_still_refuses_two_answers         -> template.find_template
 test_the_provenance_step_reads_the_wrapper           -> parse.contract._declared_in_provenance
 test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system

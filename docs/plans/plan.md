@@ -73,7 +73,7 @@ the same day, with what it turned out to be.
 | **E7** | engine / science | **D7's cluster half** — the prep→submit→watch loop for a **run** through SLURM on Sol. **2026-09-10, the user: "we have tested it on Sol" — and the row must not contradict that.** What is actually on disk here: Sol slurm records exist (`optimization/sol/AuBDTAu-slabcorrected/01_coarse/bench/launch/slurm.62380919.out`, real ids) and every `kind: "run"` ledger entry in `projects/` is `workstation`/`direct`. That is the absence of a LOCAL record, which the earlier wording ("No `kind: run` submission exists on any Sol tree") presented as the absence of the WORK. A tree on Sol is not in this repo. **This row needs the user to say whether it is closed, not another file scan** | roadmap § 1 | needs the user |
 | **E10** | engine / science | **NEEDS A RE-SCOPE, not implementation — re-derived 2026-09-07.** The detection is **built**: `parse/engines/_run_ending.py` is the one marker table (`abnormal_termination` → `stopped`, OOM markers, `SCF_NOT_CONV`), `scan_ending()` returns `(run_state, scf_converged, error_message)`, and `summarize.py:217` + `cli.py:2771` consume it — the zero-exit case being the whole point. What is NOT built is the monitor half, and **deliberately**: `monitor.py:138` says *"NO COMPLETION MARKERS HERE"* and `job-contracts.md:214` now rules the monitor follows the launcher's PID *"rather than guessing from output markers"* — which contradicts this row's own "belongs in `mb_monitor.py`". The real gap is narrower: **the monitor's finish report carries no convergence fact.** Decide whether it should before writing anything | roadmap § 4 | open (re-scope) |
 | **T1** | engine / science | **A LIVE POLL THAT MUST REBUILD DOES NOT UPDATE THE MOVIE — found 2026-09-07.** The append path is fine; the full-rebuild path is not. Reproduced: move the frame at `oldLen - 1` (the one `_frameEqualAt` reads) and grow the feed 4 → 6, so `canAppend` refuses and `applyNewData` takes the `else` branch. The status line then says *"Loaded 6 … frames"* and the frame bar still holds **4** — the feed's count and the movie's disagreeing, which `core.js` itself names as bug **#35**. The trigger is ordinary: a frame that was still being written when the last poll caught it, and has since settled. **Two things hide it, each worth its own look:** `setStatus` is a no-op on `/results` (`if (!document.getElementById("status")) return;`), so `rebuildModel`'s *"Viewer failed to load the run"* reports into nothing on the page the inspector lives on; and *"Loaded N frames"* is written by `applyNewData` from the FEED's count while `rebuildModel` runs unawaited beside it, so the tab can claim frames it is not showing. Recipe at the foot of `tests/test_inspector_registry_e2e.py`; it blocks the last three source pins in `test_structure_info_bridge.py`, which is how it surfaced | found 2026-09-07 | open |
-| **E12** | engine / science | **The Methods paragraph is still a placeholder — DROPPED BY THE CONSOLIDATION, recovered 2026-09-07.** Roadmap § 2 listed four TranSIESTA items; plan.md carried three (one became **W10**) and lost this one. `transport/transiesta.py:1015` still emits *"(Full Methods paragraph deferred to the follow-up release…"* and `transport/engine_base.py:135` calls the fragment *"composed by the future Methods generator"* — pointing at the archived roadmap, which is where it went to die. The work: interpolate the record's real run parameters instead of the placeholder | roadmap § 2 · `transport-design` § 6 | open |
+| **E12** | engine / science | ~~**The Methods paragraph is still a placeholder.**~~ **CLOSED 2026-09-18 — the subject was deleted and the item outlived it.** Every citation this row rested on is gone: `transport/transiesta.py:1015` (that file is **759 lines**), `transport/engine_base.py:135` (**the file does not exist**), and `methods_fragment` itself, deleted 2026-09-17 with `TransiestaEngine` — only a tombstone at `transiesta.py:24` records it. **There is no placeholder paragraph left to replace**, so the work as written has no subject. *(What is NOT closed: transport has no Methods paragraph at all now. PySCF/spectra keep a live one — `pyscf/vibration_emitters.py::pyscf_methods_fragment` — so if transport should emit one, that is a NEW item written against `spec_for`, not this one.)* Found by a full-text audit of the transport module on 2026-09-18, not by grep: an OPEN row whose every pointer was deleted code is exactly what sends someone to do work that no longer exists. | roadmap § 2 · `transport-design` § 6 | **closed** |
 | **E13** | engine / science | **The first real junction walk — BDT–Au, workstation then Sol. DROPPED BY THE CONSOLIDATION.** Named in the roadmap and again in `transport-design` § 7's *"order of proof"* as the run that follows P6. plan.md has the machine-blocked infrastructure (E5/E7) and the browser and deck walks (W12/E11) but no row for the transport composite's first real science run | roadmap · `transport-design` § 7 | open |
 | **E14** | engine / science | **Two bibliography keys — Reed 2006 and Stokbro 2003 — are cited nowhere in `docs/science/references.bib`.** Verified absent 2026-09-07. Mechanical, small, and dropped by the consolidation | roadmap § 4 | open |
 | **E11** | engine / science | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
@@ -268,13 +268,21 @@ result file to build plots and then discarding them — **was DELETED
 2026-09-04**, replaced by `job.run_status`. That work is done and is not what
 follows.
 
-**What follows is a NEW consolidation. Step 1 is DONE (2026-09-18); steps 2–4
-are not started.** `parse/types.py` carries `RunDirResult`,
-`parse/dirs/rundir.py` carries `JobDirParser` + `openable_in`, the parser is
-registered, and `parse_dir(<a run directory>)` answers. **No caller has
-moved**: `_resolve_run_directory` and `_engine_of` are still their own readers
-in `web/blueprints/watch.py`, and `run_status` is still called by name from
-`jobset/runstatus.py` — so the chain exists twice until step 3.
+**What follows is a NEW consolidation. Steps 1 AND 2 are DONE (2026-09-18).**
+`parse/types.py` carries `RunDirResult`, `parse/dirs/rundir.py` carries
+`JobDirParser` + `openable_in`, the parser is registered, and
+`parse_dir(<a run directory>)` answers. `web/blueprints/watch.py` calls
+`openable_in` and its own copy of the chain is deleted.
+
+> **Step 2 moved ONE of the six sites, and withdrew the other five with
+> measurements.** The caller map below was written from the names — six
+> functions that all take a run directory — and five of them turned out not to
+> be asking a run-directory question. The withdrawals are in the table itself,
+> each with the measurement that settles it. **This is the third time this
+> section's table has lost rows to re-reading the code** (two went on
+> 2026-09-04), and the pattern is the same each time: a function whose
+> ARGUMENT is a directory is not thereby answering *a question about the
+> directory*.
 
 **The shape.** One DirParser answers everything asked *about a run
 directory*; the four fields each have a named reader before a line is
@@ -287,15 +295,35 @@ nothing about which stage a file belongs to.
 Only **three** modules consume any of this, which is what makes the migration
 checkable rather than hopeful:
 
-| what it does today | where | becomes |
+> **⚠ THE MAP WAS BUILT FROM NAMES, AND THAT IS ITS ONE WEAKNESS** *(found
+> 2026-09-18, by a full-text audit of the four caller files rather than by
+> grep)*. Every row below was found by searching for `run_status`,
+> `_resolve_run_directory`, `engine_of`, `atom_metadata_json_for_run_dir` —
+> so a module that answers the same QUESTION under its own names was never a
+> candidate to appear, let alone to withdraw. `transport/record.py` is
+> exactly that, and it is code written for this very milestone two days
+> before the audit. **A completeness check over function names cannot see a
+> re-implementation**; the row below was added by reading the files.
+
+
+| what it does today | where | outcome, measured 2026-09-18 |
 |---|---|---|
-| `run_status(dir)` | defined `parse/dirs/job.py:157`; called from `jobset/runstatus.py:200` ×1 | `.status` |
-| `_resolve_run_directory(dir)` — the 4-rung chain | `web/blueprints/watch.py` ×1 | `.openable` + `.attempts` |
-| `_engine_of(...)` | `web/blueprints/watch.py` ×3 *(`:797`, `:886`, `:930` — the table said ×4; re-derived 2026-09-07)* | `.engine` |
-| `engine_of(dir)` | `web/blueprints/watch.py` ×1 | folded in as `.engine` |
-| `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | `.files` + one parse |
+| `_resolve_run_directory(dir)` — the 4-rung chain | `web/blueprints/watch.py` ×1 | ✅ **MOVED** to `.openable` + `.attempts`. The only true duplicate in the list: 132 lines of second copy, plus five helpers serving only it — **166 lines deleted from the web layer**. |
+| `run_status(dir)` | defined `parse/dirs/job.py`; called from `jobset/runstatus.py` ×1 | ❌ **WITHDRAWN.** It passes `out_glob = sh.stage_glob(token, label)` — `"*"` in the hierarchy but **`<label>_<token>*` in flat**, where one directory holds every rung. `parse_dir` has no narrowing, so flat would go back to *every stage row showing the newest stage's state* — the exact defect fixed 2026-09-08. And there is nothing to de-duplicate: `run_status` already has one home in the parse layer, which this section itself noted on 2026-09-07. **Asking a directory door a per-RUNG question is § 5c.1's problem wearing a different hat.** |
+| `_engine_of(...)` | `web/blueprints/watch.py` ×3 | ❌ **WITHDRAWN.** Not a reader — a three-source fallback (`engine_of` → `payload["source_format"]` → `parser_cls.name`) whose first source *is* the one implementation. **Two of the three sites pass `search_dir=None`**: an upload has no run directory at all. Routing it through the door means parsing a whole directory — status over every `.out`, the four-rung chain — to obtain one string. That is precisely what got the predecessor deleted. |
+| `engine_of(dir)` | `web/blueprints/watch.py` ×1 | ❌ **WITHDRAWN** — it IS the one implementation (`running-a-job.md` § 4.2 owns the rule). `.engine` calls it; a caller that wants only the engine should keep calling it too. |
+| `atom_metadata_json_for_run_dir(dir)` | `web/blueprints/watch.py` ×1 | ❌ **WITHDRAWN** — already in `parse/dirs/`, already one home, its own verb. Same boundary as `contract_of` below. |
+| `summarize`'s per-trial reads | `jobset/summarize.py` ×4 | ❌ **WITHDRAWN**, and the prose two sub-sections below already said why without the table catching up: `_latest_run_file` goes **through `runfiles.find`**, the stage is already chosen by the basename, and the only remaining choice is the RUN INDEX. Not `active`'s question. |
 | `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | unchanged — its own verb, over `.files["fdf"]` if the door is handy |
-| **the Results file picker** — `lib/results/file-picker.js` | **the BROWSER**, ×1 per folder listing | **`.files` + `.openable`** — *and this is the row that changes the shape of the work* |
+| **`transport/record.py`** — `_stage_facts` ×1 + `collect_record` ×1 | **WAS IN NO ROW** *(added 2026-09-18)* | ⬜ **the map's own blind spot.** Both pick the newest `.out` by **mtime alone** — a third rule beside the door's (stage, mtime) and `summarize`'s run index. **Not a defect**: `task.py` refuses a transport calculation whose shape is not hierarchical, so each rung has its own directory and there is only one stage to order — the rules coincide. But it is a third place the question is answered, and § 5.1's ruling names only two. **Nor is it a drop-in move**: `RunStatus` carries `state / detail / last_change_at / active_source` and `_stage_facts` needs `scf_converged`, the final energy and the lead `ef` — so the door would pick the file and the caller would still parse it. |
+| **the Results file picker** — `lib/results/file-picker.js` | **the BROWSER**, ×1 per folder listing | ⬜ **OPEN, and now the only row left.** Needs `.files` + `.openable` over HTTP — *and this is the row that changes the shape of the work*. |
+
+> **What step 2 therefore proves about step 1.** The door earned its keep on
+> exactly one site, and that site is the one that could not be fixed any other
+> way: a browser cannot import Python, so the chain had to leave the web layer
+> before the Results tab could ever ask it. Every other row was a name
+> collision. Had the map been executed as written, five call sites would have
+> been made slower and one of them wrong.
 
 > **The seventh consumer is a BROWSER, and every other row here is
 > server-side** *(added 2026-09-18, owed by § 5p.3p step 7 since 2026-09-17 and
@@ -426,14 +454,24 @@ that is not `active`'s question — see the withdrawn row above:
    answers, that a prepped-but-unrun stage is still a run directory, and § 5.1's
    `active` ≠ `openable`; the chain's own rungs stay held by the three tests in
    `test_path_framework_doors.py`, which move onto `openable_in` at step 3.
-2. Move `runstatus` (1 site), then `watch` (**6**, not 9 — the table above
-   sums to 6 and always did), then `summarize` (5).
+2. ~~Move `runstatus` (1 site), then `watch` (**6**, not 9), then
+   `summarize` (5).~~ **DONE 2026-09-18 — one site moved, five rows
+   withdrawn with measurements** (the table above carries each one).
 
-   **`run_status` is already through the door**, which the prose above got
-   wrong until 2026-09-07: it is defined in `parse/dirs/job.py` and merely
-   CALLED from `jobset/runstatus.py`. Step 2 moves a caller, not a reader.
-3. Delete the absorbed functions and sweep their documents.
-4. Re-run the caller map above and require it to come back empty.
+   `watch`'s `_resolve_run_directory` call became `openable_in`. The other
+   five asked questions this door does not answer, and the measurements are
+   in the table rather than here so the map and its verdict cannot drift
+   apart.
+3. ~~Delete the absorbed functions and sweep their documents.~~ **DONE with
+   step 2**, since only one function was absorbed: `_resolve_run_directory`
+   and its five private helpers are gone, and `job-contracts.md` § 2.4,
+   `model/parse.md` § 5.2, `process/testing.md`'s door map and the three
+   tests in `test_path_framework_doors.py` all name `openable_in` now.
+4. **Re-run the caller map and require it empty.** *(2026-09-18: one row
+   stands — the Results file picker, which needs an HTTP surface, not a
+   Python one. It is the seventh consumer, the only browser-side one, and
+   § 5c.1 must be settled before it can be served, because the picker's
+   question is about a LADDER and `openable` answers about a directory.)*
 
 ---
 
@@ -1073,7 +1111,7 @@ question, not a missing function.
 | # | reader | where it runs | how it reads | live? |
 |---|---|---|---|---|
 | 1 | `runwrap.py`'s awk, inside the generated wrapper | the **compute node**, at LAUNCH | lower-cases, strips quotes, takes `$2`, then sanitises to `[A-Za-z0-9._-]` or falls back to the basename | ✅ |
-| 2 | `web/blueprints/watch.py::_basename_from_fdf` / `_basename_from_py` | the server, at read time | case-insensitive, allows the dotted spelling, restricts the value charset | ✅ — called at `:269` and `:285` |
+| 2 | `parse/dirs/rundir.py::openable_in` (via `parse.fdf.system_label` / `pyscf.input.job_name`) | the server, at read time | case-insensitive, allows the dotted spelling, restricts the value charset | ✅ — called at `rundir.py:109` and `:127`. *(Was `watch.py::_basename_from_fdf` / `_basename_from_py` at `:269` / `:285`; those two wrappers went with the chain on 2026-09-18, § 5c step 2.)* |
 | 3 | `parse/dirs/_assembler_helpers.py::extract_system_label` | — | case-SENSITIVE, requires whitespace, accepts any non-space value | ❌ **deleted 2026-09-06**, "six helpers, zero callers" |
 
 **Two of them disagreed**, and the one that survived is in a web blueprint.
@@ -1659,7 +1697,7 @@ below was therefore re-checked for the bare stem in **any** spelling.
 | `transmission_emax_ev` | `TS.TBT.Emax` | **`Emax`: 0** | none |
 | `transmission_n_points` | `TS.TBT.NumE` | **`NumE`: 0** (only the words "numeric") | none |
 | `transmission_relative_to_ef` | `TS.TBT.Erange.RelToEF` | **`Erange`: 0 · `RelToEF`: 0** | none |
-| `contour_n_circle` | *nothing* | — | **only the Methods paragraph** (`transiesta.py:1015`) |
+| `contour_n_circle` | *nothing* | — | **nothing** — it reached only the Methods paragraph (`transiesta.py:1015`), deleted 2026-09-17 with `methods_fragment`; see E12 |
 | `contour_n_real` | *nothing* | — | **no consumer anywhere** |
 | `contour_e_bottom_ev` | *nothing* | — | **no consumer anywhere** |
 | `pyscf_functional` | *nothing* | engine not registered | none |
@@ -2633,7 +2671,7 @@ first two passes precisely because the work started in the middle.
 | description | `engines/stages.md`, `execution/job-contracts.md` | ✅ five rungs, hierarchical shape |
 | template | `engines/template.md` | ⚠ 485 facts in two homes; the mirrored guard restored 2026-09-17 |
 | engine / deck | `engines/transport.md` | ✅ § 6 rewritten 2026-09-17 to name ROLES not function lists (§ 6a says why); § 5's holders named at 2c. The unbuilt transmission inspector is now stated as unbuilt, in `results.md` § 2.3 as well |
-| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **BUILT 2026-09-18** (§ 5c step 1, proved 141/141 on the real tree); `parse_dir(<a run directory>)` answers. **No caller has moved** — steps 2–4 open, so the discovery chain exists twice. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
+| **parse / directory** | **`model/parse.md` § 5** | ✅ `JobDirParser` → `RunDirResult` **BUILT + MIGRATED 2026-09-18** (§ 5c steps 1–3; proved 141/141 on the real tree before any caller moved). The discovery chain is single-homed in `parse/dirs/rundir.py`; `web/blueprints/watch.py` lost 166 lines. **Five of the six caller-map rows were withdrawn with measurements, not deferred** — they were name collisions, not duplicate readers. One row stands: the Results file picker, which is a BROWSER and needs an HTTP surface (§ 5c.1 blocks it). § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
 | **engine registry** | **`engines/overview.md` § 5** | ✅ *there is no registry* — spectra's went at P3 (2026-08-21), transport's 2026-09-17. § 5 told a new engine to `@register_engine` against it until corrected 2026-09-17; `spectra/methods.py` and `transiesta.py` carried the same claim in docstrings |
 | **what the wrapper is HANDED vs re-reads** | **`execution/gpu.md` G7 + `execution/architecture.md` A8** | ⚠ **added 2026-09-17, and it is what stopped step N5d being trivial.** G7: *"the value travels; the deck is not re-read for it"* — reached 2026-08-23 **by carrying the answer on `Resources`**, not by a declaration alone. A8: the allocation *"arrives whole"* — `render_wrappers` was cut from eleven loose kwargs to one record on 2026-08-17. So handing the wrapper a value means a `Resources` field or nothing; there is no third door |
 | **validation dispatch** | **`science/validation.md`** | ✅ **added 2026-09-17, and it is where the day's biggest defect lived.** Two registries, and WHICH one a science belongs in is the whole question: `_ENGINE_VALIDATORS` keys on a **config class**, `_KIND_VALIDATORS` on `task.calculation`. A row in the first is only as live as the callers that CONSTRUCT that class — and transport's keyed on `TransportConfig` while every rung resolves a `SiestaConfig`, so it dispatched for nothing. Now two engine rows (SIESTA / PySCF) and two kind rows (transport / vibration), asserted by **equality** |
@@ -2656,7 +2694,7 @@ first two passes precisely because the work started in the middle.
 `ElectrodeModel` (`compose.py:570`); `_emit_transiesta_block` + `_emit_geometry`
 (`deck.py` reuses both; § 5p.3i ruled the NEGF block stays — an off-by-one in an
 electrode range converges while computing the wrong thing);
-`_emit_basis_and_xc`, `_compute_cell_from_extents`, `_find_electrode_regions`,
+`_compute_cell_from_extents`, `_find_electrode_regions`,
 `electrode_hs_stem`; `preflight.parse_fdf_params` (**six production import
 sites**, re-measured 2026-09-17 — `citation_defaults`, `compose` ×2 symbols,
 `parse/contract`, `web/blueprints/transport`; it said four);
@@ -2738,7 +2776,7 @@ got smaller.** `TransportConfig` now has **no validation role whatsoever**: the
 What remains is exactly two jobs, and both are real:
 
 1. **the lifted NEGF emitter's input vocabulary** — built as a projection at
-   `deck.py::_transport_view` and `stages.py::config_for`, consumed by
+   `deck.py::_legacy_view` and `stages.py::config_for`, consumed by
    `_emit_transiesta_block`. This is § 2a.14's *"survives only to feed the lifted
    block"*, unchanged;
 2. **the transport tab's form shape** — `web/blueprints/transport.py` renders

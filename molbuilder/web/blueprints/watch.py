@@ -17,10 +17,11 @@ Flow on /results: the user picks a trajectory file in the Projects
 sidebar; the registry mounts the trajectory inspector; the inspector
 core POSTs to /api/watch/load with the absolute path, then polls
 /api/watch/data every ~15 s while the mtime advances.  The directory
-branch of /api/watch/load follows the discovery chain in
-``docs/execution/job-contracts.md``: ``*.molwatch.log`` first, then
-``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for ``JOB``,
-then a generic ``*.out`` / ``*_geom_optim.xyz`` fallback.
+branch of /api/watch/load ASKS `parse.dirs.rundir.openable_in` -- *what
+should a viewer load here* -- and does not restate the chain's rungs; they
+are `job-contracts.md` § 2.4 and `model/parse.md` § 5.2.  A copy here had
+already drifted: it omitted rung 3's deck-filename-stem pass, which is the
+half that finds a staged trajectory.
 
 Format support is plugin-style: see ``molbuilder/parse/`` for the
 registered parsers and the auto-detection registry
@@ -34,9 +35,7 @@ docs/design.md for the original rationale).
 
 from __future__ import annotations
 
-import glob
 import os
-import re
 import sys
 import tempfile
 from threading import Lock
@@ -49,8 +48,7 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.pyscf.input import ROLE_GEOM_TRAJ
-from molbuilder.runfiles import RunFileError, compose as _rf
+from molbuilder.parse.dirs import openable_in
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
@@ -71,10 +69,11 @@ _state: Dict[str, Any] = {
     "uploaded": False,   # True when the active file was uploaded via
                          # the file-picker (one-shot, no live watching)
 
-    # Multi-stage merge state.  Set when the user loaded a directory
-    # containing > 1 *.molwatch.log files; ``_refresh_if_changed``
-    # poll doesn't clobber the merged trajectory with the newest
-    # log's frames alone.
+    # (No multi-stage merge keys.  A "> 1 molwatch log means merge them"
+    # branch held some here from 2026-05-10 until 2026-09-05, when it was
+    # deleted rather than moved -- STAGES ARE SEPARATE RUNS, and the person
+    # picks one rung and judges it.  The comment describing those keys
+    # outlived them by two weeks.)
 
     # Per-iter SCF wall-time tracker.  See ``_attach_iter_walltime``
     # for the algorithm: file mtime is the clock source (engines like
@@ -136,7 +135,7 @@ def _remove_temp_quietly(path: str) -> None:
 
 
 # --------------------------------------------------------------------- #
-#  Directory-aware path resolution (job-layout v1)                      #
+#  Directory-aware path resolution -- ASKED, not done here                      #
 #                                                                       #
 #  See ``docs/execution/job-contracts.md`` for the full contract.  When the     #
 #  user gives Watch a directory instead of a file, scan it for the      #
@@ -155,46 +154,23 @@ def _remove_temp_quietly(path: str) -> None:
 # as the same keyword and SIESTA accepts.  A deck spelled either way resolved
 # to nothing here and the tab found no trajectory.
 #
-# They are one call each now, to the reader that owns each format:
-#   `parse.fdf.system_label`   -- fdf's real matching rule, quotes stripped as
-#                                 SIESTA strips them
-#   `pyscf.input.job_name`     -- the writer reading back its own literal
-#                                 (`model/parse.md` § 1a)
+# They became one call each to the reader that owns each format --
+# `parse.fdf.system_label` and `pyscf.input.job_name` -- and on 2026-09-18
+# those calls LEFT THIS FILE with the chain that made them.  They live in
+# `parse/dirs/rundir.py::openable_in` now; nothing here reads a deck.
 #
 # Eight readers of deck content were measured across the tree on 2026-09-17;
 # this pair was two of them.
 
 
-def _read_text_safely(path: str, max_bytes: int = 65536) -> str:
-    """Read up to ``max_bytes`` of ``path`` and return as text.  Used
-    for the .fdf / .py header sniff -- we only need the first chunk
-    to find SystemLabel / ``JOB``; reading the whole multi-MB FDF
-    is wasteful.
-    """
-    try:
-        with open(path, "rb") as fh:
-            data = fh.read(max_bytes)
-    except OSError:
-        return ""
-    return data.decode("utf-8", errors="replace")
-
-
-def _basename_from_fdf(path: str) -> Optional[str]:
-    from molbuilder.parse.fdf import system_label
-    return system_label(_read_text_safely(path))
-
-
-def _basename_from_py(path: str) -> Optional[str]:
-    from molbuilder.pyscf.input import job_name
-    return job_name(_read_text_safely(path))
-
-
 def _by_role(directory: str, role: str) -> "List[Any]":
     """`runfiles.find_by_role`, taking this module's string directories.
 
-    One import site rather than five: the resolver below asks four roles and
-    the cell reader a fifth, and each of them spelled its own
-    ``glob.glob(os.path.join(...))``.
+    **One call site now, not five.**  It was written for the directory
+    resolver's four roles plus the cell reader's fifth; the resolver left on
+    2026-09-18 and took its four with it, so what remains is the cell reader
+    asking for ``.source.xyz``.  Kept as a wrapper because converting this
+    module's ``str`` directories is still worth one place.
     """
     from pathlib import Path
 
@@ -202,145 +178,17 @@ def _by_role(directory: str, role: str) -> "List[Any]":
     return find_by_role(Path(directory), role)
 
 
-def _newest(paths: List[str]) -> Optional[str]:
-    """Pick the most recently modified path from a list."""
-    valid = [p for p in paths if os.path.isfile(p)]
-    if not valid:
-        return None
-    return max(valid, key=lambda p: os.path.getmtime(p))
-
-
-def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
-    """Resolve a run directory to a single file Watch should load.
-
-    Returns ``(resolved_path, attempts)``: the resolved file path
-    (or ``None`` if nothing was found), plus a list of human-readable
-    "tried X" strings used to build the error message when nothing
-    matches.
-
-    Discovery chain follows ``docs/execution/job-contracts.md`` § "How Watch
-    resolves a directory":
-
-      1. Any ``*.molwatch.log`` (newest wins for staged runs).
-      2. ``*.fdf`` -> parse SystemLabel -> ``<label>.molwatch.log``,
-         ``<label>.out``.
-      3. ``*.py``  -> parse ``JOB``       -> ``<job>.molwatch.log``,
-         ``<job>.log``, ``<job>_geom_optim.xyz`` — and the deck
-         FILENAME's stem tried the same way, because a staged deck is
-         ``<job>_<token>.py`` and its stdout/molwatch siblings carry
-         that token (`job-contracts.md` § 6.3) while ``JOB`` stays
-         bare.
-      4. Generic fallbacks: ``run.out``, ``siesta.log``, ``*.out``,
-         ``*_geom_optim.xyz``.
-
-    **Every name in steps 2-4 is composed by `runfiles.compose`.** They were
-    hand-built until 2026-09-07 and one of them was built on a spelling that
-    had been retired: a rung-aware glob ``<job>_geom_*_optim.xyz``, from when
-    the stage token sat INSIDE the role.  Since § 2.2a fixed the token's
-    position the file is ``<job>_<token>_geom_optim.xyz``, that glob matched
-    nothing, and the step it was the whole point of did nothing -- silently,
-    because a resolver that finds nothing just moves to the next step.
-    """
-    attempts: List[str] = []
-
-    # EVERY ROLE BELOW IS ASKED OF THE CATALOGUE (`project-layout.md` § 4.5).
-    # Step 1's `*.molwatch.log` and steps 2-3's `*.fdf` / `*.py` were the role
-    # vocabulary spelled outside the module that declares it -- and step 1 is
-    # exactly `find_by_role`'s stated reason for existing: *"which molwatch
-    # logs are here"* is asked of a folder before anything has said whose it
-    # is.  `find_by_role` returns Paths; `_newest` and the callers below take
-    # strings, so each list is spelled back out at the boundary.
-    #
-    # 1. *.molwatch.log directly in the directory.
-    log_hits = [str(p) for p in _by_role(directory, ".molwatch.log")]
-    attempts.append(f"*.molwatch.log -> {len(log_hits)} match(es)")
-    if log_hits:
-        return _newest(log_hits), attempts
-
-    # 2. SIESTA: *.fdf -> SystemLabel -> sibling outputs.
-    fdf_hits = [str(p) for p in _by_role(directory, ".fdf")]
-    attempts.append(f"*.fdf -> {len(fdf_hits)} match(es)")
-    for fdf in fdf_hits:
-        label = _basename_from_fdf(fdf)
-        if not label:
-            attempts.append(f"  {os.path.basename(fdf)}: SystemLabel not found")
-            continue
-        for role in (".molwatch.log", ".out"):
-            base = _rf(label, role)
-            cand = os.path.join(directory, base)
-            attempts.append(f"  -> {base}: "
-                            f"{'found' if os.path.isfile(cand) else 'missing'}")
-            if os.path.isfile(cand):
-                return cand, attempts
-
-    # 3. PySCF: *.py -> JOB -> sibling outputs.
-    py_hits = [str(p) for p in _by_role(directory, ".py")]
-    attempts.append(f"*.py -> {len(py_hits)} match(es)")
-    for py in py_hits:
-        name = _basename_from_py(py)
-        if not name:
-            attempts.append(f"  {os.path.basename(py)}: JOB not found")
-            continue
-        # A staged deck is ``<job>_<token>.py`` and its stdout / molwatch
-        # siblings are stemmed on THAT (token included), while JOB
-        # stays the bare ``<job>`` -- so the deck filename's stem is
-        # tried alongside the parsed name (found 2026-08-19: every
-        # staged spelling here was the unstaged one, and a staged run
-        # without a molwatch seed resolved to nothing).
-        py_stem = os.path.splitext(os.path.basename(py))[0]
-        stems = [name] if py_stem == name else [name, py_stem]
-        for stem in stems:
-            for role in (".molwatch.log", ".log", ROLE_GEOM_TRAJ):
-                # THE STEM CARRIES THE TOKEN, so the name is composed with no
-                # stage of its own -- `py_stem` IS `<job>_<token>` already.
-                # That is what made the rung-aware glob that stood here
-                # redundant as well as wrong: the loop above covers the
-                # staged trajectory, under the name that is written.
-                try:
-                    base = _rf(stem, role)
-                except RunFileError:
-                    # A STEM OFF DISK IS NOT NECESSARILY A LABEL.  `JOB` and
-                    # `SystemLabel` are read through regexes bounded to
-                    # `[A-Za-z0-9_-]+`, deliberately -- but `py_stem` is a
-                    # FILENAME, so `my.job.py` yields `my.job`, which § 2.1
-                    # refuses (rightly: a dotted label cannot be read back out
-                    # of a filename).  A RESOLVER SAYS WHAT IT TRIED AND MOVES
-                    # ON; raising here turned the Watch tab into a 500 for a
-                    # person who put a dot in a filename.  Measured 2026-09-08;
-                    # introduced 3dfa76c9 when these names moved onto
-                    # `runfiles.compose`.
-                    attempts.append(
-                        f"  {stem}: not a run-file label (§ 2.1), skipped")
-                    break
-                cand = os.path.join(directory, base)
-                attempts.append(f"  -> {base}: "
-                                f"{'found' if os.path.isfile(cand) else 'missing'}")
-                if os.path.isfile(cand):
-                    return cand, attempts
-
-    # 4. Generic fallbacks.
-    for fname in ("run.out", "siesta.log"):
-        cand = os.path.join(directory, fname)
-        attempts.append(f"{fname}: "
-                        f"{'found' if os.path.isfile(cand) else 'missing'}")
-        if os.path.isfile(cand):
-            return cand, attempts
-    out_hits = [str(p) for p in _by_role(directory, ".out")]
-    if out_hits:
-        attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
-        return _newest(out_hits), attempts
-    # ONE glob, because there is one spelling: the role is `_geom_optim.xyz`
-    # and everything in front of it -- label, and the token when there is one
-    # -- is what the star covers.  The `*_geom*_optim.xyz` that stood here
-    # allowed a second star for a token that has not sat there since § 2.2a.
-    optim_glob = "*" + ROLE_GEOM_TRAJ
-    optim_hits = glob.glob(os.path.join(directory, optim_glob))
-    if optim_hits:
-        attempts.append(f"{optim_glob} -> "
-                        f"picked {os.path.basename(optim_hits[0])}")
-        return _newest(optim_hits), attempts
-
-    return None, attempts
+# `_resolve_run_directory` STOOD HERE until 2026-09-18 -- 132 lines, and with
+# the five helpers above it the whole four-rung discovery chain.  It is
+# `parse.dirs.rundir.openable_in` now (`model/parse.md` § 5.2, `plan.md` § 5c
+# step 2), which is not a re-implementation: the body was absorbed VERBATIM and
+# proved identical on all 141 run directories in the checkout before this
+# deletion was allowed -- the same gate the `run_status` split passed.
+#
+# WHY IT HAD TO MOVE RATHER THAN BE CALLED: it answers *what should a viewer
+# load in this directory*, which `jobset` and the Results tab need too, and
+# nothing below the web layer may import the web layer.  A private copy here is
+# a copy only this blueprint can ask.
 
 
 def _atom_metadata_json(
@@ -743,9 +591,9 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
     #
-    # Parser comparison by ``.name`` -- see the multi-stage branch
-    # above for the rationale (``is`` works today but is fragile
-    # to future detection refactors).
+    # Parser comparison by ``.name``: ``is`` works today but is fragile to
+    # future detection refactors.  *(This cited "the multi-stage branch
+    # above", which was deleted 2026-09-05 -- see the note at ``_state``.)*
     with _lock:
         if (_state["path"] == path
                 and _parser_name(_state["parser"]) == parser_cls.name):
@@ -820,7 +668,7 @@ def api_load():
         # person picks one stage and judges it.  Stitching them into one
         # trajectory is not a view this project offers -- that is what the
         # bench summary is for, where comparison IS the question.
-        path, attempts = _resolve_run_directory(raw_path)
+        path, attempts = openable_in(raw_path)
         if path is None:
             tried = "\n  ".join(attempts) if attempts else "(no candidates)"
             return jsonify({
@@ -1006,7 +854,7 @@ def api_data():
     if err:
         # web-api.md § 1, *Status codes* -- server fault: parse / IO error on a
         # user-selected trajectory file.  The sibling /api/watch/load
-        # returns 500 on the same failure class (line 884); aligning
+        # returns 500 on the same failure class (line 725); aligning
         # this site closes the inconsistency that motivated that rule's
         # codification.  JS poll-loop reads body.ok so its behaviour
         # is unchanged; external consumers (curl / CI / monitoring)

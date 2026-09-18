@@ -499,13 +499,17 @@ through it.
 > moved — the same gate the `run_status` split passed (113/113) before its
 > deletion was allowed.
 >
-> **What is still true of the old shape:** the six functions this door
-> composes are still called *by name* by `jobset/runstatus.py`,
-> `web/blueprints/watch.py` and `jobset/summarize.py`, and
-> `web/blueprints/watch.py::_resolve_run_directory` is still there — so § 5.2's chain exists
-> **twice** until those callers move. That is steps 2–4 of
-> [`plan.md § 5c`](?doc=plans/plan.md), which owns the caller map and the
-> order; the second copy is deleted there, not here.
+> **The duplicate is gone (step 2, 2026-09-18).** `web/blueprints/watch.py`
+> called `openable_in` and its own 132-line copy of the chain was deleted, with
+> the five helpers that served only it — 166 lines out of the web layer. § 5.2
+> has one home.
+>
+> **The other five rows of § 5c's caller map were WITHDRAWN, measured** — not
+> deferred. Each turned out to be a question this door does not answer: see
+> [`plan.md` § 5c](?doc=plans/plan.md). The short of it is that `run_status`,
+> `engine_of` and `runfiles.find` each already had exactly one home, and going
+> through the door would have meant parsing a whole directory to get one
+> string — which is what the deleted predecessor did.
 >
 > *This section was written in the present tense on 2026-09-04 describing a
 > door that raised, in a file whose role is `contract`, and carried no marker
@@ -557,6 +561,22 @@ it wants the path. *(This block declared both as `Optional[Path]` until
 **No field is added without naming its reader in this table.** That is the rule
 the deleted version broke.
 
+> **Measured 2026-09-18, the day the callers moved: four of the six fields
+> have no production reader yet, and this table must not be read as if they
+> do.** `web/watch` reaches the chain through the module-level
+> `rundir.openable_in`, not through `parse_dir` — correctly, since it wants
+> one field and this composes six — so `openable` + `attempts` are live and
+> `engine`, `status`, `files` and `active` are read by nobody outside the
+> tests. `parse_dir` itself has **no production caller at all**.
+>
+> That is not drift, it is the migration's shape: § 5c's step 2 withdrew
+> five of its six caller rows with measurements (each was asking a question
+> this door does not answer), leaving one consumer — the Results file
+> picker, which is a browser and needs an HTTP surface. **The rule above
+> stays enforced prospectively**: a field is still added only against a
+> named reader, and the named readers for these four are the ones § 5c is
+> still owed. If that row is ever abandoned, these four fields go with it.
+
 ### 5.1 `active` and `openable` are different questions
 
 They look like one and are not, and conflating them is the trap this section
@@ -572,20 +592,35 @@ exists to mark.
 So a directory mid-run has an `openable` and no `active`; that is correct in
 both directions.
 
-**`active` is picked by stage, then mtime** *(user ruling, 2026-09-04)*. Two
-rules existed: `_build_status`'s stage-then-mtime and
-`summarize._latest_run_file`'s highest `-runN` index. They disagree on a
-staged run, and stage-then-mtime is the one that survives because the run
-index says nothing about which *stage* a file belongs to.
+**`active` is picked by stage, then mtime** *(user ruling, 2026-09-04)*.
+Within one directory, a re-run of an earlier rung must not hijack the run's
+reported state, and only the stage ordinal can say so — the run index cannot.
+
+> **What this paragraph used to claim, and why it was withdrawn.** It named
+> `summarize._latest_run_file`'s highest-`-runN` rule as a *competing* rule
+> that "loses". It is not competing: `_latest_run_file` is handed a basename
+> that **already carries the stage** (`Path(job.script).stem`), so the stage
+> is not a variable there and the run index is the only remaining choice.
+> `plan.md` § 5c withdrew that row on 2026-09-04 as one of two mappings
+> "invented by me and caught by re-reading the code" — **and this paragraph
+> was not swept with it**, so for two weeks the contract told a reader to go
+> change a function the plan had measured as correct. Corrected 2026-09-18.
+>
+> A third spelling does exist and is in neither document:
+> `transport/record.py` picks the newest `.out` by **mtime alone**, twice.
+> It agrees with this rule in practice — a transport calculation is refused
+> unless its shape is hierarchical (`task.py`), so each rung has its own
+> directory and there is only one stage to order — but it is a third place
+> the question is answered. Recorded in `plan.md` § 5c.
 
 ### 5.2 `openable` — the discovery chain, unchanged in behaviour
 
 Four rungs, first hit wins (`job-contracts.md` § 2.4). It lives in
 `parse/dirs/rundir.py::openable_in`, absorbed **verbatim** from
-`web/blueprints/watch.py::_resolve_run_directory` on 2026-09-18 — the web
+`_resolve_run_directory` in `web/blueprints/watch.py` on 2026-09-18 — the web
 layer, which nothing below it may import, which is why it had to move rather
-than be called. The original is still there and still the one `web/watch`
-calls; `plan.md` § 5c step 3 deletes it once the callers move:
+than be called. That copy was deleted the same day, once `web/watch` was
+calling this one, so the name below is the only one left to follow:
 
 1. any `*.molwatch.log` — newest wins, which is the staged run's latest;
 2. `*.fdf` → read `SystemLabel` → `<label>.molwatch.log`, then `<label>.out`;

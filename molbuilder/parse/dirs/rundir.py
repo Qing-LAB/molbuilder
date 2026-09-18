@@ -34,14 +34,20 @@ from __future__ import annotations
 import glob
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ..base import DirParser
 from ..types import ParseResult, RunDirResult
 
 
 #: geomeTRIC's trajectory role, tried by the PySCF rung of the chain.
-ROLE_GEOM_TRAJ = "_geom_optim.xyz"
+#
+#: IMPORTED, not spelled.  `pyscf/input.py` declares it beside the writer that
+#: emits it and warm-files.toml that declares it; a literal here would be a
+#: second home for one string.  *(Step 1 shipped it as a literal on 2026-09-18
+#: and this is the correction -- the `web/watch` copy it was absorbed from had
+#: imported it all along.)*
+from ...pyscf.input import ROLE_GEOM_TRAJ   # noqa: E402  -- re-exported below
 
 
 def _newest(paths: List[str]) -> Optional[str]:

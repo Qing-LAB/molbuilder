@@ -313,19 +313,24 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
 
 
 def test_the_watch_resolver_finds_a_molwatch_log_first(tmp_path):
-    """Step 1 of `_resolve_run_directory`, through `find_by_role`."""
-    from molbuilder.web.blueprints.watch import _resolve_run_directory
+    """Step 1 of the discovery chain, through `find_by_role`.
+
+    *This trio followed the chain out of `web/blueprints/watch.py` into
+    `parse.dirs.rundir.openable_in` on 2026-09-18 (§ 5c step 2): same
+    body, absorbed verbatim, 141/141 identical on the real tree.*
+    """
+    from molbuilder.parse.dirs import openable_in
     _touch(tmp_path, "bdt.molwatch.log", "bdt.out")
-    chosen, attempts = _resolve_run_directory(str(tmp_path))
+    chosen, attempts = openable_in(str(tmp_path))
     assert chosen is not None and chosen.endswith("bdt.molwatch.log")
     assert any("molwatch" in a for a in attempts)
 
 
 def test_the_watch_resolver_falls_through_to_engine_stdout(tmp_path):
     """Step 4's `*.out`, with no molwatch log and no readable deck."""
-    from molbuilder.web.blueprints.watch import _resolve_run_directory
+    from molbuilder.parse.dirs import openable_in
     _touch(tmp_path, "bdt.out")
-    chosen, _attempts = _resolve_run_directory(str(tmp_path))
+    chosen, _attempts = openable_in(str(tmp_path))
     assert chosen is not None and chosen.endswith("bdt.out")
 
 
@@ -425,7 +430,7 @@ def test_attempt_concluded_answers_for_a_persons_own_deck_name(tmp_path):
 def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
     """A dot in a filename must not 500 the Watch tab.
 
-    `_resolve_run_directory` reads `JOB` and `SystemLabel` through regexes
+    `openable_in` reads `JOB` and `SystemLabel` through regexes
     bounded to ``[A-Za-z0-9_-]+`` — deliberately, so a malformed deck cannot
     inject a path. But ``py_stem`` is the deck's FILENAME stem, taken off disk
     and unbounded, and it goes into `runfiles.compose`: ``my.job.py`` gives
@@ -437,10 +442,10 @@ def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
     server error at somebody who used a dot. Introduced by ``3dfa76c9`` when
     these names moved onto the composer; measured 2026-09-08.
     """
-    from molbuilder.web.blueprints.watch import _resolve_run_directory
+    from molbuilder.parse.dirs import openable_in
     (tmp_path / "my.job.py").write_text("JOB = 'myjob'\n", encoding="utf-8")
     (tmp_path / "run.out").write_text("done\n", encoding="utf-8")
-    chosen, attempts = _resolve_run_directory(str(tmp_path))
+    chosen, attempts = openable_in(str(tmp_path))
     assert chosen is not None and chosen.endswith("run.out"), (
         "the resolver should fall through to its generic step, not raise")
     assert any("not a run-file label" in a for a in attempts), (

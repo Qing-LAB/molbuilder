@@ -621,7 +621,11 @@ was erased by the next stage's silence.)*
 
 When a reader (the Watch/run viewer) is handed a **directory** instead of a
 specific file, it resolves the trajectory with this chain — first hit wins
-(`molbuilder/web/blueprints/watch.py::_resolve_run_directory`):
+(`molbuilder/parse/dirs/rundir.py::openable_in`, which is `RunDirResult.openable`;
+`model/parse.md` § 5.2). *(It lived in `web/blueprints/watch.py` until
+2026-09-18. Watch was the only reader that could ask, because nothing below the
+web layer may import it — and the Results tab, which is a browser, could not ask
+at all.)*
 
 1. `*.molwatch.log` — if several, the most recently modified.
 2. `*.fdf` — parse `SystemLabel`; try `<label>.molwatch.log`, then
@@ -639,8 +643,10 @@ specific file, it resolves the trajectory with this chain — first hit wins
    silent, so it sat there working for five weeks by not being needed.)*
    *(This step said `job_name` and
    warned that it "matches none of them today", calling the mismatch a code
-   follow-up. Both the emitter (`pyscf/input.py`) and the reader
-   (`watch.py::_PY_JOB_NAME_RE`) have agreed on `JOB` since 2026-07-28; the
+   follow-up. Both the emitter and the reader have agreed on `JOB` since
+   2026-07-28 — and both are one function now, `pyscf/input.py::job_name`,
+   the writer reading back its own literal (`model/parse.md` § 1a); the
+   hand-rolled `watch.py::_PY_JOB_NAME_RE` went on 2026-09-17. The
    note outlived the defect by five weeks and would have sent someone to fix a
    code follow-up.)*
 4. `run.out` / `siesta.log` / `*.out` / `*_geom_optim.xyz` — content-sniff via
