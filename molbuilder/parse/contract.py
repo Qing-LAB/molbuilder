@@ -242,12 +242,15 @@ def _from_cluster(directory: Path) -> set:
     python file here" says nothing about the engine.
     """
     from molbuilder.warmfiles import WarmFilesError, inventory
+    from ..runfiles import find_by_role
     names = [f.name for f in directory.iterdir() if f.is_file()]
     out = set()
-    if any(n.endswith(".fdf") for n in names):
+    # Declared roles ask the catalogue.  The warm suffixes below cannot:
+    # they are the engine's names, in no `runfiles.WRITTEN` row.
+    if find_by_role(directory, ".fdf"):
         out.add("siesta")               # the deck: EngineSeam.suffix
     for engine in _ENGINES:
-        if any(n.endswith(_STDOUT_SUFFIX[engine]) for n in names):
+        if find_by_role(directory, _STDOUT_SUFFIX[engine]):
             out.add(engine)
         try:
             suffixes = inventory(engine)

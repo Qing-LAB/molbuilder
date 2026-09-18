@@ -144,11 +144,6 @@ def parse_mpi_ranks(out_text: str) -> Optional[int]:
 # Formats verified against real frozen output in
 # tests/watch/fixtures/siesta_frozen/ and against the writers in SIESTA's
 # Src/runinfo_m.F90:60, Src/initparallel.F:256 and Src/diag_option.F90:385ff.
-_PROCY_BS = re.compile(r"^\s*\*\s*ProcessorY,\s*Blocksize:\s*(\d+)\s+(\d+)",
-                       re.MULTILINE)
-_DIAG_ALG = re.compile(r"^\s*diag:\s*Algorithm\s+=\s*(\S+)", re.MULTILINE)
-_ELPA_GPU = re.compile(r"^\s*diag:\s*ELPA GPU string key\s+=\s*(\S+)",
-                       re.MULTILINE)
 #: The wrapper's own record of the launch it resolved (``runwrap.py``'s
 #: ``_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads OMP threads"``).
 #: The thread count exists NOWHERE in SIESTA's output, so this is its only
@@ -220,16 +215,11 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
         # count (group 1) is deliberately ignored -- see the docstring.
         eff["omp_threads"] = int(m.group(2))
 
-    m = _PROCY_BS.search(out_text)
-    if m:
-        # The line prints ProcessorY first, then Blocksize.
-        eff["blocksize"] = int(m.group(2))
-    m = _DIAG_ALG.search(out_text)
-    if m:
-        eff["diag_algorithm"] = m.group(1)
-    m = _ELPA_GPU.search(out_text)
-    if m:
-        eff["elpa_gpu"] = m.group(1)
+    # One reader of SIESTA's `diag:` lines: `parse/engines/_diag.py`.
+    # These were three private regexes here, and `elpa_gpu` collided with
+    # the parser's key of the same name for a different fact.
+    from molbuilder.parse.engines._diag import ran_facts
+    eff.update(ran_facts(out_text))
     return eff
 
 

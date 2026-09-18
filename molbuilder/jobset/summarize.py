@@ -120,12 +120,12 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
     """
     if not deck.is_file():
         return None
-    want = _norm(keyword)
-    for line in _read(deck).splitlines():
-        toks = line.split("#", 1)[0].split()
-        if len(toks) >= 2 and _norm(toks[0]) == want:
-            return toks[1]
-    return None
+    # One deck reader: `parse/fdf.py`.  It also tracks `%block`, which the
+    # line scan here did not -- a block's first token read as a keyword.
+    from ..parse.fdf import _parse_fdf
+    scalars, _blocks = _parse_fdf(_read(deck))
+    got = scalars.get(_norm(keyword))
+    return got[0] if got else None
 
 
 def _trial_deck(d: Path, basename: str) -> Path:

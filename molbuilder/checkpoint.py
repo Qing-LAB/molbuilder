@@ -45,6 +45,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .jobset.model import FILENAME as _JOBSET_FILENAME
@@ -210,7 +211,9 @@ def gitignore_is_current(root: Path, always_large=()) -> bool:
 #: the directories it found and says to put a description at the root, which is
 #: what a real staged calculation has anyway.  Dot-directories are skipped
 #: before this is consulted, which is what stopped `.venv/` tripping it.
-_NESTED_WORKING_DIR_MARKERS = (".fdf", ".py", ".run.sh")
+#: What says "somebody's working directory".  Roles, looked up through
+#: `runfiles.find_by_role` -- all three are `runfiles.WRITTEN` rows.
+_NESTED_WORKING_DIR_ROLES = (".fdf", ".py", ".run.sh")
 
 
 # --------------------------------------------------------------------- #
@@ -419,8 +422,8 @@ def _scan_subtree(path: Path) -> Tuple[List[str], List[str]]:
                 continue                      # never descend into another repo
             try:
                 marked = any(
-                    f.is_file() and f.name.endswith(_NESTED_WORKING_DIR_MARKERS)
-                    for f in entry.iterdir())
+                    _rf_find_by_role(entry, _role)
+                    for _role in _NESTED_WORKING_DIR_ROLES)
             except OSError:
                 marked = False            # unreadable: not our problem, as above
             if marked:

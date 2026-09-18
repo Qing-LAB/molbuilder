@@ -146,6 +146,49 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     return by_kind
 
 
+#: SIESTA's own end-of-run marker: a FILE whose existence is the signal, and
+#: whose name is SIESTA's, not ours.  A literal is forced -- it is in no
+#: `runfiles.WRITTEN` row, so `find_by_role` refuses it, the same as `.XV`.
+_ENGINE_EXIT_MARKER = "0_NORMAL_EXIT"
+
+
+def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
+    """Did this run's PROCESS get to say goodbye, and with what?
+
+    ``"rc=0"`` / ``"rc=1 (walltime)"`` from the wrapper's marker, the literal
+    ``"0_NORMAL_EXIT"`` when only the engine's is there, ``None`` when
+    nothing concluded.
+
+    Content answers *did the science finish*; this answers *did the run end
+    on its own*, which an output cannot say about itself.  The wrapper
+    writes its marker on the main path, so an engine error reaches it and a
+    kill never does.  An engine that dies before printing leaves a marker
+    and no output at all -- the case content cannot see.
+    """
+    from molbuilder.runfiles import find_by_role
+    narrowed = {c.name for c in run_dir.glob(match)}
+    marks = [m for m in find_by_role(run_dir, ".concluded")
+             if m.name in narrowed]
+    if marks:
+        # Highest run index last -- `find_by_role` sorts by name, and the
+        # counter is zero-padded nowhere, so ask the grammar instead.
+        from molbuilder.runfiles import parse as _rf_parse
+        def _idx(pth: Path) -> int:
+            try:
+                got = _rf_parse(pth.name, pth.name.split("-run")[0])
+                return int(getattr(got, "run", None) or 0)
+            except Exception:
+                return 0
+        newest = sorted(marks, key=lambda m: (_idx(m), m.stat().st_mtime))[-1]
+        try:
+            return newest.read_text(encoding="utf-8").strip() or "rc=?"
+        except OSError:
+            return None
+    if (run_dir / _ENGINE_EXIT_MARKER).is_file():
+        return _ENGINE_EXIT_MARKER
+    return None
+
+
 # ---- how each result file ENDED ------------------------------------- #
 #
 # (Headed "plots from .out files" until 2026-09-18.  No plot has been built
@@ -203,6 +246,13 @@ class RunStatus:
     detail:         str
     last_change_at: "Optional[str]" = None
     active_source:  "Optional[str]" = None
+    #: What the run's PROCESS said on its way out -- "rc=0",
+    #: "rc=1 (walltime)", "0_NORMAL_EXIT" -- or None if it never said
+    #: goodbye.  Reported BESIDE the state, not folded into it, so a caller
+    #: that must distinguish *concluded* from *force-stopped* (the Transport
+    #: tab does, before a person spends a queue slot) reads the evidence
+    #: rather than re-deriving it.  See `_process_conclusion`.
+    concluded:      "Optional[str]" = None
 
     def __post_init__(self) -> None:
         if self.state not in RUN_STATES:
@@ -248,7 +298,8 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
     mw_states = _molwatch_conclusions(files["molwatch"])
     return _build_status(
         files["out"] + [p for p in files["molwatch"] if p.name in mw_states],
-        {**out_states, **mw_states})
+        {**out_states, **mw_states},
+        _process_conclusion(run_dir, match))
 
 
 def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
@@ -269,12 +320,27 @@ def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
 
 
 def _build_status(out_paths: List[Path],
-                  out_run_states: Dict[str, str]
+                  out_run_states: Dict[str, str],
+                  concluded: Optional[str] = None,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``.out`` plus each concluded molwatch log
-    (``running-a-job.md`` § 4)."""
+    (``running-a-job.md`` § 4) — and the run's PROCESS conclusion.
+
+    **Content first, process second, age last.**  An output that states how
+    it ended is the strongest evidence and keeps the answer it always gave.
+    The marker speaks where content is silent, which is exactly where the
+    age rule used to guess.
+    """
     if not out_paths:
+        # No output at all: the marker is the whole answer.
+        if concluded is not None:
+            rc_ok = concluded in ("rc=0", _ENGINE_EXIT_MARKER)
+            return RunStatus(
+                state=("finished" if rc_ok else "failed"),
+                detail=(f"concluded ({concluded}) before any output"
+                        if not rc_ok else f"concluded ({concluded})"),
+                concluded=concluded)
         return RunStatus(state="running", detail="no result file yet")
     # Active source = highest stage, latest mtime.
     sorted_outs = sorted(
@@ -303,13 +369,22 @@ def _build_status(out_paths: List[Path],
         state, detail = "failed", "out of memory"
     elif active_state == "stopped":
         state, detail = "failed", "stopped before its end -- see the .out"
+    elif concluded is not None:
+        # Content is silent, the process is not: the run is over and the
+        # marker says how.  The age rule below only guesses `stale`.
+        if concluded in ("rc=0", _ENGINE_EXIT_MARKER):
+            state, detail = "finished", f"concluded ({concluded})"
+        else:
+            state, detail = "failed", f"concluded ({concluded})"
     elif age_s > 60.0:
-        # No ending marker and no growth: it is not running any more.
+        # No marker, no growth, no goodbye: a killed job, and only the
+        # clock can say so.
         state, detail = "stale", f"no file growth in {int(age_s)}s"
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),
-                     active_source=active.name)
+                     active_source=active.name,
+                     concluded=concluded)
 
 
 def _wall_now() -> float:

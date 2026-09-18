@@ -322,16 +322,8 @@
             (async function () {
                 let rec;
                 try {
-                    // `ctx.readFile` ANSWERS AN ENVELOPE, NOT A STRING --
-                    // `{ok, text, error?}` (registry.js's ctx contract; the
-                    // server side is /api/files/read).  This read
-                    // `JSON.parse(await ctx.readFile(file))` from the day it
-                    // shipped (2026-09-17) until 2026-09-18: JS coerced the
-                    // object to "[object Object]", JSON.parse threw, and the
-                    // catch below rendered an error card -- so EVERY
-                    // `.transport.json` failed to open, always.  `markdown.js`
-                    // and `source.js` both check `.ok` then take `.text`; this
-                    // now does the same.
+                    // ctx.readFile answers an envelope {ok, text, error?},
+                    // not a string (registry.js).
                     const body = await ctx.readFile(file);
                     if (!body || !body.ok) {
                         throw new Error(

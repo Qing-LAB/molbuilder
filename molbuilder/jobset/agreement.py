@@ -185,19 +185,9 @@ def check_trial_starts_cold(job_dir, job) -> None:
         # whether an EXISTING deck would warm-start.
         return
     text = deck.read_text(encoding="utf-8", errors="replace")
-    # THROUGH THE ONE READER (2026-09-18).  This was
-    # `re.findall(r"^[ \t]*([A-Za-z.]*UseSave[A-Za-z.]*)[ \t]+(\S+)")`, which
-    # knew fdf's rule and implemented part of it: `[A-Za-z.]*` admits `.` and
-    # REFUSES `_` and `-`, so `MD_UseSaveXV true` and `MD-UseSaveXV true` --
-    # both legal fdf, both honoured by SIESTA, both the same keyword as
-    # `MD.UseSaveXV` -- were INVISIBLE to this gate.  A trial written either
-    # way warm-started while submission vouched it cold, which is the one
-    # thing this function exists to prevent: the measurement is then of a
-    # continued run and nothing says so.  `parse/fdf.py::_norm` is fdf's
-    # actual rule (case, `.`, `-`, `_` all ignored), and `_parse_fdf` also
-    # tracks `%block` boundaries, so a block's first token can no longer be
-    # read as a keyword.  Measured, same commit: the old regex saw 1 of the
-    # 3 legal spellings.
+    # One deck reader: `parse/fdf.py`.  A regex here saw `MD.UseSaveXV` but
+    # not `MD_UseSaveXV` / `MD-UseSaveXV`, which fdf treats as the same
+    # keyword -- so a warm deck passed this gate as cold.
     from ..parse.fdf import _parse_fdf
     scalars, _blocks = _parse_fdf(text)
     saves = [(k, v[0]) for k, v in scalars.items() if "usesave" in k and v]

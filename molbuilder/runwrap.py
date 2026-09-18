@@ -1647,21 +1647,21 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     accepts).  Returns False on any read error -- the routing
     fall-through is the CPU env, which is the safe default.
     """
-    import re
     try:
         text = fdf_path.read_text()
     except OSError:
         return False
-    pat = re.compile(
-        r"(?im)^\s*Diag\.ELPA\.(?:Use)?GPU\b\s+(\S+)"
-    )
+    # One deck reader: `parse/fdf.py`.  Its `_norm` is fdf's real keyword
+    # rule, so `Diag_ELPA_GPU` and `DiagELPAGPU` match too, and it is
+    # first-wins like `fdf_locate` (`siesta/layout.py::check_rules`).
+    from .parse.fdf import _parse_fdf
+    scalars, _blocks = _parse_fdf(text)
     truthy = set(_GPU_TRUTHY)
-    # FDF re-reads the same keyword: last occurrence wins (matches
-    # SIESTA's read_options.F90 semantics).
-    last_value: Optional[str] = None
-    for m in pat.finditer(text):
-        last_value = m.group(1).strip().lower()
-    return last_value in truthy if last_value is not None else False
+    for key in ("diagelpausegpu", "diagelpagpu"):
+        got = scalars.get(key)
+        if got:
+            return got[0].strip().lower() in truthy
+    return False
 
 
 # DELETED 2026-08-13: ``_fdf_requests_elpa``.  It read ``Diag.Algorithm``
