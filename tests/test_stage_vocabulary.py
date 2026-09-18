@@ -101,6 +101,16 @@ _CONSTANT_IS_STAGEY = lambda name: "STAGE" in name  # noqa: E731
 # reads, names or carries stages without being a way of *expressing* one --
 # the observing side, or a different sense of the word entirely.
 PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
+    "_stage_facts": (
+        None, "molbuilder/transport/record.py",
+        "reads the LADDER'S state into the record -- one entry per rung of "
+        "`TRANSPORT_STAGES`, each with its own key fact (SCF convergence and "
+        "energy for seed/device, the lead's Fermi level for the electrodes). "
+        "It implements no stage MECHANISM: the ladder comes from "
+        "`StageRef.ladder(task.stages)` and the rung directory from "
+        "`materialize.run_dir`, so this only asks where each rung stands "
+        "(`engines/transport.md` § 2a.12, the Results surface's third "
+        "requirement)"),
     # -- the ten -------------------------------------------------------
     "apply_siesta_stage": (
         1, "molbuilder/config/siesta.py", "applies that overlay"),
@@ -399,6 +409,12 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
 # names inside one widget are one mechanism, and what actually matters is a
 # *new file* growing stage machinery.
 JS_LEDGER: dict[str, tuple[int | None, str]] = {
+    "lib/inspectors/transport.js": (
+        None, "RENDERS the ladder's state, and decides none of it -- the "
+              "five rung cards read `stages[]` out of the record, which "
+              "`transport/record.py::_stage_facts` wrote.  The browser names "
+              "no stage and derives no order: a rung the record does not "
+              "carry is simply not shown"),
     "lib/form-schema.js": (
         None, "carries NO stage vocabulary since the U6 close -- the "
               "stage-table renderer (mechanism 10's JS half) retired "

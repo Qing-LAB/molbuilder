@@ -134,10 +134,14 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     ("molbuilder/parse/dirs/job.py", "_enumerate_files", "match"):
         ("door-fed - the pattern comes from a door",
          "`match` is `paths.Shape.stage_glob` -- WHICH FILES ARE THIS RUNG'S, "
-         "answered by the layout layer.  The per-suffix bucketing below it is "
-         "parser dispatch over a vocabulary that is half the ENGINE's "
-         "(`.XV`, `.STRUCT_OUT`, `.ANI`), which `runfiles.WRITTEN` "
-         "deliberately does not carry"),
+         "answered by the layout layer, and no role search takes a glob, so "
+         "the narrowing has to be a glob.  What it narrows is then bucketed "
+         "two ways (2026-09-18): the three roles the catalogue declares ask "
+         "`runfiles.find_by_role`, and `.XV` / `.STRUCT_OUT` / `.ANI` stay "
+         "literal because they are the ENGINE's names, which "
+         "`runfiles.WRITTEN` deliberately does not carry.  *(All seven were "
+         "literal `endswith` until then -- the role vocabulary spelled "
+         "outside the module that declares it.)*"),
     ("molbuilder/projects.py", "find_geom_candidates", "pattern"):
         ("door-fed - the pattern comes from a door",
          "`_geom_output_patterns()` takes both PySCF spellings from "
@@ -145,7 +149,10 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "from `pyscf/warm-files.toml`).  WHICH engine outputs count as a "
          "startable geometry is this picker's own curation -- the rules file "
          "has no field for it -- so the selection stays and the spellings ask"),
-    ("molbuilder/web/blueprints/watch.py", "_resolve_run_directory",
+    # Re-anchored 2026-09-18: this site moved out of the web layer with the
+    # rest of the discovery chain (`plan.md` § 5c step 2).  Same code, same
+    # reason -- which is why this is a re-anchor and not a deletion.
+    ("molbuilder/parse/dirs/rundir.py", "openable_in",
      "os.path.join(directory, optim_glob)"):
         ("door-fed - the pattern comes from a door",
          "`optim_glob` is `'*' + ROLE_GEOM_TRAJ`, the declared constant.  It "

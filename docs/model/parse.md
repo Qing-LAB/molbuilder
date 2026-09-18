@@ -572,10 +572,14 @@ the deleted version broke.
 > That is not drift, it is the migration's shape: § 5c's step 2 withdrew
 > five of its six caller rows with measurements (each was asking a question
 > this door does not answer), leaving one consumer — the Results file
-> picker, which is a browser and needs an HTTP surface. **The rule above
-> stays enforced prospectively**: a field is still added only against a
-> named reader, and the named readers for these four are the ones § 5c is
-> still owed. If that row is ever abandoned, these four fields go with it.
+> picker — whose question is the LADDER's (*"these five directories are one
+> run"*), answered by `jobset/runstatus.py::jobset_status`, and served to the
+> browser by an HTTP surface over THAT. `plan.md` § 5c is closed; the surface
+> is § 5p.3p's.
+>
+> **The rule above stays enforced prospectively**: a field is still added only
+> against a named reader. If that surface is never built, these four fields go
+> with it.
 
 ### 5.1 `active` and `openable` are different questions
 

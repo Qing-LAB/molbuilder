@@ -316,7 +316,7 @@ checkable rather than hopeful:
 | `summarize`'s per-trial reads | `jobset/summarize.py` ×4 | ❌ **WITHDRAWN**, and the prose two sub-sections below already said why without the table catching up: `_latest_run_file` goes **through `runfiles.find`**, the stage is already chosen by the basename, and the only remaining choice is the RUN INDEX. Not `active`'s question. |
 | `contract_of(dir)` | `parse/dirs/run_info.py` ×1 | unchanged — its own verb, over `.files["fdf"]` if the door is handy |
 | **`transport/record.py`** — `_stage_facts` ×1 + `collect_record` ×1 | **WAS IN NO ROW** *(added 2026-09-18)* | ⬜ **the map's own blind spot.** Both pick the newest `.out` by **mtime alone** — a third rule beside the door's (stage, mtime) and `summarize`'s run index. **Not a defect**: `task.py` refuses a transport calculation whose shape is not hierarchical, so each rung has its own directory and there is only one stage to order — the rules coincide. But it is a third place the question is answered, and § 5.1's ruling names only two. **Nor is it a drop-in move**: `RunStatus` carries `state / detail / last_change_at / active_source` and `_stage_facts` needs `scf_converged`, the final energy and the lead `ef` — so the door would pick the file and the caller would still parse it. |
-| **the Results file picker** — `lib/results/file-picker.js` | **the BROWSER**, ×1 per folder listing | ⬜ **OPEN, and now the only row left.** Needs `.files` + `.openable` over HTTP — *and this is the row that changes the shape of the work*. |
+| ~~**the Results file picker** — `lib/results/file-picker.js`~~ | **the BROWSER** | ❌ **STRUCK 2026-09-18 — NOT A CALLER OF THIS DOOR, and it never was.** Its question is *"these five directories are one run"*, which is the **ladder's**, not a directory's; `openable` answers about one directory by construction. `stages.md` § 6.7 puts the layout in `task.json` and forbids inferring it from data, so `JobDirParser` — handed a bare path — **cannot** answer per-rung and must not be extended to try. The ladder door already exists and already reads the declared shape: `jobset/runstatus.py::jobset_status`. What the picker needs is an **HTTP surface over that**, which is a Results-tab feature tracked in § 5p.3p — not a step of this migration. *(Listed here as "the seventh consumer" from 2026-09-18 until later the same day, which made a finished migration read as unfinished every time its status was asked.)* |
 
 > **What step 2 therefore proves about step 1.** The door earned its keep on
 > exactly one site, and that site is the one that could not be fixed any other
@@ -467,11 +467,21 @@ that is not `active`'s question — see the withdrawn row above:
    and its five private helpers are gone, and `job-contracts.md` § 2.4,
    `model/parse.md` § 5.2, `process/testing.md`'s door map and the three
    tests in `test_path_framework_doors.py` all name `openable_in` now.
-4. **Re-run the caller map and require it empty.** *(2026-09-18: one row
-   stands — the Results file picker, which needs an HTTP surface, not a
-   Python one. It is the seventh consumer, the only browser-side one, and
-   § 5c.1 must be settled before it can be served, because the picker's
-   question is about a LADDER and `openable` answers about a directory.)*
+4. ~~**Re-run the caller map and require it empty.**~~ **DONE 2026-09-18 —
+   it comes back empty.** One row moved, five withdrawn with measurements,
+   and the seventh (the Results picker) struck as never having been a caller
+   of this door. **§ 5c IS CLOSED.**
+
+   The picker's work is real and is `§ 5p.3p`'s: an HTTP surface over
+   `jobset_status`, the ladder door that already exists.
+
+   *(Two method failures are recorded above rather than quietly fixed,
+   because both would repeat: the map was built from FUNCTION NAMES, so it
+   could not see `transport/record.py` answering the same question under its
+   own names; and § 5c.1 was posed as "should `RunDirResult` learn about
+   runs spanning several directories" when the answer was already on the
+   books — something above it composes them, and that something is
+   `jobset_status`.)*
 
 ---
 
@@ -2671,7 +2681,7 @@ first two passes precisely because the work started in the middle.
 | description | `engines/stages.md`, `execution/job-contracts.md` | ✅ five rungs, hierarchical shape |
 | template | `engines/template.md` | ⚠ 485 facts in two homes; the mirrored guard restored 2026-09-17 |
 | engine / deck | `engines/transport.md` | ✅ § 6 rewritten 2026-09-17 to name ROLES not function lists (§ 6a says why); § 5's holders named at 2c. The unbuilt transmission inspector is now stated as unbuilt, in `results.md` § 2.3 as well |
-| **parse / directory** | **`model/parse.md` § 5** | ✅ `JobDirParser` → `RunDirResult` **BUILT + MIGRATED 2026-09-18** (§ 5c steps 1–3; proved 141/141 on the real tree before any caller moved). The discovery chain is single-homed in `parse/dirs/rundir.py`; `web/blueprints/watch.py` lost 166 lines. **Five of the six caller-map rows were withdrawn with measurements, not deferred** — they were name collisions, not duplicate readers. One row stands: the Results file picker, which is a BROWSER and needs an HTTP surface (§ 5c.1 blocks it). § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
+| **parse / directory** | **`model/parse.md` § 5** | ✅ `JobDirParser` → `RunDirResult` **BUILT + MIGRATED 2026-09-18** (§ 5c steps 1–4, **CLOSED**; proved 141/141 on the real tree before any caller moved). The discovery chain is single-homed in `parse/dirs/rundir.py`; `web/blueprints/watch.py` lost 166 lines. **Five of the six caller-map rows were withdrawn with measurements, not deferred** — they were name collisions, not duplicate readers. The Results picker was struck from the map, not left open: it is not a caller of this door — its question is the LADDER's, answered by `jobset_status`, and an HTTP surface over that belongs to § 5p.3p. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
 | **engine registry** | **`engines/overview.md` § 5** | ✅ *there is no registry* — spectra's went at P3 (2026-08-21), transport's 2026-09-17. § 5 told a new engine to `@register_engine` against it until corrected 2026-09-17; `spectra/methods.py` and `transiesta.py` carried the same claim in docstrings |
 | **what the wrapper is HANDED vs re-reads** | **`execution/gpu.md` G7 + `execution/architecture.md` A8** | ⚠ **added 2026-09-17, and it is what stopped step N5d being trivial.** G7: *"the value travels; the deck is not re-read for it"* — reached 2026-08-23 **by carrying the answer on `Resources`**, not by a declaration alone. A8: the allocation *"arrives whole"* — `render_wrappers` was cut from eleven loose kwargs to one record on 2026-08-17. So handing the wrapper a value means a `Resources` field or nothing; there is no third door |
 | **validation dispatch** | **`science/validation.md`** | ✅ **added 2026-09-17, and it is where the day's biggest defect lived.** Two registries, and WHICH one a science belongs in is the whole question: `_ENGINE_VALIDATORS` keys on a **config class**, `_KIND_VALIDATORS` on `task.calculation`. A row in the first is only as live as the callers that CONSTRUCT that class — and transport's keyed on `TransportConfig` while every rung resolves a `SiestaConfig`, so it dispatched for nothing. Now two engine rows (SIESTA / PySCF) and two kind rows (transport / vibration), asserted by **equality** |
