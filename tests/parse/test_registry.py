@@ -72,11 +72,14 @@ def test_engine_parsers_registered():
     assert "molwatch" in names
 
 
-# `test_job_dir_parser_registered` stood here until 2026-09-04.
-# `JobDirParser` was the only registered DirParser and it retired
-# with the eleven-field summary it produced; `parse_dir` and the
-# `DirParser` ABC remain for the next composer that needs them
-# (`parse/dirs/__init__.py`).
+# `JobDirParser` retired 2026-09-04 with the eleven-field summary it
+# produced, leaving the DirParser registry empty -- so `parse_dir` could
+# only raise, which is why six functions across three modules were called
+# by name instead.  A `JobDirParser` is registered again since 2026-09-18
+# (`plans/plan.md` § 5c) answering the four fields § 5.0 names, each with
+# a reader.  That it ANSWERS is held in `dirs/test_rundir.py`, beside the
+# parser, rather than by a registration assertion here: a membership
+# check on the registry list passes on a parser that raises.
 
 
 # Detection + dispatch ------------------------------------------------- #

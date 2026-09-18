@@ -168,14 +168,16 @@ Two rules keep this from hiding anything:
 >   about one folder. It has no way to say *"these five folders are one run."*
 >
 > The first is a missing presenter and is owed by
-> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5. **The other two are not
-> a presenter's to fix.** The picker guesses a directory's meaning from
-> filenames because there is no door to ask: `model/parse.md` § 5 specifies
-> `JobDirParser` → `RunDirResult`, carrying `engine`, `files`, `openable` (what
-> a VIEWER should load) and `active` — **specified and not built**, so
-> `parse_dir()` can only raise, and `/api/results/contract` answers
-> `info.calculation` and five other fields. That migration is § 5c, and the
-> Results picker is a consumer its caller map does not list.
+> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5; it landed 2026-09-17.
+> **The other two are not a presenter's to fix.** The picker guesses a
+> directory's meaning from filenames because there is no door to ask:
+> `model/parse.md` § 5's `JobDirParser` → `RunDirResult` carries `engine`,
+> `files`, `openable` (what a VIEWER should load) and `active`, and it **ships
+> since 2026-09-18** — but nothing reaches it from the browser, because
+> `/api/results/contract` still answers `info.calculation` and five other
+> fields and no route offers the directory's own answer. The picker is the
+> seventh consumer in § 5c's caller map and the only browser-side one; it is
+> served by a ROUTE over `parse_dir`, which is that plan's to add.
 >
 > **One question there is genuinely new and has no home yet:** `openable` is
 > one answer per DIRECTORY, and a ladder needs one answer across five. Neither

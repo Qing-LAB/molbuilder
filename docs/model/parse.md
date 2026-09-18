@@ -346,7 +346,7 @@ flowchart TD
 |---|---|
 | `detect(path)` | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` | `detect` + `parse` in one call |
-| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory". **⚠ No DirParser is registered, so this raises `UnknownFormatError` for every input** (§ 5). It named "JobMonitor, Results" as its callers until 2026-09-05; neither has ever called it |
+| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory". One is registered since **2026-09-18**: `JobDirParser` (§ 5). *(It raised for every input between 2026-09-04 and then, the registry having been emptied by a deletion; and it named "JobMonitor, Results" as its callers until 2026-09-05, neither of which ever called it.)* |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
@@ -484,29 +484,34 @@ molbuilder/parse/
 
 ---
 
-## 5. Composer pattern — the DirParser  ⚠ SPECIFICATION, NOT YET BUILT
+## 5. Composer pattern — the DirParser
 
 A DirParser turns a whole run directory into one result. **`JobDirParser` is
-to be the one door**, and everything that asks a question *about a directory*
-is to go through it.
+the one door**, and everything that asks a question *about a directory* goes
+through it.
 
-> ### ⚠ Nothing in this section ships today (2026-09-05)
+> ### Built 2026-09-18 — and the callers have not all moved yet
 >
-> `JobDirParser` and `RunDirResult` **do not exist**; no DirParser is
-> registered, so `parse_dir(path)` and `detect(<a directory>)` can only raise
-> `UnknownFormatError`. Directory questions are still answered by
-> `web/blueprints/watch.py::_resolve_run_directory` and
-> `parse.dirs.job.run_status`, and § 5.2's chain is described here as the
-> spec to absorb — it has **not** been absorbed.
+> `RunDirResult` (`parse/types.py`) and `JobDirParser` (`parse/dirs/rundir.py`)
+> ship, the parser is registered, and `parse_dir(<a run directory>)` answers.
+> § 5.2's chain was absorbed **verbatim** into `rundir.openable_in`, proved
+> identical on all 141 run directories in the checkout before a single caller
+> moved — the same gate the `run_status` split passed (113/113) before its
+> deletion was allowed.
 >
-> The migration is [`plan.md § 5c`](?doc=plans/plan.md) ("Not started"), which
-> owns the caller map and the order of moves. Read this section as the target;
-> read `plan` for what is true.
+> **What is still true of the old shape:** the six functions this door
+> composes are still called *by name* by `jobset/runstatus.py`,
+> `web/blueprints/watch.py` and `jobset/summarize.py`, and
+> `web/blueprints/watch.py::_resolve_run_directory` is still there — so § 5.2's chain exists
+> **twice** until those callers move. That is steps 2–4 of
+> [`plan.md § 5c`](?doc=plans/plan.md), which owns the caller map and the
+> order; the second copy is deleted there, not here.
 >
-> *This section was written in the present tense on 2026-09-04 and carried no
-> such marker, in a file whose role is `contract` — so a reader met a door
-> that raises, and a governance rule ("no field is added without naming its
-> reader") that has no subject.*
+> *This section was written in the present tense on 2026-09-04 describing a
+> door that raised, in a file whose role is `contract`, and carried no marker
+> saying so until 2026-09-05 — so a reader met a governance rule ("no field is
+> added without naming its reader") that had no subject. The marker goes now
+> that the subject exists; the honest half of it, above, stays until step 4.*
 
 > **Its predecessor was deleted on 2026-09-04 and this is not a reversal.**
 > That one answered eleven fields; ten had no reader anywhere in the tree, and
@@ -522,14 +527,24 @@ is to go through it.
 ```python
 @dataclass(frozen=True)
 class RunDirResult(ParseResult):
-    run_dir:  str                       # resolved, absolute
+    run_dir:  str                       # resolved
     engine:   str                       # "siesta" | "pyscf" | "unknown"
     files:    Dict[str, List[Path]]     # kind -> paths, sorted
-    active:   Optional[Path]            # which file the STATUS speaks for
-    openable: Optional[Path]            # which file a VIEWER should load
+    active:   Optional[str]             # FILENAME -- which file the STATUS speaks for
+    openable: Optional[str]             # PATH -- which file a VIEWER should load
     attempts: List[str]                 # what was tried, for the refusal
     status:   Dict[str, Any]            # state · detail · last_change_at · active_source
 ```
+
+**`active` is a bare filename and `openable` is a path, deliberately.**
+`active` is `RunStatus.active_source` unchanged, and that value is serialized
+into the status envelope the browser reads — a server-side absolute path has
+no business crossing that line, and the directory it is relative to is
+`run_dir`, right beside it. `openable` is handed to a reader that opens it.
+They are the same *kind of thing* and not the same *value*, which is § 5.1's
+distinction showing up in the types; a caller composes `run_dir / active` when
+it wants the path. *(This block declared both as `Optional[Path]` until
+2026-09-18, which was true of neither.)*
 
 | field | the question | who reads it |
 |---|---|---|
@@ -565,8 +580,12 @@ index says nothing about which *stage* a file belongs to.
 
 ### 5.2 `openable` — the discovery chain, unchanged in behaviour
 
-Four rungs, first hit wins, absorbed verbatim from
-`web/blueprints/watch.py::_resolve_run_directory` (`job-contracts.md` § 2.4):
+Four rungs, first hit wins (`job-contracts.md` § 2.4). It lives in
+`parse/dirs/rundir.py::openable_in`, absorbed **verbatim** from
+`web/blueprints/watch.py::_resolve_run_directory` on 2026-09-18 — the web
+layer, which nothing below it may import, which is why it had to move rather
+than be called. The original is still there and still the one `web/watch`
+calls; `plan.md` § 5c step 3 deletes it once the callers move:
 
 1. any `*.molwatch.log` — newest wins, which is the staged run's latest;
 2. `*.fdf` → read `SystemLabel` → `<label>.molwatch.log`, then `<label>.out`;

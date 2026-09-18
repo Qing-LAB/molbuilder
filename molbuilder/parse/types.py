@@ -15,6 +15,7 @@ Forbidden by the doc:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -173,6 +174,56 @@ class SidecarResult(ParseResult):
     payload: Dict[str, Any] = field(default_factory=dict)
     schema:  str = "unknown/v0"
     result_kind: str = "sidecar"
+
+
+@dataclass(frozen=True)
+class RunDirResult(ParseResult):
+    """One RUN DIRECTORY -> the four questions anything asks about one.
+
+    `model/parse.md` § 5.0.  **No field is added without naming its reader**
+    -- that is the rule the deleted predecessor broke: it answered eleven
+    fields, ten of which had no reader anywhere in the tree, and reached the
+    eleventh by parsing every result file to build plots and then discarding
+    them.
+
+    ============  ==========================================  =================
+    field         the question                                who reads it
+    ============  ==========================================  =================
+    ``engine``    which engine ran                            `/api/watch/*`'s
+                                                              ``format``
+    ``status``    how is it doing                             `jobset/runstatus`
+    ``files``     what is here                                `jobset/summarize`
+    ``active``    which file speaks for the run's STATUS       the status
+                                                              combiner
+    ``openable``  what a VIEWER should load                    `web/watch`
+    ``attempts``  what was tried, for the refusal              `web/watch`
+    ============  ==========================================  =================
+
+    **``active`` and ``openable`` are different questions** (§ 5.1), and
+    conflating them is the trap that section exists to mark.  ``active``
+    considers RESULT files only -- every ``.out`` plus each molwatch log whose
+    footer concludes the run -- because letting an unconcluded log vote would
+    let a prep-time seed outrank a real ``.out``.  ``openable`` PREFERS an
+    unconcluded molwatch log: that is exactly the run in progress somebody
+    wants to watch.  A directory mid-run therefore has an ``openable`` and no
+    ``active``, and that is correct in both directions.
+
+    **``active`` is a bare FILENAME and ``openable`` is a PATH**, which is the
+    same distinction showing up in the types.  ``active`` is
+    ``RunStatus.active_source`` unchanged, and that value is serialized into
+    the status envelope the browser reads, where a server-side absolute path
+    has no business; the directory it is relative to is ``run_dir``, right
+    beside it.  ``openable`` is handed to a reader that opens it.  A caller
+    that wants the path composes ``run_dir`` with ``active``.
+    """
+    run_dir:  str = ""
+    engine:   str = "unknown"
+    files:    Dict[str, List[Path]] = field(default_factory=dict)
+    active:   Optional[str] = None
+    openable: Optional[str] = None
+    attempts: List[str] = field(default_factory=list)
+    status:   Dict[str, Any] = field(default_factory=dict)
+    result_kind: str = "rundir"
 
 
 # `ScriptResult` stood here until 2026-09-05.

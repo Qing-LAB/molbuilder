@@ -265,13 +265,16 @@ This section is the plan, and the caller list below is the completeness check
 `JobDirParser` that *existed* — an eleven-field `JobResult`, ten of whose
 fields had no reader anywhere and whose eleventh was reached by parsing every
 result file to build plots and then discarding them — **was DELETED
-2026-09-04**, replaced by `job.run_status`. `parse/dirs/__init__.py` says so:
-*"No DirParser ships today."* That work is done and is not what follows.
+2026-09-04**, replaced by `job.run_status`. That work is done and is not what
+follows.
 
-**What follows is a NEW consolidation, and it is not started** — verified
-2026-09-07, not taken from this row: `_resolve_run_directory` and `_engine_of`
-are still their own readers in `web/blueprints/watch.py`, and `run_status` is
-still its own in `jobset/runstatus.py`.
+**What follows is a NEW consolidation. Step 1 is DONE (2026-09-18); steps 2–4
+are not started.** `parse/types.py` carries `RunDirResult`,
+`parse/dirs/rundir.py` carries `JobDirParser` + `openable_in`, the parser is
+registered, and `parse_dir(<a run directory>)` answers. **No caller has
+moved**: `_resolve_run_directory` and `_engine_of` are still their own readers
+in `web/blueprints/watch.py`, and `run_status` is still called by name from
+`jobset/runstatus.py` — so the chain exists twice until step 3.
 
 **The shape.** One DirParser answers everything asked *about a run
 directory*; the four fields each have a named reader before a line is
@@ -373,7 +376,11 @@ withdrawn. `active` is stage-then-mtime (user ruling) and it governs the
 STATUS only, which has always used that rule.
 
 The one visible change: **`detect()` on a directory starts resolving
-again.** It has had no DirParser since 2026-09-04 and could only refuse.
+again.** It had no DirParser between 2026-09-04 and 2026-09-18 and could only
+refuse. *(Measured before shipping it: no call site in the tree passes a
+directory to `detect()` — the three in `parse/dirs/job.py`,
+`transport/record.py` and `engines/pyscf.py` all pass a concrete file — so the
+registration is additive, not a change of answer anywhere.)*
 
 ### What `summarize` actually gets, which is less than first claimed
 
@@ -400,10 +407,25 @@ that is not `active`'s question — see the withdrawn row above:
 
 ### Order of work
 
-1. Write `RunDirResult` + `JobDirParser`, absorbing the chain verbatim.
+1. ~~Write `RunDirResult` + `JobDirParser`, absorbing the chain verbatim.
    Prove equivalence on the real tree BEFORE any caller moves — the
    `run_status` split did this (113/113 identical) and it is the reason that
-   deletion was safe.
+   deletion was safe.~~ **DONE 2026-09-18.**
+
+   The proof ran over every run directory in `projects/`: `JobDirParser.parse`
+   against `_resolve_run_directory`, `run_status` and `engine_of` —
+   **identical 141/141**. It found two real absorption bugs first, which is
+   what a verbatim gate is for: rung 4's attempt messages had been
+   paraphrased, and rung 4's `*_geom_optim.xyz` had been rewritten to
+   `find_by_role`, which *raises* on an underscore role with no label — the
+   exact case rung 4 exists for. Both fixed, then 141/141.
+
+   Registered in `parse/dirs/__init__.py` (the registry's own rule: *"per-package
+   `__init__.py` files own the registration order"*). Three tests in
+   `tests/parse/dirs/test_rundir.py` hold what step 1 ADDS — that the registry
+   answers, that a prepped-but-unrun stage is still a run directory, and § 5.1's
+   `active` ≠ `openable`; the chain's own rungs stay held by the three tests in
+   `test_path_framework_doors.py`, which move onto `openable_in` at step 3.
 2. Move `runstatus` (1 site), then `watch` (**6**, not 9 — the table above
    sums to 6 and always did), then `summarize` (5).
 
@@ -2611,7 +2633,7 @@ first two passes precisely because the work started in the middle.
 | description | `engines/stages.md`, `execution/job-contracts.md` | ✅ five rungs, hierarchical shape |
 | template | `engines/template.md` | ⚠ 485 facts in two homes; the mirrored guard restored 2026-09-17 |
 | engine / deck | `engines/transport.md` | ✅ § 6 rewritten 2026-09-17 to name ROLES not function lists (§ 6a says why); § 5's holders named at 2c. The unbuilt transmission inspector is now stated as unbuilt, in `results.md` § 2.3 as well |
-| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **specified, NOT BUILT**. `parse_dir()` and `detect(<dir>)` can only raise. Migration is **§ 5c**, agreed 2026-09-04, *not started*. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
+| **parse / directory** | **`model/parse.md` § 5** | ⚠ `JobDirParser` → `RunDirResult` **BUILT 2026-09-18** (§ 5c step 1, proved 141/141 on the real tree); `parse_dir(<a run directory>)` answers. **No caller has moved** — steps 2–4 open, so the discovery chain exists twice. § 7.9's absorption-site count corrected 2026-09-17 (four → two; the other two were the deleted transport readers) |
 | **engine registry** | **`engines/overview.md` § 5** | ✅ *there is no registry* — spectra's went at P3 (2026-08-21), transport's 2026-09-17. § 5 told a new engine to `@register_engine` against it until corrected 2026-09-17; `spectra/methods.py` and `transiesta.py` carried the same claim in docstrings |
 | **what the wrapper is HANDED vs re-reads** | **`execution/gpu.md` G7 + `execution/architecture.md` A8** | ⚠ **added 2026-09-17, and it is what stopped step N5d being trivial.** G7: *"the value travels; the deck is not re-read for it"* — reached 2026-08-23 **by carrying the answer on `Resources`**, not by a declaration alone. A8: the allocation *"arrives whole"* — `render_wrappers` was cut from eleven loose kwargs to one record on 2026-08-17. So handing the wrapper a value means a `Resources` field or nothing; there is no third door |
 | **validation dispatch** | **`science/validation.md`** | ✅ **added 2026-09-17, and it is where the day's biggest defect lived.** Two registries, and WHICH one a science belongs in is the whole question: `_ENGINE_VALIDATORS` keys on a **config class**, `_KIND_VALIDATORS` on `task.calculation`. A row in the first is only as live as the callers that CONSTRUCT that class — and transport's keyed on `TransportConfig` while every rung resolves a `SiestaConfig`, so it dispatched for nothing. Now two engine rows (SIESTA / PySCF) and two kind rows (transport / vibration), asserted by **equality** |
