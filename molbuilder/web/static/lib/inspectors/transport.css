@@ -1,0 +1,83 @@
+/* Transport-result presenter — the ladder and its deliverable on one page.
+ *
+ * Spec: docs/web/presenters.md § 1 (the row) and plans/plan.md § 5p.3p step 5.
+ * Arrangement only: page-shell owns the surfaces, tokens.css owns every
+ * colour (ui-contract.md § 1–2).  No raw hex here, on purpose.
+ */
+
+.transport-record {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    padding: var(--space-md);
+}
+
+.transport-title { margin: 0; }
+
+.transport-sub,
+.transport-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+/* The I–V table: numbers in columns, so they compare by eye. */
+.transport-iv {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.transport-iv th,
+.transport-iv td {
+    padding: var(--space-xs) var(--space-sm);
+    text-align: right;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.transport-iv th { color: var(--text-muted); font-weight: 600; }
+
+/* A point that has not run is not a failure — the record is written by a
+ * reader, so a queued transmission stage reads as pending. */
+.transport-pending td { color: var(--text-muted); font-style: italic; }
+
+.transport-stages-title { margin: 0; }
+
+/* One card per rung, in ladder order.  They wrap rather than scroll: five is
+ * the whole ladder and a reader should see it at once. */
+.transport-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.transport-stage {
+    flex: 1 1 12rem;
+    padding: var(--space-sm);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-recessed);
+}
+
+.transport-stage-name {
+    font-weight: 600;
+    margin-bottom: var(--space-xs);
+}
+
+.transport-stage-facts {
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Sequential dependence: a rung that has not run is stated plainly and
+ * reads as quieter than one that has, without reading as an error. */
+.transport-stage-facts.is-pending { color: var(--text-muted); }
+
+/* Two leads are bulk runs of the same metal; their Fermi levels disagreeing
+ * is a real defect, so it wears the warning vocabulary rather than prose. */
+.transport-warn {
+    margin: 0;
+    padding: var(--space-sm);
+    border-left: 3px solid var(--warning);
+    background: var(--surface-recessed);
+    font-size: var(--text-sm);
+}

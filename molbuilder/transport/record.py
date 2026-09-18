@@ -130,6 +130,89 @@ def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
     return [(float(v), stage_dir / bias_token(v)) for v in points]
 
 
+def _stage_facts(base: Path, task, label: str) -> List[Dict]:
+    """One entry per rung of the ladder: where it stands, and its own answer.
+
+    **A transport result is FIVE calculations, and the record says so.**  It
+    used to describe only the last one -- the transmission points -- so a
+    reader could see the deliverable or nothing, with no way to tell a run
+    that had not started from one stalled at the device.  The ladder is the
+    structure of the result (`engines/transport.md` § 1), and a parser that
+    understands the format reports that structure rather than its final line.
+
+    **Each rung's own key fact, which is not the same fact:**
+
+    * *seed* / *device* -- did the SCF converge, and at what energy.  The seed
+      hands the device a density; the device hands TBtrans a Hamiltonian.
+    * *electrode_L* / *electrode_R* -- **the lead's Fermi level**, and this is
+      the number the whole junction is referenced to: a lead is a periodic
+      BULK run whose *"E_F is the reference energy"* (§ 2a.13), T(E) is
+      measured relative to it, and `G = G0 * T(E_F)` is evaluated at it.  Two
+      leads that disagree is a defect nothing else on the Results tab shows.
+    * *transmission* -- has its own `points` / `pending` blocks already.
+
+    **Honest, not optimistic.**  A rung with no attempt reads ``not_run``; one
+    with an attempt but no `.out` reads ``no_output``; one whose parser
+    refuses reads ``unreadable`` with the reason.  Nothing is inferred from a
+    neighbour: `stage_inputs` makes the ladder sequential, so an unfinished
+    rung explains the ones after it, but this reports what each directory
+    says rather than reasoning about the order.
+    """
+    from ..identity import StageRef
+    from ..jobset.materialize import latest_attempt, run_dir
+    from ..parse import detect
+    from ..runfiles import find_by_role
+    from .stages import TRANSPORT_STAGES
+
+    ladder = {r.name: r.token
+              for r in StageRef.ladder([s.name for s in task.stages])}
+    out: List[Dict] = []
+    for name in TRANSPORT_STAGES:
+        token = ladder.get(name)
+        fact: Dict = {"stage": name, "token": token}
+        if token is None:                      # the description omits it
+            fact["state"] = "not_described"
+            out.append(fact)
+            continue
+        container = base / token
+        att = latest_attempt(container)
+        if att is None:
+            fact["state"] = "not_run"
+            out.append(fact)
+            continue
+        fact["attempt"] = str(att.relative_to(base))
+        outs = sorted(find_by_role(run_dir(container), ".out"),
+                      key=lambda q: q.stat().st_mtime, reverse=True)
+        if not outs:
+            fact["state"] = "no_output"
+            out.append(fact)
+            continue
+        try:
+            res = detect(str(outs[0])).parse(str(outs[0]))
+        except Exception as exc:               # a refusal is an ANSWER here
+            fact["state"] = "unreadable"
+            fact["why"] = str(exc)
+            out.append(fact)
+            continue
+        fact["state"] = "ran"
+        fact["run_state"] = res.run_state
+        fact["scf_converged"] = res.scf_converged
+        frames = res.frames or []
+        if frames:
+            fact["energy_ev"] = frames[-1].energy
+            # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
+            # frame -- the converged one.  Kept by the SIESTA parser since
+            # 2026-09-18 for exactly this.
+            if name in ("electrode_L", "electrode_R"):
+                hist = frames[-1].scf_history or []
+                for cyc in reversed(hist):
+                    if cyc.get("ef") is not None:
+                        fact["fermi_ev"] = cyc["ef"]
+                        break
+        out.append(fact)
+    return out
+
+
 def collect_record(base_dir, task) -> Dict:
     """Walk the transmission attempts and build the record dict.
 
@@ -192,6 +275,8 @@ def collect_record(base_dir, task) -> Dict:
         "schema": TRANSPORT_RESULT_SCHEMA,
         "label": task.label,
         "energies_relative_to_ef": True,
+        # THE LADDER IS THE RESULT'S STRUCTURE, so the record carries it.
+        "stages": _stage_facts(base, task, task.label),
         "points": points_out,
         "iv": {
             "voltages_v": [p["bias_v"] for p in points_out],

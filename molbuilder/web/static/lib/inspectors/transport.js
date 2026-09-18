@@ -78,6 +78,74 @@
         });
         wrap.appendChild(table);
 
+        /* THE LADDER, in order.  A transport result is FIVE calculations and
+         * the record now says so (`transport/record.py::_stage_facts`); this
+         * renders that structure rather than only its last rung.  Sequential
+         * dependence means an unfinished rung explains the ones after it, so
+         * the honest statement per rung is enough -- no inference, no
+         * progress bar. */
+        const stages = Array.isArray(rec.stages) ? rec.stages : [];
+        if (stages.length) {
+            wrap.appendChild(_el("h4", "transport-stages-title", "Stages"));
+            const list = _el("div", "transport-stages");
+            stages.forEach((st) => {
+                const card = _el("div", "transport-stage");
+                card.appendChild(_el("div", "transport-stage-name",
+                                     st.token ? st.token : st.stage));
+                const bits = [];
+                if (st.state === "ran") {
+                    bits.push(st.scf_converged === true ? "converged"
+                            : st.scf_converged === false ? "NOT converged"
+                            : "ran");
+                    if (st.run_state && st.run_state !== "ended")
+                        bits.push(st.run_state);
+                    /* The lead's Fermi level is the reference the whole
+                     * junction is measured against, so it leads the line for
+                     * an electrode rather than trailing the energy. */
+                    if (st.fermi_ev !== undefined && st.fermi_ev !== null)
+                        bits.unshift("E_F = " + _fmt(st.fermi_ev, 3, false)
+                                     + " eV");
+                    if (st.energy_ev !== undefined && st.energy_ev !== null)
+                        bits.push("E = " + _fmt(st.energy_ev, 4, false)
+                                  + " eV");
+                } else if (st.state === "not_run") {
+                    bits.push("not run yet");
+                } else if (st.state === "no_output") {
+                    bits.push("prepared, no output yet");
+                } else if (st.state === "unreadable") {
+                    bits.push("could not be read" + (st.why ? ": " + st.why : ""));
+                } else if (st.state === "not_described") {
+                    bits.push("not in this description");
+                } else {
+                    bits.push(String(st.state));
+                }
+                const body = _el("div", "transport-stage-facts",
+                                 bits.join(" \u00b7 "));
+                if (st.state !== "ran") body.classList.add("is-pending");
+                card.appendChild(body);
+                list.appendChild(card);
+            });
+            wrap.appendChild(list);
+
+            /* TWO LEADS THAT DISAGREE is a defect nothing else on this tab
+             * would show: both are periodic bulk runs of the same metal, so
+             * their Fermi levels should match.  Said here because this is the
+             * only place both numbers appear together. */
+            const efs = stages
+                .filter((st) => st.fermi_ev !== undefined && st.fermi_ev !== null)
+                .map((st) => Number(st.fermi_ev));
+            if (efs.length === 2 && isFinite(efs[0]) && isFinite(efs[1])) {
+                const d = Math.abs(efs[0] - efs[1]);
+                if (d > 0.05) {
+                    wrap.appendChild(_el("p", "transport-warn",
+                        "The two electrodes' Fermi levels differ by "
+                        + _fmt(d, 3, false) + " eV. They are bulk runs of the "
+                        + "same lead, so they should agree \u2014 T(E) is "
+                        + "measured relative to this."));
+                }
+            }
+        }
+
         /* Say what is NOT here, and say it narrowly.  The curve's numbers ARE
          * in this file; what is missing is the plot. */
         const withCurve = pts.filter(

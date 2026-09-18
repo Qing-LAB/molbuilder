@@ -89,3 +89,54 @@ class TestRepeatedKeywords:
 
     def test_a_comment_is_not_a_value(self):
         assert system_label("SystemLabel bdt  # the junction\n") == "bdt"
+
+
+class TestTheFermiLevelIsKept:
+    """SIESTA prints `Ef(eV)` in its SCF table, and the parser dropped it.
+
+    `_SCF_COLUMN_KEYS` mapped `ef` to ``None`` -- *"valid bookkeeping column
+    we don't extract"* -- since the parser was written.  For an ordinary run
+    that was right: nothing plotted it.
+
+    **For a transport LEAD it is the one number that matters.**  An electrode
+    is a periodic bulk run and `engines/transport.md` says what its E_F is
+    for: *"its E_F is the reference energy"* -- what T(E) is measured relative
+    to, and where `G = G0 * T(E_F)` is evaluated.  `electrode_kz` defaults to
+    40 because that is "the Fermi-level resolution", and moving it invalidates
+    both lead stages *"because the lead's Fermi level moved"*.
+
+    Kept 2026-09-18 so the Results tab can show it per electrode.
+    """
+
+    def test_the_closed_shell_column_lands_in_the_cycle(self):
+        from molbuilder.parse.engines.siesta import (
+            _build_cycle_dict_from_header, _parse_scf_header)
+        head = _parse_scf_header(
+            "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
+            "dDmax     Ef(eV) dHmax(eV)")
+        cyc = _build_cycle_dict_from_header(
+            3, [-1.0, -2.0, -3.0, 0.01, -4.83, 0.02], head)
+        assert cyc["ef"] == -4.83, cyc
+
+    def test_the_spin_polarised_columns_land_too(self):
+        """A collinear run prints Ef_up and Ef_dn instead of one Ef."""
+        from molbuilder.parse.engines.siesta import (
+            _build_cycle_dict_from_header, _parse_scf_header)
+        head = _parse_scf_header(
+            "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
+            "dDmax     Ef_up Ef_dn(eV) dHmax(eV)")
+        cyc = _build_cycle_dict_from_header(
+            2, [-1.0, -2.0, -3.0, 0.01, -4.8, -4.9, 0.02], head)
+        assert cyc["ef_up"] == -4.8 and cyc["ef_dn"] == -4.9, cyc
+
+    def test_the_energy_still_lands_where_it_did(self):
+        """THE DISCRIMINATING HALF: keeping a column must not move another.
+        `energy` is what every plot reads."""
+        from molbuilder.parse.engines.siesta import (
+            _build_cycle_dict_from_header, _parse_scf_header)
+        head = _parse_scf_header(
+            "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
+            "dDmax     Ef(eV) dHmax(eV)")
+        cyc = _build_cycle_dict_from_header(
+            3, [-1.0, -2.0, -3.0, 0.01, -4.83, 0.02], head)
+        assert cyc["energy"] == -2.0 and cyc["cycle"] == 3
