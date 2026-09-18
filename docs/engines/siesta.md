@@ -57,16 +57,25 @@ flowchart LR
 ```
 
 
-> **`convert()` is DELETED (2026-09-17).** It was the single-shot
+> **`convert()` is DELETED (2026-09-17).** *(This document went on describing
+> it as live in **nine** further places until the tombstone was reconciled with
+> the body on 2026-09-18 — the public-API listing, its return shape, the
+> pseudopotential copy, both Makov-Payne mentions, the molwatch preview, the
+> emission guarantee and the test map. `engines/pyscf.md` had the identical
+> fault and was fixed a day earlier; nobody checked its twin. A tombstone that
+> contradicts the body it sits above is worse than no tombstone: it reads as a
+> caveat on something still true.)* It was the single-shot
 > "read a structure file, write a deck" worker behind `molbuilder fdf` (deleted 2026-08-11), and it had no
 > other production caller. A deck is written by `jobset prep` from a
 > description — `spec_for` → `prepare_deck`, the same three steps with the
 > description in front of them instead of a command line. `render_fdf` stays:
 > it is a thin call over `spec_for` and it is this emitter's public surface.
 
-- **Backend (Python / CLI).** `render_fdf` returns the text; `convert(input_path,
-  fdf_path, config)` (`:1486`) reads an `.xyz`/`.pdb`, writes the `.fdf`, and copies
-  matching pseudopotentials.
+- **Backend (Python).** `render_fdf(struct, config)` returns the text, and that
+  is the whole public surface. A deck reaches disk one way — `jobset prep`,
+  which calls `spec_for` → `prepare_deck` on the machine that will run it, and
+  writes the siblings the deck's own text promises
+  (`prep._siesta_sibling_artifacts`).
 
   > **These are the Python API and they are unchanged. The `molbuilder fdf` CLI
   > verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
@@ -154,14 +163,8 @@ class SiestaConfig: ...          # config/siesta.py:114
 Config = SiestaConfig            # back-compat alias (:1095)
 
 render_fdf(struct, config=None, *, cell=None) -> str                    # siesta/input.py:329
-convert(input_path, fdf_path, config=None, vacuum=None) -> dict         # :1486
 copy_pseudopotentials(species, lib, dest_dir) -> list[str]              # :275 → the elements whose .psml was MISSING
 ```
-
-`convert` returns `{"fdf", "n_atoms", "species", "missing_psml"}` (`missing_psml`
-is `[]` unless pseudos were copied and some were absent) plus two conditional keys:
-`"makov_payne_script"` (when charge ≠ 0) and `"molwatch_log"` (when
-`write_molwatch_log`). `vacuum=` sets `struct.vacuum` when no cell is imported.
 
 ```python
 >>> from molbuilder.siesta.input import render_fdf
@@ -182,10 +185,7 @@ NumberOfAtoms     42
 NumberOfSpecies   3
 ```
 
-`convert` is the file-to-file path; it returns a summary and (when
-`cfg.psml_lib` is set + `cfg.copy_psml=True`) copies each `<Element>.psml` into the
-`.fdf`'s directory, listing what it could not find in `missing_psml`.  On the
-described route the roles split: **`describe --psml-lib` is what copies the
+**The pseudopotentials travel with the calculation, and the roles split**: **`describe --psml-lib` is what copies the
 pseudos into the calculation** (they are its data files and travel with it),
 and **`prep` refuses to render a deck whose pseudos are absent** — the
 render's own validation, surfaced as a clean refusal naming the elements
@@ -293,10 +293,12 @@ while the adequacy check asks for 8 Å per side, i.e. a 16 Å gap. So a
 default-gap box is reported as thin, correctly: it is well-formed and not yet
 converged.
 
-*(When the resolved charge ≠ 0, `convert()` additionally writes a
-`makov_payne_correction.py` post-process script — `siesta/makov_payne.py:80,153` —
-that estimates the residual image-charge energy after the run; the path is returned
-as `summary["makov_payne_script"]`. It is not part of the `.fdf` itself.)*
+*(When the resolved charge ≠ 0, **`prep` writes** a `makov_payne_correction.py`
+post-process script beside the deck — `prep._siesta_sibling_artifacts` →
+`siesta/makov_payne.py` — that estimates the residual image-charge energy after
+the run. It is not part of the `.fdf` itself: the deck's own text instructs
+`python3 makov_payne_correction.py`, and that file has to exist, which is why
+one writer owns both routes.)*
 
 ---
 
@@ -591,7 +593,7 @@ decision 6).
 
 ## 9. Sibling outputs
 
-Alongside `<basename>.fdf`, `convert(...)` also writes (unless
+Alongside `<basename>.fdf`, **`prep`** also writes (unless
 `cfg.write_molwatch_log=False`) a `<basename>.molwatch.log` — one *initial-state
 preview block* (step 0: coordinates only, `kind: initial_preview`) so the Results
 tab can render the structure before SIESTA produces any output. The `.molwatch.log`
@@ -611,8 +613,8 @@ and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 > the stage's artifact token, and the run decoder reads it back through
 > `identity.parse_stage_token` rather than keeping a second regex.
 
-When the resolved charge ≠ 0, `convert()` also drops a `makov_payne_correction.py`
-script next to the `.fdf` (returned as `summary["makov_payne_script"]`, § 4). And
+When the resolved charge ≠ 0, **`prep`** also drops a `makov_payne_correction.py`
+script next to the `.fdf` (§ 4). And
 each per-stage `.molwatch.log` carries `# stage: <name>` + `# convergence.<key>:
 <value>` headers (`max_force_ev_per_ang`, `max_steps`) so the Results inspector
 draws the right threshold for the running stage.
@@ -634,9 +636,9 @@ The emitter must **not**: (1) emit an `MD.TypeOfRun` block when
 `relax_type == "none"` (that would force relaxation on a single-point job);
 (2) truncate atom-coordinate lines (every `Structure` atom goes into the
 coordinates block); (3) emit invalid SIESTA syntax for any standard config — every
-variant tested must `convert()` end-to-end without raising.
+variant tested must render end-to-end without raising.
 
-**Tests:** `test_smiles_and_siesta.py` (render + convert round-trip),
+**Tests:** `test_smiles_and_siesta.py` (the render round-trip),
 `test_review_fixes.py` (net-charge override, the thin-vacuum **warn** — D3, since
 `cell_padding` was removed 2026-07 — and the `Config`
 alias), `test_siesta_stages.py` + `test_siesta_stages_emit.py` (the ladder and

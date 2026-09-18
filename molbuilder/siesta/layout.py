@@ -349,6 +349,7 @@ def check_rules(text: str, struct=None, cfg=None):
     and an index with no species is a startup failure after the queue wait.
     """
     from ..issues import Issue
+    from ..parse.fdf import _norm as _fdf_norm
 
     out = []
     code = [ln.split("#", 1)[0].rstrip() for ln in text.splitlines()]
@@ -367,7 +368,13 @@ def check_rules(text: str, struct=None, cfg=None):
         if in_block or not ln.strip():
             continue
         key = ln.split()[0]
-        norm = key.lower().replace(".", "").replace("_", "").replace("-", "")
+        # fdf's keyword rule, from the one module that owns it.  This spelled
+        # `.lower().replace(".","").replace("_","").replace("-","")` inline --
+        # a third copy of a rule that also lived in `parse/fdf._norm` and in
+        # each of the hand-rolled deck readers retired on 2026-09-17.  A gate
+        # that enforces "one keyword, one line" must agree with the reader
+        # about what ONE KEYWORD means, or it polices a different rule.
+        norm = _fdf_norm(key)
         value = " ".join(ln.split()[1:])
         if norm in seen and seen[norm][1] != value:
             out.append(Issue(
