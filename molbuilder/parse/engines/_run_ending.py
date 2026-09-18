@@ -205,7 +205,25 @@ def scan_pyscf_ending(text: str) -> RunEnding:
     ended = False
     for raw in text.splitlines():
         line = raw.lower()
-        if any(m.lower() in line for m in PYSCF_END_MARKERS):
+        # ANCHORED AT COLUMN 0, exactly as `scan_ending` anchors SIESTA's
+        # (line 151).  A SUBSTRING TEST IS WRONG HERE and not subtly: PySCF's
+        # `Mole.build()` calls `dump_input()`, which ECHOES THE DECK'S OWN
+        # SOURCE into `mol.stdout` -- and when the deck writes no separate
+        # `.log`, `mol.stdout` IS the stdout the wrapper captures.  So the
+        # line `print(f'Total wall time: {t1 - t0:.1f} s')` appears in the
+        # log during `=== Stage: build molecule ===`, in the first seconds.
+        #
+        # Measured on `projects/BDT/spectrum/BDT-only`: the echo is line 1139
+        # of 11606 and the real end line is 11605.  Fed the first 2000 lines
+        # -- a run 17% of the way through a 62-minute job -- the substring
+        # form answered `ended`, so `run_status` said `finished`.  A running
+        # job reporting finished is worse than the defect this reader was
+        # added to fix, and a killed one reported it too: `ended` outranks
+        # the traceback branch below.
+        #
+        # The anchor separates them exactly: both real end lines are printed
+        # at column 0, and both echoed ones begin `print(`.
+        if any(line.startswith(m.lower()) for m in PYSCF_END_MARKERS):
             ended = True
             continue
         if PYSCF_TRACEBACK_MARKER in line:

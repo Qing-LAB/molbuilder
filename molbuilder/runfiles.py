@@ -903,7 +903,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # only exists after a run, but `--cold` builds its keep-list from the same
     # table, so the wrapper named this file as engine state it was about to
     # destroy and refused until --force.
-    Artifact(".transport.json", "the transport results, summarised"),
+    # `staged=False` since 2026-09-18, and it was wrong in the direction this
+    # table's own comments keep recording.  `jobset/_cli.py` writes ONE record
+    # at the bundle root (`write_record(bundle, rec)`), so as a staged row the
+    # Task-setup card promised `<label>_<stage>.transport.json` on every rung
+    # of every SIESTA calculation -- a name nothing has ever written -- while
+    # the calculation-level card for a transport run listed nothing at all.
+    Artifact(".transport.json", "the transport results, summarised",
+             staged=False),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and

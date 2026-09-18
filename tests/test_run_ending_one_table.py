@@ -208,3 +208,53 @@ def test_a_seeded_progress_log_says_nothing_about_a_run(tmp_path):
     seed = tmp_path / "job_01_coarse.molwatch.log"
     seed.write_text("# engine: pyscf\n# label: job\n", encoding="utf-8")
     assert ending_of(seed).run_state == "running"
+
+
+def test_the_decks_own_source_is_not_mistaken_for_its_end_line():
+    """PySCF ECHOES THE DECK INTO THE LOG, and the echo contains the marker.
+
+    `Mole.build()` calls `dump_input()`, which writes the deck's own source to
+    `mol.stdout` -- and when the deck writes no separate `.log`, `mol.stdout`
+    IS the stdout the wrapper captures.  So the line
+
+        print(f'Total wall time: {t1 - t0:.1f} s')
+
+    appears while the molecule is still being built, in the first seconds of
+    the run.  Measured on `projects/BDT/spectrum/BDT-only`: the echo is line
+    1139 of 11606; the real end line is 11605.  A substring test answered
+    `ended` for a job 17% of the way through a 62-minute run -- and since
+    `ended` outranks the traceback branch, a CRASHED run answered `ended` too.
+
+    The anchor separates them exactly, and it is what `scan_ending` already
+    does for SIESTA: every real end line is printed at column 0, every echoed
+    one begins `print(`.
+
+    MUTATION THIS MUST FAIL AGAINST: `any(m in line ...)` instead of
+    `line.startswith(m)`.
+    """
+    from molbuilder.parse.engines._run_ending import (PYSCF_END_MARKER,
+                                                      PYSCF_SPECTRUM_END_MARKER,
+                                                      scan_pyscf_ending)
+    for marker in (PYSCF_END_MARKER, PYSCF_SPECTRUM_END_MARKER):
+        echoed = ("#INFO: **** input file is /x/job.py ****\n"
+                  "#INFO: ******************** input file end ********************\n"
+                  f"print(f'{marker} {{t1 - t0:.1f}} s')\n"
+                  "converged SCF energy = -1028.27\n")
+        assert scan_pyscf_ending(echoed).run_state == "running", (
+            f"the deck's own source line for {marker!r} was read as the run's "
+            f"end -- a running job reports finished from its first seconds")
+        # ...and the real line, printed at column 0, still ends it.
+        assert scan_pyscf_ending(echoed + f"{marker} 3746.9 s\n"
+                                 ).run_state == "ended"
+
+
+def test_a_crash_after_the_echo_is_still_a_crash():
+    """The other half of the same defect: `ended` outranks the traceback, so
+    an echo that set it made a CRASHED run report finished."""
+    from molbuilder.parse.engines._run_ending import (PYSCF_END_MARKER,
+                                                      scan_pyscf_ending)
+    text = (f"print(f\"\\n{PYSCF_END_MARKER} {{time.time() - t0:.1f}} s\")\n"
+            "Traceback (most recent call last):\n"
+            '  File "job.py", line 88, in <module>\n'
+            "MemoryError\n")
+    assert scan_pyscf_ending(text).run_state == "stopped"

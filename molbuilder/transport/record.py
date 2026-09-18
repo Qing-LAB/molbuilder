@@ -43,8 +43,16 @@ class RecordError(Exception):
 
 
 def record_path(base_dir, label: str) -> Path:
-    """The ONE spelling of the record's location."""
-    return Path(base_dir) / f"{label}.transport.json"
+    """The ONE spelling of the record's location -- composed, not concatenated.
+
+    It was an f-string until 2026-09-18, which made the docstring above false:
+    `runfiles.WRITTEN` declares `.transport.json` and its module docstring says
+    *"Nothing composes or splits a run-file name inline."*  Composing also
+    inherits the label rule -- `compose` refuses `my.relax`, where the
+    f-string built a name `runfiles.parse` cannot read back.
+    """
+    from ..runfiles import compose as _rf
+    return Path(base_dir) / _rf(label, ".transport.json")
 
 
 def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
