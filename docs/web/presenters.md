@@ -37,15 +37,23 @@ mounts it.
 The **registry** is the switchboard. Each **presenter** is a small self-contained
 viewer for one kind of file. Today there are seven:
 
-| The file you open | The viewer you get | Shows in the Results dropdown? |
-|---|---|---|
-| `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
-| `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
-| `.spectra.json` | a spectrum **chart** + a modes table | yes — *PySCF spectrum* |
-| `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
-| `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
-| `.md` | a markdown **editor** with a live preview + Save | no |
-| `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
+| Presenter | The file you open | The viewer you get | Shows in the Results dropdown? |
+|---|---|---|---|
+| `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
+| `trajectory` | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
+| `spectra` | `.spectra.json` | a spectrum **chart** + a modes table | yes — *PySCF spectrum* |
+| `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
+| `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
+| `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |
+| `source` | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
+
+*The first column is the `name` each presenter registers under, and it is
+there so this table can be **checked** rather than remembered:
+`test_doc_claims.py::test_the_documented_presenters_are_the_registered_ones`
+asserts this column and the yes/no one against the `register()` calls in
+`lib/inspectors/`, set-equal in both directions. Added 2026-09-18
+(`plan.md` § 5p.3p step 10b) after the table spent an unknown stretch
+claiming five viewers and three results while six were registered.*
 
 The five that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are

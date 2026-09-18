@@ -2952,9 +2952,47 @@ that matter).
 
 | # | the list | assert it against | today |
 |---|---|---|---|
-| 10a | `web-api.md` § 3's endpoint index | `app.url_map`, **set equality**, `static` excluded | only the COUNT is asserted — and on 2026-09-17 it passed at 97 while the index carried a deleted route AND omitted a live one. Two errors, cancelling |
-| 10b | `presenters.md` § 1's viewer table | the `register()` calls in `lib/inspectors/`, **set equality** on presenter name + `isResult` | nothing. The table said five viewers / three results for as long as `bench-summary` had been registering |
-| 10c | `conventions.md` § 3's command roster | `cli.commands`, **set equality** | nothing. It said 13 when there were 19, and named a verb deleted that day |
+| 10a | `web-api.md` §§ 4–5's route catalogue | `app.url_map`, **set equality**, `static` excluded | ⛔ **BLOCKED — measured 2026-09-18, and the measurement is the finding.** See below |
+| 10b | `presenters.md` § 1's viewer table | the `register()` calls in `lib/inspectors/`, **set equality** on presenter name + `isResult` | ✅ **DONE 2026-09-18** — `test_the_documented_presenters_are_the_registered_ones`. The table gained a `Presenter` column, because it was keyed by file pattern and had no name to assert on. Mutation-tested four ways, including the `makePartialInspector` default-`true` case that produced the original wrong count |
+| 10c | `conventions.md` § 3's command roster | `cli.commands`, **set equality** | ✅ **DONE 2026-09-18** — `test_the_documented_command_roster_is_the_shipped_one`. Mutation-tested both directions |
+
+**10a — why it is blocked, and what the measurement says.** The set equality is
+written and runs; the document cannot pass it yet, and the fix is **not** to
+relax the test.
+
+*Parsing it is solved.* Three things had to be handled and all three are:
+§ 4's tables use brace shorthand (`/api/files/{roots,list,stat,…}`), which
+expands; § 5 documents the un-owned routes in prose, so both sections count;
+and **blockquote lines are excluded, because that is where this document keeps
+its history** — without that, every tombstone reads as a live claim.
+
+*What is left is a content problem, in both directions:*
+
+* **11 routes are claimed in ordinary prose and do not exist** —
+  `GET /api/checkpoint/config`, `GET /api/docs/list`, `GET /login`,
+  `POST /api/admin/reload`, `POST /api/build/fdf`, `POST /api/build/pyscf`,
+  `POST /api/results/bundle`, `POST /api/run/install-wrapper`,
+  `POST /api/selection/atoms`, `POST /api/siesta/install-pseudos`, and
+  `GET /api/docs/img/<path>` (a placeholder-spelling difference from the live
+  `<path:img_path>`). **At least two are conditional, not dead**: `/login`
+  registers only with an `auth` config, and the document already records that
+  *"a production config with rate limiting on registers a few additional
+  admin/auth routes"* — so the assert needs a declared conditional set, not a
+  deletion.
+* **9 live routes are claimed nowhere** — every tab page: `/documents`,
+  `/jupyternb`, `/molview-demo`, `/results`, `/spectrum-calculation`,
+  `/structure-optimization`, `/task-setup`, `/this-machine`, plus
+  `/api/docs/img/<path:img_path>`.
+
+***`web-api.md` itself forbids the silent fix***, and it is right: *"Each needs
+checking for **retired** versus **renamed** before its row is deleted, which is
+task #38's sweep, not a silent edit here."* Deleting ten rows I have not
+individually traced would turn a stale index into a **wrong** one, and a renamed
+route that quietly loses its row is exactly the drift step 10 exists to stop.
+
+**So 10a lands with task #38**, and this measurement is its input: the parser is
+written, the two directions are separated, and the conditional-route case is
+named. *(The count test stays until then — it is weak, but it is not nothing.)*
 
 *Model to copy:* `test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
 — it reads the documented set out of the table, reads the enforced set out of

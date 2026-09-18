@@ -856,3 +856,103 @@ def test_the_documented_L1_index_is_the_enforced_one():
         "architecture.md § 3's L1 index and tests/test_layering.py disagree.\n"
         f"  documented but not enforced: {sorted(documented - enforced)}\n"
         f"  enforced but not documented: {sorted(enforced - documented)}")
+
+
+# --------------------------------------------------------------------- #
+#  Gate E -- MEMBERSHIP, never a count                                   #
+#                                                                        #
+#  `plan.md` § 5p.3p step 10.  Three enumerations a reader ACTS on: they  #
+#  pick a route, add a presenter, run a command.  Each was held by        #
+#  nothing, or by a COUNT -- and a count is satisfied by any two errors   #
+#  that cancel, which is not hypothetical: `web-api.md`'s endpoint index  #
+#  passed at 97 on 2026-09-17 while carrying a DELETED route and omitting #
+#  a LIVE one.  Two errors, cancelling, green.                            #
+#                                                                        #
+#  Modelled on `test_the_documented_L1_index_is_the_enforced_one` above:  #
+#  read the documented set out of the table, read the enforced set out of #
+#  the code, assert BOTH directions, and name each side's extras.         #
+# --------------------------------------------------------------------- #
+
+
+def test_the_documented_command_roster_is_the_shipped_one():
+    """`conventions.md` § 3's catalogue and `cli.commands`, set-equal.
+
+    **What a wrong roster costs.** § 3 is where a person looks up what the CLI
+    can do, and decisions 7 and 34 (*"there is no `molbuilder run`"*, *"there is
+    no `molbuilder fdf`"* — *"a second way in is a second way to lose your
+    results"*) are enforced by that list being true. On 2026-09-17 it said
+    **13**, listed `pyscf` — deleted that day — and omitted seven live groups.
+    A reader would have concluded the framework could not do seven things it
+    does, and that it could do one it cannot.
+    """
+    from molbuilder.cli import cli
+
+    doc = (DOCS / "process" / "conventions.md").read_text(encoding="utf-8")
+    start = doc.index("### The command catalogue")
+    table = doc[start:doc.index("**NO ENGINE HAS A VERB EITHER**", start)]
+    documented = set()
+    for line in table.splitlines():
+        if not line.startswith("|") or set(line) <= set("|- "):
+            continue
+        documented |= set(re.findall(r"`([a-z][a-z0-9-]*)`", line.split("|")[1]))
+
+    shipped = set(cli.commands)
+    assert documented == shipped, (
+        "conventions.md § 3's command catalogue and `cli.commands` disagree "
+        "-- and § 3 is where a person looks up what the CLI can do:\n"
+        f"  documented but not shipped: {sorted(documented - shipped)}\n"
+        f"  shipped but not documented: {sorted(shipped - documented)}")
+
+
+def test_the_documented_presenters_are_the_registered_ones():
+    """`presenters.md` § 1's table and `lib/inspectors/`, set-equal on
+    **(name, isResult)**.
+
+    **What a wrong table costs.** § 1 is where someone adding a viewer looks
+    up what already exists and whether it claims a Results-tab slot. The
+    table said **five viewers / three results** for as long as
+    `bench-summary` had been registering — so a reader would not have known
+    that a `job-set.json` already had an owner.
+
+    **`isResult` is read, not assumed, and that matters**: `trajectory` and
+    `spectra` never write it. They are built by `makePartialInspector`, which
+    defaults it to `true` (`isResult: (opts.isResult !== false)`), so a test
+    that only looked for the literal would under-count results by two — which
+    is exactly how the table got its "three".
+    """
+    import re as _re
+    root = Path(__file__).resolve().parents[1]
+    inspectors = root / "molbuilder" / "web" / "static" / "lib" / "inspectors"
+
+    # the REGISTERED set, read from the modules that call register()
+    registered = {}
+    for js in sorted(inspectors.glob("*.js")):
+        src = js.read_text(encoding="utf-8")
+        if "inspectors.register(" not in src:
+            continue
+        m = _re.search(r"^\s*name:\s*\"([a-z][a-z0-9-]*)\"", src, _re.M)
+        assert m, f"{js.name} registers but declares no name -- repoint this"
+        # absent means the factory's default, which is True.
+        flag = _re.search(r"^\s*isResult:\s*(true|false)", src, _re.M)
+        registered[m.group(1)] = (flag.group(1) == "true") if flag else True
+
+    # the DOCUMENTED set, read from the table that indexes it
+    doc = (DOCS / "web" / "presenters.md").read_text(encoding="utf-8")
+    start = doc.index("| Presenter | The file you open |")
+    table = doc[start:doc.index("*The first column is the", start)]
+    documented = {}
+    for line in table.splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) < 6 or not cells[1].startswith("`"):
+            continue
+        documented[cells[1].strip("`")] = cells[4].startswith("yes")
+
+    assert documented == registered, (
+        "presenters.md § 1's table and the register() calls in "
+        "lib/inspectors/ disagree -- and § 1 is where someone adding a "
+        "viewer looks up what already exists:\n"
+        f"  documented: {sorted(documented.items())}\n"
+        f"  registered: {sorted(registered.items())}\n"
+        f"  only in the doc:  {sorted(set(documented) - set(registered))}\n"
+        f"  only in the code: {sorted(set(registered) - set(documented))}\n"
+        "  (a name in both with a different isResult is a disagreement too)")
