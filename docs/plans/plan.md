@@ -108,6 +108,8 @@ the same day, with what it turned out to be.
 | **S18** | ops / envs / config | **The 2026-09-12 env-installer and config-and-secrets session has its own hand-over file: [`2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).**  80 items, each marked by how it was checked (RAN / READ).  It exists because that session's own commit messages are not reliable: three independent audits were told to FALSIFY them, 14 of 16 behavioural claims held, and the failures were overstatements of scope -- four documentation statements written that day are false, two of them in text `envs init-config` ships into a user's config directory.  Its § 1 is the verified DONE list and exists to stop the next session re-deriving settled work; § 2 is the work, grouped as defects introduced (A), false docs (B), an instruction not implemented (C), sweeps that stopped at the first instance (D), pre-existing finds (E) and decisions for the user (F).  **§ 0 states the TARGET first** -- the installer's two state machines and one runner, and config's one resolver / one name / one writer, as 13 checkable invariants T1-T13 -- so every item reads as a named deviation rather than a patch.  **§ H is the residue of the pre-state-machine design**, swept against those invariants rather than against any diff: one question answered in two or more places four times over, a string where the design says state three times, dead parameters, and a door that never sanitises the environment it dispatches into.  **§ I is the config/secret residue**, and its first lesson is that **A11's own text in `architecture.md` still names a pre-consolidation owner**, so the rule as written licenses the three `.parent` climbs it forbids -- fix the rule before the sites.  § G records what was checked and found clean.  **§ 3 is the MIGRATION PLAN** -- eight phases scoped to `install-env.sh`, the `envs` verbs, deployment and how config is placed and validated, each stating what it closes and which end-state row (Z1-Z9) it realises; § 3.0 states that end state so it can be checked, and § 5 records what is deliberately out of scope.  **Read § 1 before touching § 2, and A0 before anything** -- `envs install molbuilder --clean` currently deletes the env the process is running from, and `envs doctor` prints that command as its remedy for a failed host verify.  No clean full-suite result exists for the work yet (F3) | audited 2026-09-12 | open -- nothing in § 2 started |
 | **S17** | architecture seams | **`run_tool` dispatched into an env without the mamba-1.x workaround every other path applied** -- so on a host whose manager emits the ``exec -- "$@"`` stub, `run_tool("tleap", ...)` died on a shell error about the manager's generated file, naming nothing to do with AmberTools.  **CLOSED 2026-09-12.** The trade that kept it open -- the workaround needs a prefix, and resolving one costs up to four manager subprocesses, which is wrong on a path walked once per structure build -- is resolved by MEASURING rather than predicting: `builds.dispatch_into_env` is now the one door for all three dispatches, the manager's own `run` is the route, and the prefix is resolved only after that stub has actually been seen.  A working manager still pays exactly one subprocess.  Still not reproducible on this machine (conda only), so it is verified by a fake manager emitting that exact signature | found 2026-09-12 by the install review | **done** |
 | **S13** | architecture seams | **Transport convergence sweep** — auto-vary transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops moving. `transport.md` § 2 already tells a reader not to trust a single point blindly, so the document promises what the code does not offer | `engines/transport.md` § 8 | **measured: not built** — the only occurrence in the tree is `transport/wizard.py:65`, a comment naming it |
+| **N9** | parse / run files | **A door, a result type and a registered parser with no consumer — decide: build the surface, or delete all three.** `parse_dir` has **0** production callers; `RunDirResult`'s seven fields have **0** production readers (its own docstring says so); the consumer it was built for — the Results file picker — was **STRUCK from § 5c on 2026-09-18** as asking a LADDER question a directory-scoped door cannot answer (`stages.md` § 6.7 forbids inferring the layout from data). **It is not free:** registering `JobDirParser` changed what `detect()` answers for every caller that does not narrow, which cost `watch parse`, `runtime-info` and `watch tail` their clean refusal — one becoming a silent infinite hang. *Distinct from N8: routing consumers through it would not collapse their private role lists, and collapsing those does not give it a consumer.* **Needs a ruling, not an implementation** | § 5c.2, § 5.0 | **needs your call** |
+| **N8** | parse / run files | **The run-output vocabulary is stated in nine places and the directory door is blind to PySCF's.** `.pyscf.log` is where PySCF writes and not `.out`; `parse/dirs/` never searched for it, so **3 finished runs report `running`** — one for 97 days — with `Job complete in <N> s` sitting in the directory. Four sites hardcode the role list; fixing one (the status probe, 2026-09-18) left the viewer's discovery chain and the sidecar pairing blind. The catalogue (`runfiles.WRITTEN`) already owns the vocabulary and already ships derived views | § 5c.2 | **open — rows 5c.2a-f**, one landed (the status probe), one tried and the WRONG SHAPE (a fourth table, recorded in § 5c.2 so it is not repeated) |
 | **N5** | parse / run files | **The three defects § 5l measured, which outlived it** (§ 5l.a). **① LIVE:** every staged run loses its frozen atoms — `_sidecar.read_frozen_atoms` needs a label to strip the rung and three of four callers omit it, so *"Hide frozen atoms"* and `runtime_info["frozen_atoms"]` are empty for every laddered calculation. **② duplication, NOT a latent defect — re-measured 2026-09-18:** `identity.parse_stage_token` is a second reader of the stage token alongside `runfiles.parse`. They differ on `_geom_optim.xyz` (a declared underscore ROLE, which the second swallows into the stage name) and on `.runwrap-*.log`. **Neither shape is ever passed to it.** Its three callers feed decks (`materialize` ×2, `job.script`) and `.out` / concluded `.molwatch.log` (`parse/dirs/job.py::_detect_stage`); measured on all five real shapes, the two readers AGREE every time. *This row said "latent" and was reported to the user as a bug waiting to happen, with an invented `.xyz` example — user: "why would you fucking pass a .xyz to a parser and ask which step this run belongs to?" Nothing does.* What is real is one grammar with two readers, worth collapsing on the one-home rule and on nothing more urgent. **③** a phantom rung for an unstaged calculation, fixed by ②. *The migration framing is gone with § 5l — these are ordinary defects in `parse/` and `identity`* | § 5l's inventory, re-measured 2026-09-17 | **① FIXED 2026-09-17. ② and ③ open.** *The fix was already in the same module.* `_siesta_fdf_path_for` — the function `model/parse.md` § 5.3 names as the shape a companion lookup may legitimately take — solves the identical problem identically: try the exact stem, then *"fall back to a single `*.fdf` in the same directory"*. `read_frozen_atoms` never got that fallback. It has one now, asked through `sidecars.molstruct.sidecars_in` (the framework's own search, § 4.5) rather than a hand-rolled glob, and **guarded twice**: the lone sidecar's label must be a prefix of the artifact's on a `_` boundary (so an unrelated sidecar that merely happens to be alone is refused), and two candidates decline rather than pick. Licensed by `project-layout.md` § 1.4 — a run directory holds one invocation's output. **Strictly additive**: it runs only where the answer was already nothing. ② and ③ remain, and are one deletion: `identity.parse_stage_token` goes, its three callers (`parse/dirs/job.py:81`, `materialize.py:394`, `:433`) move to `runfiles.parse`, which is right on both shapes the two disagree about |
 | ~~**N6**~~ | execution / web | ~~the group launcher, and `files.py`'s duplicated sidecar constant~~ — **CLOSED 2026-09-18, and one of the two was never a question.** *`files.py`*: the copy is deleted; it asks `sidecars.molstruct.sidecar_path_for`, the module that owns the pairing. It needed no decision and should not have been filed as one. *The group launcher*: **withdrawn — there is no defect.** `launch/` holds the GROUP's own machinery (the sequencer, its `.sbatch`, its log, SLURM's stdout) beside the trial directories so they are not mixed among them — a deliberate decision recorded at `submit.py:1199` (*roadmap 7.10, user 2026-08-24*). I read a folder holding files as a claim about the TREE'S LEVELS and manufactured a design question out of a ruling already made. | § 5l, re-read 2026-09-18 | closed |
 | ~~**N7**~~ | paths standard | ~~delete the superseded surface in favour of the three verbs~~ — **WITHDRAWN 2026-09-17** with § 5l. There is no replacement surface to migrate onto: `ref.py` is deleted, and `runfiles` + `paths` ARE the framework. The ~40 functions § 5l counted stay as they are; whether that number is itself a defect is a question § 5k's rule never raised and nothing has measured since | § 5l | withdrawn |
@@ -268,7 +270,8 @@ result file to build plots and then discarding them — **was DELETED
 2026-09-04**, replaced by `job.run_status`. That work is done and is not what
 follows.
 
-**What follows is a NEW consolidation. Steps 1 AND 2 are DONE (2026-09-18).**
+**What follows is a NEW consolidation. Steps 1 AND 2 are DONE (2026-09-18);
+§ 5c.2 reopened the section the same day.**
 `parse/types.py` carries `RunDirResult`, `parse/dirs/rundir.py` carries
 `JobDirParser` + `openable_in`, the parser is registered, and
 `parse_dir(<a run directory>)` answers. `web/blueprints/watch.py` calls
@@ -476,7 +479,9 @@ that is not `active`'s question — see the withdrawn row above:
 4. ~~**Re-run the caller map and require it empty.**~~ **DONE 2026-09-18 —
    it comes back empty.** One row moved, five withdrawn with measurements,
    and the seventh (the Results picker) struck as never having been a caller
-   of this door. **§ 5c IS CLOSED.**
+   of this door. ~~**§ 5c IS CLOSED.**~~ **REOPENED 2026-09-18 by § 5c.2 (open list: N8)** —
+   the map asked *who calls this door* and never *what the door looks for*,
+   and the door could not see PySCF's output at all.
 
    The picker's work is real and is `§ 5p.3p`'s: an HTTP surface over
    `jobset_status`, the ladder door that already exists.
@@ -488,6 +493,96 @@ that is not `active`'s question — see the withdrawn row above:
    runs spanning several directories" when the answer was already on the
    books — something above it composes them, and that something is
    `jobset_status`.)*
+
+### 5c.2 Migrate onto `model/parse.md` § 5.5
+
+*Reopens § 5c, whose completeness check asked WHO CALLS the door and never
+WHAT THE DOOR LOOKS FOR. Open list: N8 (this) and N9 (the bundle).*
+
+**The contract is [`model/parse.md` § 5.5](?doc=model/parse.md).** It settles
+the design; this section is the migration and the evidence.
+
+#### Why — measured
+
+PySCF writes its stdout to `.pyscf.log`. Nothing collects it and nothing
+reads it.
+
+| | |
+|---|---|
+| PySCF run directories in the tree | 12, **all carrying an end marker** |
+| of those, reporting `running` | **3** — oldest **97.6 days** |
+| of those, `openable_in` returns `None` | **3** |
+| `.pyscf.log` files any registered parser claims | **0 of 13** |
+
+**The 9 that answer correctly do so from the molwatch footer, never from the
+engine's own stdout.** The 3 that fail are **spectrum decks, which write no
+molwatch log at all** — so the only evidence of how they ended is the file
+nothing reads. That is why it is exactly those three.
+
+#### Two questions, not one — and this corrects an earlier draft of this row
+
+*What is a run's output* is the catalogue's. *What can a person open* is the
+registry's. `.pyscf.log` is output and no parser claims it; `.spectra.json`
+is what a person should see in 2 of the 3 broken directories and is **not**
+output. An earlier version of this section told the discovery chain to "ask
+the catalogue", which would have handed the viewer a file `detect()` refuses
+and still answered `None` for both spectrum directories.
+
+**And the third directory's `None` is not a role-list bug at all.** Rung 3
+composes `<stem><role>` **with no attempt counter**, so it looks for
+`water_01_coarse.pyscf.log` while the file is
+`water_01_coarse-run0.pyscf.log`. `runfiles.find()` already returns every
+attempt sorted by run index; the chain hand-rolls `compose` + `isfile`, which
+is the door `find`'s own docstring says it replaces.
+
+#### Order of work
+
+Tests before code at every step: the mutation that restores the original bug
+currently leaves 417 tests green.
+
+| # | do | proves |
+|---|---|---|
+| **0** | revert the uncommitted attempt — it is a SECOND catalogue, stating the vocabulary in `_run_ending` that `runfiles.WRITTEN` already holds. Keep the `test_siesta_use_gpu.py` first-vs-last correction; re-land its `_pyscf_ending` and marker constants in step 2 | tree is HEAD + one correct test |
+| **a** | `runfiles`: the `output` column, 3 rows, `.out` gains `engine="siesta"`; `run_output_roles()` / `stdout_roles(engine)` / `engines()` | a declaration. Gate: `manifest(…, engine="pyscf")` stops naming `.out` |
+| **b** | the emitters name their end lines as constants; `_run_ending` grows the PySCF reader **importing them**, and `ending_of(path)` dispatching on `runfiles.canonical_role`; assert `set(READERS) == set(run_output_roles())` | the end text exists once. **Mutation gate:** change the emitter's constant → the reader's test fails |
+| **c** | `run_status` collects by `run_output_roles()`, reads by `ending_of`; the two conclusion readers collapse to one loop | **the 3 directories answer `finished`.** Gate: re-measure all 141 — the only differences are those 3 |
+| **d** | liveness → freshest run-output mtime; the speaker rule unchanged | a killed run reads `running` while the progress log is fresh, `stale` once nothing grows |
+| **e** | derive the engine→role map: `contract._STDOUT_SUFFIX`, `contract._ENGINES`, `_from_cluster`'s `.fdf→siesta`, `runwrap`'s `_ext`, **and `pyscf/input.py:261`'s banner** | one spelling of PySCF's stdout, for readers **and writers** |
+| **f** | `runstatus._OUTPUT_ROLES` → `run_output_roles()` | it expands to **11** roles today, including `.parse.log` — so a queued rung flips to `running` the moment molbuilder reads its directory. Latent (0 in `projects/`), one Watch poll away |
+| **g** | `openable_in` asks `runfiles` **and the registry**: an unconcluded progress log first, else the best file this run produced that a parser claims. Fix rung 3's lookup to `runfiles.find()` | the 2 spectrum directories become openable. **Gate: 141/141 adjudicated — 9 differ today, 2 of which are current false positives (`slurm.*.out`, which `detect()` then refuses)** |
+| **h** | delete `parse_dir`, `RunDirResult`, `JobDirParser`, the `DirParser` ABC, `_enumerate_files`; keep `is_run_dir`; drop `cli._trajectory_parser_for`'s **directory arm only** | `detect()` refuses a directory on its own; three CLI verbs get a clean refusal back **without a guard** |
+| **i** | sweep `model/parse.md` §§ 1/3/4/5–5.5, `base.py`'s DirParser rule, `architecture.md`, `process/testing.md`'s door map, and this section | rule first, restatements second |
+
+#### Validation — against runs we WATCH FINISH, not found directories
+
+The 141 directories in `projects/` are a **regression sweep only**: nobody
+established what state they are in, so agreeing with them proves inertness.
+Correctness is checked against jobs driven through the real UI to a known
+ending — **CO2 optimization and spectrum, in both flat and hierarchical
+layout** — so every expected answer is one we watched happen.
+
+| # | check | today |
+|---|---|---|
+| V1 | a finished run → `finished`, from its own stdout, with no molwatch footer | 3 say `running` |
+| V2 | the same directory → `openable_in` returns the file a person should see | `None` |
+| V3 | a killed run → `running` while the progress log is fresh; `stale` once nothing grows | cannot be asked |
+| V4 | a run whose optimizer package is missing (`SystemExit`, **no traceback**) → `failed` | cannot be asked |
+| V5 | deleting `.pyscf.log` from the catalogue makes a test FAIL | **417 stay green** |
+| V6 | `set(READERS) == set(run_output_roles())` | neither exists yet |
+| V7 | `run_status` median on the largest real PySCF directory | 21.6 ms — target < 3 ms |
+| V8 | a third engine is two edits | fourteen sites |
+
+#### Needs a ruling
+
+**`openable`'s preference order below rung 1.** 9 of 141 directories change;
+2 are today's false positives. The other 7 need a rule: does a directory whose
+only parseable file is a `.XV` or a hand-made `.xyz` offer it, or answer
+`None`? The generated CO2 jobs above are what this should be decided against.
+
+*(Settled, previously listed here in error: `.pyscf.log` does **not** get a
+FileParser. The frames live in `_geom_optim.xyz`, which already has one;
+`.pyscf.log` is the stdout capture, and stdout capture answers how a run
+ended — `ending_of`'s question, not the registry's.)*
 
 ---
 

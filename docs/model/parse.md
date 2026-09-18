@@ -702,6 +702,133 @@ finished result CITES it, and prep composes — `transport/compose.py`.)*
 
 
 
+### 5.5 A run's output, and what a person can open — two questions
+
+*(Written 2026-09-18, after PySCF's stdout was found to be collected by
+nobody and read by nobody: three finished runs reported `running`, the oldest
+for 97 days, and the viewer offered nothing to open. All three are
+spectrum decks, which write no molwatch log — so the only evidence of how
+they ended was the one file nothing read.)*
+
+#### The two questions are different, and they have different owners
+
+| | *what is this run's OUTPUT?* | *what can a PERSON open?* |
+|---|---|---|
+| owner | the **catalogue**, `runfiles.WRITTEN` | the **registry**, `detect()` |
+| decided by | a declared column | a parser's `can_parse` |
+| example that is one and not the other | `.pyscf.log` — output; **no parser claims it** | `.spectra.json` — openable; **not run output** |
+
+**Conflating them is the trap.** A discovery chain that "asks the catalogue"
+hands the viewer a file `detect()` refuses; a status probe that asks the
+registry misses the stdout that says how the run ended. **Neither question
+gets the other's answer, and `openable` gets no catalogue column.**
+
+#### A run directory holds four logs. They are not interchangeable.
+
+| file | what it is | the question it answers |
+|---|---|---|
+| `<job>.log` | the engine's OWN logger | SCF history, read as a companion |
+| `<job>_geom_optim.xyz` | the trajectory | frames — `PySCFOutFileParser` claims this, **not** the stdout |
+| `<job>.molwatch.log` | molbuilder's progress log, SEEDED at prep | live progress; how it ended *once its footer concludes* |
+| `<job>-runN.pyscf.log` / `.out` | the wrapper's **stdout capture** | **how the run ended** — finished, crashed, killed |
+
+#### The vocabulary — one column, three values
+
+```python
+class Artifact:
+    #: Does this file carry evidence of how the run went, and of which kind?
+    #:   "stdout"   -- exists because the PROCESS started, so it speaks
+    #:                 whether or not it has ended.  Block-buffered: its
+    #:                 mtime is NOT liveness.
+    #:   "progress" -- SEEDED at prep, so it speaks only once its footer
+    #:                 concludes; otherwise a seed outranks a real result.
+    #:   None       -- not run evidence.  It may still be VIEWABLE, which is
+    #:                 the registry's question, not this column's.
+    output: Optional[str] = None
+```
+
+Three rows carry it: `.out` (`stdout`, and it gains the `engine="siesta"` it
+lacks), `.pyscf.log` (`stdout`), `.molwatch.log` (`progress`). Derived views
+beside `roles_ending`: `run_output_roles()`, `stdout_roles(engine=None)`,
+`engines()`.
+
+**Why a column and not a boolean.** `output == "stdout"` **is** § 5.1's rule
+*"an engine's stdout speaks before it ends; a seeded log does not."* A boolean
+would force `run_output_roles()` to append `.molwatch.log` as a literal —
+putting membership back in a function while the row says nothing, which is
+the split that caused this.
+
+#### How a file ended — one reader per ROLE, never per engine
+
+```python
+READERS = {".out": …, ".pyscf.log": …, ".molwatch.log": …}
+def ending_of(path) -> RunEnding      # role from `runfiles.canonical_role`
+```
+
+**Dispatch is on the role. That is load-bearing:** a directory whose engine is
+unknown, or which holds two engines' outputs, needs no special case — each
+file is read by its own reader and § 5.1 picks the speaker.
+
+**A format molbuilder GENERATES does not get a sniffed reader.** Its end line
+is a string we print, so the **emitter declares the constant and the reader
+imports it** — the `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py:50`).
+PySCF's failure shapes are its own (`SystemExit` at `pyscf/input.py:378`, a
+traceback); SIESTA's `FATAL_MARKERS` are **not** shared — measured over 135
+real output files, its five OOM markers fire 0 times and the three that do
+fire are SIESTA's alone.
+
+#### Liveness is not the speaker
+
+`active` is § 5.1's pick — highest stage, newest mtime, concluded results
+only. **Staleness is measured on the FRESHEST run-output file**, because an
+engine's stdout is block-buffered: a real PySCF log grew 13 KB across 146 s,
+two flushes in the whole run. Asking the speaker's mtime reports a live run
+as stale.
+
+#### The rules
+
+**R-RO1 — the vocabulary binds WRITERS AND READERS.** No code outside
+`runfiles` may spell a run-output role: not a tuple, not an `.endswith`, not
+a glob, **and not a line of generated text.** The writer half is not
+hypothetical — `pyscf/input.py:261` prints an instruction telling a person to
+redirect PySCF's stdout to `.out`, the one spelling that disagrees with the
+wrapper. A generated program (shell, an emitted script, browser JS) takes its
+roles from the Python site that renders it, and **that site is bound.**
+
+**R-RO2 — one import surface per question.** Everything asked about a run
+directory is imported from the package that owns it: `molbuilder.parse.dirs`
+for status, discovery and the directory's own account of itself;
+`molbuilder.parse.contract` for the engine and the recorded contract. Never
+from `parse.dirs.job` or `parse.dirs.rundir` directly.
+
+#### The bundle is deleted
+
+`parse_dir`, `RunDirResult`, `JobDirParser` and the `DirParser` ABC go. They
+have zero production callers and zero field readers (§ 5.0), the consumer
+they were built for asks a LADDER question `jobset_status` already answers,
+and they are **not free**: registering `JobDirParser` made `detect()` answer
+for directories, which cost three CLI verbs their clean refusal — one became
+a silent infinite hang — and a guard in `cli.py` exists only to undo it.
+`can_parse`'s real question survives as `is_run_dir(dir) -> bool`, a plain
+function needing no ABC and no registry entry. A future HTTP surface that
+wants all four answers composes four calls in three lines.
+
+#### Adding an engine: two edits
+
+One `runfiles.WRITTEN` row (`engine=`, `output="stdout"`), and one entry in
+`READERS` whose reader imports that engine's emitter constants. Nothing else
+is touched. **Today the same addition touches fourteen sites** across two
+questions, and the generated deck's banner is wrong by default.
+
+#### Enforcement
+
+`set(READERS) == set(runfiles.run_output_roles())` — one test, and it is what
+keeps "two edits" true across the layer split. The rest of R-RO1 is a review
+obligation, not a lint: a source grep that hunts hand-written call sites is
+disqualified by `process/` convention, and the scope is `molbuilder/**.py`
+only — a fixture must be allowed to spell a real filename.
+
+
 ## 5b. The recorded contract — one deck defines the answer, or there is none
 
 `contract.contract_of(directory)` reads back **what a finished calculation was
