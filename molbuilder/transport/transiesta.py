@@ -6,7 +6,7 @@ set of emitters the two live writers reach into, plus the engine preflight:
 * :func:`_emit_transiesta_block` and :func:`_emit_geometry` — reused by
   `transport/deck.py`, the pipeline every one of the five rungs renders
   through.
-* :func:`_emit_basis_and_xc`, :func:`_compute_cell_from_extents` and
+* :func:`_compute_cell_from_extents` and
   :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
   `extract_electrode_model` derives the lead `compose.py` hands to prep.
 * :func:`electrode_hs_stem` — the ONE spelling of an electrode run's
@@ -36,15 +36,12 @@ import numpy as np
 
 from ..config.transport import (
     ELECTRODE_LABEL_SUFFIX,
-    EXPECTED_REGIONS_2T,
-    REGION_BRIDGE,
     REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
     TransportConfig,
     is_electrode_label,
 )
-from ..issues import Issue
 from ..structure import Structure
 
 
@@ -323,28 +320,18 @@ def _emit_geometry(struct: Structure,
     return lines
 
 
-def _emit_basis_and_xc(cfg: TransportConfig) -> List[str]:
-    """Basis set + XC + mesh cutoff + electronic temperature.
-
-    Every value comes from ``cfg`` — the ONE object the electrode,
-    seed and device decks all render from, which is what makes the
-    transport ladder's electronic contract identical by construction
-    (transport-design.md § 3).  Basis / XC / energy shift were
-    hard-coded here (DZP / PBE / 0.01 Ry) until 2026-08-28; the
-    composite fills the fields from the cited junction's own .fdf.
-    """
-    return [
-        "# --- Basis + XC ---",
-        "",
-        f"PAO.BasisSize          {cfg.basis_size}",
-        f"PAO.EnergyShift        {cfg.energy_shift_ry:g} Ry",
-        f"XC.functional          {cfg.xc_functional}",
-        f"XC.authors             {cfg.xc_authors}",
-        f"MeshCutoff             {cfg.siesta_mesh_cutoff_ry} Ry",
-        f"ElectronicTemperature  {cfg.electronic_temperature_k:.1f} K",
-        "",
-    ]
-
+# `_emit_basis_and_xc` DELETED 2026-09-18 -- ZERO call sites, and it could
+# never gain one.  `deck.py`'s header states why: "its six keywords are
+# exactly `BASIS_SECTION` + `XC_SECTION` + `electronic_temperature`, and
+# lifting it beside them would write each twice -- which `layout.check_rules`
+# now catches."  The composite takes basis/XC from the catalogue sections.
+#
+# It outlived its caller (`render_electrode_fdf`, deleted 2026-09-17) by a
+# day in code and longer in prose: `wizard.py` imported it without calling
+# it, this module's header called it "reused by transport/wizard.py", the
+# tombstone below listed it among symbols with "real callers", and
+# `plan.md` listed it under "NOT redundant, so not deleted by association".
+# Four statements, one dead function.
 
 # `_emit_k_mesh` DELETED 2026-09-17 with `render_script`, its only caller.
 # The live deck writes the transverse grid through `deck.py`'s own
@@ -587,8 +574,8 @@ def _emit_transiesta_block(struct: Structure,
         for _label, block_name, _idxs in electrodes:
             lines.extend([
                 f"%block TS.ChemPot.{block_name}",
-                f"  mu  0.0  # multi-terminal placeholder — set "
-                f"explicitly per chempot",
+                "  mu  0.0  # multi-terminal placeholder — set "
+                "explicitly per chempot",
                 f"%endblock TS.ChemPot.{block_name}",
                 "",
             ])
@@ -724,7 +711,7 @@ def _emit_transiesta_block(struct: Structure,
 # `_ENGINE_VALIDATORS[TransportConfig]` in `validation/__init__.py`.  **Nothing
 # validates a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
 # (`engines/transport.md` 2a.14), and the two sites that still BUILD a
-# `TransportConfig` -- `deck.py::_transport_view` and `stages.py::config_for` --
+# `TransportConfig` -- `deck.py::_legacy_view` and `stages.py::config_for` --
 # build it as a projection to feed the lifted NEGF block emitter and never
 # validate it.  So the registration dispatched for nothing.
 #
@@ -753,7 +740,20 @@ def _emit_transiesta_block(struct: Structure,
 #                                   `config.bias_voltage_v` (re-homed 2026-09-16)
 #
 # What the module still exports is the emission library the live deck path
-# reuses -- `_emit_geometry`, `_emit_basis_and_xc`, `_emit_transiesta_block`,
-# `_find_electrode_regions`, `electrode_hs_stem`, `_compute_cell_from_extents`,
-# `axis_vacuum`, `_lattice_block`.  Those have real callers in
-# `transport/deck.py` and `transport/wizard.py`.
+# reuses.  MEASURED 2026-09-18, because this list used to assert callers that
+# do not exist:
+#
+#   `_emit_geometry` ............. `deck.py` (all three deck shapes, so every
+#                                  one of the five rungs)
+#   `_emit_transiesta_block` ..... `deck.py`, the `negf` shape -- the device
+#                                  and transmission rungs
+#   `electrode_hs_stem` .......... `stages.py` x2 and `jobset/prep.py` -- NOT
+#                                  `deck.py`/`wizard.py`, which the old list
+#                                  claimed
+#   `_find_electrode_regions` .... `wizard.py`, plus internal
+#   `_compute_cell_from_extents` . `wizard.py`, plus internal
+#   `axis_vacuum`, `_lattice_block` . INTERNAL ONLY -- reached through
+#                                  `_emit_geometry`, never imported out
+#
+# (`_emit_basis_and_xc` was in this list too, with zero callers anywhere.
+# Deleted 2026-09-18; see the note where it stood.)

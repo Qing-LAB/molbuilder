@@ -63,9 +63,10 @@ def detect(path: Path) -> Union[Type[FileParser], Type[DirParser]]:
     `model/parse.md` § 3's table had it right.)
 
     If ``path`` is a directory, only DirParsers are tried; if
-    ``path`` is a file, only FileParsers are tried.  ``TextParser``
-    has no detection by design (no path to inspect) -- callers
-    pick TextParser implementations explicitly.
+    ``path`` is a file, only FileParsers are tried.  *(A ``TextParser``
+    tier stood here with "no detection by design"; the ABC retired
+    2026-09-05 and this sentence outlived it, instructing callers to pick
+    implementations that no longer exist.)*
 
     Raises :exc:`UnknownFormatError` when no parser matches, with
     a tailored error message listing every registered parser of
@@ -146,9 +147,20 @@ def parse(path: Path) -> ParseResult:
 def parse_dir(path: Path) -> ParseResult:
     """Force-detect among DirParsers only.
 
-    Used by JobMonitor, Results, and bundle handoff where the
-    contract is "this is a project dir".  Raises
-    :exc:`UnknownFormatError` if the path is not a directory.
+    Raises :exc:`UnknownFormatError` if the path is not a directory.
+
+    **No production caller yet** (2026-09-18).  ``JobDirParser`` is
+    registered behind it since `plan.md` § 5c step 1, and `web/watch`
+    reaches the discovery chain through the module-level
+    ``rundir.openable_in`` rather than through here -- correctly, since it
+    wants one field and this composes six.  The consumer this door is FOR
+    is the Results file picker, which is a browser and needs an HTTP
+    surface (§ 5c, the one open row).
+
+    *(This said "Used by JobMonitor, Results, and bundle handoff".
+    ``JobMonitor`` has never existed anywhere in the tree; bundle handoff
+    retired 2026-08-29 with ``BundleDirParser``; Results has never called
+    it.  Three named consumers, none real.)*
     """
     path = Path(path)
     if not path.is_dir():

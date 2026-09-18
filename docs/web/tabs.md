@@ -471,9 +471,14 @@ workstream (`plans/plan.md` **W15**).
 - `test_docs_tab.py` — the Documents tab: the list groups every `docs/*.md`,
   `read` returns text + title, and the path-safety gate rejects traversal /
   non-`.md` / outside-`docs`.
-- `test_transport_render_endpoint.py`, `test_transport_transiesta.py`,
-  `test_transport_generate_e2e.py`, `test_transport_preflight.py` — the transport
-  render path, the engine, end-to-end generate, preflight.
+- *(Four transport files stood here — `test_transport_render_endpoint.py`,
+  `test_transport_transiesta.py`, `test_transport_generate_e2e.py`,
+  `test_transport_preflight.py` — for "the transport render path, the engine,
+  end-to-end generate, preflight". **All four are absent from `tests/`**: the
+  render endpoint, the engine and the preflight were deleted 2026-09-17 and
+  this list was not swept. The transport surface is covered by
+  `test_transport_prep.py`, `test_transport_record.py`, `test_transport_cell.py`
+  and `test_transport_wizard.py`.)*
 - `test_structure_save_endpoint.py` — the server end of § 6: the route, the
   pair it writes, and the `409 needsOverwrite` contract.
 - `test_molview_files_door_js.py` — the door § 6 goes through.

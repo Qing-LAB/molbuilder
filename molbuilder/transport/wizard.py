@@ -21,8 +21,13 @@ Guaranteed-by-construction invariants
   the device cross-section exactly.
 * **I7 (transverse k):** the electrode ``(kx, ky)`` are the device's
   ``k_mesh_transverse``.
-* **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** emitted from the
-  *same* ``_emit_basis_and_xc(cfg)`` the device uses.
+* **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** the lead and the
+  device render them from the **same catalogue sections**
+  (``BASIS_SECTION`` / ``XC_SECTION`` + ``electronic_temperature``), so the
+  electronic contract is identical by construction.  *(This said "the same
+  ``_emit_basis_and_xc(cfg)``" until 2026-09-18; that emitter lost its
+  caller on 2026-09-17 and was deleted -- lifting it beside the catalogue
+  sections would write each keyword twice.)*
 * **I9 (electrode kz dense) / I13 (writes ``.TSHS``):** set here.
 
 What the USER must still verify (warned, not guaranteed)
@@ -46,16 +51,14 @@ writes ``<label>.TSHS`` for the device's ``TS.Elec.<name>`` reference.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 
 from ..cell import LAYER_TOL_ANG, bulk_z_period, detect_layers
-from ..config.transport import TransportConfig
 from ..structure import Structure
 from .transiesta import (
     _compute_cell_from_extents,
-    _emit_basis_and_xc,
     _find_electrode_regions,
 )
 

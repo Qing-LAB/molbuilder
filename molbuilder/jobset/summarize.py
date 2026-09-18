@@ -24,7 +24,6 @@ identifier, never a parser target (`job-contracts.md` § 6.3).
 from __future__ import annotations
 
 import datetime
-import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -293,8 +292,13 @@ def _read_environment(bundle: Path) -> Dict:
     return env.to_dict() if env is not None else {}
 
 
-def _norm(key: str) -> str:
-    return key.lower().replace(".", "").replace("-", "").replace("_", "")
+#: FDF KEYWORD MATCHING, FROM THE MODULE THAT OWNS IT.  `parse/fdf.py::_norm`
+#: is fdf's real rule -- case-insensitive and blind to ``.``, ``-`` and ``_``,
+#: so SIESTA reads ``MeshCutoff``, ``Mesh.Cutoff`` and ``mesh_cutoff`` as one
+#: keyword.  A character-for-character copy stood here until 2026-09-18; it
+#: happened to agree, which is the only reason nothing had broken.  One copy
+#: of a matching rule is one chance for it to drift from the engine.
+from ..parse.fdf import _norm   # noqa: E402  -- fdf's own matching rule
 
 
 def _read_system(bundle: Path) -> Dict:

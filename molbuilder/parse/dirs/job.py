@@ -34,7 +34,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from molbuilder.identity import parse_stage_token
 
@@ -42,13 +42,20 @@ from molbuilder.identity import parse_stage_token
 # Run-state detection is fully delegated to the engine trajectory
 # parsers (detect().parse() -> traj.run_state); the end-of-run and
 # failure markers live in engines/siesta.py + engines/pyscf.py, NOT
-# here — the decoder never greps .out content itself (enforced by
-# the engine parsers own it).  This cited
-# `test_no_direct_out_grep_in_decoder` as the enforcing test until
-# 2026-09-05; that lint was retired with the decoder on 2026-09-04 --
-# its whole body was `assert src.count("read_text") < 8`.
+# here.  Nothing in this module greps .out content: the engine parsers
+# own how a run ended, and this module owns only the two questions no
+# single file can answer (which file speaks, and staleness).
+#
+# *(Those three lines used to end "(enforced by the engine parsers own
+# it)" -- two half-sentences spliced -- and cited
+# `test_no_direct_out_grep_in_decoder` as the enforcing test "until
+# 2026-09-05" one line before saying it retired on 2026-09-04.  The lint's
+# whole body was `assert src.count("read_text") < 8`; it went with the
+# decoder, and nothing replaced it because the rule is structural now.)*
 
-# Default CG-step threshold for cg_step_milestone events.
+# (`cg_step_milestone` had a threshold constant here.  The constant went
+# with the decoder on 2026-09-04; this comment did not, and `cg_step_milestone`
+# now occurs exactly once in the tree -- in the sentence naming it.)
 
 
 # ---- helpers --------------------------------------------------------- #
@@ -105,32 +112,45 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
     answer, where the directory has already selected the stage.
     """
+    from molbuilder.runfiles import find_by_role
+
     by_kind: Dict[str, List[Path]] = {
         "fdf": [], "out": [], "xv": [], "struct_out": [],
         "molstruct_json": [], "ani": [], "molwatch": [],
     }
-    for child in sorted(run_dir.glob(match)):
-        if not child.is_file():
-            continue
-        name = child.name
-        if name.endswith(".fdf"):
-            by_kind["fdf"].append(child)
-        elif name.endswith(".out"):
-            by_kind["out"].append(child)
-        elif name.endswith(".XV"):
-            by_kind["xv"].append(child)
-        elif name.endswith(".STRUCT_OUT"):
-            by_kind["struct_out"].append(child)
-        elif name.endswith(".molstruct.json"):
-            by_kind["molstruct_json"].append(child)
-        elif name.endswith(".ANI"):
-            by_kind["ani"].append(child)
-        elif name.endswith(".molwatch.log"):
-            by_kind["molwatch"].append(child)
+    # THE NARROWING FIRST, because it is `match`'s whole job and no role
+    # search takes a glob: this is the set of files this rung owns.
+    narrowed = {c for c in run_dir.glob(match) if c.is_file()}
+
+    # ROLES THE CATALOGUE DECLARES come from the catalogue.  These three
+    # were spelled `name.endswith(".fdf")` here until 2026-09-18 -- the role
+    # vocabulary written outside the module that declares it, which is the
+    # exact case `runfiles.find_by_role` says it exists to end, and which
+    # every sibling in this package converted on 2026-09-08
+    # (`atom_metadata.py`, `contract.py`, `rundir.py`).
+    for role, bucket in ((".fdf", "fdf"), (".out", "out"),
+                         (".molwatch.log", "molwatch")):
+        by_kind[bucket] = sorted(p for p in find_by_role(run_dir, role)
+                                 if p in narrowed)
+
+    # ...AND THE ENGINE'S OWN OUTPUTS STAY LITERAL, because molbuilder
+    # declares no vocabulary for them: `.XV`, `.STRUCT_OUT` and `.ANI` are
+    # SIESTA's names for SIESTA's files and appear in no `runfiles.WRITTEN`
+    # row (`projects.py` states the boundary).  Asking `find_by_role` for
+    # one would be refused, rightly.
+    for suffix, bucket in ((".XV", "xv"), (".STRUCT_OUT", "struct_out"),
+                           (".molstruct.json", "molstruct_json"),
+                           (".ANI", "ani")):
+        by_kind[bucket] = sorted(p for p in narrowed
+                                 if p.name.endswith(suffix))
     return by_kind
 
 
-# ---- plots from .out files ------------------------------------------- #
+# ---- how each result file ENDED ------------------------------------- #
+#
+# (Headed "plots from .out files" until 2026-09-18.  No plot has been built
+# here since 2026-09-04 -- building them and throwing them away to reach one
+# field is what got the decoder deleted, as this module's docstring says.)
 
 
 def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
@@ -250,7 +270,7 @@ def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
 
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str]
-                  ) -> Dict[str, Any]:
+                  ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``.out`` plus each concluded molwatch log
     (``running-a-job.md`` § 4)."""

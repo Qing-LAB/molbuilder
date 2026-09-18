@@ -1,14 +1,15 @@
 """Abstract base classes for the parse module.
 
-Per ``docs/model/parse.md`` § 1.  Three ABCs, one
-discriminator per scope (file / text body / directory).  All
-concrete parsers subclass exactly one of these.
+Per ``docs/model/parse.md`` § 1.  **Two** ABCs, one discriminator per
+scope (file / directory).  All concrete parsers subclass exactly one.
+*(Three until 2026-09-05, when ``TextParser`` retired -- see below.  The
+count here still said three until 2026-09-18.)*
 
 Forbidden by the doc:
 * (TextParsers did NO I/O; the ABC retired 2026-09-05 -- see below.)
 * FileParsers do NO subprocess / network / threads.
-* DirParsers MUST compose registered FileParsers + TextParsers;
-  no inline file-level parsing.
+* DirParsers MUST compose registered FileParsers; no inline file-level
+  parsing.  *(Said "FileParsers + TextParsers" until 2026-09-18.)*
 """
 
 from __future__ import annotations
@@ -93,13 +94,19 @@ class FileParser(ABC):
 
 class DirParser(ABC):
     """One directory → one :class:`ParseResult`, composed from
-    per-file + per-text parsers PLUS directory-level invariants
+    per-file parsers PLUS directory-level invariants
     (cross-file consistency, status state machine, stage ordering).
 
-    Concrete subclasses MUST go through the parse registry for
-    every file they read (or directly invoke a known FileParser
-    class).  They MUST NOT inline file-level parsing logic that
+    Concrete subclasses MUST go through the parse registry for every
+    file they read.  They MUST NOT inline file-level parsing logic that
     duplicates a registered parser.
+
+    *(This licensed "(or directly invoke a known FileParser class)" until
+    2026-09-18 -- which is exactly what ``registry.py``'s own header
+    FORBIDS: "Callers MUST NOT import a parser class directly + call its
+    methods -- go through the registry so registration changes propagate."
+    Two files in one package, opposite rules, and the registry's is the one
+    that has a reason attached, so the parenthetical went.)*
     """
     name:   str
     label:  str

@@ -10,7 +10,7 @@ Public surface:
   generated blocks, which need no detection — they moved to the
   module that writes them, `script_emit`.  `plans/plan.md` § 5d.)*
 * Result types — :class:`ParseResult` and its 5 frozen subclasses
-  (trajectory / structure / sidecar / script / instrument —
+  (trajectory / structure / sidecar / instrument / rundir —
   ``BundleResult`` retired 2026-08-29 with calculation-to-calculation
   passing, ``JobResult`` 2026-09-04 with the run decoder).
 * Registry / dispatch — :func:`detect`, :func:`parse`,

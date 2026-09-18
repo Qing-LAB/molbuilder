@@ -102,8 +102,10 @@ issue**, never as silent absorption.
 `spectra/…` site. It is the **template** the other engines adopt stage by stage: they
 already deliver boundary conditions verbatim (Stage 2) and round-trip the labels in the
 script's ATOM-METADATA block (§ 2). The Stage-3 divergence check (A) is spectra-specific
-so far, but the unrecognized-label notice (B) is not — transport's engine preflight
-already warns on region labels it doesn't recognise (`transiesta.py:748`). ("spectra" =
+so far, but the unrecognized-label notice (B) is not — the unconsumed-region-label
+warning already exists, in `validation/sidecar.py::check_unconsumed_region_labels`.
+*(This cited "transport's engine preflight (`transiesta.py:748`)" until 2026-09-18;
+that preflight was deleted 2026-09-17 and the check re-homed.)* ("spectra" =
 the vibrational / IR-spectrum engine that rides
 on PySCF; it lives in its own `spectrum-calculation` domain, not among the docs mapped
 above, but it's the reference for this contract.)

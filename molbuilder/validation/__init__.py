@@ -4,9 +4,13 @@ The check list lives in ``docs/design.md`` § "Validation pass
 (pre-emission)" and the machinery in
 ``docs/science/validation.md``.  Generators
 (siesta.input.render_fdf, pyscf.input.render_script, spectra
-preflight, transport.transiesta.validate) call :func:`validate`
-before writing output; errors block emission, warnings print to
-stderr.
+preflight) call :func:`validate` before writing output; errors block
+emission, warnings print to stderr.
+
+*(This named a fourth, ``transport.transiesta.validate``, which has never
+existed under that or any name.  Transport's checks reach `validate` the
+same way every rung does -- each transport rung resolves a `SiestaConfig`
+and goes through the SIESTA validator.)*
 
 Design principles realised by this module:
 

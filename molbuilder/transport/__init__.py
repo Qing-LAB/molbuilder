@@ -15,26 +15,26 @@ here:
     template, once, at ``jobset init``.
   * :mod:`.record`    — ``summarize run``'s ``<label>.transport.json``
     (``molbuilder/transport-result@1``).
-  * :mod:`.transiesta` — the TranSIESTA deck emitter + preflight
-    (registered engine); :mod:`.wizard` — the bulk-electrode derivation;
-    :mod:`.preflight` — the cross-deck consistency checks; :mod:`.sort`
-    — the categorical atom sort.
-  * :mod:`.engine_base` — the :class:`TransportEngine` Protocol +
-    registry; :mod:`.results` — the engine-agnostic
-    :class:`TransportResults` dataclass (the pre-composite wire shape,
-    still the sidecar's type).
+  * :mod:`.transiesta` — the TranSIESTA **emission library**: the
+    geometry table every rung writes and the NEGF electrode block the
+    device and transmission rungs write, reused unchanged by
+    :mod:`.deck`; :mod:`.wizard` — the bulk-electrode derivation;
+    :mod:`.sort` — the categorical atom sort.
 
-A backend that registers itself (``@register_engine``) also adds its
-choice to ``TransportConfig.engine`` in the same commit — the form
-offers only registered engines.
+**THERE IS NO ENGINE REGISTRY, and this paragraph used to say there was.**
+Until 2026-09-18 the list above also named ``.preflight``, ``.engine_base``
+and ``.results`` — *three modules that no longer exist on disk* — described
+``.transiesta`` as a "registered engine", and told a reader that a backend
+registers itself with ``@register_engine``, a decorator that exists
+nowhere.  Transport's registry went on 2026-09-17 with ``TransiestaEngine``;
+the sweep that day corrected the same claim in ``transiesta.py`` and
+``spectra/methods.py`` and missed this file, whose whole docstring was the
+claim.  A new engine is **described and rendered through ``spec_for``**
+(`engines/overview.md` § 5); it does not register.
 """
 
-
-# Concrete engines self-register on import via the
-# ``@register_engine`` decorator.  Importing the module here at
-# package-load time guarantees the registry is populated whenever
-# anything reaches into :mod:`molbuilder.transport` (web blueprint,
-# CLI, tests).  Mirrors the per-engine ``auto_defaults`` pattern
-# from the chemistry middle layer.
-from . import transiesta as _transiesta  # noqa: F401
+# NOT a side-effect import any more.  ``from . import transiesta`` stood
+# here to "guarantee the registry is populated" -- there is no registry, and
+# every user of the emission library imports it directly (`deck.py`,
+# `wizard.py`, `stages.py`, `jobset/prep.py`).
 
