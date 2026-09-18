@@ -63,123 +63,202 @@ def _newest(paths: List[str]) -> Optional[str]:
     return max(real, key=lambda p: os.path.getmtime(p))
 
 
+def _claimed(path: str) -> bool:
+    """Does a registered parser claim this file? — the REGISTRY's question.
+
+    The door never offers a file `detect()` refuses.  It did until
+    2026-09-18: pointed at a finished spectrum directory with no molwatch
+    log, the chain returned `<job>_<stage>.log` — PySCF's own verbose
+    logger, which no parser claims — and the caller's very next step was
+    `detect()`, which refused it.  *What is a run's output* and *what can a
+    person open* are different questions with different owners
+    (`model/parse.md` § 5.5); this is the second one, and the registry owns
+    it.
+    """
+    from ..registry import detect
+    from ..errors import ParseError
+    try:
+        detect(path)
+        return True
+    except (ParseError, OSError, ValueError, LookupError):
+        return False
+
+
+def _calculation_of(directory: str) -> Optional[str]:
+    """What calculation is this? — the DIRECTORY's own account of itself.
+
+    `task.json` is the file `prep` reads, so this is the same fact the run
+    was built from rather than a guess off the filenames.  The name and the
+    reader are `molbuilder.task`'s; nothing here re-spells either.
+
+    ``None`` when the directory does not say — one molbuilder did not write,
+    or one prepped before the key existed.  That is a real answer, not a
+    failure: the search below then asks what ANY run produces.
+    """
+    from molbuilder.task import FILENAME as _TASK, read_json as _read_json
+    try:
+        return (_read_json(os.path.join(directory, _TASK)) or {}
+                ).get("calculation") or None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _search_roles() -> "List[str]":
+    """The roles to try, in order, for a directory that did not say what it is.
+
+    Built from the catalogue, not listed here: the PROGRESS channel first
+    (every run has one), then whatever any calculation names as its product,
+    then the trajectory, then the engine's stdout — which for SIESTA IS a
+    trajectory source, and for PySCF is refused by the registry and so drops
+    out of this list on its own.
+    """
+    from molbuilder.runfiles import WRITTEN, result_roles, stdout_roles
+    out = list(result_roles(None))
+    out += [a.role for a in WRITTEN if a.calculation and a.role not in out]
+    if ROLE_GEOM_TRAJ not in out:
+        out.append(ROLE_GEOM_TRAJ)
+    out += [r for r in stdout_roles() if r not in out]
+    return out
+
+
 def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     """*What should a viewer load here?* — and the trail of what was tried.
 
-    **Absorbed verbatim from `web/blueprints/watch.py::_resolve_run_directory`
-    2026-09-18** (`plans/plan.md` § 5c step 1).  Behaviour is unchanged on
-    purpose: § 5.2 calls this "the discovery chain, unchanged in behaviour",
-    and the migration proves equivalence before any caller moves.
+    **THREE QUESTIONS, THREE OWNERS**, which is the same shape `run_status`
+    took on 2026-09-18 and the reason this is no longer a ladder:
 
-    Four rungs, first hit wins (`job-contracts.md` § 2.4):
+      | what calculation is this?  | the DIRECTORY | `task.json`              |
+      | what does it produce?      | the CATALOGUE | `runfiles.result_roles`  |
+      | can anything open it?      | the REGISTRY  | `detect()`               |
 
-      1. any ``*.molwatch.log`` — newest, which is the staged run's latest;
-      2. ``*.fdf`` → its ``SystemLabel`` → ``<label>.molwatch.log``, ``.out``;
-      3. ``*.py`` → its ``JOB`` → ``<job>.molwatch.log``, ``.log``,
-         ``<job>_geom_optim.xyz`` — **and the deck filename's stem tried the
-         same way**, because a staged deck is ``<job>_<token>.py`` while
-         ``JOB`` stays bare, so every staged spelling was the unstaged one
-         until 2026-08-19 and a staged run without a molwatch seed resolved
-         to nothing;
-      4. generic: ``run.out``, ``siesta.log``, ``*.out``, ``*_geom_optim.xyz``.
+    **The calculation decides, so there is no preference order to tune.**  A
+    vibration run is FOR its `.spectra.json` — the deck rewrites it
+    atomically at every phase boundary and it carries its own `phase_*`
+    flags, so it is the live view during the run and the result after it.  An
+    optimization is for its trajectory.  Neither switches at conclusion; the
+    "unconcluded progress log first" rule this replaces was an
+    optimization-shaped rule generalised to every kind, and it sent every
+    spectrum run's viewer to a molwatch log holding one `initial_preview`
+    block.
+
+    WHAT REMAINS A SEARCH, and why: a directory that does not say what it is.
+    Then the deck is asked for its label and the label's files are looked up
+    — through `runfiles.find`, which knows the attempt counter, where this
+    hand-rolled `compose` + `isfile` did not and so missed every
+    `-run<N>` spelling.  Every candidate goes through the registry either
+    way.
 
     ``attempts`` is not decoration: it is the BODY of the refusal a person
-    reads when nothing matched, and it moves with the chain so the message
-    cannot drift from the search.
+    reads when nothing matched, and it moves with the search so the message
+    cannot drift from it.
     """
-    from molbuilder.runfiles import (RunFileError, compose as _rf,
-                                     find_by_role)
+    from molbuilder.runfiles import (RunFileError, find, find_by_role,
+                                     result_roles)
 
     attempts: List[str] = []
 
     def by_role(role: str) -> List[str]:
         return [str(p) for p in find_by_role(directory, role)]
 
-    # 1. a molwatch log directly in the directory
-    log_hits = by_role(".molwatch.log")
-    attempts.append(f"*.molwatch.log -> {len(log_hits)} match(es)")
-    if log_hits:
-        return _newest(log_hits), attempts
+    def offer(paths: List[str], how: str) -> Optional[str]:
+        """The newest of *paths* the REGISTRY claims, with the trail written."""
+        for cand in sorted(paths, key=lambda p: os.path.getmtime(p)
+                           if os.path.isfile(p) else 0.0, reverse=True):
+            if _claimed(cand):
+                attempts.append(f"{how} -> {os.path.basename(cand)}")
+                return cand
+            attempts.append(f"{how} -> {os.path.basename(cand)}: "
+                            f"no parser claims it, not offered")
+        return None
 
-    # 2. SIESTA: the deck names the label, the label names the outputs
+    # 1. WHAT THIS CALCULATION PRODUCES, from the catalogue.
+    calc = _calculation_of(directory)
+    attempts.append(f"calculation: {calc or '(not stated in task.json)'}")
+    for role in result_roles(calc):
+        hits = by_role(role)
+        attempts.append(f"*{role} -> {len(hits)} match(es)")
+        chosen = offer(hits, f"*{role}")
+        if chosen:
+            return chosen, attempts
+
+    # 2. THE DIRECTORY DID NOT SAY WHAT IT IS, so the DECK is asked for the
+    #    label and the label's own files are looked up.  Both engines, one
+    #    loop: the deck role and the reader that pulls the label out of it
+    #    are the only per-engine facts, and neither is a role vocabulary.
     from molbuilder.parse.fdf import system_label
-    fdf_hits = by_role(".fdf")
-    attempts.append(f"*.fdf -> {len(fdf_hits)} match(es)")
-    for fdf in fdf_hits:
-        label = system_label(_read_head(fdf))
-        if not label:
-            attempts.append(
-                f"  {os.path.basename(fdf)}: SystemLabel not found")
-            continue
-        for role in (".molwatch.log", ".out"):
-            base = _rf(label, role)
-            cand = os.path.join(directory, base)
-            attempts.append(f"  -> {base}: "
-                            f"{'found' if os.path.isfile(cand) else 'missing'}")
-            if os.path.isfile(cand):
-                return cand, attempts
-
-    # 3. PySCF: the deck names JOB, and the deck's own stem carries the rung
     from molbuilder.pyscf.input import job_name
-    py_hits = by_role(".py")
-    attempts.append(f"*.py -> {len(py_hits)} match(es)")
-    for py in py_hits:
-        name = job_name(_read_head(py))
-        if not name:
-            attempts.append(f"  {os.path.basename(py)}: JOB not found")
-            continue
-        py_stem = os.path.splitext(os.path.basename(py))[0]
-        stems = [name] if py_stem == name else [name, py_stem]
-        for stem in stems:
-            for role in (".molwatch.log", ".log", ROLE_GEOM_TRAJ):
-                try:
-                    base = _rf(stem, role)
-                except RunFileError:
-                    # A STEM OFF DISK IS NOT NECESSARILY A LABEL.  `py_stem`
-                    # is a FILENAME, so `my.job.py` yields `my.job`, which
-                    # § 2.1 refuses -- rightly, a dotted label cannot be read
-                    # back out of a filename.  A RESOLVER SAYS WHAT IT TRIED
-                    # AND MOVES ON; raising here turned the Watch tab into a
-                    # 500 for a person who put a dot in a filename.
-                    attempts.append(
-                        f"  {stem}: not a run-file label (§ 2.1), skipped")
-                    break
-                cand = os.path.join(directory, base)
-                attempts.append(
-                    f"  -> {base}: "
-                    f"{'found' if os.path.isfile(cand) else 'missing'}")
-                if os.path.isfile(cand):
-                    return cand, attempts
+    stems: List[str] = []
+    for deck_role, label_of in ((".fdf", system_label), (".py", job_name)):
+        deck_hits = by_role(deck_role)
+        attempts.append(f"*{deck_role} -> {len(deck_hits)} match(es)")
+        for deck in deck_hits:
+            label = label_of(_read_head(deck))
+            if label and label not in stems:
+                stems.append(label)
+            # THE DECK'S OWN STEM TOO: a staged deck is `<job>_<token>` while
+            # the label inside it stays bare, so a staged run whose seed is
+            # missing resolved to nothing until 2026-08-19.
+            stem = os.path.splitext(os.path.basename(deck))[0]
+            if stem not in stems:
+                stems.append(stem)
 
-    # 4. generic names, for a directory molbuilder did not write
-    for fname in ("run.out", "siesta.log"):
-        cand = os.path.join(directory, fname)
-        attempts.append(f"{fname}: "
-                        f"{'found' if os.path.isfile(cand) else 'missing'}")
-        if os.path.isfile(cand):
-            return cand, attempts
-    out_hits = by_role(".out")
-    if out_hits:
-        # The trail names the file actually returned -- `attempts` is the
-        # body of the refusal a person reads (§ 5.2).
-        chosen = _newest(out_hits)
-        attempts.append(f"*.out -> picked {os.path.basename(chosen or '')}")
-        return chosen, attempts
-    # ONE glob, because there is one spelling: the role is `_geom_optim.xyz`
-    # and everything in front of it -- label, and the token when there is one
-    # -- is what the star covers.
-    #
-    # NOT `find_by_role`: an UNDERSCORE role cannot be told from a stage name
-    # without a label, and this rung has none -- the whole point of rung 4 is
-    # a directory whose label nothing has stated.  `find_by_role` raises for
-    # exactly that reason, which the first draft of this move learnt by
-    # running it (2026-09-18, the equivalence proof).
-    optim_glob = "*" + ROLE_GEOM_TRAJ
-    optim_hits = glob.glob(os.path.join(directory, optim_glob))
-    if optim_hits:
-        chosen = _newest(optim_hits)
-        attempts.append(f"{optim_glob} -> "
-                        f"picked {os.path.basename(chosen or '')}")
+    # ROLE FIRST, THEN NEWEST -- and the order between those two is the whole
+    # rule.  The role says what the file IS; mtime picks WHICH ONE, which in
+    # the flat shape is the latest rung (`model/parse.md` § 5.1, the same rule
+    # `run_status` picks `active` by).  Gathering across every stem before
+    # offering is what keeps that true: returning on the first deck handed a
+    # four-stage flat run its FIRST stage, because decks sort by name
+    # (measured 2026-09-18 on four real directories).
+    for role in _search_roles():
+        pool: List[str] = []
+        for s in stems:
+            try:
+                pool += [str(path) for path, _rec in
+                         find(directory, s, role=role,
+                              roles=(ROLE_GEOM_TRAJ,))]
+            except RunFileError:
+                # A STEM OFF DISK IS NOT NECESSARILY A LABEL: `my.job.py`
+                # yields `my.job`, which § 2.1 refuses -- rightly, a dotted
+                # label cannot be read back out of a filename.  A RESOLVER
+                # SAYS WHAT IT TRIED AND MOVES ON; raising here turned the
+                # Watch tab into a 500 for a person who used a dot.
+                attempts.append(f"  {s}: not a run-file label (§ 2.1)")
+                continue
+        if not pool:
+            continue
+        attempts.append(f"  *{role} across {len(stems)} label(s)"
+                        f" -> {len(pool)} match(es)")
+        chosen = offer(pool, f"  *{role}")
+        if chosen:
+            return chosen, attempts
+
+    # 3. NO DECK NAMED A LABEL, so the roles are searched WITHOUT one.
+    #    `find_by_role` is the label-less half of the same door, and it takes
+    #    a dotted role only -- which is its own rule, not a limitation
+    #    invented here: an underscore role cannot be told from a stage name
+    #    without a label, so the trajectory keeps the glob below.
+    for role in _search_roles():
+        if not role.startswith("."):
+            continue
+        hits = by_role(role)
+        if not hits:
+            continue
+        attempts.append(f"*{role} (no label) -> {len(hits)} match(es)")
+        chosen = offer(hits, f"*{role}")
+        if chosen:
+            return chosen, attempts
+
+    # 4. GENERIC NAMES, for a directory molbuilder did not write at all.
+    generic = [os.path.join(directory, n) for n in ("run.out", "siesta.log")]
+    # ONE glob for the trajectory, because there is one spelling: the role is
+    # `_geom_optim.xyz` and the star covers the label and the token.  NOT
+    # `find_by_role` -- an UNDERSCORE role cannot be told from a stage name
+    # without a label, and having no label is the whole point of this rung.
+    generic += glob.glob(os.path.join(directory, "*" + ROLE_GEOM_TRAJ))
+    present = [c for c in generic if os.path.isfile(c)]
+    attempts.append(f"generic names -> {len(present)} match(es)")
+    chosen = offer(present, "generic")
+    if chosen:
         return chosen, attempts
 
     return None, attempts

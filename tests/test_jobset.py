@@ -1145,7 +1145,11 @@ def test_status_first_incomplete_advances(tmp_path, monkeypatch):
     stage still going. That `running` counts as incomplete is the part a plain
     "is it finished?" test would not pin.
     """
-    import molbuilder.parse.dirs.job as jobmod
+    # PATCH THE DOOR, not the module behind it.  `runstatus` imports
+    # `run_status` from `molbuilder.parse.dirs` -- the package that owns the
+    # question (`model/parse.md` § 5.5, R-RO2) -- so patching
+    # `parse.dirs.job` leaves the re-export pointing at the real function.
+    import molbuilder.parse.dirs as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
     monkeypatch.setattr(jobmod, "run_status",
@@ -1165,7 +1169,11 @@ def test_status_complete_when_all_finished(tmp_path, monkeypatch):
     resume for a ladder that is done -- an allocation spent to discover the work
     was already there.
     """
-    import molbuilder.parse.dirs.job as jobmod
+    # PATCH THE DOOR, not the module behind it.  `runstatus` imports
+    # `run_status` from `molbuilder.parse.dirs` -- the package that owns the
+    # question (`model/parse.md` § 5.5, R-RO2) -- so patching
+    # `parse.dirs.job` leaves the re-export pointing at the real function.
+    import molbuilder.parse.dirs as jobmod
     for n in ("bench-s1", "bench-s2"):
         d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
     monkeypatch.setattr(jobmod, "run_status",

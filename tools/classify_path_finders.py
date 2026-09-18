@@ -153,9 +153,11 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     # rest of the discovery chain (`plan.md` § 5c step 2).  Same code, same
     # reason -- which is why this is a re-anchor and not a deletion.
     ("molbuilder/parse/dirs/rundir.py", "openable_in",
-     "os.path.join(directory, optim_glob)"):
+     "os.path.join(directory, '*' + ROLE_GEOM_TRAJ)"):
         ("door-fed - the pattern comes from a door",
-         "`optim_glob` is `'*' + ROLE_GEOM_TRAJ`, the declared constant.  It "
+         "The pattern is `'*' + ROLE_GEOM_TRAJ`, the declared constant -- "
+         "spelled inline since 2026-09-18, where a local `optim_glob` held "
+         "it.  It "
          "cannot go through `runfiles.find_by_role`, and that refusal is the "
          "grammar's own rule rather than a gap: `_geom_optim.xyz` is an "
          "UNDERSCORE role, and without a label a trailing `_geom_optim.xyz` "

@@ -1001,6 +1001,41 @@ def stdout_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
                  and not (engine and a.engine and a.engine != engine))
 
 
+def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
+    """What a person LOOKS AT for this calculation, most specific first.
+
+    The third question `model/parse.md` § 5.5 splits out — *what should a
+    viewer open here* — answered from a column rather than a ladder, which is
+    what the other two already do.
+
+    Two kinds of row answer it, and the order between them is the whole rule:
+
+    * a role naming this CALCULATION is what the run is **for**.
+      `.spectra.json` for a vibration: the deck rewrites it atomically at
+      every phase boundary and it carries its own `phase_*` flags, so it is
+      the live view AND the final result — there is no moment when it is the
+      wrong file to open.
+    * a ``"progress"`` role is the engine-neutral live channel every run has.
+      For an optimization that is the whole answer; for a vibration it is a
+      stub (measured 2026-09-18 on a CO2 spectrum run: one `initial_preview`
+      block and a footer, because a spectrum has no geometry sequence).
+
+    ``calculation`` unknown — a directory molbuilder did not write, or one
+    whose `task.json` predates the key — answers with the progress roles
+    alone, and the caller falls back to searching.
+
+    **This is not a preference order to tune.**  Whichever file the
+    calculation produces is the one to open, during the run and after it;
+    the "concluded vs unconcluded" switch that stood in the discovery chain
+    was an optimization-shaped rule generalised to everything.
+    """
+    named = [a.role for a in WRITTEN
+             if calculation and a.calculation == calculation]
+    live = [a.role for a in WRITTEN
+            if a.output == "progress" and a.role not in named]
+    return tuple(named + live)
+
+
 def engine_of_role(role: str) -> Optional[str]:
     """Which engine writes this role, or None when any of them may.
 

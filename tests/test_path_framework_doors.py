@@ -345,26 +345,47 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
     assert not list(tmp_path.glob("*.fdf"))
 
 
+#: The least SIESTA output `SiestaOutFileParser.can_parse` will claim.  These
+#: tests used `_touch` -- EMPTY files -- until 2026-09-18, which worked only
+#: while the door offered a name without looking inside it.  It now offers
+#: only what the registry claims (`model/parse.md` § 5.5: *what can a person
+#: open* is the registry's question), so a stand-in has to be a real artifact.
+_MIN_OUT = ("Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n")
+
+#: The least molwatch log that is one -- and it is what PREP seeds, header
+#: and all, so this is the real shape of a run that has not written a step yet.
+_MIN_MOLWATCH = ("# molwatch trajectory log v1\n"
+                 "# engine: siesta\n"
+                 "# job: bdt\n"
+                 "# units: energy=eV, force=eV/Ang, coords=Ang\n")
+
+
 def test_the_watch_resolver_finds_a_molwatch_log_first(tmp_path):
-    """Step 1 of the discovery chain, through `find_by_role`.
+    """The progress channel answers for a run that names no product of its own.
 
     *This trio followed the chain out of `web/blueprints/watch.py` into
-    `parse.dirs.rundir.openable_in` on 2026-09-18 (§ 5c step 2): same
-    body, absorbed verbatim, 141/141 identical on the real tree.*
+    `parse.dirs.rundir.openable_in` on 2026-09-18 (§ 5c step 2).*  The chain
+    became a delegation the same day: the CALCULATION decides, and an
+    optimization -- which names no product -- is opened at its trajectory.
     """
     from molbuilder.parse.dirs import openable_in
-    _touch(tmp_path, "bdt.molwatch.log", "bdt.out")
+    (tmp_path / "bdt.molwatch.log").write_text(_MIN_MOLWATCH, encoding="utf-8")
+    (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
     chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.molwatch.log")
+    assert chosen is not None and chosen.endswith("bdt.molwatch.log"), attempts
     assert any("molwatch" in a for a in attempts)
 
 
 def test_the_watch_resolver_falls_through_to_engine_stdout(tmp_path):
-    """Step 4's `*.out`, with no molwatch log and no readable deck."""
+    """No progress log and no readable deck: the engine's stdout, which for
+    SIESTA is itself a trajectory source and so a thing a parser claims."""
     from molbuilder.parse.dirs import openable_in
-    _touch(tmp_path, "bdt.out")
-    chosen, _attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.out")
+    (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
+    chosen, attempts = openable_in(str(tmp_path))
+    assert chosen is not None and chosen.endswith("bdt.out"), attempts
 
 
 def test_find_template_still_refuses_two_answers(tmp_path):
@@ -477,12 +498,18 @@ def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
     """
     from molbuilder.parse.dirs import openable_in
     (tmp_path / "my.job.py").write_text("JOB = 'myjob'\n", encoding="utf-8")
-    (tmp_path / "run.out").write_text("done\n", encoding="utf-8")
+    (tmp_path / "run.out").write_text(_MIN_OUT, encoding="utf-8")
     chosen, attempts = openable_in(str(tmp_path))
     assert chosen is not None and chosen.endswith("run.out"), (
         "the resolver should fall through to its generic step, not raise")
-    assert any("not a run-file label" in a for a in attempts), (
-        f"and it should SAY why it skipped the stem: {attempts}")
+    # HOW it survives changed on 2026-09-18 and the outcome did not.  The
+    # stem no longer reaches `compose` at all: the search asks
+    # `runfiles.find`, which READS names rather than building one, so a
+    # dotted stem simply matches nothing instead of raising a `RunFileError`
+    # the resolver then had to catch and report.  Nothing to say, because
+    # nothing went wrong.
+    assert not any("not a run-file label" in a for a in attempts), (
+        f"the dotted stem should no longer reach a composer at all: {attempts}")
 
 
 # ── N4: the two sites that stopped spelling the layout ───────────────────────

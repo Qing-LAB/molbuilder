@@ -268,7 +268,10 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         return ("queued", (f"queued as job {jid}" if jid
                            else f"launched ({mode}), no output yet"))
     try:
-        from ..parse.dirs.job import run_status
+        # THROUGH THE PACKAGE THAT OWNS THE QUESTION, never the module
+        # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
+        # question).
+        from ..parse.dirs import run_status
         # THE SAME GLOB THE EXISTENCE CHECK USED.  It stopped at the gate
         # above until 2026-09-08, so a flat calculation's every stage row
         # showed the newest stage's state.

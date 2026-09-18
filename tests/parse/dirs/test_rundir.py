@@ -150,3 +150,114 @@ def test_openable_is_not_active(tmp_path):
     chosen, attempts = openable_in(str(run))
     assert pathlib.Path(chosen).name == log.name
     assert any("molwatch" in a for a in attempts), attempts
+
+
+# ---- § 5.5: what should a viewer open -- the CALCULATION decides -------- #
+
+
+def _spectrum_dir(tmp_path, *, say_calculation=True):
+    """A finished vibration run: the sidecar, and a molwatch log that is a stub.
+
+    The stub is the real shape, not a simplification -- measured on a CO2
+    spectrum run driven through the UI 2026-09-18: header, ONE
+    `kind: initial_preview` block, `# concluded:` footer.  A spectrum has no
+    geometry sequence to log, so the progress channel every run seeds says
+    nothing about this one.
+    """
+    import json
+    (tmp_path / "co2spec.spectra.json").write_text(json.dumps({
+        "schema_version": 1, "engine": "pyscf", "engine_version": "x",
+        "molbuilder_version": "x", "timestamp": "2026-09-18T00:00:00Z",
+        "structure_hash": "sha256:0", "n_atoms_total": 3,
+        "free_atom_idxs": [0, 1, 2], "frozen_atom_idxs": [],
+        "equilibrium_scf_eh": -188.4, "equilibrium_mo_energies_eh": [-1.0],
+        "equilibrium_homo_idx": 0, "modes": [], "selected_mode_idxs_1based": [],
+        "config": {}, "methods_text": "", "bibliography_keys": [],
+        "phase_frequencies": "complete", "phase_raman": "complete",
+        "phase_es": "complete", "phase_relaxation": "complete",
+    }), encoding="utf-8")
+    _mw_log(tmp_path, "co2spec_01_freq.molwatch.log", concluded=True)
+    if say_calculation:
+        (tmp_path / "task.json").write_text(json.dumps({
+            "schema": "molbuilder/task@1", "engine": {"name": "pyscf"},
+            "shape": "flat", "calculation": "vibration",
+            "run": {"name": "co2spec", "id": "co2spec_CO2"},
+            "structure": {"source": "co2spec.source.xyz",
+                          "formula": "CO2", "atoms": 3},
+            "stages": [{"name": "freq", "enabled": True, "overrides": {}}],
+        }), encoding="utf-8")
+    return tmp_path
+
+
+def _mw_log(dirpath, name, *, concluded):
+    body = ("# molwatch trajectory log v1\n# engine: pyscf\n# job: co2spec\n"
+            "# units: energy=eV, force=eV/Ang, coords=Ang\n\n"
+            "==== molwatch step 0 begin ====\nstep_index: 0\n"
+            "kind: initial_preview\nn_atoms: 1\ncoordinates (Ang):\n"
+            "   H       0.0 0.0 0.0\n==== molwatch step 0 end ====\n")
+    if concluded:
+        body += "\n# concluded: 2026-09-18T00:00:00\n"
+    p = pathlib.Path(dirpath) / name
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_a_spectrum_run_opens_its_spectrum_not_its_molwatch_stub(tmp_path):
+    """THE CALCULATION DECIDES, and there is no preference order to tune.
+
+    A vibration run is FOR its `.spectra.json`: the deck rewrites it
+    atomically at every phase boundary and it carries its own `phase_*`
+    flags, so it is the live view DURING the run and the result after it.
+    The molwatch log every run seeds is, for this kind, one preview block.
+
+    Until 2026-09-18 the chain's first rung was *any molwatch log, newest
+    wins*, which fired before anything else -- so every spectrum run's
+    viewer got the stub.  That is an OPTIMIZATION-shaped rule generalised to
+    every kind, which is why the fix deletes the ladder rather than
+    reordering it.
+
+    MUTATION THIS MUST FAIL AGAINST: put `.molwatch.log` first, or stop
+    asking `task.json` what calculation this is.
+    """
+    d = _spectrum_dir(tmp_path)
+    got, attempts = openable_in(str(d))
+    assert got is not None, attempts
+    assert pathlib.Path(got).name == "co2spec.spectra.json", (
+        f"got {pathlib.Path(got).name!r} -- the trail was:\n  "
+        + "\n  ".join(attempts))
+
+
+def test_an_optimization_still_opens_its_trajectory(tmp_path):
+    """The other half of the same rule: a run whose calculation names no
+    product of its own opens the progress channel, which for an optimization
+    is the trajectory that grows per step.  `task.json` omits `calculation`
+    for the default kind, so this is also the not-stated path."""
+    _mw_log(tmp_path, "co2flat_01_coarse.molwatch.log", concluded=True)
+    got, attempts = openable_in(str(tmp_path))
+    assert got is not None and pathlib.Path(got).name.endswith(".molwatch.log"), (
+        attempts)
+
+
+def test_the_door_never_offers_a_file_the_registry_refuses(tmp_path):
+    """*What is a run's output* and *what can a person open* are different
+    questions with different owners (§ 5.5), and this is the second one.
+
+    Measured 2026-09-18 on a finished CO2 spectrum run with its molwatch log
+    removed -- the exact shape of `projects/BDT/spectrum/BDT-only`: the chain
+    returned `<job>_<stage>.log`, PySCF's own verbose logger, and the
+    caller's very next step was `detect()`, which refused it.  A directory
+    holding nothing openable must answer None, so the refusal names the
+    directory instead of a file that cannot be read.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the `_claimed` filter.
+    """
+    (tmp_path / "co2spec_01_freq.log").write_text("PySCF verbose log\n" * 20,
+                                                  encoding="utf-8")
+    (tmp_path / "co2spec_01_freq-run0.pyscf.log").write_text("Job complete in 1.0 s\n",
+                                                             encoding="utf-8")
+    (tmp_path / "co2spec_01_freq.py").write_text('JOB = "co2spec"\n',
+                                                 encoding="utf-8")
+    got, attempts = openable_in(str(tmp_path))
+    assert got is None, (
+        f"offered {pathlib.Path(got).name!r}, which no parser claims:\n  "
+        + "\n  ".join(attempts))
