@@ -801,17 +801,53 @@ for status, discovery and the directory's own account of itself;
 `molbuilder.parse.contract` for the engine and the recorded contract. Never
 from `parse.dirs.job` or `parse.dirs.rundir` directly.
 
-#### The bundle is deleted
+#### What a viewer should open — the CALCULATION decides
 
-`parse_dir`, `RunDirResult`, `JobDirParser` and the `DirParser` ABC go. They
-have zero production callers and zero field readers (§ 5.0), the consumer
-they were built for asks a LADDER question `jobset_status` already answers,
-and they are **not free**: registering `JobDirParser` made `detect()` answer
-for directories, which cost three CLI verbs their clean refusal — one became
-a silent infinite hang — and a guard in `cli.py` exists only to undo it.
-`can_parse`'s real question survives as `is_run_dir(dir) -> bool`, a plain
-function needing no ABC and no registry entry. A future HTTP surface that
-wants all four answers composes four calls in three lines.
+The door's fourth question is answered the way the other three are: by
+delegation, not by a ladder.
+
+| question | owner | reader |
+|---|---|---|
+| what calculation is this? | the **directory** | `task.json` |
+| what does it produce? | the **catalogue** | `runfiles.result_roles` |
+| can anything open it? | the **registry** | `detect()` |
+
+**There is no preference order to tune.** A vibration run is *for* its
+`.spectra.json` — the deck rewrites it atomically at each phase boundary and
+it carries its own `phase_*` flags, so it is the live view during the run and
+the result after it. An optimization is for its trajectory. Neither switches
+at conclusion: *"an unconcluded progress log first"* was an
+**optimization-shaped rule generalised to every kind**, and it sent every
+spectrum run's viewer to a molwatch log holding one `initial_preview` block
+(measured on a CO2 spectrum run: 1340 bytes, header + one block + footer — a
+spectrum has no geometry sequence to log).
+
+**The door never offers a file `detect()` refuses.** That is this section's
+two questions applied to one answer: *what is a run's output* is the
+catalogue's, *what can a person open* is the registry's. Until 2026-09-18 the
+chain returned `<job>_<stage>.log` — PySCF's verbose logger — and the
+caller's very next step was `detect()`, which refuses it.
+
+#### The door STAYS; only the route through `detect()` is in question
+
+*(Corrected 2026-09-18. This section said "the bundle is deleted", naming
+`parse_dir`, `RunDirResult`, `JobDirParser` and the `DirParser` ABC together.
+That is four unlike things under one word, and it read as "delete the
+framework" — which is the opposite of what is being built.)*
+
+`JobDirParser` **is** the front door: it composes `run_status`,
+`_enumerate_files`, `engine_of` and the discovery chain into one answer, and
+`RunDirResult` is that answer's shape. Both stay, and the work is **wiring
+consumers to them** — zero callers today is a migration that has not happened,
+not evidence the door is unwanted.
+
+What is genuinely a defect is narrower: a **directory** goes through the same
+`detect()` the file verbs call. `_DIR_PARSERS` was empty, so `detect(<dir>)`
+refused cleanly; once `JobDirParser` was registered it returns a
+`RunDirResult`, which has no `.frames`, and three CLI verbs broke — one into a
+silent infinite hang. That is an argument about **the route**, not the
+composer, and those verbs are already fixed properly: they ask
+`answers_a_trajectory()` instead of assuming.
 
 #### Adding an engine: two edits
 
