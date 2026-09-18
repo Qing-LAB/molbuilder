@@ -82,8 +82,11 @@ def test_the_registry_answers_for_a_run_directory(tmp_path):
     assert got.parser_name == "jobdir"
     assert got.engine == "siesta"
     assert got.status["state"] == "finished", got.status
+    # Keyed by the ROLE since 2026-09-18 -- `_enumerate_files`' run-output
+    # buckets were `"out"` / `"molwatch"`, a private two-word nickname for a
+    # three-row catalogue column whose third row therefore had no bucket.
     assert "hemeC-stage2-run3-finished-42fr.out" in [
-        pathlib.Path(p).name for p in got.files["out"]]
+        pathlib.Path(p).name for p in got.files[".out"]]
 
 
 def test_a_prepped_stage_that_has_not_run_is_still_a_run_directory(tmp_path):

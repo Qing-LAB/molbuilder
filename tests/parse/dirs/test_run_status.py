@@ -95,6 +95,28 @@ def test_a_concluded_molwatch_log_finishes_a_run_with_no_out(tmp_path):
     assert s.detail == "job_completed"
 
 
+def test_a_finished_pyscf_run_reads_its_own_stdout(tmp_path):
+    """THE DEFECT § 5c.2 EXISTS FOR.  A PySCF spectrum deck writes no
+    molwatch log at all, so the only evidence of how it ended is the stdout
+    the wrapper captured -- and nothing looked for it.  Two directories in
+    `projects/` reported `running` this way, the older for 97.6 days, with
+    their end line sitting in the file.
+
+    The end line is the SPECTRUM deck's, which is not the relaxation deck's:
+    that is why a reader taught only "Job complete in" fixes neither.
+    """
+    from molbuilder.pyscf.vibration_emitters import END_MARKER
+    (tmp_path / "spectra.spectra-run0.pyscf.log").write_text(
+        "converged SCF energy = -1028.273\n"
+        "Phase 4 done: 36 modes with ES data\n"
+        f"{END_MARKER} 5090.8 s\n"
+        "Results: /x/spectra.spectra.json\n", encoding="utf-8")
+    s = run_status(tmp_path)
+    assert s.state == "finished"
+    assert s.detail == "job_completed"
+    assert s.active_source == "spectra.spectra-run0.pyscf.log"
+
+
 def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
     """The prep-time seed has no conclusion footer, so it contributes
     nothing: the run reads as running with no result yet — never as

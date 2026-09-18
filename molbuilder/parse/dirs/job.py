@@ -102,9 +102,16 @@ def _iso_z(ts: float) -> str:
 def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     """Bucket relevant files in the dir by kind.
 
-    Returns {"fdf": [...], "out": [...], "xv": [...], "struct_out": [...],
-             "molstruct_json": [...], "ani": [...], "molwatch": [...]}.
-    Paths sorted by name within each bucket.
+    Returns {"fdf": [...], "xv": [...], "struct_out": [...],
+             "molstruct_json": [...], "ani": [...]} plus one bucket per
+    RUN-OUTPUT ROLE, keyed by the role itself: {".out": [...],
+    ".pyscf.log": [...], ".molwatch.log": [...]}.  Paths sorted by name
+    within each bucket.
+
+    **The run-output buckets are keyed by role and not by a nickname**, and
+    that is the point rather than a detail: they used to be `"out"` and
+    `"molwatch"`, a private two-word vocabulary for a three-row catalogue
+    column, and the third row had no word so it was not looked for at all.
 
     ``match`` NARROWS THE DIRECTORY TO ONE RUNG, and in the flat shape that is
     the whole question: every stage of a flat calculation shares one directory
@@ -113,26 +120,33 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
     answer, where the directory has already selected the stage.
     """
-    from molbuilder.runfiles import find_by_role
+    from molbuilder.runfiles import find_by_role, run_output_roles
 
     by_kind: Dict[str, List[Path]] = {
-        "fdf": [], "out": [], "xv": [], "struct_out": [],
-        "molstruct_json": [], "ani": [], "molwatch": [],
+        "fdf": [], "xv": [], "struct_out": [],
+        "molstruct_json": [], "ani": [],
     }
     # THE NARROWING FIRST, because it is `match`'s whole job and no role
     # search takes a glob: this is the set of files this rung owns.
     narrowed = {c for c in run_dir.glob(match) if c.is_file()}
 
-    # ROLES THE CATALOGUE DECLARES come from the catalogue.  These three
-    # were spelled `name.endswith(".fdf")` here until 2026-09-18 -- the role
+    # ROLES THE CATALOGUE DECLARES come from the catalogue.  These were
+    # spelled `name.endswith(".fdf")` here until 2026-09-18 -- the role
     # vocabulary written outside the module that declares it, which is the
     # exact case `runfiles.find_by_role` says it exists to end, and which
     # every sibling in this package converted on 2026-09-08
     # (`atom_metadata.py`, `contract.py`, `rundir.py`).
-    for role, bucket in ((".fdf", "fdf"), (".out", "out"),
-                         (".molwatch.log", "molwatch")):
-        by_kind[bucket] = sorted(p for p in find_by_role(run_dir, role)
-                                 if p in narrowed)
+    by_kind["fdf"] = sorted(p for p in find_by_role(run_dir, ".fdf")
+                            if p in narrowed)
+    # WHICH FILES ARE A RUN'S OUTPUT IS THE CATALOGUE'S QUESTION, and the
+    # buckets are keyed by the ROLE because the role is what they are.  The
+    # pair `("out", "molwatch")` stood here as a literal list until
+    # 2026-09-18 and did not name `.pyscf.log`, so a finished PySCF run that
+    # writes no molwatch log had no result file at all as far as this module
+    # was concerned (`model/parse.md` § 5.5, R-RO1).
+    for role in run_output_roles():
+        by_kind[role] = sorted(p for p in find_by_role(run_dir, role)
+                               if p in narrowed)
 
     # ...AND THE ENGINE'S OWN OUTPUTS STAY LITERAL, because molbuilder
     # declares no vocabulary for them: `.XV`, `.STRUCT_OUT` and `.ANI` are
@@ -238,35 +252,35 @@ def _rc_ok(concluded: str) -> bool:
 # field is what got the decoder deleted, as this module's docstring says.)
 
 
-def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
-    """The CONCLUDED molwatch logs' run-states, by filename.
+def _output_endings(paths: List[Path]) -> Dict[str, str]:
+    """Each run-output file's run-state, by filename — ONE loop, one door.
 
-    A molwatch log is the engine-neutral end-of-run channel
-    (``running-a-job.md`` § 4): its writer appends a conclusion footer
-    when the run ends, so a log carrying one is a result file and its
-    run-state counts.  One without a footer is a live view — a prep-time
-    seed, or a run still going — and is deliberately NOT in the answer:
-    feeding it into the state would let a stage's seed outvote its own
-    ``.out``.  Fail-soft like the ``.out`` path: a log that cannot be read
-    simply contributes nothing.
+    This was two functions, `_out_conclusions` and `_molwatch_conclusions`,
+    each hard-wired to one role and each knowing that role's reader.  Adding
+    a third role meant adding a third function, which is why `.pyscf.log`
+    never got one: `ending_of` dispatches on the ROLE (`model/parse.md`
+    § 5.5), so a new run-output row is read here without this loop changing.
 
-    **Through the cheap door**, like ``_out_conclusions`` beside it.  This
-    went through ``detect(path).parse(path)`` until 2026-09-18 -- a whole
-    Trajectory built and discarded to reach one string -- which also opened
-    a ``ParseLogger`` per log, so every Watch poll created and grew a
-    ``.parse.log`` inside the user's project directory.  Measured: 540 B
-    after one ``run_status``, 1080 B after two, over 67 logs.
+    **Through the cheap door.**  Both halves went through
+    ``detect(path).parse(path)`` until 2026-09-18 -- a whole Trajectory built
+    and discarded to reach one string -- which also opened a ``ParseLogger``
+    per file, so merely LOOKING at a folder created and grew a ``.parse.log``
+    inside the user's project directory (measured: 540 B after one
+    ``run_status``, 1080 B after two, over 67 logs).
+
+    FAIL-SOFT ON A READ, and only on a read: a file that cannot be opened
+    contributes nothing rather than taking the walk down.  A file whose ROLE
+    has no reader is NOT absorbed -- `ending_of` raises, and it cannot happen
+    here because the roles come from the same catalogue view its `READERS`
+    are checked against.
     """
-    from molbuilder.parse.engines._run_ending import CONCLUDED
-    from molbuilder.parse.engines.molwatch import scan_conclusion
+    from molbuilder.parse.engines._run_ending import ending_of
     states: Dict[str, str] = {}
-    for path in mw_paths:
+    for path in paths:
         try:
-            state = scan_conclusion(path)
-        except (OSError, ValueError):
+            states[path.name] = ending_of(path).run_state or "unknown"
+        except OSError:
             continue
-        if state in CONCLUDED:
-            states[path.name] = state
     return states
 
 
@@ -344,53 +358,27 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
     ten fields with no reader anywhere, and reached the per-file
     run-states by building every PLOT and discarding them.
     """
+    from molbuilder.parse.engines._run_ending import CONCLUDED
+    from molbuilder.runfiles import run_output_roles, stdout_roles
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, match)
-    out_states = _out_conclusions(files["out"])
-    mw_states = _molwatch_conclusions(files["molwatch"])
+    states = _output_endings(
+        [p for role in run_output_roles() for p in files[role]])
+    # WHICH OF THEM MAY SPEAK is the catalogue's `output` column, not a rule
+    # written here.  A "stdout" file exists because the PROCESS started, so it
+    # counts whether or not it ended; a "progress" file is SEEDED at prep, so
+    # it counts only once its footer concludes -- otherwise a stage's seed
+    # outvotes its own result (`model/parse.md` § 5.5, § 5.1).  That pair of
+    # rules was two hand-written functions until 2026-09-18, and the seed half
+    # was the only one that said WHY.
+    speaks = set(stdout_roles())
     return _build_status(
-        files["out"] + [p for p in files["molwatch"] if p.name in mw_states],
-        {**out_states, **mw_states},
+        [p for role in run_output_roles() for p in files[role]
+         if role in speaks or states.get(p.name) in CONCLUDED],
+        states,
         _process_conclusion(run_dir, match))
 
 
-def _out_conclusions(out_paths: List[Path]) -> Dict[str, str]:
-    """Each ``.out``'s run-state, by filename, through the CHEAP door.
-
-    `_run_ending.scan_ending` and the full parser read the SAME marker
-    table -- `siesta.py` builds its fatal rules from `FATAL_MARKERS` by
-    comprehension -- so there is no second list to drift, and this is the
-    door `jobset/summarize.py` already asks the same question through.
-
-    **Why the cheap one.** The full parser builds every Frame -- positions
-    and forces as numpy arrays -- and this keeps one string.  That is the
-    shape this module's own docstring says got the previous decoder
-    deleted: *"parsing every `.out` to build plot data and then throwing
-    the plots away"*.  It was re-entered here through the registry, which
-    § 5.4 asks for, and § 2b's cost table says a caller that wants the
-    ending uses the scanner.
-
-    Measured 2026-09-18 over every `.out` in `projects/` + `tests/` and
-    then end to end over all 119 real run directories, clock frozen:
-    **119/119 identical verdicts, 8.5x faster** (12x on the reads alone).
-    It also ends this function's `.parse.log` side effect -- the full
-    parser opens a `ParseLogger` that appends beside its input, which is
-    what wrote 177 files into `projects/` on 2026-09-18.
-
-    Fail-soft, exactly as the molwatch sibling is: a file that cannot be
-    read contributes nothing rather than taking the walk down.
-    """
-    from molbuilder.parse.engines._run_ending import scan_ending
-    from molbuilder.parse.errors import ParseError
-    states: Dict[str, str] = {}
-    for path in out_paths:
-        try:
-            states[path.name] = (
-                scan_ending(path.read_text(encoding="utf-8", errors="replace"))
-                .run_state or "unknown")
-        except (ParseError, OSError, ValueError):
-            continue
-    return states
 
 
 def _build_status(out_paths: List[Path],
