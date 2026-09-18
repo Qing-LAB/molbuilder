@@ -287,19 +287,27 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
 
 
 @pytest.mark.parametrize("engine,absent,present", [
-    ("siesta", ".py", ".fdf"),
-    ("pyscf", ".fdf", ".py"),
+    # The DECK each engine runs, and the file each writes its stdout to.
+    # `.out` is SIESTA's: PySCF under the wrapper writes `.pyscf.log` and
+    # never `.out`, so a PySCF rung's card promised a file no run produces
+    # (`model/parse.md` § 5.5).
+    ("siesta", (".py", ".pyscf.log"), (".fdf", "-run0.out")),
+    ("pyscf", (".fdf", "-run0.out"), (".py", "-run0.pyscf.log")),
 ])
 def test_the_manifest_tells_a_run_about_its_own_engine_only(
         engine, absent, present):
     rows = manifest(LABEL, "01_coarse", engine)
     names = [r["name"] for r in rows]
-    assert any(n.endswith(present) for n in names)
-    assert not any(n.endswith(absent) for n in names)
+    for suffix in present:
+        assert any(n.endswith(suffix) for n in names), f"{engine}: no {suffix}"
+    for suffix in absent:
+        assert not any(n.endswith(suffix) for n in names), (
+            f"{engine}: named {suffix}, which its engine does not write")
     # No engine named is a question, not a claim: answer for both.
     both = [r["name"] for r in manifest(LABEL, "01_coarse")]
     assert any(n.endswith(".py") for n in both)
     assert any(n.endswith(".fdf") for n in both)
+    assert any(n.endswith("-run0.out") for n in both)
 
 
 def test_every_manifest_name_reads_back_to_the_stage_it_was_asked_for():

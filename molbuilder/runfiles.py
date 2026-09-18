@@ -690,6 +690,26 @@ class Artifact:
     #: run will never write -- the same fault in the other direction as a
     #: file that is written and undeclared.
     calculation: Optional[str] = None
+    #: Does this file carry evidence of HOW THE RUN WENT, and of which kind?
+    #: (`model/parse.md` § 5.5.)
+    #:
+    #:   ``"stdout"``   -- exists because the PROCESS started, so it speaks
+    #:                     whether or not it has ended.  Block-buffered: its
+    #:                     mtime is NOT liveness.
+    #:   ``"progress"`` -- SEEDED at prep, so it speaks only once its footer
+    #:                     concludes; otherwise a seed outranks a real result.
+    #:   ``None``       -- not run evidence.  It may still be VIEWABLE, which
+    #:                     is the REGISTRY's question (`detect()`), not this
+    #:                     column's: `.spectra.json` is what a person should
+    #:                     open and is not output, `.pyscf.log` is output and
+    #:                     no parser claims it.
+    #:
+    #: **Why a column and not a boolean.** ``output == "stdout"`` *is* § 5.1's
+    #: rule -- *an engine's stdout speaks before it ends; a seeded log does
+    #: not*.  A boolean would force :func:`run_output_roles` to append
+    #: `.molwatch.log` as a literal, putting membership back in a function
+    #: while the row says nothing, which is the split that caused this.
+    output: Optional[str] = None
 
 
 #: Ordered as `job-contracts.md` § 2.2 lists them: inputs, the wrapper, the
@@ -769,8 +789,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="prep"),
     # ---- the canonical trajectory -------------------------------------
     # Written before the engine even starts.
+    # SEEDED AT PREP, which is why it is `progress` and not `stdout`: it
+    # exists before the engine does, so an empty one is a prep and says
+    # nothing about a run.  It speaks only once its footer concludes.
     Artifact(".molwatch.log", "the run as it happens — coordinates, "
-                              "energy and forces, one block per step"),
+                              "energy and forces, one block per step",
+             output="progress"),
     # ---- history: stdout and the logs ---------------------------------
     # ALL OF THIS IS HISTORY AND NOT STATE -- it is what a person goes back
     # to read, and nothing may treat it as leftovers.  The rows were missing
@@ -780,11 +804,17 @@ WRITTEN: "tuple[Artifact, ...]" = (
     #
     # `attempt="maybe"` is two real spellings, not indecision: the wrapper
     # indexes its redirect (`-run0.out`) and a hand-started run does not.
+    #
+    # `.out` IS SIESTA'S, and carried no engine until 2026-09-18.  The row
+    # below already said PySCF "writes here and not to .out", so the pair
+    # contradicted each other: `manifest(engine="pyscf")` promised a PySCF
+    # rung a `-run0.out` no PySCF run has ever written (`model/parse.md`
+    # § 5.5).
     Artifact(".out", "the run's output as the engine printed it",
-             attempt="maybe"),
+             attempt="maybe", engine="siesta", output="stdout"),
     Artifact(".pyscf.log", "the same, for PySCF under the wrapper — it "
                            "writes here and not to .out", attempt="always",
-             engine="pyscf"),
+             engine="pyscf", output="stdout"),
     Artifact(".log", "the engine's verbose log"),
     # GEOMETRIC'S OPT LOG, and the row that recorded the drift this catalogue
     # exists to end.  It was spelled `{label}_geom_*.log` -- the token INSIDE
@@ -895,6 +925,47 @@ def roles_ending(*suffixes: str) -> "tuple[str, ...]":
     ``.log`` row joins it without anyone editing `runstatus`.
     """
     return tuple(a.role for a in WRITTEN if a.role.endswith(suffixes))
+
+
+def run_output_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
+    """Every role that carries evidence of HOW A RUN WENT (§ 5.5).
+
+    The answer to *what is this run's output* -- the catalogue's question.  It
+    is NOT *what can a person open*, which is the registry's (`detect()`) and
+    gets no column here: `.pyscf.log` is output and no parser claims it,
+    `.spectra.json` is what a person should see and is not output.
+
+    ``engine`` narrows to what THAT engine's runs produce, keeping the
+    engine-agnostic rows.  Passing None answers for every engine at once,
+    which is what a reader of a directory whose engine it does not know needs
+    -- and § 5.5's reason that `ending_of` dispatches on the ROLE.
+    """
+    return tuple(a.role for a in WRITTEN
+                 if a.output is not None
+                 and not (engine and a.engine and a.engine != engine))
+
+
+def stdout_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
+    """The subset of :func:`run_output_roles` that is a PROCESS's stdout.
+
+    ``output == "stdout"`` is § 5.1's rule, spelled as a row: such a file
+    exists because the process started, so it speaks whether or not the run
+    has ended -- where a SEEDED progress log speaks only once its footer
+    concludes, and an empty one is a prep.
+    """
+    return tuple(a.role for a in WRITTEN
+                 if a.output == "stdout"
+                 and not (engine and a.engine and a.engine != engine))
+
+
+def engines() -> "tuple[str, ...]":
+    """Every engine the catalogue names, sorted.
+
+    The catalogue is where an engine becomes known to the run-file layer (a
+    row with ``engine=``), so this is what a caller iterating engines asks
+    rather than restating the pair -- § 5.5's *adding an engine is two edits*.
+    """
+    return tuple(sorted({a.engine for a in WRITTEN if a.engine}))
 
 
 def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
