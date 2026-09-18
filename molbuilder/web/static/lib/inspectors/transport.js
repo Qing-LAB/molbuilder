@@ -177,6 +177,73 @@
             wrap.appendChild(plot);
             _plotLater(plot, curves);
         }
+        /* THE PROVENANCE CHAIN -- `engines/transport.md` § 2a.12, the third
+         * thing that section requires of this surface and the one it is
+         * bluntest about: *"A transmission curve without its chain cannot be
+         * interpreted, reproduced, or compared with another."*
+         *
+         * Which relaxation the junction came from, what form it was cited in,
+         * whether that relaxation had actually CONCLUDED, and the bytes it was
+         * built from.  The hashes are not decoration: a result can always say
+         * which files produced it, and two curves that disagree can be told
+         * apart by whether they were built from the same junction at all. */
+        const prov = (rec.provenance || {}).slot;
+        if (prov) {
+            wrap.appendChild(_el("h4", "transport-prov-title", "Provenance"));
+            const dl = _el("div", "transport-prov");
+
+            function row(k, v, cls) {
+                const r = _el("div", "transport-prov-row");
+                r.appendChild(_el("span", "transport-prov-key", k));
+                r.appendChild(_el("span", cls || "transport-prov-val",
+                                  String(v)));
+                dl.appendChild(r);
+            }
+
+            if (prov.citation) row("cited run", prov.citation);
+            if (prov.form) row("cited as", prov.form);
+
+            /* EVIDENCE IS THE HONEST FIELD.  `compose` writes the concluding
+             * record line when one exists; "no-record" when a relaxation's
+             * .XV was taken as final without one; "given" for a cited
+             * structure pair that never claimed to be relaxed.  The last two
+             * are not failures -- they are what the citation actually
+             * offered -- but a reader judging a curve needs to see which. */
+            if (prov.evidence !== undefined && prov.evidence !== null) {
+                const weak = prov.evidence === "no-record"
+                          || prov.evidence === "given";
+                row("relaxation evidence",
+                    prov.evidence === "no-record"
+                        ? "no concluding record \u2014 the .XV was taken as final"
+                        : prov.evidence === "given"
+                            ? "a cited structure pair, not a relaxation"
+                            : prov.evidence,
+                    weak ? "transport-prov-val is-weak" : "transport-prov-val");
+            }
+
+            const files = prov.files || {};
+            const names = Object.keys(files);
+            if (names.length) {
+                row("built from", names.length + " file"
+                    + (names.length === 1 ? "" : "s"));
+                const fl = _el("ul", "transport-prov-files");
+                names.sort().forEach((n) => {
+                    const li = _el("li", "transport-prov-file");
+                    li.appendChild(_el("span", "transport-prov-fname", n));
+                    /* Short enough to compare by eye, long enough to be a
+                     * hash: the full value is on the element for a copy. */
+                    const h = String(files[n] || "");
+                    const short = _el("span", "transport-prov-hash",
+                                      h ? h.slice(0, 12) : "\u2014");
+                    if (h) short.title = h;
+                    li.appendChild(short);
+                    fl.appendChild(li);
+                });
+                dl.appendChild(fl);
+            }
+            wrap.appendChild(dl);
+        }
+
         if (rec.energies_relative_to_ef) {
             wrap.appendChild(_el("p", "transport-note",
                 "Energies are relative to E_F."));

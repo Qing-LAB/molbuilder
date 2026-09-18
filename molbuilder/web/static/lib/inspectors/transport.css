@@ -90,3 +90,45 @@
     width: 100%;
     min-height: 18rem;
 }
+
+.transport-prov-title { margin: 0; }
+
+.transport-prov {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
+}
+
+.transport-prov-row { display: flex; gap: var(--space-sm); }
+
+.transport-prov-key {
+    color: var(--text-muted);
+    min-width: 11rem;
+}
+
+.transport-prov-val { word-break: break-all; }
+
+/* "no concluding record" and "a cited structure pair" are not failures — they
+ * are what the citation offered — but a reader judging a curve has to see
+ * which, so they read as qualified rather than as plain fact. */
+.transport-prov-val.is-weak { color: var(--warn-soft); }
+
+.transport-prov-files {
+    margin: 0;
+    padding-left: var(--space-lg);
+    list-style: disc;
+}
+
+.transport-prov-file {
+    display: flex;
+    gap: var(--space-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.transport-prov-fname { min-width: 14rem; }
+
+.transport-prov-hash {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+}
