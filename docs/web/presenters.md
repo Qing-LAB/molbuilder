@@ -32,10 +32,10 @@ mounts it.
 > This doc uses the target name **presenter**; where it points at code it uses
 > today's `inspectors` names.
 
-## 1. The pieces — a switchboard and six viewers
+## 1. The pieces — a switchboard and seven viewers
 
 The **registry** is the switchboard. Each **presenter** is a small self-contained
-viewer for one kind of file. Today there are six:
+viewer for one kind of file. Today there are seven:
 
 | The file you open | The viewer you get | Shows in the Results dropdown? |
 |---|---|---|
@@ -43,10 +43,11 @@ viewer for one kind of file. Today there are six:
 | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
 | `.spectra.json` | a spectrum **chart** + a modes table | yes — *PySCF spectrum* |
 | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
+| `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
 | `.md` | a markdown **editor** with a live preview + Save | no |
 | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
 
-The four that say "yes" mark themselves as *results*, so they show up in the
+The five that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are
 catch-alls — if they claimed a spot in the dropdown they would flood it with
 config files and READMEs.
@@ -59,15 +60,20 @@ config files and READMEs.
 > registration alone under-counts them. The count here is now derived from the
 > six `register()` calls in `lib/inspectors/`, not from this table's memory.*
 
-> **There is no row for a composite result, and transport is the first one.**
-> A finished junction writes `<label>.transport.json`, which matches no
-> `isResult` presenter, so the picker drops it; its five rungs' `.out` files are
-> each claimed by the trajectory viewer under *SIESTA optimization*, so a
-> five-rung ladder lists as five unrelated optimizations. The row is owed by
-> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5; the deeper reason the
-> picker has to guess at all — there is no server door that answers *what is in
-> this directory* — is [`model/parse.md`](?doc=model/parse.md) § 5's
-> `JobDirParser`, **specified and not built**, owned by § 5c.
+> **The composite row landed 2026-09-18** (§ 5p.3p step 5). Before it, a
+> finished junction's `<label>.transport.json` matched no `isResult` presenter,
+> so the picker dropped it — the deliverable of a five-rung run was invisible on
+> this tab.
+>
+> **What that row does NOT fix, and cannot:** the five rungs' `.out` files are
+> each still claimed by the trajectory viewer under *SIESTA optimization*, so a
+> ladder lists as five unrelated entries beside its result. `absorbs` collapses
+> siblings within ONE directory and has no way to say *"these five folders are
+> one run"* — that is [`plans/plan.md`](?doc=plans/plan.md) § 5c.1's open
+> question. And the reason the picker must guess at all is that no server door
+> answers *what is in this directory*: it decides from filenames, in the
+> browser, which makes it § 5c's **seventh consumer** and the only one that is
+> not server-side.
 
 ## 2. How a viewer is chosen — the presenter contract
 

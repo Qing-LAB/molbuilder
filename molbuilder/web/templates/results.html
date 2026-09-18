@@ -218,6 +218,10 @@
    is listed ahead of everything, and far ahead of the `.json` catch-all
    below.  Pinned by tests/test_inspector_registration_order.py. #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/bench-summary.js') }}"></script>
+{# A COMPOUND suffix (`.transport.json`) -- specific, so it must register
+   ahead of the `.json` catch-all in source.js, or a finished conductance
+   run is shown as a text pane. #}
+<script defer src="{{ url_for('static', filename='lib/inspectors/transport.js') }}"></script>
 <script defer src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 {# A MODULE: it imports VibrationView and hands `mount` to the spectra core,
    which is a classic script and cannot import one itself.  See the file. #}

@@ -56,6 +56,9 @@ _INSPECTOR_MODULES = [
     # basename is the most specific predicate there is -- and source.js
     # claims every .json, so anything less would lose job-set.json to it.
     STATIC / "lib/inspectors/bench-summary.js",
+    # A compound suffix (`.transport.json`), so it must precede source.js --
+    # which claims every `.json` -- exactly as spectra.js does.
+    STATIC / "lib/inspectors/transport.js",
     STATIC / "lib/inspectors/_partial_inspector_factory.js",
     STATIC / "lib/inspectors/trajectory.js",
     STATIC / "lib/inspectors/spectra.js",
@@ -158,6 +161,17 @@ _DISPATCH_CASES = [
     # results.html makes spectra register before source.
     ("/projects/foo/spectrum/water.spectra.json", "spectra",
      "compound_spectra_json→spectra"),
+    # The SECOND compound `.json`, and the same precedence question: a
+    # finished conductance run's record must reach the transport viewer and
+    # not the text pane.  Before this presenter existed (2026-09-18) it
+    # matched NOTHING with `isResult`, so the picker dropped it entirely and
+    # the deliverable of a five-rung run was invisible on the Results tab.
+    ("/projects/BDT/transport/bdt.transport.json", "transport",
+     "compound_transport_json→transport"),
+    # ...and the cut-both-ways half: claiming `.transport.json` must not take
+    # any other `.json` from the text viewer.
+    ("/projects/BDT/transport/atom-permutation.json", "source",
+     "other_json_still→source"),
     # Plain .json → source (first-match-wins after spectra missed).
     ("/projects/foo/user/config.json", "source", "plain_json→source"),
     # Truly unknown extension → null (not all unknowns fall through).
@@ -204,6 +218,14 @@ _PICK_RESULT_CASES = [
      "molwatch_log→trajectory"),
     ("/projects/foo/raman.spectra.json", "spectra",
      "spectra_json→spectra"),
+    # THE BUG THIS PRESENTER EXISTS FOR.  A conductance run's record has to
+    # be a RESULT, not merely matched: `pickResult` is what the picker calls,
+    # and until 2026-09-18 nothing with `isResult` claimed `.transport.json`,
+    # so it returned null and the deliverable of a five-rung run never
+    # appeared in the dropdown at all.  Matching without this flag reproduces
+    # exactly that, and the dispatch case above cannot see the difference.
+    ("/projects/BDT/transport/bdt.transport.json", "transport",
+     "transport_json→transport"),
     ("/projects/foo/optimized.xyz", "structure", "xyz→structure"),
     ("/projects/foo/protein.pdb", "structure", "pdb→structure"),
     # .fdf is an INPUT file (source matches but isResult:false) — must
