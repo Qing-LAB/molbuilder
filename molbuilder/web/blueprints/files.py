@@ -252,23 +252,27 @@ def _resolve_within_roots(raw_path: str) -> Path:
 # structure files in other contexts (the modify-tab Save flow, the
 # transport script generator, ...) reads the sidecar directly via
 # ``molstruct.sidecar_path_for``; this helper exists to give the
-# files blueprint a layered, file-tree-shaped view (the blueprint
-# doesn't import from sidecars/molstruct directly to keep its
-# dependency graph narrow).
+# files blueprint a layered, file-tree-shaped view.
 
 _STRUCTURE_SUFFIXES = (".xyz", ".pdb")
-_SIDECAR_SUFFIX     = ".molstruct.json"
 
 
 def _paired_sidecar_path(structure_path: Path) -> Path:
-    """Return the canonical sidecar path next to ``structure_path``
-    REGARDLESS of whether the sidecar exists.
+    """The canonical sidecar path next to ``structure_path``, whether or not
+    it exists -- used both to FIND one to move and to COMPUTE a destination.
 
-    Used both to find existing sidecars to move AND to compute
-    destination sidecar paths.  Strips the LAST suffix and appends
-    ``.molstruct.json``; e.g. ``water.xyz`` -> ``water.molstruct.json``.
+    **Asked of the module that owns the pairing**, not spelled here.  This
+    retyped ``".molstruct.json"`` as a local constant and re-implemented the
+    stem rule, on the written ground that *"the blueprint doesn't import from
+    sidecars/molstruct directly to keep its dependency graph narrow"* -- a
+    preference, not a constraint: `sidecars` is L2 and `web` is L3, so the
+    import is ordinary.  It was the last duplicated constant of its kind in
+    the tree (2026-09-18), and the cost of keeping it was that a change to the
+    suffix would have to find this copy -- missing it means the file browser
+    silently stops recognising the file that carries a structure's labels.
     """
-    return structure_path.with_name(structure_path.stem + _SIDECAR_SUFFIX)
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    return sidecar_path_for(structure_path)
 
 
 def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:

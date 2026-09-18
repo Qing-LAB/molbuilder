@@ -1632,6 +1632,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         with _user_error_as_prep():
             write_run_wrapper(point_dir / script,
                               label=task.label,     # G7: told, not read
+                              n_atoms=len(struct.elements),
                               resources=res, env=env,
                               emit_sbatch=emit_sbatch, project_dir=base,
                               machine_record=environment)

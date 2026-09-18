@@ -4112,6 +4112,7 @@ class RenderedWrapper:
 
 def render_wrappers(script_path: Path, *,
                     label: str = "",
+                    n_atoms: Optional[int] = None,
                     resources: "Resources",
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
@@ -4162,8 +4163,14 @@ def render_wrappers(script_path: Path, *,
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
     r = resources
-    n_atoms = (_parse_fdf_n_atoms(script_path)
-               if script_path.suffix.lower() == ".fdf" else None)
+    # TOLD FIRST, READ SECOND -- `_wants_gpu`'s shape, and `gpu.md` G7's rule.
+    # The count is `len(struct.elements)`, which `prep` holds when it renders a
+    # deck; reading it back out of the file we just wrote is re-deriving a value
+    # we had.  The read stays for the caller that has no structure to ask --
+    # `prep_jobset` walks a job set of scripts, not structures -- which is the
+    # same exemption G7 grants the GPU scan, and for the same reason.
+    if n_atoms is None and script_path.suffix.lower() == ".fdf":
+        n_atoms = _parse_fdf_n_atoms(script_path)
     text = render_run_wrapper(
         script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record)
@@ -4208,6 +4215,7 @@ def render_wrappers(script_path: Path, *,
 
 def write_run_wrapper(script_path: Path, *,
                       label: str = "",
+                      n_atoms: Optional[int] = None,
                       resources: "Resources",
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
@@ -4231,7 +4239,8 @@ def write_run_wrapper(script_path: Path, *,
     Overwrites whatever is there.
     """
     from . import script_emit as _sc_write
-    rendered = render_wrappers(script_path, label=label, resources=resources,
+    rendered = render_wrappers(script_path, label=label, n_atoms=n_atoms,
+                               resources=resources,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir)
