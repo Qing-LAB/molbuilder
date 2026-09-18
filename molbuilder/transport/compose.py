@@ -221,15 +221,21 @@ def classify_citation(cite_dir: Path) -> CitedDir:
                 f"({', '.join(x.name for x in xvs)}) -- ambiguous; keep "
                 f"the relaxation's own one.")
         deck = decks[0]
-        # Asked, not decided.  `run_status` owns the markers: molbuilder's
-        # carries the rc line and answers first; the engine's own
-        # `0_NORMAL_EXIT` counts too (§ 4.1b, evidence is FILES).  The value
-        # stays bare -- the tab wraps it in its own parentheses.
-        from ..parse.dirs.job import run_status
-        concluded = run_status(cite_dir).concluded
+        # DECK-SCOPED, and that is the whole question.  `attempt_concluded`
+        # is asked about THIS deck; `run_status` answers about the DIRECTORY.
+        # They look like one question and are not -- measured 2026-09-18: in a
+        # directory holding a neighbour rung at a higher attempt index, the
+        # directory answer reports that rung's `rc=1 (walltime)` for a
+        # citation whose own run concluded `rc=0`, and the tab renders
+        # CONCLUDED (rc=1) for a clean relaxation.  It also cost 3,000x the
+        # runtime (a full parse of every `.out`, discarded) and appended a
+        # `.parse.log` into the person's finished directory on every browse.
+        concluded = attempt_concluded(cite_dir, deck.stem)
         # A molbuilder attempt mid-run HAS record files that do not
-        # conclude; attempt_concluded answers None for both that and
-        # no-record-at-all.  Tell them apart by the files themselves --
+        # conclude; `attempt_concluded` answers None for both that and
+        # no-record-at-all.  This third clause is LOAD-BEARING, not
+        # decoration: it is what separates "still running" from "no run
+        # record", and `compose_junction` gates on the difference.  Tell them apart by the files themselves --
         # classification only RECORDS the state (describing ahead of a
         # running relax is legal); COMPOSING from it refuses (strict
         # composition, ruling Q2 -- compose_junction).

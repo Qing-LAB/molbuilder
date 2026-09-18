@@ -177,9 +177,10 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     optim_glob = "*" + ROLE_GEOM_TRAJ
     optim_hits = glob.glob(os.path.join(directory, optim_glob))
     if optim_hits:
+        chosen = _newest(optim_hits)
         attempts.append(f"{optim_glob} -> "
-                        f"picked {os.path.basename(optim_hits[0])}")
-        return _newest(optim_hits), attempts
+                        f"picked {os.path.basename(chosen or '')}")
+        return chosen, attempts
 
     return None, attempts
 

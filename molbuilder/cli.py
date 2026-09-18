@@ -104,6 +104,25 @@ def _resolve_input_path(path: str) -> Iterator[str]:
         except OSError:
             pass
 
+def _trajectory_parser_for(resolved):
+    """The FileParser for a trajectory artifact, or a clean refusal.
+
+    These verbs hand the result to trajectory code, so they want a FILE.
+    `detect()` answers for a DIRECTORY too since `JobDirParser` was
+    registered (2026-09-18), and a `RunDirResult` has no `frames` or
+    `runtime_info` -- an AttributeError traceback where there used to be
+    "Error: ... / exit 2".
+    """
+    from .parse import detect as _detect
+    from .parse.errors import UnknownFormatError
+    from pathlib import Path as _P
+    if _P(resolved).is_dir():
+        raise UnknownFormatError(
+            f"{resolved} is a directory.  These verbs read one run "
+            f"artifact; name the file inside it (the Watch tab resolves a "
+            f"directory for you, via `parse.dirs.openable_in`).")
+    return _detect(resolved)
+
 
 # --------------------------------------------------------------------- #
 #  Shared helpers                                                       #
@@ -1506,6 +1525,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
               type=click.Path(dir_okay=False),
               help="Output JSON path.  Default: ``<input-stem>.runtime_info.json`` "
                    "next to the input.  Use ``-`` for stdout.")
+
 @click.option("--pretty/--no-pretty", default=True, show_default=True,
               help="Indent the JSON output.")
 def cmd_runtime_info(input_path, out_path, pretty):
@@ -1530,7 +1550,8 @@ def cmd_runtime_info(input_path, out_path, pretty):
         molbuilder runtime-info job.out --out /tmp/x.json --no-pretty
         # -> compact single-line JSON to a specific path
     """
-    from .parse import detect as detect_parser, ParseError
+    from .parse import ParseError
+    detect_parser = _trajectory_parser_for
 
     with _resolve_input_path(input_path) as resolved:
         try:
@@ -3136,7 +3157,8 @@ def cmd_watch_parse(input_path, frames_only, pretty):
         molbuilder watch parse run.molwatch.log | jq '.frames[-1]'
         molbuilder watch parse - < run.out --frames-only | grep error
     """
-    from .parse import detect as detect_parser, ParseError
+    from .parse import ParseError
+    detect_parser = _trajectory_parser_for
     from .parse.engines._helpers import trajectory_to_legacy_dict
 
     with _resolve_input_path(input_path) as resolved:
@@ -3193,13 +3215,27 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
     Ctrl-C also exits cleanly.
     """
     import time
-    from .parse import detect as detect_parser, ParseError
+    from .parse import ParseError
+    detect_parser = _trajectory_parser_for
     from .parse.engines._helpers import trajectory_to_legacy_dict
     from .parse.engines._run_ending import CONCLUDED
 
     if input_path == "-":
         click.echo("Error: stdin not supported for `watch tail` "
                    "(needs a real file to poll)", err=True)
+        sys.exit(2)
+
+    # A DIRECTORY IS A PERMANENT CONDITION, SO IT IS REFUSED BEFORE THE LOOP.
+    # The loop below tolerates `ParseError` as a TRANSIENT state (the writer
+    # has not flushed enough bytes to be detectable yet) and sleeps.  The
+    # directory refusal is an `UnknownFormatError`, which IS a `ParseError`,
+    # so raising it inside the loop retried for ever -- a silent hang where
+    # there used to be a traceback.  Measured 2026-09-18.
+    from pathlib import Path as _P
+    if _P(input_path).is_dir():
+        click.echo(f"Error: {input_path} is a directory.  `watch tail` "
+                   f"follows one run artifact; name the file inside it.",
+                   err=True)
         sys.exit(2)
 
     last_n = 0

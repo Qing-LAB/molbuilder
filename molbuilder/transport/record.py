@@ -174,12 +174,24 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             fact["state"] = "not_described"
             out.append(fact)
             continue
-        container = base / token
-        att = latest_attempt(container)
-        if att is None:
+        # WHERE THIS RUNG RAN.  A bias SCAN puts the transmission rung under
+        # one v-dir per point (`<token>/v<V>/run-<n>`, § 4.2/4.3) -- which
+        # `_point_dirs` above already knows and this did not: it asked
+        # `latest_attempt(base / token)`, found no `run-<n>` directly there,
+        # and reported a FINISHED scan as `not_run` -- on the same panel that
+        # was showing its finished bias points.
+        containers = ([d for _v, d in _point_dirs(base, task)]
+                      if name == "transmission" else [base / token])
+        cand = [(c, latest_attempt(c)) for c in containers]
+        cand = [(c, a) for c, a in cand if a is not None]
+        if not cand:
             fact["state"] = "not_run"
             out.append(fact)
             continue
+        # The newest attempt across the points speaks for the rung.
+        container, att = max(cand, key=lambda ca: ca[1].stat().st_mtime)
+        if len(containers) > 1:
+            fact["points"] = len(cand)
         fact["attempt"] = str(att.relative_to(base))
         outs = sorted(find_by_role(run_dir(container), ".out"),
                       key=lambda q: q.stat().st_mtime, reverse=True)

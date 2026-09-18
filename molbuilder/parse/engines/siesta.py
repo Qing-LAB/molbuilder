@@ -137,20 +137,13 @@ _SIESTA_FEATURE_RE = re.compile(
 # user wrote in the .fdf (those can drift when SIESTA's parser
 # normalises or rejects).  Used to populate
 # ``runtime_info['siesta_diag']``.
-_SIESTA_DIAG_ALGO_RE = re.compile(
-    r"^\s*redata:\s+(?:Diagonalization\s+algorithm|Diag\.Algorithm)"
-    r"\s*=\s*(\S+)", re.IGNORECASE)
-_SIESTA_DIAG_ELPA_GPU_RE = re.compile(
-    r"^\s*redata:\s+(?:ELPA[.\s]?GPU|Diag\.ELPA\.GPU)\s*=\s*([TF]|\.?true\.?|\.?false\.?)",
-    re.IGNORECASE)
-# SIESTA's ELPA-CUDA runtime banner (printed once per run on the first
-# diagonalization).  Format observed on ELPA 2024.05 + SIESTA 5.4.2:
-#     ELPA: NVIDIA GPU detected: NVIDIA A100-SXM4-40GB (sm_80)
-# We capture device name + compute capability when present; degrade
-# gracefully if the build prints a shorter form.
-_SIESTA_GPU_DEVICE_RE = re.compile(
-    r"^\s*ELPA:\s+(?:NVIDIA\s+)?GPU\s+(?:detected|in use)\s*:\s*(.+?)"
-    r"(?:\s+\((sm_\d+)\))?\s*$", re.IGNORECASE)
+# The diag patterns live in `_diag.py`, which `bench/result.py` also reads.
+# These were three byte-identical private copies until 2026-09-18.
+from ._diag import GPU_DEVICE as _SIESTA_GPU_DEVICE_RE       # noqa: E402
+from ._diag import REQUESTED as _DIAG_REQUESTED              # noqa: E402
+
+_SIESTA_DIAG_ALGO_RE = _DIAG_REQUESTED["algorithm"]
+_SIESTA_DIAG_ELPA_GPU_RE = _DIAG_REQUESTED["elpa_gpu"]
 
 # Validation vocabularies for the loose-capture build/diag probes.  We
 # still record whatever SIESTA printed, but a token OUTSIDE these sets

@@ -14,12 +14,13 @@ line does not.
 * ``diag:`` reports what the solver ACTUALLY used, which can differ:
   ELPA falls back, a GPU kernel is refused, a block size is clamped.
 
-`bench/result.py` compares the two (``compare_asked_to_ran``), so both
-have to be readable and they have to be told apart.  Until 2026-09-18 they
-were read in two files under ONE key name -- the parser recorded
-``siesta_diag['elpa_gpu']`` from ``redata:`` and `bench` recorded
-``eff['elpa_gpu']`` from ``diag:`` -- so the same name meant *asked* in one
-place and *ran* in the other.
+They were read in two files with two private pattern sets until 2026-09-18,
+under one key name: the parser recorded ``siesta_diag['elpa_gpu']`` from
+``redata:`` and `bench` recorded ``eff['elpa_gpu']`` from ``diag:``, so the
+same name meant *asked* in one place and *ran* in the other.  The PATTERNS
+are single-homed here now and both readers import them.  The two output keys
+still share the name in their own dicts; they are never merged, so it is a
+naming hazard rather than a collision.
 """
 from __future__ import annotations
 

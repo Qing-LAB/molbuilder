@@ -1240,10 +1240,35 @@ mistake with a caller attached to excuse it.
 | **N5b** | `watch.py` deletes `_FDF_SYSTEM_LABEL_RE` / `_PY_JOB_NAME_RE` and asks the moved reader; the label is then `scalars["systemlabel"]` — **no new regex anywhere** | four fdf readers become one, and the borrow in `parse/contract.py` stops crossing a package boundary |
 | **N5c** | `parse/dirs/job.py` asks N5a for the label, then `runfiles.parse`; **`identity.parse_stage_token` is DELETED**, its `materialize.py` callers moving to `runfiles.parse` + a token splitter (the inverse of `identity.stage_token`, taking a TOKEN not a filename) | kills the second FILENAME reader, which is N5 ② — and ③ falls out, because the phantom rung came from parsing with no label |
 | **N5d** | **apply G7 to the label — BUT IT IS NOT TWO DECLARATIONS.** ⚠ *I described this as trivial before running the review; the review says otherwise.* `read_by = ["wrapper"]` **documents** a dependency, it does not carry a value: G7 was reached *"by carrying the answer rather than by importing the catalogue into the wrapper"* — `resolve` puts `use_gpu` on `Resources`, which already travels. Measured: `render_wrappers` / `write_run_wrapper` receive `(script_path, resources, env, emit_sbatch, project_dir, machine_record)` and **not** the unsuffixed label; A8 forbids adding a loose kwarg (it exists because eleven were removed). So the label reaches the wrapper only by **a new `Resources` field** — and `Resources` is identity-free today, carrying allocation, retry, notify and `program`. **That is a design decision, not a mechanical application**, and it waits for a yes | `gpu.md` G7 + `architecture.md` A8. The alternative — prep reads the deck once with the consolidated parser and bakes a literal — needs no new field and no plumbing, and is what N5f makes possible |
-| **N5f** | the remaining deck readers consolidate onto the one correct parser — **`watch.py`'s pair and `_parse_fdf_n_atoms` DONE 2026-09-17**; `_fdf_requests_gpu` **STOPPED, see below** | **eight readers of deck content measured** — four awk in the wrapper (label ×2, GPU flag, a `%block` line counter), four Python — and only `_parse_fdf` + `_norm` implements fdf's real keyword rule |
+| **N5f** | the remaining deck readers consolidate onto the one correct parser — **`watch.py`'s pair and `_parse_fdf_n_atoms` DONE 2026-09-17**; `_fdf_requests_gpu` **SETTLED AND DONE 2026-09-18, see below** | **eight readers of deck content measured** — four awk in the wrapper (label ×2, GPU flag, a `%block` line counter), four Python — and only `_parse_fdf` + `_norm` implements fdf's real keyword rule |
 
-> **N5f stopped one reader short, on a disagreement worth settling before it
-> is buried** *(2026-09-17)*. `_fdf_requests_gpu` was next, and routing it
+> **SETTLED 2026-09-18 — the evidence was already in the tree, on another
+> row.** This said settling it *"needs SIESTA's own fdf source, which is
+> not available in this checkout"*, and the table below records
+> `_parse_fdf`'s first-wins as citing *"none stated"*. Both were true when
+> written and neither is now: **`siesta/layout.py::check_rules` states the
+> rule from libfdf's own source** — *"libfdf takes the FIRST match and
+> ignores the rest (`fdf_locate` walks from the top and stops)"* — which is
+> why the deck gate REFUSES a duplicate keyword instead of resolving one.
+> `summarize.deck_value` and `script_emit._deck_answer` say the same. So
+> three readers plus a libfdf citation say FIRST; `_fdf_requests_gpu` alone
+> said last, citing `read_options.F90` — which is SIESTA's *consumer* of
+> the value, not fdf's lookup. The lookup never returns the second line.
+>
+> **Migrated, and the launch-time twin with it.** `_GPU_TRUTHY`'s own
+> comment says the Python check and the wrapper's launch-time awk are kept
+> in step *"so the two rules cannot diverge (R6)"*. Converting only the
+> Python half split them — a deck spelling `Diag_ELPA_GPU` took the GPU env
+> at prep and CPU rank defaults at launch, which is the task-#36 OOM class.
+> The awk now squashes `.`/`-`/`_`, is first-wins per keyword, and ORs the
+> two keywords; six spellings measured identical across both readers.
+>
+> *(Process note: this row said STOPPED and the migration went in anyway,
+> in `dada356a`, without updating it. The answer was right and the evidence
+> was real, but a reserved decision was made silently — which is the thing
+> this row existed to prevent.)*
+>
+> *The original disagreement, for the record* *(2026-09-17)*: `_fdf_requests_gpu` was next, and routing it
 > through `_parse_fdf` would have **changed its answer**: the two readers
 > disagree on what a REPEATED keyword means.
 >

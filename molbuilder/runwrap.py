@@ -1657,10 +1657,13 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
     from .parse.fdf import _parse_fdf
     scalars, _blocks = _parse_fdf(text)
     truthy = set(_GPU_TRUTHY)
+    # EITHER keyword turning true means the job needs the GPU env, so this
+    # is an OR over the two -- not "whichever key we look at first".  Within
+    # one keyword `_parse_fdf` is first-wins, which is fdf.
     for key in ("diagelpausegpu", "diagelpagpu"):
         got = scalars.get(key)
-        if got:
-            return got[0].strip().lower() in truthy
+        if got and got[0].strip().lower() in truthy:
+            return True
     return False
 
 
@@ -2376,13 +2379,14 @@ def render_run_wrapper(script_path: Path, *,
             f'# Default mpi_np / omp_threads -- re-evaluated at LAUNCH\n'
             f'# from the current .fdf so toggling the GPU flag after\n'
             f'# generation picks up the right rank count (task #36 fix).\n'
-            f'# SAME RULE as generation (_fdf_requests_gpu): BOTH keyword\n'
-            f'# spellings, SIESTA fdf_get\'s truthy set, LAST occurrence\n'
-            f'# wins -- the grep this replaced matched one spelling, one\n'
-            f'# value, any occurrence (R6, 2026-08-12).\n'
-            f'_mb_gpu_val=$(awk \'tolower($1) == "diag.elpa.gpu" || '
-            f'tolower($1) == "diag.elpa.usegpu" {{ v = tolower($2) }} '
-            f'END {{ print v }}\' "{script_name}" 2>/dev/null || true)\n'
+            f'# SAME RULE as generation (_fdf_requests_gpu), and it has to\n'
+            f'# be: fdf ignores case AND . - _ in a keyword, so the name is\n'
+            f'# squashed before comparing; and libfdf takes the FIRST match\n'
+            f'# (fdf_locate stops there), so the first value wins.\n'
+            f'# This matched "diag.elpa.gpu" literally and kept the LAST\n'
+            f'# value until 2026-09-18 -- a deck spelling Diag_ELPA_GPU got\n'
+            f'# the GPU env at prep and CPU rank defaults here.\n'
+            f'_mb_gpu_val=$(awk \'{{ sub(/\\r$/, ""); sub(/#.*/, "") }} {{ lk = tolower($1) }} lk == "%block" {{ inb = 1; next }} lk == "%endblock" {{ inb = 0; next }} inb {{ next }} {{ k = lk; gsub(/[._-]/, "", k) }} (k == "diagelpagpu" || k == "diagelpausegpu") && !(k in seen) {{ seen[k] = 1; v[k] = tolower($2) }} END {{ for (q in v) {{ split("{" ".join(_GPU_TRUTHY)}", tset, " "); for (ti in tset) if (v[q] == tset[ti]) {{ print v[q]; exit }} }} }}\' "{script_name}" 2>/dev/null || true)\n'
             f'case "$_mb_gpu_val" in\n'
             f'    {"|".join(_GPU_TRUTHY)})\n'
             f'        _mb_gpu_active=1\n'

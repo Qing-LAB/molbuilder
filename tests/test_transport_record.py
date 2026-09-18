@@ -263,3 +263,48 @@ class TestTheRecordNamesWhatItIsEntitledToBeCalled:
         rec = collect_record(calc, read_task(calc / "task.json"))
         assert len(rec["points"]) == 1 and len(rec["pending"]) == 1
         assert rec["treatment"] == "finite-bias"
+
+
+class TestTheLadderPanelSeesAFinishedScan:
+    """`_stage_facts` and `_point_dirs` must agree about where a bias scan
+    lives — `engines/transport.md` § 4.2/4.3: a SCAN puts the transmission
+    rung under one v-dir per point (`<token>/v<V>/run-<n>`), a single point
+    under the stage dir itself.
+
+    **The defect this guards shipped and was user-visible.** `_stage_facts`
+    asked `latest_attempt(base / token)`, found no `run-<n>` directly under
+    the stage dir, and reported a FINISHED scan's transmission rung as
+    ``not_run`` — rendered on the Results panel as *"05_transmission · not
+    run yet"* directly above the same record's table of finished bias
+    points. `_point_dirs` sixty lines above it already knew the layout.
+    """
+
+    def test_a_finished_scan_does_not_read_as_not_run(self, calc):
+        from molbuilder.task import read_task
+        from molbuilder.transport.record import _stage_facts
+        _ran_transmission(calc, "v0")
+        _ran_transmission(calc, "v0.2")
+        task = read_task(calc / "task.json")
+        facts = {f["stage"]: f for f in _stage_facts(calc, task, task.label)}
+        tx = facts["transmission"]
+        assert tx["state"] != "not_run", (
+            "a finished scan's transmission rung read as never run -- the "
+            f"v-dir layer was invisible: {tx}")
+        assert tx.get("points") == 2, (
+            f"both bias points should be seen: {tx}")
+
+    def test_an_unrun_rung_is_still_told_apart_from_a_finished_one(self, calc):
+        """Anti-vacuity: the assertion above must not pass by making every
+        rung look run.
+
+        The fixture PREPS the transmission stage, so its v-dirs and attempts
+        exist before anything runs — `no_output` is the honest answer there,
+        and the upstream rungs, which prep has not touched, are `not_run`.
+        Neither is `ran`, which is what the test above asserts."""
+        from molbuilder.task import read_task
+        from molbuilder.transport.record import _stage_facts
+        task = read_task(calc / "task.json")
+        facts = {f["stage"]: f for f in _stage_facts(calc, task, task.label)}
+        assert facts["transmission"]["state"] == "no_output", facts
+        assert facts["seed"]["state"] == "not_run", facts
+        assert all(f["state"] != "ran" for f in facts.values()), facts

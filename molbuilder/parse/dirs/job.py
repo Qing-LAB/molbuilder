@@ -31,6 +31,7 @@ a second ``SystemLabel`` regex that returned a different answer.)*
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass
@@ -165,28 +166,69 @@ def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
     kill never does.  An engine that dies before printing leaves a marker
     and no output at all -- the case content cannot see.
     """
-    from molbuilder.runfiles import find_by_role
+    from molbuilder.runfiles import find_by_role, latest_run, parse as rf_parse
     narrowed = {c.name for c in run_dir.glob(match)}
     marks = [m for m in find_by_role(run_dir, ".concluded")
              if m.name in narrowed]
     if marks:
-        # Highest run index last -- `find_by_role` sorts by name, and the
-        # counter is zero-padded nowhere, so ask the grammar instead.
-        from molbuilder.runfiles import parse as _rf_parse
-        def _idx(pth: Path) -> int:
+        # THE INDEX IS ASKED FOR, and the rule is `attempt_concluded`'s: the
+        # marker counts only at the HIGHEST index any per-run artifact
+        # reached, across every role.  An earlier index's marker beside a
+        # newer unconcluded `.out` is a previous re-run's goodbye.
+        best = None
+        for m in marks:
+            got = rf_parse(m.name, _label_of_marker(m.name))
+            idx = getattr(got, "run", None) if got else None
+            newest = latest_run(run_dir, _label_of_marker(m.name))
+            if newest is not None and idx is not None and idx < newest:
+                continue                 # a previous attempt's goodbye
+            key = (idx if idx is not None else -1, m.stat().st_mtime)
+            if best is None or key > best[0]:
+                best = (key, m)
+        if best is not None:
             try:
-                got = _rf_parse(pth.name, pth.name.split("-run")[0])
-                return int(getattr(got, "run", None) or 0)
-            except Exception:
-                return 0
-        newest = sorted(marks, key=lambda m: (_idx(m), m.stat().st_mtime))[-1]
-        try:
-            return newest.read_text(encoding="utf-8").strip() or "rc=?"
-        except OSError:
-            return None
-    if (run_dir / _ENGINE_EXIT_MARKER).is_file():
+                return best[1].read_text(encoding="utf-8").strip() or "rc=?"
+            except OSError:
+                return None
+        return None
+    # SIESTA's own marker carries NO LABEL, so it cannot be attributed to a
+    # rung.  In the flat shape every stage shares one directory, so consulting
+    # it while narrowed would let one rung's clean exit answer for all of them.
+    if match == "*" and (run_dir / _ENGINE_EXIT_MARKER).is_file():
         return _ENGINE_EXIT_MARKER
     return None
+
+
+def _label_of_marker(name: str) -> str:
+    """The label a `<label>-run<N>.concluded` carries.
+
+    `runfiles.parse` needs the label to read a name back, and a marker is the
+    one artifact we meet before anything has said whose it is.  The counter
+    keyword comes from `runfiles.QUALIFIERS`.
+
+    *(This spelled `"-run"` behind an `isinstance(QUALIFIERS, dict)` guard
+    that is always False -- `QUALIFIERS` is a tuple -- so the literal was
+    always used while the docstring claimed otherwise.)*
+    """
+    from molbuilder.runfiles import QUALIFIERS
+    cut = name.rfind("-" + QUALIFIERS[0])
+    return name[:cut] if cut > 0 else name
+
+
+def _rc_ok(concluded: str) -> bool:
+    """Did the process end successfully, from the marker's own text?
+
+    The wrapper writes ``rc=<N> at <date>`` (`runwrap.py`), so the rc has to
+    be PARSED, not string-equalled.  Measured 2026-09-18: 19 of the 20 markers
+    in the checkout carry the date, and an exact test against ``"rc=0"``
+    matched only the one hand-made fixture -- reporting every real successful
+    conclusion as a failure.
+    """
+    if concluded == _ENGINE_EXIT_MARKER:
+        return True
+    head = concluded.splitlines()[0] if concluded else ""
+    m = re.search(r"\brc=(-?\d+)", head)
+    return m is not None and int(m.group(1)) == 0
 
 
 # ---- how each result file ENDED ------------------------------------- #
@@ -335,7 +377,7 @@ def _build_status(out_paths: List[Path],
     if not out_paths:
         # No output at all: the marker is the whole answer.
         if concluded is not None:
-            rc_ok = concluded in ("rc=0", _ENGINE_EXIT_MARKER)
+            rc_ok = _rc_ok(concluded)
             return RunStatus(
                 state=("finished" if rc_ok else "failed"),
                 detail=(f"concluded ({concluded}) before any output"
@@ -372,7 +414,7 @@ def _build_status(out_paths: List[Path],
     elif concluded is not None:
         # Content is silent, the process is not: the run is over and the
         # marker says how.  The age rule below only guesses `stale`.
-        if concluded in ("rc=0", _ENGINE_EXIT_MARKER):
+        if _rc_ok(concluded):
             state, detail = "finished", f"concluded ({concluded})"
         else:
             state, detail = "failed", f"concluded ({concluded})"
