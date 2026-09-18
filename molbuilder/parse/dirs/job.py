@@ -247,20 +247,26 @@ def _molwatch_conclusions(mw_paths: List[Path]) -> Dict[str, str]:
     run-state counts.  One without a footer is a live view — a prep-time
     seed, or a run still going — and is deliberately NOT in the answer:
     feeding it into the state would let a stage's seed outvote its own
-    ``.out``.  Fail-soft like the ``.out`` path: a log the registry
-    cannot read simply contributes nothing.
+    ``.out``.  Fail-soft like the ``.out`` path: a log that cannot be read
+    simply contributes nothing.
+
+    **Through the cheap door**, like ``_out_conclusions`` beside it.  This
+    went through ``detect(path).parse(path)`` until 2026-09-18 -- a whole
+    Trajectory built and discarded to reach one string -- which also opened
+    a ``ParseLogger`` per log, so every Watch poll created and grew a
+    ``.parse.log`` inside the user's project directory.  Measured: 540 B
+    after one ``run_status``, 1080 B after two, over 67 logs.
     """
-    from molbuilder.parse import detect
-    from molbuilder.parse.errors import ParseError
+    from molbuilder.parse.engines._run_ending import CONCLUDED
+    from molbuilder.parse.engines.molwatch import scan_conclusion
     states: Dict[str, str] = {}
     for path in mw_paths:
         try:
-            traj = detect(path).parse(path)
-        except (ParseError, OSError, ValueError):
+            state = scan_conclusion(path)
+        except (OSError, ValueError):
             continue
-        if (traj.run_state or "") in ("ended", "stopped",
-                                      "out_of_memory"):
-            states[path.name] = traj.run_state
+        if state in CONCLUDED:
+            states[path.name] = state
     return states
 
 
@@ -437,9 +443,25 @@ def _build_status(out_paths: List[Path],
         state, detail = "failed", "out of memory"
     elif active_state == "stopped":
         state, detail = "failed", "stopped before its end -- see the .out"
-    elif concluded is not None:
+    elif concluded is not None and concluded != _ENGINE_EXIT_MARKER:
         # Content is silent, the process is not: the run is over and the
         # marker says how.  The age rule below only guesses `stale`.
+        #
+        # THE ENGINE'S OWN MARKER IS EXCLUDED, because it cannot be
+        # ATTRIBUTED.  A `.concluded` carries a label and a `-run<N>`, so
+        # `_process_conclusion` can refuse a previous attempt's goodbye;
+        # `0_NORMAL_EXIT` is a bare filename carrying neither, so a leftover
+        # from an earlier attempt promoted a silent, un-growing output to
+        # `finished` -- measured `stale` -> `finished` on a copy of
+        # `BDT-withAuJunction`, and back to `stale` with the marker removed.
+        # `_process_conclusion` already refuses it on the STAGE axis when
+        # narrowed, for the same reason; this is the ATTEMPT axis.
+        #
+        # It is still REPORTED (the `concluded` field below) and still
+        # decides where there is no output at all to contradict it, which is
+        # the case only a marker can see.  Mtime cannot stand in for the
+        # index: measured over the 31 real marker directories, SIESTA writes
+        # it up to 8 s BEFORE the output's final write.
         if _rc_ok(concluded):
             state, detail = "finished", f"concluded ({concluded})"
         else:

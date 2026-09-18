@@ -220,6 +220,30 @@ def parse_conclusion_line(line: str, out: Dict[str, Any]) -> bool:
 
 
 
+def scan_conclusion(path) -> str:
+    """The run-state a molwatch log's FOOTER states, without building a
+    Trajectory -- ``"running"`` when it carries no footer.
+
+    The cheap door onto :func:`parse_conclusion_line`, for a caller that
+    wants only how the run ended (`model/parse.md` § 2b), and the sibling of
+    ``_run_ending.scan_ending`` on the ``.out`` side.  A status probe over a
+    whole directory must not full-parse to reach one string: doing that is
+    what made ``run_status`` create and grow a ``.parse.log`` beside every
+    molwatch log it looked at, on every Watch poll.
+
+    **Every line, in file order**, because this grammar's rule is *error
+    outranks concluded and the LAST error wins* -- a tail-only read would
+    answer ``"ended"`` for a log whose earlier attempt failed.  Only lines
+    opening with ``#`` are offered, which is all either pattern can match.
+    """
+    out: Dict[str, Any] = {}
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line[:1] == "#":
+                parse_conclusion_line(line, out)
+    return out.get("run_state") or "running"
+
+
 def _maybe_float(token: str) -> Optional[float]:
     """Convert a token to float; return None for the literal 'None' / 'null'."""
     if token == "None" or token == "null":

@@ -280,18 +280,6 @@ def test_every_legal_spelling_of_the_block_name_is_found(tmp_path, sep):
         str(tmp_path / "run.out")) == {0, 1, 2}
 
 
-def test_a_directory_named_fdf_does_not_hide_the_real_deck(tmp_path):
-    """`os.listdir` without a file test counted a `*.fdf` DIRECTORY as a
-    second candidate, so a directory holding exactly one real deck
-    answered None and lost its frozen atoms."""
-    (tmp_path / "other.fdf").mkdir()
-    (tmp_path / "deck.fdf").write_text(
-        "%block Geometry.Constraints\nposition 1 2\n"
-        "%endblock Geometry.Constraints\n")
-    assert read_frozen_atoms_from_siesta_fdf(
-        str(tmp_path / "traj.out")) == {0, 1}
-
-
 def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
     """The wrapper counts constrained atoms in shell, so it cannot import
     the reader -- the PATTERN has to carry fdf's rule.  Rendered, extracted

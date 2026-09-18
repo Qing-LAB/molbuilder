@@ -810,3 +810,42 @@ def test_electrode_still_builds_one_slab_per_flag():
     spec = cli._parse_electrode_spec("Au:111:3x3x2@contact=2.4:+z=3")
     assert spec["mode"] == "single" and spec["side"] == "+z"
     assert spec["contact_distance"] == 2.4
+
+
+# --------------------------------------------------------------------- #
+#  The trajectory verbs refuse what is not a trajectory                 #
+# --------------------------------------------------------------------- #
+
+
+#: `watch parse` and `runtime-info` are the SAME path -- detect, then read
+#: `.frames` -- so one of them stands for both.  `watch tail` is here on its
+#: own merits: it calls the guard inside a poll loop, where the failure is a
+#: HANG rather than a traceback.
+@pytest.mark.parametrize("verb", [["watch", "parse"], ["watch", "tail"]])
+def test_the_trajectory_verbs_refuse_a_single_geometry(verb, tmp_path,
+                                                       capsys):
+    """These three read `.frames` after detection, so a file whose parser
+    answers a `StructureResult` crashed with
+    `AttributeError: 'StructureResult' object has no attribute 'frames'`.
+
+    The guard written for this asked `is_dir()` -- which catches a
+    directory and not this, the file PySCF writes at the end of every
+    optimization.  `/api/watch/*` had the right rule a layer up
+    (`_refuse_if_not_a_trajectory`); both now ask
+    `parse.types.answers_a_trajectory`.
+
+    `watch tail` is in the list deliberately: it calls the guard INSIDE a
+    poll loop that retries `ParseError` and sleeps, so a refusal raised as
+    one hangs for ever instead of printing.
+    """
+    p = tmp_path / "x_optimized.xyz"
+    p.write_text("2\nfinal\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    with _must_return_within(15, f"{' '.join(verb)} on a single geometry"):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(verb + [str(p)])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "not a trajectory" in err, err
+    assert "pyscf-geom" in err, (
+        "the refusal must name the parser that DID read the file, so the "
+        f"reader knows it is not a detection failure: {err!r}")

@@ -201,3 +201,26 @@ def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     s2 = run_status(tmp_path)
     assert s2.active_source == later.name, (
         f"within one stage the later attempt must win: {s2}")
+
+
+def test_reading_a_directory_writes_nothing_into_it(tmp_path, monkeypatch):
+    """A status probe is a READ.
+
+    `run_status` full-parsed every molwatch log through the registry, which
+    opens a `ParseLogger`, so every Watch poll created and grew a
+    `.parse.log` inside the user's project -- 177 of them, 31.5 MB, deleted
+    by hand on 2026-09-18.  The `.out` half moved to a cheap door the same
+    day; the molwatch half did not.
+    """
+    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)   # default ON
+    _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=True)
+    # THE LOG MUST BE ONE THE REGISTRY CAN PARSE, or the old code raises
+    # before opening its logger and this passes against the very thing it
+    # refuses.  `_mw_log` writes a real log's shape; the sibling test above
+    # proves the registry reads it.
+    before = {p.name for p in tmp_path.iterdir()}
+    for _ in range(3):
+        run_status(tmp_path)
+    assert {p.name for p in tmp_path.iterdir()} == before, (
+        "reading the directory created files in it: "
+        f"{ {p.name for p in tmp_path.iterdir()} - before }")

@@ -287,12 +287,12 @@ def _refuse_if_not_a_trajectory(parser_cls):
     than guesses, and names the file's real kind in the refusal instead
     of failing at the first attribute that is missing.
     """
-    from molbuilder.parse.types import TrajectoryResult
+    from molbuilder.parse.types import answers_a_trajectory
 
-    out = getattr(parser_cls, "output", None)
-    if out is not None and issubclass(out, TrajectoryResult):
+    if answers_a_trajectory(parser_cls):
         return None
-    kind = getattr(out, "__name__", "an unknown result")
+    kind = getattr(getattr(parser_cls, "output", None), "__name__",
+                   "an unknown result")
     return {
         "ok": False,
         "error": (

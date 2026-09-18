@@ -29,6 +29,7 @@ REAL = "rc=0 at Tue Sep 15 05:55:06 PM MST 2026"
 RUNNING_OUT = "Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n"
 
 
+
 def _dir(tmp_path, **files):
     for name, text in files.items():
         (tmp_path / name.replace("__", ".")).write_text(text)
@@ -149,3 +150,41 @@ class TestTheEnginesOwnMarkerCountsForACitation:
         (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
         (tmp_path / "relax.XV").write_text("x\n")
         assert classify_citation(tmp_path).concluded is None
+
+
+class TestTheEngineMarkerMayNotDecide:
+    """`0_NORMAL_EXIT` is a bare filename: no label, no `-run<N>`.
+
+    A `.concluded` carries both, so `_process_conclusion` can refuse a
+    PREVIOUS attempt's goodbye.  The engine's marker cannot be attributed to
+    an attempt at all, so a leftover promoted a silent, un-growing output to
+    `finished`.  `_process_conclusion` already refuses it on the STAGE axis
+    when the caller narrows; this is the ATTEMPT axis.
+    """
+
+    def test_a_leftover_marker_does_not_promote_a_silent_output(self,
+                                                                tmp_path):
+        import os
+        import time
+        _dir(tmp_path, **{"bdt__fdf": "x", "bdt-run0__out": RUNNING_OUT,
+                          "0_NORMAL_EXIT": ""})
+        old = time.time() - 3600
+        os.utime(tmp_path / "bdt-run0.out", (old, old))
+        st = run_status(tmp_path)
+        assert st.state == "stale", (
+            "a marker that cannot be attributed to an attempt decided the "
+            f"state anyway: {st}")
+        assert st.concluded == "0_NORMAL_EXIT", (
+            "the evidence must still be REPORTED -- it just may not decide")
+
+    def test_an_attributable_marker_still_decides_the_same_case(self,
+                                                               tmp_path):
+        """The narrowing is exactly one marker wide: a `.concluded` beside
+        the same silent output still says finished."""
+        import os
+        import time
+        _dir(tmp_path, **{"bdt__fdf": "x", "bdt-run0__out": RUNNING_OUT,
+                          "bdt-run0__concluded": REAL})
+        old = time.time() - 3600
+        os.utime(tmp_path / "bdt-run0.out", (old, old))
+        assert run_status(tmp_path).state == "finished"

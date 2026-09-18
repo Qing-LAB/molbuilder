@@ -267,3 +267,18 @@ class InstrumentResult(ParseResult):
 # (BundleResult stood here until 2026-08-29 -- the run-dir -> next-stage
 #  handoff shape retired with the bundle parser; the composite CITES a
 #  finished attempt and `transport/compose.py` fuses at prep.)
+
+
+def answers_a_trajectory(parser_cls) -> bool:
+    """Whether this parser's own declared ``output`` is a trajectory.
+
+    Every route that reads ``.frames`` after detection has to ask this:
+    ``/api/watch/*`` and the three trajectory CLI verbs.  Both hand-rolled
+    it, and the CLI's copy asked ``is_dir()`` instead -- so a single-geometry
+    file the parser reads perfectly still reached trajectory code and raised
+    ``AttributeError: 'StructureResult' object has no attribute 'frames'``.
+
+    A parser declares its answer, so this asks rather than guesses.
+    """
+    out = getattr(parser_cls, "output", None)
+    return out is not None and issubclass(out, TrajectoryResult)

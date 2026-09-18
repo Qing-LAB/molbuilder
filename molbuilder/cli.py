@@ -107,21 +107,39 @@ def _resolve_input_path(path: str) -> Iterator[str]:
 def _trajectory_parser_for(resolved):
     """The FileParser for a trajectory artifact, or a clean refusal.
 
-    These verbs hand the result to trajectory code, so they want a FILE.
-    `detect()` answers for a DIRECTORY too since `JobDirParser` was
-    registered (2026-09-18), and a `RunDirResult` has no `frames` or
-    `runtime_info` -- an AttributeError traceback where there used to be
+    These verbs hand the result to trajectory code, so they want a file whose
+    parser answers a TRAJECTORY.  Two conditions are PERMANENT: a directory
+    (`detect()` answers for one since `JobDirParser` was registered) and a
+    file whose parser answers something else -- both reach `.frames` and
+    raise `AttributeError`.  The `is_dir()` test alone caught only the first,
+    so `<job>_optimized.xyz` still crashed all three verbs.
+
+    **The refusal EXITS rather than raising.**  `watch tail` calls this
+    inside a poll loop that treats `ParseError` as transient -- the writer
+    may not have flushed enough bytes to be detectable yet -- and sleeps.  A
+    permanent condition raised as a `ParseError` there retried for ever: a
+    silent hang where there used to be a traceback.  `SystemExit` cannot be
+    swallowed by that `except`, and every verb prints the same
     "Error: ... / exit 2".
     """
-    from .parse import detect as _detect
-    from .parse.errors import UnknownFormatError
     from pathlib import Path as _P
+    from .parse import detect as _detect
+    from .parse.types import answers_a_trajectory
     if _P(resolved).is_dir():
-        raise UnknownFormatError(
-            f"{resolved} is a directory.  These verbs read one run "
-            f"artifact; name the file inside it (the Watch tab resolves a "
-            f"directory for you, via `parse.dirs.openable_in`).")
-    return _detect(resolved)
+        click.echo(f"Error: {resolved} is a directory.  These verbs read one "
+                   f"run artifact; name the file inside it (the Watch tab "
+                   f"resolves a directory for you, via "
+                   f"`parse.dirs.openable_in`).", err=True)
+        sys.exit(2)
+    parser_cls = _detect(resolved)
+    if not answers_a_trajectory(parser_cls):
+        kind = getattr(getattr(parser_cls, "output", None), "__name__",
+                       "an unknown result")
+        click.echo(f"Error: {resolved} is read by the {parser_cls.name!r} "
+                   f"parser, which answers a {kind} -- not a trajectory.  "
+                   f"These verbs read a run's frames.", err=True)
+        sys.exit(2)
+    return parser_cls
 
 
 # --------------------------------------------------------------------- #
