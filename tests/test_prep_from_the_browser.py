@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -64,6 +65,36 @@ def described(isolated_projects_root, web_client):
     return str(calc)
 
 
+def _make_preppable(calc):
+    """Finish *calc* into a folder `prep` will actually act on.
+
+    The `described` fixture stops at `task.json`, which is all its refusal
+    tests need.  A portable folder is a template PLUS a description
+    (`project-layout.md` § 2.1), and the structure the description names has
+    to be there, so `prep` has something to render from.  Written through
+    the product's own doors rather than spelled, so the fixture cannot drift
+    away from what `jobset init` leaves.
+    """
+    from molbuilder import template as _T
+    from molbuilder.config.siesta import SiestaConfig
+    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    # The pseudopotential the description's species needs, in the folder --
+    # `prep` refuses without one (`project-layout.md` § 2.6) and then runs
+    # the screening over it (`science/pseudopotentials.md` § 1), so a
+    # touch-file will not do.  `write_pseudos` is the suite's one home for
+    # a PSML that parses.
+    from conftest import write_pseudos
+    write_pseudos(calc, ["H"])
+    # How this bundle enters its env -- `prep` refuses without it
+    # (`running-a-job.md` § 5) and the answer is the bundle's, not a
+    # default it could invent.
+    (calc / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate"}}))
+    cfg = SiestaConfig(system_label="JOB")
+    (calc / "JOB.template.toml").write_text(
+        _T.template_with_values(cfg, engine="siesta"))
+
+
 def _post(client, **body):
     r = client.post("/api/task-setup/prep", json=body)
     return r.status_code, (r.get_json() or {})
@@ -98,6 +129,36 @@ def test_the_local_machine_can_be_NAMED(web_client, described):
         machine_for(target=LOCAL_TARGET, probe=False)
     except AmbiguousTarget:
         pytest.fail("naming this machine still reads as silence")
+
+
+def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
+    """This surface acted, so this surface appends (`jobset/ledger.py`).
+
+    It did not.  The only importer of `ledger.record` in the package was the
+    CLI, while the Task Setup **bundle card** listed `jobset-decisions.log`
+    as *"every decision prep made, one line each"* — so a calculation
+    prepped only from the browser had no such file, and one prepped from
+    both told a false story by holding the CLI's lines alone.  Measured
+    2026-09-19: `grep -rn ledger molbuilder/web/` returned one line, the
+    import of the file's NAME for that card.
+
+    The line's CONTENTS are `ledger.prepped`'s and are not re-asserted here
+    — what this pins is that the surface calls it at all.
+    """
+    import json as _json
+    from molbuilder.jobset.ledger import LEDGER_FILE
+
+    _make_preppable(Path(described))
+    st, j = _post(web_client, dest=described, kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+
+    log = Path(described) / LEDGER_FILE
+    assert log.is_file(), (
+        "prep from the browser wrote no ledger line; the bundle card "
+        "promises one")
+    lines = [_json.loads(x) for x in log.read_text().splitlines() if x.strip()]
+    assert [(e["verb"], e["decision"]) for e in lines] == [("prep", "prepped")]
 
 
 def test_the_refusal_names_a_spelling_that_WORKS(web_client, described):

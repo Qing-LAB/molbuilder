@@ -1603,6 +1603,7 @@ def api_task_setup_prep():
     # ---- the real thing ------------------------------------------------ #
     from molbuilder.jobset._cli import _bench_inputs
     from molbuilder.jobset.prep import PrepError, prep_calculation
+    from molbuilder.jobset.ledger import prepped as _ledger_prepped
     # A machine question raised from INSIDE prep is the user's to answer,
     # like every refusal here -- not a server fault.  Uncaught it was a 500.
     from molbuilder.scheduler.record import AmbiguousTarget as _AmbiguousTarget
@@ -1699,6 +1700,15 @@ def api_task_setup_prep():
             ]
         except (PrepError, ValueError, KeyError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # AND THE BUNDLE RECORDS IT.  This surface acted, so this surface
+    # appends (`jobset/ledger.py`) -- it did not, while the Task Setup
+    # bundle card below listed `jobset-decisions.log` as "every decision
+    # prep made, one line each".  A calculation prepped only from the
+    # browser had no such file, and one prepped from both told a false
+    # story by holding the CLI's lines alone.  The recipe is the ledger's;
+    # the call is ours.
+    _ledger_prepped(dest, kind=kind, stage=stage, dirs=dirs)
 
     return jsonify({
         "ok": True, "kind": kind, "stage": stage,

@@ -2461,17 +2461,10 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # took effect (user request 2026-08-12; secrets excluded by design).
     # The same facts go to the bundle's LEDGER: the terminal is gone when
     # a job misbehaves hours later; the bundle is not.
-    from ..runtime_config import config_provenance, format_provenance
-    prov = config_provenance(project_dir=base)
+    from ..runtime_config import format_provenance
+    from ..jobset.ledger import prepped as _ledger_prepped
+    prov = _ledger_prepped(base, kind=kind, stage=stage, dirs=dirs)
     click.echo(format_provenance(prov))
-
-    def _rel(d):
-        try:
-            return str(_P(d).resolve().relative_to(_P(base).resolve()))
-        except ValueError:
-            return str(d)
-    _ledger(base, "prep", "prepped", kind=kind, stage=stage,
-            job_dirs=sorted(_rel(d) for d in dirs), provenance=prov)
 
     if kind == "bench":
         # Trials RUN in their own directories; the attempt machinery below
