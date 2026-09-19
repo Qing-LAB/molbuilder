@@ -648,7 +648,7 @@ the first one decides whether the other three apply at all:
 
 | question | owner | reader |
 |---|---|---|
-| **what is this directory?** | the **directory** | `placement.json`, or `task.json` at a root |
+| **what is this directory?** | the **directory** | `calcdir.json`, or `task.json` at a root |
 | what calculation is this? | the **calculation** | `of` → its `task.json` |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
@@ -875,7 +875,7 @@ delegation, not by a ladder.
 
 | question | owner | reader |
 |---|---|---|
-| **what is this directory?** | the **directory** | `placement.json`, or `task.json` at a root |
+| **what is this directory?** | the **directory** | `calcdir.json`, or `task.json` at a root |
 | what calculation is this? | the **calculation** | `of` → its `task.json` |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |

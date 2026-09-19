@@ -71,78 +71,45 @@ def _claimed(path: str) -> bool:
         return False
 
 
-# HOW FAR UP A RUN DIRECTORY MAY LOOK for the calculation it belongs to.
-# The deepest legitimate run is transport's bias rung -- `04_device/v0/run-0`,
-# three levels under the calculation root -- so four is that plus headroom,
-# and it is `summarize._BUNDLE_SEARCH_DEPTH`'s number for the same reason.
-# The cap is the backstop; `find_projects_root` is the real fence, and it is
-# the one that holds in a projects tree, which is where calculations live.
-_CALC_SEARCH_DEPTH = 4
-
-
 def _calculation_of(directory: str) -> Tuple[Optional[str], Optional[str]]:
     """What calculation is this? — and which `task.json` said so.
 
-    `task.json` is the file `prep` reads, so this is the same fact the run
-    was built from rather than a guess off the filenames.  The name and the
-    reader are `molbuilder.task`'s; nothing here re-spells either.
+    **THE DIRECTORY IS ASKED, NOT SEARCHED FOR** (`project-layout.md` § 1.4a).
+    It either holds `task.json` — then it is the root, invariant 2 — or it
+    holds a `calcdir.json` whose ``of`` points at the root.  Either way the
+    answer is read, in one step, from a fact the creator wrote down.
 
-    **THE DESCRIPTION IS NOT IN THE RUN DIRECTORY, AND IS NOT MEANT TO BE.**
-    `project-layout.md` § 1.0 draws the wall this walks through: *"the
-    template, `task.json` and the rest of the starting point for rendering
-    belong to the PARENT, and only rendered files and copies go down to where
-    the engine runs."*  Flat puts the run's files in the calculation root, so
-    asking the handed directory happens to work there; hierarchical puts them
-    two levels down, so it cannot.  Until 2026-09-19 this asked the handed
-    directory only, and so every hierarchical spectrum run opened the molwatch
-    stub the catalogue offers when nothing says what a run is FOR -- measured
-    on `spectrum/bridge-hier/01_raman/run-0`, whose trail read
-    `calculation: (not stated in task.json)`.
+    *What this replaced, because the shape of the mistake is worth keeping.*
+    § 1.0 puts the description in the PARENT — *"only rendered files and
+    copies go down to where the engine runs"* — so asking the handed directory
+    alone is right only in the flat shape, and every hierarchical spectrum run
+    therefore opened the molwatch stub the catalogue offers when nothing says
+    what a run is FOR (measured on `spectrum/bridge-hier/01_raman/run-0`).
+    The first repair WALKED UP to the nearest `task.json`, fenced by the
+    projects tree and a four-level cap: a search with a tuned number, standing
+    in for a fact the tree could simply state.  § 1.4a made it state it, and
+    the walk and its constant went with it.
 
-    **The NEAREST ancestor wins and the walk stops there**, which is
-    `projects.find_projects_root`'s rule for the same shape of question: a
-    calculation inside a calculation is somebody else's calculation, and
-    `job-contracts.md` § 2.1 Rule 1 (one job per folder) is why there should
-    not be one to find.  The reach is fenced twice -- never past the
-    `projects/` tree the run lives in, and never more than
-    ``_CALC_SEARCH_DEPTH`` levels -- so a stray `task.json` high in somebody's
-    home directory cannot colour an unrelated folder's results.
-
-    ``(None, None)`` when nothing above says — a directory molbuilder did not
-    write, or one prepped before the key existed.  That is a real answer, not
-    a failure: the search below then asks what ANY run produces.
+    ``(None, None)`` when the directory does not say — one molbuilder did not
+    write, or an attempt copied out of its calculation.  That is a real answer
+    and not a failure (§ 1.4a): the directory is read ALONE, and the search
+    below then asks what ANY run produces.
     """
-    from molbuilder.projects import find_projects_root
+    from molbuilder.calcdirs import root_of
     from molbuilder.task import FILENAME as _TASK, read_json as _read_json
 
-    try:
-        here = Path(directory).resolve()
-    except (OSError, RuntimeError):
+    root = root_of(directory)
+    if root is None:
         return None, None
-    fence = find_projects_root(here)
-
-    walk = [here, *list(here.parents)[:_CALC_SEARCH_DEPTH]]
-    for step, cand in enumerate(walk):
-        # The fence is the tree, not the depth: stop before stepping out of
-        # the `projects/` root this run lives under.  `find_projects_root`
-        # returns None outside one (a tmp dir, an ad-hoc folder), and then the
-        # depth cap above is the only bound -- which is what it is there for.
-        if fence is not None and cand != fence and fence not in cand.parents:
-            break
-        try:
-            said = (_read_json(cand / _TASK) or {})
-        except (OSError, ValueError, TypeError):
-            continue
-        if not said:
-            continue
-        # FOUND ONE: nearest wins, so this is the answer whether or not it
-        # names a calculation.  A description that omits the key means the
-        # DEFAULT kind (`stages.md`: the key is absent for an optimization),
-        # and climbing past it to find one that does say would adopt a
-        # different calculation's word for this run.
-        where = _TASK if step == 0 else f"{'../' * step}{_TASK}"
-        return (said.get("calculation") or None), where
-    return None, None
+    try:
+        said = (_read_json(root / _TASK) or {})
+    except (OSError, ValueError, TypeError):
+        return None, None
+    # WHERE it was said, for the trail: a decision taken outside the handed
+    # directory has to name where it came from, or the refusal a person reads
+    # stops being checkable.
+    where = os.path.relpath(root / _TASK, Path(directory).resolve())
+    return (said.get("calculation") or None), where
 
 
 def _search_roles() -> "List[str]":
@@ -166,10 +133,11 @@ def _search_roles() -> "List[str]":
 def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     """*What should a viewer load here?* — and the trail of what was tried.
 
-    **THREE QUESTIONS, THREE OWNERS**, which is the same shape `run_status`
-    took on 2026-09-18 and the reason this is no longer a ladder:
+    **FOUR QUESTIONS, FOUR OWNERS**, and the first one decides whether the
+    other three apply at all (`model/parse.md` § 5.5):
 
-      | what calculation is this?  | the CALCULATION | its root's `task.json` |
+      | what IS this directory?    | the DIRECTORY | `calcdir.json`, or a root's `task.json` |
+      | what calculation is this?  | the CALCULATION | `of` -> its `task.json` |
       | what does it produce?      | the CATALOGUE | `runfiles.result_roles`  |
       | can anything open it?      | the REGISTRY  | `detect()`               |
 

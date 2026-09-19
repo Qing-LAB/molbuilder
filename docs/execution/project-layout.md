@@ -446,7 +446,7 @@ creation and thrown away.
 | the directory | what answers | container or run |
 |---|---|---|
 | the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2) | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
-| **everything below it that molbuilder made** | `placement.json`, written by the creator | **`role`**, said outright |
+| **everything below it that molbuilder made** | `calcdir.json`, written by the creator | **`role`**, said outright |
 | anything else | nothing | unknown — the directory is read alone, and told so |
 
 **The root needs no record**, and that is the point rather than an omission:
@@ -457,7 +457,7 @@ would be a second home for one fact.
 #### The record — two fields, and the reason it is only two
 
 ```json
-{ "schema": "molbuilder/placement@1",
+{ "schema": "molbuilder/calcdir@1",
   "role":   "run",
   "of":     "../.." }
 ```
@@ -514,7 +514,7 @@ calculation it belongs to, which rung it is, what its siblings are.
 
 | what the directory says | what a reader may answer |
 |---|---|
-| `placement.json`, or `task.json` at a root | everything: its role, container-or-run, its calculation, its rung, its siblings, the ladder it sits in |
+| `calcdir.json`, or `task.json` at a root | everything: its role, container-or-run, its calculation, its rung, its siblings, the ladder it sits in |
 | nothing, but a run left evidence — a deck, a file in a stdout role, a conclusion record | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says which of the two it is doing |
 | nothing, and no evidence a run happened | the files, and no run state at all |
 
@@ -2605,7 +2605,7 @@ than no invariant, because it fails a directory that is working correctly.
    each engine and assert its text contains no `cd` command
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
-   `placement.json`, and the root carries `task.json`** (§ 1.4a). So
+   `calcdir.json`, and the root carries `task.json`** (§ 1.4a). So
    *container-or-run* — § 1.4's rule — is answerable for every directory this
    tree makes, without reading a filename. **This is 6a's dividend**: Python
    makes them all, so Python can stamp them all. A directory carrying neither

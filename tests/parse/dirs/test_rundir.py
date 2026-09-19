@@ -171,10 +171,16 @@ def _spectrum_dir(tmp_path, *, say_calculation=True, shape="flat"):
     directory, which is what a viewer is handed either way.
     """
     import json
+    from molbuilder import calcdirs
     run = tmp_path
     if shape == "hierarchical":
         run = tmp_path / "01_freq" / "run-0"
         run.mkdir(parents=True)
+        # STAMPED, because that is what prep produces (`project-layout.md`
+        # § 1.4a, invariant 6b).  A hand-made tree with no records is a
+        # different case with its own test below -- it is read ALONE.
+        calcdirs.write(run.parent, role=calcdirs.CONTAINER, root=tmp_path)
+        calcdirs.write(run, role=calcdirs.RUN, root=tmp_path)
     (run / "co2spec.spectra.json").write_text(json.dumps({
         "schema_version": 1, "engine": "pyscf", "engine_version": "x",
         "molbuilder_version": "x", "timestamp": "2026-09-18T00:00:00Z",
@@ -250,30 +256,36 @@ def test_a_spectrum_run_opens_its_spectrum_not_its_molwatch_stub(
         + "\n  ".join(attempts))
 
 
-def test_the_walk_up_for_a_calculation_is_fenced(tmp_path):
-    """Looking OUTSIDE the handed directory is the one new risk, so it is
-    bounded — and this is the guard on the bound.
+def test_an_unmarked_directory_is_read_alone(tmp_path):
+    """No record ⇒ the directory answers for itself and claims nothing above.
 
-    A run directory adopting a `task.json` merely because one sits somewhere
-    above it would let a stray description in a home directory decide what
-    unrelated folders open.  The fences are the `projects/` tree and
-    ``_CALC_SEARCH_DEPTH``; outside a projects tree — here — only the depth
-    cap is left, which is exactly the case worth pinning.
+    `project-layout.md` § 1.4a: *absence narrows the answer; it does not
+    refuse the directory*.  A tree written before that rule, or an attempt
+    copied out of its calculation, still reads — its files, which one to open
+    — but it does not get to say which calculation it belongs to, because
+    nothing here knows.
 
-    MUTATION THIS MUST FAIL AGAINST: drop the cap, or walk to the filesystem
-    root.  Then this directory adopts `vibration` and opens the spectrum.
+    The scenario is the one that matters: a `task.json` DOES sit above this
+    directory, and the directory must not adopt it.  Proximity is not
+    membership; the record is.  Adopting it would let a description anywhere
+    up the tree decide what an unrelated folder opens, which is exactly what
+    the walk this replaced could do.
+
+    MUTATION THIS MUST FAIL AGAINST: search upward for a `task.json` instead
+    of reading `calcdir.json`.  Then this directory adopts `vibration` and
+    opens the spectrum.
     """
-    deep = tmp_path.joinpath(*"abcdef")           # 6 levels: past the cap
-    deep.mkdir(parents=True)
-    _spectrum_dir(deep)                           # its own task.json, then:
-    (deep / "task.json").unlink()                 # ...say it only up HERE
+    loose = tmp_path / "01_freq" / "run-0"        # the shape, none of the record
+    loose.mkdir(parents=True)
+    _spectrum_dir(loose)                          # its own task.json, then:
+    (loose / "task.json").unlink()                # ...say it only at the TOP
     _spectrum_dir(tmp_path, say_calculation=True)
 
-    got, attempts = openable_in(str(deep))
+    got, attempts = openable_in(str(loose))
 
     assert got is not None and pathlib.Path(got).name.endswith(
         ".molwatch.log"), (
-        f"reached {tmp_path}'s task.json from six levels down and opened "
+        f"adopted {tmp_path}'s task.json without a record and opened "
         f"{pathlib.Path(got).name if got else None!r}; the trail was:\n  "
         + "\n  ".join(attempts))
 

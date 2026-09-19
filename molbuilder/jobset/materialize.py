@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .. import calcdirs
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
@@ -780,6 +781,24 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     stage_dir.mkdir(parents=True, exist_ok=True)
     attempt, is_new = resolve_attempt(stage_dir)
     attempt.mkdir(parents=True, exist_ok=True)
+
+    # WHAT EACH OF THESE DIRECTORIES IS, said by the code that just made them
+    # (`project-layout.md` § 1.4a, invariant 6b).  This is the one place both
+    # kinds are created, so it is the one place that knows which is which --
+    # and knowing is not recoverable later: a bench trial's directory is
+    # structurally identical to a stage's own, and § 1.4 calls one a run and
+    # the other a container.
+    #
+    # EVERY container down the chain, not just the leaf: a bias scan passes
+    # `container=<...>/v0.2`, whose parent `04_device/` is then created by
+    # `parents=True` and would be the one directory in the tree that never
+    # answered.
+    for _c in reversed(stage_dir.parents):
+        if _c == base or base not in _c.parents:
+            continue
+        calcdirs.write(_c, role=calcdirs.CONTAINER, root=base)
+    calcdirs.write(stage_dir, role=calcdirs.CONTAINER, root=base)
+    calcdirs.write(attempt, role=calcdirs.RUN, root=base)
 
     # Inputs: the deck, wrappers and shared package, COPIED in -- real
     # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run

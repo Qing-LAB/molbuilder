@@ -3369,3 +3369,60 @@ def test_submit_asks_the_allocation_not_the_deck_which_engine_wants_a_gpu(
             f"submit and the wrapper disagree about {job.script}: submit "
             f"picks the partition, the wrapper picks the env, and a job "
             f"sent to a device-less queue then activates the GPU env")
+
+
+def test_every_directory_prep_makes_says_what_it_is(tmp_path):
+    """Invariant 6b, and the drift half of it.
+
+    `project-layout.md` § 1.4a gives § 1.4's container-or-run rule a
+    mechanism: the code that makes a directory stamps it, because that code
+    is the only one that knows.  Two things have to hold or the mechanism is
+    decoration --
+
+    1. **every directory prep made answers.**  One that does not is read
+       ALONE, which for a directory inside a live calculation is a silently
+       partial answer.
+    2. **the stamp agrees with the naming authority.**  `role` and the
+       directory's name are two statements of one fact; `job_dir_names` is
+       the authority for the second, so a container must be a directory the
+       authority maps a job to, and the run must sit under it.
+
+    Without (2) this test would pass on a writer that stamped everything
+    ``container`` -- the same shape as `_run_ending.py`'s
+    ``set(READERS) == set(run_output_roles())``, which is how two lists in
+    this codebase are made unable to drift.
+
+    MUTATION THIS MUST FAIL AGAINST: stamp only the attempt, or stamp the
+    stage directory ``run``.
+    """
+    from molbuilder import calcdirs
+    from molbuilder.jobset.materialize import (job_dir_names, prepare_attempt,
+                                               shape_of)
+
+    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
+    for job in js.jobs:
+        (tmp_path / job.script).write_text("x")
+    rep = prepare_attempt(js, tmp_path, "coarse")
+
+    attempt = rep.dir
+    stage_dir = attempt.parent
+
+    said_run = calcdirs.read(attempt)
+    said_container = calcdirs.read(stage_dir)
+    assert said_run is not None, f"{attempt} carries no calcdir record"
+    assert said_container is not None, (
+        f"{stage_dir} carries no calcdir record -- the attempt was stamped "
+        f"and its container was not, so the level a viewer lands on when it "
+        f"clicks the stage is the one that cannot answer")
+    assert said_run.role == calcdirs.RUN
+    assert said_container.role == calcdirs.CONTAINER
+
+    # (2) the stamp and the name are the same fact, said twice.
+    authority = set(job_dir_names(js, shape_of(js, tmp_path)).values())
+    assert stage_dir.relative_to(tmp_path).as_posix() in authority, (
+        f"stamped {stage_dir.name!r} a container, but the naming authority "
+        f"maps no job to it: {sorted(authority)}")
+
+    # ...and `of` leads back, from either level.
+    for d in (attempt, stage_dir):
+        assert (d / calcdirs.read(d).of).resolve() == tmp_path.resolve()

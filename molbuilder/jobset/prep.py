@@ -504,6 +504,14 @@ def _pseudo_dir(base: Path) -> Path:
     """
     pdir = base / "pseudos"
     pdir.mkdir(exist_ok=True)
+    # A container, and it says so (`project-layout.md` § 1.4a): the shared
+    # package holds files, never a run.  Left unstamped it was the directory
+    # that reported a calculation *running* because it had no result file in
+    # it -- which is the shape of answer § 1.4a exists to stop.  It reads back
+    # as *support* rather than a stage, because the naming authority maps no
+    # job to it; that is derived, not stored.
+    from .. import calcdirs
+    calcdirs.write(pdir, role=calcdirs.CONTAINER, root=base)
     for stray in base.glob("*.psml"):
         target = pdir / stray.name
         if not target.exists():
