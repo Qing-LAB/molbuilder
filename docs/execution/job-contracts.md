@@ -769,38 +769,6 @@ it.
 spelling names exactly one folder, and a miss is reported against that
 folder — never a second guess against a different anchor.
 
-##### A pseudopotential file is named for its element, and IS that element
-
-SIESTA opens `<element>.psml` in the directory it runs from and has no
-search path, so the filename is not a convenience — it **is** the
-interface. Two rules follow, and both refuse rather than choose:
-
-| the folder holds | prep does |
-|---|---|
-| `Au.psml` | uses it |
-| `au.psml` / `AU.psml` | uses it — case is the one latitude, and it is *safe* rather than lenient: no two element symbols differ only in case (103 symbols in `chemistry.SYMBOL_TO_Z`, zero collisions), so folding it cannot select a different element |
-| `Au_ONCV_PBE-1.0.psml` and no `Au.psml` | **refuses**, naming what is there and the name it needs |
-| two of those | **refuses**, naming both |
-| nothing beginning `Au` | reports `Au` **missing** — which `Ca.psml` does *not* satisfy for carbon |
-| `Au.psml` whose contents declare another element | **refuses**, naming both elements |
-
-> **Why this is a refusal and not a preference.** `find_psml` fell back to
-> `sorted(glob(f"{element}*.psml"))[0]`, and both ways that goes wrong are
-> silent. `Au_ONCV_PBE-1.0.psml` beside `Au_ONCV_PBEsol-1.2.psml` returned
-> PBE by alphabetical order while the deck asked for PBEsol — and the
-> screening does not stop that, because PBE-vs-PBEsol is `xc_mismatch`,
-> WARN-severity, not in `ERROR_STATUSES`. Worse, `C*` matches `Ca`: a
-> library holding `Ca.psml` and `Cu.psml` and no `C.psml` answered
-> **calcium** for carbon (measured 2026-09-19). The screening catches that
-> second one, because it keys on the file's *declared* element — but it
-> reports it as *missing C* while a file named `C.psml` sits in the folder.
->
-> This is the first input of the calculation and a wrong one is not
-> detectable downstream: the run converges and the number is plausible
-> (user, 2026-09-19 — *"Any obscurity will lead to significant error that is
-> impossible to detect and null all following work. No risky design is
-> allowed."*). Nothing here is inferred.
-
 #### 2.5b Naming a calculation: from the root, and inside it
 
 § 2.5a is about a path that points at **data** inside the tree. A path

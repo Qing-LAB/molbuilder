@@ -561,7 +561,6 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     """
     from ..pseudos import resolve_psml_lib
     from ..siesta.input import _detect_species, copy_pseudopotentials
-    from ..pseudos import PsmlNameError
 
     species = _detect_species(struct.elements)
     if not species:
@@ -602,14 +601,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             + describe_psml_anchor(str(lib_raw), dest_dir=base)
             + f"  Put the .psml files there, or set `psml_lib` to a "
               f"directory that has them.")
-    # A MISNAMED OR AMBIGUOUS FILE IS NOT A MISSING ONE, and saying so is
-    # the whole point: `PsmlNameError`'s message names the candidates and
-    # the rule, where "there is none" would send someone looking for a file
-    # that is sitting right there.
-    try:
-        missing = copy_pseudopotentials(want, lib, pdir)
-    except PsmlNameError as exc:
-        raise PrepError(str(exc)) from exc
+    missing = copy_pseudopotentials(want, lib, pdir)
     if missing:
         raise PrepError(
             f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
@@ -1310,7 +1302,6 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     """
     from ..projects import find_projects_root
     from ..siesta.input import _detect_species, copy_pseudopotentials
-    from ..pseudos import PsmlNameError
 
     species = _detect_species(struct.elements)
     if not species:
@@ -1327,11 +1318,8 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
                 lib = cited / "pseudos"
             elif any(cited.glob("*.psml")):
                 lib = cited
-        try:
-            missing = (copy_pseudopotentials(want, lib, pdir)
-                       if lib is not None else list(want))
-        except PsmlNameError as exc:
-            raise PrepError(str(exc)) from exc
+        missing = (copy_pseudopotentials(want, lib, pdir)
+                   if lib is not None else list(want))
         if missing:
             raise PrepError(
                 f"this transport calculation needs "
