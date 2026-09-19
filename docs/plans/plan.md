@@ -108,6 +108,7 @@ the same day, with what it turned out to be.
 | **S18** | ops / envs / config | **The 2026-09-12 env-installer and config-and-secrets session has its own hand-over file: [`2026-09-12-env-config-handover.md`](?doc=plans/2026-09-12-env-config-handover.md).**  80 items, each marked by how it was checked (RAN / READ).  It exists because that session's own commit messages are not reliable: three independent audits were told to FALSIFY them, 14 of 16 behavioural claims held, and the failures were overstatements of scope -- four documentation statements written that day are false, two of them in text `envs init-config` ships into a user's config directory.  Its § 1 is the verified DONE list and exists to stop the next session re-deriving settled work; § 2 is the work, grouped as defects introduced (A), false docs (B), an instruction not implemented (C), sweeps that stopped at the first instance (D), pre-existing finds (E) and decisions for the user (F).  **§ 0 states the TARGET first** -- the installer's two state machines and one runner, and config's one resolver / one name / one writer, as 13 checkable invariants T1-T13 -- so every item reads as a named deviation rather than a patch.  **§ H is the residue of the pre-state-machine design**, swept against those invariants rather than against any diff: one question answered in two or more places four times over, a string where the design says state three times, dead parameters, and a door that never sanitises the environment it dispatches into.  **§ I is the config/secret residue**, and its first lesson is that **A11's own text in `architecture.md` still names a pre-consolidation owner**, so the rule as written licenses the three `.parent` climbs it forbids -- fix the rule before the sites.  § G records what was checked and found clean.  **§ 3 is the MIGRATION PLAN** -- eight phases scoped to `install-env.sh`, the `envs` verbs, deployment and how config is placed and validated, each stating what it closes and which end-state row (Z1-Z9) it realises; § 3.0 states that end state so it can be checked, and § 5 records what is deliberately out of scope.  **Read § 1 before touching § 2, and A0 before anything** -- `envs install molbuilder --clean` currently deletes the env the process is running from, and `envs doctor` prints that command as its remedy for a failed host verify.  No clean full-suite result exists for the work yet (F3) | audited 2026-09-12 | open -- nothing in § 2 started |
 | **S17** | architecture seams | **`run_tool` dispatched into an env without the mamba-1.x workaround every other path applied** -- so on a host whose manager emits the ``exec -- "$@"`` stub, `run_tool("tleap", ...)` died on a shell error about the manager's generated file, naming nothing to do with AmberTools.  **CLOSED 2026-09-12.** The trade that kept it open -- the workaround needs a prefix, and resolving one costs up to four manager subprocesses, which is wrong on a path walked once per structure build -- is resolved by MEASURING rather than predicting: `builds.dispatch_into_env` is now the one door for all three dispatches, the manager's own `run` is the route, and the prefix is resolved only after that stub has actually been seen.  A working manager still pays exactly one subprocess.  Still not reproducible on this machine (conda only), so it is verified by a fake manager emitting that exact signature | found 2026-09-12 by the install review | **done** |
 | **S13** | architecture seams | **Transport convergence sweep** — auto-vary transverse-k / `MeshCutoff` / electrode thickness and report where `T(E_F)` stops moving. `transport.md` § 2 already tells a reader not to trust a single point blindly, so the document promises what the code does not offer | `engines/transport.md` § 8 | **measured: not built** — the only occurrence in the tree is `transport/wizard.py:65`, a comment naming it |
+| **N10** | parse / front end | **A CALCULATION ROOT IS NOT A RUN DIRECTORY, and the Results tab has only one notion.** Measured on the real transport ladder: `jobset_status` answers 5 stages all `pending, prepped, not launched`; `run_status` -- which `/api/results/dir` calls unconditionally -- answers `running, no result file yet`, so the tab tells a person a calculation nobody launched is running. The tab offers that root its own INPUT structure as the result, and says nothing about the five stages. `transport.md` § 2a.12 has required the ladder's state, the curve with its treatment named, and the provenance chain since before the surface was built. **The predicate already exists** -- `checkpoint._is_bundle_root` -- and a second copy in `parse/dirs` would be instance 14 of § 8 | § 5c.3, `transport.md` § 2a.12 | **open -- rows 5c.3a-f**, found by a browser walk that 2,800 passing tests missed |
 | **N9** | parse / run files | **The front door has no consumers — wire them.** `JobDirParser` composes `run_status`, `_enumerate_files`, `engine_of` and the discovery chain into one answer, and `RunDirResult` is its shape. **Both STAY**: zero callers is a migration that has not happened, not evidence the door is unwanted. *(This row said "delete the bundle" until 2026-09-18 — four unlike things under one word, which read as "delete the framework". User: "job dir parser is actually the framework we're developing".)* What IS a defect is narrower: a **directory** routes through the same `detect()` the file verbs call, which cost three CLI verbs their clean refusal — one a silent hang. That is the ROUTE, and those verbs already ask `answers_a_trajectory()` instead. **Open: wire the consumers; decide whether the route is `detect()`/`parse_dir` or a direct call** | § 5c.2, § 5.0, § 5.5 | **open — the migration** |
 | **N8** | parse / run files | **The run-output vocabulary is stated in nine places and the directory door is blind to PySCF's.** `.pyscf.log` is where PySCF writes and not `.out`; `parse/dirs/` never searched for it, so **3 finished runs report `running`** — one for 97 days — with `Job complete in <N> s` sitting in the directory. Four sites hardcode the role list; fixing one (the status probe, 2026-09-18) left the viewer's discovery chain and the sidecar pairing blind. The catalogue (`runfiles.WRITTEN`) already owns the vocabulary and already ships derived views | § 5c.2 | **open — rows 5c.2a-f**, one landed (the status probe), one tried and the WRONG SHAPE (a fourth table, recorded in § 5c.2 so it is not repeated) |
 | **N5** | parse / run files | **The three defects § 5l measured, which outlived it** (§ 5l.a). **① LIVE:** every staged run loses its frozen atoms — `_sidecar.read_frozen_atoms` needs a label to strip the rung and three of four callers omit it, so *"Hide frozen atoms"* and `runtime_info["frozen_atoms"]` are empty for every laddered calculation. **② duplication, NOT a latent defect — re-measured 2026-09-18:** `identity.parse_stage_token` is a second reader of the stage token alongside `runfiles.parse`. They differ on `_geom_optim.xyz` (a declared underscore ROLE, which the second swallows into the stage name) and on `.runwrap-*.log`. **Neither shape is ever passed to it.** Its three callers feed decks (`materialize` ×2, `job.script`) and `.out` / concluded `.molwatch.log` (`parse/dirs/job.py::_detect_stage`); measured on all five real shapes, the two readers AGREE every time. *This row said "latent" and was reported to the user as a bug waiting to happen, with an invented `.xyz` example — user: "why would you fucking pass a .xyz to a parser and ask which step this run belongs to?" Nothing does.* What is real is one grammar with two readers, worth collapsing on the one-home rule and on nothing more urgent. **③** a phantom rung for an unstaged calculation, fixed by ②. *The migration framing is gone with § 5l — these are ordinary defects in `parse/` and `identity`* | § 5l's inventory, re-measured 2026-09-17 | **① FIXED 2026-09-17. ② and ③ open.** *The fix was already in the same module.* `_siesta_fdf_path_for` — the function `model/parse.md` § 5.3 names as the shape a companion lookup may legitimately take — solves the identical problem identically: try the exact stem, then *"fall back to a single `*.fdf` in the same directory"*. `read_frozen_atoms` never got that fallback. It has one now, asked through `sidecars.molstruct.sidecars_in` (the framework's own search, § 4.5) rather than a hand-rolled glob, and **guarded twice**: the lone sidecar's label must be a prefix of the artifact's on a `_` boundary (so an unrelated sidecar that merely happens to be alone is refused), and two candidates decline rather than pick. Licensed by `project-layout.md` § 1.4 — a run directory holds one invocation's output. **Strictly additive**: it runs only where the answer was already nothing. ② and ③ remain, and are one deletion: `identity.parse_stage_token` goes, its three callers (`parse/dirs/job.py:81`, `materialize.py:394`, `:433`) move to `runfiles.parse`, which is right on both shapes the two disagree about |
@@ -585,6 +586,119 @@ FileParser. The frames live in `_geom_optim.xyz`, which already has one;
 ended — `ending_of`'s question, not the registry's.)*
 
 ---
+
+### 5c.3 A CALCULATION ROOT IS NOT A RUN DIRECTORY — the transport ladder has no view *(2026-09-18)*
+
+*Found by driving the real Results tab in a browser after § 5c.2 step (h)
+landed. No test asserts any of it, because every test asks about a RUN
+directory and this is about the folder above one.*
+
+#### The measurement
+
+`projects/Au-BDT-Au/transport/AuBDTAu-CT` is a transport calculation root: a
+`task.json`, a `job-set.json`, the composed `junction.xyz`, and five stage
+directories. Asked about that one directory, the two readers disagree
+completely:
+
+```
+jobset_status  -- the LADDER reader
+  complete=False  first_incomplete=seed
+    seed          pending   prepped, not launched (no run.json)
+    electrode_L   pending   prepped, not launched (no run.json)
+    electrode_R   pending   prepped, not launched (no run.json)
+    device        pending   prepped, not launched (no run.json)
+    transmission  pending   prepped, not launched (no run.json)
+
+run_status     -- the RUN reader, same directory
+    running   (no result file yet)
+```
+
+`jobset_status` is right. `run_status` is answering a question the directory
+was never asked — **and it is what `/api/results/dir` reports**, because that
+route (§ 5c.2 step h) calls `run_status` unconditionally. So the Results tab
+tells a person a calculation that has never been launched is *running*.
+
+What the tab offers there, from the door:
+
+```
+openable : None                                  <- correct: no record exists
+offerable: junction.molstruct.json, junction.xyz  <- the INPUT structure
+           ...and 8 files it cannot read
+```
+
+The five stage directories are in the sidebar and **the Results tab has
+nothing to say about them.** It offers the structure the calculation started
+from as its result.
+
+#### What the design already requires, and has since before this was built
+
+`engines/transport.md` § 2a.12 names three things the Results surface reads,
+none of which exists:
+
+| | |
+|---|---|
+| **the curve, with its treatment NAMED beside it** | linear-response and finite-bias I–V "are different claims and look identical on a plot" (§ 2a.10). The record carries `treatment` for exactly this |
+| **the provenance chain** | which device run, which lead runs, which relaxation the junction came from — "a transmission curve without its chain cannot be interpreted, reproduced, or compared" |
+| **the ladder's state** | "a transmission that has not run yet is *pending*, never a failure of the calculation, and a reader needs to see which of five runs is the one still outstanding" |
+
+The reader for the first two now exists — `parse/sidecars/transport.py`, added
+2026-09-18, and `result_roles("transport")` names the record so the door
+offers it. **The third has no surface at all.**
+
+#### The one thing to decide, and it is not a layout question
+
+**A calculation root and a run directory are different kinds of thing, and
+the Results tab has only one notion.** Everything else follows from how that
+is answered:
+
+* a RUN directory holds one attempt's output → `run_status`, `openable_in`,
+  one file mounted in an inspector;
+* a CALCULATION root holds a *plan* and N stage directories → `jobset_status`,
+  a ladder, and a deliverable that is written once at the root.
+
+**The question already has an implementation**, and it is not in the parse
+layer: `checkpoint.py::_is_bundle_root` — *"does `path` declare itself the
+root of one multi-directory unit of work?"* — testing for `task.json` /
+`job-set.json`, with both names imported from the modules that write them.
+It is private to `checkpoint`. **Giving it a public home is the fix; a second
+copy in `parse/dirs` would be instance 14 of § 8**, in the week that section
+was written.
+
+#### Order of work
+
+Tests before code at every step, and **the validation is a browser walk, not
+a directory sweep** — this defect was invisible to 2 800 passing tests.
+
+| # | do | proves |
+|---|---|---|
+| **a** | give `_is_bundle_root` a public home and one owner; `checkpoint` asks it | one answer to *"is this a calculation root"*, not two |
+| **b** | `/api/results/dir` asks that first: a calculation root answers with `jobset_status`'s ladder, a run directory with `run_status` as now | the transport root stops reporting `running` for a calculation nobody launched |
+| **c** | the payload gains `stages: [{name, state, detail, dir}]` for a root, `null` for a run directory | the browser can render a ladder without a second route or a second scan |
+| **d** | a ladder view: five rows, each stage's state, the first incomplete named | § 2a.12's third requirement, and the one a person needs while a five-stage run is in flight |
+| **e** | the transport inspector renders the record through `transport-json` rather than `JSON.parse`, with `treatment` NAMED beside the curve | § 2a.10 / § 2a.12's first requirement. The parser landed 2026-09-18; the inspector still parses in the browser |
+| **f** | the provenance chain from `record.provenance` | § 2a.12's second requirement |
+
+#### Deliberately NOT in this section
+
+* **The frame axis** (§ 2a.9). The record's shape is already additive and
+  § 2a.11's axis rule keeps the directory tree additive; a family of curves is
+  a later row, not a rewrite, and pretending to design it now would be
+  designing against no data.
+* **Any change to the transport TAB** (W24–W27). This is the Results surface
+  reading a finished calculation; that is the parameter surface setting one up.
+* **A second status vocabulary.** `jobset_status` already answers in
+  `_stage_state`'s eight words and `bench-summary.js` already tones seven of
+  them. The ladder view reuses both or it is a third copy.
+
+#### What this rests on, so it can be re-derived
+
+Every number above was produced by running the code on 2026-09-18, not read
+off a comment: the two readers' disagreement, the door's `openable: None` and
+its two offerable files, and the absence of any `.transport.json` in
+`projects/` (0 of 110 run directories, and none at any calculation root).
+
+---
+
 
 
 ## 5d / 5i / 5j — CLOSED, archived 2026-09-07
