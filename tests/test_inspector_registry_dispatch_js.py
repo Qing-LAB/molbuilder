@@ -266,67 +266,83 @@ def test_registry_pickResult_filters_by_isResult(
 
 # Pin exact spellings — a typo silently changes the user-facing UI
 # (group headers in the picker dropdown).
+#
+# EVERY CASE CARRIES ITS OWN ``meta``, because that is the shape of the
+# call: ``resultCategory(file, meta)`` gets ``/api/results/dir``'s
+# per-file answer on the Results tab and nothing anywhere else
+# (`web/presenters.md` § 3).  The two halves are different contracts and
+# the list covers both.
 _RESULT_CATEGORY_CASES = [
-    ("/projects/foo/bar.out", "SIESTA optimization", "out→siesta_opt"),
-    # ENGINE-NEUTRAL, and this case asserted "PySCF optimization" until
-    # 2026-09-04.  SIESTA writes a `.molwatch.log` for every run
-    # (`config/siesta.py`: `write_molwatch_log = True`); measured, 34 of
-    # the first 40 real logs in `projects/` declare `# engine: siesta`.
-    # So the picker filed most SIESTA runs under PySCF while the plot
-    # title -- which gets the engine from the server -- said SIESTA.
-    # The browser cannot know: the engine is a fact about the run
-    # DIRECTORY and the picker has only a filename.
-    #
-    # This does NOT split the group the geomeTRIC cases below exist to
-    # keep together: `absorbs()` folds `*_geom_optim.xyz` into the
-    # `.molwatch.log` master whenever one is present (`results.md`
-    # § 2.3), so the two never appear in the dropdown at the same time.
-    ("/projects/foo/run.molwatch.log", "Optimization",
-     "molwatch_log→engine_neutral"),
-    ("/projects/foo/r.spectra.json", "PySCF spectrum",
+    # --- WITH the directory's answer: the heading names the engine ---
+    ("/projects/foo/bar.out", {"engine": "siesta", "role": ".out"},
+     "SIESTA optimization", "out+siesta→siesta_opt"),
+    # THE SAME FILE under a different engine.  `.out` was hardcoded
+    # "SIESTA" and `*_optim.xyz` "PySCF" until 2026-09-18 — right for the
+    # two engines that exist, wrong by construction for a third, and a
+    # VASP directory's trajectory was demonstrably labelled "PySCF
+    # optimization".
+    ("/projects/foo/bar.out", {"engine": "vasp", "role": ".out"},
+     "VASP optimization", "out+vasp→vasp_opt"),
+    # `.molwatch.log` is written by EVERY engine (`config/siesta.py`:
+    # `write_molwatch_log = True`; measured, 34 of the first 40 real logs
+    # in `projects/` declare `# engine: siesta`).  Filing it by suffix put
+    # most SIESTA runs under "PySCF optimization" while the plot title —
+    # which got the engine from the server — said SIESTA (2026-09-04).
+    # Asking the server is what lets it carry an engine at all.
+    ("/projects/foo/run.molwatch.log",
+     {"engine": "pyscf", "role": ".molwatch.log"},
+     "PySCF optimization", "molwatch+pyscf→pyscf_opt"),
+
+    # --- WITHOUT it: name what the file IS, leave the engine unclaimed --
+    # A caller outside the Results tab holds no directory answer.
+    ("/projects/foo/bar.out", None, "Optimization", "out_alone→unclaimed"),
+    ("/projects/foo/BDT_geom_optim.xyz", None, "Optimization",
+     "geom_optim_alone→unclaimed"),
+    # `engine: "unknown"` is the directory DECLINING to name one — two
+    # declarations that contradict each other (`parse/contract.py`) — and
+    # must read as absent, never as an engine spelled "UNKNOWN".
+    ("/projects/foo/BDT_optim.xyz", {"engine": "unknown"}, "Optimization",
+     "optim_xyz+unknown→unclaimed"),
+
+    # --- the other presenters, whose headings take no engine ---
+    ("/projects/foo/r.spectra.json", None, "PySCF spectrum",
      "spectra_json→pyscf_spectrum"),
-    ("/projects/foo/q.xyz", "Structure", "xyz→structure"),
-    ("/projects/foo/p.pdb", "Structure", "pdb→structure"),
-    # geomeTRIC's optimisation traces belong in the SAME dropdown group
-    # as the run's other artifacts (`.molwatch.log`), or the user hunts
-    # for them under a generic header.  Both spellings, because the
-    # `_geom_` infix appeared only in later PySCF wrappers and older
-    # runs on disk still carry the short form.
-    #
-    # Added 2026-09-03, replacing the source-grep that stood in for it
-    # (`"_optim.xyz" in body and "PySCF" in body`, over the regex-sliced
-    # resultCategory function body).  That pin could not tell WHICH
-    # label came back — the two strings merely had to co-occur somewhere
-    # in the function — so it passed on any bucket at all.
-    ("/projects/foo/BDT_geom_optim.xyz", "PySCF optimization",
-     "geom_optim_xyz→pyscf_opt"),
-    ("/projects/foo/BDT_optim.xyz", "PySCF optimization",
-     "plain_optim_xyz→pyscf_opt"),
+    ("/projects/foo/q.xyz", None, "Structure", "xyz→structure"),
+    ("/projects/foo/p.pdb", None, "Structure", "pdb→structure"),
 ]
 
 
 @pytest.fixture(scope="module")
 def result_category_results() -> dict[str, object]:
-    return _batch_eval(
-        [c[0] for c in _RESULT_CATEGORY_CASES],
-        "(function () {"
-        "  const r = window.molbuilder.inspectors.pickResult(p);"
-        "  return r ? r.resultCategory(p) : null;"
-        "})()",
+    """Every case in one Node call, keyed by its pytest id — the id and
+    not the filename, because the same file answers differently under
+    different ``meta``, and that IS the contract."""
+    cases = [{"id": tid, "p": f, "m": m}
+             for f, m, _exp, tid in _RESULT_CATEGORY_CASES]
+    return _run_node(
+        f"const cases = {json.dumps(cases)};\n"
+        "const out = {};\n"
+        "for (const c of cases) {\n"
+        "  const r = window.molbuilder.inspectors.pickResult(c.p, c.m);\n"
+        "  out[c.id] = r ? r.resultCategory(c.p, c.m) : null;\n"
+        "}\n"
+        "console.log(JSON.stringify(out));"
     )
 
 
 @pytest.mark.parametrize(
-    "filename,expected",
-    [pytest.param(f, exp, id=tid) for f, exp, tid in _RESULT_CATEGORY_CASES],
+    "case_id,expected",
+    [pytest.param(tid, exp, id=tid)
+     for _f, _m, exp, tid in _RESULT_CATEGORY_CASES],
 )
 def test_registry_resultCategory_labels(
-    result_category_results, filename, expected,
+    result_category_results, case_id, expected,
 ):
-    """``resultCategory`` returns the engine-flavoured group header
-    for the picker dropdown.  The exact spelling IS the contract; a
-    typo here changes the user-visible UI."""
-    assert result_category_results[filename] == expected
+    """``resultCategory`` returns the group header for the picker
+    dropdown, naming the engine when — and only when — the directory
+    said one.  The exact spelling IS the contract; a typo here changes
+    the user-visible UI."""
+    assert result_category_results[case_id] == expected
 
 
 # --------------------------------------------------------------------- #
