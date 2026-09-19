@@ -2010,6 +2010,17 @@ def api_task_setup_template_values():
     if not folder.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dir_raw}"}), 400
 
+    out = _folder_template(folder)
+    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
+
+
+def _folder_template(folder) -> dict:
+    """What the folder's template answers -- the payload, not the response.
+
+    Extracted so the per-card route and the folder door (§ 2.1's one answer)
+    cannot come to differ: composing a second reading here is the very thing
+    the docstring above argues against one layer down.
+    """
     # THE door, not a glob (`template.find_template`).  This took
     # ``sorted(glob(...))[0]`` until 2026-08-17 -- so a folder holding two
     # templates had this tab reading one file and `prep` reading the other,
@@ -2019,23 +2030,23 @@ def api_task_setup_template_values():
     try:
         found = find_template(folder)
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}
     if found is None:
-        return jsonify({"ok": True, "name": None, "values": {}})
+        return {"ok": True, "name": None, "values": {}}
 
     try:
         tmpl = read_template(found.read_text())
     except Exception as exc:
         # A template that does not parse is the user's to fix, and saying which
         # file beats an empty table that looks like "nothing was sent".
-        return jsonify({"ok": False, "name": found.name,
-                        "error": f"{found.name}: {exc}"}), 400
+        return {"ok": False, "name": found.name,
+                "error": f"{found.name}: {exc}"}
 
     # Through `select` -- `engines/template.md` § 8.0 owns the rule.  What it
     # cost HERE: this was a comprehension over `.items`, re-implementing the
     # `Template.values()` deleted 2026-08-17 as one of four second readers.
     values = {it.name: it.value for it in select(tmpl) if it.is_set}
-    return jsonify({"ok": True, "name": found.name, "values": values})
+    return {"ok": True, "name": found.name, "values": values}
 
 
 @bp.route("/api/task-setup/resolved", methods=["GET"])
@@ -2065,6 +2076,12 @@ def api_task_setup_resolved():
     if not dest.is_dir():
         return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
 
+    out = _folder_provenance(dest)
+    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
+
+
+def _folder_provenance(dest) -> dict:
+    """`prep`'s own provenance block for this folder -- the payload."""
     from molbuilder.runtime_config import config_provenance
     # NO `target` PARAMETER.  It existed only to feed the bootstrap warning
     # retired 2026-08-25; provenance itself is a property of the FOLDER --
@@ -2074,21 +2091,21 @@ def api_task_setup_resolved():
     try:
         prov = config_provenance(project_dir=dest)
     except Exception as exc:                      # a malformed config
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}
     # THE WARNINGS TRAVEL WITH THE PROVENANCE, and forwarding only three of
     # the five keys is how the tab and the terminal came to disagree.  The
     # terminal prints `shadow` (a `molbuilder.json` sitting unread in a working
     # directory) and `mode_warning` (the config readable by more than its
     # owner); a page that showed the resolved path WITHOUT them would tell a
     # person their config is fine while the file they are editing is ignored.
-    return jsonify({
+    return {
         "ok": True,
         "sources": prov.get("sources") or [],
         "effective": prov.get("effective") or {},
         "domains": prov.get("domains") or [],
         "shadow": prov.get("shadow"),
         "mode_warning": prov.get("mode_warning"),
-    })
+    }
 
 
 @bp.route("/api/task-setup/bench-grid", methods=["POST"])
@@ -2339,6 +2356,12 @@ def api_task_setup_attempts():
         dest = _resolve_within_roots(dest_raw)
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
+    out = _folder_attempts(dest)
+    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
+
+
+def _folder_attempts(dest) -> dict:
+    """How many attempts each stage has on disk -- the payload."""
     from molbuilder.jobset.prep import token_for
     from molbuilder.paths import Shape, attempts_in
     from molbuilder.runfiles import find
@@ -2346,12 +2369,12 @@ def api_task_setup_attempts():
     from molbuilder.task import read_task
     desc = dest / TASK_FILENAME
     if not desc.is_file():
-        return jsonify({"ok": False, "error": f"no {TASK_FILENAME} here"}), 400
+        return {"ok": False, "error": f"no {TASK_FILENAME} here"}
     try:
         task = read_task(desc)
         shape = Shape.named(task.shape)
     except Exception as exc:                      # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}
 
     stages = {}
     for st in task.stages:
@@ -2369,7 +2392,93 @@ def api_task_setup_attempts():
                     if rf.run is not None}
             n = len(runs)
         stages[st.name] = {"token": token, "dir": sd, "attempts": n}
-    return jsonify({"ok": True, "shape": task.shape, "stages": stages})
+    return {"ok": True, "shape": task.shape, "stages": stages}
+
+
+@bp.route("/api/task-setup/folder", methods=["GET"])
+def api_task_setup_folder():
+    """**What is this folder?** — Task setup's one per-directory answer.
+
+    `web/task-setup.md` § 2.1 is the rule this exists to make keepable: *"the
+    page holds no state of its own… the folder is the only link."*  The page
+    did not keep it.  It assembled itself from twelve endpoints, each landing
+    when it landed and each painting its own card, and the per-folder facts
+    among them were cleared on a directory change by
+    `_resetPerFolderState()` — a hand-written list of EIGHT clears in a file
+    with twenty-five module variables.  Measured 2026-09-19: a six-trial
+    bench plan (`mpi_np` 4/8/16 × `omp` 1/2) rode into a brand-new
+    calculation whose hand-over declares no `varies`, on a four-core box.
+
+    **The page is a function of (folder, engine, machine), in that
+    dependency order.**  This door answers the first.  The engine's
+    vocabulary (`columns` / `presets` / `sweepable`) and the machine's
+    records are shared caches on their own keys and are NOT here — they do
+    not change when the folder does, and folding them in would make every
+    directory change refetch them.  `bench-grid` is not here either: it
+    takes `{dest, target}`, so it belongs to the PAIR and is invalidated
+    when either moves.
+
+    **The answer names its subject**, and that is the half a reset list
+    cannot cover.  There are two ways a page shows the wrong folder — state
+    that LINGERS, and an answer that LANDS LATE — and clearing things fixes
+    only the first.  Task setup has no `AbortController` anywhere across its
+    twelve calls, so a response for the folder you just left can still
+    arrive and paint.  `dir` is here so a consumer that has moved on can
+    discard it, which is `calcdir.json`'s rule (`project-layout.md` § 1.4a)
+    applied to the wire: a record names its own place and the reader checks.
+
+    **Composed, never recomputed.**  Each part calls the same helper its own
+    route calls, so the two cannot come to disagree — the failure this whole
+    door exists to end.  A part that fails carries its own `error` instead
+    of failing the answer: a malformed template must not cost you the
+    description beside it.
+    """
+    from molbuilder.task import FILENAME as TASK_FILENAME
+
+    dir_raw = str(request.args.get("dir") or "")
+    if not dir_raw:
+        return jsonify({"ok": False, "error": "no folder given"}), 400
+    try:
+        folder = _resolve_within_roots(dir_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not folder.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"not a directory: {dir_raw}"}), 400
+
+    def _read(name):
+        f = folder / name
+        if not f.is_file():
+            return None
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception as exc:                  # noqa: BLE001
+            return {"error": f"{name}: {exc}"}
+
+    # `task.json` and the hand-over are mutually exclusive by design: a save
+    # writes the first and deletes the second (`task-setup.md` § 3), so the
+    # page's MODE follows from which is here rather than from a flag it has
+    # to keep.
+    described = _read(TASK_FILENAME)
+    handover = None if described is not None else _read(TASK_HANDOVER_NAME)
+
+    return jsonify({
+        "ok": True,
+        # THE SUBJECT.  Every folder-scoped answer says which folder it is
+        # about; a consumer on another one discards it rather than painting.
+        "dir": str(folder),
+        "mode": ("description" if described is not None
+                 else "handover" if handover is not None else "empty"),
+        "description": described,
+        "handover": handover,
+        "template": _folder_template(folder),
+        "provenance": _folder_provenance(folder),
+        # Only a described folder has stages, so only then is there anything
+        # to count -- and `_folder_attempts` says so itself rather than this
+        # door deciding for it.
+        "attempts": (_folder_attempts(folder) if described is not None
+                     else {"ok": True, "shape": None, "stages": {}}),
+    })
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

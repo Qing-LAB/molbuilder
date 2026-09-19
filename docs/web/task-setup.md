@@ -96,6 +96,39 @@ reload. **The folder is the only link** — which is what lets the same page ser
 every producer, and what makes *"open a folder"* a load rather than a merge
 (§ 9).
 
+**The page is a function of (folder, engine, machine)**, in that dependency
+order, and each tier is answered on its own terms:
+
+| tier | answered by | changes when |
+|---|---|---|
+| the **folder** | one door — `/api/task-setup/folder?dir=` | the selection moves; **replaced whole** |
+| the **engine** | `columns` · `presets` · `sweepable`, keyed on the engine | the engine does — shared across folders |
+| the **pair** | `bench-grid{dest, target}` and the fit answers | *either* the folder or the machine moves |
+
+Naming the tiers is what keeps the rule precise: "no state of its own" forbids
+remembering a *folder's* facts, not caching the engine's vocabulary, and the
+pair is the case a single reset would get wrong.
+
+**And every folder-scoped answer names the folder it is about.** A consumer
+that has moved on discards it rather than rendering it. This is
+[`project-layout.md`](?doc=execution/project-layout.md) § 1.4a's rule applied
+to the wire — a record names its own place and the reader checks — and it is
+the half that clearing cannot cover: **there are two ways this page shows the
+wrong folder, state that LINGERS and an answer that LANDS LATE**, and a reset
+only ever addresses the first.
+
+> **This was written before it was kept.** The page assembled itself from
+> twelve endpoints, each painting its own card, and cleared the per-folder
+> ones with `_resetPerFolderState()` — a hand-written list of eight clears in
+> a module with twenty-five variables. Its very existence is the admission: a
+> page that held no state of its own would have nothing to reset. It had
+> already leaked once (a SIESTA description into the next folder, with Save
+> enabled over the wrong calculation); on 2026-09-19 it leaked again, and a
+> six-trial bench plan — `mpi_np` 4/8/16 × `omp` 1/2 — rode into a brand-new
+> calculation whose hand-over declares no `varies`, on a four-core box. There
+> was no `AbortController` anywhere among the twelve, so the late-answer half
+> was unguarded entirely.
+
 ### 2.2 What this page asks, and what `_is_bundle_root` asks
 
 *Corrected 2026-08-16.* This section used to say the check **is**

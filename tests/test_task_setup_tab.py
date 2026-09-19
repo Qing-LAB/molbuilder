@@ -1444,3 +1444,120 @@ def test_every_command_the_page_teaches_is_a_REAL_cli_verb():
             assert kind in choices, (
                 f"the page teaches `jobset {verb} {kind}`, but {verb} takes "
                 f"{choices}")
+
+
+# --------------------------------------------------------------------- #
+#  The folder door -- Task setup's one per-directory answer              #
+# --------------------------------------------------------------------- #
+
+
+class TestTheFolderDoor:
+    """`web/task-setup.md` § 2.1: *"the page holds no state of its own…
+    the folder is the only link."*
+
+    The page did not keep that.  It assembled from twelve endpoints and
+    cleared the per-folder ones with `_resetPerFolderState()`, a
+    hand-written list of eight clears in a file with twenty-five module
+    variables -- so a six-trial bench plan rode into a calculation that
+    declared none (2026-09-19).  This door answers the folder once.
+    """
+
+    @pytest.fixture
+    def described(self, tmp_path, monkeypatch):
+        """A described SIESTA calculation, through the product's own doors."""
+        from conftest import write_pseudos
+        from molbuilder import describe as D
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        from molbuilder.siesta.stages import default_siesta_stages
+        from molbuilder.structure import Structure
+        import numpy as np
+
+        root = tmp_path / "projects"
+        root.mkdir()
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        st = Structure(elements=["H", "H"],
+                       positions=np.array([[0, 0, 0], [0, 0, 0.74]], float))
+        src = root / "h2.xyz"
+        src.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+        dest = root / "proj" / "optimization" / "run"
+        D.write_description(D.build_description(
+            st, SiestaConfig(system_label="JOB", mesh_cutoff=250.0),
+            default_siesta_stages("publishable"),
+            engine="siesta", shape="hierarchical", name="JOB",
+            source=str(src)), dest)
+        write_pseudos(dest, ["H"])
+        from molbuilder.web.app import create_app
+        return dest, create_app(config={}).test_client()
+
+    def test_the_door_answers_what_the_four_calls_answer(self, described):
+        """Composed, never recomputed — so they cannot come to disagree.
+
+        Each part calls the same helper its own route calls.  This asserts
+        the equality end to end, so an edit that gives one of them a second
+        reading is caught here rather than by a person noticing two cards
+        disagree.
+        """
+        dest, client = described
+        one = client.get("/api/task-setup/folder?dir=" + str(dest)).get_json()
+        assert one["ok"] is True
+
+        tmpl = client.get(
+            "/api/task-setup/template-values?dir=" + str(dest)).get_json()
+        prov = client.get(
+            "/api/task-setup/resolved?dest=" + str(dest)).get_json()
+        att = client.post("/api/task-setup/attempts",
+                          json={"dest": str(dest)}).get_json()
+
+        assert one["template"] == tmpl
+        assert one["provenance"] == prov
+        assert one["attempts"] == att
+        assert tmpl["values"], "the fixture must carry template values"
+        assert att["stages"], "the fixture must carry stages"
+
+    def test_the_answer_names_the_folder_it_is_about(self, described):
+        """The half a reset list cannot cover.
+
+        Two things make a page show the wrong folder: state that LINGERS,
+        and an answer that LANDS LATE.  Clearing fixes only the first, and
+        Task setup has no `AbortController` across any of its twelve calls
+        -- so a response for the folder you just left can still arrive.
+        `dir` is what lets a consumer that has moved on discard it, which
+        is `calcdir.json`'s rule (§ 1.4a) applied to the wire.
+        """
+        dest, client = described
+        one = client.get("/api/task-setup/folder?dir=" + str(dest)).get_json()
+        assert one["dir"] == str(dest.resolve()), (
+            "the answer must name its own subject; got " + repr(one["dir"]))
+
+    def test_it_reports_the_mode_rather_than_the_page_keeping_one(
+            self, described):
+        """A save writes `task.json` and deletes the hand-over, so which is
+        on disk IS the mode -- the page need not remember one."""
+        dest, client = described
+        from molbuilder.task import FILENAME as TASK_FILENAME
+        assert client.get("/api/task-setup/folder?dir=" + str(dest)
+                          ).get_json()["mode"] == "description"
+
+        (dest / TASK_FILENAME).unlink()
+        (dest / "task.1st.json").write_text('{"schema": "x", "engine": {}}')
+        body = client.get(
+            "/api/task-setup/folder?dir=" + str(dest)).get_json()
+        assert body["mode"] == "handover"
+        assert body["description"] is None and body["handover"] is not None
+
+        (dest / "task.1st.json").unlink()
+        assert client.get("/api/task-setup/folder?dir=" + str(dest)
+                          ).get_json()["mode"] == "empty"
+
+    def test_one_bad_part_does_not_cost_the_others(self, described):
+        """A malformed template must not take the description with it."""
+        dest, client = described
+        tmpl = next(dest.glob("*.template.toml"))
+        tmpl.write_text("this is not toml = = =\n")
+        body = client.get(
+            "/api/task-setup/folder?dir=" + str(dest)).get_json()
+        assert body["ok"] is True, "the answer survives one bad part"
+        assert body["template"]["ok"] is False, "and says which part failed"
+        assert body["description"] is not None, (
+            "the description is still there to read")
