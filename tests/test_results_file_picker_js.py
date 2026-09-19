@@ -319,6 +319,35 @@ class TestGroupResultFiles:
             {"label": "PySCF spectrum",      "names": ["b.spectra.json"]},
         ]
 
+    def test_category_is_built_from_the_servers_answer(self):
+        """The heading comes from ``{role, parser, engine}``, not the name.
+
+        Every other case here hands `groupResultFiles` a presenter whose
+        `resultCategory` ignores its arguments, so none of them could see
+        that the entry was passed to `pickResult` and then dropped before
+        `resultCategory` — which is how a SIESTA directory's runs came to
+        sit under the engine-less heading while the same response told the
+        page `engine: "siesta"` (measured 2026-09-19 on
+        `BDT-only-init-siesta`).  This one reads the second argument, so
+        the wire between the response and the heading is what is pinned.
+        """
+        out = _run_node(
+            "const entries = [\n"
+            "  {path: '/p/a.out', name: 'a.out', mtime: 300,\n"
+            "   role: '.out', parser: 'siesta', engine: 'siesta'},\n"
+            "];\n"
+            "function pickResult(_p, _m) { return {\n"
+            "  name: 'trajectory', displayName: 'Traj',\n"
+            "  resultCategory: (_f, meta) =>\n"
+            "      (meta && meta.engine ? meta.engine.toUpperCase() : 'NO META')\n"
+            "      + ' optimization',\n"
+            "}; }\n"
+            "const groups = window.molbuilder.resultsFilePicker.groupResultFiles("
+            "  entries, pickResult);\n"
+            "console.log(JSON.stringify(groups.map(g => g.label)));"
+        )
+        assert out == ["SIESTA optimization"]
+
     def test_groups_sorted_by_newest_entry(self):
         """Group with the newest file overall comes first regardless
         of insertion order in the input list."""

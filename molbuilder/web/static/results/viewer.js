@@ -173,7 +173,7 @@
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
         }
-        currentHandle = reg.mount(els.host, file, mountContext);
+        currentHandle = reg.mount(els.host, file, mountContext, meta);
         _renderStatus(file, inspector.displayName);
     }
 

@@ -225,7 +225,7 @@
 
     /**
      * Bucket the filtered result entries by inspector
-     * ``resultCategory(path)`` and return a sorted ``[{label,
+     * ``resultCategory(path, entry)`` and return a sorted ``[{label,
      * entries}]`` array suitable for rendering as a sequence of
      * ``<optgroup>`` blocks.
      *
@@ -256,8 +256,17 @@
             if (!inspector) continue;  // already filtered, but defensive.
             let label;
             try {
+                /* THE SAME ANSWER THE PICK WAS MADE ON, one line up.
+                 * `entry` carries the server's `{role, parser, engine}`
+                 * (`filterToResultFiles`), `pickResult` is given it, and
+                 * `resultCategory` was not -- so every heading fell back to
+                 * the engine-less spelling and a SIESTA directory's runs sat
+                 * under "Optimization" (measured 2026-09-19 on
+                 * `BDT-only-init-siesta`, whose `engine` the server answered
+                 * `siesta`).  Two calls, one rule: both take `meta`
+                 * (`web/presenters.md` § 3). */
                 label = (typeof inspector.resultCategory === "function")
-                    ? inspector.resultCategory(entry.path)
+                    ? inspector.resultCategory(entry.path, entry)
                     : inspector.displayName;
             } catch (e) {
                 console.warn(
