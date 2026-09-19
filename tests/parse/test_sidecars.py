@@ -102,3 +102,84 @@ def test_sidecar_result_is_frozen():
     result = parse(_need(MOLSTRUCT_FX))
     with pytest.raises(Exception):
         result.schema = "tampered/v0"   # noqa
+
+
+# ---- the transport record, and the predecessor it is not --------------- #
+
+
+def _record(tmp_path, **over):
+    """A record written by the LIVE writer, not hand-built."""
+    from molbuilder.transport.record import write_record, TRANSPORT_RESULT_SCHEMA
+    rec = {"schema": TRANSPORT_RESULT_SCHEMA, "label": "junction",
+           "energies_relative_to_ef": True, "stages": [],
+           "treatment": "single-bias", "points": [],
+           "iv": {"voltages_v": [0.0], "current_a": [1e-9]},
+           "provenance": {"slot": None,
+                          "atom_permutation": "atom-permutation.json"}}
+    rec.update(over)
+    return write_record(tmp_path, rec)
+
+
+def test_a_transport_record_is_read_by_a_parser_not_by_the_browser(tmp_path):
+    """`<label>.transport.json` was the one result kind no Python could read.
+
+    `parse/sidecars/transport.py` was deleted 2026-09-17 and rightly: it
+    claimed a file only when the payload carried a top-level
+    `schema_version`, while the live writer (`transport/record.py`) emits
+    `schema` -- so it sat in the registry unable to claim the one file
+    molbuilder writes, and its own writer had zero production callers in
+    every revision.
+
+    What changed is that the reader now has a consumer.  `/api/results/dir`
+    asks the registry what reads each file, and the answer here was
+    *nothing* -- so the Results tab parsed it in the BROWSER
+    (`lib/inspectors/transport.js`: `JSON.parse(body.text)`), the only
+    result kind whose format was understood only in JavaScript.
+
+    The fixture goes through `write_record`, so this cannot drift from the
+    shape actually written -- which is exactly how the predecessor failed.
+    """
+    from molbuilder.parse import detect
+
+    p = _record(tmp_path)
+    kind = detect(str(p))
+    assert kind.name == "transport-json"
+    got = kind.parse(p)
+    assert got.schema == "transport/v1"
+    assert got.payload["label"] == "junction"
+    assert got.payload["treatment"] == "single-bias"
+    assert got.payload["iv"]["voltages_v"] == [0.0]
+
+
+def test_it_refuses_a_json_that_is_not_a_transport_record(tmp_path):
+    """The schema is checked, not the suffix -- which is the predecessor's
+    lesson pointing the other way.  `check_schema` compares the NAME as well
+    as the major, so another `@1` artifact cannot sail through.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the `check_schema` call.
+    """
+    import json
+
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import UnknownFormatError
+
+    foreign = tmp_path / "other.transport.json"
+    foreign.write_text(json.dumps({"schema": "molbuilder/task@1",
+                                   "label": "x"}), encoding="utf-8")
+    with pytest.raises(UnknownFormatError):
+        detect(str(foreign))
+
+
+def test_the_catalogue_row_lets_the_door_offer_it(tmp_path):
+    """`result_roles("transport")` must NAME the record, or the door can
+    never offer a transport calculation its own deliverable.
+
+    The row gained `staged=False` on 2026-09-18 and that half was inert:
+    `calculation` was still None, so `result_roles("transport")` answered
+    `('.molwatch.log',)` -- the progress channel of a run, for a
+    CALCULATION-level result.  `engines/transport.md` § 2a.12: the
+    transmission stage's output is the deliverable and everything else in
+    the tree exists to make it trustworthy.
+    """
+    from molbuilder.runfiles import result_roles
+    assert result_roles("transport")[0] == ".transport.json"

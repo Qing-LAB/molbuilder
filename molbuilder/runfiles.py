@@ -909,8 +909,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # Task-setup card promised `<label>_<stage>.transport.json` on every rung
     # of every SIESTA calculation -- a name nothing has ever written -- while
     # the calculation-level card for a transport run listed nothing at all.
+    # `calculation="transport"` completes the row, and without it the half
+    # done on 2026-09-18 was inert: `result_roles("transport")` answered
+    # `('.molwatch.log',)`, so the DOOR could never offer a transport
+    # calculation its own result.  It is the deliverable of the ladder
+    # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
+    # everything else in the tree exists to make it trustworthy"), written
+    # once at the calculation root -- which is what `staged=False` says.
     Artifact(".transport.json", "the transport results, summarised",
-             staged=False),
+             staged=False, calculation="transport"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and
