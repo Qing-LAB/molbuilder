@@ -647,9 +647,20 @@ the rule; this is where it is applied.)*
 
 | question | owner | reader |
 |---|---|---|
-| what calculation is this? | the **directory** | `task.json` |
+| what calculation is this? | the **calculation** | `task.json`, at its root |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
+
+> **The owner is the CALCULATION, not the directory you handed in** *(corrected
+> 2026-09-19)*. This row read *"the directory"* and the code took it at its
+> word, reading `task.json` from the handed directory alone. That is only the
+> same place in the FLAT shape;
+> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.0 puts
+> the description above the run-directory wall — *"only rendered files and
+> copies go down to where the engine runs"* — so in the hierarchical shape it
+> is two levels up, the door saw none, and every hierarchical spectrum run
+> opened its molwatch stub. The door now walks to the nearest ancestor holding
+> `task.json`, fenced by the `projects/` tree and a depth cap.
 
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json`; an optimization for its trajectory; a transport calculation
@@ -845,7 +856,7 @@ delegation, not by a ladder.
 
 | question | owner | reader |
 |---|---|---|
-| what calculation is this? | the **directory** | `task.json` |
+| what calculation is this? | the **calculation** | `task.json`, at its root |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
 

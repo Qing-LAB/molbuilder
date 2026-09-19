@@ -169,7 +169,7 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     **THREE QUESTIONS, THREE OWNERS**, which is the same shape `run_status`
     took on 2026-09-18 and the reason this is no longer a ladder:
 
-      | what calculation is this?  | the DIRECTORY | `task.json`              |
+      | what calculation is this?  | the CALCULATION | its root's `task.json` |
       | what does it produce?      | the CATALOGUE | `runfiles.result_roles`  |
       | can anything open it?      | the REGISTRY  | `detect()`               |
 
