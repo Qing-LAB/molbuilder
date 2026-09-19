@@ -139,8 +139,7 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     reads when nothing matched, and it moves with the search so the message
     cannot drift from it.
     """
-    from molbuilder.runfiles import (RunFileError, find, find_by_role,
-                                     result_roles)
+    from molbuilder.runfiles import find, find_by_role, result_roles
 
     attempts: List[str] = []
 
@@ -199,18 +198,15 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     for role in _search_roles():
         pool: List[str] = []
         for s in stems:
-            try:
-                pool += [str(path) for path, _rec in
-                         find(directory, s, role=role,
-                              roles=(ROLE_GEOM_TRAJ,))]
-            except RunFileError:
-                # A STEM OFF DISK IS NOT NECESSARILY A LABEL: `my.job.py`
-                # yields `my.job`, which § 2.1 refuses -- rightly, a dotted
-                # label cannot be read back out of a filename.  A RESOLVER
-                # SAYS WHAT IT TRIED AND MOVES ON; raising here turned the
-                # Watch tab into a 500 for a person who used a dot.
-                attempts.append(f"  {s}: not a run-file label (§ 2.1)")
-                continue
+            # A DOTTED STEM NEEDS NO GUARD HERE, and that is a property of
+            # `find` rather than luck: it READS names and returns what
+            # matches, where the `compose` this replaced BUILT one and
+            # refused `my.job` (§ 2.1).  There is no raise left to catch --
+            # `tests/test_path_framework_doors.py` asserts the skip message
+            # never appears -- so the `except RunFileError` that stood here
+            # went with the composer on 2026-09-18.
+            pool += [str(path) for path, _rec in
+                     find(directory, s, role=role, roles=(ROLE_GEOM_TRAJ,))]
         if not pool:
             continue
         attempts.append(f"  *{role} across {len(stems)} label(s)"

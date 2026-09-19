@@ -388,7 +388,7 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
                   concluded: Optional[str] = None,
-                  fresh_paths: "Optional[List[Path]]" = None,
+                  fresh_paths: "List[Path]" = (),
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
@@ -439,10 +439,12 @@ def _build_status(out_paths: List[Path],
     # is deliberately NOT a speaker until its footer concludes.  Taking the
     # speaker's mtime therefore reported a live run as dead.
     #
-    # `fresh_paths` defaulting to the speakers is the pre-2026-09-18 answer,
-    # kept only so a caller that has no separate list is not silently given a
-    # different rule than the one it asked for.
-    _fresh = fresh_paths if fresh_paths else out_paths
+    # `run_status` is the only caller and always passes it; the empty default
+    # is not a fallback to the old rule but the degenerate case (no run output
+    # at all), which the `if not out_paths` branch above has already returned
+    # for.  A `None` default that quietly restored the pre-2026-09-18 rule
+    # stood here for four commits -- a shim for a caller that does not exist.
+    _fresh = fresh_paths or out_paths
     age_s = max(0.0, _wall_now() - max(p.stat().st_mtime for p in _fresh))
     # THIS LAYER SETTLES WHAT CONTENT CANNOT (`model/parse.md` § 2b).  The
     # engine parser reports how the run ENDED from markers alone --

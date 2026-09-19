@@ -263,8 +263,11 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     # role, the same fault as declaring one (§ 5l.3) -- and it could not simply
     # ask for `.out` and `.log`, because that drops `.pyscf.log`, where PySCF
     # writes *"and not to .out"*, so a finished PySCF rung would report itself
-    # QUEUED (§ 1.6's forbidden line).  `roles_ending` derives exactly what the
-    # globs matched, so a new `.log` row joins the set without editing this line.
+    # QUEUED (§ 1.6's forbidden line).  `stdout_roles()` derives it from the
+    # catalogue's `output` column, so a new engine's stdout joins the set
+    # without editing this line -- and a new `.log` row that is NOT an
+    # engine's stdout stays out of it, which is the half the old
+    # `roles_ending(".out", ".log")` got wrong.
     has_output = any(find(observed, label, role=r, stage=stage)
                      for r in _OUTPUT_ROLES)
     if not has_output:

@@ -749,7 +749,7 @@ class Artifact:
 
 Three rows carry it: `.out` (`stdout`, and it gains the `engine="siesta"` it
 lacks), `.pyscf.log` (`stdout`), `.molwatch.log` (`progress`). Derived views
-beside `roles_ending`: `run_output_roles()`, `stdout_roles(engine=None)`,
+beside the catalogue's other views: `run_output_roles()`, `stdout_roles(engine=None)`,
 `engines()`.
 
 **Why a column and not a boolean.** `output == "stdout"` **is** § 5.1's rule

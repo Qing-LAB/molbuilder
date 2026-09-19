@@ -961,22 +961,6 @@ def roles(*, carried: bool = True) -> "tuple[str, ...]":
     return tuple(uniq)
 
 
-def roles_ending(*suffixes: str) -> "tuple[str, ...]":
-    """Every DECLARED role whose name ends with one of *suffixes*.
-
-    A vocabulary question, answered from the catalogue.  It exists because
-    `runstatus` asks *"has the engine produced anything"* and the honest form of
-    that question is a SET OF ROLES, not a glob: it passed ``role="*.out"`` and
-    ``role="*.log"`` to :func:`find` until 2026-09-08, which required a role
-    comparison that could match a wildcard -- the same fault as declaring a glob
-    in :data:`WRITTEN` (§ 5l.3).
-
-    The set is what the old globs matched, derived rather than restated, so a new
-    ``.log`` row joins it without anyone editing `runstatus`.
-    """
-    return tuple(a.role for a in WRITTEN if a.role.endswith(suffixes))
-
-
 def run_output_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
     """Every role that carries evidence of HOW A RUN WENT (§ 5.5).
 
