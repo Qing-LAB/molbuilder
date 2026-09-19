@@ -71,23 +71,78 @@ def _claimed(path: str) -> bool:
         return False
 
 
-def _calculation_of(directory: str) -> Optional[str]:
-    """What calculation is this? — the DIRECTORY's own account of itself.
+# HOW FAR UP A RUN DIRECTORY MAY LOOK for the calculation it belongs to.
+# The deepest legitimate run is transport's bias rung -- `04_device/v0/run-0`,
+# three levels under the calculation root -- so four is that plus headroom,
+# and it is `summarize._BUNDLE_SEARCH_DEPTH`'s number for the same reason.
+# The cap is the backstop; `find_projects_root` is the real fence, and it is
+# the one that holds in a projects tree, which is where calculations live.
+_CALC_SEARCH_DEPTH = 4
+
+
+def _calculation_of(directory: str) -> Tuple[Optional[str], Optional[str]]:
+    """What calculation is this? — and which `task.json` said so.
 
     `task.json` is the file `prep` reads, so this is the same fact the run
     was built from rather than a guess off the filenames.  The name and the
     reader are `molbuilder.task`'s; nothing here re-spells either.
 
-    ``None`` when the directory does not say — one molbuilder did not write,
-    or one prepped before the key existed.  That is a real answer, not a
-    failure: the search below then asks what ANY run produces.
+    **THE DESCRIPTION IS NOT IN THE RUN DIRECTORY, AND IS NOT MEANT TO BE.**
+    `project-layout.md` § 1.0 draws the wall this walks through: *"the
+    template, `task.json` and the rest of the starting point for rendering
+    belong to the PARENT, and only rendered files and copies go down to where
+    the engine runs."*  Flat puts the run's files in the calculation root, so
+    asking the handed directory happens to work there; hierarchical puts them
+    two levels down, so it cannot.  Until 2026-09-19 this asked the handed
+    directory only, and so every hierarchical spectrum run opened the molwatch
+    stub the catalogue offers when nothing says what a run is FOR -- measured
+    on `spectrum/bridge-hier/01_raman/run-0`, whose trail read
+    `calculation: (not stated in task.json)`.
+
+    **The NEAREST ancestor wins and the walk stops there**, which is
+    `projects.find_projects_root`'s rule for the same shape of question: a
+    calculation inside a calculation is somebody else's calculation, and
+    `job-contracts.md` § 2.1 Rule 1 (one job per folder) is why there should
+    not be one to find.  The reach is fenced twice -- never past the
+    `projects/` tree the run lives in, and never more than
+    ``_CALC_SEARCH_DEPTH`` levels -- so a stray `task.json` high in somebody's
+    home directory cannot colour an unrelated folder's results.
+
+    ``(None, None)`` when nothing above says — a directory molbuilder did not
+    write, or one prepped before the key existed.  That is a real answer, not
+    a failure: the search below then asks what ANY run produces.
     """
+    from molbuilder.projects import find_projects_root
     from molbuilder.task import FILENAME as _TASK, read_json as _read_json
+
     try:
-        return (_read_json(os.path.join(directory, _TASK)) or {}
-                ).get("calculation") or None
-    except (OSError, ValueError, TypeError):
-        return None
+        here = Path(directory).resolve()
+    except (OSError, RuntimeError):
+        return None, None
+    fence = find_projects_root(here)
+
+    walk = [here, *list(here.parents)[:_CALC_SEARCH_DEPTH]]
+    for step, cand in enumerate(walk):
+        # The fence is the tree, not the depth: stop before stepping out of
+        # the `projects/` root this run lives under.  `find_projects_root`
+        # returns None outside one (a tmp dir, an ad-hoc folder), and then the
+        # depth cap above is the only bound -- which is what it is there for.
+        if fence is not None and cand != fence and fence not in cand.parents:
+            break
+        try:
+            said = (_read_json(cand / _TASK) or {})
+        except (OSError, ValueError, TypeError):
+            continue
+        if not said:
+            continue
+        # FOUND ONE: nearest wins, so this is the answer whether or not it
+        # names a calculation.  A description that omits the key means the
+        # DEFAULT kind (`stages.md`: the key is absent for an optimization),
+        # and climbing past it to find one that does say would adopt a
+        # different calculation's word for this run.
+        where = _TASK if step == 0 else f"{'../' * step}{_TASK}"
+        return (said.get("calculation") or None), where
+    return None, None
 
 
 def _search_roles() -> "List[str]":
@@ -158,8 +213,10 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
         return None
 
     # 1. WHAT THIS CALCULATION PRODUCES, from the catalogue.
-    calc = _calculation_of(directory)
-    attempts.append(f"calculation: {calc or '(not stated in task.json)'}")
+    calc, said_by = _calculation_of(directory)
+    attempts.append(
+        f"calculation: {calc} (from {said_by})" if calc
+        else f"calculation: (not stated in {said_by or 'task.json'})")
     for role in result_roles(calc):
         hits = by_role(role)
         attempts.append(f"*{role} -> {len(hits)} match(es)")

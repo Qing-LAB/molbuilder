@@ -155,7 +155,7 @@ def test_openable_is_not_active(tmp_path):
 # ---- § 5.5: what should a viewer open -- the CALCULATION decides -------- #
 
 
-def _spectrum_dir(tmp_path, *, say_calculation=True):
+def _spectrum_dir(tmp_path, *, say_calculation=True, shape="flat"):
     """A finished vibration run: the sidecar, and a molwatch log that is a stub.
 
     The stub is the real shape, not a simplification -- measured on a CO2
@@ -163,9 +163,19 @@ def _spectrum_dir(tmp_path, *, say_calculation=True):
     `kind: initial_preview` block, `# concluded:` footer.  A spectrum has no
     geometry sequence to log, so the progress channel every run seeds says
     nothing about this one.
+
+    ``shape`` puts the run where that shape puts it, and `task.json` where
+    `project-layout.md` § 1.0 puts it -- in the PARENT, always.  Flat's run
+    files sit in the calculation root, so the two land in one directory;
+    hierarchical's sit two levels down, so they do not.  Returns the RUN
+    directory, which is what a viewer is handed either way.
     """
     import json
-    (tmp_path / "co2spec.spectra.json").write_text(json.dumps({
+    run = tmp_path
+    if shape == "hierarchical":
+        run = tmp_path / "01_freq" / "run-0"
+        run.mkdir(parents=True)
+    (run / "co2spec.spectra.json").write_text(json.dumps({
         "schema_version": 1, "engine": "pyscf", "engine_version": "x",
         "molbuilder_version": "x", "timestamp": "2026-09-18T00:00:00Z",
         "structure_hash": "sha256:0", "n_atoms_total": 3,
@@ -176,17 +186,17 @@ def _spectrum_dir(tmp_path, *, say_calculation=True):
         "phase_frequencies": "complete", "phase_raman": "complete",
         "phase_es": "complete", "phase_relaxation": "complete",
     }), encoding="utf-8")
-    _mw_log(tmp_path, "co2spec_01_freq.molwatch.log", concluded=True)
+    _mw_log(run, "co2spec_01_freq.molwatch.log", concluded=True)
     if say_calculation:
         (tmp_path / "task.json").write_text(json.dumps({
             "schema": "molbuilder/task@1", "engine": {"name": "pyscf"},
-            "shape": "flat", "calculation": "vibration",
+            "shape": shape, "calculation": "vibration",
             "run": {"name": "co2spec", "id": "co2spec_CO2"},
             "structure": {"source": "co2spec.source.xyz",
                           "formula": "CO2", "atoms": 3},
             "stages": [{"name": "freq", "enabled": True, "overrides": {}}],
         }), encoding="utf-8")
-    return tmp_path
+    return run
 
 
 def _mw_log(dirpath, name, *, concluded):
@@ -202,7 +212,9 @@ def _mw_log(dirpath, name, *, concluded):
     return p
 
 
-def test_a_spectrum_run_opens_its_spectrum_not_its_molwatch_stub(tmp_path):
+@pytest.mark.parametrize("shape", ["flat", "hierarchical"])
+def test_a_spectrum_run_opens_its_spectrum_not_its_molwatch_stub(
+        tmp_path, shape):
     """THE CALCULATION DECIDES, and there is no preference order to tune.
 
     A vibration run is FOR its `.spectra.json`: the deck rewrites it
@@ -216,14 +228,53 @@ def test_a_spectrum_run_opens_its_spectrum_not_its_molwatch_stub(tmp_path):
     every kind, which is why the fix deletes the ladder rather than
     reordering it.
 
-    MUTATION THIS MUST FAIL AGAINST: put `.molwatch.log` first, or stop
-    asking `task.json` what calculation this is.
+    **BOTH SHAPES, because the description does not live with the run.**
+    `project-layout.md` § 1.0 puts `task.json` in the PARENT -- *"only
+    rendered files and copies go down to where the engine runs"* -- so in
+    the hierarchical shape it is two levels above the run directory a viewer
+    is handed.  The 2026-09-18 fix asked only the handed directory and was
+    written against a flat fixture, so it passed while every hierarchical
+    spectrum went on opening its stub; measured on a real Raman run
+    2026-09-19 (`spectrum/bridge-hier/01_raman/run-0`), whose trail read
+    `calculation: (not stated in task.json)`.  One rule, both shapes, or the
+    rule is only true where the fixture happened to look.
+
+    MUTATION THIS MUST FAIL AGAINST: put `.molwatch.log` first, stop asking
+    `task.json` what calculation this is, or ask only the handed directory.
     """
-    d = _spectrum_dir(tmp_path)
+    d = _spectrum_dir(tmp_path, shape=shape)
     got, attempts = openable_in(str(d))
     assert got is not None, attempts
     assert pathlib.Path(got).name == "co2spec.spectra.json", (
         f"got {pathlib.Path(got).name!r} -- the trail was:\n  "
+        + "\n  ".join(attempts))
+
+
+def test_the_walk_up_for_a_calculation_is_fenced(tmp_path):
+    """Looking OUTSIDE the handed directory is the one new risk, so it is
+    bounded — and this is the guard on the bound.
+
+    A run directory adopting a `task.json` merely because one sits somewhere
+    above it would let a stray description in a home directory decide what
+    unrelated folders open.  The fences are the `projects/` tree and
+    ``_CALC_SEARCH_DEPTH``; outside a projects tree — here — only the depth
+    cap is left, which is exactly the case worth pinning.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the cap, or walk to the filesystem
+    root.  Then this directory adopts `vibration` and opens the spectrum.
+    """
+    deep = tmp_path.joinpath(*"abcdef")           # 6 levels: past the cap
+    deep.mkdir(parents=True)
+    _spectrum_dir(deep)                           # its own task.json, then:
+    (deep / "task.json").unlink()                 # ...say it only up HERE
+    _spectrum_dir(tmp_path, say_calculation=True)
+
+    got, attempts = openable_in(str(deep))
+
+    assert got is not None and pathlib.Path(got).name.endswith(
+        ".molwatch.log"), (
+        f"reached {tmp_path}'s task.json from six levels down and opened "
+        f"{pathlib.Path(got).name if got else None!r}; the trail was:\n  "
         + "\n  ".join(attempts))
 
 
