@@ -1135,6 +1135,36 @@ def test_status_pending_and_warm_files(tmp_path):
     assert "demo.XV" in st.stages[0].warm_files
 
 
+def test_a_trials_warm_files_are_found_under_the_trials_own_label(tmp_path):
+    """The warm list is read with the SAME label the state is read with.
+
+    A sweep trial is relabelled — SIESTA finds its warm files by
+    `SystemLabel`, so a trial carrying the real run's label could read or
+    overwrite the real run's `.DM` and `.XV` (`project-layout.md` § 2.3.2)
+    — and `_label_of` exists to recover that label off the deck.  It was
+    applied to the `.out` and not to the warm files beside it, so the
+    column asked for `<task.label>.XV` in a directory holding
+    `<task.label>-<token>.XV`.
+
+    MEASURED before the fix on this exact fixture: `warm_files == []` with
+    `siesta-AuBDTAu-G0K20C1.XV` on disk — `jobset status` telling a person
+    there is nothing to restart from, which is the answer that costs an
+    allocation to disprove (`job-contracts.md` § 4.2).
+    """
+    js = JobSet(
+        name="siesta-AuBDTAu", engine="siesta", kind="sweep",
+        jobs=[Job(name="G0K20C1",
+                  script="siesta-AuBDTAu-G0K20C1_01_coarse.fdf",
+                  resources=Resources(mpi_np=1),
+                  warm=[WarmFile("siesta-AuBDTAu-G0K20C1.XV")])])
+    trial = tmp_path / "01_coarse/bench/bench-G0K20C1"
+    trial.mkdir(parents=True)
+    (trial / "siesta-AuBDTAu-G0K20C1.XV").write_text("x")
+
+    st = jobset_status(js, tmp_path)
+    assert st.stages[0].warm_files == ["siesta-AuBDTAu-G0K20C1.XV"]
+
+
 def test_status_first_incomplete_advances(tmp_path, monkeypatch):
     """With the first stage finished and the second running, `first_incomplete` moves
     to the second and the set is not complete.

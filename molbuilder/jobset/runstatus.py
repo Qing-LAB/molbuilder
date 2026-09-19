@@ -347,7 +347,14 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
             attempt=(attempt.name if attempt else None),
             attempts=attempts(d),
             launch=launch,
-            warm_files=_warm_present(observed, label, jobset.engine),
+            # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
+            # `jobset.name` while everything else in the loop had moved to
+            # `job_label` -- so the fix `_label_of` exists for was applied to
+            # the `.out` and not to the warm files beside it.  Measured on a
+            # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
+            # files reported `[]`, and `jobset status` told a person there
+            # was nothing to restart from.
+            warm_files=_warm_present(observed, job_label, jobset.engine),
         ))
         if first_incomplete is None and state != _DONE:
             first_incomplete = job.name
