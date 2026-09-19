@@ -530,7 +530,7 @@ class CoverageEntry:
     status:   str       # "ok" | "missing" | "dead_projector" |
                         # "xc_family_mismatch" | "xc_mismatch" |
                         # "relativistic_mismatch" | "generator_mismatch" |
-                        # "parse_warning" | "semilocal_only"
+                        # "parse_warning" | "semilocal_only" | "misnamed"
     message:  str
     path:     Optional[Path] = None
 
@@ -542,15 +542,18 @@ class CoverageEntry:
 #: strength of ZERO (``semilocal_only`` — the same silently-wrong-energies
 #: case, added 2026-09-03 by user ruling after PseudoDojo v0.5's sulfur ran
 #: with no p channel).  This is the SINGLE source of truth for "which statuses
-#: are ERROR"; the SIESTA preflight
+#: are ERROR"; ``misnamed`` joined it 2026-09-19 (the file for an element
+#: exists and is healthy but is not called `<element>.psml`, so SIESTA never
+#: opens it -- a certain start-up failure, said at configuration time).
+#: The SIESTA preflight
 #: (``validation.siesta._check_siesta_pseudo_coverage``) and the CLI
 #: (``cli.cmd_pseudo_check``) both consume it so the two surfaces cannot
 #: drift (they did until 2026-07-26: the CLI omitted ``xc_family_mismatch``).
 #: Everything else — ``xc_mismatch`` (same-family author diff),
 #: ``relativistic_mismatch``, ``generator_mismatch``, ``parse_warning`` — is
 #: advisory (WARN); ``ok`` is a silent pass.
-ERROR_STATUSES = frozenset({"missing", "dead_projector", "xc_family_mismatch",
-                            "semilocal_only"})
+ERROR_STATUSES = frozenset({"missing", "misnamed", "dead_projector",
+                            "xc_family_mismatch", "semilocal_only"})
 
 
 #: XC authors -> the FAMILY a pseudopotential must belong to.
@@ -634,6 +637,26 @@ def check_coverage(elements: Iterable[str],
                          f"http://www.pseudo-dojo.org (PSML format, "
                          f"functional matching cfg.xc_authors)."),
                 path=None,
+            ))
+            continue
+        # THE FILE SIESTA WILL OPEN IS `<label>.psml`, and this map is keyed
+        # on what each file DECLARES -- so a correct gold pseudopotential
+        # saved as `gold.psml` lands here as a perfectly healthy entry for
+        # `Au`, and every check below passes it, while SIESTA opens
+        # `Au.psml`, does not find it, and refuses to start.  Measured
+        # 2026-09-19: such a folder answered `ok`.
+        #
+        # Verbatim, no folding -- the same rule the `key` comment above
+        # states: SIESTA reads `<label>.psml`, so a species written `Au1`
+        # really does need `Au1.psml`.
+        if info.path is not None and info.path.stem != key:
+            out.append(CoverageEntry(
+                element=key, status="misnamed",
+                message=(f"{info.path.name} declares element {key}, but "
+                         f"SIESTA opens {key}.psml and has no search path -- "
+                         f"so this file will never be read and the run will "
+                         f"refuse to start.  Rename it to {key}.psml."),
+                path=info.path,
             ))
             continue
         # Value validation: a defective pseudo with a dead KB channel.

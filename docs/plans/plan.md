@@ -3714,3 +3714,94 @@ never catch them:
 4. Rows 8 and 9 as their own fix.
 5. Rows 13-14 fold into § 7's survey.
 
+
+## 9. ATOM as a pseudopotential validator — PENDING, not started
+
+*(User, 2026-09-19. Recorded now so the scope is honest; the immediate work
+is § 9.1, which is done, and § 9.2 is future.)*
+
+### 9.1 What the configuration-time check must guarantee — DONE
+
+The user's rule for this level, verbatim: *"make sure that the file are
+explicitly provided, the name matches the atom name, and that's pretty much
+it at this level."* Two things, both at configuration time, both now enforced
+by the checks the Build preflight and `prep` already share:
+
+| | where |
+|---|---|
+| **explicitly provided** — `psml_lib` names a library, OR the calculation folder already holds them; never neither | `validation.siesta._check_siesta_pseudo_coverage`. With a calculation folder in hand this is answerable, so it is an **ERROR**; before one exists (Build tab) it stays a WARN, because whether the folder will supply them is not knowable yet |
+| **the name matches the element** — the file for element `E` is `E.psml`, which is the name SIESTA opens | `pseudos.check_coverage` → `misnamed`, in `ERROR_STATUSES`. The map is keyed on what a file DECLARES, so a correct gold pseudopotential saved as `gold.psml` used to answer `ok` for `Au` while SIESTA could not start |
+
+Both are refusals at the moment the calculation is configured, which is the
+only moment they are cheap. Nothing below this line is required for that.
+
+### 9.2 ATOM as an optional extra layer — PLANNED, not started
+
+*(User, 2026-09-19: treat it the way 3DNA is treated — ask whether they have
+it, look for it under the molbuilder root, and enable the extra validation
+only when it is there.)*
+
+`~/Downloads/atom-4.2.7-100` — ATOM 4.2.7, the SIESTA project's own
+pseudopotential program (Froyen / Troullier / Martins, maintained by Alberto
+García). Not in the repo.
+
+**It is the 3DNA case exactly, including the licence.** `COPYRIGHT` says
+**"REDISTRIBUTION OF THIS CODE IS PROHIBITED"**, so molbuilder must not
+bundle, mirror or fetch it — the same standing we already give 3DNA
+(`builders/backends/_threedna.py`, "Licensing"). That makes the discovery
+design a copy rather than an invention:
+
+| 3DNA today | ATOM |
+|---|---|
+| in-tree `<repo_root>/x3dna*/`, version-agnostic glob | `<repo_root>/atom*/` |
+| completeness filter: `bin/fiber` executable **and** `config/` present | `atm` built, **and** `Tutorial/Utils/` present (the `pt.sh` driver lives there, not beside the binary) |
+| `$X3DNA`, then `fiber` on PATH | `$ATOM_PROGRAM` — which `pt.sh` already honours — then `atm` on PATH |
+| `x3dna*/` in `.gitignore` | `atom*/` likewise, **added now**: the ignore has to exist *before* the folder does, or a redistribution-prohibited package lands in `git status` |
+| `BackendUnavailable` names where to download | same, pointing at the SIESTA pseudopotential page |
+
+**How it gets there is the user's to do, once** (user, 2026-09-19), and it
+is the 3DNA sequence unchanged: go to the site, accept the licence, download
+the package, unpack it under the molbuilder root. molbuilder does no part of
+that. From then on it is present, detection finds it, and the extra layer is
+simply available — there is no enable switch to forget, and no state to keep
+beyond the folder being there.
+
+**What the extra layer measures.** `Tutorial/Utils/` holds the drivers:
+`ae.sh` (all-electron), `pg.sh` (generation), `pt.sh` (**the pseudopotential
+test**). The workflow the manual prescribes is `ae` over a series of atomic
+configurations, then `pt` over the same series with the pseudopotential, and
+compare — eigenvalues, and the inter-configuration energy changes the tutorial
+greps as `&d`. That is **transferability**, measured rather than trusted. The
+AE-vs-PS **logarithmic derivatives** (`logder.f`, plotted per channel) are the
+standard **ghost-state** diagnostic. Those are precisely the two items
+[`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 3 declares
+out of scope today, and the ATOM tutorial's own warning is the argument for
+them: *"You should thoroughly test a pseudopotential before using it."*
+
+**It also broadens which formats molbuilder can accept** (user). ATOM's native
+pseudopotential formats are `.vps` / `.psf` — `pt.sh` takes
+`<ptname.inp> <psname.vps>` — and `Util/` converts among VPS spellings
+(`cdf2vps`, `vps2cdf`, `vpsa2bin`, `vpsb2asc`). So a library need not be PSML
+to be usable or checkable.
+
+> **BROADER INPUT, SAME STRICTNESS** — stated here because it is the thing a
+> second format would quietly erode. § 9.1's two rules are about the FILE, not
+> about PSML: whichever formats are accepted, the source is still stated
+> explicitly, and the file for element `E` is still named `E.<ext>`. Accepting
+> `.vps` therefore adds one question and it must be ANSWERED, not guessed: if
+> a folder holds both `Au.psml` and `Au.vps`, that is a refusal naming both,
+> never a preference order. Nothing about a wider door makes it right to pick
+> for the user.
+
+**The open question that keeps this from being a task.** ATOM has
+`write_psml.f90` and **no PSML reader**, and `pt.sh` reads `.vps`. So it
+cannot be pointed at a downloaded PseudoDojo PSML as-is. Either a PSML→VPS
+path is needed, or the layer is scoped to the formats ATOM already reads —
+which is also the format-broadening above, and may be the same piece of work.
+That choice has not been made, and it decides whether this validates the
+library we have or the ones we could start accepting.
+
+**Also open:** whether `atm` is built as part of an env
+(`feedback_no_env_deployment_changes` — nothing is installed without asking),
+and whether the check runs per prep or on demand like `molbuilder pseudo
+check`.

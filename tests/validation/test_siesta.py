@@ -323,9 +323,18 @@ class TestSiestaPseudoCoverageInPreflight:
                          positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
 
     def test_psml_lib_unset_emits_actionable_warn(self):
-        """Default config (psml_lib=None) -> WARN telling user how to
-        get pseudos.  Without this warning the user discovers the
-        missing-pseudo failure only after a 5-minute mpirun start-up."""
+        """Default config (psml_lib=None), and NO calculation folder yet ->
+        WARN telling the user how to get pseudos.  Without this warning the
+        user discovers the missing-pseudo failure only after a 5-minute
+        mpirun start-up.
+
+        WARN and not ERROR is about what is knowable HERE: this runs in the
+        Build tab before a folder exists, and pseudos already beside the
+        calculation are used without this field (`job-contracts.md`
+        § 2.5a) -- so whether the folder will supply them cannot be
+        answered yet.  With a folder in hand it can, and the test below is
+        that case.
+        """
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._water(), SiestaConfig())
@@ -343,6 +352,52 @@ class TestSiestaPseudoCoverageInPreflight:
         msg = psml_issues[0].message
         assert "`pseudopotential`" in msg
         assert "do NOT write the projects/ prefix" in msg
+
+    def test_where_the_pseudos_come_from_is_stated_or_the_folder_has_them(
+            self, tmp_path):
+        """With a calculation folder in hand, silence is answerable — and
+        the answer decides the severity.
+
+        There are two sources and no third: `psml_lib`, or files already
+        beside the calculation (`job-contracts.md` § 2.5a).  When neither
+        exists the run cannot start, so saying so at configuration time
+        beats finding out after MPI init — and leaving it at WARN is the
+        one place this path still let the pseudopotential source go
+        unstated (user, 2026-09-19: *"the pseudopotential file has to be
+        explicit and it has to be strictly checked at the configuration
+        time"*).
+
+        The severity rule is the one the missing-directory branch beside it
+        already uses: a folder makes it answerable, no folder does not.
+        """
+        import sys as _sys
+        _sys.path.insert(0, "tests")
+        from conftest import _PSML_FIXTURE, _PSML_Z
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation.siesta import (
+            _check_siesta_pseudo_coverage as _check)
+
+        water, cfg = self._water(), SiestaConfig()      # psml_lib unset
+
+        empty = tmp_path / "nothing"
+        empty.mkdir()
+        got = _check(water, cfg, dest_dir=empty)
+        assert [i.severity for i in got] == ["error"], (
+            "neither source exists, so the run cannot start")
+
+        supplied = tmp_path / "beside"
+        supplied.mkdir()
+        for el in ("O", "H"):
+            (supplied / f"{el}.psml").write_text(
+                _PSML_FIXTURE.format(el=el, z=_PSML_Z[el]))
+        assert _check(water, cfg, dest_dir=supplied) == [], (
+            "the folder supplies them, so an unset psml_lib is correct")
+
+        half = tmp_path / "partial"
+        half.mkdir()
+        (half / "H.psml").write_text(_PSML_FIXTURE.format(el="H", z=1))
+        assert [i.severity for i in _check(water, cfg, dest_dir=half)] == [
+            "error"], "covering SOME elements is not covering them"
 
     def test_psml_lib_bad_path_emits_error(self):
         from molbuilder.config.siesta import SiestaConfig

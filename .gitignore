@@ -72,6 +72,15 @@ x3dna-*.zip
 # Catches x3dna/, x3dna-v2.4/, x3dna-2.5/, x3dna-sep2025/ etc.
 x3dna*/
 
+# ATOM (the SIESTA project's pseudopotential program) -- same standing as
+# 3DNA above and for a stronger reason: its COPYRIGHT reads "REDISTRIBUTION
+# OF THIS CODE IS PROHIBITED".  Ignored BEFORE anyone unpacks it at the repo
+# root, which is the only order that keeps it out of `git status` on the day
+# it arrives.  See plans/plan.md § 9.2.
+atom-*.tgz
+atom-*.tar.gz
+atom*/
+
 .claude/
 **/.claude/
 claude-memory.tgz

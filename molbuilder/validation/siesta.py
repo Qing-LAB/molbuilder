@@ -42,11 +42,34 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     """
     psml_lib = getattr(cfg, "psml_lib", None)
     if not psml_lib:
-        # No path configured -- SIESTA will refuse to start.  Don't
-        # ERROR (user might know what they're doing + intend to fill
-        # it in by hand); WARN with the actionable hint.
+        # WHERE THE PSEUDOPOTENTIALS COME FROM IS STATED, OR THE FOLDER
+        # ALREADY HAS THEM -- there is no third answer, and leaving it
+        # unstated is the one implicit thing left on this path (user,
+        # 2026-09-19: *"the pseudopotential file has to be explicit and it
+        # has to be strictly checked at the configuration time"*).
+        #
+        # SEVERITY IS DECIDED THE WAY THE MISSING-DIRECTORY CASE BELOW
+        # DECIDES IT, and for the same reason: with a calculation folder in
+        # hand this is answerable, and without one it is not.
+        #
+        #   * folder known, and it covers every element  -> nothing to say.
+        #     § 2.5a: pseudos already beside the calculation are used
+        #     WITHOUT this field, so a silent config is correct there.
+        #   * folder known, and it does not              -> ERROR.  Neither
+        #     source exists; SIESTA cannot start, and saying so at Generate
+        #     beats finding out after MPI init.
+        #   * no folder yet (Build tab, before a save)   -> WARN.  Whether
+        #     the folder will supply them is not knowable yet, and refusing
+        #     on a guess is the thing this whole path is being cleared of.
+        covered = None
+        if dest_dir is not None:
+            from pathlib import Path as _P
+            here = {f.stem for f in _P(dest_dir).glob("*.psml")}
+            covered = here and not (set(struct.elements) - here)
+        if covered:
+            return []
         return [Issue(
-            "warn",
+            "error" if dest_dir is not None else "warn",
             ("cfg.psml_lib is not set -- SIESTA needs .psml files for "
              "every element (H, C, N, O, S, Fe, ...) and will refuse "
              "to start without them.  Download from "
@@ -57,7 +80,10 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
              "(job-contracts.md 2.5a) -- do NOT write the projects/ "
              "prefix.  Once set, this preflight will check "
              "coverage + XC-family match against your structure's "
-             "elements automatically."),
+             "elements automatically."
+             + ("  Or put the .psml files in the calculation folder itself "
+                "-- pseudos already beside the calculation are used without "
+                "this field." if dest_dir is not None else "")),
             "config.psml_lib",
         )]
     from ..pseudos import PsmlLibError, resolve_psml_lib

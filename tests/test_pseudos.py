@@ -665,18 +665,45 @@ class TestErrorStatusesSharedBySurfaces:
     now consume ``pseudos.ERROR_STATUSES`` so the surfaces can't disagree."""
 
     def test_error_statuses_is_the_blocking_set(self):
-        """The four things that make a run wrong rather than suspect.
+        """The five things that make a run wrong rather than suspect.
 
         `semilocal_only` joined 2026-09-03 (user ruling): a valence channel
         whose projectors STATE a strength of zero, which PseudoDojo v0.5 does
         for eleven elements.  Same class as `xc_family_mismatch` -- the run
         completes and the physics is wrong -- so it blocks for the same
         reason.
+
+        `misnamed` joined 2026-09-19: the file for an element is present and
+        healthy but is not called `<element>.psml`, so SIESTA -- which has no
+        search path -- never opens it.  A certain start-up failure, and the
+        only one of the five that is about the FOLDER rather than the file's
+        physics.
         """
         from molbuilder.pseudos import ERROR_STATUSES
         assert ERROR_STATUSES == frozenset(
-            {"missing", "dead_projector", "xc_family_mismatch",
+            {"missing", "misnamed", "dead_projector", "xc_family_mismatch",
              "semilocal_only"})
+
+    def test_a_healthy_pseudo_under_the_wrong_name_blocks(self, tmp_path):
+        """The check said `ok` for a folder SIESTA cannot start in.
+
+        `scan_psml_directory` keys on what each file DECLARES, so a correct
+        gold pseudopotential saved as `gold.psml` arrived as a healthy entry
+        for `Au` and every value check passed it -- while SIESTA opens
+        `Au.psml`, does not find it, and refuses.  Measured 2026-09-19: that
+        folder answered `ok`.
+
+        Verbatim, no case folding: the module's own rule is that SIESTA
+        reads `<label>.psml`, so a species written `Au1` needs `Au1.psml`.
+        """
+        from molbuilder.pseudos import check_coverage, ERROR_STATUSES
+        (tmp_path / "gold.psml").write_text(_make_psml("Au"))
+        (tmp_path / "H.psml").write_text(_make_psml("H"))
+        by = {e.element: e for e in check_coverage(["Au", "H"], tmp_path)}
+        assert by["H"].status == "ok"
+        assert by["Au"].status == "misnamed"
+        assert by["Au"].status in ERROR_STATUSES
+        assert "Au.psml" in by["Au"].message and "gold.psml" in by["Au"].message
 
     def test_cli_exits_nonzero_on_xc_family_mismatch(self, tmp_path):
         # LDA pseudo on a PBE (GGA) calc -> xc_family_mismatch -> ERROR.

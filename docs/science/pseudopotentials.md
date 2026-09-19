@@ -118,6 +118,21 @@ directory. **Why:** SIESTA refuses to start without a pseudo for every species.
 structure element with no entry → `missing`. **False positives:** none — a
 missing file is unambiguous.
 
+### C1a — The file SIESTA will open · ERROR · `misnamed`
+**What:** the pseudopotential for element `E` is the file named `E.psml`.
+**Why:** SIESTA opens `<label>.psml` in the directory it runs from and has
+**no search path**, so a file it cannot name is a file it will never read —
+the run refuses to start. **How:** `scan_psml_directory` keys the map on each
+file's *declared* element, so a correct gold pseudopotential saved as
+`gold.psml` arrived here as a healthy entry for `Au` and every value check
+below passed it; `check_coverage` now also compares the filename. Verbatim, no
+case folding — the same rule the coverage loop already states, since a species
+written `Au1` genuinely needs `Au1.psml`. **False positives:** none — the
+comparison is against the name SIESTA itself constructs. **Measured
+2026-09-19:** such a folder answered `ok`; zero instances across the 105 real
+`.psml` folders in `projects/`, because staged copies are named by
+`copy_pseudopotentials`. This guards the folder a person assembles by hand.
+
 ### C2 — XC functional consistency · ERROR *(family)* / WARN *(author)*
 **What:** the pseudo's exchange-correlation functional matches the calculation's
 (`cfg.xc_authors`). **Why:** a pseudo is generated *for* a specific XC functional.
@@ -425,6 +440,16 @@ verify:
   **δ-factor** benchmarks — a scalar scoring how closely the pseudo's
   equation-of-state matches all-electron); molbuilder trusts a vetted source and
   checks only consistency + integrity.
+
+> **Both of those have a route now, and it is not header inspection.** ATOM —
+> the SIESTA project's own pseudopotential program — measures them directly:
+> its `pt` mode compares all-electron and pseudopotential eigenvalues over a
+> series of atomic configurations (transferability), and its AE-vs-PS
+> logarithmic derivatives are the standard ghost-state diagnostic. It is
+> **not adopted**: ATOM writes PSML but cannot read one, so pointing it at a
+> downloaded PseudoDojo file needs a path that does not exist yet. See
+> [`plan.md`](?doc=plans/plan.md) § 9.2 for the open question. Until then the
+> claim above stands as written.
 > **One item left this list on 2026-09-07: mesh-cutoff adequacy.** It read
 > *"`PsmlInfo.suggested_mesh_ry` is parsed but not yet compared to
 > `cfg.mesh_cutoff`"* — which § 2a.1 of this same document had already
