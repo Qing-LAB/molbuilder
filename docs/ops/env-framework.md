@@ -30,14 +30,17 @@ packages) and must not be confused with this one.
 | **Repair re-reads the RECORD**, never a flattened copy of an instruction | § 7 |
 
 ```
-recipes.py ── Recipe ──┬── CondaPackage(spec, optional, reason)
-  (the registry)       └── PipPackage(name, source, extras, optional,
-   § 3                                force, fallback_to_index, reason)
+recipes.py ── Recipe ──┬── CondaPackage(spec, optional, reason, opt_in)
+  (the registry)       ├── PipPackage(name, source, extras, optional,
+   § 3                 │              force, fallback_to_index,
+                       │              reason, opt_in)
+                       └── ExtraStep(argv, opt_in)              § 3.2a
                                     │
           ┌─────────────────────────┴──────────────────┐
-   create_step_for · pip_step_for · verify_step_for   audit_packages
-     conda_argv       pip_argv                        (reads disk only)
-        (record  ->  InstallStep; the ONLY translators)      │     § 6
+   create_step_for · conda_packages_step_for ·        audit_packages
+   pip_step_for · verify_step_for                     (reads disk only)
+     conda_argv            pip_argv                              § 6
+        (record  ->  InstallStep; the ONLY translators)      │
                     │                                        │
               plan_install            ── steps, no side      │
                     │                    effects (--dry-run) │
@@ -230,6 +233,81 @@ reasons that took real bugs to learn:
 `optional` on the record governs **both**: the audit reports absence as
 informational, and the installer gives the package its own non-fatal step.
 
+#### 3.2b Two packages are in EVERY recipe, and that is a rule
+
+`python` and `git` are declared by every recipe, and a test holds it
+(`test_every_recipe_declares_the_uniform_packages`). Both are about what is
+available at RUN time on a machine this process cannot probe, which is why
+neither can be left to "whatever that env happened to need":
+
+* **`python`** — a generated wrapper backgrounds `mb_monitor.py` on whatever
+  `command -v python3` finds *after* the env is activated, so an env declaring
+  none falls through its own empty `bin/` to the compute node's interpreter.
+  `molbuilder-siesta` was that env until 2026-09-17; measured inside it,
+  `python3` resolved to `/usr/bin/python3`. See
+  [`installation.md`](?doc=ops/installation.md) *"Choosing the Python every env
+  is built on"*.
+* **`git`** — `checkpoint.py`'s `GitNotInstalledError` tells the person to
+  activate a molbuilder env *because* "every molbuilder env ships git as a
+  conda_packages entry". That is a promise the registry has to keep, and HPC
+  sites' system git versions are inconsistent enough that the env's is the only
+  one under our control. Availability is **not** permission to use it: no
+  generated wrapper may invoke git (`checkpointing.md` I4).
+
+*Stated here 2026-09-18. `git` had been declared in all six recipes by hand
+with the rule written nowhere, which is the arrangement that let `python` slip
+out of one of them.*
+
+### 3.2a `opt_in` is a third thing, and it is not `optional` *(2026-09-18)*
+
+`optional` means **attempted, but failure does not abort**. `opt_in` means
+**not attempted at all unless asked**. Both are string-or-flag fields on the
+same records, and conflating them would be expensive: four packages depend on
+today's meaning of `optional` — `PeptideBuilder` and `pubchempy` in the host
+env, `cupy-cuda13x` and `gpu4pyscf` in pySCF — and all four *are* installed on
+a default run. Redefining it would silently strip the peptide builder, PubChem
+lookup and GPU support out of every fresh install.
+
+`opt_in` carries a **string reason**, exactly as `Recipe.opt_in` does and for
+the same reason: a bare `True` leaves every surface inventing its own wording
+for *why am I not getting this*. **`doctor`'s `opt-in:` row is the surface that
+renders it today** — the flag's help and `--dry-run`'s plan do not (the plan
+simply omits an opt-in step, saying nothing about it). Stated as what is,
+rather than as three surfaces that would have to be built.
+
+**It applies to all three kinds**, which is what forced `extra_steps` to become
+records (`ExtraStep`). The host env's test tooling is the case that needed it:
+a conda package (`nodejs`), two pip packages (`playwright`,
+`pytest-playwright`) and a step (`playwright install chromium`) that **cannot**
+be gated by the packages alone — run it in an env without playwright and it
+simply fails. A bare argv tuple still normalises into an `ExtraStep`, so a step
+with nothing extra to say still reads as an argv.
+
+**Why the test tooling is in the host env and not its own.** The `e2e` tests
+start the real server *in-process*, so the process running them needs
+molbuilder's whole import stack. A browser-tooling-only env was tried and
+deleted for exactly that (`molbuilder-tests`, 2026-07-13) — and a second *full*
+env is no answer either: the suite runs under whatever interpreter invokes
+`tools/testrun.py`, so a dev env would sit unused while `e2e` kept failing on
+"playwright not installed".
+
+**Confinement is part of the declaration, not a footnote.** `playwright
+install` writes to `~/.cache/ms-playwright` by default — measured at 1.3 GB
+there, outside every env and surviving `conda env remove`. The step points
+`PLAYWRIGHT_BROWSERS_PATH` at `$CONDA_PREFIX/share/ms-playwright` and writes
+the `activate.d` hook that keeps it pointed there for the pytest process too
+(the manager performs the env's own activation — § 5.6). **No step may require
+elevated privilege**: `playwright install-deps` installs distro packages as
+root and is not run; a host missing those shared libraries is a host
+prerequisite, like conda itself. A test asserts both, on the step's command
+tokens rather than its text.
+
+**An opt-in package that is absent is a choice, not a defect.** The audit
+reports it under its own kind (`*-missing-opt-in`) and it does not fail the
+health check — otherwise `doctor` would be red on every machine that simply did
+not want the tooling. It is still *reported*, with the command that adds it:
+absence nobody can see is how this came to be four commands in a help comment.
+
 ### 3.3 What a pip record can say that a string cannot
 
 A spec string conflates three things that only coincide for an indexed package:
@@ -259,7 +337,8 @@ of the sequence is **forced by dependency**, and those orderings are rules:
 
 | # | stage | why it sits here |
 |---|---|---|
-| 1 | `conda create` | **Forced.** Nothing installs into an env that does not exist. It is also the one step needing no env prefix. |
+| 1 | `conda create` | **Forced.** Nothing installs into an env that does not exist. It is also the one step needing no env prefix. It carries the recipe's **python spec and nothing else** — see 1b. |
+| 1b | `conda install` | **Forced after create**, and a step of its own so that an env which ALREADY EXISTS can still receive it. Welded to `create` — conda's CLI shape, which the planner used to mirror — the declared set could be applied exactly once, so a recipe that gained a package never reached a machine that had already bootstrapped. Dispatched only when the env is short of something; see § 4.4. |
 | 2 | pip, batched then per-package | **Forced after conda.** A forced pip install carries `--no-deps` *because* conda supplies numpy / scipy / h5py. Reorder this and `--no-deps` quietly installs a package with nothing under it. |
 | 3 | `extra_steps` | **Forced after packages.** They run tools the packages provide. |
 | 4 | `build_spec` | **Forced after conda+pip.** It needs the toolchain the solve installed. |
@@ -275,8 +354,9 @@ fails fast.
 # The pipeline, in pseudocode.  Everything else is detail.
 
 def plan_install(recipe):               # pure: builds steps, runs nothing
-    return [create_step_for(recipe),    # ...this is what --dry-run prints
-            *pip_steps_for(recipe),
+    return [create_step_for(recipe),       # the interpreter, and nothing else
+            conda_packages_step_for(recipe),   # the declared conda set (§ 4.4)
+            *pip_steps_for(recipe),        # ...this is what --dry-run prints
             *extra_steps_for(recipe),
             verify_step_for(recipe)]
 
@@ -340,7 +420,7 @@ step the one door can run.
 | an ordinary package | a bare string in the list | batched into one `pip install` | `FAILED` |
 | a package whose version cannot prove it is the declared build | `force=True` | `--force-reinstall --no-deps`, its own step, every time | `FAILED` |
 | a pip package the env is usable without | `optional=True` | its own step, `fatal=False` | `DEGRADED`, install continues |
-| a conda package the env is usable without | `optional=True` | **a degraded attempt on the create step** — see below | `RECOVERED` |
+| a conda package the env is usable without | `optional=True` | **a degraded attempt on the packages step** — see below | `RECOVERED` |
 | a package not on PyPI | `source="git+https://…"` | PEP 508 `name @ url` | `FAILED` |
 | …whose source may be unreachable | `fallback_to_index=True` | the indexed build as a declared alternative, **flagless** | `RECOVERED` |
 | a tool that reports through its output and exits non-zero | `ignore_exit_code=True` | the substring becomes the verdict | `FAILED` if absent |
@@ -353,13 +433,54 @@ step the one door can run.
 That last row is why an outcome is `Optional`: a step with no outcome is a step
 that is still a *plan*. Everywhere else, every step carries one.
 
+### 4.4 The conda set is delivered, not conferred at birth *(2026-09-17)*
+
+`conda create -n <env> pkg…` does two jobs in one command. The planner mirrored
+that, so a recipe's conda list lived in the plan only as *arguments to the birth
+command* — and `create` is skipped for an env that exists, taking the list with
+it. Measured: `git` was declared in every recipe from 2026-06-25 and absent from
+four envs on 2026-09-17, while `install` reported success and dispatched no
+`conda install` at all. A recipe says *this env contains these packages*, not
+*this env was born with these packages*.
+
+> **`conda create` carries the recipe's python spec and nothing else. Every
+> other declared package is delivered by `conda install`, which runs whenever
+> the env is short of something — whether it was just created or has existed
+> for months.**
+
+**The gate is free, and that is what makes it affordable on every install.**
+`doctor.absent_conda_specs` reads `conda-meta/` off disk — no subprocess, no
+solve, no network — and is the same reading § 6's audit takes. Nothing absent →
+the step is `SKIPPED` and the env is untouched.
+
+**Why gated rather than unconditional.** Measured on conda 26.7.1: a full-list
+`conda install` into a **satisfied** env still costs 26 s and wants to update
+`ca-certificates` and `openssl` to newer builds. Running it every time would
+drift a healthy env on every re-run of a command whose whole promise is
+idempotence.
+
+**Why the argv is the full set and not the absent subset.** `plan_install` is
+pure, so `--dry-run` has already printed this line; narrowing it at dispatch
+would print one command and run another. The runner decides *whether*, never
+*what*.
+
+**Absence only.** A version or build mismatch is `repair --include-version-fix`,
+deliberately: those rebuilds are destructive and opt-in. `install` closes
+absence. And for a recipe with a `build_spec` a version mismatch is not
+repairable at all — the conda packages there are the toolchain the binaries were
+compiled against, so re-pinning the package recompiles nothing; `doctor` names a
+rebuild for that case (measured: `sysroot_linux-64` pinned 2.17, env at 2.34,
+`objdump -T` on the built `siesta` demanding `GLIBC_2.34`).
+
 **Optionality means something different to a solver.** pip installs one package
 at a time, so an optional pip package is its own non-fatal STEP. conda solves
 everything at once — an optional conda package cannot be its own step without
 paying a *second solve*, and a second solve may legitimately change versions for
 packages the first one already placed. So conda optionality is an **attempt**,
-not a step property: `create_step_for` tries the full solve, and on failure the
-same solve without the optional specs. The env lands `RECOVERED` — created,
+not a step property: `conda_packages_step_for` tries the full solve, and on
+failure the same solve without the optional specs. (It lived on
+`create_step_for` until 2026-09-18, and moved with the specs it applies to when
+`create` stopped carrying them — § 4.4.) The env lands `RECOVERED` — created,
 minus something the recipe said it could live without.
 
 **One degradation step, not a search.** With *n* optional specs, "find the
@@ -595,7 +716,7 @@ pip is repaired per package, through `pip_step_for`, so each one gets its
 source, its force flags and its declared alternative. conda is repaired in one
 batched `conda_step_for`, because every conda command is a whole solve — and
 that is also why `install` does not do it this way: there, an optional conda
-package is dropped from the create solve instead. `repair` is the place that
+package is dropped from the packages solve instead. `repair` is the place that
 pays a second solve, because the operator asked for one.
 
 ## 8. The shell shim
@@ -629,6 +750,25 @@ and had drifted in four places, including two flags the Python layer *prints as
 the command to run*: a second copy of a surface nothing can keep in sync is
 worse than no copy.
 
+**A PLAN IS NOT A CHANGE** *(2026-09-17)*. The confirmation keys on the VERB,
+and `install --dry-run`, `install --check` and `bootstrap --dry-run` change
+nothing — so all three exited 2 in any non-TTY with *"no TTY for confirmation"*,
+which is every way CI or a pipe would ask this program what it would do. The
+arg scan now implies `--yes` for `--dry-run` and `--check`, exactly as it does
+for `--help`, and for the same reason. The detected manager is still announced
+on the line above, so nothing is hidden.
+
+**`bootstrap --clean` is the shim's third owned concern** *(2026-09-17)*, and it
+is the host-env chicken-and-egg again rather than a new job: `dispatch` runs
+`<host env>/bin/python`, so the Python layer cannot wipe the env its own
+interpreter lives in (`installation.md` M5, which is why `install --clean`
+refuses that env outright). This shell is not in that env — `${ENV_MGR}` is the
+manager's own binary — so `env remove` here is an ordinary conda command
+followed by the `create` the shim already owns. The window between them is real
+and is named: the recovery command is printed *before* the removal, not after a
+failure. Python applies `--clean` to every other recipe and says so for the one
+it skips.
+
 **The env-manager confirmation is asked only by the verbs that CHANGE an env**
 *(2026-09-12)*. `require_conda` prompts *"use this env manager?"* — which exists
 for the case where an old `~/anaconda3` is picked over the Miniforge you meant —
@@ -653,6 +793,13 @@ and nothing else**. A host package that ever needs a source or a force flag
 cannot be expressed there; the drift-guard test compares the arrays against
 `conda_specs` / `pip_specs` and will fail the moment one grows a URL. That
 failure is a decision to make, not a test to relax.
+
+**It compares against the DEFAULT set** *(2026-09-18)* — `conda_set()` /
+`pip_set()`, not `conda_specs` / `pip_specs` — because the shim performs a
+default install. An `opt_in` package (the host env's test tooling) is declared
+by the recipe and deliberately absent from the bash arrays; comparing against
+the full list would force a fresh-machine bootstrap to pay for a ~115 MB
+browser.
 
 ## 9. What stays asymmetric, and why
 

@@ -14,8 +14,11 @@ singleton lifecycle.
 Routing tables
 --------------
 
-The four-env model's routing data lives at module scope as three small
-dicts, hand-written for clarity.  Renames go in ``molbuilder.json``;
+The routing data lives at module scope as three small
+dicts, hand-written for clarity.  (It read "the four-env model" until
+2026-09-18; the registry has grown past any count worth writing down --
+`BUILTIN_RECIPES` is the list, and these dicts route the subset that
+needs routing.)  Renames go in ``molbuilder.json``;
 new categories require a code change here AND a documentation change
 in ``docs/ops/installation.md`` and ``docs/execution/job-contracts.md``, so
 they're rare.
@@ -49,7 +52,9 @@ from .projects import projects_root
 #  Routing tables (compile-time constants)                              #
 # --------------------------------------------------------------------- #
 #
-# Categories describe the four-env model.  Naming maps go in three
+# Categories name the envs a tool or an extension can be ROUTED to --
+# not every env there is (the host has no category, and nothing
+# dispatches into the notebook env).  Naming maps go in three
 # small dicts side-by-side; this is more legible at this scale than a
 # dataclass abstraction over four static rows.
 #

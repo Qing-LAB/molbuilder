@@ -20,6 +20,7 @@ import pytest
 
 from molbuilder.diagnostics import DEFAULT_ENV_NAMES
 from molbuilder.envs.recipes import (
+    _PYTHON_SPEC,
     BUILTIN_RECIPES,
     Recipe,
     recipe_by_name,
@@ -43,6 +44,56 @@ def test_every_recipe_has_required_fields():
         assert r.description, f"empty description in {r.name}"
         assert r.channels, f"no channels in {r.name}"
         assert r.conda_packages, f"no conda_packages in {r.name}"
+
+
+#: Packages EVERY recipe carries, and the rule each one answers to.  Both are
+#: about what is available at RUN time on a machine this process cannot probe,
+#: which is why neither can be left to "whatever that env happened to need".
+_UNIFORM_PACKAGES = (
+    # `installation.md`, "Choosing the Python every env is built on": one
+    # value, no exception.  A generated wrapper backgrounds `mb_monitor.py`
+    # with whatever `command -v python3` finds AFTER the env is activated, so
+    # an env declaring no python falls through its own empty `bin/` to the
+    # COMPUTE NODE's interpreter -- a version nothing declares, probes at prep
+    # time, or can promise is installed.  `molbuilder-siesta` was that env
+    # until 2026-09-17; measured inside it, `python3` resolved to
+    # `/usr/bin/python3`.
+    (_PYTHON_SPEC, "the run monitor's interpreter"),
+    # `checkpoint.py`'s `GitNotInstalledError` tells the user to activate a
+    # molbuilder env because "every molbuilder env ships git as a
+    # conda_packages entry" -- a promise the registry has to keep, and HPC
+    # sites' system git versions are inconsistent enough that the env's is
+    # the only one we control (`_HOST`).
+    ("git", "the checkpoint subsystem"),
+)
+
+
+@pytest.mark.parametrize(
+    "spec,why",
+    _UNIFORM_PACKAGES,
+    ids=[w for _, w in _UNIFORM_PACKAGES],
+)
+def test_every_recipe_declares_the_uniform_packages(spec, why):
+    """The packages every env carries, carried by every env.
+
+    ONE test for both, because it is one rule: a package here is declared
+    uniformly so that nothing downstream has to remember which env is "the one
+    with git" -- and so that a recipe added tomorrow cannot quietly omit it.
+    Neither was enforced anywhere before 2026-09-17; `git` was declared in all
+    six by hand and `python` in five of six, which is exactly the failure a
+    by-hand rule produces.
+
+    `python` is asserted through `_PYTHON_SPEC` rather than the literal
+    `python=3.12`, because `MOLBUILDER_PYTHON` moves that value -- a recipe
+    spelling it from anywhere else is the drift worth catching.
+
+    The rule is stated, not just measured: `env-framework.md` § 3.2b.
+    """
+    missing = [r.name for r in BUILTIN_RECIPES if spec not in r.conda_specs]
+    assert not missing, (
+        f"{', '.join(missing)} do not declare {spec!r}, which every env "
+        f"carries for {why}."
+    )
 
 
 def test_recipe_names_are_unique():

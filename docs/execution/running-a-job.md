@@ -199,11 +199,25 @@ it computes, decides, or arranges files, the answer is no and it belongs upstrea
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:
 
-- **molbuilder is not installed there.** The wrapper is self-contained at run
-  time by design (§ 2).
-- **There may be no Python at all.** `molbuilder-siesta` declares
-  `siesta`, `numactl`, `git` and nothing else — verified: the env has no
-  `python`. Any logic written to run there is either shell, or a shipped
+- **molbuilder is not importable there.** It is deliberately never
+  pip-installed into any env, so `import molbuilder` fails on a compute node
+  whatever interpreter is found. The wrapper is self-contained at run time by
+  design (§ 2).
+- **The interpreter is the node's business, not ours.** The wrapper probes
+  `command -v python3 || command -v python` and carries on without one, because
+  the activation line is *declared by the operator*
+  (§ 5.2 below; `script_generation.activation` has no default) — the env a wrapper lands in
+  need not be one of ours at all.
+
+  > *This bullet read "there may be no Python at all", evidenced by
+  > `molbuilder-siesta` declaring `siesta`, `numactl`, `git` and nothing else.
+  > That env pins the global python like every other since 2026-09-17: the probe
+  > was otherwise falling through the env's empty `bin/` to whatever the node
+  > shipped, unprobed at prep time, and on a node shipping none the wrapper
+  > logged `monitor: not started` and the calculation ran unwatched. The
+  > conclusion is unchanged and rests on the bullet above.*
+
+  Any logic written to run there is either shell, or a shipped
   stdlib-only file, or broken. `mb_monitor.py` is the one deliberate exception —
   it is a *subprocess of the running job*, watching output from inside, so it has
   nowhere else to live. That is why it is stdlib-only, and it is not a pattern to

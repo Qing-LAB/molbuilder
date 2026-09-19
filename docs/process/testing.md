@@ -424,16 +424,20 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 
 ## 4. Testing the front-end JS without a browser
 
-> **Neither test tool is installed by default, and neither is in a recipe.**
-> `node` and `playwright` are opt-in, per developer, into the *host* env:
+> **Neither test tool is installed by default. Both ARE in the host recipe**,
+> marked `opt_in`, and one command adds them:
 >
 > ```
-> conda install -n molbuilder -c conda-forge nodejs          # § 4
-> conda run -n molbuilder python -m pip install ".[e2e]"     # § 5
-> conda run -n molbuilder python -m playwright install chromium
+> bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 > ```
 >
-> `scripts/install-env.sh --help` § 9 carries both, with the checks.
+> That installs `nodejs`, `playwright`, `pytest-playwright` and a headless
+> chromium **into the host env**, with the browser confined to
+> `$CONDA_PREFIX/share/ms-playwright` (an `activate.d` hook keeps the path set
+> for the pytest process) and no step requiring root.
+>
+> `bash scripts/install-env.sh doctor` shows what you have: the `opt-in:` row
+> for `molbuilder` lists whatever is still absent.
 > Neither is needed to RUN molbuilder, and chromium is a large download
 > nobody should pay for by accident — which is why `bootstrap` leaves them
 > out (`envs/recipes.py` records the ruling: a browser-tooling-only env

@@ -25,11 +25,14 @@ from molbuilder.envs.recipes import BUILTIN_RECIPES
 # whether a recipe has post-install steps, because that is what decides how
 # many commands `doctor` prints -- so the fixtures ask for the property
 # rather than trusting a position in the registry to keep it.
-RECIPE = next(r for r in BUILTIN_RECIPES if not r.extra_steps)
+# `extra_set()`, not `extra_steps`: the DEFAULT set is what decides how many
+# commands doctor prints, and since 2026-09-18 the two differ -- `_HOST`
+# declares an opt-in chromium step that a default install never dispatches.
+RECIPE = next(r for r in BUILTIN_RECIPES if not r.extra_set())
 NAME = RECIPE.name
 
-#: One that DOES have post-install steps, for the other branch.
-RECIPE_WITH_STEPS = next(r for r in BUILTIN_RECIPES if r.extra_steps)
+#: One that DOES have post-install steps on a default run, for the other branch.
+RECIPE_WITH_STEPS = next(r for r in BUILTIN_RECIPES if r.extra_set())
 
 
 def _report(**kw):
@@ -46,9 +49,10 @@ def _audit(*issues):
 
 def _issue(kind, spec="somepkg=1.0"):
     # `optional` is a field the audit sets; a hand-built issue sets it the
-    # way the audit does.
+    # way the audit does -- opt-in absence included (doctor.py: an opt-in
+    # package nobody asked for is not a REQUIRED gap).
     return PackageAuditIssue(kind=kind, spec=spec, found="(not found)",
-                             optional=kind.endswith("-optional"))
+                             optional=kind.endswith(("-optional", "-opt-in")))
 
 
 def _render(capsys, rep):
@@ -66,6 +70,36 @@ def test_a_missing_env_carries_the_install_command(capsys):
     assert "next:    " + _fix_cmd("install", NAME, "--yes") in out
     assert "molbuilder envs install" not in out, (
         "the second spelling is back -- one spelling, the shell form")
+
+
+def test_an_opt_in_row_never_silences_a_required_failure(capsys):
+    """Both reports, and the exit code still says FAILED.
+
+    The opt-in row was added BETWEEN the audit chain's first `if` and its
+    `elif` on 2026-09-18, which re-parented the `elif`/`else` onto it -- so
+    for the one recipe that has opt-in packages (the host env, on every
+    machine that has not run `--with-dev-tools`) the FAILED branch became
+    unreachable: a REQUIRED missing package printed nothing and `doctor`
+    exited 0 over it.  `bootstrap` keys its verdict on that exit code, so it
+    would have announced "every env installed and verified" over the exact
+    failure its verdict block was written to catch.
+
+    Rendered, not inspected: the defect was invisible to a test that asked
+    `PackageAuditIssue` about its own fields, because the fields were right
+    and the branch that read them was unreachable.
+    """
+    rep = _report(package_audit=_audit(_issue("conda-missing"),
+                                       _issue("conda-missing-opt-in",
+                                              spec="nodejs")))
+    code, out = _render(capsys, rep)
+    assert code == 1, "an opt-in absence must not turn a failure into a pass"
+    assert "audit:   FAILED" in out
+    assert "next:    " + _fix_cmd("repair", NAME) in out
+    # ...and the opt-in row is still there, with the command that adds it
+    # the command that adds it.
+    assert "opt-in:" in out
+    assert "add:     " + _fix_cmd("install", NAME, "--with-dev-tools",
+                                  "--yes") in out
 
 
 def test_required_missing_packages_carry_the_repair_command(capsys):

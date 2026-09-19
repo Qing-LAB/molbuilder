@@ -39,7 +39,7 @@ from dataclasses import dataclass
 
 from ..diagnostics import DEFAULT_ENV_NAMES, Capabilities
 from . import hints as _hints
-from typing import Mapping, Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -57,6 +57,20 @@ from typing import Mapping, Optional, Tuple
 # corresponding BuildComponent / Recipe instances.  Changing one
 # triggers a rebuild (the value participates in the toolchain
 # fingerprint via ``probe_toolchain`` and the resolved git SHA).
+
+
+def _spec_name(spec: str) -> str:
+    """The package NAME a conda spec names, channel and pin stripped.
+
+    ``dacase::ambertools-dac=26`` -> ``ambertools-dac``; ``psutil>=5.9`` ->
+    ``psutil``.  A deliberately small reader: the only question asked of it is
+    "is this the interpreter", and `doctor._parse_conda_spec` remains the full
+    parser for the audit, which also needs the comparator, version and build.
+    """
+    head = spec.strip().split("::")[-1]
+    for sep in ("=", "<", ">", "!", "~", " "):
+        head = head.split(sep)[0]
+    return head
 
 
 def _env_default(var: str, default: str) -> str:
@@ -162,7 +176,9 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
                             #   MOLBUILDER_SIESTA_TAG=<sha>
                             "5.4.2")
 
-#: THE PYTHON EVERY ENV IS BUILT ON.  One value, five recipes.
+#: THE PYTHON EVERY ENV IS BUILT ON.  One value, EVERY recipe -- a count
+#: went stale here twice, so the rule is stated instead and a test holds
+#: it (`test_every_recipe_declares_the_uniform_packages`).
 #:
 #: Read at IMPORT time, like `MOLBUILDER_GCC` and for the same forcing
 #: reason: the recipes are module-level data, so a Python-side flag would
@@ -181,10 +197,22 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
 #: only place that check can be cheap.  Setting the variable directly is the
 #: expert path and skips it, exactly as `MOLBUILDER_GCC` does.
 #:
-#: `molbuilder-siesta` is deliberately NOT in the five: it declares no python
-#: at all, so conda-forge's `siesta` build brings whatever it brings.  That
-#: env exists to be installable anywhere, and a pin would newly constrain the
-#: one solve whose whole purpose is not to be constrained.
+#: EVERY recipe carries it, `molbuilder-siesta` included, and that env is the
+#: reason the rule has no exception.  The generated wrapper backgrounds
+#: `mb_monitor.py` with whatever `command -v python3` finds AFTER the env is
+#: activated (`runwrap.py`, the "Background job monitor" block), so an env
+#: with no python of its own hands that job to the COMPUTE NODE's interpreter
+#: -- a version nothing here declares, probes at prep time, or can promise is
+#: installed at all.  Measured 2026-09-17 inside this env: `python3` resolved
+#: to `/usr/bin/python3`, the host's.  Pinning python in the env means the
+#: monitor runs on the interpreter THIS file names, on every machine the env
+#: reaches.
+#:
+#: The cost was measured before the pin was written (conda 26.7.1,
+#: 2026-09-17): the siesta solve with `python=3.12` resolves the IDENTICAL
+#: siesta build (`5.4.2-mpi_openmpi_h9ae7e9f_3`), drops nothing, changes
+#: nothing, and adds 9 packages (80 -> 89) because siesta already pulls most
+#: of what python needs.  It constrains that solve in no way at all.
 _PYTHON_VERSION = _env_default("MOLBUILDER_PYTHON", "3.12")
 _PYTHON_SPEC = f"python={_PYTHON_VERSION}"
 
@@ -630,11 +658,52 @@ class CondaPackage:
     spec: str
     optional: bool = False
     reason: Optional[str] = None
+    #: **Why this package is NOT installed by default**, or ``None`` when it
+    #: is.  A string for the same reason `Recipe.opt_in` is one: a bare
+    #: ``True`` leaves every surface inventing its own wording for *"why am I
+    #: not getting this"*, and this one has three (the installer's skip line,
+    #: `doctor`'s report, and the flag's own help).
+    #:
+    #: DISTINCT FROM ``optional``, which is already taken and means something
+    #: else that is load-bearing: *attempted, but failure does not abort*.
+    #: Four packages rely on that today -- `PeptideBuilder` and `pubchempy`
+    #: here, `cupy-cuda13x` and `gpu4pyscf` in pySCF -- and all four ARE
+    #: installed on a default run.  Redefining `optional` to mean opt-in would
+    #: silently strip the peptide builder, PubChem lookup and GPU support out
+    #: of every fresh install.
+    opt_in: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.spec or any(c.isspace() for c in self.spec):
             raise ValueError(
                 f"CondaPackage spec must be one conda spec; got {self.spec!r}")
+
+
+@dataclass(frozen=True)
+class ExtraStep:
+    """One dispatch-into-the-env command, and whether a default run makes it.
+
+    A BARE TUPLE IS THE ORDINARY CASE, exactly as a bare string is for the two
+    package records (§ 3.1): `Recipe.__post_init__` normalises one into this,
+    so a recipe that needs nothing more than an argv still reads as an argv.
+    A record is written out only when the step needs to say more -- today, the
+    one thing it can say is that a default install must not run it.
+
+    The forcing case is `python -m playwright install chromium`.  It cannot be
+    gated by the packages alone: run it in an env without playwright and it
+    fails, so it has to be skipped by the same decision that skips them.
+    """
+
+    argv: Tuple[str, ...]
+    opt_in: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.argv, tuple) or not self.argv:
+            raise TypeError(
+                f"ExtraStep argv must be a non-empty tuple; got {self.argv!r}")
+        if not all(isinstance(a, str) for a in self.argv):
+            raise TypeError(
+                f"every ExtraStep argument must be a str; got {self.argv!r}")
 
 
 @dataclass(frozen=True)
@@ -708,6 +777,20 @@ class PipPackage:
     force: bool = False
     fallback_to_index: bool = False
     reason: Optional[str] = None
+    #: **Why this package is NOT installed by default**, or ``None`` when it
+    #: is.  A string for the same reason `Recipe.opt_in` is one: a bare
+    #: ``True`` leaves every surface inventing its own wording for *"why am I
+    #: not getting this"*, and this one has three (the installer's skip line,
+    #: `doctor`'s report, and the flag's own help).
+    #:
+    #: DISTINCT FROM ``optional``, which is already taken and means something
+    #: else that is load-bearing: *attempted, but failure does not abort*.
+    #: Four packages rely on that today -- `PeptideBuilder` and `pubchempy`
+    #: here, `cupy-cuda13x` and `gpu4pyscf` in pySCF -- and all four ARE
+    #: installed on a default run.  Redefining `optional` to mean opt-in would
+    #: silently strip the peptide builder, PubChem lookup and GPU support out
+    #: of every fresh install.
+    opt_in: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.name or any(c.isspace() for c in self.name):
@@ -876,7 +959,14 @@ class Recipe:
     # second list, matched by name, silently left a mistyped entry
     # required.
     opt_in: Optional[str] = None
-    extra_steps: Tuple[Tuple[str, ...], ...] = ()
+    #: Normalised to `ExtraStep` by `__post_init__` -- a BARE argv tuple
+    #: is accepted and is the ordinary case, exactly as a bare string is
+    #: for the two package kinds.  Annotated as what a reader GETS, not
+    #: what they may write: the old `Tuple[Tuple[str, ...], ...]` is what
+    #: a new call site consults before writing
+    #: `for argv in recipe.extra_steps: conda_run_argv(*argv)`, which is
+    #: precisely the shape that now raises.
+    extra_steps: Tuple[Any, ...] = ()
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
     verify_expect_contains: Optional[str] = None
@@ -892,6 +982,67 @@ class Recipe:
         every caller stops writing the same comprehension.
         """
         return tuple(p.spec for p in self.conda_packages)
+
+    @property
+    def python_specs(self) -> Tuple[str, ...]:
+        """The interpreter spec `conda create` carries -- and the ONLY thing
+        it carries.
+
+        Everything else the recipe declares is delivered by `conda install`,
+        so that an env which already exists can still receive a package the
+        recipe gained.  A tuple rather than an `Optional[str]` because it is
+        handed straight to a command line, and because a recipe declaring no
+        python is then an empty create rather than a special case -- measured
+        2026-09-17: `conda create -n <env> -y` with no packages exits 0.
+
+        Matched on the parsed NAME, not on a `startswith("python")` test,
+        which would also claim `python-cas` (host env) and `python-slugify`.
+        """
+        return tuple(p.spec for p in self.conda_packages
+                     if _spec_name(p.spec) == "python")
+
+    def conda_set(self, *, include_opt_in: bool = False,
+                  required_only: bool = False) -> Tuple[str, ...]:
+        """Everything `conda install` delivers, minus what the caller excluded.
+
+        **THE INTERPRETER IS IN IT.**  It is also what `conda create` carries,
+        and the overlap is deliberate: `create` is SKIPPED for an env that
+        already exists, so a set that omitted python could never deliver it
+        to one -- which is verbatim the hole § 4.4 exists to close, and it was
+        reopened here for the very package that change adds to
+        `molbuilder-siesta` (found by review, 2026-09-18: an env created
+        before the pin, with no python, took `install` to a reported SUCCESS
+        and still had none).  On a fresh env the spec is already satisfied by
+        the create, so naming it again costs nothing.
+
+        It cannot silently move an interpreter, either: the gate is
+        NAME-presence only, so this dispatches when python is ABSENT and never
+        when it is merely a different version -- version drift stays
+        `repair --include-version-fix`'s.
+
+        ``required_only`` is what the GATE reads, and the difference matters.
+        The step's fallback drops the optional specs, so an optional package
+        that cannot be installed stays absent -- gate on the full set and every
+        later run re-dispatches a solve that cannot fix it, for ever.  Gate on
+        what the step can guarantee; the audit reports the rest.
+
+        Declaration order is kept, so the command line reads like the recipe.
+        """
+        return tuple(p.spec for p in self.conda_packages
+                     if (include_opt_in or p.opt_in is None)
+                     and not (required_only and p.optional))
+
+    def pip_set(self, *, include_opt_in: bool = False
+                ) -> Tuple["PipPackage", ...]:
+        """The pip packages a run installs -- opt-in ones only when asked."""
+        return tuple(p for p in self.pip_packages
+                     if include_opt_in or p.opt_in is None)
+
+    def extra_set(self, *, include_opt_in: bool = False
+                  ) -> Tuple["ExtraStep", ...]:
+        """The extra steps a run dispatches -- opt-in ones only when asked."""
+        return tuple(e for e in self.extra_steps
+                     if include_opt_in or e.opt_in is None)
 
     @property
     def pip_specs(self) -> Tuple[str, ...]:
@@ -926,7 +1077,15 @@ class Recipe:
             if not getattr(self, fld):
                 raise ValueError(
                     f"Recipe {self.name!r}: {fld} is required and non-empty")
+        # ONE RULE FOR ALL THREE KINDS.  A bare argv tuple normalises into an
+        # `ExtraStep` here, the way a bare string normalises into a
+        # `CondaPackage` / `PipPackage` above, so a step that needs to say
+        # nothing extra still reads as a plain argv in the recipe.
+        normalised = []
         for step in self.extra_steps:
+            if isinstance(step, ExtraStep):
+                normalised.append(step)
+                continue
             if not isinstance(step, tuple) or not step:
                 raise TypeError(
                     f"Recipe {self.name!r}: extra_steps takes a tuple OF "
@@ -936,6 +1095,8 @@ class Recipe:
                 raise TypeError(
                     f"Recipe {self.name!r}: every extra_steps argument must "
                     f"be a str; got {step!r}")
+            normalised.append(ExtraStep(step))
+        object.__setattr__(self, "extra_steps", tuple(normalised))
 
 
 
@@ -1008,6 +1169,12 @@ _HOST = Recipe(
         # env's git takes precedence via PATH ordering and is the only
         # version we control.
         "git",
+        # Opt-in, with the playwright pair below.  A conda package rather
+        # than a documented `nvm install`, because nvm is a per-user local
+        # thing conda cannot provide and this project cannot assume -- the
+        # same error as reading the host's /usr/bin/python3 and calling an
+        # env fine (user, 2026-09-18).
+        CondaPackage("nodejs", opt_in='test tooling -- runs the shipped ES modules directly; without it 717 JS tests SKIP, and pytest counts a skip toward a green run'),
     ),
     # OPTIONAL, and the bootstrap shim already said so.
     #
@@ -1024,7 +1191,39 @@ _HOST = Recipe(
                    reason="UI only -- the peptide builder in the Molbuilder tab"),
         PipPackage("pubchempy", optional=True,
                    reason="UI only -- PubChem name lookup in the Molbuilder tab"),
+        # THE TEST TOOLING LIVES HERE, in the host env, and is opt-in.
+        #
+        # Here because the `e2e` tests start the real server IN-PROCESS
+        # (`create_app` + werkzeug `make_server`), so the process running them
+        # needs molbuilder's whole import stack.  A browser-tooling-only env
+        # was tried and deleted for exactly that (`molbuilder-tests`,
+        # 2026-07-13) -- and a SECOND full env is no answer either: the suite
+        # runs under whatever interpreter invokes `tools/testrun.py`, which is
+        # this one, so a dev env would sit unused while e2e kept failing.
+        #
+        # Opt-in rather than `optional`: `optional` means *attempted, failure
+        # does not abort*, which is what the two packages above rely on.
+        PipPackage("playwright", opt_in='test tooling -- drives headless chromium for the `e2e` tests'),
+        PipPackage("pytest-playwright", opt_in='test tooling -- drives headless chromium for the `e2e` tests'),
     ),
+    # CHROMIUM GOES INSIDE THE PREFIX, and that is the whole reason this is a
+    # step rather than a line in a README.  `playwright install` defaults to
+    # `~/.cache/ms-playwright` -- measured 2026-09-18 at 1.3 GB there,
+    # outside every env and surviving `conda env remove`.  Pointing
+    # PLAYWRIGHT_BROWSERS_PATH at the prefix puts it under the env's own
+    # `share/`, so removing the env removes the browser, exactly as
+    # `env_for_step` already does for TMPDIR and the pip cache.
+    #
+    # The activate.d hook is what makes it hold at TEST time as well as at
+    # install time: `<mgr> run` performs the env's own activation, so the
+    # variable is set for the pytest process too.  It writes a LITERAL
+    # `$CONDA_PREFIX`, like the siesta-gpu hooks, so a cloned or moved env
+    # stays valid.
+    #
+    # NO ELEVATED PRIVILEGE, EVER.  `playwright install-deps` installs distro
+    # packages as root and is NOT run here and must not be: a missing system
+    # library is a host prerequisite, the same class of thing as conda itself.
+    extra_steps=(ExtraStep(("bash", "-c", 'set -e; D="$CONDA_PREFIX/share/ms-playwright"; H="$CONDA_PREFIX/etc/conda/activate.d"; mkdir -p "$D" "$H"; printf \'export PLAYWRIGHT_BROWSERS_PATH="$CONDA_PREFIX/share/ms-playwright"\\n\' > "$H/playwright-browsers.sh"; export PLAYWRIGHT_BROWSERS_PATH="$D"; python -m playwright install chromium; echo "[molbuilder] chromium -> $D (inside the env; removed with it, no sudo, nothing in ~/.cache)" >&2'), opt_in='test tooling -- a ~115 MB browser download, and nobody should pay for it by accident'),),
     # NOT A NOTEBOOK KERNEL.  `ipykernel` and a kernelspec stood here from
     # 2026-09-13 (5c780f18) until 2026-09-14, so a notebook could run on this
     # env's python.  The user's design is the other one: the notebook env is
@@ -1156,7 +1355,12 @@ _PYSCF = Recipe(
 _SIESTA = Recipe(
     name=DEFAULT_ENV_NAMES["siesta"],
     category="siesta",
-    description="SIESTA-MPI: DFT + (future) Transport.",
+    # "(future) Transport" until 2026-09-18.  Transport is built: the
+    # `molbuilder/transport/` package composes the decks and reads the
+    # results, and this env ships the binaries that run them -- `siesta`
+    # (which performs the TranSiesta electrode + scattering runs; 5.x has
+    # no separate `transiesta` executable) and `tbtrans`.
+    description="SIESTA-MPI: DFT + Transport (TranSiesta runs via `siesta`, plus `tbtrans`).",
     channels=("conda-forge",),
     # Build string `=mpi_openmpi_*` is load-bearing -- pins real-MPI
     # variant (the `nompi_*` variant silently runs serial under
@@ -1197,7 +1401,10 @@ _SIESTA = Recipe(
     # script-input contract; ``runwrap.write_run_wrapper`` gates env
     # presence at script-generation time so a missing GPU env is caught
     # before run time.
-    conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl",
+    # python: uniform across every env -- see `_PYTHON_SPEC` for the
+    # measurement, and for the wrapper's monitor, which is what needs one
+    # here.  It costs 9 packages and leaves the siesta build untouched.
+    conda_packages=(_PYTHON_SPEC, "siesta=5.4.2=mpi_openmpi_*", "numactl",
                     # git: uniform across every env -- see _HOST.
                     "git"),
     verify_argv=("siesta", "--version"),

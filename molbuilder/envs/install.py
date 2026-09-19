@@ -1,22 +1,30 @@
 """Idempotent installer for the conda envs described by recipes.
 
-``molbuilder envs install <name>`` is a thin wrapper around five
+``molbuilder envs install <name>`` is a thin wrapper around six
 phases per recipe:
 
-  1. ``conda create -n <env> -c <ch1> [-c <ch2>] ... <pkg1> <pkg2> ...``
-  2. pip, from the recipe's :class:`PipPackage` records.  The PLAIN
+  1. ``conda create -n <env> -c <ch1> ... <python spec>`` -- the env, and
+     the interpreter, and NOTHING ELSE.
+  2. ``conda install -n <env> -c <ch1> ... <every other declared spec>``,
+     dispatched only when the env is short of one of them.  A step of its
+     own because `conda create` is skipped for an env that already exists,
+     and while the package list was an argument to that command the list
+     was skipped with it -- so a recipe that gained a dependency never
+     reached a machine that had already bootstrapped
+     (the rule is `env-framework.md` § 4.4).
+  3. pip, from the recipe's :class:`PipPackage` records.  The PLAIN
      ones (default index, required, no forcing) go in one
      ``conda run -n <env> python -m pip install <pkgs>``; each package
      that needs its own terms gets its own step -- a forced reinstall,
      a non-fatal step for an optional one, or an install from a
      recorded source with the indexed build as a declared fallback.
-  3. Each tuple in ``recipe.extra_steps`` dispatched via
+  4. Each tuple in ``recipe.extra_steps`` dispatched via
      ``conda run -n <env> <argv>``.
-  4. **(source-build recipes only)** ``builds.run_build_spec`` runs
+  5. **(source-build recipes only)** ``builds.run_build_spec`` runs
      the recipe's :class:`BuildSpec`: clone + cmake + install for each
      component, with sentinel-resume.  Activate.d / deactivate.d
      hooks are rendered into the env's ``etc/conda/`` tree.
-  5. Verify -- an ordinary step like the other four, built by
+  6. Verify -- an ordinary step like the others, built by
      :func:`verify_step_for` and run through the same door.  That
      function lives HERE and :mod:`molbuilder.envs.doctor` imports it;
      this line claimed the reverse ("re-uses molbuilder.envs.doctor")
@@ -78,7 +86,8 @@ class StepRole(str, Enum):
 
     CREATE = "create"      #: the env itself -- needs no prefix, there is none yet
     REMOVE = "remove"      #: the env itself, taken away -- needs no prefix either
-    PACKAGES = "packages"  #: a conda or pip install
+    CONDA = "conda"        #: the recipe's conda set, gated on what is absent
+    PACKAGES = "packages"  #: a pip install, or `repair`'s batched conda one
     EXTRA = "extra"        #: a recipe-declared dispatch into the env
     VERIFY = "verify"      #: runs after any source build
     BUILD = "build"        #: adapted from `builds.py`'s own executor
@@ -412,39 +421,77 @@ def conda_argv(conda: str, subcommand: str, env_name: str,
 
 def create_step_for(recipe: Recipe, conda: str,
                     env_name: str) -> InstallStep:
-    """The step that creates the env, and how it degrades.
+    """The step that creates the env -- carrying the interpreter, and nothing
+    else.
 
-    OPTIONALITY MEANS SOMETHING DIFFERENT TO A SOLVER.  pip installs one
-    package at a time, so an optional pip package is its own non-fatal STEP
-    (`pip_step_for`).  conda solves everything at once: an optional conda
-    package cannot be its own step without paying a SECOND solve, and a
-    second solve may legitimately change versions for packages the first one
-    already placed.  So optionality here is expressed as an ATTEMPT -- the
-    full solve first, and if it fails, the same solve without the optional
-    specs.  The env lands `RECOVERED`: created, minus something the recipe
-    said it could live without.
+    Everything else the recipe declares is
+    `conda_packages_step_for`'s, and the split is the whole point: this step
+    is SKIPPED for an env that already exists, and while the package list rode
+    on it the list was skipped too.
 
-    ONE DEGRADATION STEP, NOT A SEARCH.  With n optional specs, "find the
-    largest subset that still solves" is 2**n solves at minutes each, so the
-    rule is all of them or none of them.  Nothing is lost silently: the
-    audit then names exactly which optional packages are absent, with the
-    recipe's `reason` beside each, and `repair --include-optional` installs
-    them one at a time -- paying the second solve there because the operator
-    asked for it.
+    A recipe declaring no python creates an EMPTY env rather than being a
+    special case -- measured 2026-09-17, `conda create -n <env> -y` with no
+    packages exits 0.  Every built-in recipe declares one (a rule with its own
+    test), so that path is the guard rather than the route.
 
-    A recipe with no optional conda package gets no fallback, so this is
-    byte-identical to what the planner emitted before.
+    NO DEGRADATION HERE ANY MORE.  The optional-spec fallback -- full solve,
+    then the same solve without the optional specs -- moved to the packages
+    step with the specs it applies to.  It is unreachable from a create that
+    carries only `python=<X.Y>`: an optional interpreter is not a thing a
+    recipe can declare.
     """
-    required = tuple(p.spec for p in recipe.conda_packages if not p.optional)
-    fallbacks: Tuple[Tuple[str, ...], ...] = ()
-    if len(required) != len(recipe.conda_packages):
-        fallbacks = (conda_argv(conda, "create", env_name,
-                                recipe.channels, required),)
     return InstallStep(
         label="conda create",
         role=StepRole.CREATE,
         argv=conda_argv(conda, "create", env_name,
-                        recipe.channels, recipe.conda_specs),
+                        recipe.channels, recipe.python_specs),
+    )
+
+
+def conda_packages_step_for(recipe: Recipe, conda: str, env_name: str, *,
+                            include_opt_in: bool = False
+                            ) -> Optional[InstallStep]:
+    """The step that puts the recipe's conda set INTO the env.
+
+    `env-framework.md` § 4.4: this step exists because `conda create -n <env>
+    pkg...`
+    does two jobs in one command, and the planner mirrored conda's CLI instead
+    of the recipe's meaning.  A recipe says *this env contains these packages*;
+    welded to the birth command the list could only ever be applied once, so a
+    recipe that gained a dependency never reached a machine that had already
+    bootstrapped -- measured 2026-09-17, `git` declared in every recipe since
+    2026-06-25 and absent from four envs, with `install` reporting success.
+
+    THE ARGV IS THE FULL DECLARED SET, and that is what makes the gate safe to
+    put in the runner.  `plan_install` is pure, so `--dry-run` prints this
+    exact line; narrowing it to "only what is absent" at dispatch time would
+    print one command and run another.  The runner decides only WHETHER to
+    dispatch it (`_conda_decision`), never what it says.
+
+    Optionality degrades the same way it did on the create step, for the same
+    reason: conda solves everything at once, so an optional package cannot be
+    its own step without paying a second solve.  The full set is attempted,
+    and the set without the optional specs is the declared alternative.
+    """
+    specs = recipe.conda_set(include_opt_in=include_opt_in)
+    if not specs:
+        return None
+    required = recipe.conda_set(include_opt_in=include_opt_in,
+                                required_only=True)
+    fallbacks: Tuple[Tuple[str, ...], ...] = ()
+    # `required` NON-EMPTY, not just different.  A recipe whose every conda
+    # package is optional would otherwise get a fallback with no specs at all,
+    # and `conda install -n <env> -y -c <ch>` with nothing to install exits 1
+    # ("CondaValueError: too few arguments", measured 2026-09-18) -- so the
+    # declared alternative would be guaranteed to fail and take the install
+    # down instead of degrading it.
+    if required and len(required) != len(specs):
+        fallbacks = (conda_argv(conda, "install", env_name,
+                                recipe.channels, required),)
+    return InstallStep(
+        label="conda install",
+        role=StepRole.CONDA,
+        argv=conda_argv(conda, "install", env_name, recipe.channels, specs),
         fallbacks=fallbacks,
     )
 
@@ -490,8 +537,8 @@ def verify_step_for(recipe: Recipe, conda: str,
     )
 
 
-def pip_steps_for(recipe: Recipe, conda: str,
-                  env_name: str) -> List[InstallStep]:
+def pip_steps_for(recipe: Recipe, conda: str, env_name: str, *,
+                  include_opt_in: bool = False) -> List[InstallStep]:
     """Every pip step for a recipe -- ONE translator, as § 4.2 already says.
 
     The batch and the per-package steps were built inline in the planner, so
@@ -499,7 +546,8 @@ def pip_steps_for(recipe: Recipe, conda: str,
     means* in another, and § 4.2's pseudocode named a `pip_steps_for` that did
     not exist.  A future per-step policy would have had to be written twice.
     """
-    plain = [p for p in recipe.pip_packages if p.is_plain()]
+    wanted = recipe.pip_set(include_opt_in=include_opt_in)
+    plain = [p for p in wanted if p.is_plain()]
     steps: List[InstallStep] = []
     if plain:
         steps.append(InstallStep(
@@ -507,20 +555,20 @@ def pip_steps_for(recipe: Recipe, conda: str,
             argv=pip_argv(conda, env_name, *(p.spec() for p in plain)),
         ))
     steps.extend(pip_step_for(pkg, conda, env_name)
-                 for pkg in recipe.pip_packages if not pkg.is_plain())
+                 for pkg in wanted if not pkg.is_plain())
     return steps
 
 
-def extra_steps_for(recipe: Recipe, conda: str,
-                    env_name: str) -> List[InstallStep]:
+def extra_steps_for(recipe: Recipe, conda: str, env_name: str, *,
+                    include_opt_in: bool = False) -> List[InstallStep]:
     """What an ``extra_steps`` entry MEANS -- one place, per § 4.2.
 
     It had no translator at all: the planner built the step, so there was
     nowhere to say what an extra step is.
     """
     return [InstallStep(label="extra", role=StepRole.EXTRA,
-                        argv=conda_run_argv(conda, env_name, *extra))
-            for extra in recipe.extra_steps]
+                        argv=conda_run_argv(conda, env_name, *extra.argv))
+            for extra in recipe.extra_set(include_opt_in=include_opt_in)]
 
 
 def remove_step_for(env_name: str, conda: str) -> InstallStep:
@@ -562,12 +610,21 @@ def remove_step_for(env_name: str, conda: str) -> InstallStep:
     )
 
 
-def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
+def _plan(recipe: Recipe, env_name: str, conda: str, *,
+          include_opt_in: bool = False) -> List[InstallStep]:
     """Build the step list without running anything."""
     steps: List[InstallStep] = []
 
-    # Phase 1: conda create.
+    # Phase 1: conda create -- the env, carrying the recipe's python and
+    # nothing else.
     steps.append(create_step_for(recipe, conda, env_name))
+
+    # Phase 1b: the recipe's conda set, which is a step of its own precisely
+    # so that an env which already exists can still receive it.
+    conda_pkgs = conda_packages_step_for(recipe, conda, env_name,
+                                        include_opt_in=include_opt_in)
+    if conda_pkgs is not None:
+        steps.append(conda_pkgs)
 
     # Phase 2: pip install.
     #
@@ -583,10 +640,12 @@ def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
     #   * ``source``   -> installed from the recorded URL, with the
     #                     indexed build as a fallback when the record
     #                     says the base is still required.
-    steps.extend(pip_steps_for(recipe, conda, env_name))
+    steps.extend(pip_steps_for(recipe, conda, env_name,
+                               include_opt_in=include_opt_in))
 
     # Phase 3: extra dispatch-into-env steps.
-    steps.extend(extra_steps_for(recipe, conda, env_name))
+    steps.extend(extra_steps_for(recipe, conda, env_name,
+                                 include_opt_in=include_opt_in))
 
     # Phase 4: verify (only if the recipe declares one).
     verify = verify_step_for(recipe, conda, env_name)
@@ -601,6 +660,7 @@ def plan_install(
     *,
     caps: Optional[Capabilities] = None,
     clean: bool = False,
+    include_opt_in: bool = False,
 ) -> Tuple[str, List[InstallStep]]:
     """Return ``(effective_name, steps)`` for the recipe.
 
@@ -626,7 +686,8 @@ def plan_install(
             "`" + _hints.fix_cmd("install", "<recipe>") + "`."
         )
     effective = effective_name(recipe, caps)
-    steps = _plan(recipe, effective, caps.conda_binary)
+    steps = _plan(recipe, effective, caps.conda_binary,
+                  include_opt_in=include_opt_in)
     if clean:
         steps.insert(0, remove_step_for(effective, caps.conda_binary))
     return effective, steps
@@ -1135,6 +1196,42 @@ def _create_decision(step: InstallStep, dispatcher: _Dispatcher, *,
     return None
 
 
+def _conda_decision(step: InstallStep, prefix: str,
+                    specs: Sequence[str]) -> Optional[InstallStep]:
+    """Whether the recipe's conda set needs dispatching, as an outcome.
+
+    The gate is FREE -- `doctor.absent_conda_specs`
+    reads ``conda-meta/`` off disk, no subprocess and no solve -- which is what
+    makes it affordable on every install rather than a flag someone has to
+    remember.
+
+    Two answers:
+
+      * nothing absent -> ``SKIPPED``, and the env is untouched.  Measured
+        2026-09-17 on conda 26.7.1: a full-list `conda install` into a
+        SATISFIED env still costs 26 s and wants to update `ca-certificates`
+        and `openssl` to newer builds, so an unconditional install would drift
+        a healthy env on every re-run.  This is what keeps a current machine
+        byte-identical.
+      * something absent -> ``None``, meaning dispatch the step -- whose argv
+        is the FULL declared set, not the absent subset.  `plan_install` is
+        pure, so `--dry-run` printed that line already; narrowing it here
+        would print one command and run another.
+
+    A version or build mismatch is deliberately NOT a reason to dispatch:
+    `install` closes absence, and re-pinning an installed package is
+    `repair --include-version-fix`, which is opt-in because those rebuilds are
+    destructive.
+    """
+    from .doctor import absent_conda_specs
+    absent = absent_conda_specs(Path(prefix), specs)
+    if not absent:
+        return _undispatched(
+            step, Outcome.SKIPPED,
+            f"all {len(specs)} declared conda package(s) already installed")
+    return None
+
+
 def _run_steps(
     steps: Sequence[InstallStep],
     dispatcher: _Dispatcher,
@@ -1144,6 +1241,7 @@ def _run_steps(
     force_resume: bool = False,
     env_state: Optional[EnvState] = None,
     removal_state: Optional[EnvState] = None,
+    conda_specs: Sequence[str] = (),
 ) -> bool:
     """Run one phase's steps through the one door.
 
@@ -1182,6 +1280,14 @@ def _run_steps(
                 decided = _undispatched(
                     step, Outcome.SKIPPED,
                     "nothing to remove: no directory on disk")
+                executed.append(decided)
+                _report(where, decided)
+                continue
+        elif step.role is StepRole.CONDA and dispatcher.ensure_prefix():
+            # The env exists now -- created a moment ago, or months ago -- so
+            # ask what it is short of before paying a solve.
+            decided = _conda_decision(step, dispatcher.prefix, conda_specs)
+            if decided is not None:
                 executed.append(decided)
                 _report(where, decided)
                 continue
@@ -1241,6 +1347,7 @@ def run_install(
     force_resume: bool = False,
     env_state: Optional[EnvState] = None,
     clean: bool = False,
+    include_opt_in: bool = False,
 ) -> InstallResult:
     """Execute the install plan, stopping at the first failed step.
 
@@ -1276,7 +1383,8 @@ def run_install(
             "`" + _hints.fix_cmd("install", "<recipe>") + "`."
         )
     effective = effective_name(recipe, caps)
-    _same_name, planned = plan_install(recipe, caps=caps, clean=clean)
+    _same_name, planned = plan_install(recipe, caps=caps, clean=clean,
+                                       include_opt_in=include_opt_in)
     assert _same_name == effective
     removal_state: Optional[EnvState] = None
     if clean:
@@ -1333,9 +1441,16 @@ def run_install(
     verify_steps = [s for s in planned if s.role is StepRole.VERIFY]
     pre_verify = [s for s in planned if s.role is not StepRole.VERIFY]
 
+    # `conda_specs` is READ FROM THE RECIPE, the same property the CONDA step's
+    # argv was built from -- not parsed back out of that argv.  A reader of the
+    # command line would have to track `conda_argv`'s layout (where the channel
+    # flags stop and the specs begin) to answer a question the recipe answers
+    # directly.
     ok = _run_steps(pre_verify, dispatcher, tag="install", executed=executed,
                     force_resume=force_resume, env_state=env_state,
-                    removal_state=removal_state)
+                    removal_state=removal_state,
+                    conda_specs=recipe.conda_set(
+                        include_opt_in=include_opt_in, required_only=True))
 
     # Build-spec phase: only if the recipe declares one AND nothing
     # failed before it.  `builds.run_build_spec` keeps its own executor
@@ -1408,6 +1523,7 @@ __all__ = [
     "conda_argv",
     "conda_run_argv",
     "pip_steps_for",
+    "conda_packages_step_for",
     "extra_steps_for",
     "remove_step_for",
     "create_step_for",

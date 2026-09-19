@@ -113,6 +113,26 @@ AUTO_YES=0
 # ONE reason: the flag promises not to install, and the host-env create
 # this script owns happens BEFORE the Python layer that honours it.
 MB_DRY_RUN=0
+# Set by the arg scan below.  The shim has to know about --clean for the same
+# reason it owns the host env's CREATE: this process dispatches the HOST env's
+# python, so the Python layer cannot wipe the env it is running from.  Bash
+# here is running ${ENV_MGR} from outside that env, where `env remove` is an
+# ordinary command.
+MB_CLEAN=0
+# THIS INVOCATION CHANGES NOTHING.  `--dry-run`, `--check` and `--help` each
+# ask a question and install nothing, and every one of them therefore implies
+# --yes (there is no confirmation to give) AND forbids the `--clean` wipe.
+#
+# ONE FLAG FOR ONE CONCEPT, and that is the fix rather than tidying.  Written
+# as three separate `AUTO_YES=1` arms on 2026-09-18, it silenced the
+# confirmation without guarding the wipe -- so `bootstrap --clean --help`
+# REMOVED AND REBUILT the host env before printing help, unprompted, and
+# `bootstrap --clean --check` did the same before dying on a flag `bootstrap`
+# does not even define.  The file already records this exact bug being fixed
+# once for the create path ("asking for help performed a multi-GB conda
+# create, with the prompt deliberately silenced, before any help text
+# appeared"); three parallel booleans is how it came back.
+MB_NO_ACTION=0
 ORIGINAL_ARGS=("$@")
 
 # ---- THE SHIM'S OWN FLAGS ARE PARSED FIRST -------------------------------
@@ -257,8 +277,7 @@ if [[ -n "${MOLBUILDER_GCC:-}" ]]; then
 fi
 if [[ -n "${MOLBUILDER_PYTHON:-}" ]]; then
     echo "[molbuilder] python pinned from the environment:" \
-         "python=${MOLBUILDER_PYTHON} (every env but molbuilder-siesta," \
-         "which declares none)" >&2
+         "python=${MOLBUILDER_PYTHON} (every env, no exception)" >&2
 fi
 
 
@@ -287,6 +306,14 @@ bash scripts/install-env.sh install molbuilder-siesta-gpu --yes
 # 3. Do #1 + #2 in one shot:
 bash scripts/install-env.sh bootstrap --yes --include-source-builds
 
+# 3b. REBUILD every env from scratch (the exact-rebuild door).
+#     An ordinary `bootstrap --yes` already installs whatever a
+#     recipe has gained since the env was built; use --clean when
+#     you want the solve a fresh machine would get.  Everything in
+#     those envs that is not in a recipe is destroyed -- including
+#     hand-installed pip extras like playwright (see TEST TOOLING):
+bash scripts/install-env.sh bootstrap --clean --yes
+
 # 4. Rebuild a GPU SIESTA component after iterating on a patch:
 bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=siesta --yes
 bash scripts/install-env.sh install molbuilder-siesta-gpu --rebuild=elpa --yes
@@ -309,37 +336,31 @@ bash scripts/install-env.sh doctor
 #    already ran this; it never overwrites, so re-running is safe):
 bash scripts/install-env.sh init-config
 
-# 9. TEST TOOLING (optional -- only if you run the test suite).
-#    Deliberately NOT part of bootstrap: neither is needed to RUN
-#    molbuilder, and chromium is a large download nobody should pay
-#    for by accident.  Both go into the HOST env you already have.
+# 9. TEST TOOLING (optional -- only if you run the test suite):
+bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 #
-#    (a) node -- runs the shipped ES modules directly, no browser.
-#        Without it 717 tests SKIP, and a skip is counted as a pass:
-#        the suite reports green while that JS is unexercised.
-conda install -n molbuilder -c conda-forge nodejs      # or: mamba install ...
+#    Installs node, playwright, pytest-playwright and a headless
+#    chromium INTO the host env.  Left out of a default install
+#    because none of it is needed to RUN molbuilder and the browser
+#    is a ~115 MB download.
 #
-#    (b) playwright -- drives a real headless chromium for the tests
-#        marked `e2e`.  Runs in the HOST env because these tests start
-#        the real server, which needs the full molbuilder import stack;
-#        a browser-tooling-only env cannot do that (see recipes.py).
-conda run -n molbuilder python -m pip install ".[e2e]"
-conda run -n molbuilder python -m pip uninstall -y molbuilder   # SEE BELOW
-conda run -n molbuilder python -m playwright install chromium
+#    IT ALL STAYS INSIDE THE ENV.  The browser goes to
+#    $CONDA_PREFIX/share/ms-playwright, not ~/.cache/ms-playwright
+#    (measured 1.3 GB there, outside every env and surviving
+#    `conda env remove`), via an activate.d hook that also sets the
+#    variable for the pytest process.  Nothing needs root:
+#    `playwright install-deps` is NOT run and must not be -- it
+#    installs distro packages as root.  A host missing those shared
+#    libraries is a host prerequisite, like conda itself.
 #
-#        The uninstall is NOT optional.  `pip install ".[e2e]"` installs the
-#        PROJECT to reach its extras, which drops a molbuilder wheel into
-#        site-packages -- and from any directory other than the repo root,
-#        `import molbuilder` then finds the stale wheel instead of your working
-#        tree.  This shim's header says molbuilder is deliberately not
-#        pip-installed into the host env; that is why.  The extras survive the
-#        uninstall.
-#    WSL / minimal Linux may also need, once, as root:
-#        sudo python -m playwright install-deps chromium
+#    This was four hand-typed commands until 2026-09-18, one of which
+#    (`pip install ".[e2e]"`) installed the PROJECT to reach its
+#    extras and so had to be followed by `pip uninstall -y molbuilder`
+#    to stop a stale wheel shadowing your working tree.  Declaring the
+#    packages in the recipe removes that step entirely.
 #
 #    Check what you have:
-conda run -n molbuilder node --version
-conda run -n molbuilder python -c "import playwright; print('playwright ok')"
+bash scripts/install-env.sh doctor      # the `opt-in:` row for molbuilder
 ==============================================================
 
 Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
@@ -371,9 +392,12 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   automatically at the end of bootstrap, never
                   overwrites.  See docs/ops/installation.md section 2.1
   install <recipe>   create the env and run its whole plan.  On an env
-                     that ALREADY EXISTS it skips the create step -- and
-                     conda packages enter only there, so it adds no
-                     missing package.  That is `repair`'s job, below.
+                     that ALREADY EXISTS the create is skipped and the
+                     declared conda set is installed instead, so a recipe
+                     that gained a package reaches a machine that already
+                     bootstrapped.  It closes ABSENCE only; a version or
+                     build pin that no longer matches is `repair
+                     --include-version-fix`, below.
   repair <recipe>    install packages doctor's audit reported missing --
                      the verb for an env that exists and is short of
                      something
@@ -486,10 +510,13 @@ Environment variables:
                                  3.11 (pyproject's requires-python, and
                                  molbuilder imports tomllib unconditionally);
                                  the --python flag refuses below it before the
-                                 solver runs.  molbuilder-siesta is unaffected
-                                 -- it declares no python, so conda-forge's
-                                 siesta build brings its own.  Equivalent to
-                                 the --python <X.Y> flag.
+                                 solver runs.  EVERY env, with no
+                                 exception: the generated wrapper runs its job
+                                 monitor on whatever python the activated env
+                                 supplies, so an env declaring none falls
+                                 through to the compute node's interpreter --
+                                 a version nothing here can promise exists.
+                                 Equivalent to the --python <X.Y> flag.
   MOLBUILDER_GCC                 source-build recipes: which
                                  gcc/gxx/gfortran_linux-64 to install.
                                  Default 14.3 -- a MINOR-version pin,
@@ -972,6 +999,77 @@ create_host_env() {
     echo "[molbuilder] host env '${HOST_ENV}' ready" >&2
 }
 
+_MB_HOST_ENV_REMOVED=0
+
+_mb_host_rebuild_failed() {
+    # Fires only in the window where the env is gone and the rebuild has not
+    # finished.  A failed `env remove` leaves the env intact, so the flag is
+    # still 0 and this says nothing -- conda's own error is the whole story.
+    [[ "${_MB_HOST_ENV_REMOVED}" -eq 1 ]] || return 0
+    echo "" >&2
+    echo "[molbuilder] ================================================" >&2
+    echo "[molbuilder] THE HOST ENV WAS REMOVED AND THE REBUILD FAILED." >&2
+    echo "[molbuilder] There is no '${HOST_ENV}' env on this machine now." >&2
+    echo "[molbuilder] Recreate it with:" >&2
+    echo "[molbuilder]     bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+    echo "[molbuilder] ================================================" >&2
+}
+
+recreate_host_env() {
+    # `bootstrap --clean` for the HOST env.  Python cannot do this one:
+    # `dispatch` below runs <host env>/bin/python, so the Python layer would be
+    # removing the prefix its own interpreter lives in -- `installation.md` M5,
+    # which is why `install --clean` refuses it outright.  This shell is not in
+    # that env; ${ENV_MGR} is the manager's own binary, and `env remove` here is
+    # an ordinary conda command.
+    #
+    # THE WINDOW IS REAL AND IS NAMED.  Between the remove and the create there
+    # is no host env, so a create that fails leaves the machine without one.
+    # The recovery is one command and it is printed BEFORE the removal, not
+    # after it fails.
+    echo "" >&2
+    echo "[molbuilder] --clean: rebuilding the host env '${HOST_ENV}'." >&2
+    echo "[molbuilder] Everything in it that is not in the recipe goes --" >&2
+    echo "[molbuilder] including any pip extras you installed by hand" >&2
+    echo "[molbuilder] (playwright, node, ...).  Put them back with" >&2
+    echo "[molbuilder]   install-env.sh install molbuilder --with-dev-tools --yes" >&2
+    echo "[molbuilder] If the create after the removal fails, re-run:" >&2
+    echo "[molbuilder]     bash ${SCRIPT_DIR}/install-env.sh bootstrap --yes" >&2
+    echo "" >&2
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+        if ! (exec 3</dev/tty) 2>/dev/null; then
+            echo "[molbuilder] no TTY to confirm --clean; pass --yes." >&2
+            exit 2
+        fi
+        # `|| _ans=""` -- under `set -e` a bare `read` returning 1 on EOF
+        # (Ctrl-D) kills the script before the `case`, so the "nothing was
+        # removed" line never printed and the exit was a bare 1.  An empty
+        # answer falls to the default arm, which is the refusal.
+        read -r -p "[molbuilder] remove and rebuild '${HOST_ENV}'? [y/N] " \
+            _ans </dev/tty || _ans=""
+        case "${_ans}" in
+            y|Y|yes|YES|Yes) ;;
+            *) echo "[molbuilder] aborted by user; nothing was removed." >&2
+               exit 2 ;;
+        esac
+    fi
+    echo "[molbuilder] removing host env '${HOST_ENV}'" >&2
+    # A TRAP, BECAUSE THE WARNING HAS TO ARRIVE WHEN IT MATTERS.  Between the
+    # remove and the create there is no host env, and `set -e` propagates a
+    # failed create with conda's own message and nothing of ours -- the
+    # recovery line printed above it is by then separated from the failure by
+    # the whole solver transcript.  Measured 2026-09-18 with a forced-failing
+    # create: exit 1, and not one line from this script.
+    _MB_HOST_ENV_REMOVED=0
+    trap _mb_host_rebuild_failed EXIT
+    "${ENV_MGR}" env remove -n "${HOST_ENV}" -y
+    _MB_HOST_ENV_REMOVED=1
+    create_host_env
+    _MB_HOST_ENV_REMOVED=0
+    trap - EXIT
+}
+
+
 # ---- dispatch (1:1 with `molbuilder envs ...`) ---------------------------
 #
 # Bypasses ``mamba run`` and calls the host env's python directly.
@@ -1070,7 +1168,19 @@ fi
 for _a in "$@"; do
     case "${_a}" in
         --yes|-y)  AUTO_YES=1 ;;
-        --dry-run) MB_DRY_RUN=1 ;;
+        # A PLAN IS NOT A CHANGE.  `--dry-run` and `--check` install nothing --
+        # the first prints the plan, the second is a doctor report -- and
+        # `env-framework.md` § 8 reserves the manager confirmation for the
+        # verbs that CHANGE an env, because what it exists to catch is an old
+        # ~/anaconda3 being picked to CREATE something with.  Without this all
+        # three read-only forms exited 2 in any non-TTY with "no TTY for
+        # confirmation": measured 2026-09-17 on `install <r> --dry-run`,
+        # `install <r> --check` and `bootstrap --dry-run`, which is every way
+        # CI or a pipe would ask this program what it would do.  The detected
+        # manager is still ANNOUNCED on the line above, so nothing is hidden.
+        --dry-run) MB_DRY_RUN=1; MB_NO_ACTION=1 ;;
+        --check)   MB_NO_ACTION=1 ;;
+        --clean)   MB_CLEAN=1 ;;
         # Asking for help is not an action that needs confirming.  Without
         # this, ``install-env.sh <subcommand> --help`` stopped at the
         # env-manager prompt -- and in any non-TTY (CI, a pipe, an editor's
@@ -1085,9 +1195,13 @@ for _a in "$@"; do
         # --dry-run rationale is that "the honest answer is to say so and stop,
         # not to perform the install the flag just forbade"; --help had the
         # opposite treatment.
-        --help|-h) AUTO_YES=1; MB_WANT_HELP=1 ;;
+        --help|-h) MB_NO_ACTION=1; MB_WANT_HELP=1 ;;
     esac
 done
+# An invocation that changes nothing has nothing to confirm.
+if [[ "${MB_NO_ACTION}" -eq 1 ]]; then
+    AUTO_YES=1
+fi
 
 case "$1" in
     -h|--help|help)
@@ -1117,6 +1231,14 @@ Create it, then ask again for the full flag list:
     bash ${SCRIPT_DIR}/install-env.sh bootstrap --help
 EOF
             exit 0
+        fi
+        # --clean OWNS THE HOST ENV HERE, and only here -- and only for an
+        # invocation that is actually installing.  `MB_NO_ACTION`, not
+        # `MB_DRY_RUN`: --help and --check reach this line too, and both used
+        # to wipe the env on the way past.
+        if [[ "${MB_CLEAN}" -eq 1 && "${MB_NO_ACTION}" -eq 0 ]] \
+                && host_env_exists; then
+            recreate_host_env
         fi
         if ! host_env_exists; then
             # PLAN AND EXECUTE STAY SEPARATE, here too.  --dry-run says

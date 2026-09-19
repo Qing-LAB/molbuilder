@@ -119,7 +119,20 @@ def test_install_env_sh_host_conda_packages_match_recipe():
 
     host = recipe_by_name("molbuilder")
     # The shell array lists conda SPECS; the registry lists records.
-    py_pkgs = list(host.conda_specs)
+    # THE SHIM PERFORMS A DEFAULT INSTALL, so it mirrors the DEFAULT set --
+    # the declared packages minus anything the recipe marks `opt_in`.  The
+    # host env's test tooling (nodejs, playwright, pytest-playwright and a
+    # chromium download) is declared in the recipe and deliberately absent
+    # here: a fresh-machine bootstrap must not pay for a ~115 MB browser, and
+    # `install molbuilder --with-dev-tools` is what adds it.  Comparing
+    # against the full list would force the shim to install it on every
+    # machine, which is the thing `opt_in` exists to prevent.
+    # ONE accessor, in the recipe's own declaration order.  This briefly
+    # rebuilt the list as `python_specs + conda_set(...)`, which duplicated
+    # python the moment `conda_set` stopped excluding it -- and would have
+    # demanded the bash array be re-ordered if `python=` ever moved out of
+    # first place in the recipe.
+    py_pkgs = list(host.conda_set(include_opt_in=False))
 
     assert bash_pkgs == py_pkgs, (
         f"install-env.sh::HOST_CONDA_PACKAGES drifted from "
@@ -144,7 +157,15 @@ def test_install_env_sh_host_pip_packages_match_recipe():
     host = recipe_by_name("molbuilder")
     # The shell array lists install specs; the registry lists records.
     # Compare what each would hand pip.
-    py_pkgs = list(host.pip_specs)
+    # THE SHIM PERFORMS A DEFAULT INSTALL, so it mirrors the DEFAULT set --
+    # the declared packages minus anything the recipe marks `opt_in`.  The
+    # host env's test tooling (nodejs, playwright, pytest-playwright and a
+    # chromium download) is declared in the recipe and deliberately absent
+    # here: a fresh-machine bootstrap must not pay for a ~115 MB browser, and
+    # `install molbuilder --with-dev-tools` is what adds it.  Comparing
+    # against the full list would force the shim to install it on every
+    # machine, which is the thing `opt_in` exists to prevent.
+    py_pkgs = [p.spec() for p in host.pip_set(include_opt_in=False)]
 
     assert bash_pkgs == py_pkgs, (
         f"install-env.sh::HOST_PIP_PACKAGES drifted from "

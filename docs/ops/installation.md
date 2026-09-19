@@ -461,7 +461,7 @@ bash scripts/install-env.sh bootstrap --yes
 # → creates molbuilder, molbuilder-siesta, molbuilder-pySCF, molbuilder-MDtools
 #   then runs `molbuilder envs doctor`
 conda activate molbuilder
-python -m molbuilder envs list      # confirm the four envs are healthy
+python -m molbuilder envs list      # confirm every env is healthy
 python -m molbuilder serve start    # open http://127.0.0.1:8000
 ```
 
@@ -597,7 +597,7 @@ MOLBUILDER_GCC=13 bash scripts/install-env.sh install molbuilder-siesta-gpu   # 
 ### Choosing the Python every env is built on
 
 One value, `MOLBUILDER_PYTHON`, default **3.12**. It sets the `python=` pin in
-every recipe that declares one:
+**every** recipe — there is no exception:
 
 ```bash
 bash scripts/install-env.sh bootstrap --python 3.13 --yes
@@ -617,18 +617,28 @@ Four things are worth knowing before you move it.
   the first second rather than after a multi-gigabyte solve. The ceiling is
   not guessed at: whether conda-forge has rdkit, openbabel and sisl for a
   given python is the solver's question and it answers it.
-* **`molbuilder-siesta` is unaffected.** It declares no python at all, so
-  conda-forge's `siesta` build brings its own. That env exists to be
-  installable anywhere, and a pin would constrain the one solve whose purpose
-  is not to be constrained.
+* **Every env carries it, `molbuilder-siesta` included** *(2026-09-17)*. It
+  declared no python until then, on the stated grounds that a pin "would
+  constrain the one solve whose purpose is not to be constrained" — which was
+  measured and is not so: the solve with `python=3.12` resolves the **identical**
+  siesta build (`5.4.2-mpi_openmpi_h9ae7e9f_3`), drops nothing, changes nothing,
+  and adds 9 packages (80 → 89), because siesta already pulls most of what
+  python needs. What the absence did cost is in the next paragraph.
 
-**It does not appear in a generated job script.** Decks launch with a bare
-`python` after the env is activated, and the run monitor probes
-`command -v python3 || command -v python`, so a script picks up whatever
-interpreter its env has. The variable reaches a job by deciding what the env
-contains, never by being written into a script — and it does **not** raise the
-floor the monitor must parse on a compute node, which is the target env's
-python and may be far older.
+**It does not appear in a generated job script, and that is why every env
+needs one.** Decks launch with a bare `python` after the env is activated, and
+the run monitor probes `command -v python3 || command -v python`, so a script
+picks up whatever interpreter its env has. The variable reaches a job by
+deciding what the env *contains*, never by being written into a script.
+
+That makes an env declaring no python a hole rather than a saving: the probe
+searches `PATH`, falls through the env's empty `bin/`, and lands on the
+**compute node's** interpreter — a version nothing here declares, probes at
+prep time, or can promise is installed. Measured inside `molbuilder-siesta`
+(2026-09-17): `python3` resolved to `/usr/bin/python3`. On a node that ships
+none, the wrapper logs `monitor: not started` and the calculation runs
+unwatched. With the pin, the monitor runs on the interpreter this variable
+names, on every machine the env reaches.
 
 **CUDA target architecture.** The GPU kernels are compiled for the compute
 capability `nvidia-smi` reports on the machine you install from; with no GPU

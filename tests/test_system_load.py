@@ -125,6 +125,31 @@ def test_a_timeout_is_reported_and_the_server_keeps_serving(monkeypatch):
     assert snap["gpu_error"] == err
 
 
+def test_the_reason_is_read_off_whichever_stream_carried_it(monkeypatch):
+    """nvidia-smi puts its failure on STDOUT, and the reason must survive.
+
+    Measured 2026-09-18 on a host whose driver and library had diverged:
+    exit 18, an EMPTY stderr, and *"Failed to initialize NVML:
+    Driver/library version mismatch"* on stdout.  Reading only stderr
+    rendered that as ``nvidia-smi exited 18: no message`` -- the module's own
+    rule is that degrading gracefully is right and degrading SILENTLY is not,
+    and the reason was being dropped one line short of the widget.
+    """
+    real = ("Failed to initialize NVML: Driver/library version mismatch\n"
+            "NVML library version: 595.91")
+
+    class _CP:
+        returncode = 18
+        stdout = real
+        stderr = ""                      # empty, as measured
+    monkeypatch.setattr(sl.subprocess, "run", lambda *a, **kw: _CP())
+    gpus, err = sl._gpu_snapshot()
+    assert gpus == []
+    assert "Driver/library version mismatch" in err, (
+        f"the reason nvidia-smi gave must reach the widget; got {err!r}")
+    assert "no message" not in err
+
+
 def test_a_cpu_only_box_is_a_choice_not_a_fault(monkeypatch):
     """No ``nvidia-smi`` on PATH: nothing is wrong, the widget drops its
     GPU cells, and nothing cries wolf."""

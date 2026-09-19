@@ -153,7 +153,7 @@ def envs_group() -> None:
     """Inspect and install the conda envs molbuilder dispatches into.
 
     See docs/ops/installation.md for the prose recipes and the rationale
-    for the four-env layout.
+    for the env layout.
     """
 
 
@@ -278,10 +278,20 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
             pa = rep.package_audit
             n_total = pa.n_conda_declared + pa.n_pip_declared
             required_issues = [i for i in pa.issues if not i.optional]
+            # OPT-IN ABSENCE IS ITS OWN ROW, because its remedy is its own.
+            # Folded in with `optional` it would be offered
+            # `repair --include-optional`, which cannot install it: repair
+            # acts on what the recipe says a default run installs, and this is
+            # exactly what a default run leaves out.
+            opt_in_issues = [i for i in pa.issues if i.kind.endswith("-opt-in")]
             optional_issues = [i for i in pa.issues
-                               if i.optional]
+                               if i.optional and i not in opt_in_issues]
             n_required = len(required_issues)
             n_optional = len(optional_issues)
+            # Opt-in packages are DECLARED but not part of a default run, so
+            # they are neither "ok" nor a gap -- taken out of the denominator
+            # rather than counted against it.
+            n_total -= len(opt_in_issues)
             n_ok = n_total - n_required - n_optional
             if n_required == 0 and n_optional == 0:
                 click.echo(
@@ -339,41 +349,106 @@ def _render_doctor(reports: Iterable[_doctor.EnvReport]) -> int:
                                    for i in required_issues)
                 _has_version = any(i.kind in _version_kinds
                                    for i in required_issues)
-                # Bare `repair` installs the MISSING packages and skips
-                # version/build mismatches by design -- so the command
-                # offered must actually fix what was just listed.
-                _flags = (("--include-version-fix",) if _has_version
-                          else ())
-                # NEITHER VERB ALONE FINISHES A RECIPE WITH POST-INSTALL
-                # STEPS, so for one that has them doctor prints both.
-                #
-                # `repair` installs what the audit reported and does NOT
-                # re-run `extra_steps`; `install` runs the whole plan but
-                # SKIPS THE CREATE STEP on an env that already exists -- and
-                # conda packages enter a plan only through create, so it adds
-                # no missing package (measured 2026-09-14: `install` on a
-                # present env went straight from "conda create: SKIPPED" to
-                # verify, having installed nothing).
-                #
-                # This branch printed `install` alone until then, on the
-                # strength of a worked example -- the host env's `ipykernel`
-                # kernelspec -- that no longer exists.  The only recipe left
-                # with post-install steps is the GPU env's toolchain shims,
-                # and for THAT one a missing conda package was being answered
-                # with the one command that cannot install it.
-                click.echo("    next:    "
-                           + _fix_cmd("repair", rep.recipe.name, *_flags))
-                if rep.recipe.extra_steps:
-                    click.echo("    then:    "
-                               + _fix_cmd("install", rep.recipe.name, "--yes"))
-                    click.echo("             (repair installs the packages; "
-                               "this recipe also has post-install steps, "
-                               "which only `install` re-runs)")
+                # A PIN A REPAIR CANNOT HONOUR.  For a source-build recipe the
+                # conda packages are the TOOLCHAIN the binaries were compiled
+                # against, so `conda install <pkg>=<pin>` rewrites the metadata
+                # and recompiles nothing -- the audit goes green over binaries
+                # that are exactly as wrong as before.  Measured 2026-09-17 on
+                # `molbuilder-siesta-gpu`: the recipe pins
+                # `sysroot_linux-64=2.17`, the env has 2.34, and `objdump -T`
+                # on the built `siesta` demands `GLIBC_2.34` -- so the offered
+                # `repair --include-version-fix` would have declared healthy an
+                # env whose binaries still cannot start on any node below 2.34.
+                # Only a rebuild moves a compiled artifact to a new toolchain.
+                _rebuild_needed = (rep.recipe.build_spec is not None
+                                   and _has_version)
+                if _rebuild_needed:
+                    if _has_missing:
+                        click.echo("    next:    "
+                                   + _fix_cmd("repair", rep.recipe.name)
+                                   + "   (the MISSING packages only)")
+                    click.echo("    then:    " + _fix_cmd(
+                        "install", rep.recipe.name, "--clean", "--yes"))
+                    click.echo("             (the version mismatch above is a "
+                               "BUILD input, and this env's binaries are")
+                    click.echo("              already compiled against the old "
+                               "one -- `repair --include-version-fix`")
+                    click.echo("              would change the package and "
+                               "recompile nothing, turning the audit")
+                    click.echo("              green over binaries that did not "
+                               "move.  --clean rebuilds them.)")
+                # NO `continue` HERE.  It skipped to the next recipe, which was
+                # invisible while this was the last thing printed for an env --
+                # and stopped being so the moment an opt-in report was added
+                # after the chain.  An `else` says the same thing and cannot
+                # swallow whatever is appended below it.
+                else:
+                    # Bare `repair` installs the MISSING packages and skips
+                    # version/build mismatches by design -- so the command
+                    # offered must actually fix what was just listed.
+                    _flags = (("--include-version-fix",) if _has_version
+                              else ())
+                    # NEITHER VERB ALONE FINISHES A RECIPE WITH POST-INSTALL
+                    # STEPS, so for one that has them doctor prints both.
+                    #
+                    # `repair` installs what the audit reported and does NOT
+                    # re-run `extra_steps`; `install` does run them, and since
+                    # 2026-09-18 it also installs a missing conda package (the
+                    # declared set is its own step).
+                    # What `install` still will not do is move a package that
+                    # is PRESENT at the wrong version, which is why a pin
+                    # mismatch is answered with `--include-version-fix` above.
+                    #
+                    # This branch printed `install` alone until then, on the
+                    # strength of a worked example -- the host env's `ipykernel`
+                    # kernelspec -- that no longer exists.  The only recipe left
+                    # with post-install steps is the GPU env's toolchain shims,
+                    # and for THAT one a missing conda package was being answered
+                    # with the one command that cannot install it.
+                    click.echo("    next:    "
+                               + _fix_cmd("repair", rep.recipe.name, *_flags))
+                    # THE DEFAULT SET, not every declared step.  `_HOST` gained
+                    # an `extra_steps` entry on 2026-09-18 -- the opt-in chromium
+                    # download -- and keying on the raw tuple would tell every
+                    # host-env reader that `install --yes` has post-install work
+                    # to re-run, when a default install dispatches none.
+                    if rep.recipe.extra_set():
+                        click.echo("    then:    "
+                                   + _fix_cmd("install", rep.recipe.name, "--yes"))
+                        click.echo("             (repair installs the packages; "
+                                   "this recipe also has post-install steps, "
+                                   "which only `install` re-runs)")
 
-                if _has_version and not _has_missing:
-                    click.echo("             (only version/build pins "
-                               "differ; --include-version-fix is what "
-                               "makes repair rebuild those)")
+                    if _has_version and not _has_missing:
+                        click.echo("             (only version/build pins "
+                                   "differ; --include-version-fix is what "
+                                   "makes repair rebuild those)")
+            # OUTSIDE THE AUDIT CHAIN, and that placement is the fix rather
+            # than a layout choice.  Written as an `if` BETWEEN the chain's
+            # first `if` and its `elif`, it re-parented the `elif`/`else` onto
+            # itself -- so for the one recipe that has opt-in packages (the
+            # host env, on every machine that has not run --with-dev-tools)
+            # the FAILED branch became unreachable: `any_failed` was never
+            # set, a REQUIRED missing package printed nothing at all, and
+            # `doctor` exited 0 over it.  Two independent reviews measured the
+            # same thing on 2026-09-18.
+            #
+            # It reports PACKAGES.  The audit walks declared packages, so the
+            # opt-in extra step (the chromium download) is not among them --
+            # the count says "package(s)" for that reason, and `add:` installs
+            # the whole opt-in set including the step.
+            if opt_in_issues:
+                click.echo(
+                    f"    opt-in:  {len(opt_in_issues)} package(s) not "
+                    f"installed (by design -- a default run leaves these "
+                    f"out)")
+                for issue in opt_in_issues[:6]:
+                    click.echo(f"        {issue.spec}"
+                               + (f"  -- {issue.reason}" if issue.reason
+                                  else ""))
+                click.echo("    add:     "
+                           + _fix_cmd("install", rep.recipe.name,
+                                      "--with-dev-tools", "--yes"))
 
     click.echo("")
     if any_failed:
@@ -470,6 +545,7 @@ def cmd_repair(name: str, include_optional: bool,
     to_install_pip: list = []
     skipped_optional: list = []
     skipped_version: list = []
+    skipped_opt_in: list = []
     # BOTH buckets hold ISSUES, not a spec string for one kind and an issue
     # for the other.  The audit now names the record on conda issues too, so
     # both halves can map back to it -- which is the rule § 5 states without
@@ -477,6 +553,22 @@ def cmd_repair(name: str, include_optional: bool,
     for issue in audit.issues:
         is_conda = issue.kind.startswith("conda-")
         bucket = to_install_conda if is_conda else to_install_pip
+        # OPT-IN IS NOT REPAIR'S TO INSTALL, and it is tested FIRST because
+        # the audit gives an opt-in absence `optional=True` (it must not fail
+        # the health check), which would otherwise route it into the install
+        # bucket under `--include-optional`.  Two reasons it must not:
+        #
+        #   * the package was never asked for.  `--include-optional` means
+        #     "retry the ones the recipe attempted and could not get", not
+        #     "install the ones a default run deliberately leaves out";
+        #   * repair runs NO `extra_steps`, so installing `playwright` here
+        #     would leave the browser undownloaded -- and the next `doctor`
+        #     would see no opt-in issue, print `audit: OK`, and say nothing
+        #     about the half-built state.  `install --with-dev-tools` runs
+        #     the step.
+        if issue.kind.endswith("-opt-in"):
+            skipped_opt_in.append(issue)
+            continue
         base = issue.kind[:-len("-optional")] \
             if issue.optional else issue.kind
         if issue.optional:
@@ -487,6 +579,14 @@ def cmd_repair(name: str, include_optional: bool,
             continue
         if base in ("conda-missing", "pip-missing", "pip-source"):
             bucket.append(issue)
+    if skipped_opt_in:
+        click.echo(
+            f"[repair]   {len(skipped_opt_in)} opt-in package(s) not "
+            f"installed and not repairable here "
+            f"({' '.join(i.name or i.spec for i in skipped_opt_in)}).  "
+            f"They are added, with their post-install steps, by:", err=True)
+        click.echo("    " + _fix_cmd("install", recipe.name,
+                                     "--with-dev-tools", "--yes"), err=True)
     if not to_install_conda and not to_install_pip:
         if skipped_optional or skipped_version:
             click.echo(
@@ -601,7 +701,10 @@ def cmd_repair(name: str, include_optional: bool,
     # out unconditionally, and `failures` never reached the exit code, so
     # `repair --include-version-fix` printed "conda install: FAILED" and
     # exited 0 -- a CI job gating on it passed.
-    _excluded = set()
+    # OPT-IN NEVER COUNTS AGAINST THE EXIT CODE.  repair did not install it
+    # and cannot; leaving it in `remaining` would make every repair of the
+    # host env exit 1 for a package the operator never asked for.
+    _excluded = {i.kind for i in audit2.issues if i.kind.endswith("-opt-in")}
     if not include_optional:
         _excluded |= {i.kind for i in audit2.issues
                       if i.optional}
@@ -1088,6 +1191,15 @@ def _build_callbacks(recipe, auto_yes: bool):
                    "(~45 min commitment), before --rebuild=all or "
                    "--clean (destructive), and when preflight surfaces "
                    "a non-fatal warning (sm_80 fallback etc.).")
+@click.option("--with-dev-tools", "with_dev_tools", is_flag=True,
+              help="also install what the recipe marks opt-in -- for "
+                   "`molbuilder`, the test tooling: nodejs, playwright, "
+                   "pytest-playwright and a headless chromium.  Left out of "
+                   "a default install because none of it is needed to RUN "
+                   "molbuilder and the browser is a ~115 MB download.  "
+                   "Everything lands INSIDE the env (the browser under "
+                   "$CONDA_PREFIX/share/ms-playwright), so `--clean` removes "
+                   "it and no step needs root.")
 @click.option("--skip-network-check", is_flag=True,
               help="skip the git ls-remote reachability check.  Use "
                    "when running behind a firewall that blocks "
@@ -1108,6 +1220,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 rebuild: Optional[str],
                 clean: bool,
                 auto_yes: bool,
+                with_dev_tools: bool,
                 skip_network_check: bool,
                 force_resume: bool) -> None:
     """Run a recipe's install plan against the local conda.
@@ -1193,7 +1306,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         # it.  It could not before -- the surface dispatched it -- and
         # `--clean --dry-run` therefore printed a plan that omitted the most
         # destructive thing the command would do.
-        effective, plan = _install.plan_install(recipe, caps=caps, clean=clean)
+        effective, plan = _install.plan_install(
+            recipe, caps=caps, clean=clean, include_opt_in=with_dev_tools)
     except RuntimeError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(2)
@@ -1300,7 +1414,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         result = _install_one(
             recipe, effective, caps,
             auto_yes=auto_yes, clean=clean, rebuild=rebuild,
-            force_resume=force_resume,
+            force_resume=force_resume, with_dev_tools=with_dev_tools,
             skip_network_check=skip_network_check, name=name)
     except _Aborted:
         sys.exit(0)
@@ -1326,6 +1440,7 @@ def _install_one(recipe, effective: str, caps, *,
                  clean: bool = False,
                  rebuild: "Optional[str]" = None,
                  force_resume: bool = False,
+                 with_dev_tools: bool = False,
                  skip_network_check: bool = False,
                  name: "Optional[str]" = None):
     """Install ONE recipe: probe, diagnose, wipe if asked, summarise, confirm,
@@ -1588,6 +1703,7 @@ def _install_one(recipe, effective: str, caps, *,
             # the reason stated there: this run is about to delete that env.
             env_state=env_state_for_install,
             clean=clean,
+            include_opt_in=with_dev_tools,
         )
 
         # If the build_spec executor short-circuited on preflight errors,
@@ -1681,6 +1797,14 @@ def _install_one(recipe, effective: str, caps, *,
                    "envs that are already present (idempotent re-pass).")
 @click.option("--no-skip-existing", "skip_existing", flag_value=False,
               help="re-run install on envs that are already present.")
+@click.option("--clean", is_flag=True,
+              help="WIPE each env and build it again from the recipe.  The "
+                   "exact-rebuild door: use it when you want the solve a "
+                   "fresh machine would get, rather than the convergence "
+                   "an ordinary run already performs.  Implies "
+                   "--no-skip-existing (there is nothing to skip).  The "
+                   "HOST env is rebuilt by scripts/install-env.sh before it "
+                   "dispatches here, because this process runs from it.")
 @click.option("--include-source-builds", is_flag=True,
               help="also bootstrap recipes that build from source (e.g. "
                    "``molbuilder-siesta-gpu``).  Default excludes them "
@@ -1697,7 +1821,7 @@ def _install_one(recipe, effective: str, caps, *,
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without interactive confirmation.  Required "
                    "for headless / CI / HPC-batch use.")
-def cmd_bootstrap(dry_run: bool, skip_existing: bool,
+def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
                   include_source_builds: bool, auto_yes: bool,
                   projects: "Optional[str]") -> None:
     """Install every registered recipe, then run ``doctor`` for the
@@ -1718,6 +1842,11 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     """
     failures: list = []      # recipes whose install did not finish
     caps = get_capabilities()
+    # NOTHING TO SKIP WHEN EVERYTHING IS BEING REBUILT.  `--skip-existing` is
+    # the default and would otherwise drop every present env from the plan --
+    # which is every env `--clean` exists to wipe.
+    if clean:
+        skip_existing = False
 
     # WHAT BOOTSTRAP INSTALLS: the default stack, and nothing a recipe says
     # is opt-in.  This tested `build_spec is None` until 2026-09-14 -- a proxy
@@ -1859,10 +1988,24 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             # no per-recipe confirmation before a 45-minute source build.  What
             # it did have -- the tee, the log, the build callbacks -- the door
             # has too, because they came from here.
+            env_name = effective_name(recipe, caps)
+            # `installation.md` M5: `--clean` removes an env and installs into
+            # it again, and when that env is the one this interpreter runs from
+            # the removal succeeds and the create after it does not.  The SHIM
+            # rebuilds the host env before dispatching here -- it runs conda
+            # from outside that env -- so by this point it is already fresh and
+            # applying `--clean` again would only destroy the process.
+            clean_this = clean and not _install.runs_from_prefix(
+                caps.env_prefix(env_name))
+            if clean and not clean_this:
+                click.echo(
+                    f"  (--clean not applied to `{env_name}`: molbuilder runs "
+                    f"FROM it.  scripts/install-env.sh rebuilt it before "
+                    f"dispatching here.)", err=True)
             try:
                 result = _install_one(
-                    recipe, effective_name(recipe, caps), caps,
-                    auto_yes=auto_yes)
+                    recipe, env_name, caps,
+                    auto_yes=auto_yes, clean=clean_this)
             except _Aborted:
                 failures.append((recipe.name, "declined",
                                  "you said no at a confirmation"))
@@ -1890,7 +2033,16 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
             for name, why, hint in failures:
                 click.echo(f"  - {name}: {why} -- {hint}", err=True)
         else:
-            click.echo("bootstrap complete; every recipe installed.")
+            # SAY ONLY WHAT THE STEP LIST PROVED.  This read "bootstrap
+            # complete; every recipe installed." and was printed from a check
+            # that asks one thing: did any install step report a failure.  On
+            # 2026-09-17 that was true of a run whose doctor then found four
+            # envs short of a REQUIRED package and exited 1 -- the banner and
+            # the exit code disagreeing in the same output
+            # The verdict comes after doctor now,
+            # because doctor is what knows it.
+            click.echo(f"all {len(plan)} install(s) completed without a "
+                       f"failed step.")
 
     # THE CONFIG DIRECTORY IS PART OF A FIRST INSTALL.  Until this ran
     # here, a bootstrap left the machine one file short of being able to
@@ -1974,12 +2126,28 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool,
     click.echo(f"{_hints.LAUNCHER} --help")
     click.echo("")
 
-    if failures or seed_failed:
-        # An install failed, or the config directory was not seeded.  Either
-        # way this bootstrap did not finish its job, and the exit code is the
-        # only part of the report a script can read.
+    # THE VERDICT, ONCE, AFTER EVERYTHING THAT CAN CHANGE IT.  Three things
+    # decide whether this machine is ready -- the installs, the config seeding
+    # and doctor's report -- and until 2026-09-17 only the first announced
+    # itself in words while the exit code came from the third.  A reader got
+    # "every recipe installed." and exit 1 from one run.
+    click.echo("")
+    click.echo("=" * 70)
+    if failures or seed_failed or exit_code != 0:
+        parts = []
+        if failures:
+            parts.append(f"{len(failures)} install(s) failed")
+        if seed_failed:
+            parts.append("the config directory was not seeded")
+        if exit_code != 0:
+            parts.append("doctor reported a problem above")
+        click.echo(f"bootstrap did NOT finish its job: {'; '.join(parts)}.",
+                   err=True)
+        click.echo("Each item above carries the command that fixes it.",
+                   err=True)
         sys.exit(1)
-    sys.exit(exit_code)
+    click.echo("bootstrap complete: every env installed and verified.")
+    sys.exit(0)
 
 
 __all__ = ["envs_group"]

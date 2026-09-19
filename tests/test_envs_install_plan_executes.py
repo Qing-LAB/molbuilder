@@ -95,6 +95,59 @@ def test_no_step_smuggles_a_command_substitution_into_a_message():
                 f"punctuation:\n  {arg[:200]}")
 
 
+def test_the_browser_step_confines_itself_to_the_prefix(tmp_path):
+    """END RESULT, not the string.  Runs the real chromium step against a
+    synthetic prefix with a stub `playwright` and asserts where things land.
+
+    The requirement is confinement (user, 2026-09-18: *"confined within conda
+    env ... not required to have elevated privilege or contaminating the
+    system"*).  `playwright install` defaults to `~/.cache/ms-playwright` --
+    measured 1.3 GB there, outside every env and surviving `conda env
+    remove`.
+
+    This began as three `in` checks against the recipe's own literal, which
+    is the constant re-typed at itself: it proves nothing about where a
+    browser goes and can only fail if someone edits the string.  Executing it
+    proves the hook is written, the download is pointed inside the prefix,
+    and $HOME is untouched.
+    """
+    prefix = tmp_path / "env"
+    (prefix / "bin").mkdir(parents=True)
+    fake_home = tmp_path / "home"
+    (fake_home / ".cache").mkdir(parents=True)
+    # A stub python that records where playwright was told to put the browser.
+    stub = prefix / "bin" / "python"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'printf "%s" "$PLAYWRIGHT_BROWSERS_PATH" > "$0.browsers-path"\n'
+        'mkdir -p "$PLAYWRIGHT_BROWSERS_PATH/chromium-stub"\n')
+    stub.chmod(0o755)
+
+    recipe = R.recipe_by_name("molbuilder")
+    step = next(e for e in recipe.extra_steps if e.opt_in)
+    argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
+            *step.argv)
+    env = dict(os.environ, HOME=str(fake_home))
+    cp = subprocess.run(list(_B.activation_wrapper(argv, str(prefix))),
+                        capture_output=True, text=True, timeout=120, env=env)
+    assert cp.returncode == 0, f"browser step failed:\n{cp.stderr}"
+
+    told = (prefix / "bin" / "python.browsers-path").read_text()
+    assert told == str(prefix / "share" / "ms-playwright"), (
+        f"the download was pointed at {told!r}, not inside the prefix")
+    assert (prefix / "share" / "ms-playwright" / "chromium-stub").is_dir()
+    assert not list((fake_home / ".cache").iterdir()), (
+        "something was written to the user's cache instead of the env")
+
+    # The hook is what keeps the path set for the PYTEST process, not just
+    # this one -- and it must carry a LITERAL $CONDA_PREFIX so a cloned or
+    # moved env stays valid.
+    hook = prefix / "etc" / "conda" / "activate.d" / "playwright-browsers.sh"
+    assert hook.is_file(), "no activate.d hook: the browser would be looked "\
+                           "for outside the env it was downloaded into"
+    assert "$CONDA_PREFIX/share/ms-playwright" in hook.read_text()
+
+
 def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
     """End result, not shape.  Runs the real step against a synthetic
     prefix and asserts the bare names exist and point at the conda
@@ -114,7 +167,7 @@ def test_the_toolchain_shim_step_actually_creates_the_links(tmp_path):
     recipe = R.recipe_by_name("molbuilder-siesta-gpu")
     assert recipe.extra_steps, "siesta-gpu must carry the shim step"
     argv = ("/usr/bin/conda", "run", "-n", "x", "--no-capture-output",
-            *recipe.extra_steps[0])
+            *recipe.extra_steps[0].argv)
     new_argv = _B.activation_wrapper(argv, str(prefix))
     cp = subprocess.run(list(new_argv), capture_output=True, text=True,
                         timeout=120)

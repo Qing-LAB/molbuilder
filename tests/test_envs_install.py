@@ -10,6 +10,7 @@ recipe-shape-driven, so an in-test recipe is the honest fixture.
 """
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -76,7 +77,10 @@ def test_plan_includes_pip_and_extras_for_all_phases_recipe():
     recipe = _ALL_PHASES_RECIPE
     name, steps = install.plan_install(recipe)
     labels = [s.label for s in steps]
-    assert labels == ["conda create", "pip install", "extra", "verify"]
+    # `conda install` is its own step so that an env which ALREADY EXISTS
+    # can still receive a package the recipe gained.
+    assert labels == ["conda create", "conda install", "pip install",
+                      "extra", "verify"]
 
 
 def test_plan_conda_create_has_channels_in_order():
@@ -143,14 +147,171 @@ def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     # matches real-world behaviour where _env_prefix is rock-solid.
     monkeypatch.setattr(install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    # run_streaming carries the actual step execution: conda create + verify.
+    # run_streaming carries the step execution: create + the conda set +
+    # verify.  The prefix above does not exist, so the audit gate finds every
+    # declared package absent and the set is dispatched.
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "siesta 5.4.2"),
+                                             (0, "siesta 5.4.2"),
                                              (0, "siesta 5.4.2")))
     result = install.run_install(recipe)
     assert result.succeeded is True
     assert result.recipe.name == "molbuilder-siesta"
-    assert [s.label for s in result.steps] == ["conda create", "verify"]
+    assert [s.label for s in result.steps] == ["conda create", "conda install",
+                                               "verify"]
+
+
+def test_conda_set_is_not_dispatched_when_the_env_already_has_it(
+        monkeypatch, tmp_path):
+    """A CURRENT env pays nothing -- `env-framework.md` § 4.4's other branch.
+
+    The gate exists because an unconditional `conda install` is not a no-op.
+    Measured 2026-09-17 on conda 26.7.1: the full declared list against a
+    SATISFIED `molbuilder-siesta` still took 26 s and wanted to update
+    `ca-certificates` and `openssl` to newer builds -- so installing on every
+    run would drift a healthy env each time anyone re-ran bootstrap.
+
+    Here `conda-meta/` carries a record for every declared package, so the
+    step is SKIPPED and no solve is dispatched for it.
+    """
+    recipe = _ALL_PHASES_RECIPE
+    fake_env = tmp_path / recipe.name
+    meta = fake_env / "conda-meta"
+    meta.mkdir(parents=True)
+    for spec in recipe.conda_set():
+        name = spec.split("=")[0]
+        (meta / f"{name}-1.0-h0.json").write_text(
+            json.dumps({"name": name, "version": "1.0", "build": "h0"}))
+
+    _bind(conda_envs={recipe.name: str(fake_env)})
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{fake_env}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
+    calls = []
+    def fake_stream(*a, **kw):
+        calls.append(a)
+        return (0, "Version 1.40")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    result = install.run_install(recipe)
+    assert result.succeeded is True
+    conda_set = next(s for s in result.steps if s.label == "conda install")
+    assert conda_set.outcome is install.Outcome.SKIPPED
+    assert conda_set.returncode is None, (
+        "a step that did not run has no exit code")
+    assert "already installed" in conda_set.output
+    # A CONDA-level install -- `<mgr> install ...` -- not the word anywhere.
+    # `python -m pip install` is dispatched here too and is not a solve.
+    dispatched = [a[0] for a in calls]
+    solves = [argv for argv in dispatched if list(argv)[1:2] == ["install"]]
+    assert not solves, (
+        f"no conda solve may be dispatched for a satisfied env; got {solves}")
+
+
+def test_opt_in_is_the_difference_between_the_two_plans():
+    """One claim, both directions: `opt_in` is exactly what `--with-dev-tools`
+    adds and a default run leaves out -- across all three kinds.
+
+    The host env's test tooling is the case: a conda package (nodejs), two pip
+    packages (playwright, pytest-playwright) and an extra step (the chromium
+    download).  It was four hand-typed commands in `install-env.sh --help`
+    until 2026-09-18, which is what a package the registry cannot express
+    looks like.
+    """
+    _bind()
+    recipe = recipe_by_name("molbuilder")
+    flat = lambda plan: " ".join(" ".join(s.argv) for s in plan)
+    default = flat(install.plan_install(recipe)[1])
+    opted = flat(install.plan_install(recipe, include_opt_in=True)[1])
+    for name in ("nodejs", "playwright", "pytest-playwright", "chromium"):
+        assert name not in default, f"{name} is opt-in; a default run must skip it"
+        assert name in opted, f"--with-dev-tools must install {name}"
+    # The chromium download is the only extra step this recipe has, so a
+    # default plan dispatches none at all.
+    assert not [s for s in install.plan_install(recipe)[1]
+                if s.role is install.StepRole.EXTRA]
+
+
+def test_opt_in_absence_is_reported_but_does_not_fail_the_audit(tmp_path):
+    """An opt-in package nobody asked for is a CHOICE, not a defect.
+
+    Counting it as REQUIRED missing would make `doctor` red on every machine
+    that simply did not want the test tooling.  Reported all the same --
+    absence nobody can see is how four commands came to live in a help
+    comment.
+    """
+    from molbuilder.envs import doctor as _doc
+    recipe = Recipe(
+        name="synth-optin-env", category=None, description="d",
+        channels=("conda-forge",),
+        conda_packages=("python=3.12", CondaPackage("nodejs", opt_in="why")),
+        pip_packages=(PipPackage("playwright", opt_in="why"),),
+    )
+    (tmp_path / "conda-meta").mkdir()
+    audit = _doc.audit_packages(tmp_path, recipe)
+    kinds = {i.kind for i in audit.issues}
+    assert "conda-missing-opt-in" in kinds
+    assert "pip-missing-opt-in" in kinds
+    # `python` IS a required gap here -- the synthetic prefix has an empty
+    # conda-meta -- and that is right.  The claim is narrower: the two
+    # OPT-IN packages are not.
+    required = {i.name for i in audit.issues if not i.optional}
+    assert "nodejs" not in required and "playwright" not in required, (
+        f"an opt-in package that was never asked for is not a REQUIRED gap; "
+        f"required={sorted(required)}")
+
+
+def test_the_interpreter_reaches_an_env_that_already_exists(monkeypatch,
+                                                            tmp_path):
+    """python is delivered to a PRESENT env, not only to a fresh one.
+
+    It is the one declared package `conda create` also carries, and create is
+    SKIPPED for an env that exists -- so while `conda_set` excluded python
+    "because create already placed it", `install` could never deliver it to a
+    machine that had bootstrapped before the pin existed.  That is verbatim
+    the hole the create/install split was made to close,
+    reopened for the very package that change adds to `molbuilder-siesta`.
+
+    The env here is the real pre-2026-09-18 shape: siesta, numactl and git on
+    disk, no python.
+    """
+    recipe = recipe_by_name("molbuilder-siesta")
+    fake_env = tmp_path / "molbuilder-siesta"
+    meta = fake_env / "conda-meta"
+    meta.mkdir(parents=True)
+    for name in ("siesta", "numactl", "git"):        # note: NO python
+        (meta / f"{name}-1.0-h0.json").write_text(
+            json.dumps({"name": name, "version": "1.0", "build": "h0"}))
+    _bind(conda_envs={recipe.name: str(fake_env)})
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{fake_env}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(_diag.subprocess, "run", fake_run)
+    calls = []
+    def fake_stream(*a, **kw):
+        calls.append(a[0])
+        return (0, "siesta 5.4.2")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    result = install.run_install(recipe)
+    assert result.succeeded is True
+    solves = [list(c) for c in calls if list(c)[1:2] == ["install"]]
+    assert solves, (
+        "create was skipped and no conda install was dispatched -- the env "
+        "keeps whatever it has, and `install` reports success over it")
+    assert any(a.startswith("python=") for a in solves[0]), (
+        f"the declared interpreter must be in the solve; got {solves[0]}")
 
 
 def test_run_install_short_circuits_on_create_failure(monkeypatch):
@@ -207,10 +368,19 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path
     assert create.outcome is install.Outcome.SKIPPED
     assert create.returncode is None
     assert create.outcome.is_success is True
-    # The synthetic recipe has pip_packages + extra_steps + verify.  Three
-    # streaming calls (pip + extra + verify), zero for the skipped create.
-    assert len(calls) == 3, (
-        f"expected 3 streaming calls (pip + extra + verify), got {len(calls)}"
+    # AND THE CONDA SET STILL GOES IN.  This is the half `install` could not
+    # do before 2026-09-17: the env exists, so create is skipped -- and the
+    # declared packages went with it, because `conda create` was the only
+    # place they were ever named.  `conda-meta/` here
+    # is empty, so the gate finds them absent and dispatches.
+    conda_set = next(s for s in result.steps if s.label == "conda install")
+    assert conda_set.outcome is install.Outcome.OK
+    assert "install" in conda_set.argv and "create" not in conda_set.argv
+    # Four streaming calls (conda set + pip + extra + verify), zero for the
+    # skipped create.
+    assert len(calls) == 4, (
+        f"expected 4 streaming calls (conda set + pip + extra + verify), "
+        f"got {len(calls)}"
     )
 
 
@@ -368,6 +538,7 @@ def test_optional_package_failure_degrades_without_stopping(monkeypatch):
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory(
                             (0, "solving..."),          # conda create
+                            (0, "solving..."),          # the conda set
                             (1, "No matching distribution found"),
                             (0, "Version 1.0"),         # verify STILL RUNS
                         ))
@@ -398,7 +569,8 @@ def test_launch_failure_of_optional_step_also_degrades(monkeypatch):
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory(
-                            (0, "solving..."),
+                            (0, "solving..."),          # conda create
+                            (0, "solving..."),          # the conda set
                             (None, ""),                 # never launched
                             (0, "Version 1.0"),
                         ))
@@ -560,6 +732,7 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "solving..."),
+                                             (0, "solving..."),
                                              (0, "oops wrong binary")))
     result = install.run_install(recipe)
     assert result.succeeded is False
@@ -578,6 +751,7 @@ def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(install._builds, "run_streaming",
                         _stream_stub_factory((0, "solving..."),
+                                             (0, "solving..."),
                                              (1, "Welcome to LEaP!")))
     result = install.run_install(recipe)
     assert result.succeeded is True

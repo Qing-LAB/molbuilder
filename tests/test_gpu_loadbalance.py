@@ -13,6 +13,7 @@ the extracted block-emitters are the contracts; these tests pin them:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -327,9 +328,40 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
     assert shipped.is_file()
     src = (shipped).read_text()
     assert "def run_monitor(" in src and "def main(" in src
-    # It is the stdlib-only module -- no molbuilder/numpy imports.
-    assert "import numpy" not in src
-    assert "import molbuilder" not in src
+    # STDLIB-ONLY IS PROVEN BY RUNNING IT, not by reading it.
+    #
+    # The check here was `"import molbuilder" not in src` until 2026-09-17 --
+    # a substring scan of the file's text, which says nothing about whether
+    # the thing starts and which failed on the sentence *"``import
+    # molbuilder`` fails on a compute node"* in the module docstring: prose
+    # that is the entire reason this file is stdlib-only, made unwriteable by
+    # the test guarding it.
+    #
+    # So run the artifact under the condition it exists for.  `molbuilder` and
+    # `numpy` are denied at the import system, which is what a compute node
+    # does by simply not having them, and the shipped file has to reach
+    # argparse anyway.  A real top-level import of either fails this with
+    # `ImportError: numpy is not installed on a compute node`.
+    blocked = tmp_path / "_blocked_run.py"
+    blocked.write_text(
+        "import sys, runpy\n"
+        "class _Deny:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name.split('.')[0] in ('molbuilder', 'numpy'):\n"
+        "            raise ImportError(name + ' is not installed on a "
+        "compute node')\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _Deny())\n"
+        "sys.argv = ['mb_monitor.py', '--help']\n"
+        "runpy.run_path('mb_monitor.py', run_name='__main__')\n"
+    )
+    import subprocess as _sp
+    cp = _sp.run([sys.executable, str(blocked)], cwd=str(tmp_path),
+                 capture_output=True, text=True, timeout=120)
+    assert cp.returncode == 0, (
+        "the shipped monitor does not start on a machine without molbuilder "
+        "or numpy -- which is every compute node it runs on:\n"
+        + cp.stderr[-2000:])
     # PySCF job: no monitor shipped (siesta-only instrument).
     py = tmp_path / "q.py"; py.write_text("# fake\n")
     (tmp_path / "mb_monitor.py").unlink()

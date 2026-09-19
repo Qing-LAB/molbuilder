@@ -11,10 +11,20 @@ calculation's own policy says to.
 
 **It never runs inside molbuilder.**  A verbatim copy of this file ships
 beside the job as ``mb_monitor.py`` and runs with the JOB's own python from
-the working directory: molbuilder is not installed on a compute node, and
-the `molbuilder-siesta` env has no python of its own at all.  That is why
-this module is stdlib-only, and it is a constraint rather than a
-preference.  *(This paragraph said "run it inside the job's activated env
+the working directory: molbuilder is deliberately never pip-installed into
+any env, so ``import molbuilder`` fails on a compute node whatever
+interpreter is found.  That is why this module is stdlib-only, and it is a
+constraint rather than a preference.
+
+**WHICH python it gets is the ENV's, and only since 2026-09-17.**  The
+wrapper probes ``command -v python3`` after the env is activated, so an env
+declaring no python of its own hands this file to the compute node's
+interpreter -- whatever the image ships, unprobed at prep time and absent
+on a node that ships none, where the wrapper logs *"monitor: not started"*
+and the calculation runs unwatched.  ``molbuilder-siesta`` declared none;
+measured inside it, ``python3`` resolved to ``/usr/bin/python3``.  Every
+recipe now pins ``_PYTHON_SPEC``, so the version parsing this file is one
+the registry names.  *(This paragraph said "run it inside the job's activated env
 so molbuilder is importable" until 2026-08-26 -- the exact opposite of the
 arrangement the wrapper has always used.)*
 

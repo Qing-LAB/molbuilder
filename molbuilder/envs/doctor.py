@@ -20,7 +20,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
 from .recipes import BUILTIN_RECIPES, Recipe, effective_name
@@ -328,6 +328,32 @@ def _normalize_pip_name(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name.strip()).lower()
 
 
+def absent_conda_specs(env_prefix: Path,
+                       specs: "Sequence[str]") -> List[str]:
+    """Which of ``specs`` has no ``conda-meta`` record in this env.
+
+    PRESENCE ONLY -- name matched, version and build ignored.  That is the
+    question `install` asks before it dispatches a recipe's conda set
+    absence is what `install` closes, and a version
+    or build mismatch is `repair --include-version-fix`'s business because
+    those rebuilds are destructive and opt-in.  :func:`audit_packages` is the
+    full comparison and answers both.
+
+    Reads the same on-disk metadata the audit does -- no subprocess, no solve,
+    no network -- which is what makes the gate free enough to ask on every
+    install.  A spec whose shape does not parse is reported ABSENT: it is not
+    a shape we can find on disk, and dispatching the solve is the honest
+    answer to "we cannot tell".
+    """
+    installed = _read_conda_meta(env_prefix)
+    out: List[str] = []
+    for spec in specs:
+        parsed = _parse_conda_spec(spec)
+        if parsed is None or parsed[0] not in installed:
+            out.append(spec)
+    return out
+
+
 def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     """Compare recipe's declared packages against what's on disk.
 
@@ -353,6 +379,9 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
     # user.  A name-set matched by name is also the exact mechanism § 2.2
     # of the contract abolished for being able to miss silently.
     installed_conda = _read_conda_meta(env_prefix)
+    # Read BEFORE the conda loop, which needs it: a conda-declared package
+    # that pip installed is absent from `conda-meta` and present in the env.
+    installed_dists = _read_pip_dists(env_prefix)
     for pkg in recipe.conda_packages:
         parsed = _parse_conda_spec(pkg.spec)
         if parsed is None:
@@ -365,9 +394,29 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         # health check for an env the recipe calls usable without it.
         suffix = "-optional" if pkg.optional else ""
         if name not in installed_conda:
+            # SAY WHERE IT DID TURN UP.  `(not found)` is true about
+            # `conda-meta` and overstated about the env: measured 2026-09-17,
+            # the host env's `psutil>=5.9` is declared conda and installed by
+            # pip, so `import psutil` works while the audit read as though
+            # nothing were there.  Still REQUIRED missing, and deliberately --
+            # a conda-declared package satisfied by pip is outside the solve,
+            # so the next `conda install` into this env may replace or shadow
+            # it.  What changes is the report, not the verdict.
+            _by_pip = installed_dists.get(_normalize_pip_name(name))
+            # AN OPT-IN PACKAGE THAT IS ABSENT IS A CHOICE, NOT A DEFECT.
+            # It was never installed because the recipe says a default run
+            # leaves it out, so failing the health check over it would make
+            # `doctor` red on every machine that simply did not ask for it.
+            # Reported all the same -- absence nobody can see is how the test
+            # tooling came to be four commands in a help comment.
             issues.append(PackageAuditIssue(
-                kind=f"conda-missing{suffix}", name=name, spec=spec, optional=pkg.optional,
-                found="(not found)", reason=pkg.reason,
+                kind=("conda-missing-opt-in" if pkg.opt_in
+                      else f"conda-missing{suffix}"),
+                name=name, spec=spec,
+                optional=bool(pkg.opt_in) or pkg.optional,
+                found=(f"(no conda record; pip installed {_by_pip[0]})"
+                       if _by_pip else "(not found)"),
+                reason=pkg.opt_in or pkg.reason,
             ))
             continue
         installed_version, installed_build = installed_conda[name]
@@ -414,20 +463,21 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
                     found=f"{name}={installed_version}={installed_build}",
                     reason=pkg.reason,
                 ))
-    # --- pip packages ---
-    installed_dists = _read_pip_dists(env_prefix)
+    # --- pip packages ---  (`installed_dists` was read above)
     for pkg in recipe.pip_packages:
         # Match on IDENTITY only.  dist-info records the project name,
         # never the URL it came from, so a source-bearing package would
         # read as permanently missing if the whole spec were normalized.
         norm = _normalize_pip_name(pkg.name)
         if norm not in installed_dists:
-            kind = ("pip-missing-optional"
-                    if pkg.optional else "pip-missing")
+            # Same rule as the conda half: opt-in absence is informational.
+            kind = ("pip-missing-opt-in" if pkg.opt_in
+                    else "pip-missing-optional" if pkg.optional
+                    else "pip-missing")
             issues.append(PackageAuditIssue(
                 kind=kind, name=pkg.name, spec=pkg.spec(),
-                found="(not found)", reason=pkg.reason,
-                optional=pkg.optional,
+                found="(not found)", reason=pkg.opt_in or pkg.reason,
+                optional=bool(pkg.opt_in) or pkg.optional,
             ))
             continue
         if pkg.source is not None:
@@ -576,4 +626,4 @@ def report_all(
 
 
 __all__ = ["EnvReport", "PackageAudit", "PackageAuditIssue",
-           "audit_packages", "report_all"]
+           "absent_conda_specs", "audit_packages", "report_all"]
