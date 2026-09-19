@@ -427,6 +427,11 @@
         //    directory selection lands. -------------------------- //
         let aborter         = null;
         let lastScannedDir  = null;
+        //: What the SERVER said this directory is -- `{role, calculation}`
+        //: or null when it does not say (project-layout.md § 1.4a).  Kept
+        //: from the last scan so the empty state can render the answer
+        //: instead of a generic sentence.
+        let lastPlace       = null;
         let cachedResults   = [];  // last successful scan -- flat, newest first
         let cachedGroups    = [];  // same data bucketed via groupResultFiles;
                                    // ``_populate`` consumes this so we don't
@@ -533,6 +538,12 @@
         function _scan(dir, currentFile) {
             _abortInFlight();
             _clearParseTimer();
+            /* FORGET THE LAST DIRECTORY'S ANSWER HERE, once, rather than in
+             * each of the four ways this scan can end.  Only the success
+             * path can restate it, so a failed listing, an aborted scan or a
+             * cleared sidebar cannot leave the previous directory's `place`
+             * riding on the next announcement. */
+            lastPlace = null;
             if (!dir) {
                 // No directory selected (sidebar cleared).  Show
                 // the picker bar in its placeholder state so the
@@ -595,85 +606,79 @@
                                             body.engine),
                         inspReg.pickResult
                     );
+                    lastPlace = body.place || null;
                     cachedResults = results;
-                    if (results.length === 0) {
-                        // Empty result set.  Bar stays VISIBLE with
-                        // an empty-state placeholder so the user
-                        // can hit Refresh when their first job
-                        // emits its first output file -- they
-                        // shouldn't have to re-click the Results
-                        // tab to recover the button.
-                        if (metaEl) metaEl.classList.remove("is-busy");
-                        cachedGroups = [];
-                        _populatePlaceholder(selEl,
-                            "(no result files yet — click Refresh)");
+                    cachedGroups = results.length
+                        ? groupResultFiles(results, inspReg.pickResult)
+                        : [];
+                    barEl.hidden = false;
+
+                    /* ---- ONE DECISION ------------------------------- //
+                     * What should be mounted for this directory -- a path,
+                     * or nothing.  Three answers, one variable, because the
+                     * announcement below must not depend on which of them
+                     * happened.
+                     *
+                     * KEEP what is already showing if this directory still
+                     * offers it; otherwise take THE DOOR'S PICK -- `openable`
+                     * is `parse.dirs.openable_in`'s answer, the file this
+                     * CALCULATION produced, the same file during the run and
+                     * after it.  Taking `results[0]` instead differed from
+                     * the door on 18 of 96 real run directories.
+                     *
+                     * AND NOTHING IS AN ANSWER.  When the door offers no
+                     * pick, nothing here is this directory's product, so a
+                     * fallback to `results[0]` shows something that is not
+                     * the result and looks like one: measured 2026-09-19,
+                     * the transmission rung -- holding `.TBT.nc` and both
+                     * transmission curves -- opened `…util.csv`, the CPU
+                     * utilisation samples; and a hierarchical calculation
+                     * root opened its own INPUT structure's sidecar as raw
+                     * JSON.  The menu still lists every readable file; only
+                     * the guess is gone.
+                     *
+                     * ONE VALUE, because it used to be two: `_populate`
+                     * labelled the menu from the GROUPED list (ties by
+                     * category label) while the auto-pick took `results[0]`
+                     * from the flat one (ties by file name).  Both orderings
+                     * are right; having two is the defect -- four files
+                     * stamped 10:31:08 labelled the menu `…molwatch.log` and
+                     * displayed `…_optimized.xyz` (2026-08-04).  The chosen
+                     * path now feeds both. */
+                    const keepCurrent =
+                        currentFile && results.some(r => r.path === currentFile);
+                    const byDoor = body.openable
+                        ? results.find(r => r.name === body.openable)
+                        : null;
+                    const chosen = keepCurrent ? currentFile
+                                 : (byDoor ? byDoor.path : null);
+
+                    /* ---- ONE EXIT ----------------------------------- //
+                     * `results.md` § 2.2: a scan that changes what is
+                     * current ALWAYS announces it.  That rule was stated in
+                     * a comment and kept by hand in each branch, so adding a
+                     * branch broke it -- the "nothing openable" case landed
+                     * 2026-09-19 with a bare `return`, and a stage container
+                     * went on showing its run-0 spectrum, tabs and all, from
+                     * a directory the user had left.  The announcement is
+                     * structural now: every path out of this scan passes
+                     * through it, so the next branch cannot forget. */
+                    if (metaEl) metaEl.classList.remove("is-busy");
+                    if (chosen === null) {
+                        if (results.length === 0) {
+                            _populatePlaceholder(selEl,
+                                "(no result files yet — click Refresh)");
+                        } else {
+                            _populate(selEl, cachedGroups, null);
+                            _prependUnchosen(selEl,
+                                "— nothing here is this directory's result; "
+                                + "pick a file —");
+                        }
                         _showIdleMeta(null);
-                        /* AND SAY SO, instead of tidying our own bar and
-                         * leaving.  This used to just return: the menu showed
-                         * "no result files yet" while the PREVIOUS folder's
-                         * run stayed mounted below it -- plots, run badge,
-                         * convergence targets and 3-D structure, all from a
-                         * directory the user had left.  Announcing the empty
-                         * selection is what makes the dispatcher dispose the
-                         * old inspector and restore the empty state
-                         * (results/viewer.js::_showFallback).  results.md
-                         * § 2.2: a scan that changes what is current always
-                         * announces it. */
                         _emitFileSelected("");
                         return;
                     }
-                    cachedGroups = groupResultFiles(
-                        results, inspReg.pickResult);
-                    barEl.hidden = false;
-                    /* ONE CHOICE, then label AND announce it (results.md
-                     * § 2.2).  Keep what we were already showing if this
-                     * directory still offers it; otherwise take the newest.
-                     *
-                     * WHY THIS IS ONE VALUE.  It used to be two.  `_populate`
-                     * labelled the menu from ``cachedGroups`` -- grouped, ties
-                     * broken by CATEGORY LABEL -- while the auto-pick mounted
-                     * ``results[0]`` from the flat list, ties broken by FILE
-                     * NAME.  Both orderings are correct; having two is the
-                     * defect.  They agree until several results share an
-                     * mtime, which is precisely what a job produces when it
-                     * finishes and flushes its outputs in the same second: a
-                     * pySCF run with four files stamped 10:31:08 labelled the
-                     * menu `…molwatch.log` and displayed `…_optimized.xyz`
-                     * (2026-08-04).  The chosen path now feeds both, so they
-                     * cannot disagree. */
-                    /* THE DOOR'S PICK, not the newest file.  `openable` is
-                     * `parse.dirs.openable_in`'s answer: the file THIS
-                     * CALCULATION produced -- a vibration run's spectrum, an
-                     * optimization's trajectory -- and it is the same file
-                     * during the run and after it.  Taking `results[0]` meant
-                     * taking whatever was flushed last, which differed from
-                     * the door on 18 of 96 real run directories. */
-                    const _byDoor = body.openable
-                        ? results.find(r => r.name === body.openable)
-                        : null;
-                    const keepCurrent =
-                        currentFile && results.some(r => r.path === currentFile);
-                    /* NO PICK IS AN ANSWER, and it used to be `results[0]`.
-                     * When the door offers nothing, nothing here is this
-                     * directory's product -- so mounting the first file by
-                     * name shows something that is not the result and looks
-                     * like one.  Measured 2026-09-19: the transmission rung,
-                     * holding `.TBT.nc` and both transmission curves, opened
-                     * `…util.csv` -- the CPU utilisation samples; and a
-                     * hierarchical calculation root opened its own INPUT
-                     * structure's sidecar as raw JSON.  The list still shows
-                     * every readable file; only the guess is gone. */
-                    const chosen = keepCurrent ? currentFile
-                                 : (_byDoor ? _byDoor.path : null);
                     _populate(selEl, cachedGroups, chosen);
-                    if (chosen === null) {
-                        _prependUnchosen(
-                            selEl,
-                            "— nothing here is this directory's result; "
-                            + "pick a file —");
-                        if (metaEl) metaEl.classList.remove("is-busy");
-                        return;
-                    }
                     if (keepCurrent) {
                         // Already mounted; just acknowledge the re-entry.
                         _startParseStatus(chosen);
@@ -819,7 +824,15 @@
             try {
                 document.dispatchEvent(new CustomEvent(
                     C.EVENT_FILE_SELECTED,
-                    { detail: { file: file || "", meta: _metaFor(file) } }));
+                    /* `place` RIDES ALONG so the empty state can say what
+                     * this directory IS rather than guessing.  The server
+                     * already answered it in the same response the menu was
+                     * built from (`/api/results/dir`, project-layout.md
+                     * § 1.4a); dropping it here is why a stage container and
+                     * a folder nobody described got the same sentence --
+                     * "no result files yet", which is true of neither. */
+                    { detail: { file: file || "", meta: _metaFor(file),
+                                place: lastPlace } }));
             } catch (_) {
                 // CustomEvent should always be available in supported
                 // browsers; the try/catch is belt + braces for older

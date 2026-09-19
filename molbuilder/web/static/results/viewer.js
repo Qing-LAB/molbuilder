@@ -76,7 +76,34 @@
         }
     }
 
-    function _showFallback(file) {
+    //: WHAT A DIRECTORY IS -> what the empty state should say about it.
+    //: `project-layout.md` § 1.4a's vocabulary, and the only copy of it in
+    //: the browser: the server answers `place.role` in the same response the
+    //: menu is built from, so the page states that answer instead of the one
+    //: generic sentence it used to show for every case.  `null` is not
+    //: "neither" -- it is *unknown*, and says so.
+    const PLACE_NOTE = {
+        container:
+            "This is a container, not a run \u2014 its results are in the "
+            + "run directories below it.",
+        run:
+            "This is a run directory, but nothing in it is this "
+            + "calculation's result yet.",
+    };
+    const PLACE_NOTE_UNKNOWN =
+        "This directory is not marked as part of a calculation, so only "
+        + "what is in it can be shown \u2014 nothing about what it belongs to.";
+
+    function _renderPlaceNote(place) {
+        const el = els.fallback
+            && els.fallback.querySelector(".results-place-note");
+        if (!el) return;
+        const role = place && place.role;
+        el.textContent = role ? (PLACE_NOTE[role] || "") : PLACE_NOTE_UNKNOWN;
+        el.hidden = !el.textContent;
+    }
+
+    function _showFallback(file, place) {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
@@ -87,6 +114,7 @@
         els.host.innerHTML = "";
         if (els.fallback) {
             els.host.appendChild(els.fallback);
+            _renderPlaceNote(place);
         }
         _renderStatus(file, null);
     }
@@ -114,12 +142,13 @@
     }
 
     function _onSelectionChange(sel) {
-        const file = sel && sel.file ? sel.file : "";
-        const meta = (sel && sel.meta) || null;
+        const file  = sel && sel.file ? sel.file : "";
+        const meta  = (sel && sel.meta) || null;
+        const place = (sel && sel.place) || null;
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();
-            _showFallback(file);
+            _showFallback(file, place);
             return;
         }
         // Dispatch on THE SERVER'S ANSWER when the picker sent one
@@ -129,7 +158,7 @@
         const inspector = reg.pick(file, meta);
         if (!inspector) {
             _hideLoading();
-            _showFallback(file);
+            _showFallback(file, place);
             return;
         }
         // Lock the view down BEFORE disposing the old inspector, so there is no
@@ -244,8 +273,9 @@
         document.addEventListener(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
             (evt) => _onSelectionChange({
-                file: (evt && evt.detail && evt.detail.file) || "",
-                meta: (evt && evt.detail && evt.detail.meta) || null,
+                file:  (evt && evt.detail && evt.detail.file) || "",
+                meta:  (evt && evt.detail && evt.detail.meta) || null,
+                place: (evt && evt.detail && evt.detail.place) || null,
             })
         );
 

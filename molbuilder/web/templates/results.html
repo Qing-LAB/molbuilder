@@ -105,6 +105,13 @@
        cheatsheet stays accurate. #}
     <div id="results-fallback" class="results-fallback">
       <h2 class="inspector-card-title">Pick a file to inspect</h2>
+      {# WHAT THIS DIRECTORY IS, from the server's own answer
+         (`/api/results/dir` -> `place`, project-layout.md § 1.4a).  Filled
+         by results/viewer.js::_renderPlaceNote; hidden when there is
+         nothing to say.  Without it a stage container, a run with no
+         product yet, and a folder nobody described all read as the one
+         generic sentence below. #}
+      <p class="inspector-card-note results-place-note" hidden></p>
       <p class="inspector-card-note">
         Navigate the <strong>Projects</strong> sidebar on the left to
         a directory that contains result files.  The
