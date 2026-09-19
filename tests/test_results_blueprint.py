@@ -806,6 +806,56 @@ class TestTheContractEndpoint:
         # ...and it is still READ: the listing is the part absence keeps.
         assert [f["name"] for f in body["files"]] == ["README.md"]
 
+    def test_a_container_has_no_run_state_but_may_have_a_product(
+            self, isolated):
+        """Two questions, and a container answers them differently.
+
+        *Run state?* — no: a container is not a run, and inventing one is
+        what made a `pseudos/` folder report *running* (6ddc551a).
+        *Product?* — maybe: a container may also be a CALCULATION, and a
+        calculation's own result belongs to no single rung.
+
+        Those were conflated, so the container branch skipped the door as
+        well — and a finished five-rung transport ladder offered its five
+        `.out` files and never its I–V curve, which `summarize` writes at
+        the calculation root and which is the FIRST entry in
+        `result_roles("transport")`.  The door had the answer all along and
+        was not asked.
+        """
+        import json as _json
+        from molbuilder.task import FILENAME as TASK_FILENAME
+        root, client = isolated
+        calc = root / "ladder"
+        (calc / "05_transmission" / "run-0").mkdir(parents=True)
+        (calc / TASK_FILENAME).write_text(_json.dumps({
+            "schema": "molbuilder/task@1",
+            "engine": {"name": "siesta"}, "shape": "hierarchical",
+            "calculation": "transport",
+            "run": {"name": "T", "id": "T_1"},
+            "structure": {"source": "x.xyz", "formula": "Au", "atoms": 1},
+            "varies": [], "stages": [{"name": "transmission",
+                                      "enabled": True, "overrides": {}}],
+        }))
+        # What `jobset summarize run` leaves at the root.  The SCHEMA is
+        # imported from the module that owns it, not spelled -- the first
+        # cut of this guessed `molbuilder/transport@1`, the registry
+        # refused the file, and the door correctly declined to offer it.
+        # The test was wrong and the code was right; a spelled constant is
+        # how that happens quietly.
+        from molbuilder.transport.record import TRANSPORT_RESULT_SCHEMA
+        (calc / "T.transport.json").write_text(_json.dumps({
+            "schema": TRANSPORT_RESULT_SCHEMA, "label": "T",
+            "points": [], "iv": [], "stages": {}, "treatment": None,
+            "energies_relative_to_ef": True, "provenance": {}}))
+
+        body = client.get("/api/results/dir?path=" + str(calc)).get_json()
+        assert body["place"]["role"] == "container", (
+            "a hierarchical root is a container (§ 1.4)")
+        assert body["status"] is None, "a container is not a run"
+        assert body["openable"] == "T.transport.json", (
+            "the calculation's own product must be what opens here; got "
+            + repr(body["openable"]))
+
     def test_a_run_with_no_output_yet_still_reports_running(self, isolated):
         """The other side, so the fix above cannot be a blanket silence.
 

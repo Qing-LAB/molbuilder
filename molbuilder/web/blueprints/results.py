@@ -213,13 +213,36 @@ def api_results_dir():
     place = calcdirs.container_or_run(directory)
     root = calcdirs.root_of(directory)
 
+    # TWO QUESTIONS, AND A CONTAINER ANSWERS THEM DIFFERENTLY.  *Does it
+    # have a run state?* -- no: a container is not a run, and inventing one
+    # is what made a `pseudos/` folder report *running*.  *Does it have a
+    # PRODUCT?* -- maybe: a container may also be a CALCULATION, and a
+    # calculation's own result is not any one rung's.
+    #
+    # Those were conflated until 2026-09-19: the container branch skipped
+    # `openable_in` too, so a finished five-rung transport ladder offered
+    # its five `.out` files and never its I-V curve -- which
+    # `jobset summarize run` had written at the calculation root as
+    # `<label>.transport.json`, the FIRST entry in `result_roles("transport")`.
+    # The door had the right answer the whole time and was not asked.
+    #
+    # This is not in tension with § 1.0's *"a product has ONE home, and it
+    # is the run"*: that box scopes itself to what the ENGINE produces, and
+    # a `summarize`-written aggregate spans rungs (and, once a bias sweep
+    # exists, several of them), so it belongs to the calculation.
+    #
+    # Measured over the regenerated tree before making the change: asking
+    # the door at all twelve containers returns nothing at eleven of them --
+    # stage containers, `pseudos/`, roots with no aggregate -- and the
+    # transport record at the twelfth.  It surfaces exactly what was hidden.
+    opened, attempts = openable_in(str(directory))
     if place == calcdirs.CONTAINER:
-        opened, attempts = None, [
-            "this directory is a container, not a run -- its runs are the "
-            "directories below it (project-layout.md § 1.4)"]
         st = None
+        attempts.append(
+            "this directory is a container, not a run -- it has no run "
+            "state; its runs are the directories below it "
+            "(project-layout.md § 1.4)")
     else:
-        opened, attempts = openable_in(str(directory))
         # AND A DIRECTORY THAT SAYS NOTHING IS NOT ASKED TO INVENT ONE.
         # `run_status`'s four states are running/stale/finished/failed --
         # there is no *there is no run here*, so an absence comes back
