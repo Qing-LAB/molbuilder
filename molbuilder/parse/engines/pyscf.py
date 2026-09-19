@@ -39,6 +39,7 @@ from __future__ import annotations
 import math
 import os
 
+from ..errors import ParseError
 from ...runfiles import (compose as _rf_compose, find as _rf_find,
                          parse as _rf_parse,
                          stem as _rf_stem)
@@ -118,6 +119,29 @@ def _can_parse_xyz(path: str) -> bool:
                 parts = fh.readline().split()
                 if len(parts) < 4:
                     return False
+                # COLUMN 0 IS AN ELEMENT, and checking it is what this
+                # function's own docstring already promises -- "N atom lines
+                # of `element x y z` form".  It checked the `x y z` and never
+                # the element, and SIESTA's `.FA` is `N` then `index fx fy
+                # fz`: same count, same three floats, integer where the
+                # symbol goes.  So this claimed it, and `parse()` then died
+                # in `_resolve_job_token` with a `RunFileError` -- not a
+                # `ParseError`, so it escaped the route's handler as an HTTP
+                # 500.  Measured 2026-09-18: 67 real files (26 `.FA`, 21
+                # `.FAC`, 10 `.KP`, 10 extensionless).
+                #
+                # "NOT A NUMBER" rather than a periodic-table lookup, and
+                # that is deliberate: a dummy atom (`X`), a ghost (`Bq`) or
+                # an isotope label is a legal XYZ column 0 and belongs to
+                # whoever writes it, while an integer index never is.
+                # Measured over all 114 real `.xyz` in the tree: 114 carry a
+                # symbol, 0 carry a number.
+                try:
+                    float(parts[0])
+                except ValueError:
+                    pass          # a symbol -- which is what an XYZ has
+                else:
+                    return False  # a number -- this is somebody's data file
                 try:
                     float(parts[1])
                     float(parts[2])
@@ -739,5 +763,29 @@ class PySCFOutFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:
-        traj = _parse_pyscf_xyz(str(path))
+        # A PARSER RAISES `ParseError`, and this is the one place that can
+        # promise it for every name-composing site inside.
+        #
+        # The body looks for companions -- the geomeTRIC log, the molwatch
+        # log, the pyscf stdout -- by COMPOSING their names from this file's
+        # stem, and `runfiles` refuses a stem that is not a legal label
+        # (§ 2.1: a dotted label cannot be read back out of a filename).  So
+        # `my.job_geom_optim.xyz`, a perfectly good XYZ this parser CLAIMS,
+        # raised `RunFileError` -- a `ValueError`, not a `ParseError` -- which
+        # escaped `/api/watch/load`'s handler as an HTTP 500 (reproduced
+        # 2026-09-18).
+        #
+        # Wrapped HERE rather than at each compose site, because fixing them
+        # one at a time is what this codebase calls a second implementation:
+        # the first patch moved the raise from `_resolve_job_token` to
+        # `_read_scf_history`, and there are more.  The boundary is the one
+        # place the promise can be kept.
+        from molbuilder.runfiles import RunFileError
+        try:
+            traj = _parse_pyscf_xyz(str(path))
+        except RunFileError as exc:
+            raise ParseError(
+                f"{Path(path).name}: this is a readable XYZ, but its name is "
+                f"not one molbuilder composes, so the companions it would be "
+                f"read with cannot be named -- {exc}") from exc
         return wrap_trajectory(traj, cls.name, path)

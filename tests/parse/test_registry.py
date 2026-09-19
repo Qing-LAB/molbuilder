@@ -128,3 +128,80 @@ def test_parse_dir_on_non_directory_raises():
 
 
 # Frozen invariant ---------------------------------------------------- #
+
+
+# ---- a parser must not claim what it cannot read ---------------------- #
+
+
+def test_the_xyz_sniffer_does_not_claim_siestas_forces_file(tmp_path):
+    """SIESTA's `.FA` has the SHAPE of an XYZ and is not one.
+
+    An XYZ is `N` / comment / `ELEMENT x y z`.  SIESTA's forces file is
+    `N` / `index fx fy fz` -- so the count matches, the three floats match,
+    and the only thing that differs is the FIRST COLUMN: an element symbol
+    against an integer index.  The sniffer's own docstring says it verifies
+    *"N atom lines of `element x y z` form"*; it checked the `x y z` and
+    never the element, so it claimed the file.
+
+    Measured 2026-09-18 across `projects/`: **67 real files** were claimed
+    this way -- 26 `.FA`, 21 `.FAC`, 10 `.KP`, 10 extensionless -- and
+    opening one answered **HTTP 500**, because the error `parse()` then
+    raised is a `RunFileError`, which is not a `ParseError` and so escaped
+    the route's handler.
+
+    Safe by measurement, not by hope: all 114 real `.xyz` files in the tree
+    carry an element symbol in that column and none carries a number.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the first-column test.
+    """
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import UnknownFormatError
+
+    # SIX rows, not three: the sniffer eats row 1 as the "comment" and then
+    # samples three more, so a 3-atom stand-in runs out of lines and is
+    # refused for the WRONG reason.  The real file has 444.
+    fa = tmp_path / "siesta.FA"
+    fa.write_text("   6\n" + "".join(
+        f"     {i}  -0.181996701E+00  -0.160907730E+00   0.365946288E+00\n"
+        for i in range(1, 7)), encoding="utf-8")
+    with pytest.raises(UnknownFormatError):
+        detect(str(fa))
+
+    # ...and a real trajectory in the same shape is still claimed.
+    xyz = tmp_path / "job_geom_optim.xyz"
+    xyz.write_text("3\nIteration 0 Energy -188.30066236\n"
+                   "O       -1.4049990000   -0.0013780000    0.0000000000\n"
+                   "C        0.0000000000    0.0000000000    0.0000000000\n"
+                   "O        1.4049990000    0.0013780000    0.0000000000\n",
+                   encoding="utf-8")
+    assert detect(str(xyz)).name == "pyscf"
+
+
+def test_a_parser_raises_ParseError_even_when_the_name_is_not_ours(tmp_path):
+    """A PARSER RAISES `ParseError`.  Anything else escapes the web layer.
+
+    `PySCFOutFileParser` reads companions -- the geomeTRIC log, the molwatch
+    log, the stdout -- by COMPOSING their names from this file's stem, and
+    `runfiles` refuses a stem that is not a legal label (§ 2.1: a dotted
+    label cannot be read back out of a filename).  So `my.job_geom_optim.xyz`
+    -- a perfectly good XYZ the parser CLAIMS -- raised `RunFileError`, which
+    is a `ValueError`, not a `ParseError`, and `/api/watch/load`'s handler
+    let it through as an HTTP 500.
+
+    The promise is kept at the BOUNDARY, not at each compose site: patching
+    the first site moved the raise from `_resolve_job_token` to
+    `_read_scf_history`, and there are more.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the wrap in
+    `PySCFOutFileParser.parse`.
+    """
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import ParseError
+
+    p = tmp_path / "my.job_geom_optim.xyz"
+    p.write_text("3\nIteration 0 Energy -1.0\n"
+                 "O 0.0 0.0 0.0\nC 1.0 0.0 0.0\nO 2.0 0.0 0.0\n",
+                 encoding="utf-8")
+    assert detect(str(p)).name == "pyscf", "still claimed -- it IS an XYZ"
+    with pytest.raises(ParseError):
+        detect(str(p)).parse(p)
