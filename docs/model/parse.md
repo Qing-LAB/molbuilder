@@ -575,7 +575,13 @@ the deleted version broke.
 > chain through the module-level `rundir.openable_in`, which returns a tuple —
 > so not even `openable`/`attempts` are read *as fields of this type*. No
 > `RunDirResult` is constructed outside the tests, and `parse_dir` has no
-> production caller at all. *(An earlier version of this note said "four of
+> production caller at all. **Partly overtaken 2026-09-18**: `/api/results/dir`
+> is the Results tab's door and serves `engine`, `status`, `openable` and a
+> per-file `role`/`parser` — the four questions, to the consumer this type
+> was built for. It composes the readers directly rather than calling
+> `parse_dir`, so the TYPE still has no production constructor and the row
+> below stands; what changed is that the answers now reach a screen
+> (`plans/plan.md` N9). *(An earlier version of this note said "four of
 > six … `openable` + `attempts` are live". Both halves were wrong, and the
 > table below has five rows for seven fields — `run_dir` and `status` have no
 > row.)*
@@ -630,28 +636,44 @@ reported state, and only the stage ordinal can say so — the run index cannot.
 > directory and there is only one stage to order — but it is a third place
 > the question is answered. Recorded in `plan.md` § 5c.
 
-### 5.2 `openable` — the discovery chain, unchanged in behaviour
+### 5.2 `openable` — the CALCULATION decides, and the registry vets
 
-Four rungs, first hit wins (`job-contracts.md` § 2.4). It lives in
-`parse/dirs/rundir.py::openable_in`, absorbed **verbatim** from
-`_resolve_run_directory` in `web/blueprints/watch.py` on 2026-09-18 — the web
-layer, which nothing below it may import, which is why it had to move rather
-than be called. That copy was deleted the same day, once `web/watch` was
-calling this one, so the name below is the only one left to follow:
+*(Rewritten 2026-09-18. This section described a four-rung ladder and was
+titled "unchanged in behaviour", which was true of the move out of the web
+layer and stopped being true the day the ladder was replaced. § 5.5 carries
+the rule; this is where it is applied.)*
 
-1. any `*.molwatch.log` — newest wins, which is the staged run's latest;
-2. `*.fdf` → read `SystemLabel` → `<label>.molwatch.log`, then `<label>.out`;
-3. `*.py` → read `JOB` → `<job>.molwatch.log`, `<job>.log`,
-   `<job>_geom_optim.xyz` — **and the deck filename's stem tried the same
-   way**, because a staged deck is `<job>_<token>.py` while `JOB` stays
-   bare (found 2026-08-19: every staged spelling was the unstaged one, so a
-   staged run without a molwatch seed resolved to nothing) — and that stem
-   pass is what finds a staged trajectory;
-4. generic: `run.out`, `siesta.log`, `*.out`, `*_geom_optim.xyz`.
+`parse/dirs/rundir.py::openable_in` asks three questions of three owners:
 
-`attempts` carries the "tried X → N matches" trail. It is not decoration: it
-is the body of the refusal a person reads when nothing matched, and it moves
-with the chain so the message cannot drift from the search.
+| question | owner | reader |
+|---|---|---|
+| what calculation is this? | the **directory** | `task.json` |
+| what does it produce? | the **catalogue** | `runfiles.result_roles` |
+| can anything open it? | the **registry** | `detect()` |
+
+**There is no preference order to tune.** A vibration run is *for* its
+`.spectra.json`; an optimization for its trajectory; a transport calculation
+for its `.transport.json`. The same file is the live view during the run and
+the result after it, so nothing switches at conclusion — the old rung 1,
+*"any `.molwatch.log`, newest wins"*, was an optimization-shaped rule applied
+to every kind, and it sent every spectrum run's viewer to a progress log
+holding one `initial_preview` block.
+
+**A file `detect()` refuses is never offered.** That is § 5.5's two questions
+applied to one answer, and it is load-bearing: the chain used to return
+`<job>_<stage>.log` — PySCF's verbose logger, which no parser claims — and
+the caller's next step was `detect()`, which refused it.
+
+**What remains a search** is a directory that does not say what it is: the
+deck is read for a label and the label's files are looked up through
+`runfiles.find`, which knows the attempt counter. Role first, then newest —
+and the order between those two is the rule, because a role says what a file
+IS while mtime only says which one. Every candidate goes through the registry
+either way.
+
+`attempts` carries the trail. It is not decoration: it is the body of the
+refusal a person reads when nothing matched, and it moves with the search so
+the message cannot drift from it.
 
 ### 5.3 What this door does NOT own
 
@@ -688,12 +710,27 @@ file is the status" does. "Where is my `.out`'s `.fdf`" does not.
 
 ### 5.4 Every DirParser must
 
-**walk** the directory, **dispatch each file through the registry**
-(`detect`+`parse`, or a named FileParser when the choice is not path-driven),
-**compose** the per-file results, and **apply cross-file invariants** no single
-FileParser can see — atom-count consistency, lattice handedness, stage
-ordering, the status state machine. It must **never re-parse** what a
-registered FileParser can produce: add the missing FileParser instead.
+**walk** the directory, **compose readers that own their formats**, and
+**apply cross-file invariants** no single reader can see — atom-count
+consistency, lattice handedness, stage ordering, the status state machine. It
+must **never implement a format inline**: add the missing reader instead.
+
+**Which reader depends on the QUESTION, and there are two families.**
+
+| question | owner | why not the other |
+|---|---|---|
+| *what typed result does this file hold?* | the **registry** — `detect`+`parse` | it is the only thing that may decide WHICH parser, so a registration change propagates |
+| *how did this run end?* | `parse/engines/_run_ending.py::ending_of` — one reader per ROLE | it is a substring scan, and the registry's answer costs a whole `Trajectory` to reach one string |
+
+*(This said "dispatch each file through the registry" for every file until
+2026-09-18, and the code stopped obeying it that day for a measured reason:
+`run_status` read each result through `detect(path).parse(path)`, building
+every Frame as numpy arrays and discarding them to keep one field — 8.5×
+slower over 119 real directories, and it opened a `ParseLogger` per file, so
+merely LOOKING at a folder wrote a `.parse.log` into it. The rule is
+corrected rather than the code, because the rule was the one that was wrong:
+"go through the registry" is the answer to WHICH PARSER, not to every
+question a directory asks about a file.)*
 
 *(A second parser, `BundleDirParser` → `BundleResult` — the run-dir →
 next-calculation handoff fuse — stood beside it until 2026-08-29 and retired
@@ -1140,8 +1177,11 @@ Per parser kind, the specifics:
 
 These stop the next round of parallel parse paths:
 
-1. **DirParsers compose registered parsers — no inline file-level parsing.**
-   Need a new file read? Add a FileParser first. (A convention today, not yet
+1. **DirParsers compose readers that own their formats — no inline file-level
+   parsing.** Need a new file read? Add the reader first. WHICH reader is the
+   question's: the registry for *what typed result does this file hold*,
+   `_run_ending.ending_of` for *how did this run end* (§ 5.4 carries the
+   split and the measurement behind it). (A convention today, not yet
    lint-enforced.)
 2. **The block readers do NO I/O.** They take a string; a path-taking caller
    reads the file and passes the body. *(This said "TextParsers" until

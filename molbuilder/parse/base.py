@@ -8,8 +8,15 @@ count here still said three until 2026-09-18.)*
 Forbidden by the doc:
 * (TextParsers did NO I/O; the ABC retired 2026-09-05 -- see below.)
 * FileParsers do NO subprocess / network / threads.
-* DirParsers MUST compose registered FileParsers; no inline file-level
-  parsing.  *(Said "FileParsers + TextParsers" until 2026-09-18.)*
+* DirParsers MUST compose readers that own their formats; no inline
+  file-level parsing.  WHICH reader is the question's: the REGISTRY answers
+  *what typed result does this file hold* (`detect`+`parse`), and
+  `engines/_run_ending.ending_of` answers *how did this run end* -- a
+  substring scan, where the registry's answer costs a whole `Trajectory` to
+  reach one string (`model/parse.md` § 5.4).  *(Said "compose registered
+  FileParsers" until 2026-09-18, which the code stopped obeying that day for
+  a measured reason; § 5.4 carries it.  Said "FileParsers + TextParsers"
+  earlier the same day.)*
 """
 
 from __future__ import annotations
@@ -97,9 +104,13 @@ class DirParser(ABC):
     per-file parsers PLUS directory-level invariants
     (cross-file consistency, status state machine, stage ordering).
 
-    Concrete subclasses MUST go through the parse registry for every
-    file they read.  They MUST NOT inline file-level parsing logic that
-    duplicates a registered parser.
+    Concrete subclasses MUST compose a reader that owns the format; they
+    MUST NOT inline file-level parsing logic that duplicates one.  The
+    REGISTRY is that reader for *what typed result does this file hold*
+    (and is the only thing that may decide WHICH parser, so a registration
+    change propagates); `engines/_run_ending.ending_of` is that reader for
+    *how did this run end*, one per ROLE.  `model/parse.md` § 5.4 carries
+    the split and why it exists.
 
     *(This licensed "(or directly invoke a known FileParser class)" until
     2026-09-18 -- which is exactly what ``registry.py``'s own header

@@ -244,6 +244,16 @@ test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system
 All four are callers of `runfiles.find_by_role`. If the door is right they all
 pass; if it is wrong they all fail together — **four tests carrying one bit**.
 
+> **The first one stopped being an example on 2026-09-18, and the reason is
+> this section's own rule.** `openable_in` still calls `find_by_role`, so the
+> claim above is still literally true of it — but it is no longer THIN: it
+> asks `task.json` what calculation this is, `runfiles.result_roles` what
+> that produces, and `detect()` whether anything can open the answer
+> (`model/parse.md` § 5.2). Three rules the door cannot know, so by the rule
+> below it now earns its own tests, and it has them. Left in place rather
+> than swapped, because a caller *becoming* a decider is the transition worth
+> showing.
+
 > **Test the DOOR's outcome. Test a caller only where the caller DECIDES
 > something the door cannot know.**
 
