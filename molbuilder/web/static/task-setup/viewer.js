@@ -956,20 +956,10 @@ async function setEditorText(text, opts) {
 
 /* ---------- loading a folder ---------- */
 
-async function readOptional(projects, path) {
-    try {
-        // `missingOk` is camelCase HERE and `missing_ok` on the wire —
-        // `lib/projects/api.js` maps it.  Passing the wire spelling is
-        // silently ignored, and the 404 it then takes logs a failed-resource
-        // console error for the perfectly normal "no description yet" case.
-        const r = await projects.readFile(path, { missingOk: true });
-        if (r && r.ok === false) return null;
-        if (r && r.exists === false) return null;
-        return (r && typeof r.text === "string") ? r.text : null;
-    } catch (_) {
-        return null;                       // absent is an answer, not a fault
-    }
-}
+/* `readOptional` stood here -- a per-file read of `task.json` and then
+ * `task.1st.json`.  Both arrive in the folder's ONE answer now
+ * (`task-setup.md` § 2.1), so there is nothing left to read one file at a
+ * time, and a helper kept "in case" is a second way to ask. */
 
 /* EVERY PER-FOLDER FACT, IN ONE PLACE.
  *
@@ -1025,9 +1015,6 @@ async function loadFolder(projects, dir) {
     _handover = null;
     _resetPerFolderState();
     showPath(dir);
-    // Before anything renders: what this folder's template answers is the
-    // baseline every empty cell names.
-    await loadTemplateValues(dir);
     if (!dir) {
         _mode = "empty"; refreshSave();
         setState("empty", "Nothing selected",
@@ -1035,29 +1022,32 @@ async function loadFolder(projects, dir) {
         return;
     }
 
-    const taskText = await readOptional(projects, dir + "/" + TASK_JSON);
+    /* ONE ANSWER FOR THE FOLDER (`task-setup.md` § 2.1).  This read
+     * `task.json`, then `task.1st.json`, then listed the directory, then
+     * fetched the template values -- four round trips, four chances to land
+     * out of order, and four things to remember to clear.  The door answers
+     * all of it at once and NAMES THE FOLDER it answered for. */
+    const said = await loadFolderAnswer(dir);
+    /* AND IF WE HAVE MOVED ON, THIS ANSWER IS NOT OURS.  The half a reset
+     * cannot cover: there was no `AbortController` anywhere among this
+     * page's twelve calls, so a reply for the folder you just left arrived
+     * and painted.  `dir` on the answer is what makes that checkable --
+     * `calcdir.json`'s rule (project-layout.md § 1.4a) on the wire. */
+    if (!said || said.dir !== _dir) return;
+
+    const taskText = said.description === null
+        ? "" : JSON.stringify(said.description, null, 2);
     /* THE BASELINE IS SET THE MOMENT IT IS KNOWN, not when the editor is
      * finally filled at the end of this function.  Loading paints cards, and
      * a card that paints can push the model into the buffer (`setShape` ->
      * `syncFromModel`) -- against the PREVIOUS folder's baseline, which reads
      * as "unsaved" and forced the fold open on every folder opened. */
-    _diskText = taskText || "";
-    const overText = taskText
-        ? null
-        : await readOptional(projects, dir + "/" + TASK_HANDOVER);
+    _diskText = taskText;
+    const overText = said.handover === null
+        ? null : JSON.stringify(said.handover, null, 2);
 
-    // What is already on disk, so the file list tells the truth rather than a
-    // guess.  A listing failure is not fatal — the read above is what matters.
-    let templateName = null;
-    let names = new Set();
-    try {
-        const listing = await projects.listDir(dir);
-        const entries = (listing && listing.entries) || [];
-        names = new Set(entries.map((e) => e && e.name));
-        const tmpl = entries.find((e) => e && typeof e.name === "string"
-                                      && e.name.endsWith(".template.toml"));
-        if (tmpl) templateName = tmpl.name;
-    } catch (_) { /* listing is a nicety here */ }
+    const templateName = (said.template && said.template.name) || null;
+    const names = new Set(said.files || []);
 
     markFile("ts-f-task", !!taskText, "already here — saving would update it");
     /* THE TEMPLATE IS NOT SAVE'S.  `/api/task-setup/save` calls `write_task`
@@ -1368,12 +1358,15 @@ let _sweepKey = null;
 /** ONE guarded read of a server-side vocabulary (2026-08-23).
  *
  * Four functions here memoise a fetch of something the server names --
- * columns, sweepable settings, tier presets, template values.  Three of the
- * four wrote the fetch out by hand and NONE of those three caught anything,
- * so a request that failed rejected out through `loadFolder` and stranded
- * whatever card sat behind it.  The fourth, `loadTemplateValues`, had the
- * try/catch -- the right answer was already in this file and the copies did
- * not get it, which is what copied code does.
+ * columns, sweepable settings and tier presets -- and, until 2026-09-19,
+ * template values, which have since moved into the folder's one answer
+ * because they are a fact about the FOLDER and not a vocabulary of the
+ * engine's.  Three of the four wrote the fetch out by hand and NONE of
+ * those three caught anything, so a request that failed rejected out
+ * through `loadFolder` and stranded whatever card sat behind it.  The
+ * fourth, the template one, had the try/catch -- the right answer was
+ * already in this file and the copies did not get it, which is what copied
+ * code does.
  *
  * That is how the bench card "disappeared" on 2026-08-23: the server was
  * restarting under a loaded page, the label lookup failed, and every card
@@ -1581,15 +1574,28 @@ async function refreshPickers() {
  * answer when the template is silent. */
 let _tmpl = { name: null, values: Object.create(null) };
 
-async function loadTemplateValues(dir) {
+/** The folder's ONE answer — `/api/task-setup/folder` (`task-setup.md`
+ * § 2.1).  Returns the payload, or null; the caller checks `answer.dir`
+ * against the folder it is still on before rendering any of it.
+ *
+ * `_tmpl` is filled here rather than by its own fetch: the template's
+ * values are a fact about the folder, so they arrive with the rest of
+ * them and cannot land separately after a move. */
+async function loadFolderAnswer(dir) {
     _tmpl = { name: null, values: Object.create(null) };
-    if (!dir) return;
+    if (!dir) return null;
     try {
-        const r = await fetch("/api/task-setup/template-values?dir="
+        const r = await fetch("/api/task-setup/folder?dir="
                               + encodeURIComponent(dir));
         const j = await r.json();
-        if (j && j.ok) _tmpl = { name: j.name, values: j.values || {} };
-    } catch (_) { /* the cells fall back to the catalogue, as before */ }
+        if (!j || j.ok !== true) return null;
+        const t = j.template || {};
+        if (t.ok) _tmpl = { name: t.name, values: t.values || {} };
+        return j;
+    } catch (_) {
+        // The cells fall back to the catalogue, as before.
+        return null;
+    }
 }
 
 /** Rendered the way it will be written, unit and all. */

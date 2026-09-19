@@ -2471,6 +2471,12 @@ def api_task_setup_folder():
                  else "handover" if handover is not None else "empty"),
         "description": described,
         "handover": handover,
+        # WHICH FILES ARE HERE -- names only.  The "what gets written" card
+        # asks *is the file this description names actually present*, which
+        # is a fact about the folder and belongs in the folder's answer; the
+        # page listed the directory itself for it, which is one more call
+        # that can land after you have moved on.
+        "files": sorted(e.name for e in folder.iterdir() if e.is_file()),
         "template": _folder_template(folder),
         "provenance": _folder_provenance(folder),
         # Only a described folder has stages, so only then is there anything
