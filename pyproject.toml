@@ -6,6 +6,38 @@
 requires = ["setuptools>=62.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# WHAT THIS FILE IS FOR, and what it is not *(stated 2026-09-18)*.
+#
+# molbuilder is NOT published, and is deliberately never pip-installed to be
+# run: there is no release workflow and no `[project.urls]`, and
+# `process/conventions.md` makes `pythonpath=["."]` an ENFORCED convention
+# with a guard test -- "no `pip install -e`" -- because a molbuilder wheel in
+# site-packages shadows the working tree from any cwd but the repo root.
+# `scripts/install-env.sh` builds conda envs and runs `python -m molbuilder`
+# against the tree; that is the supported shape.
+#
+# So this file is BUILD METADATA and a DEPENDENCY LEDGER, not a distribution
+# route:
+#   * `requires-python` is read for real -- the shim shape-checks `--python`
+#     against it before the solver runs;
+#   * `[tool.setuptools.package-data]` decides what a built wheel carries,
+#     and has been wrong twice in ways that only showed up in an installed
+#     copy, so it is kept correct;
+#   * the dependency lists say what each capability needs.
+#
+# THE LISTS HERE ARE A SECOND HOME.  `molbuilder/envs/recipes.py` is the
+# first, it is the one every install actually uses, and nothing compares
+# them -- unlike the shim's host array, which has a drift-guard test.  They
+# answer different questions (a recipe says what an env CONTAINS; an extra
+# says what a consumer may choose), so they are not expected to match
+# package-for-package -- but a capability the code needs must appear in
+# both, and `plotly` was missing from this one for months.
+#
+# Making PyPI real would mean: URLs, a release workflow, deciding whether
+# `tests/` ships (it does not -- `include = ["molbuilder*"]`), and putting
+# these lists under a guard. None of that is done, and none of it is implied
+# by the metadata below.
+
 [project]
 name = "molbuilder"
 version = "1.1.0"
@@ -25,6 +57,20 @@ classifiers = [
 dependencies = [
     "numpy>=1.24",
     "ase>=3.22",                 # XYZ I/O + atomic-number table for siesta module
+    "plotly>=5",                 # NOT imported as a library -- the web app serves
+                                 # its JS BUNDLE.  `app.py`'s /vendor/plotly.min.js
+                                 # reads `plotly/package_data/plotly.min.js` through
+                                 # importlib.resources so the browser needs no CDN,
+                                 # and every chart in the UI is drawn with it
+                                 # (spectra, trajectory, transport, bench-summary,
+                                 # projects-sidebar, system-load).  Missing here
+                                 # until 2026-09-18, while `_HOST.conda_packages`
+                                 # has always had it: an install from this metadata
+                                 # 404s that route and degrades every chart to
+                                 # "unavailable".  Core, not an extra, for the same
+                                 # reason flask is -- it is what the web UI needs to
+                                 # work at all.  >=5 is the floor the bundle path
+                                 # requires.
     "PeptideBuilder>=1.1",       # peptide backbone geometry
     "biopython>=1.81",           # required by PeptideBuilder
     "flask>=3.0",                # bundled web UI (build + watch); core post-merge
@@ -43,18 +89,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# NVIDIA GPU stats for the system-load monitor.  Optional because
-# CPU-only hosts MUST still run molbuilder without NVML.  Use the
-# official ``nvidia-ml-py`` package directly (NOT ``pynvml``, which
-# is a deprecated community wrapper that prints a FutureWarning at
-# import).  Both expose the same ``pynvml`` import namespace, so
-# the application code is unchanged.  ~80 KB pure Python; far
-# cheaper to call than ``nvidia-smi`` subprocess (~1 ms vs
-# ~50-100 ms).  Graceful import-guarded in
-# web.blueprints.system_load so a missing or broken NVML degrades to
-# ``gpus: []`` in the API response and the JS widget hides its GPU
-# bars accordingly.
-gpu = ["nvidia-ml-py>=12.0"]
+# NO `gpu` EXTRA.  It declared `nvidia-ml-py` for the system-load
+# monitor, and that monitor stopped importing NVML in-process on
+# 2026-08-28: a request thread entered the driver during someone's GPU
+# work and never came back, freezing the server for eight hours, so GPU
+# stats now come from `nvidia-smi` as a SUBPROCESS with a hard timeout
+# (`web/blueprints/system_load.py`).  Nothing under `molbuilder/` has
+# imported `pynvml` since.  Removed 2026-09-18: an extra that installs a
+# package no code imports, justified by a mechanism that no longer
+# exists, is a promise to whoever reads it next.
 
 # Hydrogen addition on peptides + SMILES building
 rdkit = ["rdkit>=2023.9"]
@@ -97,24 +140,26 @@ test = [
 # Browser-driven end-to-end tests for the Modify (and future)
 # tabs.  Skipped automatically when these aren't installed; install
 # with:
+# THE CONDA ROUTE DOES NOT USE THIS EXTRA -- see below.
+#
 #     pip install ".[e2e]"
 #     pip uninstall -y molbuilder      # keeps the extras, drops the wheel
 #     python -m playwright install chromium
 #
-# The uninstall matters: installing the extras installs the PROJECT, and a
-# molbuilder wheel in site-packages shadows the working tree from any cwd but
-# the repo root.
+# The three lines above were how the conda host env got its test tooling until
+# 2026-09-18, and the uninstall was mandatory: asking pip for the extras makes
+# it install the PROJECT to reach them, and a molbuilder wheel in site-packages
+# shadows the working tree from any cwd but the repo root.
 #
-# NODE IS THE OTHER HALF, and it is not a pip package -- install it with
-# conda into the same host env:
-#     conda install -n molbuilder -c conda-forge nodejs
-# It runs the shipped ES modules directly (no browser).  Without it 717
-# tests skip, and pytest counts a skip toward a green run, so the suite
-# reports healthy while that JS is unexercised.  `scripts/install-env.sh
-# --help` § 9 carries both commands.
-# WSL / minimal Linux installs may also need:
-#     sudo python -m playwright install-deps chromium
-# (one-time, ~30 MB of system libs for the headless Chromium).
+# THAT IS NO LONGER THE ROUTE.  `recipes.py` declares playwright,
+# pytest-playwright and nodejs on the host recipe as `opt_in`, so
+#
+#     bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
+#
+# installs all of it plus a chromium confined to the env -- and never installs
+# the project, so there is no wheel to uninstall.  This extra is kept for a
+# pip-only consumer of the published package; note that the wheel ships
+# `molbuilder*` only, so it carries no tests to run with it.
 e2e = [
     "playwright>=1.40",
     "pytest-playwright>=0.4",

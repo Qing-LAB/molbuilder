@@ -156,8 +156,18 @@ def _gpu_snapshot() -> Tuple[List[Dict[str, Any]], Optional[str]]:
         if cp.returncode == 0:
             gpus = _parse_smi(cp.stdout)
         else:
+            # READ BOTH STREAMS.  nvidia-smi puts its failure on STDOUT,
+            # not stderr -- measured 2026-09-18: a driver/library version
+            # mismatch exits 18 with an EMPTY stderr and "Failed to
+            # initialize NVML: Driver/library version mismatch" on stdout.
+            # Reading only stderr rendered that as "nvidia-smi exited 18: no
+            # message", which is precisely the silent degradation this
+            # module's own rule forbids: the reason existed, travelled, and
+            # was dropped one line short of the widget.
+            said = ((cp.stderr or "").strip()
+                    or (cp.stdout or "").strip())
             err = (f"nvidia-smi exited {cp.returncode}: "
-                   f"{(cp.stderr or '').strip()[:200] or 'no message'}")
+                   f"{said[:200] or 'no message'}")
     except FileNotFoundError:
         err = None                        # CPU-only box: a choice, not a fault
     except subprocess.TimeoutExpired:
