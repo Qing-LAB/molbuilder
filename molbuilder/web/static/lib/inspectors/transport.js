@@ -315,7 +315,10 @@
         resultCategory: () => "Transport",
         /* The record's own spelling (`record.py::record_path`), and specific
          * enough to register ahead of the `.json` catch-all. */
-        match: (file) => String(file).toLowerCase().endsWith(".transport.json"),
+        // THE ROLE, when the server gave one (see the spectra inspector).
+        match: (file, meta) => (meta && meta.role)
+            ? meta.role === ".transport.json"
+            : String(file).toLowerCase().endsWith(".transport.json"),
 
         mount(host, file, ctx) {
             let disposed = false;

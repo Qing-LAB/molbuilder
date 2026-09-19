@@ -57,7 +57,18 @@
         coreApiKey:    "trajectoryInspector",
         coreScriptDir: "trajectory",
         partialUrl:    "/partials/trajectory-inspector",
-        match: (file) => {
+        /* THE ROLE, when the server gave one.  These four suffixes are
+         * `runfiles.WRITTEN` rows spelled a second time here, which is the
+         * duplication R-RO1 forbids; `meta.role` is the catalogue's own
+         * answer, carried per file by `/api/results/dir`.  The suffix test
+         * survives only as the fallback for a caller outside the Results
+         * tab, which has no directory answer to pass. */
+        match: (file, meta) => {
+            if (meta && meta.role) {
+                return meta.role === ".molwatch.log"
+                    || meta.role === ".out"
+                    || meta.role === "_geom_optim.xyz";
+            }
             const lower = file.toLowerCase();
             return lower.endsWith(".molwatch.log")
                 || lower.endsWith(".out")
@@ -70,24 +81,46 @@
         //   ``.molwatch.log``        → unified molwatch format (any engine)
         //   ``*_optim.xyz`` (incl. ``_geom_optim.xyz``)
         //                            → PySCF / geomeTRIC multi-frame XYZ
-        resultCategory: (file) => {
+        resultCategory: (file, meta) => {
+            /* THE ENGINE COMES FROM THE SERVER NOW, and that lifts the
+             * constraint this function was built around.  It used to read:
+             * "The browser cannot know the engine: it is a fact about the
+             * run DIRECTORY, and the picker has only a filename."  True
+             * until 2026-09-18 -- `/api/results/dir` answers `engine` for
+             * the directory (`plans/plan.md` N9), so the heading can name
+             * it instead of guessing from the suffix.
+             *
+             * What the guess cost: `.out` was hardcoded "SIESTA" and
+             * `_geom_optim.xyz` "PySCF".  Both are right for the two engines
+             * that exist and wrong by construction for a third -- a VASP
+             * directory's trajectory was labelled "PySCF optimization"
+             * (demonstrated 2026-09-18).  And `.molwatch.log`, which every
+             * engine writes, had to stay engine-LESS for exactly this
+             * reason; now it need not.
+             */
+            const engine = (meta && meta.engine
+                            && meta.engine !== "unknown") ? meta.engine : "";
+            const role = (meta && meta.role) || "";
             const lower = file.toLowerCase();
-            // A `.molwatch.log` IS ENGINE-NEUTRAL -- the comment three
-            // lines up has always said so, and SIESTA writes one for
-            // every run (`config/siesta.py`: `write_molwatch_log = True`).
-            // This line returned "PySCF optimization" for all of them
-            // until 2026-09-04, so the menu filed most SIESTA runs under
-            // the wrong engine while the plot title, which gets the
-            // engine from the server, said SIESTA.  The browser cannot
-            // know the engine: it is a fact about the run DIRECTORY, and
-            // the picker has only a filename.  So the heading names what
-            // the file IS and leaves the engine to the viewer.
-            if (lower.endsWith(".molwatch.log"))   return "Optimization";
-            if (lower.endsWith(".out"))             return "SIESTA optimization";
-            if (lower.endsWith("_optim.xyz")
-                || lower.endsWith("_geom_optim.xyz"))
-                return "PySCF optimization";
-            return "Trajectory";  // fallback (shouldn't fire given match())
+            const what =
+                (role === ".molwatch.log" || lower.endsWith(".molwatch.log"))
+                    ? "optimization"
+              : (role === ".out" || lower.endsWith(".out"))
+                    ? "optimization"
+              : (role === "_geom_optim.xyz" || lower.endsWith("_optim.xyz"))
+                    ? "optimization"
+              : "trajectory";
+            if (!engine) {
+                // No directory answer (a caller outside the Results tab).
+                // Name what the file IS and leave the engine unclaimed --
+                // which is what the 2026-09-04 fix established for
+                // `.molwatch.log` and is now the rule for all of them.
+                return what === "trajectory" ? "Trajectory" : "Optimization";
+            }
+            const label = engine === "siesta" ? "SIESTA"
+                        : engine === "pyscf"  ? "PySCF"
+                        : engine.toUpperCase();
+            return label + " " + what;
         },
 
         /* A RUN IS ONE RESULT (results.md § 2.3).

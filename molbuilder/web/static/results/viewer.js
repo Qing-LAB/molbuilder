@@ -115,13 +115,18 @@
 
     function _onSelectionChange(sel) {
         const file = sel && sel.file ? sel.file : "";
+        const meta = (sel && sel.meta) || null;
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();
             _showFallback(file);
             return;
         }
-        const inspector = reg.pick(file);
+        // Dispatch on THE SERVER'S ANSWER when the picker sent one
+        // (`{role, parser, engine}` from `/api/results/dir`), not on
+        // the filename.  `null` outside the Results flow, where each
+        // inspector falls back to its own suffix test.
+        const inspector = reg.pick(file, meta);
         if (!inspector) {
             _hideLoading();
             _showFallback(file);
@@ -240,6 +245,7 @@
             window.molbuilder.constants.EVENT_FILE_SELECTED,
             (evt) => _onSelectionChange({
                 file: (evt && evt.detail && evt.detail.file) || "",
+                meta: (evt && evt.detail && evt.detail.meta) || null,
             })
         );
 

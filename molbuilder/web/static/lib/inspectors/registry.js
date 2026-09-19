@@ -126,16 +126,25 @@
      * for ``file``.  Returns the inspector or ``null`` if no match.
      * Does not mount.
      *
+     * ``meta`` is THE SERVER'S ANSWER about this file, from
+     * ``/api/results/dir``: ``{role, parser, engine}`` -- the catalogue's
+     * role, the registry's verdict, and the engine that ran in the
+     * DIRECTORY.  An inspector that has one should prefer it to reading the
+     * filename: the role is the catalogue's vocabulary rather than a
+     * suffix spelled here, and the engine is a fact about the run that no
+     * filename carries (`plans/plan.md` N9).  Omitted outside the Results
+     * tab, where each inspector falls back to its own suffix test.
+     *
      * A throwing ``match()`` is a programming error in the inspector.
      * We log + skip rather than abort the entire dispatch (one
      * broken inspector shouldn't break the whole /results page) but
      * the console.warn surfaces the bug so it's noticed in dev.
      */
-    function pick(file) {
+    function pick(file, meta) {
         if (!file) return null;
         for (const i of _inspectors) {
             try {
-                if (i.match(file)) return i;
+                if (i.match(file, meta)) return i;
             } catch (e) {
                 console.warn(
                     "[inspectors] match() threw for " + i.name + ":", e
@@ -158,8 +167,8 @@
      * a more specific result-inspector still claims the file before a
      * less-specific non-result inspector.
      */
-    function pickResult(file) {
-        const inspector = pick(file);
+    function pickResult(file, meta) {
+        const inspector = pick(file, meta);
         if (!inspector) return null;
         return inspector.isResult ? inspector : null;
     }

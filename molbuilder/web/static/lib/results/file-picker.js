@@ -127,7 +127,7 @@
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
-    function filterToResultFiles(entries, dirPath) {
+    function filterToResultFiles(entries, dirPath, engine) {
         if (!Array.isArray(entries)) return [];
         // Use a forward-slash separator regardless of OS.
         const sep = dirPath && dirPath.indexOf("\\") >= 0 ? "\\" : "/";
@@ -150,6 +150,7 @@
                 size:   entry.size,
                 role:   entry.role || null,
                 parser: entry.parser,
+                engine: engine || null,
             });
         }
         // Newest first; tie-break by name so the order is deterministic
@@ -190,7 +191,8 @@
         for (const master of entries) {
             if (absorbed.has(master.path)) continue;
             let insp;
-            try { insp = pickResult(master.path); } catch (e) { insp = null; }
+            try { insp = pickResult(master.path, master); }
+            catch (e) { insp = null; }
             if (!insp || typeof insp.absorbs !== "function") continue;
             for (const other of entries) {
                 if (other === master || absorbed.has(other.path)) continue;
@@ -250,7 +252,7 @@
         // input order doesn't leak through.
         const buckets = new Map();
         for (const entry of entries) {
-            const inspector = pickResult(entry.path);
+            const inspector = pickResult(entry.path, entry);
             if (!inspector) continue;  // already filtered, but defensive.
             let label;
             try {
@@ -575,7 +577,8 @@
                     // its parts (results.md § 2.3).
                     const results = absorbSatellites(
                         filterToResultFiles(body.files || [],
-                                            body.run_dir || dir),
+                                            body.run_dir || dir,
+                                            body.engine),
                         inspReg.pickResult
                     );
                     cachedResults = results;
@@ -772,11 +775,19 @@
         //      /results dispatcher mounts the matching inspector.
         //      A custom event (vs. a method call) keeps the picker
         //      decoupled from the dispatcher's module identity.
+        /** The server's answer for one path -- `{role, parser, engine}` --
+         * so the viewer dispatches on it instead of re-reading the name. */
+        function _metaFor(file) {
+            const hit = (cachedResults || []).find(r => r.path === file);
+            return hit ? { role: hit.role, parser: hit.parser,
+                           engine: hit.engine } : null;
+        }
+
         function _emitFileSelected(file) {
             try {
                 document.dispatchEvent(new CustomEvent(
                     C.EVENT_FILE_SELECTED,
-                    { detail: { file: file || "" } }));
+                    { detail: { file: file || "", meta: _metaFor(file) } }));
             } catch (_) {
                 // CustomEvent should always be available in supported
                 // browsers; the try/catch is belt + braces for older
