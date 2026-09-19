@@ -730,8 +730,10 @@ def _runtime_status_block(
         warmstart_exts = tuple(s.lstrip(".") for s in _SIESTA_WARM_SUFFIXES)
         warmstart_test_pieces = []
         for ext in warmstart_exts:
-            warmstart_test_pieces.append(f'[ -e "$_warm_label.{ext}" ]')
-            warmstart_test_pieces.append(f'[ -e "{basename}.{ext}" ]')
+            # `_mb_has_state`, not `[ -e ]` -- warm state is CONTENT.  See
+            # the helper's own comment in `_runtime_status_block`.
+            warmstart_test_pieces.append(f'_mb_has_state "$_warm_label.{ext}"')
+            warmstart_test_pieces.append(f'_mb_has_state "{basename}.{ext}"')
         warmstart_test = " || ".join(warmstart_test_pieces)
         # Awk that:
         #   * lower-cases the first token for case-insensitive
@@ -801,8 +803,8 @@ def _runtime_status_block(
         warmstart_test = " || ".join(
             piece
             for suf in _PYSCF_WARM_SUFFIXES
-            for piece in (f'[ -e "${{_warm_label}}{suf}" ]',
-                          f'[ -e "{basename}{suf}" ]')
+            for piece in (f'_mb_has_state "${{_warm_label}}{suf}"',
+                          f'_mb_has_state "{basename}{suf}"')
         )
         # PySCF embeds the canonical frozen-atom list as a single-line
         # comment.  Counting digits in that comment is sufficient
@@ -856,6 +858,17 @@ def _runtime_status_block(
         f"# the user can see what's about to happen BEFORE the\n"
         f"# engine starts.  See _runtime_status_block docstring.\n"
         + label_extract_unconditional
+        + f'# WARM STATE IS CONTENT, not mere existence.  This tested\n'
+        + f'# `[ -e ]` until 2026-09-18, and geomeTRIC leaves\n'
+        + f'# `<job>_geom.tmp` behind as an EMPTY DIRECTORY -- which `-e`\n'
+        + f'# reports as present.  So a FINISHED optimization announced\n'
+        + f'# "WARM-RESUME ... engine will load ..." on its next launch,\n'
+        + f'# with nothing to resume from (measured in three real run\n'
+        + f'# directories).  A zero-byte restart file was the same lie.\n'
+        + f'_mb_has_state() {{\n'
+        + f'    if [ -d "$1" ]; then [ -n "$(ls -A "$1" 2>/dev/null)" ]\n'
+        + f'    else [ -s "$1" ]; fi\n'
+        + f'}}\n'
         + f'_warmstart_present=0\n'
         + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
         f'_mode="initial-run (clean state)"\n'

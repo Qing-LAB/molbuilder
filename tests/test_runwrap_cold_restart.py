@@ -960,3 +960,73 @@ def test_both_engines_get_that_entry_from_one_writer():
     assert strip(a) == strip(b), (
         "the two engines' --cold entries have diverged again; the rule has "
         "one writer, `runwrap._cold_usage_entry`")
+
+
+# ---- warm state means CONTENT, not mere existence --------------------- #
+
+
+def test_an_empty_geomeTRIC_scratch_dir_is_not_a_warm_restart(tmp_path):
+    """A FINISHED PySCF optimization made its next launch claim a warm restart.
+
+    geomeTRIC leaves ``<job>_geom.tmp`` behind as an EMPTY DIRECTORY -- 0
+    entries, measured in three real run directories (`co2-flat`,
+    `PDT-moleculeonly`, `BDT-only-pySCF`).  The wrapper's warm probe tested
+    ``[ -e ... ]``, which is true of an empty directory, so a completed run
+    announced
+
+        WARM-RESUME (--continue; engine will load chk/_optimized.xyz/
+                     _geom_optim.xyz/_geom_optim.tmp/_geom.tmp)
+
+    with nothing to resume from.  Warm state is CONTENT: a non-empty file, or
+    a directory with something in it.
+
+    Run as SHELL, against the real rendered wrapper -- the emitted test is
+    the thing that was wrong, so asserting on the Python would prove nothing.
+
+    MUTATION THIS MUST FAIL AGAINST: put `[ -e "$1" ]` back in `_mb_has_state`.
+    """
+    import re
+    import subprocess
+
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.runwrap import write_run_wrapper
+    from molbuilder.pyscf.input import spec_for
+    from molbuilder.script_emit import render_deck
+    from molbuilder.structure import Structure
+    import numpy as np
+
+    struct = Structure(elements=["O", "H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.119],
+                                           [0.0, 0.757, -0.477],
+                                           [0.0, -0.757, -0.477]]))
+    cfg = PySCFConfig(optimize=True)
+    deck = tmp_path / "job.py"
+    deck.write_text(render_deck(spec_for(struct, cfg, calculation="optimization"),
+                                struct, cfg, verbose=False), encoding="utf-8")
+    from molbuilder.resolve import Resources
+    text = write_run_wrapper(deck, resources=Resources()).read_text(encoding="utf-8")
+
+    # The helper + the probe, lifted out of the rendered wrapper and run.
+    fn = re.search(r"_mb_has_state\(\)\s*\{.*?\n\}", text, re.S)
+    assert fn, "the wrapper no longer defines _mb_has_state"
+    probe = re.search(r"^if (_mb_has_state .*?); then _warmstart_present=1; fi$",
+                      text, re.M)
+    assert probe, "the warm probe is not built from _mb_has_state"
+
+    def _warm(setup: str) -> bool:
+        script = (fn.group(0) + "\n_warm_label=job\n" + setup
+                  + f"\n_warmstart_present=0\nif {probe.group(1)}; then "
+                  f"_warmstart_present=1; fi\necho $_warmstart_present\n")
+        out = subprocess.run(["bash", "-c", script], cwd=tmp_path,
+                             capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.strip() == "1"
+
+    assert not _warm("mkdir -p job_geom.tmp"), (
+        "an EMPTY geomeTRIC scratch directory was read as warm state")
+    assert not _warm(": > job.chk"), "a zero-byte .chk was read as warm state"
+    assert _warm("mkdir -p job_geom.tmp && : > job_geom.tmp/x && "
+                 "echo data > job_geom.tmp/x"), (
+        "a scratch directory WITH content is warm state and must still count")
+    assert _warm("echo data > job.chk"), (
+        "a real .chk is warm state and must still count")

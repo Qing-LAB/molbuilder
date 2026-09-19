@@ -115,7 +115,12 @@ def test_adding_a_suffix_changes_the_banner_and_only_the_banner(
 
     banner, mover = _two_surfaces(after)
 
-    assert re.search(rf'\[ -e "[^"]*{re.escape(marker)}" \]', banner), (
+    # `_mb_has_state`, not `[ -e ]`, since 2026-09-18: warm state is CONTENT,
+    # because geomeTRIC leaves an EMPTY `<job>_geom.tmp` DIRECTORY behind and
+    # `-e` reported that as warm, so a finished run claimed a warm restart
+    # from nothing.  What this test pins is unchanged -- the banner must
+    # ENUMERATE every suffix in the engine's tuple; only the predicate moved.
+    assert re.search(rf'_mb_has_state "[^"]*{re.escape(marker)}"', banner), (
         "the startup banner does not read the engine's warm list: a run whose "
         "only warm file has this suffix would announce a clean start")
     assert '"$_warm_label".*' in mover, (
