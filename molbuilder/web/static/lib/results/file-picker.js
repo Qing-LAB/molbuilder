@@ -111,34 +111,45 @@
     }
 
     /**
-     * Given the ``/api/files/list`` response entries (each
-     * ``{name, kind, size, mtime}``) and the inspector registry's
-     * ``pickResult`` function, return the subset of file entries that
-     * any result inspector would mount.  Sorted by mtime descending
-     * (newest first); secondary sort by name for deterministic
-     * tie-break on filesystems with low mtime precision.
+     * Given ``/api/results/dir``'s ``files`` (each ``{name, role, parser,
+     * opens, size, mtime}``), return the ones a viewer can open.
+     *
+     * ``parser`` is the REGISTRY's verdict, decided on the server by
+     * ``detect()``; ``null`` means nothing can read the file and it is not
+     * offered.  This took ``/api/files/list``'s content-blind entries and
+     * seven filename predicates until 2026-09-18 (`plans/plan.md` N9).
+     *
+     * Still sorted newest-first, but that is now only the MENU's order --
+     * WHICH file opens is ``openable``, the door's own pick, applied in
+     * ``_scan``.  The two were the same value here, which is how a spectrum
+     * run came to open a 1,373-byte progress stub: its spectrum shared an
+     * mtime with it and lost the name tie-break.
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
-    function filterToResultFiles(entries, dirPath, pickResult) {
-        if (!Array.isArray(entries) || typeof pickResult !== "function") {
-            return [];
-        }
-        // Use a forward-slash separator regardless of OS.  The backend
-        // returns native path separators in ``/api/files/list``'s
-        // ``path`` field but file matching is purely on the basename
-        // suffix so this doesn't affect correctness.
+    function filterToResultFiles(entries, dirPath) {
+        if (!Array.isArray(entries)) return [];
+        // Use a forward-slash separator regardless of OS.
         const sep = dirPath && dirPath.indexOf("\\") >= 0 ? "\\" : "/";
         const out = [];
         for (const entry of entries) {
-            if (!entry || entry.kind !== "file") continue;
+            if (!entry) continue;
+            // THE SERVER SAYS WHETHER A FILE CAN BE OPENED, and this is the
+            // whole of the change: `parser` is the REGISTRY's answer
+            // (`/api/results/dir`), where this used to run seven filename
+            // predicates of its own.  Measured 2026-09-18 over 110 real run
+            // directories, that guess offered 13 files no parser can read --
+            // Slurm logs, a 0-byte `.out`, a `job-set.json` whose own route
+            // then answers 400 -- and hid 155 that a parser handles.
+            if (!entry.parser) continue;
             const fullPath = dirPath ? (dirPath + sep + entry.name) : entry.name;
-            if (!pickResult(fullPath)) continue;
             out.push({
-                name:  entry.name,
-                path:  fullPath,
-                mtime: entry.mtime,
-                size:  entry.size,
+                name:   entry.name,
+                path:   fullPath,
+                mtime:  entry.mtime,
+                size:   entry.size,
+                role:   entry.role || null,
+                parser: entry.parser,
             });
         }
         // Newest first; tie-break by name so the order is deterministic
@@ -536,11 +547,14 @@
             // Results, see stale dropdown" bug (an identical /api/files/list URL would
             // otherwise serve the cached prior scan, hiding newly-generated result files
             // until a sidebar out+back).  ``signal`` aborts a superseded scan.
-            const _proj = (window.molbuilder || {}).projects;
-            (_proj && typeof _proj.listDir === "function"
-                ? _proj.listDir(dir, { signal })
-                : Promise.resolve({ ok: false,
-                    error: "projects.listDir unavailable" }))
+            // ASK THE DOOR.  `/api/results/dir` is the HTTP surface over
+            // `parse.dirs` -- one call answering what is here, what reads
+            // each file, and which one to open.  This listed through the
+            // content-blind file browser and decided all three itself until
+            // 2026-09-18 (`plans/plan.md` N9: the door had no consumer).
+            fetch("/api/results/dir?path=" + encodeURIComponent(dir),
+                  { signal: signal, cache: "no-store" })
+                .then(r => r.json())
                 .then(body => {
                     if (disposed || signal.aborted) return;
                     if (!body || body.ok !== true) {
@@ -560,11 +574,8 @@
                     // absorb its working files so the menu lists the RUN, not
                     // its parts (results.md § 2.3).
                     const results = absorbSatellites(
-                        filterToResultFiles(
-                            body.entries || [],
-                            body.path     || dir,
-                            inspReg.pickResult
-                        ),
+                        filterToResultFiles(body.files || [],
+                                            body.run_dir || dir),
                         inspReg.pickResult
                     );
                     cachedResults = results;
@@ -613,9 +624,20 @@
                      * menu `…molwatch.log` and displayed `…_optimized.xyz`
                      * (2026-08-04).  The chosen path now feeds both, so they
                      * cannot disagree. */
+                    /* THE DOOR'S PICK, not the newest file.  `openable` is
+                     * `parse.dirs.openable_in`'s answer: the file THIS
+                     * CALCULATION produced -- a vibration run's spectrum, an
+                     * optimization's trajectory -- and it is the same file
+                     * during the run and after it.  Taking `results[0]` meant
+                     * taking whatever was flushed last, which differed from
+                     * the door on 18 of 96 real run directories. */
+                    const _byDoor = body.openable
+                        ? results.find(r => r.name === body.openable)
+                        : null;
                     const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
-                    const chosen = keepCurrent ? currentFile : results[0].path;
+                    const chosen = keepCurrent ? currentFile
+                                 : (_byDoor ? _byDoor.path : results[0].path);
                     _populate(selEl, cachedGroups, chosen);
                     if (keepCurrent) {
                         // Already mounted; just acknowledge the re-entry.

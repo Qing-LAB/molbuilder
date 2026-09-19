@@ -167,20 +167,19 @@ class TestFilterToResultFiles:
     """
 
     def test_filters_by_pick_result(self):
-        """Files for which pickResult returns falsy must be dropped."""
+        """A file the SERVER's registry refused (`parser: null`) is dropped.
+
+        The predicate used to be seven filename tests in this file; it is
+        now `detect()`'s verdict, carried per file by `/api/results/dir`.
+        """
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'a.out',          kind: 'file', mtime: 100},\n"
-            "  {name: 'b.config',       kind: 'file', mtime: 200},\n"
-            "  {name: 'c.spectra.json', kind: 'file', mtime: 300},\n"
+            "  {name: 'a.out',          mtime: 100, parser: 'siesta'},\n"
+            "  {name: 'b.config',       mtime: 200, parser: null},\n"
+            "  {name: 'c.spectra.json', mtime: 300, parser: 'spectra-json'},\n"
             "];\n"
-            "function pickResult(p) {\n"
-            "  return p.endsWith('.out') || p.endsWith('.spectra.json')"
-            "    ? { name: 'fake' }\n"
-            "    : null;\n"
-            "}\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', pickResult);\n"
+            "  entries, '/proj');\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["c.spectra.json", "a.out"]
@@ -188,12 +187,11 @@ class TestFilterToResultFiles:
     def test_filters_out_directories(self):
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'subdir',  kind: 'directory', mtime: 999},\n"
-            "  {name: 'foo.out', kind: 'file',      mtime: 100},\n"
+            "  {name: 'slurm.1.out', mtime: 999, parser: null},\n"
+            "  {name: 'foo.out',     mtime: 100, parser: 'siesta'},\n"
             "];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', pickResult);\n"
+            "  entries, '/proj');\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["foo.out"]
@@ -201,13 +199,12 @@ class TestFilterToResultFiles:
     def test_sorts_newest_first(self):
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'old.out',    kind: 'file', mtime: 100},\n"
-            "  {name: 'middle.out', kind: 'file', mtime: 500},\n"
-            "  {name: 'newest.out', kind: 'file', mtime: 900},\n"
+            "  {name: 'old.out',    parser: 'siesta', mtime: 100},\n"
+            "  {name: 'middle.out', parser: 'siesta', mtime: 500},\n"
+            "  {name: 'newest.out', parser: 'siesta', mtime: 900},\n"
             "];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', pickResult);\n"
+            "  entries, '/proj');\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         assert out == ["newest.out", "middle.out", "old.out"]
@@ -218,13 +215,12 @@ class TestFilterToResultFiles:
         sort must produce the same order on every page load."""
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'zzz.out', kind: 'file', mtime: 500},\n"
-            "  {name: 'aaa.out', kind: 'file', mtime: 500},\n"
-            "  {name: 'mmm.out', kind: 'file', mtime: 500},\n"
+            "  {name: 'zzz.out', parser: 'siesta', mtime: 500},\n"
+            "  {name: 'aaa.out', parser: 'siesta', mtime: 500},\n"
+            "  {name: 'mmm.out', parser: 'siesta', mtime: 500},\n"
             "];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', pickResult);\n"
+            "  entries, '/proj');\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         # Alphabetical on tie -- aaa before mmm before zzz.
@@ -234,10 +230,9 @@ class TestFilterToResultFiles:
         """The picker calls projects.setShared(dir, path), so each
         entry must carry the FULL path -- not just the basename."""
         out = _run_node(
-            "const entries = [{name: 'foo.out', kind: 'file', mtime: 100}];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
+            "const entries = [{name: 'foo.out', parser: 'siesta', mtime: 100}];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/projects/myjob', pickResult);\n"
+            "  entries, '/projects/myjob');\n"
             "console.log(JSON.stringify(r[0]));"
         )
         assert out["name"] == "foo.out"
@@ -249,12 +244,11 @@ class TestFilterToResultFiles:
         must not crash and the entry must land at the end."""
         out = _run_node(
             "const entries = [\n"
-            "  {name: 'good.out',   kind: 'file', mtime: 100},\n"
-            "  {name: 'broken.out', kind: 'file', mtime: null},\n"
+            "  {name: 'good.out',   parser: 'siesta', mtime: 100},\n"
+            "  {name: 'broken.out', parser: 'siesta', mtime: null},\n"
             "];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, '/proj', pickResult);\n"
+            "  entries, '/proj');\n"
             "console.log(JSON.stringify(r.map(x => x.name)));"
         )
         # null mtime sorts to end (treated as -Infinity).
@@ -262,9 +256,8 @@ class TestFilterToResultFiles:
 
     def test_empty_input_returns_empty(self):
         out = _run_node(
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  [], '/proj', pickResult);\n"
+            "  [], '/proj');\n"
             "console.log(JSON.stringify(r));"
         )
         assert out == []
@@ -272,9 +265,8 @@ class TestFilterToResultFiles:
     def test_invalid_input_returns_empty(self):
         """Defensive: non-array input must not throw."""
         out = _run_node(
-            "function pickResult(_) { return { name: 'fake' }; }\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  null, '/proj', pickResult);\n"
+            "  null, '/proj');\n"
             "console.log(JSON.stringify(r));"
         )
         assert out == []
@@ -284,10 +276,9 @@ class TestFilterToResultFiles:
         so projects.setShared receives a path that round-trips
         through parseDir without losing the separator type."""
         out = _run_node(
-            "const entries = [{name: 'foo.out', kind: 'file', mtime: 100}];\n"
-            "function pickResult(_) { return { name: 'fake' }; }\n"
+            "const entries = [{name: 'foo.out', parser: 'siesta', mtime: 100}];\n"
             "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
-            "  entries, 'C:\\\\projects\\\\myjob', pickResult);\n"
+            "  entries, 'C:\\\\projects\\\\myjob');\n"
             "console.log(JSON.stringify(r[0].path));"
         )
         assert out == "C:\\projects\\myjob\\foo.out"

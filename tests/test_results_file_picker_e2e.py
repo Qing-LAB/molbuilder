@@ -79,7 +79,11 @@ def project_with_one_out(tmp_path, monkeypatch):
     _register_tmp_as_picker_root(tmp_path, monkeypatch)
     proj = tmp_path / "myproj" / "spectra" / "test"
     proj.mkdir(parents=True)
-    (proj / "run1.out").write_text(">> End of run: 2026-01-01\n")
+    (proj / "run1.out").write_text("Siesta Version: 5.4.2\n"
+        "siesta: System type = molecule\n"
+        "siesta: iscf   Eharris(eV)\n"
+        "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
+        ">> End of run: 2026-01-01\n")
     return proj, str(proj)
 
 
@@ -159,6 +163,10 @@ class TestStaleResultsRefresh:
         # A new result file appears on disk (simulating the user
         # generating output in /spectra or /modify).
         (proj_dir / "run2.out").write_text(
+            "Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
             ">> End of run: 2026-01-02\n"
         )
         # Filesystem mtime resolution: give it a beat so the new file
@@ -200,6 +208,10 @@ class TestPageshowForcesRescan:
         # Add a new file + dispatch a pageshow event manually.  This
         # mimics what the browser does on bfcache restore.
         (proj_dir / "run2.out").write_text(
+            "Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
             ">> End of run: 2026-01-02\n"
         )
         time.sleep(0.5)
@@ -232,6 +244,10 @@ class TestVisibilityChangeForcesRescan:
         )
 
         (proj_dir / "run2.out").write_text(
+            "Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
             ">> End of run: 2026-01-02\n"
         )
         time.sleep(0.5)
@@ -294,7 +310,11 @@ class TestResultsDecoupledFromSidebar:
         (dispatched by the dropdown picker), so a raw setShared call
         must NOT remount the inspector."""
         proj, dir_path = project_with_one_out
-        (proj / "second.out").write_text(">> End of run: 2026-01-02\n")
+        (proj / "second.out").write_text("Siesta Version: 5.4.2\n"
+        "siesta: System type = molecule\n"
+        "siesta: iscf   Eharris(eV)\n"
+        "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
+        ">> End of run: 2026-01-02\n")
 
         _setup_modify_dir(page, flask_server, dir_path)
         page.goto(f"{flask_server}/results")
@@ -352,7 +372,11 @@ class TestResultsDecoupledFromSidebar:
         # New file lands in the same dir while user is sitting on
         # /results.  Without the sidebar onChange subscription, the
         # picker won't see it until a refresh.
-        (proj / "later.out").write_text(">> End of run: 2026-01-03\n")
+        (proj / "later.out").write_text("Siesta Version: 5.4.2\n"
+        "siesta: System type = molecule\n"
+        "siesta: iscf   Eharris(eV)\n"
+        "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
+        ">> End of run: 2026-01-03\n")
         page.wait_for_timeout(100)
         assert len(_picker_options(page)) == 1, (
             "picker should not auto-detect new files without a refresh"
@@ -412,13 +436,17 @@ class TestResultsDecoupledFromSidebar:
             "    '#results-file-picker-select option').length === 1"
         )
 
-        # Spy on /api/files/list calls to confirm we see exactly
+        # Spy on the picker's OWN route.  It listed through
+        # `/api/files/list` -- the content-blind file browser --
+        # until 2026-09-18; it now asks `/api/results/dir`, the
+        # door that also says what reads each file (plan N9).
+        # Confirm we see exactly
         # ONE additional request from the double-click (the first
         # click; the second is dropped by the disabled guard).
         # Initial mount already issued one scan; we baseline that.
         baseline = page.evaluate(
             "() => performance.getEntriesByType('resource')"
-            "  .filter(e => e.name.includes('/api/files/list')).length"
+            "  .filter(e => e.name.includes('/api/results/dir')).length"
         )
 
         btn = page.locator("#results-file-picker-refresh")
@@ -440,7 +468,7 @@ class TestResultsDecoupledFromSidebar:
 
         after = page.evaluate(
             "() => performance.getEntriesByType('resource')"
-            "  .filter(e => e.name.includes('/api/files/list')).length"
+            "  .filter(e => e.name.includes('/api/results/dir')).length"
         )
         new_scans = after - baseline
         assert new_scans == 1, (
@@ -459,7 +487,11 @@ class TestResultsDecoupledFromSidebar:
         proj, dir_path = project_with_one_out
         # Add a second file so we can fire a deliberate change
         # event from the dropdown.
-        (proj / "run2.out").write_text(">> End of run: 2026-02-02\n")
+        (proj / "run2.out").write_text("Siesta Version: 5.4.2\n"
+        "siesta: System type = molecule\n"
+        "siesta: iscf   Eharris(eV)\n"
+        "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n"
+        ">> End of run: 2026-02-02\n")
         _setup_modify_dir(page, flask_server, dir_path)
         page.goto(f"{flask_server}/results")
         page.wait_for_function(

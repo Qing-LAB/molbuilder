@@ -144,3 +144,98 @@ def api_results_contract():
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     info = run_info_for_dir(directory) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation")})
+
+
+@bp.route("/api/results/dir", methods=["GET"])
+def api_results_dir():
+    """**What is in this run directory, and which file should open?**
+
+    The HTTP surface over `parse.dirs`' front door — `JobDirParser` /
+    `RunDirResult` — and the consumer it was built for and never got
+    (`plans/plan.md` N9; `model/parse.md` § 5.0, § 5.5).
+
+    **WHY THIS EXISTS.**  The browser is the one consumer that cannot import
+    Python, and nothing served it the directory's own answer: the Results
+    picker listed through `/api/files/list` (content-blind — `{name, kind,
+    size, mtime}`) and then decided FOUR things the backend already owns,
+    from the filename, in JavaScript.  Measured 2026-09-18 over 110 real run
+    directories: *which file to open* differed from `openable_in` on **18 of
+    96**; **13** files were offered that no parser can read and **155** that
+    a parser handles were unreachable; the engine was guessed from the
+    suffix; and the run-file grammar was re-implemented as a JS regex.  A
+    spectrum run was shown a 1,373-byte progress stub instead of its
+    spectrum because two mtimes landed in the same second and the
+    tie-break picked by name.
+
+    Every one of those is the same missing connection, so they are answered
+    together, once, here.
+
+    **PER FILE the server says what the file IS**, which is the half the
+    browser cannot derive: ``role`` from the catalogue, ``parser`` from the
+    registry (``null`` when nothing claims it — the browser must not offer
+    it), and ``engine`` from the directory, not from the suffix.
+
+    ``openable`` is the door's own pick, so the page defaults to the file the
+    calculation produced rather than to whatever was written last.
+    """
+    from pathlib import Path
+
+    from flask import jsonify, request
+
+    from molbuilder.parse import detect
+    from molbuilder.parse.dirs import openable_in, run_status
+    from molbuilder.parse.contract import engine_of
+    from molbuilder.parse.errors import ParseError
+    from molbuilder.runfiles import role_of
+    from .files import _PickerError, _resolve_within_roots
+
+    raw = str(request.args.get("path") or "")
+    if not raw:
+        return jsonify({"ok": False, "error": "no path given"}), 400
+    try:
+        p = _resolve_within_roots(raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    directory = Path(p) if Path(p).is_dir() else Path(p).parent
+    if not directory.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"{raw}: not a directory"}), 404
+
+    opened, attempts = openable_in(str(directory))
+    st = run_status(directory)
+
+    files = []
+    for entry in sorted(directory.iterdir(), key=lambda e: e.name):
+        if not entry.is_file():
+            continue
+        # THE REGISTRY DECIDES WHETHER IT CAN BE OPENED, never the suffix.
+        # A refusal is an answer -- `parser: null` is what stops the page
+        # offering a Slurm log, a 0-byte `.out`, or a `job-set.json` its own
+        # inspector's route then refuses with a 400.
+        try:
+            kind = detect(str(entry))
+            parser, opens = kind.name, getattr(
+                getattr(kind, "output", None), "__name__", None)
+        except (ParseError, OSError, ValueError, LookupError):
+            parser, opens = None, None
+        files.append({
+            "name":   entry.name,
+            "role":   role_of(entry.name),
+            "parser": parser,
+            "opens":  opens,
+            "size":   entry.stat().st_size,
+            "mtime":  entry.stat().st_mtime,
+        })
+
+    return jsonify({
+        "ok":       True,
+        "run_dir":  str(directory),
+        "engine":   engine_of(str(directory)),
+        "openable": Path(opened).name if opened else None,
+        "attempts": attempts,
+        "status":   {"state": st.state, "detail": st.detail,
+                     "active_source": st.active_source,
+                     "last_change_at": st.last_change_at,
+                     "concluded": st.concluded},
+        "files":    files,
+    })
