@@ -220,7 +220,26 @@ def api_results_dir():
         st = None
     else:
         opened, attempts = openable_in(str(directory))
-        st = run_status(directory)
+        # AND A DIRECTORY THAT SAYS NOTHING IS NOT ASKED TO INVENT ONE.
+        # `run_status`'s four states are running/stale/finished/failed --
+        # there is no *there is no run here*, so an absence comes back
+        # `running, no result file yet`.  That is the same defect the
+        # container branch above fixes, arriving by the other door:
+        # measured 2026-09-19 on the regenerated tree, TEN of nineteen
+        # directories reported *running* -- `scan/`, `structure/`,
+        # `transport/` and the project root among them, none of which has
+        # ever held a run.
+        #
+        # § 1.4a: absence NARROWS the answer.  An unmarked directory may
+        # still be read alone -- its files listed, one of them opened --
+        # and `openable_in` above does exactly that.  What it may not do is
+        # assert a run state with nothing to ground it on, so the status is
+        # claimed only where there is: the record says RUN, or the door
+        # found this directory's product.  A molbuilder-made run is always
+        # stamped, so it keeps its full status from the first branch even
+        # before it writes anything.
+        st = (run_status(directory)
+              if (place == calcdirs.RUN or opened) else None)
 
     # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
     # WITHOUT one and therefore cannot answer an underscore role at all --

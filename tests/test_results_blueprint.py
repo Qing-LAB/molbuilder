@@ -775,6 +775,55 @@ class TestTheContractEndpoint:
         assert out["calculation"]["engine"] == "siesta"
         assert out["calculation"]["contract"]["basis_size"] == "SZ"
 
+    def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
+        """`run_status` cannot say *there is no run here*.
+
+        Its four states are running / stale / finished / failed, so an
+        absence of evidence comes back as **running, no result file yet** —
+        and every consumer that asks it about a directory that is not a run
+        gets that.  MEASURED 2026-09-19 on the regenerated tree: TEN of
+        nineteen directories under one project reported *running*, among
+        them `scan/`, `structure/`, `transport/` and the project root, none
+        of which has ever held a run.
+
+        The container half of this was closed in 6ddc551a; this is the
+        other door, an UNMARKED directory (`project-layout.md` § 1.4a:
+        absence narrows the answer).  Such a directory is still read alone
+        — its files listed, one of them opened — but a run state has to be
+        grounded on something: the record saying RUN, or the door finding
+        this directory's product.
+        """
+        root, client = isolated
+        bare = root / "topic"          # a folder nobody described
+        bare.mkdir()
+        (bare / "README.md").write_text("notes\n")
+        body = client.get("/api/results/dir?path=" + str(bare)).get_json()
+        assert body["ok"] is True
+        assert body["place"]["role"] is None, "nothing marks this directory"
+        assert body["status"] is None, (
+            "an unmarked directory with no run must not report one; got "
+            + repr(body["status"]))
+        # ...and it is still READ: the listing is the part absence keeps.
+        assert [f["name"] for f in body["files"]] == ["README.md"]
+
+    def test_a_run_with_no_output_yet_still_reports_running(self, isolated):
+        """The other side, so the fix above cannot be a blanket silence.
+
+        A stamped run that has launched and written nothing is genuinely
+        *running*, and that is the one case where `run_status`'s default is
+        the truth.  The record is what separates it from the folder above.
+        """
+        from molbuilder import calcdirs
+        root, client = isolated
+        calc = root / "calc"
+        (calc / "01_a" / "run-0").mkdir(parents=True)
+        calcdirs.write(calc / "01_a", role=calcdirs.CONTAINER, root=calc)
+        calcdirs.write(calc / "01_a" / "run-0", role=calcdirs.RUN, root=calc)
+        body = client.get(
+            "/api/results/dir?path=" + str(calc / "01_a" / "run-0")).get_json()
+        assert body["place"]["role"] == "run"
+        assert body["status"] is not None and body["status"]["state"] == "running"
+
     def test_no_deck_answers_null(self, isolated):
         root, client = isolated
         d = root / "bare"
