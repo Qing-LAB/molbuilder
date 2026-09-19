@@ -134,7 +134,8 @@
               aria-label="Clear filter" hidden>×</button>
     </span>
     {#- Run-history toggle (2026-08-19): exists only for a run dir
-        (rel-depth 3).  Its color IS the checkpoint status (uninit /
+        (one holding a `task.json`, or already holding a history -- 
+        `/api/checkpoint/state` says which).  Its color IS the checkpoint status (uninit /
         clean / dirty / error -- the same tokens as the sensor pill),
         so the state is visible without opening the view.  Clicking
         swaps the file list below for the checkpoint view and back.

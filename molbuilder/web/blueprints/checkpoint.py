@@ -32,6 +32,7 @@ from typing import Any, Dict, Optional
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
+from molbuilder import calcdirs
 from molbuilder.runtime_config import CONFIG_FILENAME as _CONFIG_FILENAME
 
 from molbuilder.checkpoint import (
@@ -173,6 +174,17 @@ def api_checkpoint_state():
         return jsonify({
             "ok":            True,
             "path":          str(path),
+            # IS THIS A FOLDER CHECKPOINTS ARE FOR -- the question the panel
+            # has to answer BEFORE it can offer to set one up, and the one
+            # thing `initialized` cannot say (a calculation with no repo yet
+            # is exactly the case the Set-up button exists for).  A
+            # calculation root is declared by `task.json`
+            # (`project-layout.md` invariant 2), which is what `calcdirs`
+            # reads.  The panel counted path segments until 2026-09-19 --
+            # `RUN_DIR_DEPTH = 3` -- so one extra grouping folder hid the
+            # panel with no message, and three loose `.xyz` files at the
+            # right depth got offered a `git init`.
+            "is_calculation": calcdirs.root_of(path) == path,
             "initialized":   status.initialized,
             "standing_at":   _state_json(here) if here else None,
             "clean":         status.clean,

@@ -109,7 +109,6 @@ def _allowed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(type(caps), "file_picker_roots",
                         lambda self: ((tmp_path.resolve(), "projects"),))
     diagnostics.set_capabilities(caps)
-_RUN_DIR = "/p/BDT-Au/optimization/relax"      # rel-depth 3: the gate opens
 
 
 def test_state_does_not_read_big_files_it_does_not_have_to(
@@ -153,6 +152,51 @@ def test_state_does_not_read_big_files_it_does_not_have_to(
         os.chmod(big, 0o644)
 
 
+def test_a_calculation_is_named_by_its_description_not_by_its_depth(
+        client, tmp_path):
+    """`is_calculation` is what decides whether the panel appears.
+
+    It has to be separate from `initialized`, because the case the Set-up
+    button exists for is *a calculation with no repository yet* — and
+    `initialized` is exactly False there.
+
+    THE PANEL COUNTED PATH SEGMENTS until 2026-09-19 (`RUN_DIR_DEPTH = 3`,
+    `projects/PROJECT/TOPIC/RUN`), which is the same shape as the
+    `_CALC_SEARCH_DEPTH` walk deleted in 76282e71 — a number standing in for
+    a fact the tree states.  It was wrong in both directions: one extra
+    grouping folder put a real calculation out of reach with no message, and
+    loose files at the right depth were offered a repository.  A description
+    is the answer at any depth, so this test uses two folders SIDE BY SIDE
+    at the same one.
+    """
+    import json as _json
+    from molbuilder.task import FILENAME as TASK_FILENAME
+
+    described = tmp_path / "described"
+    described.mkdir()
+    (described / TASK_FILENAME).write_text(_json.dumps({
+        "schema": "molbuilder/task@1",
+        "engine": {"name": "siesta"}, "shape": "flat",
+        "run": {"name": "JOB", "id": "JOB_H2"},
+        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
+        "varies": [], "stages": [],
+    }))
+    loose = tmp_path / "loose"
+    loose.mkdir()
+    (loose / "a.xyz").write_text("1\nx\nH 0 0 0\n")
+
+    def _ask(d):
+        r = client.get("/api/checkpoint/state", query_string={"path": str(d)})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        return r.get_json()
+
+    yes, no = _ask(described), _ask(loose)
+    assert yes["is_calculation"] is True and yes["initialized"] is False, (
+        "a described folder with no repo is exactly the Set-up case")
+    assert no["is_calculation"] is False, (
+        "a folder of loose files is not a calculation, whatever its depth")
+
+
 def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
     """§ 5's vocabulary, and nothing that would need an archive walk.
 
@@ -169,8 +213,9 @@ def test_state_returns_the_shape_the_sensor_reads(client, tmp_path):
     # page while pinning nothing at all.
     assert r.status_code == 200, r.get_data(as_text=True)
     body = r.get_json()
-    for key in ("path", "initialized", "standing_at", "clean",
-                "changed", "added", "deleted", "unsaved", "ignore_edited"):
+    for key in ("path", "is_calculation", "initialized", "standing_at",
+                "clean", "changed", "added", "deleted", "unsaved",
+                "ignore_edited"):
         assert key in body, f"sensor field {key!r} missing from /state"
     assert "archive_total_bytes" not in body
     assert body["standing_at"]["note"] == "set up"
@@ -472,25 +517,73 @@ def test_leaving_the_run_dir_hides_the_toggle_and_restores_the_files():
     assert out["pref"] == "1"
 
 
-def test_a_shallower_directory_never_reaches_the_network():
-    """The activation gate, executed rather than described.
+def test_a_folder_that_is_not_a_calculation_shows_no_panel():
+    """The activation gate, executed rather than described — and the gate is
+    now the DOOR'S ANSWER, not a count of path segments.
 
-    A project or category directory is not a run dir, so the panel hides and
-    asks nothing.  Asserting the REQUEST COUNT is what makes this real: the
-    gate could be drawn correctly and still fetch.
+    A project or topic directory is not a calculation, so the panel hides.
+    What changed on 2026-09-19 is how it knows: `is_calculation` comes back
+    from `/api/checkpoint/state` (`task.json` is here — `project-layout.md`
+    invariant 2) rather than from `RUN_DIR_DEPTH = 3`.  This test asserted
+    ZERO requests for those directories, which was true only because the
+    client was guessing; guessing is what put a real calculation one folder
+    deeper out of reach with no message.
+
+    ONE request per distinct directory is the cost, and it is the same
+    request that fills the panel — measured at 1.3–1.7 ms against a
+    non-repository folder, no subprocess on that path.  What must not
+    happen is a storm, so the count is still asserted; it is just no longer
+    zero.  `null` asks nothing: there is no directory to ask about.
     """
     out = run_node([_PANEL], r"""
       const m = await import(process.env.PANEL_URL);
+      __replies.push({match: "/api/checkpoint/state", http: 200,
+                      body: {ok: true, is_calculation: false,
+                             initialized: false, clean: true,
+                             changed: [], added: [], deleted: [],
+                             unsaved: [], standing_at: null}});
       m.initCheckpointPanel();
       for (const d of ["/p", "/p/BDT-Au", "/p/BDT-Au/optimization", null]) {
         await m.onDirectoryChange(d);
       }
       await new Promise(r => setTimeout(r, 20));
-      console.log(JSON.stringify({calls: __calls.length,
-                                  hidden: __els["ps-checkpoint"].hidden}));
+      console.log(JSON.stringify({
+        calls: __calls.length,
+        hidden: __els["ps-checkpoint"].hidden,
+        toggleHidden: __els["ps-checkpoint-toggle"].hidden,
+        filesHidden: __els["ps-list"].hidden}));
     """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
-    assert out["calls"] == 0, "the panel fetched for a directory it does not serve"
+    assert out["calls"] == 3, (
+        "one ask per distinct directory and nothing for `null`; got "
+        + str(out["calls"]))
     assert out["hidden"] is True
+    assert out["toggleHidden"] is True, (
+        "the button must not appear on a folder the panel does not serve")
+    assert out["filesHidden"] is False, "the file list keeps the space"
+
+
+def test_a_described_folder_with_no_repository_shows_the_panel():
+    """The case `initialized` alone cannot express, and the reason
+    `is_calculation` is a separate field.
+
+    A calculation that has never been checkpointed is exactly where the
+    Set-up button belongs — `initialized: false` — so a panel gated on
+    `initialized` would hide from the one folder it is there to help.
+    """
+    out = run_node([_PANEL], r"""
+      const m = await import(process.env.PANEL_URL);
+      __replies.push({match: "/api/checkpoint/state", http: 200,
+                      body: {ok: true, is_calculation: true,
+                             initialized: false, clean: true,
+                             changed: [], added: [], deleted: [],
+                             unsaved: [], standing_at: null}});
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 20));
+      console.log(JSON.stringify({
+        toggleHidden: __els["ps-checkpoint-toggle"].hidden}));
+    """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["toggleHidden"] is False
 
 
 def test_re_entering_the_same_directory_does_not_re_fetch():

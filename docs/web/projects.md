@@ -255,18 +255,25 @@ touch it. The parts:
   concurrent change on disk is caught ("file changed on disk; reload") instead
   of being silently overwritten. This is *raw file* editing — not the structure
   Save panel (§ 3).
-- **The run-history view** — for a run folder (three levels deep:
-  `projects/PROJECT/TOPIC/RUN`), a small round **status button appears beside
-  the filter box**, colored by the folder's checkpoint state (gray = no
-  history, green = saved, amber = unsaved changes, red = error). Clicking it
+- **The run-history view** — for a **calculation folder**, a small round
+  **status button appears beside the filter box**, colored by the folder's
+  checkpoint state (gray = no history, green = saved, amber = unsaved
+  changes, red = error). *Calculation folder* is not a depth: it is a folder
+  that holds a `task.json` (`project-layout.md` invariant 2) or already holds
+  a history, and `/api/checkpoint/state` answers both — `is_calculation` and
+  `initialized` — in the one request that fills the panel. The panel counted
+  path segments until 2026-09-19, so a project organised one folder deeper
+  lost the button with no explanation, and three loose `.xyz` files at the
+  right depth were offered a repository. Clicking it
   **swaps the file list for the checkpoint view** — status line, the
   checkpoint list, a **commit-graph viewer**, and Checkpoint-now / Tag /
   Restore — in the same space, and clicking again returns the files; the
   choice survives a reload. While the checkpoint view is showing, the filter
   input is disabled — it filters files, and a control acting on a hidden
-  list would act invisibly. Outside a run folder the button does not exist.
-  It refreshes only when asked (no polling; entering a run folder reads the
-  state once so the button's color is honest). Its behavior is owned by
+  list would act invisibly. Outside a calculation folder the button does not
+  exist. It refreshes only when asked (no polling; entering a folder reads
+  the state once, which is both what decides whether the button appears and
+  what makes its color honest). Its behavior is owned by
   [`execution/running-a-job.md`](?doc=execution/running-a-job.md) `§ 6` (the
   workflow) and [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
   (the invariants); this doc owns where it sits.

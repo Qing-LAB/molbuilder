@@ -39,9 +39,6 @@
  * Invariants: docs/execution/checkpointing.md.
  */
 
-// projects rel-depth of a canonical run dir:
-// projects/PROJECT_NAME/CATEGORY/RUNNING_DIR_NAME (docs/web/projects.md).
-const RUN_DIR_DEPTH = 3;
 const _state = {
     /** Currently selected directory path (relative to projects root,
      *  resolved to absolute by the API).  null when no dir selected. */
@@ -144,27 +141,6 @@ function _attach() {
     return true;
 }
 
-/**
- * Whether ``dirPath`` is a canonical run directory -- projects
- * rel-depth 3 (projects/PROJECT/CATEGORY/RUNNING_DIR), the only place
- * a checkpoint viewer activates (docs/web/projects.md).  The
- * ``.git/`` presence is confirmed separately by /api/checkpoint/state;
- * this is the cheap structural gate that runs before any fetch.
- */
-function _isRunDir(dirPath) {
-    if (!dirPath) return false;
-    const projects = window.molbuilder && window.molbuilder.projects;
-    const root = projects && typeof projects.getProjectsRoot === "function"
-        ? projects.getProjectsRoot() : "";
-    if (!root) return false;
-    const norm = (p) => p.replace(/\/+$/, "");
-    const dir = norm(dirPath);
-    const base = norm(root);
-    if (dir === base || !dir.startsWith(base + "/")) return false;
-    const rel = dir.slice(base.length + 1);
-    return rel.split("/").filter(Boolean).length === RUN_DIR_DEPTH;
-}
-
 /* ---------- Public API ---------- */
 
 /**
@@ -175,11 +151,22 @@ function _isRunDir(dirPath) {
  *                                or null when no directory is current.
  */
 export function onDirectoryChange(dirPath) {
-    // Activation gate: the viewer exists ONLY for a canonical run dir
-    // (rel-depth 3).  Anywhere else -- a project dir, a category dir,
-    // the projects root, or a file -- the panel is hidden entirely
-    // (docs/web/projects.md).
-    if (!_isRunDir(dirPath)) {
+    /* THE DOOR DECIDES WHETHER THIS PANEL BELONGS HERE, and it is the same
+     * request that fills it: `/api/checkpoint/state` answers
+     * `is_calculation` (a `task.json` is here -- `project-layout.md`
+     * invariant 2) beside `initialized` (a repo is here).  Either one means
+     * the panel has something to say; neither means it hides.
+     *
+     * THIS COUNTED PATH SEGMENTS until 2026-09-19 -- `RUN_DIR_DEPTH = 3`,
+     * "projects/PROJECT/CATEGORY/RUN" -- which is the same shape as the
+     * `_CALC_SEARCH_DEPTH` walk deleted in 76282e71, only counting down
+     * instead of up.  It answered wrongly in both directions: one extra
+     * grouping folder (`optimization/2026-batch/bdt-scan/`) put a real
+     * calculation at depth 4 and the panel vanished with no message, while
+     * three loose `.xyz` files in `structure/geometries/` sat at depth 3
+     * and were offered a `git init`.
+     */
+    if (!dirPath) {
         _state.currentDir = null;
         _hide();
         return;
@@ -191,11 +178,9 @@ export function onDirectoryChange(dirPath) {
     // is exactly the "don't rewrite on a no-op tick" rule.
     if (dirPath === _state.currentDir) return;
     _state.currentDir = dirPath;
-    if (elToggle) elToggle.hidden = false;
-    // The stored preference decides which view greets a run dir; the state
-    // fetch happens either way, because the BUTTON's color must be honest
-    // without the view ever opening.
-    _applyOpen();
+    // NOTHING IS SHOWN UNTIL THE ANSWER LANDS.  Showing first and
+    // retracting would flash a control onto every folder in the tree.
+    _hide();
     _refresh();
 }
 
@@ -581,6 +566,19 @@ async function _refresh(opts = {}) {
             _renderError(stRes.body.error || "HTTP " + stRes.http);
             return;
         }
+        // NOT A FOLDER CHECKPOINTS ARE FOR: no description and no repo.
+        // Hidden entirely -- there is nothing to report and nothing to set
+        // up (docs/web/projects.md).
+        if (!stRes.body.is_calculation && !stRes.body.initialized) {
+            _hide();
+            return;
+        }
+        // It belongs here, so the control appears.  The stored preference
+        // decides which view greets it; the state was fetched either way,
+        // because the BUTTON's colour must be honest without the view ever
+        // opening.
+        if (elToggle) elToggle.hidden = false;
+        _applyOpen();
         // The status fields are the response, not a nested object: `state`
         // now means a saved snapshot, so the folder's condition cannot also
         // be called that (§ 5).
