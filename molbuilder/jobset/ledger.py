@@ -81,13 +81,22 @@ def prepped(base, *, kind: str, stage, dirs):
 
     base = Path(base)
     prov = config_provenance(project_dir=base)
-
-    def _rel(d):
-        try:
-            return str(Path(d).resolve().relative_to(base.resolve()))
-        except ValueError:
-            return str(d)
-
     record(base, "prep", "prepped", kind=kind, stage=stage,
-           job_dirs=sorted(_rel(d) for d in dirs), provenance=prov)
+           job_dirs=sorted(rel_to(base, d) for d in dirs), provenance=prov)
     return prov
+
+
+def rel_to(base, d) -> str:
+    """*d* as a path from the calculation, or unchanged if it is outside.
+
+    The ledger records job directories this way and `prep` PRINTS them this
+    way, and the two must agree: with the attempt layer every trial's
+    directory ends in ``run-<n>``, so a list reading "run-0, run-0" names
+    nobody (user, 2026-08-28).  One function, because a second spelling is
+    how the printed list and the recorded one come to disagree about the
+    same directories.
+    """
+    try:
+        return str(Path(d).resolve().relative_to(Path(base).resolve()))
+    except ValueError:
+        return str(d)

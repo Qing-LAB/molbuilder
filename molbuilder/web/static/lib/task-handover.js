@@ -268,11 +268,8 @@
         }
 
         if (isTransport) {
-            /* The tab decided; the description is DONE.  No navigation
-             * (user ruling 2026-08-29): the road is stated, and going
-             * anywhere is the person's move.  Task setup still reads
-             * the saved description like any other -- as the run
-             * surface, not a hand-over target. */
+            /* The tab decided; the description is DONE.  The road is
+             * stated, and going anywhere is the person's move (below). */
             say("ok", "Described — wrote " + written.join(" and ")
                 + " into " + (rel || "the selected folder")
                 + ".  Next: prep run seed "
@@ -281,11 +278,31 @@
                 + "writes the I–V record.");
             return;
         }
+        /* NO NAVIGATION -- the same rule the transport arm has kept since
+         * 2026-08-29, now the only rule (user, 2026-09-19: *"we just skip
+         * the fancy tab to tab jump connection to avoid implicit
+         * coupling"*).  This tab's job ends when the files are on disk;
+         * which tab you open next is yours.
+         *
+         * WHAT THE JUMP COST.  It relied on the sidebar's selection being
+         * shared -- and sessionStorage slots are PER PAGE, where a page's
+         * own slot SHADOWS the shared fallback (`projects/state.js`,
+         * `handOffSelection`).  So Task setup opened on whatever folder IT
+         * last showed, not the one just written to: measured 2026-09-19,
+         * the hand-over landed correctly in `optimization/junction6-hier`
+         * and Task setup opened `spectrum/bridge-hier`, ready to edit the
+         * wrong calculation.  Handing the slot over would have fixed that
+         * one path and left the coupling; not jumping removes it.
+         *
+         * `web/tabs.md` § 1 already forbids an in-memory hand-off, for
+         * costs that are all about hidden state.  A jump that depends on
+         * which folder the other tab happens to remember is the same
+         * hazard wearing a URL. */
         say("ok", "Wrote " + written.join(" and ")
-            + " — opening Task setup…");
-        // The sidebar's selection is shared through sessionStorage, so Task
-        // setup opens on the same folder without this handing it anything.
-        window.location.href = "/task-setup";
+            + " into " + (rel || "the selected folder")
+            + ".  Next: open Task setup and pick this folder — it asks for "
+            + "the shape and the stages, which this hand-over leaves out on "
+            + "purpose, and writes task.json when you save.");
     }
 
     window.molbuilder = window.molbuilder || {};

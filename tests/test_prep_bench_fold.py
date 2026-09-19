@@ -253,6 +253,35 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     assert "summarize bench" in r.output
     assert "config:" in r.output          # provenance rides every prep
 
+    # AND EACH TRIAL IS NAMED BY ITS PATH FROM THE BUNDLE (O5, user yes
+    # 2026-08-28).  With the attempt layer every trial's directory ends in
+    # `run-<n>`, so a listing of bare names read "run-0, run-0" and named
+    # nobody.  Asserted on the OUTPUT here; it used to be a grep of
+    # `_cli.py` for the literal `_rel(d)`, which broke the day that helper
+    # was renamed even though the printing was still correct -- and would
+    # equally have passed on a helper that printed the wrong thing.
+    # The listing is the indented block right after its header.  Selected
+    # STRUCTURALLY and not by matching `bench-`: a filter that looks for
+    # what correct output contains cannot see the regression, it just finds
+    # nothing and reports the listing "missing" (which is what the first
+    # cut of this did).
+    lines = r.output.splitlines()
+    head = next(i for i, l in enumerate(lines)
+                if "trial dir(s) for stage" in l)
+    listed = []
+    for l in lines[head + 1:]:
+        if not l.startswith("  "):
+            break
+        listed.append(l.strip())
+    assert len(listed) == 5, (
+        "five trials were prepped, so five are listed; got: " + repr(listed))
+    assert all("/" in l for l in listed), (
+        "each trial must be named by its path from the bundle, not the bare "
+        "attempt name; got: " + repr(listed))
+    assert len(set(listed)) == len(listed), (
+        "two trials printed the same name, which names nobody: "
+        + repr(listed))
+
 
 def test_cli_summarize_bench_reads_trials_by_data(calc):
     """u4: discovery keyed by job-set.json's data, results through the same
@@ -2670,21 +2699,6 @@ def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
         "\n".join(l for l in warn_lines if warn_lines.count(l) > 1))
     assert "each warning shown once" in err, (
         "suppression must be SAID, not silent")
-
-
-def test_the_prepped_trial_list_names_whose_attempt_each_is():
-    """O5 (user yes, 2026-08-28): with the attempt layer every trial dir
-    ends in run-<n>, so a listing of bare names read `run-0, run-0` and
-    named nobody.  Guarded at the source like the ask-preview guard,
-    because the echo lives in the CLI."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/_cli.py").read_text()
-    i = src.index("prepped {len(dirs)} trial dir(s)")
-    tail = src[i:i + 400]
-    assert "_rel(d)" in tail and "{d.name}" not in tail, (
-        "the trial listing must print the path from the bundle, not the "
-        "bare attempt name")
 
 
 # --------------------------------------------------------------------- #

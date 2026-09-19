@@ -776,6 +776,29 @@ class TestSendToTaskSetup:
         )
         return calc, xyz
 
+    def _calc_dir_with_a_cell(self, tmp_path, monkeypatch):
+        """The same, but the structure STATES its cell.
+
+        Without one the preflight raises `cell.vacuum_defaulted` and the
+        send takes its NOTICES branch, which returns early.  That branch is
+        the only one this class covered, which is how a defect on the other
+        one survived: `window.location.href = "/task-setup"` lived past the
+        early return and no test ever executed it (found 2026-09-19 by
+        restoring the jump and watching these tests stay green).
+        """
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        calc = tmp_path / "proj" / "opt" / "boxed-run"
+        calc.mkdir(parents=True)
+        xyz = calc / "water.xyz"
+        xyz.write_text(
+            '3\nLattice="18.0 0.0 0.0 0.0 18.0 0.0 0.0 0.0 18.0" '
+            'Properties=species:S:1:pos:R:3\n'
+            "O 9.000  9.000 9.000\n"
+            "H 9.957  9.000 9.000\n"
+            "H 8.761  9.927 9.000\n"
+        )
+        return calc, xyz
+
     def _load_and_send(self, page, base_url, calc, xyz):
         _open_build(page, base_url)
         page.wait_for_function(
@@ -800,16 +823,30 @@ class TestSendToTaskSetup:
             self, page, flask_server, tmp_path, monkeypatch):
         calc, xyz = self._calc_dir(tmp_path, monkeypatch)
         self._load_and_send(page, flask_server, calc, xyz)
-        # Success either navigates to /task-setup or (with cell notices)
-        # stays put with the written-files status — both mean the files
-        # are on disk, which is the contract that matters.
         page.wait_for_function(
-            "() => window.location.pathname === '/task-setup'"
-            " || (document.querySelector('#handover-status') || {})"
+            "() => (document.querySelector('#handover-status') || {})"
             "      .textContent.includes('Wrote')",
             timeout=10_000)
         assert (calc / "task.1st.json").is_file(), (
             "the hand-over never landed")
+
+        # AND IT STAYS PUT (user, 2026-09-19).  This tab's job ends when the
+        # files are on disk; opening Task setup is the person's move.  The
+        # wait above used to accept EITHER this or a jump to /task-setup,
+        # which is how the jump survived being wrong: sessionStorage slots
+        # are per page and a page's own slot shadows the shared one, so Task
+        # setup opened whatever folder IT last showed.  Measured 2026-09-19 —
+        # the hand-over landed in `optimization/junction6-hier` and Task
+        # setup opened `spectrum/bridge-hier`, ready to edit the wrong
+        # calculation.  One outcome now, and the test says which.
+        assert page.evaluate("() => window.location.pathname") == (
+            "/structure-optimization"), (
+            "the hand-over navigated away; it writes files and stops")
+        status = page.evaluate(
+            "() => document.querySelector('#handover-status').textContent")
+        assert "Task setup" in status, (
+            "the status must say where to go next, since nothing goes there "
+            "for you; got: " + status)
         templates = list(calc.glob("*.template.toml"))
         assert templates, "the parameter template never landed"
         sources = list(calc.glob("*.source.xyz"))
@@ -819,6 +856,44 @@ class TestSendToTaskSetup:
         assert over["engine"]["name"] == "siesta"
         assert "Structure-optimization" in over["_what"], (
             "the hand-over's provenance does not name this tab (E-B9)")
+
+    def test_send_writes_and_STAYS(self, page, flask_server, tmp_path,
+                                    monkeypatch):
+        """The clean path: files land, and the tab does not go anywhere.
+
+        This tab's job ends when the files are on disk; opening Task setup
+        is the person's move (user, 2026-09-19: *"we just skip the fancy tab
+        to tab jump connection to avoid implicit coupling"*) — the rule the
+        transport arm has kept since 2026-08-29, now the only rule.
+
+        WHAT THE JUMP COST, and why not jumping beats handing the folder
+        over: it relied on the sidebar's selection being shared, but
+        sessionStorage slots are PER PAGE and a page's own slot SHADOWS the
+        shared fallback (`projects/state.js::handOffSelection` says so in its
+        own docstring).  So Task setup opened whatever folder IT last showed.
+        Measured 2026-09-19: the hand-over landed correctly in
+        `optimization/junction6-hier` and Task setup opened
+        `spectrum/bridge-hier`, ready to edit the wrong calculation.
+        """
+        calc, xyz = self._calc_dir_with_a_cell(tmp_path, monkeypatch)
+        self._load_and_send(page, flask_server, calc, xyz)
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        assert (calc / "task.1st.json").is_file()
+
+        assert page.evaluate("() => window.location.pathname") == (
+            "/structure-optimization"), (
+            "the hand-over navigated away; it writes files and stops")
+        status = page.evaluate(
+            "() => document.querySelector('#handover-status').textContent")
+        assert "cell was checked" not in status, (
+            "this fixture must reach the CLEAN branch, or the assertion "
+            "above is about the wrong code; got: " + status)
+        assert "Task setup" in status, (
+            "nothing opens Task setup for you, so the status has to say to; "
+            "got: " + status)
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):

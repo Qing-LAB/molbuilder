@@ -1485,8 +1485,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * ---------------------------------------------------------------- *
      * This tab collects parameters and produces no artifact, so until this
      * existed the form's work had nowhere to go at all.  The button writes
-     * two files into the folder the projects sidebar has selected, then
-     * opens Task setup there.
+     * the files into the folder the projects sidebar has selected, and
+     * stops there -- opening Task setup is the person's move (2026-09-19;
+     * the jump depended on the other tab's remembered folder, and opened
+     * the wrong calculation).
      *
      * THROUGH DISK, NEVER IN MEMORY.  `web/tabs.md` § 1 forbids an in-memory
      * "send to tab" hand-off and lists four costs: a result depending on

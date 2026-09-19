@@ -2463,6 +2463,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # a job misbehaves hours later; the bundle is not.
     from ..runtime_config import format_provenance
     from ..jobset.ledger import prepped as _ledger_prepped
+    from ..jobset.ledger import rel_to as _ledger_rel
     prov = _ledger_prepped(base, kind=kind, stage=stage, dirs=dirs)
     click.echo(format_provenance(prov))
 
@@ -2476,7 +2477,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             # the path from the bundle, not the bare attempt name -- with
             # the attempt layer every trial's dir ENDS in run-<n>, and a
             # list reading "run-0, run-0" names nobody (user, 2026-08-28)
-            click.echo(f"  {_rel(d)}")
+            click.echo(f"  {_ledger_rel(base, d)}")
         # The REAL grammar (E-J2, 2026-08-21 review): `launch bench
         # <stage>` -- typed with a trial name, the trial binds as the
         # STAGE and is refused; and the shipped submission is the
