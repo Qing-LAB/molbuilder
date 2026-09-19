@@ -39,6 +39,34 @@ import re
 import xml.etree.ElementTree as ET
 
 
+#: Where a calculation's staged pseudopotentials live, relative to it
+#: (roadmap 7.10 M6: grouped in one folder rather than N loose `<El>.psml`).
+PSEUDO_DIRNAME = "pseudos"
+
+
+def staged_psml(base) -> "set":
+    """Which elements this calculation already has a `.psml` for.
+
+    **The NAME of the folder, with no side effects** -- which is why this is
+    here and not `jobset.prep._pseudo_dir`, whose job is to CREATE that
+    folder and migrate root strays into it.  A read-only check cannot call
+    a function that writes, and copying its rule instead is how the two
+    come to disagree about where a file is.
+
+    Both places, because both are real at different moments: `init` and a
+    travelled bundle leave `<El>.psml` at the root, and the first `prep`
+    moves them into `pseudos/`.  Asking only the root is what made the
+    configuration-time check refuse a calculation whose pseudopotentials
+    were already staged (found 2026-09-19 by a prep e2e timing out).
+    """
+    base = Path(base)
+    out = set()
+    for d in (base, base / PSEUDO_DIRNAME):
+        if d.is_dir():
+            out |= {f.stem for f in d.glob("*.psml")}
+    return out
+
+
 class PsmlLibError(ValueError):
     """A ``psml_lib`` spelling the rule cannot answer -- dotted, or an
     absolute path outside the projects tree.  The message teaches the

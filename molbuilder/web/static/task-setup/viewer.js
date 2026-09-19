@@ -1060,7 +1060,11 @@ async function loadFolder(projects, dir) {
      * This row said "saving would update it" until 2026-09-17, which is the
      * one thing a person editing parameter values needs to be right. */
     markFile("ts-f-tmpl", !!templateName, "already here — Save leaves it alone");
-    if (templateName) $("ts-f-tmpl-name").textContent = templateName;
+    /* WRITTEN EITHER WAY.  Guarded on truth, this row kept the PREVIOUS
+     * folder's template name whenever the new one has none -- which is
+     * exactly the hand-over case, where there is no template yet.  An
+     * absent name is a value to render, not a reason to skip rendering. */
+    $("ts-f-tmpl-name").textContent = templateName || "";
 
     /* THE STRUCTURE, by the name the description itself gives it.  Globbing
      * for a `.xyz` would answer a different question — "is there a geometry
@@ -1118,7 +1122,20 @@ async function loadFolder(projects, dir) {
                  `${TASK_HANDOVER} is here, carrying the parameters. `
                  + `${awaiting} Saving writes task.json and removes `
                  + `this file.`);
-        $("ts-stages-card").hidden = true;
+        /* EVERY CARD THE DESCRIPTION BRANCH PAINTS IS PAINTED HERE TOO,
+         * with nothing to paint.  This branch hid two cards by hand and
+         * left the rest showing the LAST folder's description -- measured
+         * 2026-09-19 moving a described folder to a hand-over: the previous
+         * calculation's stage tab (`ts-steptab-0`), its prep command
+         * (`ts-cmd`) and its job name in the parameter chooser were all
+         * still on screen under a heading naming the new one.
+         *
+         * Through the same renderers rather than by hiding named hosts:
+         * each already treats an absent task as *empty*, so a card added to
+         * any of them is covered here without anyone remembering. */
+        renderStages(null);
+        renderNext(null);
+        refreshPickers();
         { const c = $("ts-notify-card"); if (c) c.hidden = true; }
         // The machine rows are labelled from the SERVER's answer, so it has to
         // be here before they paint.  `loadSweepChoices` is memoised, so this

@@ -502,7 +502,8 @@ def _pseudo_dir(base: Path) -> Path:
     ONE rule, two providers: the SIESTA arm below and the transport
     composite's (which fetches from the citation instead of a library).
     """
-    pdir = base / "pseudos"
+    from ..pseudos import PSEUDO_DIRNAME
+    pdir = base / PSEUDO_DIRNAME
     pdir.mkdir(exist_ok=True)
     # A container, and it says so (`project-layout.md` § 1.4a): the shared
     # package holds files, never a run.  Left unstamped it was the directory
