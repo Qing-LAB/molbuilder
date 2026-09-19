@@ -446,49 +446,63 @@ creation and thrown away.
 | the directory | what answers | container or run |
 |---|---|---|
 | the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2) | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
-| **stage** · **axis** · **attempt** · **support** | `placement.json`, written by the creator | from **`role`**, through the table below |
-| anything else | nothing | **not part of a calculation** — and that is an answer, not a failure |
+| **everything below it that molbuilder made** | `placement.json`, written by the creator | **`role`**, said outright |
+| anything else | nothing | unknown — the directory is read alone, and told so |
 
 **The root needs no record**, and that is the point rather than an omission:
 invariant 2 already makes `task.json` the thing that says a directory is a
 calculation, and `shape` is already a required field of it. A second declaration
 would be a second home for one fact.
 
-#### The role table
-
-`role` is the only vocabulary; container-or-run is read off it, never stored
-beside it:
-
-| `role` | § 1.4 calls it | written by |
-|---|---|---|
-| `stage` | container | the stage/attempt creator |
-| `axis` | container | the stage/attempt creator |
-| `attempt` | **run** | the stage/attempt creator |
-| `support` | container | `prep`, for `pseudos/` and `bench/` |
-
-#### The record
+#### The record — two fields, and the reason it is only two
 
 ```json
 { "schema": "molbuilder/placement@1",
-  "role":   "attempt",
-  "of":     "../..",
-  "stage":  "raman",
-  "axis":   {"bias": "0.0"},
-  "index":  0 }
+  "role":   "run",
+  "of":     "../.." }
 ```
 
+* **`role` is `container` or `run`** — § 1.4's own two words, no third.
 * **`of` is relative, always** — to the calculation root. That is what survives
   renaming or moving a whole calculation, and it is the convention
   `.gathered-from` already uses for the same reason. Copy an attempt out on its
   own and `of` dangles; *"this attempt's calculation is not here"* is then the
   honest answer, where a search would have adopted whatever it found.
-* **`axis`** is present only where the stage varies over one (§ 2a.11's `v*`
-  level) — absent is not null, it is *this stage varies over nothing*.
-* **`index`** is the attempt number, and only a run carries it.
-* **`seq` is deliberately absent.** Invariant 4 puts a stage's `seq` on the
-  directory name and says it is "read back off the artifacts, stored nowhere
-  else". Writing it here would be exactly the second home that invariant
-  forbids.
+
+**Everything else is derived, and that is checked rather than asserted.** Given
+`of`, the root holds `task.json` and `job-set.json`, and
+`materialize.job_dir_names` is *the naming authority* — a `{job → directory}`
+map written by the same code that made the directories. Running the decode over
+a real three-calculation tree (2026-09-19): every stage container resolved to
+its job (`01_raman` → `raman`), every attempt to its job and index
+(`01_raman/run-0` → `raman`, 0), all five transport rungs, and both shapes' roots
+through `shape`. So a **stage name, an axis point and an attempt index are
+facts the tree already answers**, and storing them would be a second home for
+each — with the drift that always follows.
+
+**What the authority cannot answer, and why `role` is therefore stored.** The
+same map returns a *trial* as `<NN>_<name>/bench/bench-<point>` — an exact job
+match, structurally identical to a stage's own `<NN>_<name>`. § 1.4 calls the
+first a container and the second a run. Identical shape, opposite answers, and
+nothing in the tree distinguishes them: only the code that created the directory
+knew which it was making. That is the whole content of this record.
+
+**`seq` is deliberately absent**, for the same one-home reason: invariant 4 puts
+a stage's `seq` on the directory name and says it is "read back off the
+artifacts, stored nowhere else".
+
+#### What the finer words become
+
+`stage`, `axis`, `trial` and *support* are not roles — they are derived
+readings of a `container` or a `run`, and each falls out of the authority:
+
+| a directory that is… | is read as | because |
+|---|---|---|
+| `container`, matching a job | that **stage** | the authority maps the job |
+| `container`, matching no job | **support** — `pseudos/`, a bench container | the authority has no job there |
+| `run`, under a stage's directory | an **attempt**, index from its name | the authority maps the parent |
+| `run`, matching a job itself | a **trial** | the authority maps it as a bench point |
+| `run`, and it IS the root | the flat shape's single run | `task.json`'s `shape` |
 
 #### Absence narrows the answer; it does not refuse the directory
 
