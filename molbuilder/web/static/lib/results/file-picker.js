@@ -111,8 +111,10 @@
     }
 
     /**
-     * Given ``/api/results/dir``'s ``files`` (each ``{name, role, parser,
-     * opens, size, mtime}``), return the ones a viewer can open.
+     * Given ``/api/results/dir``'s ``files`` (each ``{name, role, label,
+     * stage, parser, opens, size, mtime}``), return **the ones this menu
+     * lists** — both halves of that: a parser can read it AND a presenter
+     * claims it as a result.
      *
      * ``parser`` is the REGISTRY's verdict, decided on the server by
      * ``detect()``; ``null`` means nothing can read the file and it is not
@@ -127,7 +129,7 @@
      *
      * Pure (no DOM, no fetch).  Exported for unit tests.
      */
-    function filterToResultFiles(entries, dirPath, engine) {
+    function filterToResultFiles(entries, dirPath, engine, pickResult) {
         if (!Array.isArray(entries)) return [];
         // Use a forward-slash separator regardless of OS.
         const sep = dirPath && dirPath.indexOf("\\") >= 0 ? "\\" : "/";
@@ -143,15 +145,39 @@
             // then answers 400 -- and hid 155 that a parser handles.
             if (!entry.parser) continue;
             const fullPath = dirPath ? (dirPath + sep + entry.name) : entry.name;
-            out.push({
+            const rec = {
                 name:   entry.name,
                 path:   fullPath,
                 mtime:  entry.mtime,
                 size:   entry.size,
                 role:   entry.role || null,
+                // WHICH RUN, and which rung -- the server's reading of the
+                // name (`runfiles.parse`).  What `absorbs` compares.
+                label:  entry.label || null,
+                stage:  entry.stage || null,
                 parser: entry.parser,
                 engine: engine || null,
-            });
+            };
+            // AND A PRESENTER MUST CLAIM IT, which is the SECOND half of
+            // "a file this menu lists" and used to be asked somewhere else.
+            // `parser != null` is the REGISTRY's verdict (can anything read
+            // it); `pickResult` is the PICKER's (is it a result, or a
+            // catch-all the dropdown must not flood with).  Two questions,
+            // and this list answered only the first while `_populate`
+            // answered both -- so the meta line counted files the menu did
+            // not show.  Measured 2026-09-19 on
+            // `BDT-only-init-siesta`: "7 of 7" printed under a two-option
+            // dropdown.  One list, one count.
+            if (typeof pickResult === "function") {
+                let claimed = null;
+                try { claimed = pickResult(fullPath, rec); }
+                catch (e) {
+                    console.warn("[results-file-picker] pickResult() threw "
+                                 + "for " + entry.name + ":", e);
+                }
+                if (!claimed) continue;
+            }
+            out.push(rec);
         }
         // Newest first; tie-break by name so the order is deterministic
         // across runs even when the filesystem reports mtime with
@@ -170,8 +196,12 @@
      * as ONE result rather than as its pile of working files
      * (results.md § 2.3).
      *
-     * A presenter declares this with an optional ``absorbs(master, other)``;
-     * the engine naming lives there, with the code that knows it.  Absorption
+     * A presenter declares this with an optional ``absorbs(master, other,
+     * masterMeta, otherMeta)`` -- the metas being the server's reading of
+     * each file (`{role, label, stage, ...}` from `/api/results/dir`), which
+     * is what lets a presenter ask *same run?* instead of doing arithmetic on
+     * the two names.  The engine naming lives there, with the code that
+     * knows it.  Absorption
      * only applies between files that are BOTH in this listing, so a run whose
      * master was deleted or never written still lists its parts and nothing
      * becomes unreachable.
@@ -198,7 +228,8 @@
                 if (other === master || absorbed.has(other.path)) continue;
                 let claims = false;
                 try {
-                    claims = !!insp.absorbs(master.path, other.path);
+                    claims = !!insp.absorbs(master.path, other.path,
+                                            master, other);
                 } catch (e) {
                     console.warn(
                         "[results-file-picker] absorbs() threw for "
@@ -612,7 +643,8 @@
                     const results = absorbSatellites(
                         filterToResultFiles(body.files || [],
                                             body.run_dir || dir,
-                                            body.engine),
+                                            body.engine,
+                                            inspReg.pickResult),
                         inspReg.pickResult
                     );
                     lastPlace = body.place || null;

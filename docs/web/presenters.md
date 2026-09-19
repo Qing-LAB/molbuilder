@@ -103,22 +103,30 @@ that declares four things (and three optional ones), and calls `register` once:
   files sit under. Defaults to `displayName`. A presenter matching more than one
   workflow's outputs discriminates per file here — `trajectory` claims `.out`,
   `.molwatch.log` and `*_optim.xyz`, and names the engine that ran them.
-- *(optional)* `absorbs(master, other)` — **"`master` subsumes `other`"**: both
-  are result-class files in the SAME directory and `other` is a working part of
-  the run `master` reports, so only the master gets a dropdown entry
+- *(optional)* `absorbs(master, other, masterMeta, otherMeta)` — **"`master`
+  subsumes `other`"**: both are result-class files in the SAME directory and
+  `other` is a working part of the run `master` reports, so only the master
+  gets a dropdown entry
   ([`results.md`](?doc=web/results.md) § 2.3). *This bullet was missing until
   2026-09-17 and the count above said "two optional" — `absorbs` is what makes
   one PySCF relaxation one menu line instead of five, and it is also the rule
   that CANNOT express a five-directory transport ladder.*
 
-**`meta` is the server's answer about this file**, and it is the second argument
-to both `match` and `resultCategory`: `{role, parser, engine}` from
-`/api/results/dir` ([`parse.md`](?doc=model/parse.md) § 5.5) — the catalogue's
-role, the registry's verdict, and the engine that ran in the DIRECTORY. A
-presenter that has it prefers it to reading the filename: the role is the
-catalogue's own vocabulary rather than a run-output suffix spelled a second time
-here (`parse.md` R-RO1), and the engine is a fact about the run that no filename
-carries.
+**`meta` is the server's answer about this file**, and it is the last argument
+to `match`, `resultCategory` and `absorbs` alike: `{role, label, stage, parser,
+engine}` from `/api/results/dir` ([`parse.md`](?doc=model/parse.md) § 5.5) — the
+catalogue's role, *which run this file is part of and which rung*, the
+registry's verdict, and the engine that ran in the DIRECTORY. A presenter that
+has it prefers it to reading the filename, and for three of those five there is
+no filename answer at all:
+
+- the **role** is the catalogue's own vocabulary rather than a run-output suffix
+  spelled a second time here (`parse.md` R-RO1);
+- **`label` and `stage`** come from reading the name back with the label the
+  deck states (`runfiles.parse`), which is the only way the label/role boundary
+  can be found — a role may contain `_` and so may a label
+  ([`results.md`](?doc=web/results.md) § 2.3);
+- the **engine** is a fact about the run directory that no filename carries.
 
 It is **absent outside the Results tab** — nothing else holds a directory
 answer — and `engine: "unknown"` is the directory declining to name one, which

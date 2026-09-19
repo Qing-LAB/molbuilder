@@ -51,6 +51,22 @@
         return;
     }
 
+    /* THE RUN'S WORKING PARTS -- the roles a `.molwatch.log` master
+     * subsumes (`results.md` § 2.3).  These are `runfiles` rows: two
+     * declared in `WRITTEN` (`_initial.xyz`) and in `pyscf/warm-files.toml`
+     * (`_optimized.xyz`, `_geom_optim.xyz`).
+     *
+     * KNOWN GAP, and it is not this change's to close: the same vocabulary
+     * is spelled in `runfiles._CARRIED_ROLES` and in `pyscf/input.py`'s
+     * `ROLE_*` constants as well, so the browser's copy is the fourth of
+     * four rather than a lone offender.  `/api/results/dir` is the place a
+     * single answer would arrive -- the route already sends each file's
+     * role, and one more field would let this list be deleted.
+     */
+    const CARRIED_ROLES = [
+        "_initial.xyz", "_optimized.xyz", "_geom_optim.xyz",
+    ];
+
     const inspector = factory.makePartialInspector({
         name:          "trajectory",
         displayName:   "Trajectory + SCF history",
@@ -130,39 +146,40 @@
          * single-file input for molwatch" (pyscf/input.py).  The files beside
          * it are that run's working parts, not peer results:
          *
-         *   <base>_initial.xyz          the INPUT, echoed back
-         *   <base>_optimized.xyz        final coords; also the seed the NEXT
-         *                               run warm-starts from
-         *   <base>_geom_optim.xyz       geomeTRIC's per-stage stream,
-         *                               the same steps the master log reports
+         *   <label>_initial.xyz          the INPUT, echoed back
+         *   <label>_optimized.xyz        final coords; also the seed the NEXT
+         *                                run warm-starts from
+         *   <label>_<stage>_geom_optim.xyz
+         *                                geomeTRIC's per-stage stream, the
+         *                                same steps the master log reports
          *
          * Listing them as peers turned one PySCF relaxation into five menu
          * entries (2026-08-04).
          *
-         * NAMING: a staged run's master is `<job>_<token>.molwatch.log`
-         * where the token is the stage's artifact token -- digit-first,
-         * `01_coarse` (job-contracts.md § 6.3) -- while `_initial` /
-         * `_optimized` satellites stem on the bare `<job>` (they CARRY
-         * between rungs) while the geomeTRIC stream is this rung's, so it
-         * stems on the full `<job>_<token>` -- the token sits where every
-         * token sits, right after the label, and `_geom_optim.xyz` is the
-         * whole role (job-contracts.md § 2.2a).  So satellites are matched
-         * against BOTH stems: the master's full stem and the
-         * token-stripped job.  This comment said the token sat INSIDE the
-         * role (`<job>_geom_<token>_optim.xyz`) until 2026-09-07, and the
-         * test below was a prefix/suffix pair loose enough to pass either
-         * way -- so the wrong belief cost nothing and was invisible.  All
-         * three are exact names now.  (The `-stage<N>` strip that stood here
-         * was the pre-rename spelling; after the token rename it
-         * matched nothing, and every staged relaxation went back to
-         * being five menu entries -- 2026-08-19.)  Only `.molwatch.log`
-         * absorbs; a SIESTA `.out` names its own stage files the same
-         * way and is left alone until that is verified against a real
-         * staged SIESTA run.
+         * SAME RUN IS ONE EQUALITY, because the server reads each name back
+         * with the label the deck states (`/api/results/dir` -> `label`,
+         * `stage`, `role`; `runfiles.parse`).  The carried files stem on the
+         * bare job label and this rung's stream on the same label with a
+         * stage, so `label` is the thing they share and the test is `===`.
+         *
+         * WHAT THIS REPLACES, and why it had to go: this function used to
+         * cut the master's stem itself --
+         *
+         *     const job = stem.replace(/_\d+_[A-Za-z0-9_]+$/, "");
+         *
+         * -- which is the label/stage boundary that `runfiles.parse`'s own
+         * docstring says CANNOT be found from the string alone, because a
+         * role may contain `_` and so may a label.  It matches leftmost, so
+         * `au_2_bdt_02_fine` read as a label of `au`: the run's own
+         * satellites were not absorbed (four menu entries for one run), and
+         * a different job literally named `au` would have had its files
+         * absorbed into this one and vanish from the picker.  Measured
+         * 2026-09-19.
+         *
+         * The name test stays as the fallback for a caller with no directory
+         * answer, which is the same shape `match` and `resultCategory` use.
          */
-        absorbs: (master, other) => {
-            const lower = master.toLowerCase();
-            if (!lower.endsWith(".molwatch.log")) return false;
+        absorbs: (master, other, mMeta, oMeta) => {
             const cut = (p) => {
                 const ix = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
                 return { dir: ix < 0 ? "" : p.slice(0, ix),
@@ -171,18 +188,29 @@
             const m = cut(master);
             const o = cut(other);
             if (m.dir !== o.dir) return false;          // same folder only
+
+            // THE SERVER'S READING, when there is one.  Same label, and
+            // then the STAGE decides which rung a part belongs to -- which
+            // is the sentence above, said in the grammar's own words:
+            // `_initial` / `_optimized` CARRY between rungs and so have no
+            // stage, while the geomeTRIC stream is this rung's and carries
+            // it.  A LADDER IS N RESULTS (`stages.md` § 1.1a), so 03_tight's
+            // master must leave 01_coarse's stream to 01_coarse's master.
+            if (mMeta && mMeta.label && oMeta && oMeta.label) {
+                if (mMeta.role !== ".molwatch.log") return false;
+                if (mMeta.label !== oMeta.label) return false;
+                if (oMeta.stage && oMeta.stage !== mMeta.stage) return false;
+                return CARRIED_ROLES.indexOf(oMeta.role) >= 0;
+            }
+
+            // NO DIRECTORY ANSWER: the names, and only the shapes that need
+            // no boundary-finding -- an exact suffix on a shared prefix.
+            if (!m.name.toLowerCase().endsWith(".molwatch.log")) return false;
             const stem = m.name.slice(0, -(".molwatch.log".length));
             if (!stem) return false;
-            // `<job>_<token>` -> `<job>`; an unstaged stem passes through.
-            const job = stem.replace(/_\d+_[A-Za-z0-9_]+$/, "");
             const n = o.name.toLowerCase();
-            const stems = job && job !== stem
-                ? [stem.toLowerCase(), job.toLowerCase()]
-                : [stem.toLowerCase()];
-            return stems.some((b) =>
-                n === b + "_initial.xyz"
-                || n === b + "_optimized.xyz"
-                || n === b + "_geom_optim.xyz");
+            const b = stem.toLowerCase();
+            return CARRIED_ROLES.some((r) => n === b + r);
         },
     });
 

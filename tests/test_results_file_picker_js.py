@@ -271,6 +271,35 @@ class TestFilterToResultFiles:
         )
         assert out == []
 
+    def test_only_what_the_menu_shows_is_counted(self):
+        """A parser reading it is not the same as the menu listing it.
+
+        `parser != null` is the REGISTRY's verdict; `pickResult` is the
+        PICKER's — a catch-all viewer opts OUT (`isResult: false`) so the
+        dropdown is not flooded with configs and logs.  This list answered
+        only the first while `_populate` answered both, so the meta line
+        counted files nobody could pick.
+
+        MEASURED 2026-09-19 on `BDT-only-init-siesta`: 7 files with a
+        parser, 2 options in the dropdown, and the line under it read
+        "7 of 7".
+        """
+        out = _run_node(
+            "const entries = [\n"
+            "  {name: 'a.out',       mtime: 300, parser: 'siesta'},\n"
+            "  {name: 'a.util.csv',  mtime: 200, parser: 'util-csv'},\n"
+            "  {name: 'a.monitor.log', mtime: 100, parser: 'monitor-log'},\n"
+            "];\n"
+            "function pickResult(p) {\n"
+            "  return p.endsWith('.out')\n"
+            "       ? { name: 'trajectory', displayName: 'Traj' } : null;\n"
+            "}\n"
+            "const r = window.molbuilder.resultsFilePicker.filterToResultFiles("
+            "  entries, '/proj', 'siesta', pickResult);\n"
+            "console.log(JSON.stringify(r.map(x => x.name)));"
+        )
+        assert out == ["a.out"]
+
     def test_uses_backslash_separator_for_windows_paths(self):
         """Windows-style dir paths build entries with backslash sep
         so projects.setShared receives a path that round-trips
@@ -478,6 +507,9 @@ class TestAbsorbSatellites:
     #: both the rule and its test agreed on a grammar no generated file has
     #: ever used.  Twice.  Names that come out of the generator cannot do that.
     _JOB = "pyscf_relax"
+    #: What `parse.dirs.labels_in` would answer for this folder: the decks
+    #: state them, and every file is read back against all of them.
+    _LABELS = ["other_job", "pyscf_relax"]
     _MASTER = "/p/" + _rf(_JOB, ".molwatch.log", "03_tight")
     #: What THIS rung's master absorbs: the two carried files, which stem on
     #: the bare job, and its own trajectory, which carries its token.
@@ -512,14 +544,34 @@ class TestAbsorbSatellites:
 
     @staticmethod
     def _snippet(paths):
+        """The entries the picker builds, INCLUDING the server's reading.
+
+        `role` / `label` / `stage` come from `runfiles.parse` -- the same
+        function `/api/results/dir` calls -- rather than being spelled here,
+        so the Python door and the JS that consumes it are pinned to each
+        other.  Composing the name and then reading it back is the whole
+        round trip in one test.
+        """
         import json
-        names = json.dumps([{"name": p.rsplit("/", 1)[-1], "path": p,
-                             "mtime": 1000} for p in paths])
+        from molbuilder.parse.dirs import read_back
+        rows = []
+        for p in paths:
+            name = p.rsplit("/", 1)[-1]
+            # EVERY LABEL THE DIRECTORY HOLDS, which is what `labels_in`
+            # answers on a real one -- two jobs in one folder is a case
+            # below, and reading against only the first would make its files
+            # unresolvable rather than foreign.
+            rec = read_back(name, TestAbsorbSatellites._LABELS)
+            rows.append({"name": name, "path": p, "mtime": 1000,
+                         "role": rec.role if rec else None,
+                         "label": rec.label if rec else None,
+                         "stage": rec.stage if rec else None})
+        names = json.dumps(rows)
         return (
             "const entries = " + names + ";\n"
             "const traj = window.molbuilder.inspectors.trajectoryInspector;\n"
-            "function pickResult(p) {\n"
-            "  return traj.match(p) ? traj\n"
+            "function pickResult(p, m) {\n"
+            "  return traj.match(p, m) ? traj\n"
             "       : (p.endsWith('.xyz') ? { name: 'structure',\n"
             "            displayName: 'Structure' } : null);\n"
             "}\n"
@@ -578,6 +630,41 @@ class TestAbsorbSatellites:
         ]))
         assert sorted(out) == ["other_job_01_coarse.molwatch.log",
                                "pyscf_relax_03_tight.molwatch.log"]
+
+    def test_a_label_holding_a_stage_shaped_run_is_still_one_entry(self):
+        """The label is READ BACK, never cut out of the name.
+
+        `absorbs` used to find the label itself —
+
+            const job = stem.replace(/_\\d+_[A-Za-z0-9_]+$/, "");
+
+        — which is the boundary `runfiles.parse`'s own docstring says cannot
+        be found from the string alone, because a role may contain `_` and so
+        may a label.  It matches LEFTMOST, so a chemistry-shaped job name
+        like `au_2_bdt` was cut to `au`: none of the run's satellites matched
+        the truncated prefix and one relaxation listed as four entries.
+        Measured 2026-09-19.
+
+        Every other case in this class uses a label the regex happened to cut
+        correctly, which is why they all passed while this was broken.
+        """
+        job = "au_2_bdt"
+        names = [_rf(job, ".molwatch.log", "02_fine"),
+                 _rf(job, "_initial.xyz"),
+                 _rf(job, "_optimized.xyz"),
+                 _rf(job, "_geom_optim.xyz", "02_fine")]
+        old_job, old_labels = (TestAbsorbSatellites._JOB,
+                               TestAbsorbSatellites._LABELS)
+        TestAbsorbSatellites._JOB = job
+        TestAbsorbSatellites._LABELS = [job]
+        try:
+            out = self._absorb(["/p/" + n for n in names])
+        finally:
+            TestAbsorbSatellites._JOB = old_job
+            TestAbsorbSatellites._LABELS = old_labels
+        assert out == [names[0]], (
+            "one run must be ONE menu entry whatever its label looks like; "
+            "got: " + repr(out))
 
     def test_a_master_in_another_directory_absorbs_nothing(self):
         out = self._absorb((

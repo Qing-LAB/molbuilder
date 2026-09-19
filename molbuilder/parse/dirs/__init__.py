@@ -37,7 +37,8 @@ finished result CITES it, and prep composes -- ``transport/compose.py``.)
 from ..registry import register
 from .atom_metadata import atom_metadata_json_for_run_dir   # noqa: F401
 from .job import run_status   # noqa: F401  -- re-export
-from .rundir import JobDirParser, openable_in   # noqa: F401
+from .rundir import (JobDirParser, labels_in, openable_in,  # noqa: F401
+                     read_back)
 
 # REGISTERED HERE, not in the module: "per-package ``__init__.py`` files own
 # the registration order for their parsers" (`registry.register`).  With it
@@ -51,4 +52,6 @@ __all__ = [
     "run_status",
     "JobDirParser",
     "openable_in",
+    "labels_in",
+    "read_back",
 ]

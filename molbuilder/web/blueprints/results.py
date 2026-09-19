@@ -171,9 +171,11 @@ def api_results_dir():
     together, once, here.
 
     **PER FILE the server says what the file IS**, which is the half the
-    browser cannot derive: ``role`` from the catalogue, ``parser`` from the
-    registry (``null`` when nothing claims it — the browser must not offer
-    it), and ``engine`` from the directory, not from the suffix.
+    browser cannot derive: ``role`` from the catalogue, ``label`` and
+    ``stage`` — *which run this file is part of, and which rung* — read
+    back with the label the deck states, ``parser`` from the registry
+    (``null`` when nothing claims it — the browser must not offer it),
+    and ``engine`` from the directory, not from the suffix.
 
     ``openable`` is the door's own pick, so the page defaults to the file the
     calculation produced rather than to whatever was written last.
@@ -183,7 +185,8 @@ def api_results_dir():
     from flask import jsonify, request
 
     from molbuilder.parse import detect
-    from molbuilder.parse.dirs import openable_in, run_status
+    from molbuilder.parse.dirs import (labels_in, openable_in, read_back,
+                                       run_status)
     from molbuilder.parse.contract import engine_of
     from molbuilder.parse.errors import ParseError
     from molbuilder.runfiles import role_of
@@ -219,10 +222,22 @@ def api_results_dir():
         opened, attempts = openable_in(str(directory))
         st = run_status(directory)
 
+    # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
+    # WITHOUT one and therefore cannot answer an underscore role at all --
+    # its own docstring says why: a role may contain `_` and so may a stage
+    # name, and nothing tells them apart from the string alone.  So
+    # `_initial.xyz`, `_optimized.xyz` and `_geom_optim.xyz` -- the very
+    # files the browser has to fold into one run -- all came back
+    # `role: null`, and the browser re-implemented the grammar as a regex to
+    # compensate: `trajectory.js::absorbs` read `au_2_bdt_02_fine` as a label
+    # of `au`.  The deck states the label; `labels_in` asks it.
+    labels = labels_in(str(directory))
+
     files = []
     for entry in sorted(directory.iterdir(), key=lambda e: e.name):
         if not entry.is_file():
             continue
+        rec = read_back(entry.name, labels)
         # THE REGISTRY DECIDES WHETHER IT CAN BE OPENED, never the suffix.
         # A refusal is an answer -- `parser: null` is what stops the page
         # offering a Slurm log, a 0-byte `.out`, or a `job-set.json` its own
@@ -235,7 +250,13 @@ def api_results_dir():
             parser, opens = None, None
         files.append({
             "name":   entry.name,
-            "role":   role_of(entry.name),
+            "role":   rec.role if rec is not None else role_of(entry.name),
+            # WHICH RUN THIS FILE IS PART OF, and which rung.  `label` is
+            # what makes *these files are one run* answerable without string
+            # surgery; both are `null` for a file no label claims -- a
+            # foreign file, or a directory with no deck.
+            "label":  rec.label if rec is not None else None,
+            "stage":  rec.stage if rec is not None else None,
             "parser": parser,
             "opens":  opens,
             "size":   entry.stat().st_size,

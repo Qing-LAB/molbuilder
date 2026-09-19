@@ -165,6 +165,17 @@ _L1_MODULES = {
                          # the engines rather than beside one.  The half of
                          # the 6.6 preflight that needs an engine's field
                          # schema belongs to resolution, not here.
+    "calcdirs",          # `calcdir.json` -- a directory's own account of
+                         # where it sits (`project-layout.md` § 1.4a).  L1
+                         # for ``task``'s exact reason, and the dependency is
+                         # on ``task`` itself: a calculation root needs no
+                         # record because `task.json`'s ``shape`` already
+                         # answers, so the reader of one has to be able to
+                         # read the other.  `persist` for the @major check.
+                         # EVERY consumer -- the parse door, the results
+                         # route, the status reader -- must reach ONE answer
+                         # to *what is this directory*, or the six guesses
+                         # this module replaced grow back.
     "reload_protocol",   # the two constants the supervisor and its child agree
                          # on (exit code + env flag).  L1 for a reason the
                          # design depends on: the SUPERVISOR reads them, and it

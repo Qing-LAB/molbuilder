@@ -128,6 +128,29 @@ verbose log. The menu lists **the result**, once.
 also says which files in the same folder that master subsumes; those do not get
 their own entry. So a PySCF relaxation is one line in the menu, not five.
 
+**Which files are one run is READ, never cut out of the names.** A run file is
+`<label>_<stage><role>`, and the boundary between the label and the rest cannot
+be found from the string alone — a role may contain `_` (`_geom_optim.xyz`) and
+so may a label. The server reads each name back with the label its deck states
+and sends `label`, `stage` and `role` per file (`/api/results/dir`), so a
+presenter asks *same run?* as an equality:
+
+| the satellite | what it shares | how it is told apart |
+|---|---|---|
+| `<label>_initial.xyz` · `<label>_optimized.xyz` | the label | it **carries between rungs**, so it has no stage |
+| `<label>_<stage>_geom_optim.xyz` | the label | it is **this rung's**, so its stage is the master's |
+
+That second column is why a stage matters here at all: a ladder is *N* results,
+one per rung (`stages.md` § 1.1a), so `03_tight`'s master must leave
+`01_coarse`'s stream to `01_coarse`'s own master.
+
+> The presenter used to cut the label itself, with a regular expression over
+> the master's stem. It matches leftmost, so a chemistry-shaped job name —
+> `au_2_bdt_02_fine` — was read as a label of `au`: none of the run's own
+> satellites matched, and the relaxation listed as four entries. A different
+> job in the same folder actually named `au` would have had **its** files
+> absorbed into this run and disappear from the menu. Measured 2026-09-19.
+
 Two rules keep this from hiding anything:
 
 - **Absorption needs the master present.** A satellite is only dropped when the

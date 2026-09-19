@@ -130,6 +130,96 @@ def _search_roles() -> "List[str]":
     return out
 
 
+from ..fdf import system_label                # noqa: E402
+from ...pyscf.input import job_name           # noqa: E402
+
+#: WHERE A LABEL IS WRITTEN DOWN, per engine: the deck's role, and the reader
+#: that pulls the label out of it.  Both engines, one table -- these are the
+#: only per-engine facts in the discovery chain, and neither is a role
+#: vocabulary.  Module-level because `openable_in`'s refusal trail NAMES the
+#: roles it searched, and a second spelling there would be free to disagree
+#: with the search itself.
+_DECK_READERS = ((".fdf", system_label), (".py", job_name))
+_DECK_ROLES = tuple(r for r, _ in _DECK_READERS)
+
+
+def labels_in(directory: str) -> List[str]:
+    """Which labels this directory's files are stemmed on — LONGEST FIRST.
+
+    A run's files are ``<label>[_<stage>][-run<N>]<role>`` and **nothing can
+    find the boundary between the label and the rest by looking at the string
+    alone** (`runfiles.parse`): a role may contain ``_`` and so may a label.
+    So the label has to come from somewhere, and the deck is where it is
+    written down — ``SystemLabel`` in an ``.fdf``, ``JOB`` in a ``.py``.
+
+    **The deck's own stem too**, because a staged deck is ``<job>_<token>``
+    while the label inside it stays bare: a staged run whose seed is missing
+    resolved to nothing without it (2026-08-19).
+
+    SHORTEST FIRST, and that is the grammar's own order rather than a
+    preference: a name is ``<label>_<stage><role>``, so every character a
+    label claims is one the STAGE cannot.  Read
+    ``bridge_01_relax.molwatch.log`` under ``bridge_01_relax`` and the role
+    still comes out right while the stage comes out ``None``; read it under
+    ``bridge`` and it is ``01_relax``, which is what it is.
+
+    A caller must still REJECT a reading whose role the catalogue does not
+    declare, because `runfiles.parse` accepts any label a name starts with:
+    ``parse("au_2_bdt_initial.xyz", "au")`` answers with a role of
+    ``_2_bdt_initial.xyz``.  That check is what makes shortest-first safe —
+    the too-short label is refused on its role and the next one is tried.
+
+    Two readers: `openable_in`'s search, and `/api/results/dir`, which needs
+    the label to answer what each file IS.  It was inline in the first until
+    the second existed.
+    """
+    from molbuilder.runfiles import find_by_role
+
+    stems: List[str] = []
+    for deck_role, label_of in _DECK_READERS:
+        for deck in find_by_role(directory, deck_role):
+            label = label_of(_read_head(str(deck)))
+            if label and label not in stems:
+                stems.append(label)
+            stem = os.path.splitext(os.path.basename(str(deck)))[0]
+            if stem not in stems:
+                stems.append(stem)
+    stems.sort(key=len)
+    return stems
+
+
+def read_back(name: str, labels):
+    """What IS this file — `runfiles.parse`'s reading, or ``None``.
+
+    *name* is a basename; *labels* is `labels_in`'s answer for the directory
+    it sits in.  The pair is the whole point: `runfiles.parse` is exact only
+    because it is GIVEN a label, and this is where a directory's labels meet
+    its filenames.
+
+    TWO RULES, and each is load-bearing.
+
+    **Shortest label first** — `labels_in`'s order.  The grammar is
+    ``<label>_<stage><role>``, so every character a label claims is one the
+    stage cannot: ``bridge_01_relax.molwatch.log`` read under ``bridge`` has
+    a stage of ``01_relax``, and read under ``bridge_01_relax`` has none.
+
+    **The role must be one the catalogue DECLARES.**  `parse` accepts any
+    label a name starts with and will read whatever follows as a role, so
+    ``parse("au_2_bdt_initial.xyz", "au")`` answers with a role of
+    ``_2_bdt_initial.xyz``.  Refusing an undeclared role is what makes
+    shortest-first safe — the too-short label is rejected and the next one
+    tried — and it is also what keeps *role* meaning what it has always
+    meant to a reader: **a declared role, or nothing**.
+    """
+    from molbuilder.runfiles import parse as rf_parse, roles
+    declared = set(roles())
+    for label in labels:
+        rec = rf_parse(name, label)
+        if rec is not None and rec.role in declared:
+            return rec
+    return None
+
+
 def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     """*What should a viewer load here?* — and the trail of what was tried.
 
@@ -196,22 +286,11 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     #    label and the label's own files are looked up.  Both engines, one
     #    loop: the deck role and the reader that pulls the label out of it
     #    are the only per-engine facts, and neither is a role vocabulary.
-    from molbuilder.parse.fdf import system_label
-    from molbuilder.pyscf.input import job_name
-    stems: List[str] = []
-    for deck_role, label_of in ((".fdf", system_label), (".py", job_name)):
-        deck_hits = by_role(deck_role)
-        attempts.append(f"*{deck_role} -> {len(deck_hits)} match(es)")
-        for deck in deck_hits:
-            label = label_of(_read_head(deck))
-            if label and label not in stems:
-                stems.append(label)
-            # THE DECK'S OWN STEM TOO: a staged deck is `<job>_<token>` while
-            # the label inside it stays bare, so a staged run whose seed is
-            # missing resolved to nothing until 2026-08-19.
-            stem = os.path.splitext(os.path.basename(deck))[0]
-            if stem not in stems:
-                stems.append(stem)
+    stems = labels_in(directory)
+    attempts.append(
+        "decks (" + ", ".join("*" + r for r in _DECK_ROLES) + ")"
+        + f" -> {len(stems)} label(s): "
+        + (", ".join(stems) if stems else "none"))
 
     # ROLE FIRST, THEN NEWEST -- and the order between those two is the whole
     # rule.  The role says what the file IS; mtime picks WHICH ONE, which in
