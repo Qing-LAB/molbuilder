@@ -40,7 +40,12 @@ bash scripts/install-env.sh bootstrap --yes
 
 The bootstrap creates the interactive host environment and the separately pinned
 SIESTA, PySCF, and molecular-tools environments, then verifies them with a
-health check. You do not install, configure, or activate those backends one at
+health check. It is also how you catch up after pulling: re-running it
+installs whatever the recipes have gained since your environments were built,
+and touches nothing that is already current. `--clean` rebuilds every
+environment from scratch when you want the exact solve a new machine gets.
+
+You do not install, configure, or activate those backends one at
 a time. You activate the host environment once; molbuilder selects the right
 backend when it creates or runs a calculation.
 
@@ -51,6 +56,7 @@ backend when it creates or runs a calculation.
 | `molbuilder-pySCF` | PySCF, geomeTRIC, and spectrum calculations | Yes |
 | `molbuilder-MDtools` | AmberTools-based molecular utilities | Yes |
 | `molbuilder-siesta-gpu` | GPU SIESTA, TranSIESTA, and TBtrans | Optional source build: add `--include-source-builds` |
+| `molbuilder-jupyternb` | JupyterLab for the notebook tab, with its own kernel and analysis stack | Optional: `install-env.sh install molbuilder-jupyternb --yes` |
 
 ```mermaid
 flowchart LR
@@ -102,10 +108,11 @@ rather than depending on hidden browser state.
    and the 3-D vibration animation.
 
 For a molecular-electronics workflow, molbuilder can also label bridge and
-electrode regions, derive a TranSIESTA setup, and help prepare electrode input
-files. The web tab currently generates a single zero-bias device input; full
-transport bundles are available from the CLI. Multi-bias scans and an in-app
-transport-results viewer are planned.
+electrode regions, derive a TranSIESTA setup, and prepare electrode input
+files. The **Transport** tab takes a bias list, not a single point: more than
+one value runs a scan, one attempt ladder per bias, launched as one chain job.
+A finished conductance run is inspected in **Results**, which draws the
+transmission curve and carries the run's provenance chain.
 
 ## Quick start
 
@@ -196,7 +203,14 @@ configuration details.
 - **Scientific checks:** [science overview](docs/science/overview.md) and
   [validation](docs/science/validation.md)
 - **Developing molbuilder:** [design](docs/design.md),
-  [architecture](docs/architecture.md), and the in-app [documentation index](docs/README.md)
+  [architecture](docs/architecture.md), and the in-app [documentation index](docs/README.md).
+  The test suite needs tooling the normal install leaves out — node, playwright
+  and a headless browser — which one command adds to the host environment:
+  ```bash
+  bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
+  ```
+  Everything lands inside that environment, including the browser, and no step
+  needs root. See [testing](docs/process/testing.md).
 - **Current work:** [the plan](docs/plans/plan.md) and
   [document migration audit](docs/archive/2026-07-28-document-migration.md)
 

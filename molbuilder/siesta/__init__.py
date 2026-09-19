@@ -1,4 +1,8 @@
-"""molbuilder.siesta -- SIESTA input generation and trajectory parsing.
+"""molbuilder.siesta -- SIESTA input generation.
+
+Trajectory parsing is NOT here: it lives entirely in `molbuilder/parse/
+engines/`.  This line said "and trajectory parsing" until 2026-09-18,
+long after the move.
 
 Submodules:
     input  -- render_fdf / spec_for / SiestaConfig (FDF generation)

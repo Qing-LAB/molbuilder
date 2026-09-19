@@ -86,8 +86,9 @@ worked example: a one-line rename that silently broke a viewer's dispatch.
 
 ### The design: a thin shell over the same API the web UI uses
 
-`molbuilder = molbuilder.cli:main` (plus a back-compat `molwatch` that now maps to
-`molbuilder serve`). The CLI is a **top-layer surface** — like the web server — and
+`molbuilder = molbuilder.cli:main` — **one** console script; the back-compat
+`molwatch` entry was deleted 2026-09-17 and `pyproject.toml` carries its
+gravestone. The CLI is a **top-layer surface** — like the web server — and
 it calls the **same lower-layer functions the blueprints call**, never a private
 copy. For example: the `peptide`/`dna`/`smiles`/`name` commands and the Build
 blueprint both dispatch to `build_peptide` / `build_dna` / `build_from_smiles` /

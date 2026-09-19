@@ -78,22 +78,34 @@ The shared "nouns" and the cross-engine chemistry:
 ## 4. Packaging
 
 From `pyproject.toml`: package `molbuilder` (setuptools), the console scripts
-`molbuilder = molbuilder.cli:main` (+ a back-compat `molwatch`), all code
-discovered under `molbuilder/`, and optional extras (`gpu`, `rdkit`, `web`,
-`auth`, `test`, `e2e`, `full`, …). Package-data ships the templates + the static
+`molbuilder = molbuilder.cli:main` (one script -- `molwatch` was deleted
+2026-09-17 and pyproject carries its gravestone), all code
+discovered under `molbuilder/`, and optional extras (`rdkit`, `web`, `name`,
+`auth`, `test`, `e2e`, `all`). Package-data ships the templates + the static
 assets.
+
+Two corrections, 2026-09-18: there is no `full` extra (the aggregate is
+`all`), and `gpu` is **gone** — it declared `nvidia-ml-py` for the
+system-load monitor, which stopped importing NVML in-process on 2026-08-28
+and shells out to `nvidia-smi` instead. And `e2e` is no longer how the conda
+host env gets its test tooling: `install-env.sh install molbuilder
+--with-dev-tools` is, because asking pip for an extra installs the *project*
+to reach it.
 
 ## 5. Known packaging drift (recorded follow-ups)
 
-Documentation-only migration — these are **recorded, not fixed**:
+**All three items this section recorded are now closed** *(re-derived
+2026-09-18; they had been listed as "recorded, not fixed" after they were
+fixed, which is the same staleness they were recording)*:
 
-- **`[tool.setuptools.package-data]` is stale/incomplete**: it lists a
-  `web/static/watch/*.js` glob for a directory that no longer exists, and it
-  enumerates only *some* `lib/`/`static/` dirs — a wheel built from it would omit
-  `lib/{molview,workspace,viewer,vibrationview,transport,results,spectra}/`,
-  several `static/<tab>/` dirs, and all of `static/vendor/`.
-- Stale docstrings: `siesta/__init__.py` and `pyscf/__init__.py` still say "input
-  generation **and trajectory parsing**" though parsing now lives entirely in
-  `parse/engines/`.
-- `molbuilder/backends/` is a pure back-compat re-export of `builders.backends`
+- ~~**`[tool.setuptools.package-data]` is stale/incomplete**~~ — **fixed.** It is
+  a single recursive `"web/static/**/*"` now, with a `setuptools>=62.3` floor in
+  `[build-system]` because the `**` pattern needs it. There is no `watch` glob,
+  and no `molbuilder/web/static/watch/` either.
+- ~~Stale docstrings in `siesta/__init__.py` and `pyscf/__init__.py`~~ —
+  **fixed 2026-09-18**; both now say generation only, and name
+  `parse/engines/` as where parsing lives.
+- ~~`molbuilder/backends/` is a pure back-compat re-export~~ — **gone.** The
+  directory holds nothing but a stale `__pycache__` and is untracked; there is
+  no re-export to describe.
   — a shim the "no back-compat shims" rule would retire.

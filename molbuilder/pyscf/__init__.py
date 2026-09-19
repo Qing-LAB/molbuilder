@@ -1,4 +1,8 @@
-"""molbuilder.pyscf -- PySCF script generation and trajectory parsing.
+"""molbuilder.pyscf -- PySCF script generation.
+
+Trajectory parsing is NOT here: it lives entirely in `molbuilder/parse/
+engines/` (`parse/engines/pyscf.py`).  This line said "and trajectory
+parsing" until 2026-09-18, long after the move.
 
 Submodules:
     input  -- render_script / spec_for / PySCFConfig (script generation)
