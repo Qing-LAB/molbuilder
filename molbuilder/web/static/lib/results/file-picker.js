@@ -320,6 +320,20 @@
         selectEl.appendChild(opt);
     }
 
+    /* A selected, disabled first row for "the door picked nothing".
+     * Without it the browser displays the first option anyway, so the menu
+     * would name a file that is not mounted -- the label/display split this
+     * picker already had to fix once. */
+    function _prependUnchosen(selectEl, text) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = text;
+        opt.disabled = true;
+        opt.selected = true;
+        selectEl.insertBefore(opt, selectEl.firstChild);
+        selectEl.selectedIndex = 0;
+    }
+
     function _populate(selectEl, groups, currentPath) {
         while (selectEl.firstChild) {
             selectEl.removeChild(selectEl.firstChild);
@@ -639,9 +653,27 @@
                         : null;
                     const keepCurrent =
                         currentFile && results.some(r => r.path === currentFile);
+                    /* NO PICK IS AN ANSWER, and it used to be `results[0]`.
+                     * When the door offers nothing, nothing here is this
+                     * directory's product -- so mounting the first file by
+                     * name shows something that is not the result and looks
+                     * like one.  Measured 2026-09-19: the transmission rung,
+                     * holding `.TBT.nc` and both transmission curves, opened
+                     * `…util.csv` -- the CPU utilisation samples; and a
+                     * hierarchical calculation root opened its own INPUT
+                     * structure's sidecar as raw JSON.  The list still shows
+                     * every readable file; only the guess is gone. */
                     const chosen = keepCurrent ? currentFile
-                                 : (_byDoor ? _byDoor.path : results[0].path);
+                                 : (_byDoor ? _byDoor.path : null);
                     _populate(selEl, cachedGroups, chosen);
+                    if (chosen === null) {
+                        _prependUnchosen(
+                            selEl,
+                            "— nothing here is this directory's result; "
+                            + "pick a file —");
+                        if (metaEl) metaEl.classList.remove("is-busy");
+                        return;
+                    }
                     if (keepCurrent) {
                         // Already mounted; just acknowledge the re-entry.
                         _startParseStatus(chosen);

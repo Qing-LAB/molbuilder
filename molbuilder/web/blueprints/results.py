@@ -201,8 +201,23 @@ def api_results_dir():
         return jsonify({"ok": False,
                         "error": f"{raw}: not a directory"}), 404
 
-    opened, attempts = openable_in(str(directory))
-    st = run_status(directory)
+    # WHAT IS THIS DIRECTORY -- asked first, because it decides whether the
+    # other questions apply at all (`model/parse.md` § 5.5,
+    # `project-layout.md` § 1.4a).  A container holds runs; it is not one, and
+    # asking `run_status` about one is how a `pseudos/` folder and a finished
+    # stage both came back *running*.
+    from molbuilder import calcdirs
+    place = calcdirs.container_or_run(directory)
+    root = calcdirs.root_of(directory)
+
+    if place == calcdirs.CONTAINER:
+        opened, attempts = None, [
+            "this directory is a container, not a run -- its runs are the "
+            "directories below it (project-layout.md § 1.4)"]
+        st = None
+    else:
+        opened, attempts = openable_in(str(directory))
+        st = run_status(directory)
 
     files = []
     for entry in sorted(directory.iterdir(), key=lambda e: e.name):
@@ -233,7 +248,16 @@ def api_results_dir():
         "engine":   engine_of(str(directory)),
         "openable": Path(opened).name if opened else None,
         "attempts": attempts,
-        "status":   {"state": st.state, "detail": st.detail,
+        # WHAT THIS DIRECTORY IS, and what it belongs to -- `null` when it
+        # does not say, which the page shows as *read alone* rather than
+        # hiding (§ 1.4a: absence narrows the answer, it does not refuse the
+        # directory).
+        "place":    {"role": place,
+                     "calculation": str(root) if root else None},
+        # `null` for a container: it has no run state, and inventing one is
+        # the defect this route now refuses to repeat.
+        "status":   None if st is None else
+                    {"state": st.state, "detail": st.detail,
                      "active_source": st.active_source,
                      "last_change_at": st.last_change_at,
                      "concluded": st.concluded},

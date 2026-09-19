@@ -49,6 +49,33 @@ from .compose import ComposedJunction
 TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
                     "device", "transmission")
 
+#: **WHICH FACT EACH RUNG ANSWERS WITH** — a column, because the five rungs
+#: do not answer the same question and reading them as if they did is a
+#: defect with a visible face.
+#:
+#: * ``"scf"`` — did the SCF converge, and at what energy.  The seed hands the
+#:   device a density; the device hands TBtrans a Hamiltonian.
+#: * ``"fermi"`` — an SCF *and* the lead's Fermi level, which is the reference
+#:   the whole junction is measured against (§ 2a.13): T(E) is relative to it
+#:   and ``G = G0 * T(E_F)`` is evaluated at it.
+#: * ``"product"`` — **not an SCF at all.**  TBtrans runs none: there is
+#:   nothing to converge and no total energy, and its result is the
+#:   transmission the record already carries in its own ``points`` blocks.
+#:
+#: `record.py` asked every rung the ``"scf"`` question and read the answer out
+#: of its ``.out``.  For the transmission rung no parser claims that file --
+#: correctly, it is not a SIESTA run -- so the ladder rendered the registry's
+#: entire "supported file formats" list, two hundred words of it, in the cell
+#: where the final rung's state belongs (measured 2026-09-19).  The fix is not
+#: a TBtrans parser; it is to stop asking.
+STAGE_FACT = {
+    "seed":         "scf",
+    "electrode_L":  "fermi",
+    "electrode_R":  "fermi",
+    "device":       "scf",
+    "transmission": "product",
+}
+
 
 class StageError(Exception):
     """A stage whose deck cannot be rendered — the message names the

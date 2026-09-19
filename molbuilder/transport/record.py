@@ -170,7 +170,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     from ..jobset.materialize import latest_attempt, run_dir
     from ..parse import detect
     from ..runfiles import find_by_role
-    from .stages import TRANSPORT_STAGES
+    from .stages import STAGE_FACT, TRANSPORT_STAGES
 
     ladder = {r.name: r.token
               for r in StageRef.ladder([s.name for s in task.stages])}
@@ -201,17 +201,45 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         if len(containers) > 1:
             fact["points"] = len(cand)
         fact["attempt"] = str(att.relative_to(base))
+        # WHICH QUESTION THIS RUNG ANSWERS -- a column, not a branch on the
+        # name (`stages.STAGE_FACT`).  A rung whose fact is its own PRODUCT
+        # is not an SCF and is not asked one: TBtrans converges nothing and
+        # reports no total energy, so parsing its `.out` for either could
+        # only ever fail -- and did, as two hundred words of the registry's
+        # format list in the cell where its state belongs.
+        answers = STAGE_FACT.get(name, "scf")
         outs = sorted(find_by_role(run_dir(container), ".out"),
                       key=lambda q: q.stat().st_mtime, reverse=True)
+        # PRODUCED ANYTHING AT ALL is asked of every rung the same way, and
+        # before the split below: a prepped rung that has not run reads
+        # `no_output` whatever question it would have answered.
         if not outs:
             fact["state"] = "no_output"
+            out.append(fact)
+            continue
+        if answers == "product":
+            # ITS `.out` IS EVIDENCE IT RAN, NOT SOMETHING TO PARSE.  TBtrans
+            # converges nothing and reports no total energy, so the state
+            # comes from the run's own conclusion -- the door's answer, no
+            # parser involved -- and the RESULT is the transmission this
+            # record already carries in its `points` blocks.
+            from ..parse.dirs import run_status
+            st = run_status(run_dir(container))
+            fact["state"] = "ran" if st.state == "finished" else st.state
+            if st.state != "finished":
+                fact["run_state"] = st.state
+            fact["detail"] = st.detail
             out.append(fact)
             continue
         try:
             res = detect(str(outs[0])).parse(str(outs[0]))
         except Exception as exc:               # a refusal is an ANSWER here
             fact["state"] = "unreadable"
-            fact["why"] = str(exc)
+            # THE FIRST SENTENCE, not the essay.  `UnknownFormatError` lists
+            # every registered parser on purpose -- right for someone who
+            # pointed at a file and has to pick, wrong for one cell of a
+            # five-row ladder, where it buried the other four.
+            fact["why"] = str(exc).split(". ")[0].strip() or str(exc)
             out.append(fact)
             continue
         fact["state"] = "ran"
@@ -222,8 +250,9 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             fact["energy_ev"] = frames[-1].energy
             # THE LEAD'S FERMI LEVEL, from the last SCF cycle of the last
             # frame -- the converged one.  Kept by the SIESTA parser since
-            # 2026-09-18 for exactly this.
-            if name in ("electrode_L", "electrode_R"):
+            # 2026-09-18 for exactly this.  Asked by the COLUMN, so adding a
+            # third lead one day is a table row and not a third name here.
+            if answers == "fermi":
                 hist = frames[-1].scf_history or []
                 for cyc in reversed(hist):
                     if cyc.get("ef") is not None:

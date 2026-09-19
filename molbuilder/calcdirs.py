@@ -110,6 +110,43 @@ def read(directory) -> Optional[Placement]:
     return Placement(role=role, of=of)
 
 
+def container_or_run(directory) -> Optional[str]:
+    """§ 1.4's question, answered — :data:`CONTAINER`, :data:`RUN` or ``None``.
+
+    **This is § 1.4a's table, and it is the only place it exists in code.**
+    Three rows, asked in the order the contract puts them:
+
+    1. **the directory holds `task.json`** — it is the calculation root, and
+       its ``shape`` already answers: ``flat`` has no attempt directories, so
+       the root IS the run; ``hierarchical`` gives every stage one, so the
+       root is a container.  No record is written at a root and none is
+       needed (invariant 2).
+    2. **it holds `calcdir.json`** — ``role``, said outright by its creator.
+    3. **neither** — ``None``, which is *unknown*, not *neither*.  The
+       directory is read ALONE (§ 1.4a): a caller may still list its files
+       and open one, and must not claim anything about what it belongs to.
+
+    ``None`` is why this returns a string rather than a bool: *unknown* and
+    *container* are different answers, and a caller that collapses them
+    reports a folder nobody described as one molbuilder made.
+    """
+    from .task import FILENAME as TASK_FILENAME, read_json as _read_json
+
+    directory = Path(directory)
+    if (directory / TASK_FILENAME).is_file():
+        try:
+            shape = (_read_json(directory / TASK_FILENAME) or {}).get("shape")
+        except (OSError, ValueError, TypeError):
+            return None
+        # `stages.md` § 6.7: the shape is READ, never inferred -- so a
+        # description that fails to state one answers `None` here rather than
+        # having a default guessed for it.
+        return (RUN if shape == "flat"
+                else CONTAINER if shape == "hierarchical" else None)
+    said = read(directory)
+    return None if said is None else said.role
+
+
 def root_of(directory) -> Optional[Path]:
     """The calculation root this directory belongs to, or ``None``.
 
