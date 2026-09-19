@@ -3426,3 +3426,55 @@ def test_every_directory_prep_makes_says_what_it_is(tmp_path):
     # ...and `of` leads back, from either level.
     for d in (attempt, stage_dir):
         assert (d / calcdirs.read(d).of).resolve() == tmp_path.resolve()
+
+
+def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(tmp_path):
+    """One home for the live log, and the home is the run directory.
+
+    `project-layout.md` § 1.0: a run directory "holds everything it
+    produces".  The progress channel is a product -- the deck names it, the
+    engine writes it -- so two copies is one too many, and which copy a
+    reader lands on then depends on which directory they clicked.
+
+    MEASURED, 2026-09-19, on a finished Raman run: `prep` seeds the log
+    beside the deck it renders, which in the hierarchy is the stage
+    CONTAINER.  The run then wrote its own inside the attempt.  Result: a
+    971-byte stub with no `# concluded:` footer in `01_raman/`, and the real
+    1763-byte concluded log in `01_raman/run-0/` -- different inodes, one
+    name.  An unconcluded log is how every reader tells a run is still
+    going, so the stage directory reported a FINISHED calculation as
+    *Running*, permanently, and offered the stub to open.
+
+    MUTATION THIS MUST FAIL AGAINST: copy instead of move, or leave the seed
+    where it was rendered.
+    """
+    from molbuilder.jobset.prep import _open_attempts
+
+    import json as _json
+    js = _token_ladder("JOB_01_coarse.fdf")
+    for job in js.jobs:
+        (tmp_path / job.script).write_text("x")
+    # The SHAPE is read, never inferred (`stages.md` § 6.7), so the
+    # description has to be here or `_open_attempts` correctly opens none.
+    (tmp_path / "task.json").write_text(_json.dumps({
+        "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        "shape": "hierarchical",
+        "run": {"name": "JOB", "id": "JOB_X"},
+        "structure": {"source": "x.xyz", "formula": "X", "atoms": 1},
+        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
+    }), encoding="utf-8")
+    stage_dir = tmp_path / "01_coarse"
+    stage_dir.mkdir()
+    seeded = stage_dir / "JOB_01_coarse.molwatch.log"
+    seeded.write_text("# molwatch trajectory log v1\n# job: JOB\n")
+
+    reports = _open_attempts(js, tmp_path, "coarse")
+
+    assert reports, "the hierarchical shape opens an attempt"
+    attempt = reports[0].dir
+    assert (attempt / seeded.name).is_file(), (
+        f"the seeded progress log did not reach the run directory; "
+        f"{attempt} holds {sorted(p.name for p in attempt.iterdir())}")
+    assert not seeded.exists(), (
+        f"the seed is still in the stage container as well -- two homes for "
+        f"one log is the state that reported a finished run as 'Running'")

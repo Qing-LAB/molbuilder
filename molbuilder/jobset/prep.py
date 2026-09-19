@@ -1200,7 +1200,47 @@ def _open_attempts(js: JobSet, base: Path, stage: str,
     sh = _shape_of(js, base)
     if sh is None or not sh.keeps_attempts_as_directories:
         return []
-    return [prepare_attempt(js, base, stage, container=c) for c in containers]
+    reports = [prepare_attempt(js, base, stage, container=c)
+               for c in containers]
+    for rep in reports:
+        _move_progress_channel_into(rep.dir)
+    return reports
+
+
+def _move_progress_channel_into(attempt: Path) -> None:
+    """Put the seeded progress log where the run will write it.
+
+    **The progress channel is a PRODUCT, so it belongs in the run and nowhere
+    else** (`project-layout.md` § 1.0: the run directory "holds everything it
+    produces", and § 1.4a's container/run split is what makes "nowhere else"
+    checkable).  `prep` seeds it beside the deck it renders — which in the
+    FLAT shape is already the run directory, and in the hierarchy is the
+    stage CONTAINER, where nothing ever writes to it again.
+
+    Measured 2026-09-19 on a finished Raman run: a 971-byte stub frozen at
+    prep time with no ``# concluded:`` footer sat in ``01_raman/``, beside the
+    real 1763-byte concluded log the run wrote in ``01_raman/run-0/``.
+    Different inodes, one name, and an unconcluded log is how every reader
+    tells a run is still going — so the stage directory reported a finished
+    calculation as **Running**, for ever, and offered the stub to open.
+
+    Moved rather than copied, and moved rather than left: a second copy is
+    what created the problem.  The deck and wrapper legitimately exist at
+    both levels (materialize: rendered files are born in the stage directory
+    and copied down) because they are INPUTS; this is not one.
+
+    THE ROLE IS NOT SPELLED HERE (R-RO1).  The catalogue's ``output`` column
+    says which artifacts are the progress channel, and asking it is what keeps
+    this true if a second engine ever seeds one.
+    """
+    from ..runfiles import WRITTEN, find_by_role
+
+    stage_dir = attempt.parent
+    if stage_dir == attempt:
+        return
+    for role in [a.role for a in WRITTEN if a.output == "progress"]:
+        for seeded in find_by_role(stage_dir, role):
+            seeded.replace(attempt / seeded.name)
 
 
 def _require_remote_activation(target: Optional[str], environment) -> None:

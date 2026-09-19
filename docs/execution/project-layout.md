@@ -86,6 +86,21 @@ that implemented it -- rendering the decks and stopping -- produced a folder
 **So the inventory is not a list anybody maintains** — it follows from those two
 origins and the shape. A list would drift; this cannot.
 
+> **A product has ONE home, and it is the run** *(2026-09-19)*. The third
+> category — what the engine *produces* — is the run directory's own, and the
+> progress channel is the case that tested it. `prep` seeds that log so a
+> viewer has something to find before the engine starts, and it seeded it
+> beside the deck it renders: already the run directory in the flat shape, the
+> stage CONTAINER in the hierarchy. The run then wrote its own inside the
+> attempt. Measured on a finished Raman run: a 971-byte stub with no
+> `# concluded:` footer in `01_raman/`, the real 1763-byte concluded log in
+> `01_raman/run-0/`. An unconcluded log is how every reader tells a run is
+> still going, so the stage directory reported a **finished** calculation as
+> *running*, permanently, and offered the stub to open. The seed now moves
+> into the attempt. Inputs may legitimately exist at both levels — the deck is
+> born in the stage directory and copied down — because a second copy of an
+> input is a convenience and a second copy of a product is a contradiction.
+
 **Why anything is kept outside it: the engine does not see or understand the
 layer we use to organise our information.** It opens what is there and writes
 beside it. So the template, `task.json` and the rest of the *starting point* for
