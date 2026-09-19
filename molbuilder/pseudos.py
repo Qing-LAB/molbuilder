@@ -45,6 +45,44 @@ class PsmlLibError(ValueError):
     rule; callers surface it verbatim in their own refusal type."""
 
 
+class PsmlNameError(ValueError):
+    """**Which file is this element's pseudopotential is not answerable.**
+
+    A pseudopotential file is named for its element and nothing else --
+    ``Au.psml``, which is the name SIESTA opens (`job-contracts.md`
+    § 2.5a).  This is raised when a folder holds something that could be an
+    element's and is not named for it, or holds more than one candidate:
+    *nothing here* and *I cannot tell which* are different answers and must
+    not produce the same result (the rule `template.py` states for the same
+    situation).
+
+    **Why it is an error and not a note.**  `find_psml` used to fall back to
+    ``sorted(glob(f"{element}*.psml"))[0]``, and the two ways that goes
+    wrong are both silent:
+
+      * ``Au_ONCV_PBE-1.0.psml`` beside ``Au_ONCV_PBEsol-1.2.psml`` --
+        lexicographic order hands back PBE, the deck says PBEsol, the run
+        converges and the energy is wrong for the functional asked for.
+        The screening does not stop it: PBE-vs-PBEsol is `xc_mismatch`,
+        which is WARN-severity, not in :data:`ERROR_STATUSES`.
+      * a library holding ``Ca.psml`` and ``Cu.psml`` but no ``C.psml``
+        answered **calcium** for carbon -- measured 2026-09-19,
+        ``find_psml("C", lib) -> Ca.psml`` -- because ``C*`` matches
+        ``Ca``.  The screening does catch that one, but reports it as
+        ``missing`` while a file named ``C.psml`` sits in the folder.
+
+    A mistake here is expensive and is never worth guessing at (user,
+    2026-09-19: *"No wrong pseudopotential should ever be allowed"*)."""
+
+
+#: What separates an element symbol from the rest of a filename.  A name is a
+#: MISNAMED CANDIDATE for element ``E`` when it starts with ``E`` and the next
+#: character is one of these -- which is what tells ``C_ONCV.psml`` (carbon,
+#: misnamed) from ``Ca.psml`` (calcium, correctly named).  A bare glob cannot:
+#: ``C*`` matches both.
+_PSML_VARIANT_SEPARATORS = "_-."
+
+
 def resolve_psml_lib(raw: str, *,
                      base: Optional[Path] = None,
                      dest_dir: Optional[Path] = None) -> Path:

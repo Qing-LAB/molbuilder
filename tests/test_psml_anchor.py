@@ -197,6 +197,112 @@ class TestPrepRefusesWithTheRealPlace:
         assert "H, C, S, Au" in msg
         assert str(calc / "projects") not in msg
 
+    def test_a_pseudopotential_is_named_for_its_element_or_refused(
+            self, calc, tmp_path, monkeypatch):
+        """Two candidates for one element STOP the prep; they never vote.
+
+        `find_psml` fell back to ``sorted(glob(f"{element}*.psml"))[0]``, so
+        a library holding ``Au_ONCV_PBE-1.0.psml`` beside
+        ``Au_ONCV_PBEsol-1.2.psml`` handed back PBE by alphabetical order.
+        The deck says PBEsol, the run converges, and the energy is wrong for
+        the functional asked for — and the screening does NOT stop it,
+        because PBE-vs-PBEsol is `xc_mismatch`, WARN-severity, not in
+        `ERROR_STATUSES`.  The only trace was one line on stderr at prep
+        time.
+
+        User, 2026-09-19: *"No wrong pseudopotential should ever be
+        allowed... There is no reason this is implicitly guessed."*
+        """
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.jobset.prep import PrepError, _siesta_provide_pseudos
+        lib = tmp_path / "projects" / "pseudopotential"
+        lib.mkdir(parents=True)
+        for el in ("H", "C", "S"):
+            (lib / f"{el}.psml").write_text("<psml/>")
+        (lib / "Au_ONCV_PBE-1.0.psml").write_text("<psml/>")
+        (lib / "Au_ONCV_PBEsol-1.2.psml").write_text("<psml/>")
+        monkeypatch.chdir(calc)
+
+        with pytest.raises(PrepError) as e:
+            _siesta_provide_pseudos(
+                self._struct(),
+                SiestaConfig(system_label="x", psml_lib="pseudopotential"),
+                calc)
+        msg = str(e.value)
+        assert "Au_ONCV_PBE-1.0.psml" in msg and "Au_ONCV_PBEsol-1.2.psml" in msg
+        assert "Au.psml" in msg, "the refusal must name the fix"
+        assert not (calc / "Au.psml").exists(), (
+            "nothing may be staged when which file is Au's is unanswerable")
+
+    def test_a_longer_symbol_is_not_this_element(
+            self, calc, tmp_path, monkeypatch):
+        """`Ca.psml` is calcium's, and carbon is MISSING — not calcium.
+
+        MEASURED 2026-09-19 before this changed: with a library holding
+        `Ca.psml` and `Cu.psml` and no `C.psml`, ``find_psml("C", lib)``
+        returned **`Ca.psml`** — the `C*` glob matches `Ca` — and calcium's
+        pseudopotential was copied in as `C.psml`.  The screening catches
+        that one (it keys on the file's DECLARED element), but reports it as
+        *missing C* with a file named `C.psml` sitting in the folder, which
+        sends a person looking for something that is already there.
+
+        The prefix test now requires the symbol to END: `C_ONCV.psml` is
+        carbon written wrong, `Ca.psml` is calcium written right.
+        """
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.jobset.prep import PrepError, _siesta_provide_pseudos
+        lib = tmp_path / "projects" / "pseudopotential"
+        lib.mkdir(parents=True)
+        for el in ("H", "S", "Au", "Ca", "Cu"):
+            (lib / f"{el}.psml").write_text("<psml/>")
+        monkeypatch.chdir(calc)
+
+        with pytest.raises(PrepError) as e:
+            _siesta_provide_pseudos(
+                self._struct(),
+                SiestaConfig(system_label="x", psml_lib="pseudopotential"),
+                calc)
+        assert "C.psml" in str(e.value)
+        assert not (calc / "C.psml").exists(), (
+            "calcium must never be staged as carbon")
+
+    def test_a_file_must_BE_the_element_it_is_named_for(
+            self, calc, tmp_path, monkeypatch):
+        """The name is how SIESTA finds it; the contents are what it runs.
+
+        Nothing compared the two.  A mislabelled or misfiled `Au.psml` was
+        staged, and the screening afterwards reported *missing Au* --- true
+        of the contents, and unreadable to a person looking at a folder
+        that visibly contains `Au.psml`.  The refusal now names both halves
+        where they are both in hand.
+
+        A file that declares NOTHING is deliberately not refused here:
+        `<psml/>` and an unparseable file both answer `element: ""`, and
+        the screening owns that case (`parse_warning`, `missing`).  Only a
+        disagreement is unanswerable.
+        """
+        from conftest import _PSML_FIXTURE, _PSML_Z
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.jobset.prep import PrepError, _siesta_provide_pseudos
+        lib = tmp_path / "projects" / "pseudopotential"
+        lib.mkdir(parents=True)
+        for el in ("H", "C", "S"):
+            (lib / f"{el}.psml").write_text(
+                _PSML_FIXTURE.format(el=el, z=_PSML_Z[el]))
+        # Named for gold, holding sulfur.
+        (lib / "Au.psml").write_text(_PSML_FIXTURE.format(el="S", z=16))
+        monkeypatch.chdir(calc)
+
+        with pytest.raises(PrepError) as e:
+            _siesta_provide_pseudos(
+                self._struct(),
+                SiestaConfig(system_label="x", psml_lib="pseudopotential"),
+                calc)
+        msg = str(e.value)
+        assert "Au" in msg and "'S'" in msg, (
+            "the refusal must name the element asked for AND the one found")
+        assert not (calc / "Au.psml").exists()
+
     def test_it_finds_the_library_that_is_really_there(
             self, calc, tmp_path, monkeypatch):
         """The other half: the rule must also SUCCEED from anywhere."""

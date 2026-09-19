@@ -290,7 +290,7 @@ def write_description(desc: Description, dest, *,
             # folder being described, and staging is a transaction detail
             # that gets renamed away.  Anchoring on it would make a `./`
             # spelling point at a directory that ceases to exist.
-            from .pseudos import PsmlLibError
+            from .pseudos import PsmlLibError, PsmlNameError
             try:
                 lib = resolve_psml_lib(str(psml_lib), dest_dir=out_dir)
             except PsmlLibError as exc:
@@ -301,7 +301,12 @@ def write_description(desc: Description, dest, *,
                     + describe_psml_anchor(str(psml_lib), dest_dir=out_dir)
                     + "  The pseudopotentials travel with the calculation, "
                       "so they have to be somewhere readable now.")
-            copy_pseudopotentials(list(desc.pseudo_species), lib, staging)
+            try:
+                copy_pseudopotentials(list(desc.pseudo_species), lib, staging)
+            except PsmlNameError as exc:
+                # Named for its element or not at all -- the same refusal
+                # `prep` gives, in this surface's own type.
+                raise DescribeError(str(exc)) from exc
     except BaseException:
         # Nothing is published, so the target is exactly as it was.
         shutil.rmtree(staging, ignore_errors=True)

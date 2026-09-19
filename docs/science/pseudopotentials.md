@@ -114,9 +114,27 @@ non-zero, `cli.py:386`) **cannot disagree about what blocks**:
 ### C1 — Coverage · ERROR · `missing`
 **What:** every element in the structure has exactly one `.psml` in the pseudo
 directory. **Why:** SIESTA refuses to start without a pseudo for every species.
-**How:** `scan_psml_directory` (`pseudos.py:393`) maps `{element: PsmlInfo}`; a
-structure element with no entry → `missing`. **False positives:** none — a
-missing file is unambiguous.
+**How:** `scan_psml_directory` maps `{element: PsmlInfo}` keyed on each file's
+**declared** element; a structure element with no entry → `missing`. **False
+positives:** none — a missing file is unambiguous. *(It keys on the declared
+element, not the filename, which is why C1a exists: a file whose two answers
+disagree is refused before it can reach here as a puzzling `missing`.)*
+
+### C1a — Identity · ERROR · refused at prep, not scored here
+**What:** the file a species will run on is *named* for that element and
+*declares* that element. **Why:** SIESTA finds the file by its NAME and
+computes with its CONTENTS, and nothing compared the two — so a file named
+`Au.psml` holding another element ran that element to convergence, and a
+folder holding `Au_ONCV_PBE-1.0.psml` beside `Au_ONCV_PBEsol-1.2.psml` had
+one of them chosen by alphabetical order. Note C2 cannot cover the second
+case: PBE-vs-PBEsol is `xc_mismatch`, *WARN*. **How:** `find_psml` /
+`copy_pseudopotentials` refuse before anything is staged; the rule and its
+table are [`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a.
+**Why it is not a status here:** these checks *score a set that exists*, and
+this one decides whether the set may be assembled at all — there is no
+directory to scan yet. A `missing` from C1 therefore now means what it says;
+before 2026-09-19 it was also how a misnamed file reported, which sent people
+looking for a file that was sitting in the folder.
 
 ### C2 — XC functional consistency · ERROR *(family)* / WARN *(author)*
 **What:** the pseudo's exchange-correlation functional matches the calculation's
