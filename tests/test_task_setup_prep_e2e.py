@@ -1019,10 +1019,12 @@ def test_a_continuing_rung_copies_a_command_naming_the_LAST_attempt(
     broke the test with `[eval]:17` and said nothing about whether the page
     still worked.  An anchor is a pin whatever you do with the slice.
 
-    This asks the page.  It also covers what the old one could not: the token
-    now arrives from `/api/task-setup/attempts`, so a broken endpoint, a
-    missing reset, or a page that never asked all show up here as a command
-    with no `--from` at all.
+    This asks the page.  It also covers what the old one could not: the
+    count and the token arrive with the FOLDER'S OWN ANSWER
+    (`/api/task-setup/folder`, `task-setup.md` § 2.1 -- they came from a
+    separate `/api/task-setup/attempts` call until 2026-09-19), so a broken
+    door, an answer discarded for naming another folder, or a page that
+    never asked all show up here as a command with no `--from` at all.
     """
     import json as _json
     tj = two_stage_dir / "task.json"

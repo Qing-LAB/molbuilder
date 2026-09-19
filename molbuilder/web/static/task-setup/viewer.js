@@ -985,8 +985,12 @@ function _resetPerFolderState() {
     _extraRunRows.clear();   // rows added to a run card, per stage
     _runFits.clear();        // the admission answer per stage
     _fitBench = {};          // the bench card's last posted axes
-    _runs = {};              // attempts on disk, per stage
-    _tokens = {};            // and the token each one carries
+    /* `_runs` and `_tokens` left this list on 2026-09-19.  They are set
+     * from the folder's own answer in `loadFolder`, which is TAGGED with
+     * the folder it describes -- so they cannot hold another folder's
+     * values and there is nothing here to remember to clear.  That is the
+     * shape the rest of this function is being replaced by: state that
+     * cannot go stale needs no reset. */
     _pendingDrop = "";       // the armed column drop
     _stepTab = "";           // which rung's tab was open
     _queue = "";             // the chosen domain -- goes into `allocation`
@@ -1175,7 +1179,18 @@ async function loadFolder(projects, dir) {
 
     _mode = "description"; _handover = null; _task = task;
     renderCameOver(task);
-    _runs = await runsForStages(projects, dir, task);
+    /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1).  This was a
+     * FIFTH round trip inside `loadFolder`, asking `/api/task-setup/attempts`
+     * for what the folder's own answer already carries -- so it could land
+     * after a move, and `_runs`/`_tokens` needed two lines on the reset list
+     * to cover for it. */
+    _runs = {};
+    _tokens = {};
+    for (const [name, st] of Object.entries(
+            (said.attempts && said.attempts.stages) || {})) {
+        _runs[name] = st.attempts;
+        _tokens[name] = st.token;
+    }
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
@@ -2036,7 +2051,7 @@ function renderNext(task) {
          *
          * And the attempt is the LAST one, not `run-0`.  A stage with three
          * attempts was taught to continue from the first -- the page knows
-         * the count (`_runs`, filled by `runsForStages`) and now uses it. */
+         * the count (`_runs`, from the folder's answer) and now uses it. */
         let from = "";
         const hierarchical = _shape === "hierarchical";
         if (i > 0 && String(ov.restart || "") === "continue" && hierarchical) {
@@ -2376,51 +2391,16 @@ async function _prepCall(kind, stage, plan) {
 
 /* ---------- what has already run ---------- */
 
-/** Attempts per stage, read from the DIRECTORY — no target machine needed,
- *  which is why this belongs here and not on Results (`task-setup.md` § 10).
- *
- *  Both shapes, from `job-contracts.md` § 6.3's Files table:
- *    hierarchical  <NN>_<name>/run-<n>/
- *    flat          <label>_<NN>_<name>-run<N>.out   (beside the deck)
- *
- *  It counts attempts and does not judge them.  Whether a run CONVERGED is in
- *  its output, and parsing engine output is the Results tab's contract, not a
- *  claim this page should make from a filename.
- */
-async function runsForStages(projects, dir, task) {
-    /* ASKED FOR.  This worked the answer out here, and needed four of the
-     * server's rules to do it: it composed the stage token
-     * (`String(i+1).padStart(2,"0") + "_" + name`, which is
-     * `identity.stage_token`), matched `/^run-\d+$/` for the attempts
-     * (`paths.attempt_index`), counted `_<token>-run` in filenames for the
-     * flat case (the run-file counter), and -- the one that matters --
-     * chose between those two branches by looking at WHAT WAS ON DISK.
-     *
-     * The shape is DECLARED, never inferred (`project-layout.md` § 4.5 says
-     * so by name), so that branch was wrong whenever the disk had not caught
-     * up with the description: a hierarchical calculation prepped but not yet
-     * run has no `run-N` under its stage dir, the `dirHit` test still passed,
-     * and a stage dir missing entirely sent it down the flat path.
-     *
-     * `_tokens` is filled from the same answer, so the `--from` line below
-     * prints a token this page did not build. */
-    const out = {};
-    _tokens = {};
-    try {
-        const r = await fetch("/api/task-setup/attempts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ dest: dir }),
-        });
-        const body = await r.json();
-        if (!body || !body.ok) return out;
-        for (const name of Object.keys(body.stages || {})) {
-            out[name] = body.stages[name].attempts;
-            _tokens[name] = body.stages[name].token;
-        }
-    } catch (e) { /* unreadable is not zero, but it is all we can say */ }
-    return out;
-}
+/* `runsForStages` stood here -- a fetch of `/api/task-setup/attempts` from
+ * inside `loadFolder`, which is a FIFTH round trip for something the
+ * folder's own answer already carries (`task-setup.md` § 2.1).  Its
+ * argument is preserved where it matters: attempts are read from the
+ * DIRECTORY and need no target machine, which is why the question belongs
+ * to the folder tier at all -- and the server half of it, which the page
+ * used to work out for itself from four of our rules, is unchanged in
+ * `build.py::_folder_attempts`.  Deleted 2026-09-19 with `_runs`/`_tokens`
+ * moving onto the one answer; the route it called is still there for the
+ * CLI-shaped callers and is what the door composes. */
 
 /* ---------- the machine rows: a point is a choice, several a measurement ---- */
 
