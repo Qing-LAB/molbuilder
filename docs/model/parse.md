@@ -643,24 +643,43 @@ titled "unchanged in behaviour", which was true of the move out of the web
 layer and stopped being true the day the ladder was replaced. § 5.5 carries
 the rule; this is where it is applied.)*
 
-`parse/dirs/rundir.py::openable_in` asks three questions of three owners:
+`parse/dirs/rundir.py::openable_in` asks **four** questions of four owners, and
+the first one decides whether the other three apply at all:
 
 | question | owner | reader |
 |---|---|---|
-| what calculation is this? | the **calculation** | `task.json`, at its root |
+| **what is this directory?** | the **directory** | `placement.json`, or `task.json` at a root |
+| what calculation is this? | the **calculation** | `of` → its `task.json` |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
 
-> **The owner is the CALCULATION, not the directory you handed in** *(corrected
-> 2026-09-19)*. This row read *"the directory"* and the code took it at its
-> word, reading `task.json` from the handed directory alone. That is only the
-> same place in the FLAT shape;
-> [`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.0 puts
-> the description above the run-directory wall — *"only rendered files and
-> copies go down to where the engine runs"* — so in the hierarchical shape it
-> is two levels up, the door saw none, and every hierarchical spectrum run
-> opened its molwatch stub. The door now walks to the nearest ancestor holding
-> `task.json`, fenced by the `projects/` tree and a depth cap.
+> **THE FIRST QUESTION IS NEW, AND THE OTHER THREE WERE ASKED WITHOUT IT**
+> *(2026-09-19)*. This table had three rows and the first read *"what
+> calculation is this? — the **directory** — `task.json`"*. The code took that
+> at its word and read `task.json` from the handed directory, which is the
+> right place only in the FLAT shape: `project-layout.md` § 1.0 puts the
+> description above the run-directory wall, so in the hierarchical shape it is
+> two levels up. Every hierarchical spectrum run therefore opened its molwatch
+> stub. The first repair walked up to the nearest ancestor holding `task.json`,
+> fenced by the `projects/` tree and a depth cap — a search with a tuned
+> number, standing in for a fact the tree could simply state. **`project-layout.md`
+> § 1.4a now has the directory state it**, and the walk and its
+> constant are deleted.
+>
+> Asking *what is this directory* first is what stops the other three being
+> asked of something that is not a run: § 1.4's container-or-run rule is
+> answerable now, so a stage directory is not parsed for a result it does not
+> hold, and a `pseudos/` folder is not reported as a calculation in progress.
+
+**"I don't know" is one of its answers, and it narrows the other three rather
+than refusing them** (`project-layout.md` § 1.4a). A directory with no record —
+one written before this rule, or an attempt copied out of its calculation — is
+read ALONE: its files, which of them a parser claims, which one to open, and
+how its run ended if one did. What it cannot answer is everything relational —
+which calculation, which rung, which siblings — and **the door says which of the
+two answers it is giving**, so a partial answer is never mistaken for a
+complete one. The three that remain are directory-local questions and were
+always answerable without help.
 
 **There is no preference order to tune.** A vibration run is *for* its
 `.spectra.json`; an optimization for its trajectory; a transport calculation
@@ -856,7 +875,8 @@ delegation, not by a ladder.
 
 | question | owner | reader |
 |---|---|---|
-| what calculation is this? | the **calculation** | `task.json`, at its root |
+| **what is this directory?** | the **directory** | `placement.json`, or `task.json` at a root |
+| what calculation is this? | the **calculation** | `of` → its `task.json` |
 | what does it produce? | the **catalogue** | `runfiles.result_roles` |
 | can anything open it? | the **registry** | `detect()` |
 

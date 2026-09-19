@@ -415,6 +415,108 @@ are mixed and something has to tell them apart.
 > hand-made directory with one `.fdf` in it already is. Nothing about the
 > straightforward case changes.
 
+### 1.4a How a directory says which one it is
+
+*Added 2026-09-19. § 1.4 states the rule and then says the quiet part: "there is
+no directory where the two are mixed and **something has to tell them apart**."
+Nothing in the tree has to — but **a reader handed a path does**, and until this
+section it could not.*
+
+**The gap, and why no amount of care closed it.** Container-or-run is not
+decidable from the name. § 1.4's own closing paragraph settles that three times
+over: a **flat** calculation root *is* a run; a **hierarchical** stage directory
+is a container; "a hand-made directory with one `.fdf` in it" is a run. Same
+grammar, opposite answers. So every reader that wanted the answer guessed, and
+they did not guess alike — one assumed every directory was a run and reported a
+`pseudos/` folder as *running*; one assumed the description sat in the directory
+it was handed, which is true only in the flat shape; one walked up a fixed
+number of levels hoping to find it.
+
+> **A directory states its place. Nothing infers it.**
+
+**This is affordable because [invariant 6a](#7-the-invariants) already holds:**
+*every directory and every link in this tree is made by Python.* A tree whose
+directories all have a creator inside molbuilder is a tree whose directories can
+all be stamped by that creator, at the moment it makes them. There is no
+population to migrate and no heuristic to tune — only a fact that was known at
+creation and thrown away.
+
+#### Who answers, per level
+
+| the directory | what answers | container or run |
+|---|---|---|
+| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2) | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
+| **stage** · **axis** · **attempt** · **support** | `placement.json`, written by the creator | from **`role`**, through the table below |
+| anything else | nothing | **not part of a calculation** — and that is an answer, not a failure |
+
+**The root needs no record**, and that is the point rather than an omission:
+invariant 2 already makes `task.json` the thing that says a directory is a
+calculation, and `shape` is already a required field of it. A second declaration
+would be a second home for one fact.
+
+#### The role table
+
+`role` is the only vocabulary; container-or-run is read off it, never stored
+beside it:
+
+| `role` | § 1.4 calls it | written by |
+|---|---|---|
+| `stage` | container | the stage/attempt creator |
+| `axis` | container | the stage/attempt creator |
+| `attempt` | **run** | the stage/attempt creator |
+| `support` | container | `prep`, for `pseudos/` and `bench/` |
+
+#### The record
+
+```json
+{ "schema": "molbuilder/placement@1",
+  "role":   "attempt",
+  "of":     "../..",
+  "stage":  "raman",
+  "axis":   {"bias": "0.0"},
+  "index":  0 }
+```
+
+* **`of` is relative, always** — to the calculation root. That is what survives
+  renaming or moving a whole calculation, and it is the convention
+  `.gathered-from` already uses for the same reason. Copy an attempt out on its
+  own and `of` dangles; *"this attempt's calculation is not here"* is then the
+  honest answer, where a search would have adopted whatever it found.
+* **`axis`** is present only where the stage varies over one (§ 2a.11's `v*`
+  level) — absent is not null, it is *this stage varies over nothing*.
+* **`index`** is the attempt number, and only a run carries it.
+* **`seq` is deliberately absent.** Invariant 4 puts a stage's `seq` on the
+  directory name and says it is "read back off the artifacts, stored nowhere
+  else". Writing it here would be exactly the second home that invariant
+  forbids.
+
+#### Absence narrows the answer; it does not refuse the directory
+
+**A directory with no record is still readable — it is read alone.** This is
+the whole reason the record can be trusted where it exists without stranding
+anything where it does not: what is IN a directory has never needed a record to
+be read, and the record adds only what a single directory cannot see — which
+calculation it belongs to, which rung it is, what its siblings are.
+
+| what the directory says | what a reader may answer |
+|---|---|
+| `placement.json`, or `task.json` at a root | everything: its role, container-or-run, its calculation, its rung, its siblings, the ladder it sits in |
+| nothing, but a run left evidence — a deck, a file in a stdout role, a conclusion record | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says which of the two it is doing |
+| nothing, and no evidence a run happened | the files, and no run state at all |
+
+**The third row is a rule in its own right, and it is the one defect that
+predates the record**: *"running"* must rest on evidence that a run started, and
+an empty directory is not that. Reported as a default for *no result file yet*,
+it made a `pseudos/` folder and an empty `__pycache__` both read as a
+calculation in progress.
+
+**The missing relation is stated, never guessed around.** A reader that finds no
+record says so — *this directory is not marked as part of a calculation, so only
+what is in it can be shown* — which is a sentence a person can act on by
+re-preparing the calculation. Silence would leave them reading a partial answer
+as a complete one. A tree written before this section behaves exactly this way,
+which is why there is no migration step and nothing to reindex.
+
 ### 1.5 An attempt is immutable
 
 **A run directory is written once and never modified.** Running a stage a second
@@ -2488,6 +2590,17 @@ than no invariant, because it fails a directory that is working correctly.
    system that changed directory — was retired. *Test:* render a wrapper for
    each engine and assert its text contains no `cd` command
    (`tests/test_warm_file_inventory.py`).
+6b. **Every directory this tree makes below the calculation root carries a
+   `placement.json`, and the root carries `task.json`** (§ 1.4a). So
+   *container-or-run* — § 1.4's rule — is answerable for every directory this
+   tree makes, without reading a filename. **This is 6a's dividend**: Python
+   makes them all, so Python can stamp them all. A directory carrying neither
+   is not refused — it is read alone, and told so (§ 1.4a), which is what a
+   tree written before this rule, or a run directory copied out of one, gets.
+   *Test:* prep a calculation in each shape and assert every directory it
+   created answers, and that the `role` in each record agrees with the name
+   grammar the creator used — two statements of one fact that cannot then
+   drift.
 7. **[hierarchical] A shared file exists once, at ③**, and is linked into each stage. Never
    copied per stage.
 8. **Every directory is a container or a run, never both** (§ 1.4). A run's
