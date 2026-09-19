@@ -55,19 +55,45 @@ def test_sidecar_path_for_transport_json():
 # ----------------------------------------------------------------- #
 
 
-def test_siesta_parser_writes_log_by_default(tmp_path, monkeypatch):
+def test_reading_a_run_writes_nothing_beside_it_by_default(tmp_path, monkeypatch):
+    """**A READER MUST NOT WRITE INTO THE DIRECTORY IT IS READING.**
+
+    The sidecar was default-ON from the day it shipped until 2026-09-18, so
+    merely LOOKING at a run -- a `jobset status`, a Watch poll, a sweep --
+    created and grew a file inside the user's own project folder.  Measured
+    across `projects/` on the day it was changed: 108 files, 145 KB, and
+    **76 of them recorded nothing but a successful scan**.  Nothing in the
+    tree reads one back (two writers, zero readers, Python and JS).
+
+    User ruling: *"Let's keep it default off. There is no reader."*
+    """
     monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
     from molbuilder.parse.engines.siesta import SiestaParser
     out = tmp_path / "job.out"
     out.write_text(_SIESTA_STUB)
     SiestaParser.parse(str(out))
+    assert not (tmp_path / "job.parse.log").exists(), (
+        "reading a run wrote a sidecar beside it with no one asking")
+    # ...and the directory gained nothing else either.
+    assert [p.name for p in tmp_path.iterdir()] == ["job.out"]
+
+
+def test_the_env_var_turns_it_on_and_it_still_records_everything(tmp_path,
+                                                                 monkeypatch):
+    """Opting in is the whole interface -- there is no UI, deliberately: no
+    web route in this project writes settings, and a debugging aid with no
+    reader does not earn the first one."""
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
+    from molbuilder.parse.engines.siesta import SiestaParser
+    out = tmp_path / "job.out"
+    out.write_text(_SIESTA_STUB)
+    SiestaParser.parse(str(out))
     log = tmp_path / "job.parse.log"
-    assert log.exists(), "parse-log sidecar must be written by default"
+    assert log.exists(), "MOLBUILDER_PARSE_LOG=1 must turn the sidecar on"
     body = log.read_text()
-    assert "siesta scan begin" in body
-    assert "scan started" in body
-    assert "INFO" in body
-    assert "scan finished" in body
+    for expected in ("siesta scan begin", "scan started", "INFO",
+                     "scan finished"):
+        assert expected in body, expected
 
 
 def test_env_var_disables_log(tmp_path, monkeypatch):
@@ -95,7 +121,7 @@ def test_env_var_truthy_strings_disable(tmp_path, monkeypatch, val):
 
 
 def test_log_appends_on_reparse(tmp_path, monkeypatch):
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
     from molbuilder.parse.engines.siesta import SiestaParser
     out = tmp_path / "job.out"
     out.write_text(_SIESTA_STUB)
@@ -113,7 +139,7 @@ def test_log_appends_on_reparse(tmp_path, monkeypatch):
 
 
 def test_read_only_directory_does_not_raise(tmp_path, monkeypatch):
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
     from molbuilder.parse.engines.siesta import SiestaParser
     out = tmp_path / "job.out"
     out.write_text(_SIESTA_STUB)
@@ -135,7 +161,7 @@ def test_read_only_directory_does_not_raise(tmp_path, monkeypatch):
 def test_parse_warnings_appear_in_log(tmp_path, monkeypatch):
     """A .out with SCF column corruption forces a ParseWarning;
     that warning must show up as a WARN line in the parse.log."""
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
     from molbuilder.parse.engines.siesta import SiestaParser
     # SIESTA SCF line with corrupted columns (Fortran overflow ****).
     corrupt = dedent("""\
@@ -163,7 +189,7 @@ def test_parse_warnings_appear_in_log(tmp_path, monkeypatch):
 
 
 def test_parse_logger_warn_carries_line_and_snippet(tmp_path, monkeypatch):
-    monkeypatch.delenv("MOLBUILDER_PARSE_LOG", raising=False)
+    monkeypatch.setenv("MOLBUILDER_PARSE_LOG", "1")
     out = tmp_path / "x.out"
     out.write_text("garbage\n")
     with ParseLogger(str(out), parser_name="test") as log:
