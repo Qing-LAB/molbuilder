@@ -30,7 +30,6 @@ from pathlib import Path
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import StructureResult
-from molbuilder.structure import Structure
 
 from ._helpers import build_structure_result
 
@@ -104,17 +103,26 @@ class PdbFileParser(FileParser):
         # floor 2 and reaches back into `parse`, so this reads the text
         # and calls the L1 door directly, which is what `siesta_xv` does
         # with `molbuilder.structure` for the same reason.
-        # `base.FileParser.parse` requires the canonical `ParseError`
-        # rather than "letting unstructured exceptions escape".  An
-        # unwrapped one reaches Flask as an HTML 500 the browser cannot
-        # read -- reproduced on `/api/watch/load` 2026-09-18, which is
-        # why `engines/pyscf.py` wraps for the same reason.  The file can
-        # vanish between `can_parse` and here, and `from_pdb` raises
-        # ValueError when every ATOM line has unparseable columns.
+        # THROUGH THE ONE DOOR, because a `.pdb` here is a PERSON'S
+        # structure and not an engine's output.  `read_text` + `from_pdb`
+        # skips the `.molstruct.json` beside it, so the regions, frozen
+        # atoms and cell its author set are silently dropped and
+        # everything downstream is faithfully correct about the wrong
+        # thing -- the failure `test_one_door_reads_a_structure` exists
+        # to stop, and which it caught here within the hour.
+        #
+        # `StructureCodec.load` also reads `utf-8-sig`, so a file saved
+        # with a BOM no longer parses differently here than it does when
+        # the sidebar opens it.
+        #
+        # Wrapped because `base.FileParser.parse` requires the canonical
+        # `ParseError`; an unwrapped one reaches Flask as an HTML 500 the
+        # browser cannot read.  The file can vanish between `can_parse`
+        # and here, and the codec raises on unparseable columns.
+        from molbuilder.workingcopy_structure import StructureCodec
         try:
-            structure = Structure.from_pdb(
-                p.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, ValueError) as exc:
+            structure = StructureCodec().load(p)
+        except (OSError, ValueError, TypeError) as exc:
             raise ParseError(f"{p.name}: {exc}") from exc
         return build_structure_result(
             structure=structure,

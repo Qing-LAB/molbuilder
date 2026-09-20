@@ -501,7 +501,7 @@
 }
 
 .result-list-bar[hidden] {
-    /* The bar is gated on >= 1 results in the dir.  (0,2,0) class+[hidden]
+    /* The bar is always visible; see results.html.  (0,2,0) class+[hidden]
      * outranks the (0,1,0) display:flex base -- no !important needed. */
     display: none;
 }

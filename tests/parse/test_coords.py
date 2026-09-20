@@ -125,6 +125,36 @@ def test_a_long_header_does_not_hide_the_coordinates(tmp_path: Path):
     assert kind.parse(f).structure.elements == ["N", "C"]
 
 
+def test_a_pdb_keeps_what_its_author_put_in_the_sidecar(tmp_path: Path):
+    """The scientific half of "one door reads a structure".
+
+    A `.pdb` here is a PERSON'S structure, not an engine's output, so the
+    `.molstruct.json` beside it carries their regions, frozen atoms and
+    cell.  This parser read the geometry with `from_pdb` and skipped the
+    sidecar, which is the failure `test_one_door_reads_a_structure`
+    records: *"a description was born with the author's regions, frozen
+    atoms and cell missing, and everything downstream was then
+    faithfully correct about the wrong thing."*  The guard caught it
+    within an hour of the parser landing.
+
+    MUTATION THIS MUST FAIL AGAINST: read the file with `read_text` +
+    `Structure.from_pdb` instead of `StructureCodec`.
+    """
+    from molbuilder.sidecars import molstruct
+
+    f = tmp_path / "mol.pdb"
+    f.write_text(_PDB, encoding="utf-8")
+    molstruct.save(
+        molstruct.sidecar_path_for(f),
+        molstruct.to_dict({"regions": {"frozen_atoms": [0]}},
+                          n_atoms_total=2,
+                          structure_hash=molstruct.sha256_of_file(f)))
+
+    got = detect(str(f)).parse(f).structure
+    assert getattr(got, "regions", None) == {"frozen_atoms": [0]}, (
+        "the author froze an atom and the parser dropped it")
+
+
 def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
     """THE CONTENT, not the suffix.
 

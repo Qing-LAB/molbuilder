@@ -13,8 +13,8 @@
  * ``templates/results.html``.  The bar is pre-shown during the scan
  * itself (with the dropdown empty and the meta line showing
  * "Scanning for output files…") so the user sees an immediate
- * acknowledgement; it stays hidden only when the directory has
- * zero result files (the inspector then renders its fallback).
+ * acknowledgement.  It hides for one reason: the inspector registry
+ * failed to load, so there is nothing to offer a file to.
  *
  * Picking a different entry from the <select> mirrors the choice
  * to the sidebar via ``projects.setShared(dir, newFile)`` (so the
@@ -44,16 +44,16 @@
  * Visible API on ``window.molbuilder.resultsFilePicker``:
  *
  *   ``mount(root)``    -- one-shot init: attaches the <select>
- *                         handler + Refresh-button click handler,
+ *                         handler + Reload-button click handler,
  *                         subscribes to ``molbuilder:inspector:ready``
  *                         + pageshow / visibilitychange (for tab
  *                         re-entry auto-refresh), and triggers the
  *                         first scan.  Returns a disposer that
  *                         aborts any in-flight fetch and detaches
  *                         subscriptions.  Subscribes to the sidebar's
- *                         onChange for DIRECTORY changes only -- a file
- *                         pick there still changes nothing here, which
- *                         is what #301 protected (results.md § 2.1).
+ *                         onChange to re-word the header only -- nothing
+ *                         in the sidebar moves this panel (results.md
+ *                         § 2.1); Reload does.
  *   ``parseDir(file)``            -- pure helper (exported for testing).
  *   ``formatRelativeTime(epoch)`` -- pure helper (testing).
  *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.
@@ -468,10 +468,8 @@
         let aborter         = null;
         //: THE DIRECTORY THIS PANEL IS BOUND TO -- owned here, changed by
         //: ONE thing (Refresh, via `_alignToSidebar`).  It was a scan memo
-        //: called `lastScannedDir` until 2026-09-19, when the sidebar stopped
-        //: dragging the panel around: with the panel able to sit on a folder
-        //: the sidebar has left, "which folder is this" is state somebody has
-        //: to own, and a memo cannot be asked.
+        //: With the panel able to sit on a folder the sidebar has left,
+        //: "which folder is this" is state somebody has to own.
         let boundDir        = null;
         //: Set by the Reload click, consumed by the next announcement.
         //: `results.md` 4 states the contract in four words -- *"Reload =
@@ -614,8 +612,7 @@
             // Pre-show the picker bar with an empty dropdown + a
             // "Scanning…" status so the user sees that something is
             // happening DURING the fetch -- not just after it
-            // resolves.  If the dir has no result files, the fetch's
-            // resolver hides the bar again.
+            // resolves.
             while (selEl.firstChild) selEl.removeChild(selEl.firstChild);
             barEl.hidden = false;
             _showTransientStatus("Scanning for output files…");
@@ -821,18 +818,7 @@
          * directory the picker is listing.
          *
          * ``preferredFile`` is kept if this directory still offers it, so a
-         * Refresh does not jump you to a different result; pass "" to take the
-         * newest, which is what a folder change does (results.md § 2.1).
-         *
-         * This replaced ``_onSelectionChange``, which branched on "same dir or
-         * not".  Its same-dir half had been unreachable since #301 retired the
-         * subscription that fed it: the only remaining caller, _forceRescan,
-         * set ``lastScannedDir = null`` immediately before calling, so the
-         * dir-changed branch was always taken -- as the comment there admitted
-         * ("we deliberately bypass the same-dir branch").  ~30 lines of
-         * file-swap handling, and the ``lastSelectedFile`` that branch was the
-         * only reader of, were dead weight held up by a function shape that no
-         * longer had two cases.
+         * reload does not jump you to a different result.
          */
         function _rescanDir(dir, preferredFile) {
             /* BIND FIRST, ANNOUNCE FIRST -- and the header is written to
@@ -881,9 +867,9 @@
          * it makes it unnecessary.  If the readout ever goes away, this
          * subscription has to come back.
          *
-         * Re-scans now happen on exactly three things: the Refresh button
-         * (which re-points the panel at the sidebar), tab re-entry (which
-         * re-reads the folder already bound), and your own pick in the menu.
+         * Re-scans happen on two things: Reload (which re-points the panel
+         * at the sidebar) and tab re-entry (which re-reads the folder it is
+         * already on).  A pick in the menu announces; it does not re-scan.
          */
         function _announceScope() {
             try {
@@ -1063,11 +1049,9 @@
         /**
          * TAB RE-ENTRY -- re-read the folder we are ALREADY on.
          *
-         * The other half of what `_forceRescan` used to be.  Coming back to
-         * the browser tab should show files written while you were away; it
-         * must not quietly re-point the panel at wherever the sidebar
-         * drifted, because nobody asked it to.  Before the split these were
-         * one function, so focus-return was a silent Refresh.
+         * Coming back to the browser tab shows files written while you were
+         * away; it must not re-point the panel at wherever the sidebar
+         * drifted, because nobody asked it to.
          *
          * Before the first bind there is nothing to re-read, so the very
          * first one adopts -- that is the initial bind, not a re-point.
@@ -1113,9 +1097,6 @@
         }
 
         // Initial bootstrap: with the sidebar onChange subscription
-        // retired (task #301), the picker no longer gets a "current
-        // selection" callback on mount.  Trigger one rescan
-        // explicitly so the dropdown populates on first load.
         // pageshow also fires once on fresh navigation but only
         // AFTER mount returns; this call covers the early window so
         // the dropdown is visible by the time the user looks.
