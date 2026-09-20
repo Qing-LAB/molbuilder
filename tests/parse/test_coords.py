@@ -29,9 +29,11 @@ from molbuilder.parse import (
     parse,
 )
 from molbuilder.parse.coords import (
+    PdbFileParser,
     PySCFGeomFileParser,
     SiestaXVFileParser,
 )
+from molbuilder.parse.errors import UnknownFormatError
 from molbuilder.parse.registry import _registered_file_parsers
 
 
@@ -60,6 +62,57 @@ def test_coords_parsers_registered():
     names = {p.name for p in _registered_file_parsers()}
     assert "siesta-xv" in names
     assert "pyscf-geom" in names
+    assert "pdb" in names
+
+
+# --------------------------------------------------------------------- #
+#  .pdb -- a reader that existed for years with no row in the registry   #
+# --------------------------------------------------------------------- #
+
+_PDB = ("HEADER    TEST\n"
+        "ATOM      1  N   MET A   1       0.000   0.000   0.000"
+        "  1.00  0.00           N\n"
+        "ATOM      2  CA  MET A   1       1.400   0.000   0.000"
+        "  1.00  0.00           C\n"
+        "END\n")
+
+
+def test_a_pdb_is_read_by_a_parser_so_the_picker_can_offer_it(tmp_path: Path):
+    """`structure.js` has claimed `.xyz` AND `.pdb` since it was written.
+
+    Nothing in `parse/` claimed `.pdb`, and from 2026-09-18 the picker
+    drops any file the server registry cannot read -- so half that
+    presenter was unreachable from the Results tab.  The reader was
+    already here (`Structure.from_pdb`); the gap was the registration.
+    `StructureCodec.load` says so in its own comment: *"the file picker
+    accepts .xyz AND .pdb, and each needs its own parser"*.
+    """
+    f = tmp_path / "mol.pdb"
+    f.write_text(_PDB, encoding="utf-8")
+    kind = detect(str(f))
+    assert kind.name == "pdb"
+    got = kind.parse(f)
+    assert got.structure.elements == ["N", "C"]
+    # No CRYST1 reader, so no cell -- stated, not invented.
+    assert got.cell is None
+    assert got.source_format == "pdb"
+
+
+def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
+    """THE CONTENT, not the suffix.
+
+    A truncated download, a refusal page or somebody's notes saved with
+    a `.pdb` name is not a structure, and claiming it puts an error card
+    where a molecule should be.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the `_looks_like_pdb` call
+    from `can_parse`, leaving the suffix test alone.
+    """
+    f = tmp_path / "notes.pdb"
+    f.write_text("this is not a structure\njust some notes\n",
+                 encoding="utf-8")
+    with pytest.raises(UnknownFormatError):
+        detect(str(f))
 
 
 # can_parse ---------------------------------------------------------- #
