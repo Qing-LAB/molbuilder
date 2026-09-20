@@ -1245,14 +1245,14 @@ unmerged branch living in `main`*) — is
 (2026-09-08) and a header pass over the ten most-undocumented files
 (2026-09-09). Their EVIDENCE lives in two records and stays there:
 
-- [`process/test-audit-findings.md`](?doc=process/test-audit-findings.md) — the
+- [`archive/2026-09-08-test-audit-findings.md`](?doc=archive/2026-09-08-test-audit-findings.md) — the
   numbered defect ledger (§ 0a), the reproductions, and the unapplied verdicts.
-- [`science/test-design-findings.md`](?doc=science/test-design-findings.md) —
+- [`archive/2026-09-08-test-design-findings.md`](?doc=archive/2026-09-08-test-design-findings.md) —
   the protected class: where a science test would pass for a physically wrong
   reason.
 
 **This section is the WORK.** It exists because a record with no plan row is a
-record nobody executes — which is how `science/test-design-findings.md` shipped
+record nobody executes — which is how `archive/2026-09-08-test-design-findings.md` shipped
 on 2026-09-08 linked from nothing, failing two of the repo's own doc lints, and
 was one compaction from being lost.
 
@@ -3613,3 +3613,68 @@ commit message is where history goes, being immutable and already dated.
 * **`task-setup` acts on `onChange`** (`viewer.js:3665-3668` subscribes both
   `onChange` and `onCommit` to the same `loadFolder`). The Results tab stopped
   doing this on 2026-09-20; this tab still does.
+
+## 11. The test-audit consolidation — one list, re-derived 2026-09-20
+
+**This section replaces two records.** `archive/2026-09-08-test-audit-findings.md` and
+`archive/2026-09-08-test-design-findings.md` were the 2026-09-08/09 audit's two halves.
+Both are archived; everything still live is here, and nothing below is
+inherited on trust — each row was re-measured against the tree, and the rows
+where the audits were **wrong** are marked, because that is the part a reader
+would otherwise re-derive.
+
+**How to read the ranking.** By what a wrong answer costs the SCIENCE, not by
+effort. The first three produce a run that converges on the wrong thing.
+
+### 11.1 A wrong molecule reaches the engines — DECISION NEEDED
+
+| | |
+|---|---|
+| **P1** | **`build_peptide` returns a peptide ALDEHYDE, not a peptide.** Measured: `build_peptide("ARNDC")` → `C20 H35 N9 O8 S`, 38 heavy atoms; the C-terminal carbonyl carbon's neighbours are **H (1.032 Å)**, O (1.229 Å), C (1.52 Å) — that is `-C(=O)H`, not `-C(=O)OH`. Correct neutral ARNDC is `C20 H35 N9 O9 S`, **39 heavy** (residues C20H33N9O8S + H2O). One oxygen short: the OXT. **`OXT` occurs zero times in the whole repository.** Root cause is upstream — PeptideBuilder never writes OXT and the protonation step then saturates the dangling valence with an H, which is what makes it silent. **Why nothing catches it: the H count is 35 either way**, the aldehyde H standing in for the hydroxyl H, so every H-based check is blind by construction; and there is no valence or formula check in `validation/`. Reachable on three surfaces: `molbuilder.build_peptide` (public, in `__all__`), `cli.py:349`, and `/api/build/molecule` `kind: "peptide"`. **Two green tests pin it** — `test_heavy_atom_count`'s `38   # 5 + 11 + 8 + 8 + 6` (that 6 is C-terminal CYS without OXT; it should be 7) and `test_full_protonation_keeps_heavy_atom_counts`, which locks O == 8. A peptide aldehyde has no ionizable C-terminus and a different electronic structure — any energy, dipole or spectrum is about a molecule nobody asked for. **THE DECISION IS YOURS: does molbuilder add the OXT itself, or refuse/warn when the backend has not?** The two test constants become 39 and O == 9 once it is settled. Not on either audit's list |
+
+### 11.2 Silent identity corruption — the top of the old list
+
+| | |
+|---|---|
+| **P2** | **`delete_atoms` metadata lockstep is unguarded suite-wide.** `test_delete_preserves_metadata_in_lockstep` asserts four `len(col) == n_atoms` and its own note says so. Demonstrated: deleting `[1,2,3,4]` from `C H H H H C`, the correct survivors are `['C','C'] / ['C1','C2']`; a column sliced with `range(len(keep))` gives `['C','H'] / ['C1','H1']` — **same length, every atom after the cut wearing its neighbour's identity**, and the structure flows into both emitters looking valid. Measured unguarded across **390 tests** touching `delete_atoms`, for `elements` and `positions` as well as the identity columns. **The audit's proposed fix does not work** — `survivors == [orig[i] for i in keep]` over the four columns it names kills 1 of 5 mutants, because `linear_dimer` never sets the identity columns so `Structure` synthesises constants (`residue_ids = [1]*6`), and index-equality over a constant column is vacuous; it also omits `elements` and `positions`, the two that decide the physics. **Fix:** give the fixture distinct per-atom identity plus a region label and a frozen atom, then assert every column equals `[orig[i] for i in keep]` — one assertion per column, because `delete_atoms:116-121` is six independent comprehensions and a shared assertion cannot localise. Widen `test_delete_drops_listed_indices` (line 212) in the same pass: it deletes 4 of 6, leaving 2, which is the one case where "first N" and "the right N" nearly coincide |
+| **P3** | **The sidecar pairing fixture writes a payload molbuilder cannot read, and nothing reads one back.** Two halves, and they must be fixed in that order. (a) `_seed_paired` (`test_web_files.py:1603`) hand-writes `"schema_version": 7` WITH a top-level `"frozen_atoms": []` — the exact key whose removal *defines* schema 7. Measured: `molstruct.load_text` **REFUSES** it (*"carries ['frozen_atoms'], which this version does not read"*). It is a v3-shaped payload wearing a v7 stamp. *The audit's diagnosis — "two versions stale" — is wrong: `READABLE_VERSIONS` is `{7,8,9}`, so v7 is fine; the shape is not.* (b) Across twelve `_seed_paired` call sites in eleven delete/rename/move/copy tests, `regions` and `frozen_atoms` appear **only in the write**, and `StructureCodec` appears zero times; the strongest read-back is `json.loads(...)["n_atoms_total"] == 3`. So the harm pairing exists to prevent — regions and frozen atoms silently lost, `Geometry.Constraints` vanishing, electrodes relaxing, the run converging and being wrong — is never observed. `molstruct.py:113-122` records that this loss already shipped once. **Fix:** build the pair through `StructureCodec().write`, then one `read` + assert in the rename and move tests. (a) blocks (b) |
+
+### 11.3 A gate that does not run, and formulas tested where they cannot fail
+
+| | |
+|---|---|
+| **P4** | **`tests/test_pyscf_smoke.py` is a DEAD gate, and it is the only test in the suite that executes a generated script.** Measured: `molbuilder` env → `no tests collected` (no pyscf); `molbuilder-pySCF` env → **pytest is not installed there**; and there is no `.github/workflows` at all, so its docstring's "CI without PySCF stays green" describes a CI that does not exist. A rendered deck that no longer runs against the installed API ships silently. **The fix needs no installs and was proven from the default env:** the `importorskip` guards the wrong interpreter — rendering needs no pyscf, only the SUBPROCESS does, and `_run_script` uses `sys.executable` out of habit while molbuilder already owns the door (`EXTENSION_TO_CATEGORY[".py"] = "pyscf"` drives the production wrapper). Routing through `envs.run_in_env` turned 0 collected into 3 running, in the default env, additionally exercising the production dispatch path. Skip on `caps.env_available(...)`, not on an in-process import. **Separately, its assertions:** the values are correct (measured -74.96302314 / -39.72681011 / -76.35815189, all within 5e-5 of the pinned numbers) but the provenance line says "PySCF 2.x prints", and the tolerances pass a real 0.3–5 mHa band of wiring defects — TPSSh instead of B3LYP (+5.0 mHa), a stray D3BJ (-0.57 mHa), +0.01 Å on one O-H (-0.354 mHa) all survive. Two assertions per row: a literature anchor (**look the citation up, do not type it from memory**) and a regression pin at 1e-6 / 1e-5 against a value recorded with its provenance. **The B3LYP docstring is false, not merely loose** — it claims the row gates grid level and density fitting; measured, DF is 0.01 mHa and the grid 0.0001 mHa. Only the functional is gated. Also `_h2o_struct`'s coordinates give r = 0.95778 Å / θ = 104.480°, not the 0.9572 / 104.52 its docstring claims — 0.095 mHa, harmless now, fatal the day a literature value is cited. **Do not delete the file** |
+| **P5** | **`bulk_z_period` is tested only where the right and wrong formulas agree.** The contract is `z_period = z_span + median(Δ)`. Every fixture is uniformly spaced, where `z_span + d` and the wrong `n_layers × d` are **identical** (7.05 + 2.35 = 4 × 2.35 = 9.40) — so the mutant survives in `test_cell.py`, survives `test_transport_compose.py:406`, and is bypassed by an explicit override in `test_transport_wizard.py:62`. The one non-uniform fixture, `test_bulk_z_period_uses_the_median_not_the_mean`, **throws `zper` away** (`_zper, d, _n = ...`) and asserts only `d` — and it is exactly the case the formula was designed for, a relaxed outermost layer, where the two diverge: 12.40 vs 11.75. A 0.65 Å error in a junction supercell puts the periodic image in the wrong place along the transport axis. **Fix: one line** — stop discarding `zper` in that test and assert 12.40. Not on either audit's list |
+| **P6** | **A-DNA and B-DNA cannot be told apart if they are SWAPPED.** `test_backends.py:307` asserts `diff.max() > 0.1` Å. *The audit's stated failure mode is measurably false* — two independent B builds differ by **0.000000** (fiber is deterministic) and would fail, and A vs B moves even the least-moved atom by 3.168 Å. But both directions of a swap give ≈7.9 and pass, and a swap is exactly the plumbing bug the test exists to catch. **Fix, derived and measured:** assert rise per base pair from the C1′ z-centroids — A gives 2.548 Å/step, B gives 3.375, against Arnott canonical 2.56 / 3.38. External anchor, kills the swap, subsumes the current assertion |
+
+### 11.4 Real, cheaper, no scientific cost
+
+| | |
+|---|---|
+| **P7** | `test_not_is_complement` has a **live mutant**: `Not` complementing within the operand's own span survives all 56 tests in the file. *The audit blamed the relational assertion form; measured, that is not the cause* — its premised mutant IS caught, by `test_minus:340`. The cause is the fixture: `ByElement(Au)` reaches the last atom, so `max(operand)+1 == n` and the two readings coincide. **Fix: one line** — use an operand that stops short of the last atom |
+| **P8** | `test_structure_save_endpoint.py`'s docstring promises the written pair "reads back through the load door with metadata preserved". Seven tests, **none imports `StructureCodec`**; `_browser_blob()`'s `frozen_atoms` and `cell_origin` are never read back. That is the regression the file exists for (task #75, *"every save produced a pair the app could no longer open"*) |
+| **P9** | An absent optional backend answers **HTTP 500**. Reproduced against the real app with the backends stubbed absent: four `POST /api/build/molecule` shapes, all 500 via the bare `except Exception` at `build.py:356`. There is no `except BackendUnavailable` in the repo. *The audit says the contract has no bucket; it half does* — `web-api.md:340` defines advisory → 200 `ok:false`, which fits the two duplex `ValueError` paths exactly; only `BackendUnavailable` is a capability fact with no home. **Pairs with:** `/api/backends` exists and **no browser reads it** (`app.py:735`, its own comment says so), while `modify.html:145-197` offers all four backends unconditionally with static prose. Fetching it on Modify-tab mount to disable unavailable options is the only item here with direct user-facing value |
+| **P10** | The TBT window's `from`/`to` **numbers** are asserted nowhere. *The audit filed this against a dead line* — it quotes `TS.TBT.NumE`/`Emin`, keywords removed 2026-09-15 because the installed tbtrans 5.4.2 cannot read them. **And do NOT attempt its proposed fix:** whether `%block TBT.Contour`'s bounds are absolute or E_F-relative is a recorded OPEN QUESTION in four places (`transport/stages.py:94`, `config/transport.py:340`, `record.py:70`), so asserting a sign relation with E_F would assert a rule no document states. Bracketing is already structurally forced by the `range:` on the two fields. **Fix:** add `from`/`to` against `cfg` to `test_transport_au_bdt_au_validation.py`, which already parses the block properly |
+| **P11** | `spectra/test_selection.py:191` promises two cases and tests one; the two take **different branches** at `selection.py:119`, and no fixture in the tree can produce the second (`_prior_with_es_on_mode` always populates it). One extra assert |
+| **P12** | The no-background-poll property is guarded by **nothing**. *Both audits are wrong about why*: `test_checkpoint_js_has_no_polling_timer` does not exist — deleted 2026-09-10 in `082ba979`, one day AFTER the doc's "re-verified 2026-09-09: still in the tree". The property holds (`checkpoint.js`'s only `setInterval` is prose at line 33) and `test_checkpoint_sensor_js.py:21` still advertises it as guarantee 3 over an empty region. **Fix:** stub `setInterval` in the existing `_DOM` harness and assert no timer after `onDirectoryChange`. The blocker that deferred this is gone — node is installed and 538 JS tests now pass where 67 of 717 used to |
+| **P13** | `_threedna.py:126-134` decides availability from `isfile + X_OK + isdir` and never runs the tool. A design decision about how eagerly to probe at import |
+| **P14** | Three small ones: `test_annotations_fdf.py` is **order-dependent inside its own file** (`test_render_fdf_unchanged_without_annotations` passes vacuously when run alone — the leak into other files is inert, *the audit overstated the blast radius*); `TestOpsPreservePeriodicity`'s class docstring still says the ops must preserve "k-grid", which moved to `SiestaConfig`, contradicting `_assert_lattice_preserved`'s own docstring five lines away; and `test_the_composed_sweep_survives_json` cannot test what it names, because both producers are stubbed — *though the audit's "every assertion cannot fail" is too strong: the 200 and the `ok` stamp are real* |
+
+### 11.5 Closed by re-measurement — do not re-derive these
+
+* **`test_add_atom_zero_offset_is_advisory_not_blocked`** — NOT REAL. `tests/validation/test_geometry.py` pins all three distance bands directly, including water at 0.957 Å producing no issue, which kills the mutant the finding posits.
+* **`test_isolated_axis_keeps_pbc_false_despite_cell`** — NOT REAL. Wrong layer (the test is about the codec deriving `pbc` from `axis_kind`); the physics IS checked, by `validation/geometry.py:153` `cell.image_distance`; and the fixture's nearest image is 9.26 Å, above molbuilder's own 6.0 Å criterion, so there is nothing to catch.
+* **`TestOpsPreservePeriodicity`'s rotation claim** — NOT REAL. A rotation returning `cell=None` IS caught, by `TestRigidTransformMovesTheBox` in the same file (4 failures). The audit names that class and files the gap anyway.
+* **`detect_layers`' `abs=1e-3`** and **`bulk_z_period`'s default approx** — the filed complaints are unfounded (both are effectively exact). What is real is P5, and separately that `LAYER_TOL_ANG = 0.5` — the decision of what counts as one layer — has no test at all.
+* **The junction `2.355`** — the stated failure mode is false: the Au planes are placed by absolute `start_z` at -6.855/-4.500/+4.500/+6.855 and cannot overlap. Only the retyped constant is real, and it is molbuilder's own `fcc_lattice.json` value, so deriving it is legitimate.
+
+### 11.6 The pattern both audits kept repeating
+
+`test-design-findings.md` § 4's preamble names its own recurring error —
+*"a suite-wide absence asserted from one file's contents"* — and records seven
+withdrawals for it. **Two more of exactly that were still in its open list**
+(the two NOT REALs above), and the fresh-eyes pass found two further rows whose
+stated failure mode was measurably false. Of the still-open science section,
+roughly 4 in 7 rows were wrong in some load-bearing way while the underlying
+concern was often real. The appendix's own warning — re-derive before acting —
+held up completely, and is why every row above carries its measurement.

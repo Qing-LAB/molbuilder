@@ -324,11 +324,11 @@ The audit that produced this section gated ~3,000 of 4,448 test functions. Its
 **applied** cuts live in their commit messages; everything it found and did not
 act on lives in two records, and neither has been actioned:
 
-- [`test-audit-findings.md`](?doc=process/test-audit-findings.md) — two real code
+- [`test-audit-findings.md`](?doc=archive/2026-09-08-test-audit-findings.md) — two real code
   defects found by auditing tests, four tests owed a redesign rather than a
   deletion, one coverage gap a deletion exposed, and 18 unapplied subsumption
   verdicts with their reasoning.
-- [`science/test-design-findings.md`](?doc=science/test-design-findings.md) — the
+- [`archive/2026-09-08-test-design-findings.md`](?doc=archive/2026-09-08-test-design-findings.md) — the
   protected class: cases where a science test would pass for a physically wrong
   reason. **No science test was cut**; ~120 drafted cuts were withdrawn when the
   exception below landed.

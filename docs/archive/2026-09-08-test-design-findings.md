@@ -1,5 +1,20 @@
 # Scientific-validation tests — design findings, 2026-09-08
 
+> **Not a source of truth — archived 2026-09-20.** Everything still live from
+> this record is consolidated in [`plans/plan.md`](?doc=plans/plan.md) § 11,
+> **re-measured against the tree** rather than carried over. Read § 11; come
+> here only for the reasoning behind a row.
+>
+> Rows in here that a 2026-09-20 fresh-eyes pass found WRONG are left as
+> written — an archive that is edited stops being evidence of how the drift
+> happened. § 11 marks each one and says what the measurement showed.
+
+> Of its actionable items: **28 done/withdrawn, 24 open, 1 obsolete**. Its
+> § 1 — the PySCF smoke test — was completely untouched and turned out to
+> be the sharpest thing either record held: a gate that runs in no
+> environment on this machine. It is § 11's P4.
+
+
 **Role:** record — a review queue, not a contract
 **Domain:** science
 **Companions:** [`process/testing.md § 3b`](?doc=process/testing.md) — the rule these were

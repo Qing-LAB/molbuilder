@@ -1,5 +1,19 @@
 # The 2026-09-08 test audit — what it found that is not yet acted on
 
+> **Not a source of truth — archived 2026-09-20.** Everything still live from
+> this record is consolidated in [`plans/plan.md`](?doc=plans/plan.md) § 11,
+> **re-measured against the tree** rather than carried over. Read § 11; come
+> here only for the reasoning behind a row.
+>
+> Rows in here that a 2026-09-20 fresh-eyes pass found WRONG are left as
+> written — an archive that is edited stops being evidence of how the drift
+> happened. § 11 marks each one and says what the measurement showed.
+
+> Of its numbered findings: **24 done, 7 open, 1 unrecoverable** (§ 6.3's
+> 22 cut candidates, whose names were lost with the session directories —
+> that list cannot be reconstructed from this document).
+
+
 **Role:** record — an investigation queue, not a contract
 **Domain:** process
 **Companions:** [`testing.md § 3b`](?doc=process/testing.md) — the standard the
