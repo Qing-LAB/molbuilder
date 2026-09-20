@@ -68,7 +68,7 @@
      lib/results/file-picker.js with every file in the current
      project directory that any ``isResult:true`` inspector would
      mount (sorted newest-first).  ALWAYS VISIBLE -- even when zero
-     result files exist yet -- so the user can hit Refresh after
+     result files exist yet -- so the user can hit Reload after
      starting a job without having to leave + return to /results
      to recover the button (2026-06-15, supersedes the original
      single-entry-dropdown hiding rule).  The only path that
@@ -85,8 +85,8 @@
     <button id="results-file-picker-refresh"
             class="result-list-refresh"
             type="button"
-            title="Re-scan the current project directory for new result files (.xyz / .pdb / .molwatch.log / *.spectra.json / …).&#10;Auto-refresh also fires when you return to the Results tab.">
-      Refresh
+            title="Point this panel at the project directory the sidebar is showing, and list its results.&#10;This is the only thing that moves the panel: browsing the sidebar leaves it where it is.&#10;Returning to this browser tab re-reads the folder it is already on, without moving it.">
+      Reload from current project dir
     </button>
     <span id="results-file-picker-meta" class="result-list-meta"
           aria-live="polite"></span>
@@ -116,13 +116,22 @@
          product yet, and a folder nobody described all read as the one
          generic sentence below. #}
       <p class="inspector-card-note results-place-note" hidden></p>
+      {# Two corrections, both 2026-09-19.  "Navigate the sidebar to a
+         directory that contains result files" stopped being an instruction
+         when browsing stopped moving this panel -- navigating is now step
+         one of two, and the button is step two.  And "if the dropdown is
+         hidden, the directory has no result files yet" was never true of
+         this page: the bar is ALWAYS VISIBLE (see the comment above it) and
+         hides only when the inspector scripts fail to load, so a user with
+         an empty folder read that sentence, saw a dropdown, and concluded
+         the folder had results. #}
       <p class="inspector-card-note">
-        Navigate the <strong>Projects</strong> sidebar on the left to
-        a directory that contains result files.  The
-        <strong>Result file</strong> dropdown above lists every
-        result-class file in the current directory; selecting one
-        mounts the matching inspector.  If the dropdown is hidden,
-        the directory has no result files yet.
+        Open a directory in the <strong>Projects</strong> sidebar on the
+        left, then click <strong>Reload from current project dir</strong>.
+        Browsing the sidebar on its own leaves this panel where it is, so
+        you can look around without losing what you are reading.  The
+        <strong>Result file</strong> dropdown above then lists what that
+        directory holds; selecting one mounts the matching viewer.
       </p>
       <ul class="results-supported-list">
         <li>

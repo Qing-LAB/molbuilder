@@ -74,10 +74,13 @@ tab has had, so the division is written out in full:
 | **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
 | **Double-click a file** in the sidebar | still nothing here. The sidebar never chooses a result |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
-| **Refresh** | **binds the panel to wherever the sidebar is now**, re-scans it, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
+| **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
 | **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
 
-**The panel owns a folder; Refresh is the only thing that moves it.** Browsing
+**The panel owns a folder; Reload is the only thing that moves it.** The
+button says *"Reload from current project dir"* and not *"Refresh"* for that
+reason — the old name described the effect on the listing and said nothing
+about *where from*, which is the only part you now have to know. Browsing
 is browsing — scrolling the sidebar around to see what is where cannot disturb
 a result you are reading. What you get back is an explicit gesture.
 
@@ -114,7 +117,7 @@ file is current" twice, by two different routes.**
 
 ```mermaid
 flowchart TD
-  T["Refresh (bind to the sidebar) · tab re-entry (re-read) · your pick"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
+  T["Reload (bind to the sidebar) · tab re-entry (re-read) · your pick"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
   S --> E{"any results?"}
   E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
   E -->|"some"| K{"is the file we were<br/>already showing one of them?"}
@@ -272,11 +275,11 @@ Two rules keep this from hiding anything:
 
 - **A file-selected event is the single source of truth.** When you choose from
   the dropdown, it fires a `fileSelected` event that the controller listens for.
-- **Refresh re-scans the folder, and tells a live viewer to re-fetch its data
+- **Reload re-scans the folder, and tells a live viewer to re-fetch its data
   *now*** rather than waiting for the next poll. The panel isn't torn down and
   rebuilt — the mounted viewer reloads in place — but that reload is a *clean*
   one (§ 4), so a trajectory jumps back to its first frame. The picker stays
-  visible even when a folder has zero results, so Refresh is always reachable,
+  visible even when a folder has zero results, so Reload is always reachable,
   and it re-scans automatically when you return to the tab (so a file written
   while you were away shows up).
 
@@ -313,13 +316,13 @@ has now drifted twice. Read it as a tour, and that table as the count.)*
 ## 4. What a mounted viewer remembers
 
 Each viewer keeps a small amount of state, and it's worth knowing the shape
-because it explains how Refresh behaves. A viewer holds: the **parsed file**
+because it explains how Reload behaves. A viewer holds: the **parsed file**
 (replaced whole on a file switch, never patched), your **per-file view** (which
 frame or which mode you're looking at — reset when you switch files), and your
 **per-session preferences** (which survive a file switch). If the run is still
 going, a **poll timer** is running.
 
-The one rule to remember: **"Refresh = open the same file again."** Refresh is
+The one rule to remember: **"Reload = open the same file again."** Reload is
 not a special path — it runs the exact same clean reload a file-switch does
 (cancel anything in flight, clear derived data, reset the view, keep your
 preferences). That single rule is what eliminated a whole class of
@@ -620,7 +623,7 @@ gates a hand-made copy never had (§ 5).
 
 If no presenter is registered at all, the tab shows a clear configuration warning
 rather than a blank panel. If the folder simply has no results yet, the picker
-shows a placeholder and stays put — Refresh remains one click away.
+shows a placeholder and stays put — Reload remains one click away.
 
 ## 9. Where the module stands (current → target ESM)
 

@@ -600,7 +600,7 @@ class TestThePanelOwnsItsFolder:
             "the panel stop following the sidebar; see results/style.css")
         readout = page.locator("#results-current-file").inner_text()
         assert "elsewhere" not in readout
-        assert "Refresh" in readout, (
+        assert "Reload" in readout, (
             f"header does not say the sidebar moved on: {readout!r}")
 
     def test_refresh_is_what_adopts_the_sidebars_folder(
@@ -634,5 +634,5 @@ class TestThePanelOwnsItsFolder:
             timeout=10000)
         readout = page.locator("#results-current-file").inner_text()
         assert "elsewhere2" in readout, readout
-        assert "Refresh" not in readout, (
+        assert "Reload" not in readout, (
             f"still claims divergence after adopting: {readout!r}")

@@ -637,7 +637,7 @@
                         // strand the user; one Refresh click retries.
                         if (metaEl) metaEl.classList.remove("is-busy");
                         _populatePlaceholder(selEl,
-                            "(directory listing failed — click Refresh)");
+                            "(directory listing failed — click Reload)");
                         cachedResults = [];
                         cachedGroups  = [];
                         _showIdleMeta(null);
@@ -714,7 +714,7 @@
                     if (chosen === null) {
                         if (results.length === 0) {
                             _populatePlaceholder(selEl,
-                                "(no result files yet — click Refresh)");
+                                "(no result files yet — click Reload)");
                         } else {
                             _populate(selEl, cachedGroups, null);
                             _prependUnchosen(selEl,
@@ -749,7 +749,7 @@
                     );
                     if (metaEl) metaEl.classList.remove("is-busy");
                     _populatePlaceholder(selEl,
-                        "(scan failed — click Refresh to retry)");
+                        "(scan failed — click Reload to retry)");
                     cachedResults = [];
                     cachedGroups  = [];
                     _showIdleMeta(null);

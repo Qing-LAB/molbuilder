@@ -87,7 +87,7 @@
                 text = dir + " / (nothing selected)";
             }
             if (scope && scope.diverged) {
-                text += "  \u2014 the sidebar has moved on; Refresh to follow";
+                text += "  \u2014 the sidebar has moved on; Reload to follow";
             }
             els.fileReadout.textContent = text;
             els.fileReadout.classList.toggle(
