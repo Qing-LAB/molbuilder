@@ -44,8 +44,13 @@ import xml.etree.ElementTree as ET
 PSEUDO_DIRNAME = "pseudos"
 
 
-def staged_psml(base) -> "set":
+def elements_with_psml(base) -> "set":
     """Which elements this calculation already has a `.psml` for.
+
+    *(Called `staged_psml` until 2026-09-19.  "Staged" is the participle --
+    the files are in place -- but STAGE is this repo's word for a rung of a
+    ladder, and a reader who knows that vocabulary reads the old name as a
+    question about rungs.  The name says what it returns instead.)*
 
     **The NAME of the folder, with no side effects** -- which is why this is
     here and not `jobset.prep._pseudo_dir`, whose job is to CREATE that

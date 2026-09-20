@@ -101,14 +101,18 @@ def _calculation_of(directory: str) -> Tuple[Optional[str], Optional[str]]:
     root = root_of(directory)
     if root is None:
         return None, None
+    # WHERE it was said, for the trail: a decision taken outside the handed
+    # directory has to name where it came from, or the refusal a person reads
+    # stops being checkable.  Computed BEFORE the read, because the read is
+    # the thing that can fail and a failure has to name its file too --
+    # "not stated" and "could not be read" were one answer until 2026-09-19,
+    # so a damaged description was reported as a silent one and the search
+    # below took the unknown-calculation path with nothing saying why.
+    where = os.path.relpath(root / _TASK, Path(directory).resolve())
     try:
         said = (_read_json(root / _TASK) or {})
     except (OSError, ValueError, TypeError):
-        return None, None
-    # WHERE it was said, for the trail: a decision taken outside the handed
-    # directory has to name where it came from, or the refusal a person reads
-    # stops being checkable.
-    where = os.path.relpath(root / _TASK, Path(directory).resolve())
+        return None, f"{where}, which could not be read"
     return (said.get("calculation") or None), where
 
 
@@ -272,9 +276,11 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
 
     # 1. WHAT THIS CALCULATION PRODUCES, from the catalogue.
     calc, said_by = _calculation_of(directory)
+    from molbuilder.task import FILENAME as _TASK_FILE
     attempts.append(
         f"calculation: {calc} (from {said_by})" if calc
-        else f"calculation: (not stated in {said_by or 'task.json'})")
+        else f"calculation: (not stated in {said_by})" if said_by
+        else f"calculation: (no {_TASK_FILE} above this directory)")
     for role in result_roles(calc):
         hits = by_role(role)
         attempts.append(f"*{role} -> {len(hits)} match(es)")

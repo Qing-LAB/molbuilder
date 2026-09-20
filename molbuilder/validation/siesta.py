@@ -63,8 +63,8 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         #     on a guess is the thing this whole path is being cleared of.
         covered = None
         if dest_dir is not None:
-            from ..pseudos import staged_psml
-            here = staged_psml(dest_dir)
+            from ..pseudos import elements_with_psml
+            here = elements_with_psml(dest_dir)
             covered = here and not (set(struct.elements) - here)
         if covered:
             return []

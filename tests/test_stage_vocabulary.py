@@ -112,15 +112,6 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "TBtrans' output, so the ladder rendered the registry's whole "
         "supported-formats list where the final rung's state belongs.  The "
         "fix was to stop asking, which needs the question written down"),
-    "staged_psml": (
-        None, "molbuilder/pseudos.py",
-        "NOT A STAGE.  `staged` here is the participle -- *which elements "
-        "already have a `.psml` put in place* -- and the ledger catches it "
-        "because the detector reads names, not meanings.  It implements no "
-        "stage mechanism and touches no ladder; it answers a "
-        "configuration-time coverage question over `<calc>/` and "
-        "`<calc>/pseudos/`.  The row exists so the collision is recorded "
-        "rather than rediscovered"),
     "_stage_facts": (
         None, "molbuilder/transport/record.py",
         "reads the LADDER'S state into the record -- one entry per rung of "
