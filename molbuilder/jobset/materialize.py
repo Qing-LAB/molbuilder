@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .. import calcdirs
+from ..pseudos import PSEUDO_DIRNAME
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
@@ -491,7 +492,7 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             # being true, so every flat SIESTA prep since that date rendered a
             # deck that dies in `initatom` with "Pseudopotential file not
             # found".  Hierarchical never reached this branch and never broke.
-            for _ps in sorted((base / "pseudos").glob("*.psml")):
+            for _ps in sorted((base / PSEUDO_DIRNAME).glob("*.psml")):
                 _dst = d / _ps.name
                 if not _dst.exists():
                     shutil.copy2(_ps, _dst)

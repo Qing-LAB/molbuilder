@@ -101,6 +101,26 @@ _CONSTANT_IS_STAGEY = lambda name: "STAGE" in name  # noqa: E731
 # reads, names or carries stages without being a way of *expressing* one --
 # the observing side, or a different sense of the word entirely.
 PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
+    "STAGE_FACT": (
+        None, "molbuilder/transport/stages.py",
+        "WHICH QUESTION EACH RUNG ANSWERS -- `scf`, `fermi` or `product` -- "
+        "beside the ladder that names the rungs (2026-09-19).  Not a "
+        "mechanism: it adds no way to express a stage, it records what the "
+        "ladder's existing rungs are FOR.  It is here rather than in "
+        "`record.py` because `record.py` asked every rung the `scf` question "
+        "and the transmission rung is not an SCF at all -- no parser claims "
+        "TBtrans' output, so the ladder rendered the registry's whole "
+        "supported-formats list where the final rung's state belongs.  The "
+        "fix was to stop asking, which needs the question written down"),
+    "staged_psml": (
+        None, "molbuilder/pseudos.py",
+        "NOT A STAGE.  `staged` here is the participle -- *which elements "
+        "already have a `.psml` put in place* -- and the ledger catches it "
+        "because the detector reads names, not meanings.  It implements no "
+        "stage mechanism and touches no ladder; it answers a "
+        "configuration-time coverage question over `<calc>/` and "
+        "`<calc>/pseudos/`.  The row exists so the collision is recorded "
+        "rather than rediscovered"),
     "_stage_facts": (
         None, "molbuilder/transport/record.py",
         "reads the LADDER'S state into the record -- one entry per rung of "

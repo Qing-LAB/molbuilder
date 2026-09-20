@@ -389,13 +389,27 @@ def test_no_third_hierarchy_segment_is_invented():
     """`project-layout.md` § 2.6 is the authority on the tree.
 
     **What is guarded is the SET of undeclared segments, not the site count.**
-    Ten sites build `launch/` and `pseudos/` today and § 5l.6 step N5 takes them
-    to zero; what must not happen in the meantime is a *third* segment joining
-    them silently — because that is a level of the tree created at a call site,
-    and only § 2.6 may add one.
+    What must not happen is a *third* segment joining them silently — because
+    that is a level of the tree created at a call site, and only § 2.6 may add
+    one.
 
     Shrinking the set is the goal, so this asserts equality rather than
     membership: closing one is a deliberate edit here, not a quiet pass.
+
+    *(Two were guarded when this was written, and the docstring said "ten sites
+    build `launch/` and `pseudos/` today and § 5l.6 step N5 takes them to
+    zero".  § 5l.6 was retired and deleted 2026-09-17, so the follow-through it
+    named stopped existing.  `pseudos` was closed anyway on 2026-09-19 — the
+    name got one home in `pseudos.PSEUDO_DIRNAME` and its five callers import
+    it — which is what closing one looks like without the plan row.  `launch`,
+    five sites in `jobset/submit.py`, is the one left.)*
+
+    **WHAT THIS AXIS DOES NOT CATCH, and it is the price of closing one.**  A
+    segment that is DECLARED is no longer in the guarded set, so a caller who
+    re-spells `"pseudos"` tomorrow is invisible here — exactly as one who
+    spells `"bench"` already is.  The set guard is a guard against INVENTING a
+    level, not against bypassing a door; § 4.5's own axis is the one that
+    catches a bypass, and it works on filenames.
     """
     t = _tool()
     rows = t.segments()
@@ -406,8 +420,9 @@ def test_no_third_hierarchy_segment_is_invented():
         + "\n".join(f'  {r["file"]}:{r["line"]}  {r["func"]}()  '
                     f'[{r["segment"]}]  {r["how"]}'
                     for r in rows if not r["declared"])
-        + "\n\nIf a NEW segment appeared: declare it with a door "
-          "(§ 5l.6 N5) or do not build it. If one was CLOSED: update "
+        + "\n\nIf a NEW segment appeared: give the name one home and have "
+          "every caller import it (`pseudos.PSEUDO_DIRNAME` is the worked "
+          "example), or do not build it. If one was CLOSED: update "
           "GUARDED_UNDECLARED in tools/classify_path_finders.py.")
 
 

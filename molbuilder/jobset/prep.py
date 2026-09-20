@@ -49,6 +49,7 @@ from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
 from ..runfiles import compose as _rf, stem as _rf_stem
+from ..pseudos import PSEUDO_DIRNAME
 
 
 class PrepError(Exception):
@@ -502,7 +503,6 @@ def _pseudo_dir(base: Path) -> Path:
     ONE rule, two providers: the SIESTA arm below and the transport
     composite's (which fetches from the citation instead of a library).
     """
-    from ..pseudos import PSEUDO_DIRNAME
     pdir = base / PSEUDO_DIRNAME
     pdir.mkdir(exist_ok=True)
     # A container, and it says so (`project-layout.md` § 1.4a): the shared
@@ -1315,8 +1315,8 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
         lib = None
         if root is not None:
             cited = Path(root) / citation
-            if (cited / "pseudos").is_dir():
-                lib = cited / "pseudos"
+            if (cited / PSEUDO_DIRNAME).is_dir():
+                lib = cited / PSEUDO_DIRNAME
             elif any(cited.glob("*.psml")):
                 lib = cited
         missing = (copy_pseudopotentials(want, lib, pdir)
@@ -2118,8 +2118,8 @@ def _siesta_shared_package(base: Path) -> List[str]:
     root glob stays as the fallback for a bundle prepped before it, so a
     travelled calculation still names its package.
     """
-    grouped = sorted(f"pseudos/{p.name}"
-                     for p in (base / "pseudos").glob("*.psml"))
+    grouped = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
+                     for p in (base / PSEUDO_DIRNAME).glob("*.psml"))
     return grouped or sorted(p.name for p in base.glob("*.psml"))
 
 

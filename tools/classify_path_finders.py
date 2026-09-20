@@ -223,11 +223,15 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 #: one step earlier, because an unread site cannot be known to be either.
 FAILING_VERDICTS = ("owned", "unclassified")
 
-#: The undeclared hierarchy segments as of § 5l.6 N1 (2026-09-08).  `--check`
-#: fails when this SET changes -- a third invented segment is a new level of the
-#: tree created at a call site, which `project-layout.md` § 2.6 alone may do.
-#: Shrinking it is the point (N5); growing it is the failure.
-GUARDED_UNDECLARED = ("launch", "pseudos")
+#: The undeclared hierarchy segments (surveyed 2026-09-08).  `--check` fails
+#: when this SET changes -- a third invented segment is a new level of the tree
+#: created at a call site, which `project-layout.md` § 2.6 alone may do.
+#: Shrinking it is the point; growing it is the failure.
+#:
+#: `pseudos` LEFT the set 2026-09-19: the name has one home
+#: (`pseudos.PSEUDO_DIRNAME`) and all five callers import it, which is the
+#: `checkpoint.ARCHIVE_DIR` arrangement exactly.  `launch` is the one left.
+GUARDED_UNDECLARED = ("launch",)
 
 
 
@@ -353,9 +357,15 @@ def stale_compose_overrides(rows: "list[dict]") -> "list[tuple]":
 # GitHub endpoint, both flagged because `transport` and `user` are also topic
 # names.
 #
-# WHAT IS GUARDED IS THE SET OF UNDECLARED SEGMENTS, NOT THE SITE COUNT.  The
-# ten sites below go to zero in § 5l.6 step N5; what must not happen before
-# then is a THIRD invented segment joining them silently.
+# WHAT IS GUARDED IS THE SET OF UNDECLARED SEGMENTS, NOT THE SITE COUNT.  What
+# must not happen is a THIRD invented segment joining them silently.
+#
+# *(This said "the ten sites below go to zero in § 5l.6 step N5" until
+# 2026-09-19.  § 5l and its sequencing were retired and deleted 2026-09-17
+# (`plan.md` § 5l's own epitaph), so the follow-through it named no longer
+# existed -- a survey pointing its reader at a deleted plan row.  Closing a
+# segment is now what the tests already describe: give the name one home and
+# move the callers onto it, then edit `GUARDED_UNDECLARED` here.)*
 
 def _calc_containers() -> "dict[str, str | None]":
     """The containers a CALCULATION holds, and the door that names each.
@@ -372,9 +382,11 @@ def _calc_containers() -> "dict[str, str | None]":
         "bench": "jobset.materialize.bench_container",
         # declared as a constant, so the name has one home
         ARCHIVE_DIR: "checkpoint.ARCHIVE_DIR",
-        # UNDECLARED -- § 5l.6 N5
+        # declared as a constant, and every caller imports it (2026-09-19)
+        "pseudos": "pseudos.PSEUDO_DIRNAME",
+        # UNDECLARED -- the last one.  Five sites in `jobset/submit.py` spell
+        # it; it needs a home before it can be closed the same way.
         "launch": None,
-        "pseudos": None,
     }
 
 
@@ -383,11 +395,15 @@ CALC_CONTAINERS = _calc_containers()
 #: (file, function, segment) -> reason.  Same anchoring rule as the two tables
 #: above: never a line number.
 _SEGMENT_OVERRIDES: "dict[tuple[str, str, str], str]" = {
-    ("molbuilder/jobset/prep.py", "_pseudo_dir", "pseudos"):
-        "THE DOOR ITSELF, and the finding is that it is PRIVATE -- three sites "
-        "in its own module spell the segment again rather than call it.  N5 "
-        "makes it a coordinate; until then this row keeps the door from being "
-        "reported as one of its own violations",
+    # Empty, and that is the finished state -- an exemption here excuses a
+    # spelled segment, and there is none left to excuse.
+    #
+    # *(One row stood here until 2026-09-19: `prep._pseudo_dir`, "THE DOOR
+    # ITSELF, and the finding is that it is PRIVATE".  It went stale the way
+    # the header promises -- `pseudos.PSEUDO_DIRNAME` gave the name a home,
+    # the door imports it, and `stale_segment_overrides` reported the row
+    # against no site.  The exemption did not need re-anchoring; the thing it
+    # excused had stopped existing.)*
 }
 
 
