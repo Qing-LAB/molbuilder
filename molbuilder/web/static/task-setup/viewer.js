@@ -122,8 +122,6 @@ let _handover   = null;   // the parsed task.1st.json, in handover mode
  * § 9a) -- the model is a convenience for the table, never the source. */
 let _task       = null;
 let _reparse    = null;   // debounce for the editor -> model re-parse
-let _runs       = {};     // stage name -> attempts on disk (T5)
-let _tokens     = {};     // stage name -> its <NN>_<name>, FROM THE SERVER
                           // (this page composes no token of its own)
 
 const $ = (id) => document.getElementById(id);
@@ -249,7 +247,7 @@ function renderStages(task) {
             if (ps) applyPreset(i, ps.values);
         });
 
-        const ran = _runs[name];
+        const ran = _fs.runs[name];
         const ranEl = (ran === undefined) ? null
             : el("span", { class: "ts-ran",
                            title: ran ? ran + " attempt(s) on disk"
@@ -359,6 +357,8 @@ let _fitSeq   = 0;
  * ===================================================================== */
 function freshFolderState() {
     return {
+        runs:         {},         // stage name -> attempts on disk (T5)
+        tokens:       {},         // stage name -> its <NN>_<name>, from the server
         extraRunRows: new Map(),  // rows added to a run card, per stage
         runFits:      new Map(),  // the admission answer per stage
         fitBench:     {},         // the bench card's last posted axes
@@ -1242,17 +1242,14 @@ async function loadFolder(projects, dir) {
 
     _mode = "description"; _handover = null; _task = task;
     renderCameOver(task);
-    /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1).  This was a
-     * FIFTH round trip inside `loadFolder`, asking `/api/task-setup/attempts`
-     * for what the folder's own answer already carries -- so it could land
-     * after a move, and `_runs`/`_tokens` needed two lines on the reset list
-     * to cover for it. */
-    _runs = {};
-    _tokens = {};
+    /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
+     * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
+     * here would be a reset somebody has to remember -- these two were,
+     * and only the description branch cleared them. */
     for (const [name, st] of Object.entries(
             (said.attempts && said.attempts.stages) || {})) {
-        _runs[name] = st.attempts;
-        _tokens[name] = st.token;
+        _fs.runs[name] = st.attempts;
+        _fs.tokens[name] = st.token;
     }
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
@@ -2112,24 +2109,22 @@ function renderNext(task) {
          *
          * And the attempt is the LAST one, not `run-0`.  A stage with three
          * attempts was taught to continue from the first -- the page knows
-         * the count (`_runs`, from the folder's answer) and now uses it. */
+         * the count (`_fs.runs`, from the folder's answer) and uses it. */
         let from = "";
         const hierarchical = _shape === "hierarchical";
         if (i > 0 && String(ov.restart || "") === "continue" && hierarchical) {
             const prev = enabled[i - 1];
-            /* THE TOKEN COMES FROM THE SERVER (`_tokens`, filled beside
-             * `_runs` by the one door that knows the declared shape).  This
-             * spelled `String(n).padStart(2,"0") + "_" + name` -- a second
-             * `identity.stage_token` in a language that cannot import it --
-             * and `"/run-" + n`, which `paths.attempt_name` composes.  Both
-             * agreed; neither had a reason to keep agreeing. */
-            const token = _tokens[prev.st.name || ""];
-            const had = Number(_runs[prev.st.name || ""]) || 0;
+            /* THE TOKEN COMES FROM THE SERVER (`_fs.tokens`), not spelled
+             * here: `<NN>_<name>` is `identity.stage_token`'s and `run-<n>`
+             * is `paths.attempt_name`'s, and this page cannot import
+             * either. */
+            const token = _fs.tokens[prev.st.name || ""];
+            const had = Number(_fs.runs[prev.st.name || ""]) || 0;
             from = token
                 ? " --from " + token + "/run-" + (had > 0 ? had - 1 : 0)
                 : "";
         }
-        const runs = _runs[name];
+        const runs = _fs.runs[name];
         const active = name === _fs.stepTab;
         const tab = el("button", {
             type: "button", class: "ts-steptab", role: "tab",
@@ -2459,9 +2454,8 @@ async function _prepCall(kind, stage, plan) {
  * DIRECTORY and need no target machine, which is why the question belongs
  * to the folder tier at all -- and the server half of it, which the page
  * used to work out for itself from four of our rules, is unchanged in
- * `build.py::_folder_attempts`.  Deleted 2026-09-19 with `_runs`/`_tokens`
- * moving onto the one answer; the route it called is still there for the
- * CLI-shaped callers and is what the door composes. */
+ * `build.py::_folder_attempts`.  The route it called is still there for
+ * the CLI-shaped callers and is what the door composes. */
 
 /* ---------- the machine rows: a point is a choice, several a measurement ---- */
 
