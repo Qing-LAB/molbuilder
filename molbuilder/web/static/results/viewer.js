@@ -1,9 +1,9 @@
 /* /results tab front-end controller (registry-driven dispatch).
  *
- * Subscribes to the projects-sidebar selection state and routes
- * the selected file to the matching inspector via
+ * Mounts whatever the file picker announces, via
  * ``window.molbuilder.inspectors`` (see lib/inspectors/registry.js
- * for the contract).
+ * for the contract).  Nothing in the sidebar reaches this panel;
+ * the picker's list is the only source (results.md § 2.1).
  *
  * The dispatch is intentionally tiny: pick + mount + dispose.  All
  * file-type-specific logic lives in the inspector modules under

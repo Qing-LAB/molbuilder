@@ -50,7 +50,7 @@
 
 /* ===========================================================
    Status bar: persistent header above the inspector that
-   tells the user WHAT they're looking at + WHICH inspector
+   tells the user WHICH FOLDER these results came from + WHICH inspector
    is mounted.
    =========================================================== */
 
@@ -75,9 +75,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* When no file selected, viewer.js leaves the readout reading
-     * "No file selected." -- distinguish visually so the empty state
-     * doesn't look like a real path. */
     color: var(--text-primary);
 }
 
@@ -481,10 +478,10 @@
  * co-located with results-specific styling so a future
  * trajectory CSS cleanup can't silently break the bar.
  *
- * The picker became the SOLE inspector dispatcher on /results
- * with task #301 (2026-06-09): sidebar onChange retired, the
- * dropdown + Refresh button + tab-focus auto-refresh are the
- * only triggers for inspector mount.
+ * The picker is the SOLE inspector dispatcher on /results: the
+ * dropdown and Reload are the only triggers for a mount.  Tab
+ * re-entry re-reads the bound folder and re-announces, which the
+ * viewer no-ops when the file has not changed.
  * ============================================================ */
 
 .result-list-bar {

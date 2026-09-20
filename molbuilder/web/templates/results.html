@@ -93,8 +93,8 @@
   </div>
 
   {# The inspector host is the single mount point.  The active
-     inspector (picked by registry.pick() against the sidebar's
-     current_file) injects its own DOM here.  Switching files
+     inspector (picked by registry.pick() against the file the
+     picker announced) injects its own DOM here.  Switching files
      calls dispose() on the previous inspector + mount() for the
      new one; the host's contents are exclusively owned by the
      active inspector while mounted.  See
