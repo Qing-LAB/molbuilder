@@ -149,7 +149,47 @@ def build_peptide(
     if add_hydrogens:
         struct = chemistry.add_hydrogens(struct)
 
+    _warn_if_c_terminus_is_capped(struct)
     return struct
+
+
+def _warn_if_c_terminus_is_capped(struct: "Structure") -> None:
+    """Say what the builder produced, rather than quietly correcting it.
+
+    PeptideBuilder does not write the C-terminal ``OXT``, so the chain ends
+    one oxygen short of a free acid.  `add_hydrogens` then saturates that
+    dangling valence with an H and the result is a valid molecule -- a
+    peptide ALDEHYDE (``-CHO``), not a peptide (``-COOH``).  Different
+    compound: no ionizable C-terminus, different electronic structure.
+
+    **Molbuilder does not add the oxygen** (user ruling 2026-09-20).  Adding
+    H is a deliberate exception -- the geometry is predictable and two
+    independent kits cross-check it -- but placing an OXT is a structural
+    guess this tool has no business making on the person's behalf.  The
+    limit is theirs to know, so it is said out loud.
+
+    WHY NOTHING ELSE CATCHES IT: the hydrogen count is identical either way
+    (the aldehyde H stands in for the hydroxyl H), so every atom-count check
+    is blind to it by construction.
+
+    Detected rather than assumed -- the day the upstream kit writes OXT,
+    this stops warning on its own.
+    """
+    import warnings
+
+    if "OXT" in struct.atom_names:
+        return
+    warnings.warn(
+        "This peptide's C-terminus is an ALDEHYDE (-CHO), not the usual free "
+        "acid (-COOH): the structure kit does not write the terminal OXT "
+        "oxygen, and molbuilder does not add one for you. The molecule is "
+        "one oxygen short of the peptide you named, so any energy, dipole or "
+        "spectrum computed from it describes a peptide aldehyde -- a "
+        "different compound, with no ionizable C-terminus. Add the OXT "
+        "yourself if you want the free acid.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 # ---------------------------------------------------------------------- #
