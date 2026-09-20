@@ -3805,3 +3805,87 @@ library we have or the ones we could start accepting.
 (`feedback_no_env_deployment_changes` — nothing is installed without asking),
 and whether the check runs per prep or on demand like `molbuilder pseudo
 check`.
+
+## 10. Consolidated status — the 2026-09-19 session
+
+One arc, started by an end-to-end workflow test and ended by the page
+refactor that test's findings argued for. Twenty-eight commits, none pushed.
+
+### 10.1 What is DONE
+
+**A directory says what it is** — `calcdir.json`, § 1.4a's mechanism.
+Written by the creator, read by one module, and the tuned walk it replaces
+(`_CALC_SEARCH_DEPTH = 4`) deleted. Every consumer that used to guess now
+asks: the parse door, the Results route, the checkpoint panel.
+
+| | |
+|---|---|
+| `dc29f3df` `5334b76d` `76282e71` | the record, its contract, and the walk's deletion |
+| `6ddc551a` `e808ce68` | the Results door asks what a directory IS; the page says so |
+| `421d79f7` | the checkpoint panel asks instead of counting path segments |
+| `75b71bb6` | an unmarked directory is not asked to invent a run state |
+| `84553f7a` | a container has no run state but may have a PRODUCT |
+
+**The render consumes the API.** The picker and the presenters take the
+server's per-file answer instead of re-deriving it from filenames.
+
+| | |
+|---|---|
+| `46fdfffa` `b5a7b858` | `resultCategory` takes `meta`; the contract says so; it reaches the heading and the mount |
+| `06229ad8` | which files are one run is READ BACK (`runfiles.parse`), not cut out of a name by regex |
+
+**One fact, one home.** `c286af2d` (a trial's warm files under the trial's
+own label), `0ab07a14` (the browser prep writes the ledger it advertises),
+`6916b4fc` (the progress channel lives in the run).
+
+**The pseudopotential is explicit at configuration time** (user ruling).
+`fcfde4c7` — the file SIESTA opens must exist and be named for its element;
+`57c709d7` — the catalogue says *one source, one set, no conflicts*.
+`49a3aa90` was reverted by `cd2a0b25`: two of its three guards had no
+observed failure behind them, and the user's design argument against the
+third was right.
+
+**Task setup is a function of the folder** — `web/task-setup.md` § 2.1,
+written long before it was kept. Four groups, and the measure of progress
+was `_resetPerFolderState()` shrinking to nothing:
+
+| | | reset list |
+|---|---|---|
+| `d2daa765` | the folder door, and the answer NAMES the folder | 8 |
+| `97a25580` | `loadFolder` takes one answer, not four files | 8 |
+| `4217f80e` | attempts and tokens come from it | 6 |
+| `2f993971` | the hand-over branch paints every card the description one does | 6 |
+| `bfb38c6e` | the buffers are one object, replaced whole | **0** |
+
+`f6d9011d` — the hand-over writes its files and stops; the tab-to-tab jump
+is deleted rather than fixed (user: *"skip the fancy tab to tab jump to
+avoid implicit coupling"*).
+
+### 10.2 The rule this session actually established
+
+**An answer names its subject, and the reader checks.** `calcdir.json`'s
+`of` on disk, `run_dir` / `dir` on the wire, `said.dir !== _dir` in the
+page. It is the half that clearing cannot cover: there are two ways a
+surface shows the wrong folder — state that LINGERS and an answer that
+LANDS LATE — and Task setup had no `AbortController` among its twelve
+calls, so the second was unguarded entirely.
+
+### 10.3 What is OPEN
+
+* **§ 9.2 — ATOM** as an optional pseudopotential validator, on the 3DNA
+  model. Planned, not started; the open question is that ATOM writes PSML
+  and cannot read one.
+* **The `generator_mismatch` severity.** `projects/pseudopotential` mixes
+  two ONCVPSP releases, and all ten files from the 4.0.1 batch are flagged
+  by the physics checks (four block as `semilocal_only`, six warn as
+  `partial_projectors`) while all sixty-two from 3.3.0 are clean. The
+  version is a perfect predictor here, which is the evidence for making
+  C4 an ERROR — but only after the library is unified, or every calculation
+  touching those ten elements refuses.
+* **`projects/BDT/`'s results.** Every SIESTA run under it used the
+  defective v0.5 sulfur, in a thiol-gold junction where S is the binding
+  atom. `Au-BDT-Au/`, `BDT-Au/`, `gasrun2` and `gasrun4` used the good one.
+* **The other tabs.** § 2.1's rule is Task setup's; the same two failure
+  modes are available to any page that follows the sidebar, and the
+  Results picker still does not check `body.run_dir` against the folder it
+  asked about (its `AbortController` makes that latent, not absent).
