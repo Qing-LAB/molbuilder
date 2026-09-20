@@ -1,4 +1,27 @@
-# Workflow-test findings, 2026-09-19 (claude-junction regeneration)
+# Workflow-test findings, 2026-09-19 — archived 2026-09-20 (historical record)
+
+> **Not a source of truth. All three findings are CLOSED**, each verified
+> against the code on 2026-09-20 rather than from the commit log:
+>
+> * **W1** — resolved by decision, not by a fix. The tab-to-tab jump was
+>   removed (user: *"we just skip the fancy tab to tab jump connection to
+>   avoid implicit coupling"*), so there is no navigation left in
+>   `_sendToTaskSetup` and the hint now reads *"Nothing runs, and nothing
+>   opens: go to Task setup and pick that folder."*  The failure it describes
+>   cannot be spelled.
+> * **W2** — fixed. Every card the description branch paints is painted by the
+>   hand-over and empty branches too, through the same renderers, and all
+>   per-folder state is one object replaced wholesale. Pinned by
+>   `tests/test_task_setup_one_folder_e2e.py::test_opening_another_folder_leaves_nothing_of_the_first`.
+> * **W3** — fixed, and option **(b)** is what shipped: `/api/results/dir`
+>   calls `openable_in` before the container branch and keeps `st = None`.
+>   Measured on the directory this note names —
+>   `transport/junction-ct` answers `place: container`,
+>   `openable: junction-ct.transport.json`.
+>
+> The measured end-to-end run at the foot is kept: it is the record of the
+> workflow this session exercised, and nothing else holds those numbers.
+
 
 ## W1 — "Send to Task setup" opens the WRONG calculation
 The button's own text: *"...into the folder selected in the sidebar, then opens
