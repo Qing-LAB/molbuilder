@@ -1048,11 +1048,6 @@ function _resetPerFolderState() {
 
 
 async function loadFolder(projects, dir) {
-    /* The resolved-config view is per FOLDER (the bundle's own
-     * .molbuilder.json is one of the scopes), so it repaints with one.
-     * Fire-and-forget: it is a read of what a prep WOULD do, and nothing
-     * below waits on it. */
-    setTimeout(loadResolved, 0);
     _dir = dir;
     /* EVERY per-folder fact resets before the branch (U6 close): the
      * hand-over and empty branches never wrote _task/_shape, so a
@@ -1084,6 +1079,11 @@ async function loadFolder(projects, dir) {
      * and painted.  `dir` on the answer is what makes that checkable --
      * `calcdir.json`'s rule (project-layout.md § 1.4a) on the wire. */
     if (!said || said.dir !== _dir) return;
+
+    // The resolved-config view is per FOLDER (the bundle's own
+    // `.molbuilder.json` is one of its scopes), so it paints from this
+    // folder's answer like everything else.
+    renderResolved(said.provenance);
 
     const taskText = said.description === null
         ? "" : JSON.stringify(said.description, null, 2);
@@ -2573,7 +2573,14 @@ function setMachine(name) {
     _fs.queue = "";
     renderQueues();
     _syncPrepButtons();      // the prep buttons wait on this answer
-    loadResolved();          // the warning depends on WHICH machine
+    /* THE PROVENANCE CARD IS NOT REPAINTED HERE, and the line that did was
+     * refetching identical bytes on every machine click.  Its comment read
+     * "the warning depends on WHICH machine"; the endpoint's own docstring
+     * says the opposite -- *"provenance itself is a property of the FOLDER
+     * ... and does not change with the machine you are preparing for"* --
+     * and the route takes no `target` to make it depend on one.  The
+     * `target` it once sent fed only the bootstrap warning, retired
+     * 2026-08-25, and the comment outlived it. */
     /* AND THE COMMANDS THEMSELVES.  `_targetArg()` is read at RENDER time,
      * and `renderNext` runs from `loadFolder` -- which finishes before
      * anyone can click a machine.  Without this line the card said "sol"
@@ -3198,20 +3205,25 @@ function paintNotifyNote() {
  *  hand-written notice here would be a second account of the same facts,
  *  free to drift from the one the terminal shows.
  */
-async function loadResolved() {
+/** Which file supplied each setting — rendered from the folder's answer.
+ *
+ * A PURE RENDER, and it was not one.  This fetched
+ * `/api/task-setup/resolved` itself, asked `projects.getCurrentDir()` for
+ * WHICH folder — a second source for the thing `loadFolder` already had in
+ * hand — and was fired `setTimeout(..., 0)`, fire-and-forget, so its answer
+ * could land after a move with nothing to check it against.  Provenance is
+ * a property of the FOLDER (the `target` it used to send fed only the
+ * bootstrap warning, retired 2026-08-25), so it comes with the rest of them
+ * from the tagged answer.
+ *
+ * Caught 2026-09-19 by asking which parts of the door's payload anything
+ * reads: `provenance` was sent and nobody took it, while the page went on
+ * fetching the same facts separately — the DEAD PAYLOAD this session
+ * flagged on `/api/results/dir`, shipped again a few commits later.
+ */
+function renderResolved(d) {
     const facts = $("ts-resolved");
     if (!facts) return;
-    const proj = (window.molbuilder || {}).projects;
-    const dir = proj && proj.getCurrentDir && proj.getCurrentDir();
-    if (!dir) { facts.hidden = true; return; }
-    let d = null;
-    try {
-        // Provenance is a property of the FOLDER, not of the machine you
-        // are preparing for; the `target` this used to send fed only the
-        // bootstrap warning, retired 2026-08-25.
-        d = await fetch("/api/task-setup/resolved?dest="
-                        + encodeURIComponent(dir)).then((r) => r.json());
-    } catch (e) { d = null; }
     if (!d || !d.ok) { facts.hidden = true; return; }
 
     facts.textContent = "";
