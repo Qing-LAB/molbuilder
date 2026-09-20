@@ -1,4 +1,30 @@
 # Hand-over — the env-installer / config-and-secrets session of 2026-09-12
+# — archived 2026-09-20 (historical record)
+
+> **Not a source of truth. Spent: 86 of its ~95 items are DONE**, re-derived
+> from the code on 2026-09-20 rather than from the rows' own labels.
+>
+> **§ 2's own preamble — "Nothing here has been started" (line 171 as it
+> stood) — was the single most wrong line in the file.** Nearly all of it had
+> been. That is the failure mode this archive exists to end: 690 lines of
+> which ~640 are closed history, so a reader hunting for work parses nine
+> sections of ✅ to find eight one-line residues.
+>
+> **The invariants are the part that did the work** and they are kept, live,
+> in `plan.md`: § 0's targets and § 3.0's Z1–Z9. Eight of the nine phases
+> reached their invariant; Phase 7 is two user decisions.
+>
+> **What was still open moved to `plan.md` § 2**, which is the one list
+> (user, 2026-09-10). Those rows carry the measurement that proved them open.
+>
+> Three statements in the body are known false and are left as written,
+> because rewriting an archived record is how you lose the evidence:
+> § 2's "Nothing here has been started"; § 1's `write_secret_file` row
+> claiming the parent is forced `0700` (J4 deliberately stopped that —
+> measured: a `0775` config root stays `0775`, and `placement.findings()`
+> reports it instead); and § 3.0's Z5 row saying four path climbs remain,
+> when none do.
+
 
 **Role:** Plan · **Domain:** ops / envs / configuration
 

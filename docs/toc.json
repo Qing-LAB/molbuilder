@@ -29,10 +29,6 @@
         {
           "path": "plans/plan.md",
           "label": "The plan (one file)"
-        },
-        {
-          "path": "plans/2026-09-12-env-config-handover.md",
-          "label": "Hand-over: envs + config (2026-09-12)"
         }
       ]
     },
@@ -562,6 +558,11 @@
           "path": "archive/2026-09-10-plan-consolidation.md",
           "label": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10",
           "subtitle": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10"
+        },
+        {
+          "path": "archive/2026-09-12-env-config-handover.md",
+          "label": "Hand-over — the env-installer / config-and-secrets session of 2026-09-12",
+          "subtitle": "Hand-over — the env-installer / config-and-secrets session of 2026-09-12"
         },
         {
           "path": "archive/2026-09-17-paths-standard-retired.md",

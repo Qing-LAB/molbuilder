@@ -123,6 +123,38 @@ the same day, with what it turned out to be.
 
 ---
 
+### 2a. From the env-config hand-over, when it was archived *(2026-09-20)*
+
+[`2026-09-12-env-config-handover.md`](?doc=archive/2026-09-12-env-config-handover.md)
+is spent — **86 of ~95 items DONE**, re-derived from the code, its invariants
+(§ 0's targets, § 3.0's Z1–Z9) reached on eight of nine phases. These are what
+was left. Each carries the measurement that proved it open, so none needs
+re-deriving before it is acted on.
+
+| # | item | measured 2026-09-20 |
+|---|---|---|
+| **B8** | `envs/_cli.py:42` cites `runtime_config.logs_dir()` as the log directory | the attribute does not exist (`hasattr` → False); the code below it correctly asks `config_dir.logs_dir()`. A comment naming a door that was never there |
+| **D9** | `jobset/ask.py:346` does a bare `sys.stdin.isatty()` | the guarded form (`hints.stdin_can_answer()`) exists and the sibling in `envs/_cli.py:2223` uses it. This is the last unguarded spelling |
+| **D10** | `scripts/capture-readme-screenshots.py:121` reads `MOLBUILDER_HOST_ENV` with its own default | a third spelling that ignores `envs.host`. Dev script, so low cost |
+| **H8** | `envs/__init__.py` `__all__` still names `"subprocess"` and `"shutil"` | the imports were deleted and the `__all__` entries were not swept, so **`from molbuilder.envs import *` raises `AttributeError`**. Nothing imports it that way today, which is the only reason it is latent |
+| **H8b** | `envs/_cli.py:572-573` computes `base` from a stripped `issue.kind` | never read — the `if issue.optional:` two lines below `continue`s first |
+| **J2** | `scheduler/probe.py:16` says the CLI merges via `runtime_config.write_config_scope` | `cmd_probe_scheduler` uses `write_environment`. The docstring names the wrong writer |
+| **F1** | the five A-rules with no checker | **needs your call.** The documents now say so honestly (`architecture.md:792-798`, *"Five of them are wishes right now"*); whether they get a checker back is unanswered |
+| **F2** | restore the `pyscf-properties` artifact | **needs your call.** Measured: zero pyscf packages in the host env; `molbuilder-pySCF` carries `pyscf_properties-0.1.0.dist-info` |
+
+Two more are recorded there and are **out of scope by that document's own § 5**,
+not by neglect: `script-preparation.md:202` vs `runwrap.py:2295` on who reads
+the rank count, and `oauth.py`'s two independent `expanduser` readings of
+`client_secret_file`. One is **deferred by your ruling**: `recipes.py:431`
+resolves the CUDA version at import, so `nvidia-smi` runs on every invocation.
+
+**Three fresh residues the audit turned up, not on anyone's list:**
+`envs/install.py:903` advises *"re-run with --clean which will do the same
+thing"*, which R1's own fix made false — `_run_steps` now SKIPS the remove step
+when nothing is on disk, which is exactly the GHOST state the advice is printed
+for. And `cli.py:32`/`:35` import `template as _T` and `typing.Iterable`,
+neither used.
+
 ## 3. Configuration and ops — merged
 
 *Merged into § 2 on 2026-09-10 — one list, not four. The number stays because other documents link to it.*
