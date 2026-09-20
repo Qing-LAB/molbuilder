@@ -81,6 +81,26 @@ _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
                             "~10s"),
     ("elpa", "verify"):    ("check that libelpa.so exists",
                             "instant"),
+    # netcdf-fortran: the Fortran layer only -- the C layer is a conda
+    # package.  Built here because conda-forge rebuilt this one against a
+    # newer gfortran than we pin, and `.mod` files are compiler-format
+    # (docs/ops/installation.md § 6.3-6.4).  Timings measured 2026-09-19
+    # on 8 cores.
+    ("netcdf_fortran", "clone"):     (
+        "download + extract netcdf-fortran tarball from Unidata",
+        "~10s, ~7 MB"),
+    ("netcdf_fortran", "configure"): (
+        "cmake configure netcdf-fortran against the env's libnetcdf + MPI",
+        "~10s"),
+    ("netcdf_fortran", "build"):     (
+        "compile the NetCDF Fortran interface",
+        "~30s"),
+    ("netcdf_fortran", "install"):   (
+        "install libnetcdff + its .mod files",
+        "~2s"),
+    ("netcdf_fortran", "verify"):    (
+        "compile `use netcdf` to prove the module is readable by this gfortran",
+        "instant"),
     # ELSI is built as a SIESTA submodule per the 2026-06-15 architecture
     # decision (see docs/ops/installation.md § 6).  No standalone
     # ELSI phases here.

@@ -496,7 +496,10 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
 
 - the **toolchain comes from conda** — gcc/gfortran **14.3** (a deliberate
   minor-version pin, § 6.1) with its linker, archiver,
-  C-library sysroot and kernel headers, plus cmake, ninja, OpenMPI, OpenBLAS
+  C-library sysroot and kernel headers — and a ceiling on `libgfortran5`
+  that keeps every *prebuilt* Fortran library readable by that compiler
+  (§ 6.3) — and one library built from source so it stops depending on
+  conda-forge's rebuild schedule at all, § 6.4 — plus cmake, ninja, OpenMPI, OpenBLAS
   (not MKL), ScaLAPACK, libxc, `readline`, and the **CUDA toolkit itself** (you
   do *not* install CUDA on the host). No host compiler should be required:
   conda-forge installs the toolchain under target-prefixed names only
@@ -520,7 +523,13 @@ isn't available as a conda package. `bash scripts/install-env.sh install molbuil
   override them — which is how the bundled lua finds `<readline/readline.h>`
   on a machine with no `libreadline-dev`;
 - **ELPA** is built from a version-pinned, SHA256-checked tarball
-  (`2024.05.001`) with autotools (`--enable-nvidia-gpu`, `--with-cuda-path=<env>`);
+  (`2024.05.001`) with autotools (`--enable-nvidia-gpu`, `--with-cuda-path=<env>`),
+  because conda-forge's ELPA carries no CUDA;
+- **netcdf-fortran** is built from a version-pinned, SHA256-checked tarball
+  (`4.6.4`, Unidata's release server) with cmake, ~1 min — for a different reason:
+  conda-forge *has* the package, but rebuilt it against a gfortran newer than
+  this env's, and Fortran `.mod` files are not forward-readable (§ 6.3, § 6.4).
+  The **C** half, `libnetcdf`, stays a conda package;
 - **SIESTA** (`5.4.2`) is cloned with submodules and built with cmake+Ninja, MPI +
   TranSiesta + ELPA + libxc + NetCDF all on. Its ELSI and the four ESL libraries
   are SIESTA's own submodules — compiled in place, not separate steps.
@@ -549,9 +558,17 @@ GPU; you only need `nvidia-smi` to actually use the GPU at run time.
 > the pin would then be holding the toolchain back for a defect that no longer
 > exists. The test is mechanical: build, then check `libsiesta.a` for an
 > undefined `process_k_cell_`.
+>
+> **A second force will move this pin, and it is not SIESTA's.** conda-forge
+> is migrating its Fortran stack to gcc 15, and a prebuilt library built by a
+> newer gfortran than this one cannot be compiled against at all (§ 6.3). The
+> ceiling that holds that line is derived from *this* number, so when the
+> migration reaches OpenMPI and libxc the env stops solving and the re-test
+> above becomes due whether or not the SIESTA tag has moved.
 
-**Verified end to end on a clean machine, 2026-08-14** — all ten install steps
-complete with the pin in place.
+**Verified end to end on a clean machine, 2026-08-14** — every install step
+completed with the pin in place. (That run had two source components; a third
+joined on 2026-09-19, § 6.4, so the plan now prints fifteen steps, not ten.)
 
 The compiler is pinned to a **minor** version, `gcc/gxx/gfortran_linux-64=14.3`.
 `14` would not be a pin: conda reads it as `14.*`, so two machines installing the
@@ -583,7 +600,11 @@ fails on `Src/siesta` is this.
 > k-point along the transport direction**, which is physically required in
 > TranSiesta/NEGF because that direction is a semi-infinite open boundary, not a
 > periodic one. Remove it and a transport run asking for a 4×4×4 grid silently
-> uses 4 k-points along transport. Since we build with TranSiesta on, the patch
+> uses 4 k-points along transport. Our binary contains that code — measured on
+the 2026-09-19 build, 176 `TS.*` keywords in the installed `siesta` (5.x folds
+transport into the main binary; the `-DSIESTA_WITH_TRANSIESTA=ON` the recipe
+passes is reported *unused* by 5.4.2's cmake and transport is built in anyway).
+So the patch
 > trades a loud build failure for a quiet wrong answer.
 
 **To choose a different compiler** — for the CUDA pairing below, or if 14.3 is
@@ -772,6 +793,323 @@ about the nodes your jobs will land on.
 `kernel-headers_linux-64` is deliberately **not** pinned: `sysroot_linux-64=2.17`
 pins it to 3.10.0 exactly. One decision, one place.
 
+### 6.3 Fortran module ABI — which compiler built the libraries we compile *against*
+
+> **⚠ This is neither of the two above it.** § 6.1 says which compiler we *use*.
+> § 6.2 says which glibc our *output* demands of the host. This one says which
+> compiler wrote the `.mod` files our source is allowed to `use`. Get it wrong
+> and a package that installs cleanly, and whose `.so` links fine, cannot be
+> compiled against at all.
+
+A Fortran library ships **two** things: the compiled code, and a `.mod` file —
+a binary summary of its interface, written in the **compiler's own private
+format**. C has nothing like it; a `.h` is text and every compiler reads it.
+
+That format is **not forward compatible**:
+
+| written by | `.mod` header | readable by |
+|---|---|---|
+| gcc 11–14 | `GFORTRAN module version '15'` | any gcc that writes `'15'` — **not gcc 15** |
+| gcc 15 | `GFORTRAN module version '16'` | any gcc that writes `'16'` — **not gcc 14** |
+
+The check compares that header exactly; it is not a `>=`. That is why the error
+says *"a **different** version"* rather than *"a newer version"*, and why
+several gcc releases share one module version — measured here,
+`/usr/bin/gfortran-11` reads a module written by the env's 14.3 and vice-versa.
+The fence is therefore major-granular by nature: `libgfortran5<15` admits any
+gcc-14 build, which is the whole set that can read what 14.3 writes.
+
+So the env carries a third directional rule, and it points the opposite way from
+the sysroot one:
+
+> **Every prebuilt Fortran library in the env must come from a gfortran no
+> newer than the one we compile with.**
+
+The recipe states it as `libgfortran5<15`, **derived** from the § 6.1 pin rather
+than written down again — `--gcc 13` moves the fence to `<14` along with the
+compiler.
+
+**Why a ceiling on `libgfortran5` and not a pin on the package.** Conda has no
+"built by gfortran ≤ N" selector, and the build string (`mpi_openmpi_<hash>_<n>`)
+does not carry it either — the hash is a variant digest and the build number
+counts rebuilds of every kind. What conda-forge *does* emit on every Fortran
+package is a runtime floor naming the compiler that built it
+(`libgfortran5 >=14.4.0`, `libgfortran5 >=15.3.0`). Capping `libgfortran5` is
+therefore the one place the solver can be asked this question, and it answers it
+for **every** such package at once.
+
+**Why the whole env and not just the package that broke.** SIESTA `use`s three
+conda-provided Fortran module sets. Counted over its sources:
+
+| module set comes from | SIESTA files that `use` it |
+|---|---|
+| openmpi (`mpi`, `mpi_f08`) | 39 |
+| netcdf-fortran (`netcdf`) | 25 |
+| libxc (`xc_f03_lib_m`) | 5 |
+| hdf5, pnetcdf, fftw, scalapack | **0** — link-only, immune by construction |
+
+Pinning `netcdf-fortran` would have closed one of three and left the largest
+open. (ELPA is built from source by this recipe, so it is never exposed.)
+
+**What it looks like when it is wrong.** On 2026-09-16 conda-forge rebuilt
+`netcdf-fortran` — and only that package — against gfortran 15. Two days later a
+clean install resolved it, cmake's `FindNetCDF` was satisfied (it checks that
+`libnetcdff.so` exists, never which compiler wrote its `.mod`), and the build ran
+on for about fifty seconds before:
+
+```
+[2571/4719] Building Fortran object Src/easy-ncdf/.../netcdf_ncdf.F90.o
+FAILED: ...
+Src/easy-ncdf/netcdf_ncdf.F90:78:7:
+   78 |   use netcdf
+      |       1
+Fatal Error: Cannot read module file '<env>/include/netcdf.mod' opened at (1),
+because it was created by a different version of GNU Fortran
+```
+
+Of the 53 `.mod` files in the env's `include/`, 42 were module version 15 and 11
+were 16 — and those 11 are exactly the files `netcdf-fortran`'s conda package
+owns. One package out of step with every other.
+
+**How to check an env in two seconds** — the reproducible diagnostic, and the one
+worth running before blaming the build:
+
+```bash
+E=$CONDA_PREFIX                       # or a full path to the env
+# what this env's compiler WRITES.  `module`, not `program` -- a program
+# emits no .mod at all, so it tells you nothing.
+cd "$(mktemp -d)" && printf 'module m\nend module\n' > m.f90 \
+  && "$E/bin/x86_64-conda-linux-gnu-gfortran" -c m.f90 && zcat m.mod | head -1
+# what every prebuilt library in the env CARRIES
+for f in $E/include/*.mod; do zcat "$f" 2>/dev/null | head -c 40; echo; done \
+  | grep -o "version '[0-9]*'" | sort | uniq -c
+```
+
+Both must report the same version. On the broken env this printed:
+
+```
+GFORTRAN module version '15' created from m.f90    <- what the compiler writes
+     42 version '15'
+     11 version '16'                                <- the odd group
+```
+
+Then find who owns the odd group: `grep -l` one of those `.mod` names in
+`$CONDA_PREFIX/conda-meta/*.json`.
+
+To see *which compiler* a candidate package was built with before installing it:
+
+```bash
+conda search -c conda-forge --info 'netcdf-fortran=*=mpi_openmpi_*' | grep -E 'netcdf-fortran|libgfortran5'
+#   netcdf-fortran 4.6.4 mpi_openmpi_h8f6c4f5_0   - libgfortran5 >=14.4.0   ← gfortran 14, usable
+#   netcdf-fortran 4.6.4 mpi_openmpi_hd6f6b24_1   - libgfortran5 >=15.3.0   ← gfortran 15, not usable here
+```
+
+**What the fence still covers, now that netcdf-fortran is built from source.**
+Two conda packages remain on the wrong side of this risk, and they are the two
+SIESTA `use`s most:
+
+| still a conda package | SIESTA files that `use` it |
+|---|---|
+| openmpi (`mpi`, `mpi_f08`) | 39 — and ELPA links its Fortran interface too (`libmpi_usempif08.so.40`) |
+| libxc (`xc_f03_lib_m`) | 5 |
+
+**This fence has a lifetime, and that is the point.** conda-forge is migrating to
+gcc 15. When openmpi and libxc follow `netcdf-fortran`, no `libgfortran5<15`
+solve exists any more and a **fresh create stops solving** — in seconds, naming
+the spec, instead of failing ten minutes into a compile with a message about a
+module file.
+
+> **That warning reaches you only on `--clean`.** `install` closes *absence*, and
+> `libgfortran5` is never absent — it arrives as a dependency of the compiler. So
+> on an existing env whose declared packages are all *present*, the conda step is
+> skipped and the ceiling is never applied; `doctor` does not catch it either,
+> because its version check runs only for `=` specs and skips `<`. (If some other
+> declared package happens to be missing, the step does run and carries the full
+> spec list, ceiling included — so this is unreliable rather than never.) Both
+> gaps are tracked; until then, `--clean` is the only path that applies this rule
+> dependably. That is the signal to re-measure `kpoint_t.F90` against gfortran 15 and
+move § 6.1's pin, which is the real fix and needs a measurement nobody has yet.
+**Raising this ceiling without moving the compiler underneath it just restores
+the failure above** — it is not a knob for getting past a failed solve.
+
+### 6.4 netcdf-fortran — built here, and where each consumer finds it
+
+`netcdf-fortran` is built here for a different reason from ELPA's, and the two
+are worth keeping apart: conda-forge's ELPA carries no CUDA, so there is nothing
+to install. conda-forge *does* ship netcdf-fortran, and **§ 6.3's ceiling holds
+it perfectly well** — measured, `libgfortran5<15` resolves the gfortran-14 build
+`4.6.4 mpi_openmpi_h8f6c4f5_0`. Building it removes the dependency on
+conda-forge's rebuild schedule for this one package; it is not a rescue from an
+unsolvable env.
+
+The split runs along the language boundary:
+
+| | where it comes from | why |
+|---|---|---|
+| `libnetcdf` — the **C** layer | conda package, `libnetcdf=*=mpi_openmpi_*` | headers are text; no compiler can object to them |
+| `netcdf-fortran` — the **Fortran** layer | **built here**, `_NETCDF_FORTRAN` | `.mod` files are compiler-format (§ 6.3) |
+
+**Where it lands.** Nowhere outside the env, and nowhere outside the artifact
+directory the source build already owns:
+
+```
+$CONDA_PREFIX/opt/siesta-gpu-stack/
+├── src/netcdf_fortran/        unpacked tarball
+├── build/netcdf_fortran/      cmake build tree
+├── elpa/                      ← existing component, unchanged
+├── netcdf_fortran/            ← the install
+│   ├── include/netcdf.mod         (+10 more .mod, netcdf.inc)
+│   ├── lib/libnetcdff.so.7.1.0
+│   └── bin/nf-config
+└── siesta/bin/{siesta,transiesta,tbtrans}
+```
+
+23 files. Measured 2026-09-19 by running this component's own cmake invocation
+by hand against the live env: **zero files under `$CONDA_PREFIX` changed**, and
+the install wrote only under its own prefix. *Provenance, so you can weigh it:*
+that was a hand-run of the same commands into a scratch prefix — the first
+`install --clean` after 2026-09-19 is what proves it through the installer.
+
+**How each consumer sees it — four consumers, three different moments:**
+
+| consumer | when | mechanism |
+|---|---|---|
+| **SIESTA's cmake** | build | `{dep_netcdf_fortran}` is **first** on `CMAKE_PREFIX_PATH`, ahead of `{env_prefix}` |
+| **the siesta / transiesta / tbtrans binaries** | run | SIESTA's **own** install rpath — see the correction below; the recipe's `CMAKE_INSTALL_RPATH` does not reach this binary |
+| **an interactive shell** | run | the activate hook puts `.../netcdf_fortran/lib` on `LD_LIBRARY_PATH`; the deactivate hook drops it |
+| **ELPA** | never | **it does not see this, and must not.** ELPA is a dense eigensolver with no NetCDF dependency at all — its `NEEDED` list is BLAS, ScaLAPACK, CUDA and MPI plus the usual libgfortran/libgomp/libc runtime, and no netcdf of any kind |
+
+> **⚠ Correction, measured 2026-09-19.** An earlier version of this section
+> claimed all three mechanisms put the components ahead of `$CONDA_PREFIX`, and
+> that the rpath was the decisive one because conda's `--disable-new-dtags` makes
+> it `DT_RPATH`. **All of that is wrong for the SIESTA binary**, and the
+> measurement is simple enough to repeat: build a probe under `conda run` in this
+> env, replicating SIESTA's `CMakeLists.txt` 85–102 block, and read its tags.
+>
+> 1. **SIESTA discards the recipe's rpath.** Under `option(SIESTA_SET_RPATH ON)`
+>    it does a plain, non-`CACHE` `set(CMAKE_INSTALL_RPATH …)`, and a normal
+>    variable shadows a `-D` cache variable for the whole directory scope. The
+>    probe came out `RUNPATH <env>/lib:$ORIGIN/../lib:<install>/lib` — the
+>    recipe's value nowhere in it.
+> 2. **The env leads regardless.** conda's activation puts
+>    `-Wl,-rpath,$CONDA_PREFIX/lib` in `LDFLAGS`
+>    (`activate-gcc_linux-64.sh:64`), and cmake emits link flags ahead of the
+>    install rpath. Ordering the components first is not ours to decide there.
+> 3. **It is `DT_RUNPATH`, not `DT_RPATH`.** SIESTA appends
+>    `-Wl,--enable-new-dtags` after conda's `--disable-new-dtags`, and the last
+>    flag wins. `RUNPATH` is searched **after** `LD_LIBRARY_PATH`, so
+>    *"no second chance further down"* was backwards.
+>
+> **So the activate hook is the mechanism that decides, not a convenience copy.**
+> Its ordering is real and is what the block below verifies. Nothing breaks on a
+> clean install — with no conda `netcdf-fortran` there is only one
+> `libnetcdff.so.7` to find — but on an env that still carries the package, a
+> scheduler-launched `siesta` that sources no hook would resolve it from
+> `<env>/lib`. That is one more reason the in-place upgrade path says `--clean`.
+
+The hook's ordering, verified by execution rather than by reading, with a fake
+prefix:
+
+```
+LD_LIBRARY_PATH after activate:
+    /fake/env/opt/siesta-gpu-stack/netcdf_fortran/lib
+    /fake/env/opt/siesta-gpu-stack/elpa/lib
+    /fake/env/lib
+    /pre/existing            <- anything the caller had is kept, and kept last
+```
+
+Sourcing it twice adds no duplicates; the deactivate hook restores
+`/pre/existing` exactly.
+**The conda package is not declared, so exactly one `libnetcdff` and one set of
+`.mod` files exist in the env.** Be precise about why, because the obvious reason
+turns out not to hold:
+
+- *Not* a build-time collision for this component. Measured 2026-09-19 by running
+  the recipe's own cmake argv against the live env while the conda package was
+  still installed with its version-16 `netcdf4_f03.mod` in `$CONDA_PREFIX/include`:
+  **the build succeeded** — gfortran searches the `-J` output directory for
+  modules *before* any `-I`, and cmake passes `-Jfortran`, so the modules this
+  build just wrote win over the env's. It is that `-J`/`-I` precedence that
+  saves it, not an include-directory ordering.
+  (An autotools build of the same source *does* die there — which is where an
+  earlier version of this note got its evidence, and it was evidence about a build
+  system we do not use.)
+- **The measured reason is the original failure, and it is enough.** SIESTA's
+  *own* compile read `$CONDA_PREFIX/include/netcdf.mod` and died — verbatim in
+  `logs/siesta.build.log`. SIESTA's compile has no `-J` pointing at a fresh
+  netcdf module, so nothing rescues it the way the bullet above rescues this
+  component's build.
+- **A load-time argument stood here and is withdrawn.** It claimed the two
+  libraries export `libnetcdff.so.7` *at different versions*. They do not:
+  measured, both are `libnetcdff.so.7.1.0`, same soname, both exporting 578
+  dynamic symbols with identical symbol lists. That makes loading the wrong copy
+  **undetectable** rather than harmful — a reason to keep one copy, but not a
+  demonstrated failure, and it should not have been written as one.
+
+One copy removes the question. Nothing in the fast test suite asserts this; the
+build's own verify step is what checks the outcome.
+
+**No workaround, and specifically not conda-forge's.** netcdf-fortran's
+`CMakeLists.txt` opens its netCDF-C search with
+
+```cmake
+IF(NOT netCDF_LIBRARIES AND NOT netCDF_INCLUDE_DIR)
+  FIND_PACKAGE(netCDF QUIET)
+ELSE()
+  SET(netCDF_FOUND TRUE)          # caller supplied them — do not search
+```
+
+That guard exists so a packager can hand it the answer. The recipe passes
+`-DnetCDF_LIBRARIES` and `-DnetCDF_INCLUDE_DIR`, so `FIND_PACKAGE(netCDF)` never
+runs and libnetcdf's own cmake package config is never read — which is the file
+conda-forge's recipe deletes out of `$PREFIX/lib/cmake/netCDF/` before building,
+calling the result *"general chaos"*. Using the door the source provides means
+this build removes nothing from the env.
+
+**The source.** Unidata's release server, version-pinned and SHA256-checked, the
+same contract as ELPA's MPCDF tarball:
+
+```
+https://downloads.unidata.ucar.edu/netcdf-fortran/4.6.4/netcdf-fortran-4.6.4.tar.gz
+sha256  98159c1e0f63b3b59bb5eda12f2d80126f5b1aad93032d1490989a5752e0df99
+```
+
+Not GitHub's `/archive/v4.6.4.tar.gz`: that is a VCS-generated archive whose
+bytes carry no stability promise, so it cannot hold a pinned checksum. The v4.6.4
+GitHub release uploads no assets at all, which makes this server the only
+official artifact. Override with `MOLBUILDER_NETCDF_FORTRAN_BASE` for an
+institutional mirror, `MOLBUILDER_NETCDF_FORTRAN_TAG` / `_SHA256` to move the
+version.
+
+**Cost:** ~54 s measured end to end on 8 cores (2 s download, 9 s configure,
+42 s build, 1 s install), 23 files. The installer prints one figure for the
+whole spec, not per component, so this is the sum of its five rows. Because it is cheap it sits *after* ELPA
+in the component list — `--rebuild=<c>` redoes everything positionally after `c`,
+so `--rebuild=elpa` drags half a minute of NetCDF rather than the reverse
+dragging a quarter of an hour of ELPA.
+
+**Recovering an env built before 2026-09-19 takes `--clean`, and that is not a
+nicety.** Such an env has the conda `netcdf-fortran` installed, and `install`
+**never removes a package** — it closes absence only (`env-framework.md` § 4.4).
+A plain re-install would therefore leave that package in `$CONDA_PREFIX/include`
+beside the source build, which is the collision this section opened with.
+
+```bash
+bash scripts/install-env.sh install molbuilder-siesta-gpu --clean --yes
+```
+
+The plan prints its own time estimate before it starts; the installer sums the
+per-phase rows, so trust that banner over any figure written here.
+
+To keep ELPA and rebuild only what changed, drop the package by hand first —
+the step `install` will not do for you:
+
+```bash
+conda remove -n molbuilder-siesta-gpu netcdf-fortran
+bash scripts/install-env.sh install molbuilder-siesta-gpu \
+     --rebuild=netcdf_fortran --yes
+```
+
 ## 7. Appendix — installing X3DNA (3DNA), the helix builder
 
 X3DNA is the only true-helix nucleic-acid backend
@@ -857,8 +1195,22 @@ its own header documents the three and its error text names all three.
 
 - `test_envs_recipes.py` — the recipe registry shape (≥5 recipes, required fields,
   the category↔env-name mapping, CUDA-wheel-tag derivation).
-- `test_envs_siesta_gpu_recipe.py` — the whole GPU build recipe (ELPA-tarball +
-  SIESTA-cmake, the toolchain pins, the argv templates).
+- `test_envs_siesta_gpu_recipe.py` — the whole GPU build recipe (ELPA-tarball,
+  netcdf-fortran-tarball and SIESTA-cmake components, the toolchain pins, the
+  Fortran module-ABI fence of § 6.3 asserted as a relationship to the § 6.1 pin,
+  the argv templates). **Be precise about what it does and does not hold.**
+  **The rpath is asserted nowhere, on purpose.** The two tests that pinned
+  `-DCMAKE_INSTALL_RPATH` were deleted on 2026-09-19 once that flag was measured
+  to be discarded by SIESTA's own cmake — they were green over something inert,
+  which is worse than no test. Pre-existing assertions still pin ELPA's hook
+  lines and the env prefix on `CMAKE_PREFIX_PATH`; the `netcdf_fortran`
+  equivalents were deliberately not added, since a test that restates a build
+  option blocks a legitimate change to that option while proving nothing about
+  whether the build works. What checks the new component is the build itself
+  (§ 6.4): its `verify` phase compiles `use netcdf` with the env's own compiler,
+  and `siesta --version` closes the run. The argv-template gate does cover all
+  five phases including `verify`, because a shell-syntax error in a verify
+  payload would otherwise surface at step 10 of 15.
 - `test_envs_nfs_shmem_fix.py` — the NFS shared-memory hook + the host psutil floor.
 - `test_envs_clean.py` — `molbuilder envs clean` (build dirs go, load-bearing dirs stay).
 - `test_envs_readme_consistency.py` — a drift guard tying the recipes to the install guide.

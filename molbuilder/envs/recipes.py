@@ -155,6 +155,32 @@ _ELPA_TARBALL_BASE = _env_default(
     # EasyBuild.  Override for institutional mirrors.
     "https://elpa.mpcdf.mpg.de/software/tarball-archive",
 )
+# ---- netcdf-fortran: built from source, for the reason in
+#      _FORTRAN_ABI_CEILING above -----------------------------------------
+#
+# The Fortran layer of NetCDF is the one prebuilt library in this env whose
+# `.mod` files conda-forge has already rebuilt with a newer gfortran than we
+# compile with.  The ceiling above keeps a USABLE build in reach today;
+# building it here removes the dependency on conda-forge's rebuild schedule
+# for this package entirely.  The C layer (`libnetcdf`) stays a conda
+# package: C headers are text and no compiler can object to them.
+_NETCDF_FORTRAN_TAG = _env_default("MOLBUILDER_NETCDF_FORTRAN_TAG", "4.6.4")
+_NETCDF_FORTRAN_SHA256 = _env_default(
+    "MOLBUILDER_NETCDF_FORTRAN_SHA256",
+    # SHA256 of netcdf-fortran-4.6.4.tar.gz from Unidata's download
+    # server, fetched and verified 2026-09-19 (7,098,358 bytes).  Empty
+    # string skips the check, for bumping the tag without a known SHA.
+    "98159c1e0f63b3b59bb5eda12f2d80126f5b1aad93032d1490989a5752e0df99")
+_NETCDF_FORTRAN_BASE = _env_default(
+    "MOLBUILDER_NETCDF_FORTRAN_BASE",
+    # Unidata's own release server -- the `make dist` output (312 files),
+    # NOT github's `/archive/v<tag>.tar.gz`, which is a VCS-generated
+    # archive whose bytes carry no stability promise and so cannot hold a
+    # pinned checksum.  The v4.6.4 GitHub release uploads no assets at
+    # all, so this server is the only official artifact.  Same contract as
+    # _ELPA_TARBALL_BASE.  Override for institutional mirrors.
+    "https://downloads.unidata.ucar.edu/netcdf-fortran",
+)
 _SIESTA_REPO = _env_default("MOLBUILDER_SIESTA_REPO",
                             "https://gitlab.com/siesta-project/siesta.git")
 _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
@@ -267,10 +293,17 @@ def _spec(name: str, version_var: str = "") -> str:
 # is physically meaningless, and this is the code that silently forces
 # the grid to one point there.  Delete it and a transport run asking
 # for a 4x4x4 grid quietly USES 4 k-points along transport and reports
-# nothing.  We build -DSIESTA_WITH_TRANSIESTA=ON and ship a transport
-# surface (docs/engines/transport.md), so that trade turns a loud build
-# failure into a silent wrong answer.  Pin the compiler instead; it
-# costs nothing and touches no source.
+# nothing.  Our binary HAS that code -- measured on the 2026-09-19
+# build: 176 `TS.*` keywords in the installed `siesta`, and tbtrans /
+# tscontour / ts2ts alongside it -- and we ship a transport surface
+# (docs/engines/transport.md), so that trade turns a loud build failure
+# into a silent wrong answer.  Pin the compiler instead; it costs
+# nothing and touches no source.
+#
+# (This used to read "we build -DSIESTA_WITH_TRANSIESTA=ON", which is
+# not why.  5.4.2's cmake reports that variable as UNUSED and builds
+# transport in regardless -- see the flag's own note below.  The
+# conclusion held; the mechanism cited for it did not.)
 #
 # A compiler-flag workaround (-O0 / -fno-inline, on the theory that
 # 14.4 mis-resolves the host-associated dummy while inlining the
@@ -325,6 +358,79 @@ _GCC_WHEN_UNMEASURED = "14.3"
 _GCC_VERSION    = _env_default(
     "MOLBUILDER_GCC",
     _GCC_PIN_BY_SIESTA_REF.get(_SIESTA_REF, _GCC_WHEN_UNMEASURED))
+
+
+# ---- the Fortran module ABI: which gfortran built the libraries we
+#      COMPILE AGAINST -------------------------------------------------
+#
+# A THIRD ABI AXIS, and not either of the two above it.  `_GCC_VERSION`
+# says which compiler we use; `_SYSROOT_VERSION` says which glibc our
+# output demands of the host.  This one says which compiler wrote the
+# `.mod` files our source is allowed to `use`.
+#
+# A Fortran library ships two things: the compiled code, and a `.mod`
+# file -- a binary summary of its interface, written in the COMPILER'S
+# OWN private format.  That format is not forward compatible.  gfortran
+# 14 writes `GFORTRAN module version '15'`; gfortran 15 writes `'16'`,
+# and 14 refuses to read it:
+#
+#     Fatal Error: Cannot read module file '<env>/include/netcdf.mod'
+#       because it was created by a different version of GNU Fortran
+#
+# So the env has a directional rule of its own, exactly like the sysroot
+# one and pointing the other way:
+#
+#     every prebuilt Fortran library in the env must come from a
+#     gfortran NO NEWER than the one we compile with
+#
+# CONDA CANNOT BE ASKED THIS DIRECTLY.  There is no "built by gfortran
+# <= N" selector, and the build string (`mpi_openmpi_<hash>_<n>`) does
+# not carry it either -- the hash is a variant digest and the build
+# number counts rebuilds of every kind.  What conda-forge DOES emit, on
+# every Fortran package, is a runtime floor naming the compiler that
+# built it: `libgfortran5 >=14.4.0`, `libgfortran5 >=15.3.0`.  Capping
+# `libgfortran5` therefore caps the whole env's Fortran ABI in the one
+# place the solver can see it, and does so for every such package at
+# once rather than one pin per package.
+#
+# WHAT IT COST US TO LEARN.  On 2026-09-16 conda-forge rebuilt
+# `netcdf-fortran` alone against gfortran 15 (build `_1`; `_0`, from
+# 2026-07-30, is the gfortran-14 one).  Two days later a clean install
+# of this recipe resolved it, cmake's FindNetCDF found `libnetcdff.so`
+# and was satisfied -- it checks that the library exists, never which
+# compiler wrote its `.mod` -- and the build died 2,571 objects in on
+# `Src/easy-ncdf/netcdf_ncdf.F90:78`, `use netcdf` (2,571 is ninja's
+# step index, not an object count).  Measured in the
+# wreckage: of the 53 `.mod` files in the env's include/, 42 were module
+# version 15 and 11 were 16 -- and those 11 are exactly the files
+# `netcdf-fortran`'s conda package owns.  One package out of step with
+# every other.
+#
+# WHY A CEILING RATHER THAN A PIN ON THE PACKAGE THAT BROKE.  SIESTA
+# `use`s three conda-provided Fortran module sets, not one -- openmpi
+# (39 files), netcdf-fortran (25), libxc (5).  hdf5, pnetcdf, fftw and
+# scalapack are link-only here (zero `use` lines) and cannot have this
+# problem at all.  Pinning netcdf-fortran would close one of three and
+# leave the largest open.
+#
+# THIS FENCE HAS A LIFETIME, AND THAT IS THE POINT.  conda-forge is
+# migrating to gcc 15; when openmpi and libxc follow netcdf-fortran, no
+# `libgfortran5 <15` solve exists any more and this env stops solving --
+# in seconds, naming this spec, instead of failing ten minutes into a
+# compile with a message about a module file.  That is the moment to
+# re-measure `kpoint_t.F90` against gfortran 15 and move `_GCC_VERSION`,
+# which is the real fix and needs a measurement we do not yet have.
+# Raising this ceiling without moving the compiler underneath it just
+# restores the failure above.
+#
+# It is DERIVED, never written down twice: `--gcc 13` moves the fence to
+# `<14` with the compiler.  A non-numeric `MOLBUILDER_GCC` is already
+# fatal at the solver (`gcc_linux-64=<garbage>` matches nothing), so the
+# major falls back to the measured default rather than raising a
+# traceback out of an import that every `molbuilder envs` command pays.
+_GCC_MAJOR_MATCH = (re.match(r"\d+", _GCC_VERSION)
+                    or re.match(r"\d+", _GCC_WHEN_UNMEASURED))
+_FORTRAN_ABI_CEILING = f"libgfortran5<{int(_GCC_MAJOR_MATCH.group()) + 1}"
 
 
 # ---- sysroot: which glibc the toolchain COMPILES AGAINST ----------------
@@ -1492,9 +1598,14 @@ _mbsg_prepend_libpath() {
     esac
 }
 
+# PREPEND IS LIFO: the LAST line below ends up FIRST on LD_LIBRARY_PATH.
+# So the env's lib goes on first (ending up last), and the source-built
+# components after it -- the same "component beats env" order the install
+# rpath and CMAKE_PREFIX_PATH use.  Read the list bottom-up.
 _mbsg_prepend_path     "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
-_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
 _mbsg_prepend_libpath  "$CONDA_PREFIX/lib"
+_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
+_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/netcdf_fortran/lib"
 
 export MOLBUILDER_SIESTA_GPU_PREFIX="$CONDA_PREFIX/opt/siesta-gpu-stack"
 
@@ -1534,6 +1645,7 @@ _mbsg_drop_from_path_var() {
 
 _mbsg_drop_from_path_var PATH            "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
+_mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/netcdf_fortran/lib"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/lib"
 
 # Only unset OMPI_MCA_orte_tmpdir_base if WE set it -- never trample
@@ -1558,7 +1670,8 @@ unset -f _mbsg_drop_from_path_var
 # against system libmpi.so.40 even though the env provides its own.
 #
 # NOTE: ``CMAKE_PREFIX_PATH`` is component-specific (SIESTA needs
-# both the env prefix AND the ELPA install dir on the search path)
+# the env prefix AND every source-built component's install dir on
+# the search path)
 # and is set inline per component, not in this shared tuple.
 _PIN_MPI_TOOLS = (
     # MPI: bypass FindMPI's PATH walk -- pin compilers explicitly.
@@ -1590,13 +1703,55 @@ _PIN_MPI_TOOLS = (
 #   $ORIGIN/../../<other>/lib          -> sibling component's lib
 # NOTE: no shell escape needed -- we pass cmake argv through
 # subprocess.run with list argv (no shell interposed), so $ORIGIN
-# is preserved literally and the linker writes it into DT_RUNPATH.
+# is preserved literally.  Whether the linker writes DT_RPATH or
+# DT_RUNPATH depends on the last --*-new-dtags flag on the link line;
+# for SIESTA that is --enable-new-dtags.  See _RPATH_SIESTA_BIN.
 _RPATH_ELPA       = "$ORIGIN/../../../../lib"
-_RPATH_SIESTA_BIN = "$ORIGIN/../../../../lib:$ORIGIN/../../elpa/lib"
+#: The install rpath the recipe ASKS for -- one entry per source-built
+#: component SIESTA links, plus the env's own lib.  Read the warning below
+#: before reasoning from it.
+#:
+#: ⚠ **FOR THE SIESTA BINARY THIS CONSTANT IS CURRENTLY INERT.  MEASURED
+#: 2026-09-19 -- do not reason from it.**  SIESTA's own top-level
+#: `CMakeLists.txt` (85-102, under `option(SIESTA_SET_RPATH ... ON)`) does a
+#: plain, non-CACHE `set(CMAKE_INSTALL_RPATH ...)`, and a normal variable
+#: shadows a `-D` cache variable for the whole directory scope -- so both
+#: this value and `-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON` are discarded.  A
+#: probe replicating those lines, built under `conda run` in this env with
+#: exactly the two flags below, came out carrying
+#:
+#:     RUNPATH  <env>/lib : $ORIGIN/../lib : <install>/lib
+#:
+#: with this constant's value nowhere in it.  Two more measured facts that
+#: the same probe settles, and that any future reasoning here must start
+#: from:
+#:
+#:   * conda's own activation puts `-Wl,-rpath,$CONDA_PREFIX/lib` into
+#:     LDFLAGS (`activate-gcc_linux-64.sh:64`), and cmake emits LINK_FLAGS
+#:     ahead of the install-rpath, so **the env's lib leads whatever we
+#:     pass**.  "Components first" is not ours to decide from here.
+#:   * SIESTA appends `-Wl,--enable-new-dtags`, so it is **DT_RUNPATH, not
+#:     DT_RPATH** -- searched AFTER `LD_LIBRARY_PATH`, not before.
+#:
+#: THE ACTIVATE HOOK IS THEREFORE THE MECHANISM THAT DECIDES, not the
+#: "convenience copy" an earlier version of this note called it.  The hook
+#: is ordered components-first and that ordering is real (verified by
+#: sourcing the rendered hook).
+#:
+#: The value is kept, ordered to match the hook, because it still applies
+#: to any target that does NOT override it and costs nothing -- but making
+#: it apply to siesta would mean `-DSIESTA_SET_RPATH=OFF`, which is a
+#: decision nobody has taken.  `_RPATH_ELPA` above it is referenced
+#: nowhere at all.
+_RPATH_SIESTA_BIN = (":".join((
+    "$ORIGIN/../../elpa/lib",
+    "$ORIGIN/../../netcdf_fortran/lib",
+    "$ORIGIN/../../../../lib",
+)))
 
 
 # --------------------------------------------------------------------- #
-#  Two-component build (literature + doc supported)                     #
+#  Source-build components: elpa, netcdf_fortran, siesta               #
 #                                                                       #
 #  Per SIESTA 5.4 INSTALL.md (verified 2026-06-15 by fetching           #
 #  rel-5.4/INSTALL.md from gitlab):                                     #
@@ -1825,6 +1980,100 @@ _ELPA = BuildComponent(
 )
 
 
+_NETCDF_FORTRAN = BuildComponent(
+    name="netcdf_fortran",
+    # UNDERSCORE, not the package's own hyphen: the name becomes a
+    # ``{dep_<name>}`` template key and ``str.format_map`` cannot parse
+    # ``{dep_netcdf-fortran}``.
+    #
+    # Tarball, not a clone -- Unidata ships a release artifact and the
+    # source needs no bootstrap.  Same shape as _ELPA.
+    repo_url="",
+    ref=_NETCDF_FORTRAN_TAG,
+    tarball_url=(f"{_NETCDF_FORTRAN_BASE}/{_NETCDF_FORTRAN_TAG}/"
+                 f"netcdf-fortran-{_NETCDF_FORTRAN_TAG}.tar.gz"),
+    tarball_sha256=_NETCDF_FORTRAN_SHA256,
+    tarball_inner_dir=f"netcdf-fortran-{_NETCDF_FORTRAN_TAG}",
+    configure_argv=(
+        # cmake, not the autotools this project also ships: it is the
+        # build system SIESTA itself uses here, and it reproduces the
+        # library version conda-forge publishes (libnetcdff.so.7.1.0;
+        # the autotools path emits 7.3.0 from the same source).
+        "cmake",
+        "-S", "{src}",
+        "-B", "{build}",
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX={install}",
+        "-DCMAKE_INSTALL_LIBDIR=lib",
+        "-DCMAKE_PREFIX_PATH={env_prefix}",
+        "-DBUILD_SHARED_LIBS=ON",
+        # THE SOURCE'S OWN ENTRY POINT, and the reason this component
+        # needs no workaround.  ``CMakeLists.txt`` opens its netCDF-C
+        # search with
+        #
+        #     IF(NOT netCDF_LIBRARIES AND NOT netCDF_INCLUDE_DIR)
+        #       FIND_PACKAGE(netCDF QUIET)
+        #     ELSE()
+        #       SET(netCDF_FOUND TRUE)
+        #
+        # -- the guard exists so a packager can hand it the answer.
+        # Supplying both makes FIND_PACKAGE(netCDF) never run, so
+        # libnetcdf's own cmake package config is never read.  THAT
+        # config is the file conda-forge's recipe deletes out of
+        # ``$PREFIX/lib/cmake/netCDF/`` before building, calling the
+        # result "general chaos"; taking the documented door instead
+        # means this build writes nothing into the conda env and
+        # removes nothing from it.  Measured 2026-09-19: cmake reports
+        # ``Found netCDF CMake package: <env>/lib/libnetcdf.so`` and
+        # zero files under $CONDA_PREFIX change during the build.
+        "-DnetCDF_LIBRARIES={env_prefix}/lib/libnetcdf.so",
+        "-DnetCDF_INCLUDE_DIR={env_prefix}/include",
+        # The MPI wrappers, and not a preference: this env's netCDF-C is
+        # built with parallel4 + pnetcdf on (``nc-config --has-parallel4``
+        # -> yes), which makes CMakeLists run FIND_PACKAGE(MPI REQUIRED)
+        # and abort with a fatal error unless the Fortran compiler does
+        # MPI-IO.  They resolve through the env because the installer
+        # dispatches under ``conda run``, whose activation sets
+        # OPAL_PREFIX and puts <env>/bin first on PATH.
+        "-DCMAKE_C_COMPILER=mpicc",
+        "-DCMAKE_Fortran_COMPILER=mpif90",
+        # Nothing downstream consumes the test tree or the examples, and
+        # the tests want live MPI launches.  Flip these on to have the
+        # build self-check.
+        "-DENABLE_TESTS=OFF",
+        "-DBUILD_EXAMPLES=OFF",
+    ),
+    build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
+    install_argv=("cmake", "--install", "{build}"),
+    # VERIFY BY COMPILING, NOT BY LOOKING.  `test -f netcdf.mod` passes in
+    # exactly the situation this component exists to prevent: the broken
+    # env had a perfectly good .so next to a perfectly present .mod that
+    # this compiler could not read.  So the check is the real thing --
+    # compile `use netcdf` with the env's own Fortran compiler against the
+    # module dir we just installed.  If that succeeds the artifact is
+    # usable BY THE COMPILER THAT WILL USE IT, which is the only claim
+    # worth making, and it is made on the actual machine at install time.
+    #
+    # `$FC` is set by conda's activation to the target-prefixed gfortran;
+    # the fallback covers a bare invocation.  `$NAME` and not `${...}` --
+    # a literal brace would collide with str.format_map on `{install}`.
+    verify_argv=(
+        "sh", "-c",
+        'set -e; d=$(mktemp -d); '
+        'printf "program p\n use netcdf\n print *, nf90_noerr\nend program\n"'
+        ' > $d/p.f90; '
+        'test -n "$FC" || FC=gfortran; '
+        '"$FC" -I"{install}/include" -c $d/p.f90 -o $d/p.o || '
+        '( echo "[molbuilder] netcdf.mod is not readable by $FC --"'
+        ' "the module ABI does not match this toolchain"'
+        ' " (docs/ops/installation.md 6.3)" >&2; rm -rf $d; false ); '
+        'rm -rf $d'
+    ),
+    clone_recurse_submodules=False,
+)
+
+
 _SIESTA_GPU_COMPONENT = BuildComponent(
     name="siesta",
     repo_url=_SIESTA_REPO,
@@ -1840,7 +2089,10 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # BLAS/ScaLAPACK/NetCDF/HDF5/FFTW/libxc + the CUDA toolkit) AND
         # the external ELPA install dir.  Semicolons (cmake list
         # separator), not colons.
-        "-DCMAKE_PREFIX_PATH={env_prefix};{dep_elpa}",
+        # netcdf_fortran FIRST: it and the env both carry a `netcdf.mod`
+        # only if someone re-adds the conda package, and first-wins is
+        # the answer we want if that ever happens.
+        "-DCMAKE_PREFIX_PATH={dep_netcdf_fortran};{env_prefix};{dep_elpa}",
         # cmake's default ``CMAKE_SYSTEM_PREFIX_PATH`` always includes
         # /usr/local regardless of what we pass via ``CMAKE_PREFIX_PATH``.
         # If the host has a prior SIESTA-stack install at
@@ -1875,6 +2127,19 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # in External/<package>/ which our --recurse-submodules clone
         # has populated).
         "-DSIESTA_WITH_MPI=ON",
+        # MEASURED UNUSED BY 5.4.2, AND KEPT ANYWAY.  The 2026-09-19
+        # configure ended with cmake's "Manually-specified variables were
+        # not used by the project: SIESTA_WITH_TRANSIESTA", and the build
+        # produced no separate `transiesta` binary -- 5.x folds transport
+        # into `siesta` itself and compiles it unconditionally (176 `TS.*`
+        # keywords in the installed binary; tbtrans, tscontour, ts2ts all
+        # present).  So this line changes nothing today.
+        #
+        # It stays because ON is what we would want the day it means
+        # something again: a SIESTA that reintroduces the option and
+        # defaults it OFF would silently drop transport, and the gcc pin
+        # above depends on that code being compiled in.  The cmake
+        # warning is the tripwire that tells you which world you are in.
         "-DSIESTA_WITH_TRANSIESTA=ON",
         "-DSIESTA_WITH_ELSI=ON",
         "-DSIESTA_WITH_ELPA=ON",
@@ -2009,7 +2274,20 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
 
 _SIESTA_GPU_BUILD = BuildSpec(
     artifact_subdir="siesta-gpu-stack",
-    components=(_ELPA, _SIESTA_GPU_COMPONENT),
+    # Dependency order, siesta last -- it links both of the others.
+    #
+    # elpa and netcdf_fortran are INDEPENDENT of each other, so the order
+    # between those two is ours to pick, and `downstream_components` is
+    # what decides it: `--rebuild=<c>` redoes c and everything AFTER it,
+    # positionally, because that function has no dependency graph to
+    # consult.  So the cheap one goes second:
+    #
+    #   as written       --rebuild=elpa           -> + netcdf_fortran (~30 s)
+    #   reversed         --rebuild=netcdf_fortran -> + elpa (10-15 min)
+    #
+    # Same wasted work either way; this way it costs half a minute
+    # instead of a quarter of an hour.
+    components=(_ELPA, _NETCDF_FORTRAN, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
     # (A twelve-line note about a `cuda_min_version` floor stood here until
     # 2026-09-14, arguing about whether its 12.4 was right.  The FIELD was
@@ -2046,6 +2324,14 @@ _SIESTA_GPU = Recipe(
         f"gcc_linux-64={_GCC_VERSION}",
         f"gxx_linux-64={_GCC_VERSION}",
         f"gfortran_linux-64={_GCC_VERSION}",
+        # ...and the ceiling that keeps every PREBUILT Fortran library in
+        # this env readable by that compiler.  Not a nicety and not a
+        # duplicate of the line above: `.mod` files are not forward
+        # compatible, so a library conda-forge rebuilt with a newer
+        # gfortran compiles into nothing here.  Derived from the pin; see
+        # _FORTRAN_ABI_CEILING above for what it cost to find out, and
+        # docs/ops/installation.md 6.3 for the rule.
+        _FORTRAN_ABI_CEILING,
         # The rest of the toolchain, DECLARED rather than inherited.
         # These three are what make the compiler self-contained: the
         # linker + archiver (binutils), the C library headers and
@@ -2150,7 +2436,43 @@ _SIESTA_GPU = Recipe(
         # docs/ops/installation.md § 6 for the documented trade.
         "fftw=*=mpi_openmpi_*",
         "hdf5=*=mpi_openmpi_*",
-        "netcdf-fortran=*=mpi_openmpi_*",
+        # THE C LAYER ONLY.  `netcdf-fortran` is built from source by the
+        # _NETCDF_FORTRAN component, so declaring the conda package too
+        # would put a second `libnetcdff` and a second set of `.mod`
+        # files in the same env.
+        #
+        # BE PRECISE ABOUT WHY, because the obvious reason does not hold.
+        # It is NOT a build-time collision for this component: measured
+        # 2026-09-19, running this recipe's own cmake argv against the
+        # live env while conda's netcdf-fortran was installed with its
+        # version-16 `netcdf4_f03.mod` in `$CONDA_PREFIX/include`, the
+        # build SUCCEEDED -- gfortran searches the `-J` output directory
+        # for modules BEFORE any `-I`, and cmake passes `-Jfortran`, so
+        # the modules this build just wrote win over the env's.  It is
+        # that -J/-I precedence that saves it, not an include-dir
+        # ordering.  (An autotools build of the same source
+        # does die there, and an earlier version of this comment cited
+        # that as evidence.  It was evidence about a build system we do
+        # not use.)
+        #
+        # THE MEASURED REASON IS THE ORIGINAL FAILURE, and it is enough:
+        # SIESTA's OWN compile read `$CONDA_PREFIX/include/netcdf.mod`
+        # and died -- verbatim in `logs/siesta.build.log`, `[2571/4719]
+        # ... netcdf_ncdf.F90:78`.  SIESTA's compile has no -J pointing
+        # at a fresh netcdf module, so nothing saves it the way the line
+        # above saves this component's own build.
+        #
+        # A LOAD-TIME ARGUMENT STOOD HERE AND IS WITHDRAWN.  It claimed
+        # the two libraries "export libnetcdff.so.7 at different
+        # versions".  They do not: measured, both are
+        # `libnetcdff.so.7.1.0`, both SONAME `libnetcdff.so.7`, both
+        # export 578 dynamic symbols, and the symbol lists are
+        # identical.  That makes loading the wrong copy UNDETECTABLE
+        # rather than harmful -- a reason to keep one copy, but not a
+        # demonstrated failure, and it should not be written as one.
+        #
+        # libnetcdf must be DECLARED because nothing else pulls it now.
+        "libnetcdf=*=mpi_openmpi_*",
         # XC functional library (highly recommended per SIESTA
         # INSTALL.md § "libxc (highly recommended)").
         _spec("libxc", f"={_LIBXC_VERSION}" if _LIBXC_VERSION else ""),
@@ -2256,8 +2578,13 @@ _SIESTA_GPU = Recipe(
         "manager when GPU acceleration is wanted.",
         "(GPU runtime, OPTIONAL) NVIDIA driver supporting CUDA "
         "runtime 13.x (driver-side compat).  Same OPTIONAL caveat.",
+        # THREE HOSTS, and this list is what a locked-down site reads to
+        # open its firewall (docs/ops/installation.md 8).  A host added to
+        # a component and not added here fails the install at that step
+        # with no warning any reader could have acted on.
         "Internet access for the ELPA tarball download "
-        "(elpa.mpcdf.mpg.de) + the SIESTA git clone "
+        "(elpa.mpcdf.mpg.de), the netcdf-fortran tarball download "
+        "(downloads.unidata.ucar.edu) + the SIESTA git clone "
         "(gitlab.com/siesta-project), which recursively pulls "
         "libfdf, libpsml, xmlf90, libgridxc, ELSI submodules",
         # NO FIGURE.  This said "~30 GB", the number the disk GATE used before

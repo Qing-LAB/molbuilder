@@ -164,9 +164,13 @@ def test_uses_openblas_not_mkl(recipe):
 
 
 def test_mpi_packages_pinned_to_openmpi_variant(recipe):
-    """fftw / hdf5 / netcdf-fortran must use the openmpi variant to
-    match the env's OpenMPI; mismatched variants segfault at runtime."""
-    for required in ("fftw", "hdf5", "netcdf-fortran"):
+    """fftw / hdf5 / libnetcdf must use the openmpi variant to match the
+    env's OpenMPI; mismatched variants segfault at runtime.
+
+    `netcdf-fortran` left this list on 2026-09-19 -- it is built from
+    source now, so there is no conda spec to check.  libnetcdf, the C
+    layer it links, carries the same requirement."""
+    for required in ("fftw", "hdf5", "libnetcdf"):
         matches = [p for p in recipe.conda_specs if p.startswith(required)]
         assert matches, f"no {required} pin in recipe.conda_specs"
         for spec in matches:
@@ -212,19 +216,21 @@ def test_build_spec_cuda_required(recipe):
 
 
 def test_build_spec_components_in_order(recipe):
-    """Components MUST be listed in dependency order: elpa -> siesta.
+    """Siesta is built LAST, because it links the others.
 
-    Two-component architecture (literature + doc supported, 2026-06-15):
+    Only that is asserted.  The order among the components siesta links
+    is a judgement call (recipes.py records why the cheap one goes
+    second), not a dependency, and a test that pinned it would block a
+    legitimate reorder.
+
     ELSI + libfdf + libpsml + xmlf90 + libgridxc are SIESTA git
     submodules (per SIESTA 5.4 INSTALL.md § "Required domain-specific
     libraries") that SIESTA's cmake compiles on the fly when the
-    --recurse-submodules clone populates External/.  ELPA is the only
-    component we build separately because conda-forge ELPA isn't
-    built with CUDA support."""
+    --recurse-submodules clone populates External/, so they are not
+    components."""
     names = [c.name for c in recipe.build_spec.components]
-    assert names == ["elpa", "siesta"], (
-        f"components in wrong order: {names}"
-    )
+    assert names[-1] == "siesta", (
+        f"siesta links the others, so it must be built last: {names}")
 
 
 def test_build_spec_activate_hook_publishes_paths(recipe):
@@ -407,7 +413,8 @@ def test_siesta_pins_cmake_prefix_path_to_env_and_elpa(recipe):
     prefix (for conda-installed deps) AND the ELPA install dir.
     Semicolon = cmake's list separator."""
     siesta_flags = _configure_flags("siesta", recipe)
-    assert "-DCMAKE_PREFIX_PATH={env_prefix};{dep_elpa}" in siesta_flags
+    assert "-DCMAKE_PREFIX_PATH=" in siesta_flags
+    assert "{env_prefix}" in siesta_flags and "{dep_elpa}" in siesta_flags
 
 
 def test_elpa_pins_env_compilers_and_cuda_path(recipe):
@@ -441,7 +448,7 @@ def test_no_system_paths_in_cmake_flags(recipe):
     """A regression guard.  None of the cmake flags should reference
     /usr/lib, /usr/local/cuda, /opt/cuda, or similar system locations.
     The full toolchain must live inside the env."""
-    for comp in ("elpa", "siesta"):
+    for comp in (c.name for c in recipe.build_spec.components):
         flags = _configure_flags(comp, recipe)
         for forbidden in ("/usr/lib", "/usr/local/cuda", "/opt/cuda",
                           "/usr/include"):
@@ -451,38 +458,21 @@ def test_no_system_paths_in_cmake_flags(recipe):
             )
 
 
-def test_siesta_install_rpath_uses_origin_relative_path(recipe):
-    """SIESTA (cmake): bakes $ORIGIN-relative install rpath so the
-    binary can find its sibling libs (and the env's lib) at runtime
-    WITHOUT depending on LD_LIBRARY_PATH being set.  $ORIGIN-relative
-    so the env stays movable (rename + clone work).
-
-    ELPA (autotools) does NOT bake explicit rpath; instead the
-    activate.d hook publishes $CONDA_PREFIX/opt/.../elpa/lib on
-    LD_LIBRARY_PATH so the SIESTA binary finds libelpa.so via the
-    loader's standard search path.  This is the common autotools
-    pattern (cleaner than the autotools-LDFLAGS rpath hack)."""
-    flags = _configure_flags("siesta", recipe)
-    assert "CMAKE_INSTALL_RPATH=$ORIGIN" in flags
-    assert "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON" in flags
-
-
-def test_siesta_rpath_finds_elpa_and_env_lib(recipe):
-    """SIESTA binary depends on libelpa, libcudart, libmpi, libgomp.
-    Its rpath must reach both locations from
-    $CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin/siesta:
-
-      - elpa/lib    via $ORIGIN/../../elpa/lib
-      - env's lib   via $ORIGIN/../../../../lib
-
-    libelsi is statically linked into the siesta binary via the
-    submodule build, so no separate rpath entry is needed for it.
-    """
-    flags = _configure_flags("siesta", recipe)
-    assert "$ORIGIN/../../elpa/lib" in flags
-    assert "$ORIGIN/../../../../lib" in flags
-    # No ELSI lib dir -- ELSI is built into the siesta binary itself.
-    assert "elsi/lib" not in flags
+# TWO RPATH TESTS WERE DELETED HERE, 2026-09-19, and the reason is worth
+# keeping: they asserted `-DCMAKE_INSTALL_RPATH=$ORIGIN...` and
+# `-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON` reach the siesta binary.  MEASURED --
+# they do not.  SIESTA's own CMakeLists.txt (85-102, under
+# `option(SIESTA_SET_RPATH ON)`) does a plain, non-CACHE
+# `set(CMAKE_INSTALL_RPATH ...)`, and a normal variable shadows a `-D` cache
+# variable for the whole directory scope.  A probe replicating those lines,
+# built under `conda run` in the env, came out
+# `RUNPATH <env>/lib:$ORIGIN/../lib:<install>/lib` -- the recipe's value
+# nowhere in it.  So both tests were green over a flag that is discarded, and
+# reported the binary's rpath was right when nothing had looked at a binary.
+#
+# What replaces them is not another assertion: the siesta component's
+# `verify_argv` runs `{install}/bin/siesta --version`, which fails if the
+# loader cannot resolve the closure.  See docs/ops/installation.md 6.4.
 
 
 # --------------------------------------------------------------------- #
@@ -512,13 +502,22 @@ _STUB_TEMPLATE_SUBS = {
     "install": "/stub/install",
     "env_prefix": "/stub/env",
     "jobs": "8",
-    "dep_elpa": "/stub/elpa",
+    # derived, not listed: builds.py makes a dep_* key for EVERY component
+    **{f"dep_{c.name}": f"/stub/{c.name}"
+       for c in recipe_by_name("molbuilder-siesta-gpu").build_spec.components},
     "cuda_cc_numeric": "80",
     "cuda_cc_sm": "sm_80",
 }
 
 
-@pytest.mark.parametrize("phase", ["clone", "configure", "build", "install"])
+# "verify" belongs in this list.  netcdf_fortran's verify is the most
+# complex `sh -c` payload in the recipe -- a printf carrying quotes and
+# embedded newlines, an `||` subshell, `$FC`, and `{install}` templating.
+# Measured 2026-09-19: with "verify" absent, deleting one `)` from that
+# payload left the whole suite green, and the break would have surfaced at
+# step 10/15 -- after ELPA had already compiled for ten minutes.
+@pytest.mark.parametrize("phase",
+                         ["clone", "configure", "build", "install", "verify"])
 def test_every_component_argv_renders_through_template(recipe, phase):
     """Render each phase's argv through _apply_template with stub
     subs.  If a literal ``{`` from bash command-group syntax leaked

@@ -145,17 +145,26 @@ def test_buildspec_rejects_unsafe_artifact_subdir():
 
 
 def test_siesta_gpu_components_in_dependency_order(siesta_gpu_spec):
-    """Two-component build: elpa -> siesta.  SIESTA links ELPA
-    externally; ELSI is a SIESTA submodule (per SIESTA 5.4 INSTALL.md)."""
+    """SIESTA links the others, so it is built last.  Only that is
+    asserted -- the order among the rest is a judgement call, not a
+    dependency.  ELSI is a SIESTA submodule (per SIESTA 5.4 INSTALL.md),
+    not a component."""
     names = [c.name for c in siesta_gpu_spec.components]
-    assert names == ["elpa", "siesta"]
+    assert names[-1] == "siesta"   # siesta links the others
 
 
 def test_downstream_components_walks_chain(siesta_gpu_spec):
     """Asking to rebuild a component implies rebuilding everything
-    downstream of it (later components have linked it)."""
-    assert B.downstream_components(siesta_gpu_spec, "elpa") \
-        == ("elpa", "siesta")
+    AFTER it in the list.
+
+    Positionally, and deliberately: `downstream_components` has no
+    dependency graph to consult, so "downstream" means "later", not
+    "linked it".  recipes.py picks the component order with that in
+    mind -- the cheap component goes second so a rebuild of the
+    expensive one drags seconds rather than the reverse dragging
+    minutes."""
+    names = tuple(c.name for c in siesta_gpu_spec.components)
+    assert B.downstream_components(siesta_gpu_spec, names[0]) == names
     assert B.downstream_components(siesta_gpu_spec, "siesta") \
         == ("siesta",)
     # Unknown component -> empty tuple, not exception.
