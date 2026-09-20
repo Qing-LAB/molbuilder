@@ -72,10 +72,19 @@ tab has had, so the division is written out in full:
 | --- | --- |
 | **Navigate the sidebar to another folder** | **nothing here.** The panel stays on the folder it is bound to, and the header says the sidebar has moved on |
 | **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
-| **Double-click a file** in the sidebar | still nothing here. The sidebar never chooses a result |
+| **Double-click a file** in the sidebar | opens it in the sidebar's own **file viewer** (the same modal the View button opens). It does **not** reach this panel |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
 | **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
 | **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
+
+**A double-click shows a file; it never mounts one here.** The interaction
+model (2026-06-07) says a double-click runs the active tab's *"use this file"*
+action, and every other tab has one — Molbuilder loads the structure onto the
+canvas, spectra loads the file. This tab had none, so the gesture did nothing
+at all. Its action is the **viewer**, not a mount: the panel is built from the
+list and the list is re-read only when you ask, so a sidebar gesture that
+mounted something would put back the coupling Reload replaced. You can look
+inside any file you like without disturbing what you are reading.
 
 **The panel owns a folder; Reload is the only thing that moves it.** The
 button says *"Reload from current project dir"* and not *"Refresh"* for that

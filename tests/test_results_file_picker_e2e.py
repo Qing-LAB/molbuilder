@@ -636,3 +636,47 @@ class TestThePanelOwnsItsFolder:
         assert "elsewhere2" in readout, readout
         assert "Reload" not in readout, (
             f"still claims divergence after adopting: {readout!r}")
+
+    def test_double_click_shows_the_file_without_touching_the_panel(
+            self, page, flask_server, project_with_one_out):
+        """Both halves of the 2026-09-19 ruling, in one gesture.
+
+        The interaction model (2026-06-07) gives a double-click to the
+        active tab's "use this file" action.  /results was the only tab
+        with none -- #301 removed the single-click mount and the commit
+        half was never wired -- so the gesture did nothing.  Its action
+        is the sidebar's VIEWER; it must not mount, because the panel is
+        built from the list alone.
+        """
+        proj, dir_path = project_with_one_out
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1")
+        before = page.locator("#results-current-file").inner_text()
+
+        page.evaluate(
+            "() => { window.__mounts = [];"
+            "  document.addEventListener("
+            "    'molbuilder:results:fileSelected',"
+            "    (e) => window.__mounts.push("
+            "        (e.detail && e.detail.file) || '')); }")
+
+        # The gesture, through the real channel the sidebar publishes on.
+        page.evaluate(
+            "(f) => window.molbuilder.projects.publishCommit"
+            "        ? window.molbuilder.projects.publishCommit("
+            "            f.substring(0, f.lastIndexOf('/')), f)"
+            "        : window.molbuilder.projects.setShared("
+            "            f.substring(0, f.lastIndexOf('/')), f)",
+            str(proj / "run1.out"))
+        page.wait_for_timeout(600)
+
+        # The viewer opened...
+        assert page.locator("#ps-preview-modal").is_visible(), (
+            "a double-click did not open the sidebar's file viewer")
+        # ...and the panel did not move.
+        assert page.evaluate("() => window.__mounts") == [], (
+            "the commit leaked into the Results panel")
+        assert page.locator("#results-current-file").inner_text() == before

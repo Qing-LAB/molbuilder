@@ -30,7 +30,7 @@ import {
   initList, openDir, restoreSelection,
 } from "./list.js";
 import { initForms } from "./mutation-bar.js";
-import { initPreview } from "./preview.js";
+import { initPreview, showPreview } from "./preview.js";
 import { parser } from "./parser.js";
 import { molviewFiles } from "./molview-doors.js";
 import { chooseSavePath } from "./dialogs.js";
@@ -61,6 +61,14 @@ projects.checkpoint = {
     init:      ckInit,
     saveState: ckSaveState,
 };
+// The sidebar's OWN file viewer -- the same modal the View button opens.
+// Exposed because binding it is a TAB's decision, not the sidebar's: the
+// interaction model says a double-click runs "the active tab's use-this-file
+// action", and each tab differs.  Molbuilder loads the structure onto the
+// canvas; /results shows the file here instead, because that panel is driven
+// by its own list and nothing in the sidebar may reach into it.  Attached to
+// `projects` for the reason `parser` and `checkpoint` are: one namespace.
+projects.showPreview = showPreview;
 window.molbuilder.projects = projects;
 // Module-init contract (design.md "Module init contract"): also
 // register with the runtime so consumers can ``whenReady("projects")``

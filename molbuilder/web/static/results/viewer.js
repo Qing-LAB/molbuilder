@@ -364,6 +364,27 @@
             picker.mount(document);
         }
 
+        /* A DOUBLE-CLICK SHOWS THE FILE -- and still does not touch this
+         * panel.  The interaction model (2026-06-07) says a commit runs the
+         * active tab's "use this file" action, and every other tab has one:
+         * Molbuilder loads the structure onto the canvas, spectra loads the
+         * file.  /results had none, so a double-click here did nothing at
+         * all -- the only tab that ignored the gesture.
+         *
+         * Its action is the sidebar's own viewer, NOT a mount.  The panel is
+         * built from the list and the list is re-read only when you ask
+         * (user, 2026-09-19), so letting a sidebar gesture mount something
+         * would put back exactly the coupling the Reload button replaced.
+         * Showing the file answers "what is in this one?" without disturbing
+         * what you are reading.
+         *
+         * `showPreview` reads the global pick, and a double-click's FIRST
+         * click already set it, so there is nothing to pass. */
+        if (proj && typeof proj.onCommit === "function"
+                 && typeof proj.showPreview === "function") {
+            proj.onCommit(() => proj.showPreview());
+        }
+
         /* NOTHING IS MOUNTED FROM OUTSIDE THE LIST (2026-09-19).
          *
          * A direct `_onSelectionChange({file: projects.getCurrentFile()})`
