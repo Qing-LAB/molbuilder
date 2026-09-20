@@ -6,11 +6,13 @@ two steps: new module here, import + ``register`` below.
 """
 
 from molbuilder.parse.registry import register
+from .job_set import JobSetSweepFileParser
 from .molstruct import MolstructSidecarFileParser
 from .spectra import SpectraSidecarFileParser
 from .transport import TransportRecordFileParser
 
 
+register(JobSetSweepFileParser)
 register(MolstructSidecarFileParser)
 register(SpectraSidecarFileParser)
 register(TransportRecordFileParser)
@@ -31,6 +33,7 @@ register(TransportRecordFileParser)
 # result kind whose format was understood only in JavaScript.
 
 __all__ = [
+    "JobSetSweepFileParser",
     "MolstructSidecarFileParser",
     "SpectraSidecarFileParser",
     "TransportRecordFileParser",

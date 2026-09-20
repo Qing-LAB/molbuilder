@@ -5,8 +5,10 @@
 **Companions:** [`presenters.md`](?doc=web/presenters.md) — the registry that
 picks the viewer (this tab drives it); `trajectory.md` and `spectra.md` — the two
 heavy viewers this tab hosts (their own docs); [`projects.md`](?doc=web/projects.md)
-— the file layer the picker lists through; [`web-api.md`](?doc=web/web-api.md) —
-the `/api/watch/*` and `/api/system/load` routes.
+— the sidebar's file layer, which sets this tab's scope; [`model/parse.md`](?doc=model/parse.md)
+§ 5 — the directory reader behind `/api/results/dir`, this tab's primary server
+call; [`web-api.md`](?doc=web/web-api.md) — that route, plus `/api/watch/*` and
+`/api/system/load`.
 
 You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
@@ -27,7 +29,7 @@ controller.
 
 ```mermaid
 flowchart TD
-  U["you pick a file (the dropdown auto-picks the newest)"] --> EV["a file-selected event"]
+  U["you pick a file (the dropdown opens the one<br/>the server calls this directory's result)"] --> EV["a file-selected event"]
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
@@ -38,12 +40,27 @@ flowchart TD
 
 ## 2. Picking a file
 
-The picker (`lib/results/file-picker.js`) lists the **result-class** files in the
-current project folder — the files some presenter has marked as a result
-(`isResult`, see presenters.md) — newest first, grouped by kind (the group with
-the newest file floats to the top). It **auto-picks the newest** so a viewer
-appears without a click, and mirrors your pick to the sidebar so the highlight
-matches.
+The picker (`lib/results/file-picker.js`) asks **one route** — `GET
+/api/results/dir` — what is in the current project folder, and shows what comes
+back. Two gates decide the menu, in this order:
+
+1. **the server's**: each file arrives carrying `parser`, the answer to *can
+   anything here read this file* (`parse.registry.detect`). `null` is dropped —
+   the browser must not offer a file nothing can open.
+2. **the presenter's**: of what survives, the files some viewer marks as a
+   result (`isResult`, see presenters.md).
+
+What is left is listed newest first, grouped by kind (the group with the newest
+file floats to the top). **The opened file is the server's answer, not the
+newest** — `openable`, from `parse.dirs.openable_in`, which asks what this
+*calculation* produces before it looks at dates. The picker mirrors your pick to
+the sidebar so the highlight matches.
+
+*(Both sentences above were the opposite until 2026-09-18: the picker listed
+through `/api/files/list`, ran seven filename predicates of its own, and took
+the newest survivor. Over 110 real run directories that guess offered 13 files
+no parser can read and hid 155 a parser handles, and it differed from the door's
+pick on 18 of 96.)*
 
 ### 2.1 The sidebar sets the scope; the dropdown decides what you see
 
@@ -53,7 +70,7 @@ tab has had, so the division is written out in full:
 
 | You do this | What happens |
 | --- | --- |
-| **Navigate the sidebar to another folder** | the dropdown **re-scopes**: it re-scans that folder for result-class files and **auto-picks the newest**, so the panel shows the run you just navigated to |
+| **Navigate the sidebar to another folder** | the dropdown **re-scopes**: it asks the route about that folder and opens **whatever the server calls that directory's result**, so the panel shows the run you just navigated to |
 | **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
 | **Double-click a file** in the sidebar | still nothing here. The sidebar never chooses a result |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
@@ -91,7 +108,10 @@ flowchart TD
   E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
   E -->|"some"| K{"is the file we were<br/>already showing one of them?"}
   K -->|"yes"| KEEP["keep it"]
-  K -->|"no"| NEW["take the newest"]
+  K -->|"no"| D{"did the server name one<br/>as this directory's result?"}
+  D -->|"yes"| NEW["open that one"]
+  D -->|"no"| NONE["list them, open none — the menu's<br/>first row says nothing here is the result"]
+  NONE --> A
   KEEP --> ONE["<b>one</b> chosen file"]
   NEW --> ONE
   ONE --> A["label the menu with it<br/><b>and</b> announce it — same value, one step"]
@@ -183,36 +203,47 @@ Two rules keep this from hiding anything:
 > SIESTA run with its own `.out` and `.molwatch.log`. Point the picker at one
 > and three things happen, none of which this section's rules can fix:
 >
-> - the deliverable, `<label>.transport.json`, **matches no `isResult`
->   presenter**, so `pickResult` returns null and the menu drops it entirely;
+> - its deliverable, `<label>.transport.json`, had **no presenter and no
+>   Python reader** — the one result kind understood only in JavaScript;
 > - each rung's `.out` is claimed by the trajectory presenter, so the ladder
 >   lists as five unrelated entries under *SIESTA optimization*;
 > - `absorbs` is asked *"does this master subsume that sibling?"* — a question
 >   about one folder. It has no way to say *"these five folders are one run."*
 >
-> The first is a missing presenter and is owed by
-> [`plans/plan.md`](?doc=plans/plan.md) § 5p.3p step 5; it landed 2026-09-17.
-> **The other two are not a presenter's to fix.** The picker guesses a
-> directory's meaning from filenames because there is no door to ask:
-> `model/parse.md` § 5's `JobDirParser` → `RunDirResult` carries `engine`,
-> `files`, `openable` (what a VIEWER should load) and `active`, and it **ships
-> since 2026-09-18** — but nothing reaches it from the browser, because
-> `/api/results/contract` still answers `info.calculation` and five other
-> fields and no route offers the directory's own answer. The picker is the
-> seventh consumer in § 5c's caller map and the only browser-side one; it is
-> served by a ROUTE over **`jobset/runstatus.py::jobset_status`**, the LADDER
-> door — not over `parse_dir`. `plan.md` § 5c is explicit that
-> `JobDirParser`, handed a bare path, **cannot** answer the picker's question
-> and must not be extended to try: the picker asks *"these five directories
-> are one run"*, and `openable` answers about one directory by construction.
-> `stages.md` § 6.7 puts the layout in `task.json` and forbids inferring it
-> from data. *(This sentence said "a ROUTE over `parse_dir`" for part of
-> 2026-09-18 — which would have built the one shape § 5c measured as wrong.)*
+> **The first is closed** (2026-09-17): `lib/inspectors/transport.js` is the
+> presenter and `parse/sidecars/transport.py` the reader, so the record is
+> parsed on the server like every other result. **The second and third are
+> not a presenter's to fix**, and the reason they looked unfixable was that
+> the picker had nothing to ask. It does now.
+
+#### The door the picker asks *(shipped 2026-09-18)*
+
+> `GET /api/results/dir` is the HTTP surface over `parse.dirs` — **one route,
+> one question, one answer per directory.** It reports what the directory IS
+> (`calcdirs.container_or_run`), which engine ran (`parse.contract.engine_of`),
+> which file a viewer should open (`openable_in`), the run's state when there
+> is a run to have one, and per file its `role`, `label`, `stage` and `parser`.
+> The picker is its browser consumer and decides nothing from a filename any
+> more; `presenters.md` § 2 is where that answer becomes each viewer's `meta`.
 >
-> **One question there is genuinely new and has no home yet:** `openable` is
-> one answer per DIRECTORY, and a ladder needs one answer across five. Neither
-> `absorbs` nor `RunDirResult` can state it today. It reaches every multi-rung
-> calculation, not just transport, so it wants deciding before code moves.
+> **Two things this route is NOT.** It is not served over
+> `jobset/runstatus.py::jobset_status`, the ladder door — the blueprint imports
+> no `jobset` at all. And `parse_dir` / `JobDirParser` / `RunDirResult` are not
+> in its path either: the route composes `openable_in`, `run_status`,
+> `labels_in`, `read_back` and `engine_of` directly. *(This section claimed the
+> opposite of all of it — "there is no door to ask", "no route offers the
+> directory's own answer", "served by a ROUTE over `jobset_status`" — from
+> 2026-09-18, when the route shipped the same day, until 2026-09-19. A reader
+> following it would have rebuilt the answer in JavaScript from filenames, or
+> hung a second copy off the ladder door.)*
+>
+> **One question is genuinely still open:** `openable` is one answer per
+> DIRECTORY, and a ladder needs one answer across five. Neither `absorbs` nor
+> the route can state it today. `stages.md` § 6.7 puts the layout in
+> `task.json` and forbids inferring it from data, so the ladder's shape has a
+> home already — what is missing is the route saying *which rung speaks for
+> the calculation*. It reaches every multi-rung calculation, not just
+> transport, so it wants deciding before code moves.
 
 > **✅ That rename landed on 2026-08-10 and this section was not updated
 > until 2026-09-08.** The trajectory log is named for **the deck that produced
@@ -247,22 +278,26 @@ drops an opaque **"parsing…" cover** over the panel so the *previous* scene ca
 be mistaken for the new result while it loads; the cover lifts when the viewer
 signals it has painted (or after a 15-second safety timeout).
 
-The viewers you can land in — **four from the result dropdown**, and two more
-reachable from the sidebar ([`presenters.md`](?doc=web/presenters.md) § 1 is the
-registry's own list):
+The viewers you can land in — **five from the result dropdown**, and two more
+that only a remembered file can mount ([`presenters.md`](?doc=web/presenters.md)
+§ 1 is the registry's own list):
 
 - a **read-only 3D structure** for a `.xyz`/`.pdb`,
 - a **trajectory movie + plots** for an optimization log (`trajectory.md`),
 - a **spectrum chart + modes** for a `.spectra.json` (`spectra.md`),
-- a **bench sweep summary + chart** for a `job-set.json` (`bench-summary.md`),
-- and from the sidebar only: a **markdown editor** for a `.md`, and a **plain
-  paginated text pane** for everything else — which is what a
-  `<label>.transport.json` lands in today, because no presenter claims it
-  (§ 2.3).
+- a **bench sweep summary + chart** for a sweep's `job-set.json`
+  (`bench-summary.md`),
+- an **I–V table + transmission plot** for a `<label>.transport.json`,
+- and not from the dropdown at all: a **markdown editor** for a `.md` and a
+  **plain paginated text pane** for everything else. Both are `isResult:
+  false`, so the menu never lists them; they mount only when the tab reopens
+  on a file you were already looking at.
 
-*(This said "the three viewers" and listed the first three until 2026-09-17,
-omitting the bench-summary presenter that had been registering the whole time —
-the same count `presenters.md` § 1 was carrying.)*
+*(This said "the three viewers" until 2026-09-17 and "four" until 2026-09-19,
+each time omitting a presenter that had been registering the whole time —
+bench-summary, then transport. `presenters.md` § 1 carries the list that is
+machine-checked against the registrations; this prose is not, which is why it
+has now drifted twice. Read it as a tour, and that table as the count.)*
 
 ## 4. What a mounted viewer remembers
 

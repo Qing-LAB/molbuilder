@@ -44,7 +44,15 @@ SCHEMA = "molbuilder/job-set@1"
 #: `environment.FILENAME`: the module that owns the format owns its name.
 FILENAME = "job-set.json"
 
-_KINDS = ("sweep", "ladder")
+#: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
+#: because a reader outside this module has to ask *is this a benchmark
+#: sweep* -- `parse.sidecars.job_set` does, to decide whether the Results
+#: tab may offer the file.  A second spelling of `"sweep"` out there is a
+#: second opinion about what a sweep is.
+KIND_SWEEP = "sweep"
+KIND_LADDER = "ladder"
+
+_KINDS = (KIND_SWEEP, KIND_LADDER)
 
 
 @dataclass

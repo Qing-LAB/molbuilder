@@ -78,13 +78,13 @@ config files and READMEs.
 > merge them. *(An earlier revision said the five `.out` files list "as five
 > unrelated entries beside its result". They do not: the picker lists ONE
 > directory and transport runs hierarchical, so each rung is a folder below the
-> record. That is true of the flat shape only.)* And the reason the picker must guess at all is that no server door
-> answers *what is in this directory*: it decides from filenames, in the
-> browser.  *(This called it "§ 5c's seventh consumer" until 2026-09-18, when
-> that row was STRUCK: the picker is not a caller of the directory door at all
-> — its question is the ladder's, answered by `jobset_status`.)*  It is the
-> only judgement here that is not
-> not server-side.
+> record. That is true of the flat shape only.)* And the picker no longer guesses: `GET /api/results/dir`
+> answers *what is in this directory* over `parse.dirs`, and the picker is its
+> browser consumer (`results.md` § 2.3). What reaches a presenter as `meta` is
+> that answer. *(This said "no server door answers what is in this directory:
+> it decides from filenames, in the browser" until 2026-09-19, and before that
+> attributed the picker's question to `jobset_status`, the ladder door. The
+> route imports no `jobset` at all.)*
 
 ## 2. How a viewer is chosen — the presenter contract
 
@@ -181,7 +181,7 @@ shared renderer** (`markdown-render.js`), not through this registry.
 
 ## 4. Thin viewers over heavy engines
 
-Four of the six presenters are simple, but two — **trajectory** and
+Five of the seven presenters are simple, but two — **trajectory** and
 **spectra** — are *thin adapters* over big rendering engines:
 
 - the **structure** presenter mounts the whole MolView viewer read-only in one
@@ -193,8 +193,10 @@ Four of the six presenters are simple, but two — **trajectory** and
   SCF plots;
 - the **spectra** presenter hands off the same way to the spectrum engine
   (`lib/spectra/core.js`) — the chart and modes table;
-- **bench-summary** is self-contained: it reads a `job-set.json`, renders the
-  sweep's trials and a chart, and re-polls on its own cadence;
+- **bench-summary** is self-contained: it reads a sweep's `job-set.json`,
+  renders the trials and a chart, and re-polls on its own cadence;
+- **transport** is self-contained too: it reads a `<label>.transport.json` and
+  draws the I–V table and transmission plot, once, with no polling;
 - **source** (plain text) and **markdown** are small and self-contained.
 
 The two engines are large enough to be their own subject — this doc names them
