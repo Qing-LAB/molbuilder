@@ -248,8 +248,11 @@ touch it. The parts:
 - **Dialogs** — the modal pop-ups for naming a file, choosing a destination
   folder, picking an upload, and confirming a delete. Only one is ever open;
   opening another closes the first.
-- **The preview pop-up** — a view/edit window for **any** file (opened from
-  View). It uses a code editor loaded on demand. Files up to **1 MB** are
+- **The preview pop-up** — a view/edit window for **any** file. Two things
+  open it: the row's **View** item, and a **double-click on the Results tab**,
+  whose "use this file" action is to show the file rather than mount it
+  (`results.md` § 2.1). *(This said "opened from View" — one opener — until
+  2026-09-19.)* It uses a code editor loaded on demand. Files up to **1 MB** are
   editable; larger files open **view-only** (and very large files are paged in
   as you scroll). Editing and Save use the file's on-disk timestamp so a
   concurrent change on disk is caught ("file changed on disk; reload") instead
@@ -320,6 +323,7 @@ a uniform `{ ok, … }` result — they never throw.
 | `onCommit(cb)` | a file was committed (double-clicked) — does not fire on subscribe |
 | `publishCommit(dir, path)` | commit a file from code (also moves the selection). **`path` is the file's FULL path**, not its name — subscribers use it as one |
 | `setShared(dir, file)` | move the selection without re-listing |
+| `showPreview(path?)` | open the preview pop-up on `path`, or on the current pick when it is omitted. A tab binding this to `onCommit` **passes `sel.file`**: `setShared` publishes its payload even when the sessionStorage write throws, so the pick can be empty while the payload is right |
 | `handOffSelection(route, dir, file)` | write ANOTHER tab's per-tab slots (§ 2), so "Open in Molbuilder"-style links land the target where they point |
 | `navigateTo(path)` / `refresh()` | list a folder + move there / re-list the current folder |
 | `onProjectsRootResolved(cb)` / `onLockChange(cb)` | one-shot / lock notifications |

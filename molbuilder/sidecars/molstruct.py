@@ -179,20 +179,29 @@ class MolstructPairingError(MolstructJsonError):
 # --------------------------------------------------------------------- #
 
 
-def sidecar_path_for(xyz_path: Union[str, Path]) -> Path:
-    """Return the canonical sidecar path for ``xyz_path``.
+def sidecar_path_for(structure_path: Union[str, Path]) -> Path:
+    """Return the canonical sidecar path for ``structure_path``.
 
     Strips the LAST suffix and appends ``.molstruct.json``::
 
         relaxed.xyz           -> relaxed.molstruct.json
+        chain.pdb             -> chain.molstruct.json
         job.spectra.xyz       -> job.spectra.molstruct.json
         bridge                -> bridge.molstruct.json    (no suffix)
+
+    THE SUFFIX IS NOT READ, and the `.pdb` row is there to say so: a
+    structure molbuilder opens is `.xyz` or `.pdb` (`StructureCodec`
+    accepts exactly those two), and both carry their regions, frozen
+    atoms and cell in the same sister file.  The parameter was called
+    ``xyz_path`` and the examples were all `.xyz`, which reads as a rule
+    even though the code never had one -- and on 2026-09-19 a new `.pdb`
+    reader was written around the sidecar rather than through it.
 
     ``Path.with_suffix`` can't be chained for compound suffixes
     (it'd replace ``.molstruct`` with ``.json`` on the second call),
     so build the name explicitly from the stem.
     """
-    p = Path(xyz_path)
+    p = Path(structure_path)
     return p.with_name(p.stem + SUFFIX)
 
 

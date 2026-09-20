@@ -29,9 +29,11 @@ from molbuilder.parse import (
     parse,
 )
 from molbuilder.parse.coords import (
+    PdbFileParser,
     PySCFGeomFileParser,
     SiestaXVFileParser,
 )
+from molbuilder.parse.errors import UnknownFormatError
 from molbuilder.parse.registry import _registered_file_parsers
 
 
@@ -60,6 +62,114 @@ def test_coords_parsers_registered():
     names = {p.name for p in _registered_file_parsers()}
     assert "siesta-xv" in names
     assert "pyscf-geom" in names
+    assert "pdb" in names
+
+
+# --------------------------------------------------------------------- #
+#  .pdb -- a reader that existed for years with no row in the registry   #
+# --------------------------------------------------------------------- #
+
+_PDB = ("HEADER    TEST\n"
+        "ATOM      1  N   MET A   1       0.000   0.000   0.000"
+        "  1.00  0.00           N\n"
+        "ATOM      2  CA  MET A   1       1.400   0.000   0.000"
+        "  1.00  0.00           C\n"
+        "END\n")
+
+
+def test_a_pdb_is_read_by_a_parser_so_the_picker_can_offer_it(tmp_path: Path):
+    """`structure.js` has claimed `.xyz` AND `.pdb` since it was written.
+
+    Nothing in `parse/` claimed `.pdb`, and from 2026-09-18 the picker
+    drops any file the server registry cannot read -- so half that
+    presenter was unreachable from the Results tab.  The reader was
+    already here (`Structure.from_pdb`); the gap was the registration.
+    `StructureCodec.load` says so in its own comment: *"the file picker
+    accepts .xyz AND .pdb, and each needs its own parser"*.
+    """
+    f = tmp_path / "mol.pdb"
+    f.write_text(_PDB, encoding="utf-8")
+    kind = detect(str(f))
+    assert kind.name == "pdb"
+    got = kind.parse(f)
+    assert got.structure.elements == ["N", "C"]
+    # No CRYST1 reader, so no cell -- stated, not invented.
+    assert got.cell is None
+    assert got.source_format == "pdb"
+
+
+def test_a_long_header_does_not_hide_the_coordinates(tmp_path: Path):
+    """An RCSB entry's preamble is not bounded, and ten real ones broke.
+
+    `_looks_like_pdb` read a fixed 8 KB head for its first hour on
+    2026-09-19, on the reasoning that a solvated system "reaches
+    hundreds of megabytes".  That is true of the FILE and says nothing
+    about the HEADER: measured over the 305 `.pdb` in this tree, the
+    first coordinate record sits anywhere from byte 0 to 286011, and ten
+    ordinary RCSB entries -- `1kx5` at 59940, `2acj` at 43821, the
+    `2kei` NMR ensemble at 26406 -- carry REMARK/SEQRES/HELIX/SHEET past
+    8 KB.  Each was refused by the registry while `StructureCodec.load`
+    read it fine: two doors, two answers, which is the whole class of
+    gap this parser was added to close.
+
+    MUTATION THIS MUST FAIL AGAINST: read a fixed head instead of
+    scanning to the first coordinate record.
+    """
+    f = tmp_path / "bulky.pdb"
+    preamble = "".join(f"REMARK 999 {'x' * 60}\n" for _ in range(400))
+    assert len(preamble) > 8192, "fixture must outgrow the old window"
+    f.write_text(preamble + _PDB, encoding="utf-8")
+
+    kind = detect(str(f))
+    assert kind.name == "pdb"
+    assert kind.parse(f).structure.elements == ["N", "C"]
+
+
+def test_a_pdb_keeps_what_its_author_put_in_the_sidecar(tmp_path: Path):
+    """The scientific half of "one door reads a structure".
+
+    A `.pdb` here is a PERSON'S structure, not an engine's output, so the
+    `.molstruct.json` beside it carries their regions, frozen atoms and
+    cell.  This parser read the geometry with `from_pdb` and skipped the
+    sidecar, which is the failure `test_one_door_reads_a_structure`
+    records: *"a description was born with the author's regions, frozen
+    atoms and cell missing, and everything downstream was then
+    faithfully correct about the wrong thing."*  The guard caught it
+    within an hour of the parser landing.
+
+    MUTATION THIS MUST FAIL AGAINST: read the file with `read_text` +
+    `Structure.from_pdb` instead of `StructureCodec`.
+    """
+    from molbuilder.sidecars import molstruct
+
+    f = tmp_path / "mol.pdb"
+    f.write_text(_PDB, encoding="utf-8")
+    molstruct.save(
+        molstruct.sidecar_path_for(f),
+        molstruct.to_dict({"regions": {"frozen_atoms": [0]}},
+                          n_atoms_total=2,
+                          structure_hash=molstruct.sha256_of_file(f)))
+
+    got = detect(str(f)).parse(f).structure
+    assert getattr(got, "regions", None) == {"frozen_atoms": [0]}, (
+        "the author froze an atom and the parser dropped it")
+
+
+def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
+    """THE CONTENT, not the suffix.
+
+    A truncated download, a refusal page or somebody's notes saved with
+    a `.pdb` name is not a structure, and claiming it puts an error card
+    where a molecule should be.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the `_looks_like_pdb` call
+    from `can_parse`, leaving the suffix test alone.
+    """
+    f = tmp_path / "notes.pdb"
+    f.write_text("this is not a structure\njust some notes\n",
+                 encoding="utf-8")
+    with pytest.raises(UnknownFormatError):
+        detect(str(f))
 
 
 # can_parse ---------------------------------------------------------- #

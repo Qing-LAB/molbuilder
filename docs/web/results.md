@@ -79,12 +79,22 @@ tab has had, so the division is written out in full:
 
 **A double-click shows a file; it never mounts one here.** The interaction
 model (2026-06-07) says a double-click runs the active tab's *"use this file"*
-action, and every other tab has one — Molbuilder loads the structure onto the
-canvas, spectra loads the file. This tab had none, so the gesture did nothing
-at all. Its action is the **viewer**, not a mount: the panel is built from the
+action. Molbuilder loads the structure onto the canvas, spectra loads the
+file; this tab had none, so the gesture did nothing at all. Its action is the
+**viewer**, not a mount: the panel is built from the
 list and the list is re-read only when you ask, so a sidebar gesture that
 mounted something would put back the coupling Reload replaced. You can look
 inside any file you like without disturbing what you are reading.
+
+*(**Not every tab is supposed to have one.** This paragraph said "every other
+tab has one" until 2026-09-19, and the commit that added it said /results was
+"the only tab that ignored the commit gesture" — both false.
+`/transport-calculation` shows the sidebar and subscribes to **neither**
+channel, deliberately: the citation is that tab's one structure door, and a
+sidebar commit would be a second source for one fact (user, 2026-08-29). It is
+pinned by `tests/test_transport_blueprint.py::test_core_js_reads_no_sidebar_structure_channel`.
+Read as written, the sentence would send someone to wire transport and reverse
+a recorded decision.)*
 
 **The panel owns a folder; Reload is the only thing that moves it.** The
 button says *"Reload from current project dir"* and not *"Refresh"* for that

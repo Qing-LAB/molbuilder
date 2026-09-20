@@ -1,9 +1,9 @@
 /* /results tab front-end controller (registry-driven dispatch).
  *
- * Subscribes to the projects-sidebar selection state and routes
- * the selected file to the matching inspector via
+ * Mounts whatever the file picker announces, via
  * ``window.molbuilder.inspectors`` (see lib/inspectors/registry.js
- * for the contract).
+ * for the contract).  Nothing in the sidebar reaches this panel;
+ * the picker's list is the only source (results.md § 2.1).
  *
  * The dispatch is intentionally tiny: pick + mount + dispose.  All
  * file-type-specific logic lives in the inspector modules under
@@ -55,6 +55,16 @@
     let mountedFile = "";
     let mountedName = "";
 
+    //: The scope last announced, so a caller that does not know it cannot
+    //: erase it.  See `_renderStatus`.
+    let _scope = null;
+
+    function _dirOf(path) {
+        const p = String(path || "");
+        const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+        return cut > 0 ? p.slice(0, cut) : "";
+    }
+
     function _basename(path) {
         const u = (window.molbuilder || {}).path;
         return u ? u.basename(path) : (path || "");
@@ -76,22 +86,40 @@
      * have parted it says so, and names the gesture that closes the gap.
      */
     function _renderStatus(file, inspectorName, scope) {
+        /* THE LAST SCOPE STICKS.  Callers that know nothing about the folder
+         * -- `_showFallback`, and `init`'s first paint -- used to pass none,
+         * and this reset the readout to "No folder selected" over a panel
+         * that was bound.  On a page load into a folder whose scan then
+         * failed, that was the final state: no folder named anywhere, and an
+         * error in the menu. */
+        if (scope) _scope = scope;
+        const sc = _scope || { dir: "", diverged: false };
         if (els.fileReadout) {
-            const dir = (scope && scope.dir) || "";
+            const dir = sc.dir || "";
             let text;
             if (!dir) {
                 text = file ? _basename(file) : "No folder selected";
-            } else if (file) {
+            } else if (!file) {
+                text = dir + " / (nothing selected)";
+            } else if (_dirOf(file) === dir) {
                 text = dir + " / " + _basename(file);
             } else {
-                text = dir + " / (nothing selected)";
+                /* THE FILE IS NOT IN THE BOUND FOLDER, so do not write it as
+                 * if it were.  `<bound>/<basename>` is a path that does not
+                 * exist, and printing it is exactly the 2026-08-04 failure --
+                 * a plausible name over another run's numbers.  It happens
+                 * for one round-trip after every Reload, and permanently
+                 * when that Reload's scan fails. */
+                text = dir + "  \u2014 showing " + file
+                     + ", which is not in this folder";
             }
-            if (scope && scope.diverged) {
+            if (sc.diverged) {
                 text += "  \u2014 the sidebar has moved on; Reload to follow";
             }
             els.fileReadout.textContent = text;
             els.fileReadout.classList.toggle(
-                "is-diverged", !!(scope && scope.diverged));
+                "is-diverged",
+                !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir));
             els.fileReadout.title = file || dir || "";
         }
         if (els.kindReadout) {
@@ -200,7 +228,8 @@
          * frame you had scrubbed to, the mode you had selected -- to redraw
          * the same thing.  Only the header is refreshed, because the FOLDER
          * may have started diverging while you were away. */
-        if (file && file === mountedFile && currentHandle) {
+        if (file && file === mountedFile && currentHandle
+                 && !(sel && sel.force)) {
             _renderStatus(file, mountedName, scope);
             return;
         }
@@ -382,7 +411,10 @@
          * click already set it, so there is nothing to pass. */
         if (proj && typeof proj.onCommit === "function"
                  && typeof proj.showPreview === "function") {
-            proj.onCommit(() => proj.showPreview());
+            // The PAYLOAD, not the global pick -- every other commit
+            // subscriber uses `sel`, and the pick can be empty while the
+            // payload is right (see showPreview's own note).
+            proj.onCommit((sel) => proj.showPreview(sel && sel.file));
         }
 
         /* NOTHING IS MOUNTED FROM OUTSIDE THE LIST (2026-09-19).
