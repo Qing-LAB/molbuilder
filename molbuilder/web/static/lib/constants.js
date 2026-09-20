@@ -47,5 +47,13 @@
         // which throws away camera/playback state.  A bare
         // ``refresh`` is "re-fetch + redraw, keep everything else".
         EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh",
+
+        //: The panel's FOLDER changed, or the sidebar walked away from it.
+        //: Display only -- it carries `{dir, diverged}` and moves nothing.
+        //: It exists because divergence BEGINS after the last announcement:
+        //: the panel says where it is when it mounts, and the sidebar can
+        //: leave at any time after that, with no selection event to ride on.
+        //: Without this the header would be honest only until you browsed.
+        EVENT_SCOPE_CHANGED: "molbuilder:results:scopeChanged",
     });
 })(typeof window !== "undefined" ? window : this);

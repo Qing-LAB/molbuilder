@@ -49,22 +49,50 @@
     // element + the standard /api/files/read wrapper.  Inspectors
     // read showError + readFile off this object.
     let mountContext = null;
+    //: What is on screen right now -- the comparison the re-announce guard
+    //: in `_onSelectionChange` makes.  `currentHandle` alone cannot answer
+    //: it: it says something is mounted, not which file it is showing.
+    let mountedFile = "";
+    let mountedName = "";
 
     function _basename(path) {
         const u = (window.molbuilder || {}).path;
         return u ? u.basename(path) : (path || "");
     }
 
-    function _renderStatus(file, inspectorName) {
+    /**
+     * The header, which since 2026-09-19 answers WHERE rather than WHAT.
+     *
+     * It was the filename alone, and hidden by CSS as "redundant -- the
+     * selected option carries the same filename".  Both halves were true and
+     * together they were the 2026-08-04 defect: the panel rendered a run from
+     * another folder and the option said only `siesta.out`, so every number
+     * was plausible and every number was wrong, "with nothing on screen
+     * saying so".
+     *
+     * The dropdown owns the filename.  This owns the folder, which is the
+     * thing that can now differ from where the sidebar is pointing -- and it
+     * is the reason the panel is allowed to stop following it.  When the two
+     * have parted it says so, and names the gesture that closes the gap.
+     */
+    function _renderStatus(file, inspectorName, scope) {
         if (els.fileReadout) {
-            // Show the bare filename so the eye lands on the data, not
-            // the verb.  Full path goes in the title attribute --
-            // hover-reveal handles "where exactly is this file" without
-            // burning header real estate.
-            els.fileReadout.textContent = file
-                ? _basename(file)
-                : "No file selected";
-            els.fileReadout.title = file || "";
+            const dir = (scope && scope.dir) || "";
+            let text;
+            if (!dir) {
+                text = file ? _basename(file) : "No folder selected";
+            } else if (file) {
+                text = dir + " / " + _basename(file);
+            } else {
+                text = dir + " / (nothing selected)";
+            }
+            if (scope && scope.diverged) {
+                text += "  \u2014 the sidebar has moved on; Refresh to follow";
+            }
+            els.fileReadout.textContent = text;
+            els.fileReadout.classList.toggle(
+                "is-diverged", !!(scope && scope.diverged));
+            els.fileReadout.title = file || dir || "";
         }
         if (els.kindReadout) {
             // The kind readout is rendered as an accent pill by
@@ -141,14 +169,39 @@
         if (els.loadingOverlay) els.loadingOverlay.hidden = true;
     }
 
+    /** Put down whatever is on screen, and forget it. */
+    function _clearMounted() {
+        if (currentHandle) {
+            try { currentHandle.dispose(); } catch (_) { /* swallow */ }
+            currentHandle = null;
+        }
+        mountedFile = "";
+        mountedName = "";
+    }
+
     function _onSelectionChange(sel) {
         const file  = sel && sel.file ? sel.file : "";
         const meta  = (sel && sel.meta) || null;
         const place = (sel && sel.place) || null;
+        const scope = { dir: (sel && sel.dir) || "",
+                        diverged: !!(sel && sel.diverged) };
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();
+            _clearMounted();
             _showFallback(file, place);
+            _renderStatus("", "", scope);
+            return;
+        }
+        /* THE SAME FILE IS NOT A NEW MOUNT.  The picker announces its choice
+         * on every scan now (that is what makes the list the one source), and
+         * a tab-re-entry scan usually re-announces the file already on screen.
+         * Remounting it would throw away what the viewer is holding -- the
+         * frame you had scrubbed to, the mode you had selected -- to redraw
+         * the same thing.  Only the header is refreshed, because the FOLDER
+         * may have started diverging while you were away. */
+        if (file && file === mountedFile && currentHandle) {
+            _renderStatus(file, mountedName, scope);
             return;
         }
         // Dispatch on THE SERVER'S ANSWER when the picker sent one
@@ -158,7 +211,9 @@
         const inspector = reg.pick(file, meta);
         if (!inspector) {
             _hideLoading();
+            _clearMounted();
             _showFallback(file, place);
+            _renderStatus("", "", scope);
             return;
         }
         // Lock the view down BEFORE disposing the old inspector, so there is no
@@ -174,7 +229,9 @@
             currentHandle = null;
         }
         currentHandle = reg.mount(els.host, file, mountContext, meta);
-        _renderStatus(file, inspector.displayName);
+        mountedFile = file;
+        mountedName = inspector.displayName;
+        _renderStatus(file, inspector.displayName, scope);
     }
 
     function init() {
@@ -272,11 +329,29 @@
         // back full control of what's mounted.
         document.addEventListener(
             window.molbuilder.constants.EVENT_FILE_SELECTED,
-            (evt) => _onSelectionChange({
-                file:  (evt && evt.detail && evt.detail.file) || "",
-                meta:  (evt && evt.detail && evt.detail.meta) || null,
-                place: (evt && evt.detail && evt.detail.place) || null,
-            })
+            /* THE DETAIL IS PASSED THROUGH, NOT RE-LISTED.  This copied
+             * `file` / `meta` / `place` into a fresh object by hand, so the
+             * picker gained `dir` and `diverged` on 2026-09-19 and the header
+             * went on showing a bare filename -- the listener was silently
+             * dropping the two fields the folder readout is made of.  A
+             * hand-kept field list between two halves of one contract is a
+             * second shape of the same record; `_onSelectionChange` already
+             * guards every field it reads. */
+            (evt) => _onSelectionChange((evt && evt.detail) || {})
+        );
+
+        /* The header, kept true between selections.  Divergence starts when
+         * the sidebar walks off, which is not a selection -- so the panel
+         * would otherwise go on claiming it was in step until you next
+         * picked something.  Display only: it re-renders the readout around
+         * whatever is already mounted and touches nothing else. */
+        document.addEventListener(
+            window.molbuilder.constants.EVENT_SCOPE_CHANGED,
+            (evt) => {
+                const d = (evt && evt.detail) || {};
+                _renderStatus(mountedFile, mountedName,
+                              { dir: d.dir || "", diverged: !!d.diverged });
+            }
         );
 
         // Tab-level result-file picker (2026-06-01).  Owns its own
@@ -289,22 +364,22 @@
             picker.mount(document);
         }
 
-        // Initial bootstrap: with the onChange subscription
-        // retired, the inspector needs a manual first render so
-        // returning users with a sessionStorage-saved current
-        // file see their content without first having to click
-        // through the dropdown.  The picker's _forceRescan in
-        // its mount call ALSO emits a fileSelected event when it
-        // auto-picks; that path covers the "fresh dir with no
-        // sessionStorage pick" case.  This direct call covers the
-        // complementary "sessionStorage has a file already".
-        const initialFile = (typeof proj.getCurrentFile === "function")
-            ? proj.getCurrentFile() : "";
-        if (initialFile) {
-            _onSelectionChange({ file: initialFile });
-        } else {
-            _showFallback("");
-        }
+        /* NOTHING IS MOUNTED FROM OUTSIDE THE LIST (2026-09-19).
+         *
+         * A direct `_onSelectionChange({file: projects.getCurrentFile()})`
+         * stood here, to show a remembered file without waiting for the scan.
+         * It was a second source for what the panel displays, and it beat the
+         * scan to the host every time -- so on the commonest page load the
+         * viewer was chosen by FILENAME, with no `meta` and no `place`, which
+         * is the guessing the server door replaced.  It could also mount a
+         * file this directory does not offer, or one no parser can read.
+         *
+         * The picker announces its choice on every scan now, including the
+         * "we kept what you had" arm that used to stay silent -- which is
+         * exactly the case this bootstrap existed to cover.  So the wait is
+         * one round-trip, and what lands is the answer rather than a guess.
+         */
+        _showFallback("");
     }
 
     if (document.readyState === "loading") {

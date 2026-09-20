@@ -53,9 +53,13 @@
 
 <main class="results-main">
 
+  {# WHICH FOLDER these results came from.  The dropdown names the file;
+     this names the place, and says when the sidebar has moved elsewhere.
+     It is what makes it safe for the panel to stop following the sidebar
+     (results.md 2.1) -- see the note in results/style.css before hiding it. #}
   <header class="results-status">
     <span id="results-current-file" class="results-file-readout">
-      No file selected.
+      No folder selected.
     </span>
     <span id="results-current-kind" class="results-file-kind"></span>
   </header>

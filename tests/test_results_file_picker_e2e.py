@@ -544,3 +544,95 @@ class TestResultsDecoupledFromSidebar:
                 f"fileSelected.detail.file should be an absolute path "
                 f"inside the project dir {dir_path}; got {ev['file']!r}"
             )
+
+
+class TestThePanelOwnsItsFolder:
+    """The DIRECTORY half of the decoupling (2026-09-19, user).
+
+    `TestResultsDecoupledFromSidebar` above pins the file half, which has
+    held since #301.  The folder half went the other way on 2026-08-04
+    after a live BDT-Au111 job rendered as a finished run from a folder
+    the user had left.  The panel now stays put and the header names its
+    folder instead -- so these two assertions are one contract, and
+    neither is safe alone.  `results.md` 2.1 says so in the same breath.
+    """
+
+    def test_browsing_the_sidebar_does_not_move_the_panel(
+            self, page, flask_server, project_with_one_out):
+        proj, dir_path = project_with_one_out
+        other = proj.parent / "elsewhere"
+        other.mkdir()
+        (other / "other.out").write_text(
+            "Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -9.0  -9.0  -9.0  0.9  0.5  30.0\n"
+            ">> End of run: 2026-01-03\n")
+
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1")
+        before = _option_basenames(_picker_options(page))
+        assert before == ["run1.out"]
+
+        # Walk the sidebar into a DIFFERENT folder that has its own result.
+        page.evaluate(
+            "(d) => window.molbuilder.projects.setShared(d, '')", str(other))
+        page.wait_for_timeout(500)
+
+        # The menu is still the bound folder's.  Pre-2026-09-19 this
+        # re-scoped and auto-picked, taking the reader with it.
+        assert _option_basenames(_picker_options(page)) == before, (
+            "browsing the sidebar re-scoped the panel")
+
+        # And the header SAYS the two have parted -- the half that makes
+        # not-following safe.  Without it this is the 2026-08-04 defect.
+        #
+        # VISIBLE, asserted separately and on purpose: `innerText` falls
+        # back to `textContent` for an element that is not rendered (HTML
+        # spec), so re-adding the `display: none` rule that hid this header
+        # until 2026-09-19 passed the text assertion below unchanged.  Found
+        # by mutation, which is the only way that hole shows up.
+        assert page.locator("#results-current-file").is_visible(), (
+            "the folder readout is hidden -- it is the mitigation that lets "
+            "the panel stop following the sidebar; see results/style.css")
+        readout = page.locator("#results-current-file").inner_text()
+        assert "elsewhere" not in readout
+        assert "Refresh" in readout, (
+            f"header does not say the sidebar moved on: {readout!r}")
+
+    def test_refresh_is_what_adopts_the_sidebars_folder(
+            self, page, flask_server, project_with_one_out):
+        """The other side: the gesture exists and does the whole job."""
+        proj, dir_path = project_with_one_out
+        other = proj.parent / "elsewhere2"
+        other.mkdir()
+        (other / "other.out").write_text(
+            "Siesta Version: 5.4.2\n"
+            "siesta: System type = molecule\n"
+            "siesta: iscf   Eharris(eV)\n"
+            "scf:    1   -9.0  -9.0  -9.0  0.9  0.5  30.0\n"
+            ">> End of run: 2026-01-03\n")
+
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1")
+
+        page.evaluate(
+            "(d) => window.molbuilder.projects.setShared(d, '')", str(other))
+        page.wait_for_timeout(300)
+        page.click("#results-file-picker-refresh")
+
+        page.wait_for_function(
+            "() => Array.from(document.querySelectorAll("
+            "    '#results-file-picker-select option'))"
+            ".some(o => o.textContent.indexOf('other.out') === 0)",
+            timeout=10000)
+        readout = page.locator("#results-current-file").inner_text()
+        assert "elsewhere2" in readout, readout
+        assert "Refresh" not in readout, (
+            f"still claims divergence after adopting: {readout!r}")

@@ -70,20 +70,22 @@ tab has had, so the division is written out in full:
 
 | You do this | What happens |
 | --- | --- |
-| **Navigate the sidebar to another folder** | the dropdown **re-scopes**: it asks the route about that folder and opens **whatever the server calls that directory's result**, so the panel shows the run you just navigated to |
+| **Navigate the sidebar to another folder** | **nothing here.** The panel stays on the folder it is bound to, and the header says the sidebar has moved on |
 | **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
 | **Double-click a file** in the sidebar | still nothing here. The sidebar never chooses a result |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
-| **Refresh** | re-syncs the menu with the sidebar's current folder, re-scans for files written since, and tells a live viewer to re-fetch now |
+| **Refresh** | **binds the panel to wherever the sidebar is now**, re-scans it, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
+| **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
 
-**The dropdown dictates the display.** The four plots, the run-state badge, the
-convergence-target card, the 3-D structure and the trajectory all render the
-dropdown's current selection and nothing else. There is no second route to a
-mounted viewer.
+**The panel owns a folder; Refresh is the only thing that moves it.** Browsing
+is browsing — scrolling the sidebar around to see what is where cannot disturb
+a result you are reading. What you get back is an explicit gesture.
 
-**The sidebar's only job on this tab is to say which folder you are in.** A file
-click there cannot hijack a viewer mid-read — that is deliberate, and it is why
-the dropdown exists as a separate control at all.
+**The dropdown dictates the display within that folder.** The four plots, the
+run-state badge, the convergence-target card, the 3-D structure and the
+trajectory all render the dropdown's current selection and nothing else. There
+is no second route to a mounted viewer — the page-load shortcut that mounted a
+remembered file before the scan was removed 2026-09-19, because it was one.
 
 > **The defect this prevents** (2026-08-04). The dropdown used to scope itself
 > once, when the tab mounted, and never again. Moving the sidebar to a different
@@ -92,8 +94,17 @@ the dropdown exists as a separate control at all.
 > a different run, with nothing on screen saying so. A **live** job was displayed
 > as a finished one from another directory, and the numbers looked entirely
 > plausible. Reloading the page or re-picking in the dropdown fixed it, because
-> both make the picker speak; nothing else did. A menu that dictates the display
-> has to be listing the folder you are actually in.
+> both make the picker speak; nothing else did.
+>
+> **The fix chosen then was to follow the sidebar; the fix now is to say where
+> you are** *(2026-09-19)*. Read the note again and the fault is in one clause:
+> *with nothing on screen saying so*. Following was one way to keep the panel
+> honest, and it cost you your place every time you went looking for something.
+> Naming the folder in the header is the other way, and it is the one that
+> survives you scrolling around. The two are alternatives, not a pair — **if
+> the header readout ever goes away, the subscription has to come back.**
+> `results/style.css` carries the same warning where the CSS that hid it used
+> to be.
 
 ### 2.2 One scan, one choice, one announcement
 
@@ -103,7 +114,7 @@ file is current" twice, by two different routes.**
 
 ```mermaid
 flowchart TD
-  T["the folder changed · Refresh · tab re-entry"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
+  T["Refresh (bind to the sidebar) · tab re-entry (re-read) · your pick"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
   S --> E{"any results?"}
   E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
   E -->|"some"| K{"is the file we were<br/>already showing one of them?"}

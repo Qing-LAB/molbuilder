@@ -2,7 +2,8 @@
  *
  * Owns:
  *   * .results-main          -- page layout container
- *   * .results-status        -- header above the inspector (file path readout)
+ *   * .results-status        -- header above the inspector: WHICH FOLDER
+ *                              these results came from (+ the file)
  *   * .results-inspector-host -- the mount-point frame
  *   * .results-fallback      -- empty state when no file is picked
  *   * .inspector-card        -- the single top-level surface per inspector
@@ -591,11 +592,18 @@
     font-style:   normal;
 }
 
-/* Hide the redundant top-of-page filename readout when the
- * dropdown is shown (the selected option carries the same
- * filename). */
-body:has(#results-file-picker-bar:not([hidden])) .results-status {
-    display: none;
+/* The header is NOT hidden, and that is load-bearing.
+ *
+ * It was `display: none` whenever the dropdown was visible -- which is
+ * always -- on the grounds that the readout was "redundant, the selected
+ * option carries the same filename".  The option carries the BASENAME; the
+ * folder appeared nowhere, and on 2026-08-04 the panel rendered a run from
+ * a folder the user had left with nothing on screen saying so.  Since
+ * 2026-09-19 the panel no longer follows the sidebar at all, so naming its
+ * folder is the whole reason that is safe.  Do not re-hide this. */
+.results-file-readout.is-diverged {
+    color: var(--warn-fg, #b26b00);
+    font-weight: 600;
 }
 
 /* ---- Loading lock-down overlay (results/viewer.js) --------------------------

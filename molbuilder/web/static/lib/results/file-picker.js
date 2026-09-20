@@ -466,7 +466,13 @@
         //    so an in-flight stale request is aborted when a new
         //    directory selection lands. -------------------------- //
         let aborter         = null;
-        let lastScannedDir  = null;
+        //: THE DIRECTORY THIS PANEL IS BOUND TO -- owned here, changed by
+        //: ONE thing (Refresh, via `_alignToSidebar`).  It was a scan memo
+        //: called `lastScannedDir` until 2026-09-19, when the sidebar stopped
+        //: dragging the panel around: with the panel able to sit on a folder
+        //: the sidebar has left, "which folder is this" is state somebody has
+        //: to own, and a memo cannot be asked.
+        let boundDir        = null;
         //: What the SERVER said this directory is -- `{role, calculation}`
         //: or null when it does not say (project-layout.md § 1.4a).  Kept
         //: from the last scan so the empty state can render the answer
@@ -720,12 +726,19 @@
                         return;
                     }
                     _populate(selEl, cachedGroups, chosen);
-                    if (keepCurrent) {
-                        // Already mounted; just acknowledge the re-entry.
-                        _startParseStatus(chosen);
-                    } else {
-                        _adoptSelection(chosen);
-                    }
+                    /* ONE EXIT, ALWAYS ANNOUNCED.  The `keepCurrent` arm used
+                     * to stop at `_startParseStatus` on the grounds that the
+                     * file was "already mounted" -- true on a re-entry, false
+                     * on the FIRST scan of a page load, which is the arm that
+                     * runs whenever the remembered file is still in the
+                     * listing.  The panel was then showing an inspector the
+                     * picker had never announced, chosen by filename because
+                     * no `meta` ever reached it.  Since 2026-09-19 the list is
+                     * the only thing that decides what is shown, so it says so
+                     * every time; `viewer.js` no-ops when the file has not
+                     * actually changed, which is what makes a tab-re-entry
+                     * rescan cheap instead of a remount. */
+                    _adoptSelection(chosen);
                 })
                 .catch(err => {
                     if (err && err.name === "AbortError") return;
@@ -759,6 +772,18 @@
         function _adoptSelection(path) {
             if (!path) return;
             const parts = parseDir(path);
+            /* MIRROR ONLY WHEN WE ARE IN THE SAME PLACE.  This exists so the
+             * sidebar highlights the file you picked -- a courtesy, and only
+             * meaningful while the sidebar is listing this folder.  Once the
+             * panel stopped following the sidebar (2026-09-19) the same call
+             * became a shove in the other direction: bound to A, browsing B,
+             * you pick in the menu and the sidebar snaps back to A, losing
+             * the place you were looking at.  A highlight is not worth that,
+             * and it could not have matched anyway. */
+            if (_divergedFromSidebar()) {
+                _emitFileSelected(path);
+                return;
+            }
             const r = proj.setShared(parts.dir, path);
             if (r && r.ok === false) {
                 console.warn(
@@ -789,54 +814,56 @@
          * longer had two cases.
          */
         function _rescanDir(dir, preferredFile) {
-            lastScannedDir = dir;
+            boundDir = dir;
+            _announceScope();
             _scan(dir, preferredFile || "");
         }
 
-        // Sidebar onChange subscription RETIRED 2026-06-09 (task
-        // #301).  Pre-task-301 the picker re-scanned on every
-        // sidebar pick — single-clicking around the sidebar would
-        // hijack the Results inspector mid-read.  Post-301, the
-        // picker treats its <select> as the single source of truth
-        // for the active result file; the sidebar's role on
-        // /results is "set the project directory" only.  Re-scans
-        // happen on pageshow / visibilitychange (tab re-entry,
-        // bfcache restore) and on the explicit Refresh button.
-        /* ...but the DIRECTORY half of it has to come back.
+        /* THE SIDEBAR DOES NOT MOVE THIS PANEL.  Browsing is browsing.
          *
-         * THE CONTRACT IS results.md § 2.1, and it is the whole of the rule:
-         * the sidebar sets the SCOPE (which folder), the dropdown decides
-         * WHAT IS SHOWN within it.  So a folder change re-scopes this menu and
-         * auto-picks the newest; a file click -- single OR double -- changes
-         * nothing here, which is exactly what #301 protected and stays true.
+         * This has been decided three times and the record matters, because
+         * both answers are defensible and each fixed the other's bug:
          *
-         * Why the directory half is not optional: a menu that dictates the
-         * display has to be listing the folder the user is actually in.  This
-         * scoped itself once, at mount, and never again -- so moving the
-         * sidebar to another run folder left it enumerating the PREVIOUS
-         * folder's files, and the four plots, the run badge, the convergence
-         * card and the 3-D structure all went on rendering a different run
-         * with nothing on screen saying so.  Seen 2026-08-04: a LIVE
-         * BDT-Au111 job displayed as a finished BDT run from another
-         * directory, every number plausible and every number wrong.
+         *   2026-06-09 (#301) -- the subscription was RETIRED: single-clicking
+         *     around the sidebar hijacked the inspector mid-read.
+         *   2026-08-04 -- the DIRECTORY half came back, because a panel that
+         *     scoped itself once at mount went on rendering a previous folder:
+         *     a live BDT-Au111 job displayed as a finished BDT run from another
+         *     directory, "every number plausible and every number wrong".
+         *   2026-09-19 (user) -- retired again, WITH the thing that was
+         *     missing both times: the header now names the folder these
+         *     results came from and says when the sidebar has left it.
          *
-         * The first fire is skipped deliberately.  ``onChange`` fires once
-         * immediately on subscribe (projects/state.js), and the initial scan
-         * is already owned by the pageshow/visibilitychange path below --
-         * scanning here too would list the same directory twice on every
-         * page load. */
-        let sawInitialSelectionFire = false;
-        const unsubscribeSelection = proj.onChange(function (sel) {
-            if (!sawInitialSelectionFire) {
-                sawInitialSelectionFire = true;
-                return;
-            }
-            const dir = (sel && sel.dir) ? sel.dir : "";
-            if (!dir || dir === lastScannedDir) return;
-            // "" -> take the newest; a folder change auto-picks
-            // (results.md § 2.1).
-            _rescanDir(dir, "");
+         * Read the 2026-08-04 note again and the actual fault is in its last
+         * clause -- "with nothing on screen saying so".  Following the sidebar
+         * was one way to make the panel honest; naming the folder is the
+         * other, and it is the one that also lets you scroll around without
+         * losing your place.  Taking the second does not make the first wrong;
+         * it makes it unnecessary.  If the readout ever goes away, this
+         * subscription has to come back.
+         *
+         * Re-scans now happen on exactly three things: the Refresh button
+         * (which re-points the panel at the sidebar), tab re-entry (which
+         * re-reads the folder already bound), and your own pick in the menu.
+         */
+        function _announceScope() {
+            try {
+                document.dispatchEvent(new CustomEvent(
+                    C.EVENT_SCOPE_CHANGED,
+                    { detail: { dir: boundDir,
+                                diverged: _divergedFromSidebar() } }));
+            } catch (_) { /* older headless runners */ }
+        }
+
+        /* The ONE thing the sidebar still reaches: the header's wording.
+         * No scan, no re-scope, no mount -- `_announceScope` dispatches a
+         * display-only event.  Keeping this subscription is what lets the
+         * readout stay true while you browse, which is the condition the
+         * note above attaches to not following. */
+        const unsubscribeSelection = proj.onChange(function () {
+            _announceScope();
         });
+
         document.addEventListener(C.EVENT_INSPECTOR_READY,
                                   _onInspectorReady);
 
@@ -872,8 +899,17 @@
                      * § 1.4a); dropping it here is why a stage container and
                      * a folder nobody described got the same sentence --
                      * "no result files yet", which is true of neither. */
+                    /* `dir` and `diverged` ride along for the same reason
+                     * `place` does -- the header has to NAME the folder these
+                     * results come from, and say when the sidebar has moved on
+                     * without them.  That readout is not decoration: it is the
+                     * mitigation for 2026-08-04, where the panel went on
+                     * rendering another run "with nothing on screen saying
+                     * so".  Unbinding the panel from the sidebar is only safe
+                     * because this is said out loud. */
                     { detail: { file: file || "", meta: _metaFor(file),
-                                place: lastPlace } }));
+                                place: lastPlace, dir: boundDir,
+                                diverged: _divergedFromSidebar() } }));
             } catch (_) {
                 // CustomEvent should always be available in supported
                 // browsers; the try/catch is belt + braces for older
@@ -938,7 +974,24 @@
         // re-scope unconditionally -- the whole point is that an unchanged
         // dir should still get a fresh listing.
 
-        function _forceRescan() {
+        /** Is the sidebar somewhere else than this panel? */
+        function _divergedFromSidebar() {
+            if (!boundDir || !proj
+                || typeof proj.getCurrentDir !== "function") return false;
+            const cur = proj.getCurrentDir();
+            return !!cur && cur !== boundDir;
+        }
+
+        /**
+         * REFRESH -- the one gesture that re-points this panel.
+         *
+         * Reads where the sidebar is now, binds to it, and scans.  This is
+         * the whole of the sidebar's authority over the Results tab since
+         * 2026-09-19 (`results.md` § 2.1): browsing does nothing, Refresh
+         * adopts.  `preferredFile` keeps your pick when the new listing
+         * still offers it.
+         */
+        function _alignToSidebar() {
             if (disposed) return;
             if (!proj || typeof proj.onChange !== "function") return;
             // ONE reader owns the per-tab keying (projects.md § 2) --
@@ -958,6 +1011,29 @@
             _rescanDir(cur, curFile || "");
         }
 
+        /**
+         * TAB RE-ENTRY -- re-read the folder we are ALREADY on.
+         *
+         * The other half of what `_forceRescan` used to be.  Coming back to
+         * the browser tab should show files written while you were away; it
+         * must not quietly re-point the panel at wherever the sidebar
+         * drifted, because nobody asked it to.  Before the split these were
+         * one function, so focus-return was a silent Refresh.
+         *
+         * Before the first bind there is nothing to re-read, so the very
+         * first one adopts -- that is the initial bind, not a re-point.
+         */
+        function _rescanBound() {
+            if (disposed) return;
+            if (boundDir === null) { _alignToSidebar(); return; }
+            _rescanDir(boundDir, _currentChoice());
+        }
+
+        /** What the menu is showing right now, so a rescan can keep it. */
+        function _currentChoice() {
+            return (selEl && selEl.value) ? selEl.value : "";
+        }
+
         function _onPageShow(_evt) {
             // ``event.persisted`` is true for bfcache restore, false
             // for a fresh navigation.  We force-rescan in BOTH cases
@@ -965,13 +1041,17 @@
             // initial onChange fire, so the second invocation is a
             // cheap no-op for empty cachedResults; the bfcache case
             // is the load-bearing one.
-            _forceRescan();
+            //
+            // RE-READ, NOT RE-POINT (2026-09-19): coming back to the tab
+            // shows what was written while you were away; it does not adopt
+            // wherever the sidebar has since gone.
+            _rescanBound();
         }
 
         function _onVisibilityChange(_evt) {
             if (root.document
                 && root.document.visibilityState === "visible") {
-                _forceRescan();
+                _rescanBound();
             }
         }
 
@@ -990,12 +1070,17 @@
         // pageshow also fires once on fresh navigation but only
         // AFTER mount returns; this call covers the early window so
         // the dropdown is visible by the time the user looks.
-        _forceRescan();
+        //
+        // This one DOES read the sidebar -- it is the initial bind, and
+        // `projects` already keeps a per-page folder slot (`projects.md`
+        // § 2, "the Results tab keeps its run folder"), so what it adopts is
+        // where this tab was last pointed, not some other tab's place.
+        _alignToSidebar();
 
         // -- Refresh button: explicit user-driven rescan -------- //
         //
         // Click-stacking guard: a double-click would otherwise fire
-        // two _forceRescan calls, each spawning its own fetch +
+        // two _alignToSidebar calls, each spawning its own fetch +
         // resolver — the later resolver wins, but the wasted scan
         // can leave the meta line flickering through two transient
         // statuses.  Disable the button while a scan is in flight;
@@ -1016,7 +1101,7 @@
             // Brief visual ack so the click feels responsive even
             // when the listing is already up-to-date.
             _showTransientStatus("Refreshing…");
-            _forceRescan();
+            _alignToSidebar();
             // Tell any currently-mounted inspector to re-fetch its
             // underlying data NOW instead of waiting for its next
             // polling tick (which the trajectory inspector sets at
