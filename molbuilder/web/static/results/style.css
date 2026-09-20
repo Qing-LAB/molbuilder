@@ -602,7 +602,13 @@
  * 2026-09-19 the panel no longer follows the sidebar at all, so naming its
  * folder is the whole reason that is safe.  Do not re-hide this. */
 .results-file-readout.is-diverged {
-    color: var(--warn-fg, #b26b00);
+    /* `--warn-soft` is the palette's PASSIVE FLAG tone (tokens.css: "--warning
+     * = call-to-action, --warn-soft = passive flag"), which is what this is.
+     * It read `var(--warn-fg, #b26b00)` until 2026-09-19 -- a token that
+     * exists nowhere, so the hardcoded fallback always won and the warning
+     * state rendered at 3.84:1 against the card, DIMMER than the 13.28:1
+     * normal text it was meant to stand out from. */
+    color: var(--warn-soft);
     font-weight: 600;
 }
 

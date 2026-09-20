@@ -98,6 +98,33 @@ def test_a_pdb_is_read_by_a_parser_so_the_picker_can_offer_it(tmp_path: Path):
     assert got.source_format == "pdb"
 
 
+def test_a_long_header_does_not_hide_the_coordinates(tmp_path: Path):
+    """An RCSB entry's preamble is not bounded, and ten real ones broke.
+
+    `_looks_like_pdb` read a fixed 8 KB head for its first hour on
+    2026-09-19, on the reasoning that a solvated system "reaches
+    hundreds of megabytes".  That is true of the FILE and says nothing
+    about the HEADER: measured over the 305 `.pdb` in this tree, the
+    first coordinate record sits anywhere from byte 0 to 286011, and ten
+    ordinary RCSB entries -- `1kx5` at 59940, `2acj` at 43821, the
+    `2kei` NMR ensemble at 26406 -- carry REMARK/SEQRES/HELIX/SHEET past
+    8 KB.  Each was refused by the registry while `StructureCodec.load`
+    read it fine: two doors, two answers, which is the whole class of
+    gap this parser was added to close.
+
+    MUTATION THIS MUST FAIL AGAINST: read a fixed head instead of
+    scanning to the first coordinate record.
+    """
+    f = tmp_path / "bulky.pdb"
+    preamble = "".join(f"REMARK 999 {'x' * 60}\n" for _ in range(400))
+    assert len(preamble) > 8192, "fixture must outgrow the old window"
+    f.write_text(preamble + _PDB, encoding="utf-8")
+
+    kind = detect(str(f))
+    assert kind.name == "pdb"
+    assert kind.parse(f).structure.elements == ["N", "C"]
+
+
 def test_a_pdb_that_holds_no_coordinates_is_refused(tmp_path: Path):
     """THE CONTENT, not the suffix.
 

@@ -37,6 +37,7 @@ import json
 from pathlib import Path
 
 from molbuilder.parse.base import FileParser
+from molbuilder.parse.errors import UnknownFormatError
 from molbuilder.parse.types import SidecarResult
 
 from ._helpers import build_sidecar_result
@@ -48,26 +49,62 @@ from ._helpers import build_sidecar_result
 RESULT_SCHEMA = "job-set/v1"
 
 
-def _load_sweep(path: Path) -> "dict | None":
-    """The payload when this file is a SWEEP's plan, else ``None``.
+class JobSetReadError(ValueError):
+    """Why this file is not a sweep's plan, in words -- surfaced
+    verbatim, so a refusal names the actual cause."""
+
+
+def _load_sweep(path: Path) -> dict:
+    """The payload, or :class:`JobSetReadError` saying why not.
 
     One reader for both halves of the parser, so ``can_parse`` and
-    ``parse`` cannot come to disagree about what they are looking at —
+    ``parse`` cannot come to disagree about what they are looking at --
     the failure `sidecars/__init__` records for the deleted
     ``TransportSidecarFileParser``, which claimed a shape nothing wrote.
+
+    IT RETURNED ``None`` FOR EVERYTHING until 2026-09-19, and `parse`
+    turned every one of those into the same sentence: *"an ordinary
+    calculation's ladder says `kind: ladder`"*.  So a sweep plan
+    truncated by a killed write, or one that could not be opened,
+    reported as a perfectly healthy ladder -- and the bench directory
+    listed as *"no result files yet"*, the exact symptom this parser
+    exists to remove, with nothing saying the file was damaged.
+    `sidecars/transport.py`, the model for this file, carries the real
+    cause in a `TransportRecordError`; that half was not copied.
+
+    WHAT THIS DOES NOT FIX.  `detect()` fans a boolean `can_parse` over
+    every registered parser, so it cannot attribute a refusal to one and
+    answers its own generic sentence.  The picker asks `detect`, so a
+    damaged plan STILL lists as an absence there -- the reason reaches a
+    caller that asks this parser directly, and nothing else.  Carrying a
+    reason through the fan-out is a registry change, not a parser one.
     """
     from molbuilder.jobset.model import FILENAME, KIND_SWEEP, SCHEMA
 
-    if Path(path).name != FILENAME:
-        return None
+    p = Path(path)
+    if p.name != FILENAME:
+        raise JobSetReadError(f"{p.name} is not {FILENAME}")
     try:
-        said = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+        text = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise JobSetReadError(f"{p.name} could not be read: {exc}") from exc
+    try:
+        said = json.loads(text)
+    except ValueError as exc:
+        raise JobSetReadError(
+            f"{p.name} is not valid JSON -- a killed write leaves this "
+            f"shape: {exc}") from exc
     if not isinstance(said, dict):
-        return None
-    if said.get("schema") != SCHEMA or said.get("kind") != KIND_SWEEP:
-        return None
+        raise JobSetReadError(
+            f"{p.name} holds a {type(said).__name__}, not an object")
+    if said.get("schema") != SCHEMA:
+        raise JobSetReadError(
+            f"{p.name} says schema {said.get('schema')!r}, not {SCHEMA!r}")
+    if said.get("kind") != KIND_SWEEP:
+        raise JobSetReadError(
+            f"{p.name} says kind {said.get('kind')!r}, not {KIND_SWEEP!r} -- "
+            f"an ordinary calculation's stage ladder is also called "
+            f"{FILENAME}, and its result is the runs below it, not this file")
     return said
 
 
@@ -82,18 +119,20 @@ class JobSetSweepFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        return _load_sweep(Path(path)) is not None
+        try:
+            _load_sweep(Path(path))
+        except JobSetReadError:
+            return False
+        return True
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
-        payload = _load_sweep(Path(path))
-        if payload is None:
-            from molbuilder.parse.errors import UnknownFormatError
-            raise UnknownFormatError(
-                f"{Path(path).name} is not a benchmark sweep's job set "
-                f"(a sweep says `kind: sweep`; an ordinary calculation's "
-                f"ladder says `kind: ladder` and its result is the runs "
-                f"below it, not this file)")
+        try:
+            payload = _load_sweep(Path(path))
+        except JobSetReadError as exc:
+            # The canonical error `base.FileParser.parse` requires,
+            # carrying the reason rather than a guess about it.
+            raise UnknownFormatError(str(exc)) from exc
         return build_sidecar_result(
             payload=payload,
             schema=RESULT_SCHEMA,

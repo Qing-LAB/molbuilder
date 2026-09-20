@@ -433,18 +433,44 @@ async function saveEdit() {
  * Editing is a SEPARATE gate: files past EDIT_MAX_BYTES (32 MB) load read-only
  * (Edit disabled with a "use external editor" hint).
  */
-export async function showPreview() {
+export async function showPreview(wanted) {
     if (!elModal) {
         console.warn("[preview] showPreview bailed: elModal missing — "
             + "initPreview() wasn't called.  Is the sidebar partial "
             + "included in this template?");
         return;
     }
-    const path = projects.getCurrentFile();
+    /* THE CALLER'S FILE WINS, and the pick is only the fallback.
+     *
+     * This read `projects.getCurrentFile()` and nothing else, which is
+     * fine for the View item -- it acts on the row you opened the menu
+     * on, and `setShared` ran first.  It is NOT fine for a commit
+     * subscriber, which is HANDED `{dir, file}`: `setShared` publishes
+     * that payload even when the sessionStorage write throws, on
+     * purpose (`state.js`: *"we MUST NOT propagate the throw -- publish
+     * the new state regardless so subscribers still update"*), and
+     * `readSelectionSlot` answers "" for the same failure.  So in a
+     * private window, or with site data blocked, the pick is empty
+     * while the payload is correct: every other tab still loads the
+     * file and this modal alone would refuse to open. */
+    const path = wanted || projects.getCurrentFile();
     if (!path) {
         console.warn("[preview] showPreview bailed: no file selected "
-            + "(projects.getCurrentFile() returned empty).");
+            + "(no path given and projects.getCurrentFile() is empty).");
         return;
+    }
+    /* RE-ENTRY MUST NOT EAT AN EDIT.  `_state = _emptyState()` below
+     * drops the editor's contents, and `tryCloseModal` -- the only
+     * other teardown -- prompts first.  While the only callers sat
+     * under this modal's own backdrop that gap was unreachable; a
+     * commit subscriber is not, because `publishCommit` is public. */
+    if (_state.editing && _isDirty() && path !== _state.path) {
+        const ok = window.confirm(
+            "You have unsaved edits in " + String(_state.path).split("/").pop()
+            + ".  Open " + String(path).split("/").pop() + " anyway?\n\n"
+            + "Click Cancel to stay and Save first."
+        );
+        if (!ok) return;
     }
     _state = _emptyState();
     _state.path = path;

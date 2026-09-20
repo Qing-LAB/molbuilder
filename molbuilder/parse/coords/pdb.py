@@ -28,37 +28,57 @@ from __future__ import annotations
 from pathlib import Path
 
 from molbuilder.parse.base import FileParser
+from molbuilder.parse.errors import ParseError
 from molbuilder.parse.types import StructureResult
 from molbuilder.structure import Structure
 
 from ._helpers import build_structure_result
 
-#: How much of the file is enough to decide.  A PDB's records are
-#: line-oriented and ``ATOM``/``HETATM`` start in column 1, so the
-#: answer is at the top or the file is not one -- and `can_parse` runs
-#: once per file in a directory, on a format that reaches hundreds of
-#: megabytes for a solvated system.  Reading it whole to say "no" is
-#: what makes a picker scan feel broken.
-_SNIFF_BYTES = 8192
+#: How far to look before giving up.  Generous, because the thing being
+#: skipped is the HEADER and a PDB header has no small bound: measured
+#: over the 305 `.pdb` in this tree, the first coordinate record sits
+#: anywhere from byte 0 to byte 286011 (`1jj2.pdb`, a ribosome).
+#:
+#: THIS WAS 8192 FOR AN HOUR ON 2026-09-19 AND REFUSED TEN REAL FILES --
+#: ordinary RCSB entries whose `REMARK`/`SEQRES`/`HELIX`/`SHEET` preamble
+#: runs past 8 KB (`1kx5` nucleosome 59940, `2kei` NMR ensemble 26406,
+#: `2acj` 43821).  The reasoning was "a solvated system reaches hundreds
+#: of megabytes, so do not read it whole", which is true of the FILE and
+#: says nothing about the header -- and the one file it was validated
+#: against, `1c75.pdb`, starts at 5751, seventy per cent of the way
+#: through the window it passed.  A margin that thin is not a margin.
+#:
+#: The scan still stops at the first coordinate record, so a real PDB
+#: costs its header and not its atoms: `1jj2.pdb` is 8.3 MB and answers
+#: after 286 KB.  The cap only bounds the pathological case -- a large
+#: file with a `.pdb` name and no coordinates anywhere.
+_SNIFF_BYTES = 4 * 1024 * 1024
 
 
 def _looks_like_pdb(path: Path) -> bool:
-    """Does the head of this file carry a coordinate record?
+    """Does this file carry a coordinate record?
 
     THE CONTENT, NOT THE SUFFIX -- the rule `sidecars/transport.py`
     states and the reason its predecessor was deleted.  A ``.pdb`` that
     holds a refusal message, a truncated download or somebody's notes
     is not a structure, and offering it puts an error card where a
     molecule should be.
+
+    Streamed, and it RETURNS AT THE FIRST HIT, so the cost is the
+    header rather than the file.  Reading a fixed head instead is what
+    refused ten real structures; see :data:`_SNIFF_BYTES`.
     """
     try:
+        seen = 0
         with path.open("r", encoding="utf-8", errors="replace") as fh:
-            head = fh.read(_SNIFF_BYTES)
+            for line in fh:
+                if line.startswith(("ATOM  ", "HETATM")):
+                    return True
+                seen += len(line)
+                if seen > _SNIFF_BYTES:
+                    return False
     except OSError:
         return False
-    for line in head.splitlines():
-        if line.startswith(("ATOM  ", "HETATM")):
-            return True
     return False
 
 
@@ -84,8 +104,18 @@ class PdbFileParser(FileParser):
         # floor 2 and reaches back into `parse`, so this reads the text
         # and calls the L1 door directly, which is what `siesta_xv` does
         # with `molbuilder.structure` for the same reason.
-        structure = Structure.from_pdb(
-            p.read_text(encoding="utf-8", errors="replace"))
+        # `base.FileParser.parse` requires the canonical `ParseError`
+        # rather than "letting unstructured exceptions escape".  An
+        # unwrapped one reaches Flask as an HTML 500 the browser cannot
+        # read -- reproduced on `/api/watch/load` 2026-09-18, which is
+        # why `engines/pyscf.py` wraps for the same reason.  The file can
+        # vanish between `can_parse` and here, and `from_pdb` raises
+        # ValueError when every ATOM line has unparseable columns.
+        try:
+            structure = Structure.from_pdb(
+                p.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError) as exc:
+            raise ParseError(f"{p.name}: {exc}") from exc
         return build_structure_result(
             structure=structure,
             cell=None,

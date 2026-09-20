@@ -473,6 +473,14 @@
         //: the sidebar has left, "which folder is this" is state somebody has
         //: to own, and a memo cannot be asked.
         let boundDir        = null;
+        //: Set by the Reload click, consumed by the next announcement.
+        //: `results.md` 4 states the contract in four words -- *"Reload =
+        //: open the same file again"* -- and the same-file no-op added on
+        //: 2026-09-19 quietly broke it for every viewer that neither polls
+        //: nor listens for a refresh: structure, source, markdown.  For
+        //: those three the remount WAS the re-read, so Reload stopped
+        //: reaching the disk and showed you the geometry you already had.
+        let forceNextAnnounce = false;
         //: What the SERVER said this directory is -- `{role, calculation}`
         //: or null when it does not say (project-layout.md § 1.4a).  Kept
         //: from the last scan so the empty state can render the answer
@@ -769,29 +777,42 @@
          * coming back round to relabel the menu, which stopped happening when
          * that subscription was retired (#301) and left the label behind.
          */
+        /**
+         * Mirror this pick into the sidebar's pointer -- ONLY when the
+         * sidebar is already listing our folder.  Returns false when the
+         * caller should stop (a refusal), true otherwise.
+         *
+         * MIRRORING IS A COURTESY: it highlights the row you picked, and
+         * that is meaningful only while the sidebar is showing this folder.
+         * Once the panel stopped following the sidebar (2026-09-19) the same
+         * call became a shove in the other direction -- bound to A, browsing
+         * B, you pick in the menu and the sidebar snaps back to A.  Worse
+         * than losing your place: `_divergedFromSidebar()` then answers
+         * false, so the header drops its warning while the sidebar visibly
+         * still lists B, and Reload can no longer reach B at all.  The one
+         * honest signal on the panel is switched off by a pick inside it.
+         *
+         * THIS IS ONE FUNCTION because the guard was written on the
+         * automatic path alone and the MANUAL one -- the case the comment
+         * itself described, "you pick in the menu" -- was left open until
+         * 2026-09-19.  Two call sites, one rule, no second chance to guard
+         * only half of it.
+         */
+        function _mirrorToSidebar(dir, path) {
+            if (_divergedFromSidebar()) return true;
+            const r = proj.setShared(dir, path);
+            if (r && r.ok === false) {
+                console.warn(
+                    "[results-file-picker] selection refused:", r.error);
+                return false;
+            }
+            return true;
+        }
+
         function _adoptSelection(path) {
             if (!path) return;
             const parts = parseDir(path);
-            /* MIRROR ONLY WHEN WE ARE IN THE SAME PLACE.  This exists so the
-             * sidebar highlights the file you picked -- a courtesy, and only
-             * meaningful while the sidebar is listing this folder.  Once the
-             * panel stopped following the sidebar (2026-09-19) the same call
-             * became a shove in the other direction: bound to A, browsing B,
-             * you pick in the menu and the sidebar snaps back to A, losing
-             * the place you were looking at.  A highlight is not worth that,
-             * and it could not have matched anyway. */
-            if (_divergedFromSidebar()) {
-                _emitFileSelected(path);
-                return;
-            }
-            const r = proj.setShared(parts.dir, path);
-            if (r && r.ok === false) {
-                console.warn(
-                    "[results-file-picker] selection refused:",
-                    r.error
-                );
-                return;
-            }
+            if (!_mirrorToSidebar(parts.dir, path)) return;
             _emitFileSelected(path);
         }
 
@@ -814,6 +835,24 @@
          * longer had two cases.
          */
         function _rescanDir(dir, preferredFile) {
+            /* BIND FIRST, ANNOUNCE FIRST -- and the header is written to
+             * survive it.  `boundDir` has to move before the fetch, because
+             * the fetch's own resolver keys off it; so for one round-trip
+             * (seconds on a cold NFS mount) the panel is bound to a folder
+             * it has not read, still showing the previous folder's file.
+             *
+             * That window is not hypothetical: if the scan then FAILS -- the
+             * folder was deleted, the route answers 404 -- there is no
+             * announcement to correct it and the state is permanent until
+             * the next Reload.  The header used to print `<new folder> /
+             * <old file>`, a path that does not exist, in the plain colour.
+             * That is the 2026-08-04 defect wearing its own mitigation.
+             *
+             * The fix is in `_renderStatus`, not here: it compares the
+             * mounted file's own directory against the bound one and says
+             * "showing <full path>, which is not in this folder" when they
+             * disagree.  Binding early is then safe because the header
+             * cannot imply the file came from the new folder. */
             boundDir = dir;
             _announceScope();
             _scan(dir, preferredFile || "");
@@ -889,6 +928,8 @@
         }
 
         function _emitFileSelected(file) {
+            const forced = forceNextAnnounce;
+            forceNextAnnounce = false;
             try {
                 document.dispatchEvent(new CustomEvent(
                     C.EVENT_FILE_SELECTED,
@@ -909,7 +950,8 @@
                      * because this is said out loud. */
                     { detail: { file: file || "", meta: _metaFor(file),
                                 place: lastPlace, dir: boundDir,
-                                diverged: _divergedFromSidebar() } }));
+                                diverged: _divergedFromSidebar(),
+                                force: forced } }));
             } catch (_) {
                 // CustomEvent should always be available in supported
                 // browsers; the try/catch is belt + braces for older
@@ -921,12 +963,7 @@
             const newPath = selEl.value;
             if (!newPath) return;
             const parts = parseDir(newPath);
-            const r = proj.setShared(parts.dir, newPath);
-            if (r && r.ok === false) {
-                console.warn(
-                    "[results-file-picker] setShared refused:",
-                    r.error
-                );
+            if (!_mirrorToSidebar(parts.dir, newPath)) {
                 _revertSelectTo(/*last-known good*/ null);
                 return;
             }
@@ -1002,13 +1039,25 @@
             const cur = (typeof proj.getCurrentDir === "function")
                 ? proj.getCurrentDir()
                 : "";
-            const curFile = (typeof proj.getCurrentFile === "function")
-                ? proj.getCurrentFile()
-                : "";
-            if (!cur) return;
-            // Unconditional: an unchanged dir must still get a fresh listing,
-            // which is the whole point of a force-rescan.
-            _rescanDir(cur, curFile || "");
+            if (!cur) {
+                // Nothing to adopt -- the sidebar has not resolved a folder
+                // yet.  Say so and RELEASE THE BUTTON: the busy class is set
+                // by the click handler and cleared only inside `_scan`, so
+                // bailing here used to disable Reload for the rest of the
+                // page load -- on the one screen whose empty state tells you
+                // to press it.
+                _populatePlaceholder(selEl,
+                    "(no project directory yet — pick one in the sidebar)");
+                _showIdleMeta(null);
+                return;
+            }
+            // THE MENU'S CHOICE, NOT THE SIDEBAR'S FILE.  This read
+            // `proj.getCurrentFile()`, so a sidebar SINGLE-CLICK -- which the
+            // contract says does nothing here -- silently decided what the
+            // next Reload would mount.  #301's hijack, deferred behind one
+            // button press.  `_rescanBound` already used the menu; both
+            // rescan paths now agree where "the file we want" comes from.
+            _rescanDir(cur, _currentChoice());
         }
 
         /**
@@ -1100,7 +1149,8 @@
             _setRefreshBusy(true);
             // Brief visual ack so the click feels responsive even
             // when the listing is already up-to-date.
-            _showTransientStatus("Refreshing…");
+            _showTransientStatus("Reloading…");
+            forceNextAnnounce = true;
             _alignToSidebar();
             // Tell any currently-mounted inspector to re-fetch its
             // underlying data NOW instead of waiting for its next

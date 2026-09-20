@@ -244,3 +244,39 @@ def test_an_ordinary_ladder_is_refused_though_the_filename_matches(tmp_path):
 
     with pytest.raises(UnknownFormatError):
         detect(str(_job_set(tmp_path, "ladder")))
+
+
+def test_a_damaged_sweep_says_damaged_not_ladder(tmp_path):
+    """A refusal has to name its OWN cause.
+
+    `_load_sweep` answered `None` for every failure and `parse` turned
+    all of them into one sentence about `kind: ladder`.  So a plan
+    truncated by a killed write reported as a healthy ladder, the bench
+    directory listed as "no result files yet" -- the symptom this parser
+    exists to remove -- and nothing said the file was damaged.
+
+    ASKED THROUGH `parse`, NOT `detect`, and the difference is the point.
+    `detect` fans a boolean `can_parse` over every registered parser, so
+    it cannot attribute a refusal to one of them and answers its own
+    generic "no registered file parser knows how to handle ...".  That
+    is by construction and this test does not pretend otherwise: what it
+    pins is that the parser ITSELF, asked directly, says which of its
+    seven failure modes it hit.  The picker path still shows only an
+    absence -- see the note in `job_set.py`.
+
+    MUTATION THIS MUST FAIL AGAINST: collapse `_load_sweep`'s raises
+    back into a single `return None`.
+    """
+    from molbuilder.parse.errors import UnknownFormatError
+    from molbuilder.parse.sidecars import JobSetSweepFileParser
+
+    f = tmp_path / "job-set.json"
+    f.write_text('{"schema": "molbuilder/job-set@1", "kind": "swe',
+                 encoding="utf-8")
+    assert JobSetSweepFileParser.can_parse(f) is False
+    with pytest.raises(UnknownFormatError) as e:
+        JobSetSweepFileParser.parse(f)
+    said = str(e.value)
+    assert "JSON" in said, said
+    assert "ladder" not in said, (
+        "a damaged file is reported as an ordinary ladder: " + said)
