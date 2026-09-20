@@ -189,7 +189,7 @@ function renderStages(task) {
         const x = el("button", {
             type: "button",
             class: "ts-rowbtn ts-rowbtn-drop"
-                   + (_pendingDrop === col ? " is-pending" : ""),
+                   + (_fs.pendingDrop === col ? " is-pending" : ""),
             title: "Remove this column",
         }, "\u00d7");
         x.addEventListener("click", () => removeColumn(col));
@@ -332,10 +332,47 @@ let _fitSeq   = 0;
  * so reading the module's `_task` here described a different object than
  * the rows above, which is the two-sources bug in miniature.  The rows and
  * the list answer from one value or they can disagree. */
-let _fitBench = {};
+/* ===================================================================== *
+ *  WHAT BELONGS TO THE OPEN FOLDER -- one object, replaced whole.
+ *
+ * `web/task-setup.md` § 2.1: *"the page holds no state of its own… no
+ * in-progress buffer that outlives a directory change."*  These six are
+ * the buffers.  Unlike the facts in groups 1-2, they cannot come from the
+ * folder's answer -- two are debounce timers and DOM hosts, the rest are
+ * what the person has typed or opened -- so the rule is kept by SCOPING
+ * them rather than by fetching them.
+ *
+ * WHY AN OBJECT AND NOT SIX VARIABLES.  They were six, cleared by
+ * `_resetPerFolderState()`: a hand-written list in a module with
+ * twenty-five module variables.  A list only covers what someone
+ * remembered to add, and twice it did not -- a SIESTA description leaked
+ * into the next folder (U6), and on 2026-09-19 the previous calculation's
+ * stage tab, prep command and job name were still on screen under a
+ * heading naming the new one.  Replacing ONE object cannot half-happen,
+ * and a field added here is cleared without anyone remembering.
+ *
+ * Deliberately NOT in here: `_machine` (a choice about the box, not the
+ * folder) and the engine-keyed caches `_cols` / `_presets` / `_sweep`
+ * (which invalidate on their own `*Key`).  Keeping that boundary visible
+ * is the point -- "no state of its own" forbids remembering a FOLDER's
+ * facts, not caching the engine's vocabulary.
+ * ===================================================================== */
+function freshFolderState() {
+    return {
+        extraRunRows: new Map(),  // rows added to a run card, per stage
+        runFits:      new Map(),  // the admission answer per stage
+        fitBench:     {},         // the bench card's last posted axes
+        pendingDrop:  "",         // the armed column drop
+        stepTab:      "",         // which rung's tab was open
+        queue:        "",         // the chosen domain -> `allocation`
+    };
+}
+
+let _fs = freshFolderState();
+
 
 function scheduleFitRefresh(bench) {
-    _fitBench = bench || {};
+    _fs.fitBench = bench || {};
     if (_fitTimer) clearTimeout(_fitTimer);
     // Every keystroke repaints the rows; the server answer is worth one
     // request per pause, not one per character.
@@ -345,7 +382,7 @@ function scheduleFitRefresh(bench) {
 async function refreshFit() {
     const host = $("ts-machine-fit");
     if (!host) return;
-    const bench = _fitBench || {};
+    const bench = _fs.fitBench || {};
     /* ONLY A REAL DESCRIPTION HAS A GRID.  In handover mode `task.json`
      * does not exist yet, and the door reads it -- so this would fire a
      * request that can only 400.  "Empty" likewise. */
@@ -466,11 +503,10 @@ function paintFit(host, body) {
 //: Rows a person asked to see on a rung but has not filled in.  PAGE
 //: state, never the file's: an unstated row is not a fact, and writing
 //: `"mpi_np": ""` would make the reader invent a meaning for it.
-const _extraRunRows = new Map();
 
 function extraRunRows(stage) {
-    let set = _extraRunRows.get(stage);
-    if (!set) { set = new Set(); _extraRunRows.set(stage, set); }
+    let set = _fs.extraRunRows.get(stage);
+    if (!set) { set = new Set(); _fs.extraRunRows.set(stage, set); }
     return set;
 }
 
@@ -694,11 +730,10 @@ function stageRunCard(task, stage, active) {
  * ONE PENDING CHECK PER RUNG, holding the ELEMENT rather than an id: the
  * stage panels are rebuilt on every repaint, so an id would name a node that
  * no longer exists, while a detached one merely goes unseen. */
-const _runFits = new Map();
 
 function scheduleRunFit(stage, host, values) {
-    let f = _runFits.get(stage);
-    if (!f) { f = { seq: 0, timer: null }; _runFits.set(stage, f); }
+    let f = _fs.runFits.get(stage);
+    if (!f) { f = { seq: 0, timer: null }; _fs.runFits.set(stage, f); }
     if (f.timer) clearTimeout(f.timer);
     f.timer = null;
     f.host = host; f.values = values;
@@ -711,7 +746,7 @@ function scheduleRunFit(stage, host, values) {
 }
 
 async function refreshRunFit(stage) {
-    const f = _runFits.get(stage);
+    const f = _fs.runFits.get(stage);
     if (!f || !f.host) return;
     const host = f.host, values = f.values;
     if (_mode !== "description" || !_dir || !values
@@ -840,7 +875,7 @@ function renderMachine(task) {
     }
     const acts = $("ts-machine-actions");
     if (acts) acts.hidden = false;
-    // From the task THIS render was given -- see `_fitBench`.
+    // From the task THIS render was given -- see `_fs.fitBench`.
     scheduleFitRefresh(bench);
 
     /* SAY WHEN THE LABELS ARE MISSING.  The rows above are the real setting
@@ -969,31 +1004,42 @@ async function setEditorText(text, opts) {
  * state of its own ... no remembered form, no in-progress buffer that outlives
  * a directory change."*
  *
- * The one that corrupted data: `_queue` and the two ask boxes feed
+ * The one that corrupted data: `_fs.queue` and the two ask boxes feed
  * `askValues()`, which `applyAsksToDoc` writes into `task.allocation`.  Open
  * folder A with a wall and a memory, switch to B, touch any ask field or
  * notify tick -- and A's numbers were written into B's task.json.
  *
- * The one that destroyed work without warning: `_pendingDrop` is the two-click
+ * The one that destroyed work without warning: `_fs.pendingDrop` is the two-click
  * column-drop guard.  Arm `×` on A's `mesh_cutoff`, switch folder, and ONE
  * click removed B's column -- the warning had already been given, for a
  * different file.
  *
  * A list is a thing to forget to add to, so this is the only place that knows
  * it, and it is called before the branch rather than in each arm. */
+/** Forget the folder that was open — `web/task-setup.md` § 2.1.
+ *
+ * ONE ASSIGNMENT.  This was a hand-written list of eight clears in a module
+ * with twenty-five variables, and a list only ever covers what someone
+ * remembered to add to it.  It twice did not: a SIESTA description leaked
+ * into the next folder (U6), and on 2026-09-19 the previous calculation's
+ * stage tab, prep command and job name were still on screen under a heading
+ * naming the new one.  Replacing the object cannot half-happen, and a field
+ * added to `freshFolderState` is cleared without anyone touching this.
+ *
+ * THE TIMERS ARE CANCELLED, NOT DROPPED.  `runFits` holds pending debounce
+ * handles; letting go of the Map leaves them armed to fire against the
+ * folder you have moved to.  They are harmless today -- each re-reads its
+ * entry and finds the new one -- but "harmless because of what the callback
+ * happens to do" is the kind of reasoning this page is being cleared of.
+ *
+ * The two ask boxes are DOM, not state: they are inputs the person typed
+ * into, and nothing owns their value but the element.
+ */
 function _resetPerFolderState() {
-    _extraRunRows.clear();   // rows added to a run card, per stage
-    _runFits.clear();        // the admission answer per stage
-    _fitBench = {};          // the bench card's last posted axes
-    /* `_runs` and `_tokens` left this list on 2026-09-19.  They are set
-     * from the folder's own answer in `loadFolder`, which is TAGGED with
-     * the folder it describes -- so they cannot hold another folder's
-     * values and there is nothing here to remember to clear.  That is the
-     * shape the rest of this function is being replaced by: state that
-     * cannot go stale needs no reset. */
-    _pendingDrop = "";       // the armed column drop
-    _stepTab = "";           // which rung's tab was open
-    _queue = "";             // the chosen domain -- goes into `allocation`
+    for (const f of _fs.runFits.values()) {
+        if (f && f.timer) clearTimeout(f.timer);
+    }
+    _fs = freshFolderState();
     for (const id of ["ts-ask-time", "ts-ask-mem"]) {
         const box = $(id);
         if (box) box.value = "";
@@ -1753,7 +1799,6 @@ function addColumn(name) {
  * what would be lost, the second does it (`task-setup.md` § 9 — "the page says
  * which value it kept, and says it BEFORE the click").  No browser dialog:
  * a `confirm()` blocks everything, including the page's own scripts. */
-let _pendingDrop = "";
 
 function removeColumn(name) {
     const v = variesOf(); if (!v) return;
@@ -1763,8 +1808,8 @@ function removeColumn(name) {
     const survivor = last && last.overrides
         ? last.overrides[name] : undefined;
 
-    if (_pendingDrop !== name) {
-        _pendingDrop = name;
+    if (_fs.pendingDrop !== name) {
+        _fs.pendingDrop = name;
         // The value the LAST ENABLED stage carries is the one § 9 keeps —
         // it is the production stage, and the value a single run would use.
         // This page cannot write it into the template, so it says so rather
@@ -1782,7 +1827,7 @@ function removeColumn(name) {
         return;
     }
 
-    _pendingDrop = "";
+    _fs.pendingDrop = "";
     v.splice(v.indexOf(name), 1);
     for (const st of stages) {
         if (st && st.overrides) delete st.overrides[name];
@@ -1964,7 +2009,6 @@ function paintPlan(box, host, body) {
 
 //: WHICH RUNG'S TAB IS OPEN.  Page state, not the description's: which
 //: stage you are reading says nothing about the calculation.
-let _stepTab = "";
 
 function renderNext(task) {
     const card = $("ts-next-card");
@@ -2051,7 +2095,7 @@ function renderNext(task) {
     // THE CHOICE SURVIVES A REPAINT.  Every edit re-renders this card, and
     // snapping back to the first rung would lose the tab a person was
     // reading each time they typed.
-    if (names.indexOf(_stepTab) === -1) _stepTab = names[0] || "";
+    if (names.indexOf(_fs.stepTab) === -1) _fs.stepTab = names[0] || "";
 
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
@@ -2086,13 +2130,13 @@ function renderNext(task) {
                 : "";
         }
         const runs = _runs[name];
-        const active = name === _stepTab;
+        const active = name === _fs.stepTab;
         const tab = el("button", {
             type: "button", class: "ts-steptab", role: "tab",
             id: "ts-steptab-" + i, "aria-controls": "ts-steppanel-" + i,
             "aria-selected": active ? "true" : "false" }, name);
         if (active) tab.classList.add("is-active");
-        tab.addEventListener("click", () => { _stepTab = name;
+        tab.addEventListener("click", () => { _fs.stepTab = name;
                                               renderNext(_task || task); });
         if (runs) tab.appendChild(el("span", { class: "ts-ran" },
                                      runs + "\u00d7"));
@@ -2526,7 +2570,7 @@ function setMachine(name) {
     // queue chosen under the old one, so the choice is cleared rather
     // than carried across (a name that means nothing here would default
     // the asks from a ceiling this machine never stated).
-    _queue = "";
+    _fs.queue = "";
     renderQueues();
     _syncPrepButtons();      // the prep buttons wait on this answer
     loadResolved();          // the warning depends on WHICH machine
@@ -2537,7 +2581,7 @@ function setMachine(name) {
      * with no `--target`, and prepping it would have baked THIS machine's
      * width into a bundle bound for a cluster: invariant C1 in
      * `preparing-for-another-machine.md`, the exact failure the flag
-     * exists to prevent.  `_stepTab` is module state, so the open tab
+     * exists to prevent.  `_fs.stepTab` is module state, so the open tab
      * survives the rebuild.  Measured 2026-09-06 by
      * test_choosing_a_machine_puts_it_in_the_command_you_copy. */
     if (_task) renderNext(_task);
@@ -2572,7 +2616,6 @@ function setMachine(name) {
  *  the scheduler decides (submission.md S1).                            *
  * ===================================================================== */
 
-let _queue = "";            // the chosen domain name, "" = none
 
 /** Seconds -> the shortest spelling a person would type back. */
 function _humanTime(sec) {
@@ -2700,7 +2743,7 @@ function renderQueues() {
             + "wall, so a blank time is unlimited; memory still has a real "
             + "ceiling \u2014 this machine's own RAM.";
         $("ts-queue-asks").hidden = false;
-        _queue = "";
+        _fs.queue = "";
         // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING (user,
         // 2026-08-24): its RAM.  The suggestion came only from a QUEUE, so
         // the one kind of machine that cannot have one got none at all --
@@ -2720,7 +2763,7 @@ function renderQueues() {
         b.type = "button";
         b.className = "opt";
         b.setAttribute("data-queue", d.name);
-        b.setAttribute("aria-pressed", d.name === _queue ? "true" : "false");
+        b.setAttribute("aria-pressed", d.name === _fs.queue ? "true" : "false");
         const bits = [];
         if (d.max_time) bits.push(d.max_time);
         if (d.max_cores) bits.push(d.max_cores + " cores");
@@ -2772,7 +2815,7 @@ function _defaultMemMB(gb) {
 /** Choosing a queue FILLS the two asks with that queue's ceilings --
  *  its own measured limits, which is the most this job could ask there. */
 function setQueue(name) {
-    _queue = name;
+    _fs.queue = name;
     for (const b of document.querySelectorAll("#ts-queue-choice .opt")) {
         b.setAttribute("aria-pressed",
                        b.getAttribute("data-queue") === name ? "true" : "false");
@@ -2820,7 +2863,7 @@ function _fillIfUnanswered(el, suggested) {
 /** Say, under each field, what the queue allows and whether this ask
  *  fits -- while changing it is still free. */
 function paintAskNotes() {
-    const d = _queuesOf(_machine).find((x) => x.name === _queue);
+    const d = _queuesOf(_machine).find((x) => x.name === _fs.queue);
     // With no queue, the MACHINE's own RAM is the memory ceiling -- a
     // workstation's field otherwise read "no queue chosen" and checked the
     // ask against nothing at all.
@@ -2851,7 +2894,7 @@ function paintAskNotes() {
             msg = "left blank \u2014 the scheduler's own default decides";
         } else if (cap && val > cap) {
             state = "bad";
-            msg = "more than " + _queue + " allows (" + fmt(cap) + ")";
+            msg = "more than " + _fs.queue + " allows (" + fmt(cap) + ")";
         } else if (cap) {
             msg = "allowed here: up to " + fmt(cap);
         } else {
@@ -2868,7 +2911,7 @@ function askValues() {
     const t = ($("ts-ask-time") || {}).value || "";
     const m = ($("ts-ask-mem") || {}).value || "";
     const out = {};
-    if (_queue) out.domain = _queue;
+    if (_fs.queue) out.domain = _fs.queue;
     // THE RECORD GETS ONE SPELLING.  The box accepts "4h" because that is
     // the human edge; the file never sees it.  Until 2026-08-24 this wrote
     // the box verbatim, so the browser's own "4h" reached `sbatch` as
@@ -3034,7 +3077,7 @@ function applyAsksToDoc() { applyBlockToDoc("allocation", askValues); }
  *  what it already asks for rather than an empty card. */
 function readAsksFromTask(task) {
     const a = (task && task.allocation) || {};
-    _queue = a.domain || "";
+    _fs.queue = a.domain || "";
     const t = $("ts-ask-time");
     const m = $("ts-ask-mem");
     // Loaded from the DESCRIPTION: a person put these there, so they carry
