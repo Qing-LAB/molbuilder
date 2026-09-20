@@ -816,8 +816,12 @@ def _finish_slab(struct, metal_pos, element, full):
     # electrode defines the junction's in-plane periodicity.  Skipped if the z
     # extent is degenerate (would make a singular cell); the caller can set one.
     #
-    # z is the atoms' extent PLUS ONE INTERLAYER SPACING (science/junction-cell.md
-    # § 1).  The extent alone puts the bottom atom's image at z_min + c = z_max --
+    # z is the atoms' extent, VERBATIM -- see the block below, which is the
+    # live rule.  This said "PLUS ONE INTERLAYER SPACING" until 2026-09-20,
+    # thirteen lines above the comment recording that `junction-cell.md` § 6
+    # retired exactly that.  Two rules in one function is worse than one
+    # wrong rule: a reader cannot tell which is live.  The reasoning the old
+    # text carried --
     # exactly on the top atom, at zero distance -- and SIESTA stops.  The spacing
     # comes from cell.bulk_z_period, the same derivation the electrode wizard uses
     # for the bulk lead (§ 5), measured on the slab AS BUILT so an

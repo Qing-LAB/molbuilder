@@ -1954,9 +1954,11 @@ def api_files_rename():
 # protection that does not run is worse than no protection: an audit read this
 # one and counted the guard as covered.
 #
-# STILL OPEN, recorded rather than fixed here: the depth-2 canonical-topic rule
-# lives in two live inline copies (`rename`, `delete`).  Merging them is a
-# design change, not the removal of dead code, so it is `TS5`'s tail and not
+# CLOSED 2026-09-20: the depth-2 canonical-topic rule is ONE copy,
+# `_is_canonical_topic_dir` above, called by rename and delete alike.  This
+# note said it lived in two live inline copies long after it did not --
+# which is worse than saying nothing, because it describes work as owed
+# that is finished.  What follows was `TS5`'s tail and is not
 # this commit.
 
 

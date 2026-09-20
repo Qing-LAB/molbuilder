@@ -119,7 +119,11 @@ drift-guarded against `toDisplay`.
 coordinate line for internal atom `i`. The display convention is chosen so
 `toDisplay(i)` **equals** the engine atom number the user reads in the file
 (SIESTA `.fdf`, geomeTRIC `$freeze`) — bound by
-`tests/test_engine_atom_index.py::test_frontend_display_matches_engine_atom_number`,
+`tests/test_engine_atom_index.py` — **but the front-end half of this
+invariant is UNBOUND.** This line named
+`::test_frontend_display_matches_engine_atom_number` until 2026-09-20; a
+repo-wide grep finds that name in this citation and nowhere else. The file
+exists and holds six tests; none of them is that one,
 with end-to-end element+position tests binding the full user→engine round-trip.
 
 ---
