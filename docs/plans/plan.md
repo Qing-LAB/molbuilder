@@ -3599,12 +3599,17 @@ commit message is where history goes, being immutable and already dated.
 * **`projects/BDT/`'s results.** Every SIESTA run under it used the
   defective v0.5 sulfur, in a thiol-gold junction where S is the binding
   atom. `Au-BDT-Au/`, `BDT-Au/`, `gasrun2` and `gasrun4` used the good one.
-* **The other tabs.** § 2.1's rule is Task setup's; the same two failure
-  modes are available to any page that follows the sidebar. **Re-verified
-  2026-09-20 and still true:** the Results picker takes `body.run_dir || dir`
-  (`file-picker.js:656`) — it adopts the answer's folder without ever checking
-  it against the one it asked for. Its `AbortController` makes that latent,
-  not absent, and the panel now owning a `boundDir` does not close it.
+* ~~**The other tabs** — the Results picker never checked that the answer was
+  about the folder it asked for.~~ **CLOSED 2026-09-20.** The picker now drops
+  a reply whose scan is no longer the bound one (`if (boundDir !== dir) return`),
+  which is the rule the rest of the session established and the one surface
+  still missing it — on the tab the rule was learned on. Compared against OUR
+  OWN request rather than `body.run_dir`, because the server resolves symlinks
+  and a string compare there would refuse every correct answer under a
+  symlinked root. Closed with it: `_metaFor` handed presenters three of the
+  five fields `presenters.md` § 2 documents, so a `match()` reading
+  `meta.label` or `meta.stage` got `undefined` — it returns the whole record
+  now. § 2.1's rule still applies to any other page that follows the sidebar.
 * **`detect()` cannot explain a refusal** *(2026-09-20)*. It fans a boolean
   `can_parse` over every registered parser, so a damaged file is
   indistinguishable from an absent one: a sweep plan truncated by a killed
