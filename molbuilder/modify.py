@@ -53,6 +53,8 @@ Geometry conventions for the nanojunction workflow:
 
 from __future__ import annotations
 
+import copy as _copy
+
 import json as _json
 import os as _os
 from pathlib import Path as _Path
@@ -865,6 +867,10 @@ def _finish_slab(struct, metal_pos, element, full):
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
+        # NOT the lattice seam -- this site hand-lists.  `info` is a
+        # non-per-atom fact like the cell: an edit OUTDATES the
+        # recorded contract (a flag on it), it does not erase it.
+        info=_copy.deepcopy(struct.info) if struct.info else {},
     )
 
 
@@ -1122,6 +1128,10 @@ def calibrate_to_cell(struct: Structure) -> Structure:
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
+        # NOT the lattice seam -- this site hand-lists.  `info` is a
+        # non-per-atom fact like the cell: an edit OUTDATES the
+        # recorded contract (a flag on it), it does not erase it.
+        info=_copy.deepcopy(struct.info) if struct.info else {},
     )
 
 

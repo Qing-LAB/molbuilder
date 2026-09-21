@@ -40,6 +40,8 @@ them through (see the methods + their tests).
 
 from __future__ import annotations
 
+import copy as _copy
+
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
@@ -1706,9 +1708,9 @@ class Structure:
     #  Combine / translate / center -- handy small utilities              #
     # ------------------------------------------------------------------ #
 
-    def _carry_periodicity(self) -> dict:
-        """Periodicity fields (cell / pbc / axis_kind / vacuum) for
-        reconstructing a Structure that EDITS ATOMS but keeps the lattice.
+    def _carry_nonatom(self) -> dict:
+        """The NON-PER-ATOM facts an atom edit carries: the lattice, and
+        the free store.
 
         None of these are per-atom, so an add / delete / rigid transform
         carries them verbatim.  Dropping any of them silently reverts a
@@ -1716,7 +1718,21 @@ class Structure:
         from pbc, vacuum -> 0) -- e.g. deleting a stray atom would wipe a
         transport cell, and the emitted SIESTA FDF would omit
         ``LatticeVectors``.  Every op-helper that rebuilds a Structure spreads
-        this so the lattice survives the edit.
+        this so those facts survive the edit.
+
+        ``info`` RIDES HERE TOO, and the reason is the opposite of what
+        dropping it looks like.  An edit is meant to OUTDATE the recorded
+        contract, not erase it: `molview.md` § 8.4a splits
+        ``structure_modified`` from ``labels_modified`` so a later reader
+        is told WHICH kind of edit happened, and
+        `transport.compose.recorded_contract_of` turns the first into
+        "the mesh cutoff and transverse k-mesh below were converged for a
+        cell that is no longer there".  Rebuilding without ``info``
+        deletes the thing that warning reads -- so the flag has nothing
+        to mark, the warning cannot fire, and a form-B citation quietly
+        inherits catalogue defaults instead of the relaxation's own
+        settings.  Voiding a calculation is a MARK on the record, and a
+        record that is gone cannot carry one.
         """
         return dict(
             cell        = (self.cell.copy() if self.cell is not None else None),
@@ -1725,7 +1741,11 @@ class Structure:
             pbc         = self.pbc,
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
+            info        = _copy.deepcopy(self.info) if self.info else {},
         )
+
+    #: The name this carried until 2026-09-21, when `info` joined it.
+    _carry_periodicity = _carry_nonatom
 
     def copy(self) -> "Structure":
         """Return a deep-ish copy: all metadata lists are duplicated;
@@ -1874,7 +1894,14 @@ class Structure:
         # fields and every other op-helper already spreads it; `concat` was
         # written before that rule and never joined it.
         base = next((s for s in structures if s.cell is not None), None)
-        lattice = base._carry_periodicity() if base is not None else {}
+        lattice = base._carry_nonatom() if base is not None else {}
+        # `info` IS NOT THE LATTICE'S.  The box comes from whichever
+        # structure HAS one; the recorded contract belongs to the one
+        # being appended TO, which is the first, cell or no cell.  Taking
+        # both from `base` loses it whenever only the incoming structure
+        # carries a box.
+        first = structures[0]
+        lattice["info"] = (_copy.deepcopy(first.info) if first.info else {})
         return cls(
             elements      = elements,
             positions     = np.vstack(positions),

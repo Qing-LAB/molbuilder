@@ -271,3 +271,83 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
     finally:
         set_capabilities(None)
+
+
+class TestAnEditOutdatesTheContractWithoutErasingIt:
+    """`molview.md` § 8.4a: an edit VOIDS a recorded calculation, and the
+    way it says so is a flag ON the record — `structure_modified` for a
+    geometry or cell op, `labels_modified` for a name.
+    `transport.compose.recorded_contract_of` reads the first back as
+    *"the mesh cutoff and transverse k-mesh below were converged for a
+    cell that is no longer there"*.
+
+    Rebuilding a Structure without `info` deletes the thing that warning
+    reads, so the flag has nothing to mark and a form-B citation quietly
+    inherits catalogue defaults instead. Voiding is a MARK on the record;
+    a record that is gone cannot carry one.
+    """
+
+    def _with_contract(self):
+        import numpy as np
+        from molbuilder.structure import Structure
+        s = Structure(elements=["H", "H", "O"],
+                      positions=np.array([[0., 0, 0], [1., 0, 0], [0, 1., 0]]))
+        s.cell = np.diag([8., 8., 8.])
+        s.info = {"calculation": {"engine": "siesta",
+                                  "contract": {"siesta_mesh_cutoff_ry": 300}}}
+        return s
+
+    @pytest.mark.parametrize("name", [
+        "copy", "delete_atoms", "add_atom", "translate", "translate_subset",
+        "rotate", "orient", "append", "calibrate",
+    ])
+    def test_every_atom_edit_carries_the_recorded_contract(self, name):
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder import modify as M
+        s = self._with_contract()
+        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
+        ops = {
+            "copy":             lambda x: x.copy(),
+            "delete_atoms":     lambda x: M.delete_atoms(x, [2]),
+            "add_atom":         lambda x: M.add_atom(x, "C", 0, [2., 2., 2.]),
+            "translate":        lambda x: M.translate(x, [1., 0, 0]),
+            "translate_subset": lambda x: M.translate(x, [1., 0, 0], indices=[0]),
+            "rotate":           lambda x: M.rotate_around_axis(x, "z", 90.0),
+            "orient":           lambda x: M.orient_along_axis(x, [0, 1], "z"),
+            "append":           lambda x: M.append_structure(x, other),
+            "calibrate":        lambda x: M.calibrate_to_cell(x),
+        }
+        out = ops[name](s)
+        if isinstance(out, tuple):
+            out = out[0]
+        out = getattr(out, "structure", out)
+        assert out.info.get("calculation", {}).get("contract"), (
+            f"{name} dropped info.calculation -- the flag that marks this "
+            f"edit as outdating the contract now has nothing to mark")
+
+    def test_the_contract_carries_its_OUTDATED_flag_through_an_edit(self):
+        """The flag is the point: it must survive the very edit that set
+        it, or the warning downstream can never fire."""
+        from molbuilder.modify import delete_atoms
+        s = self._with_contract()
+        s.info["calculation"]["structure_modified"] = True
+        out = delete_atoms(s, [2])
+        out = getattr(out, "structure", out)
+        assert out.info["calculation"]["structure_modified"] is True
+
+    def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
+        """Not from whichever structure happens to carry the cell --
+        `concat` picks the lattice that way and `info` rode along, so a
+        base with no box lost its contract to the incoming one."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        base = self._with_contract()
+        base.cell = None
+        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
+        other.cell = np.diag([9., 9., 9.])
+        out = append_structure(base, other)
+        out = getattr(out[0] if isinstance(out, tuple) else out, "structure",
+                      out[0] if isinstance(out, tuple) else out)
+        assert out.info.get("calculation", {}).get("contract")
