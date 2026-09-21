@@ -12,9 +12,13 @@
 > * the contract question — is *Save to project* a fifth kind of saving? — was
 >   answered 2026-08-19 and is struck through in § 5.
 >
-> One suggestion survives, and it is a suggestion rather than a defect: a
-> restore and a re-read read identically on screen. It is carried in
-> `plans/plan.md` § 2 so this document does not have to be.
+> Its one remaining suggestion — that a restore and a re-read read identically
+> on screen — was **re-derived against the code on 2026-09-21 and is already
+> resolved**: a restore says *"Restored 312-atom structure (title)."* and a load
+> says *"Loaded file.xyz — 312 atoms."*  The restore notice was reworked after a
+> browser walk on 2026-08-24, three weeks after this document was written, and
+> it now also retires itself on the first data change. Nothing was carried
+> forward.
 >
 > Left uncorrected as history: § 5 cites a **§ 3.4** that does not exist
 > (the section stops at 3.3).
