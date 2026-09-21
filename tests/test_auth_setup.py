@@ -187,7 +187,14 @@ def test_cli_asu_only_writes_the_config_and_keeps_the_session_key(
     that called itself idempotent -- so the key a server already made must
     come out of the wizard byte for byte as it went in."""
     out = _machine_file(isolated_home)
-    sk = out.parent / "secret_key"
+    # ASK THE DOOR.  This was `out.parent / "secret_key"`, and when the key
+    # moved into `secrets/` the test went VACUOUS rather than red: it wrote a
+    # file the wizard no longer touches and asserted nobody had changed it,
+    # which nobody would.  Through `session_key()` it again pins the thing it
+    # was written for -- that `auth-setup` preserves a key the server made.
+    from molbuilder.config_dir import session_key
+    sk = session_key()
+    sk.parent.mkdir(parents=True, exist_ok=True)
     sk.write_bytes(b"the-server-made-this-key-on-first-start")
     r = CliRunner().invoke(cli, [
         "auth-setup", "--provider", "asu", "--asurite", "jdoe",
@@ -421,9 +428,11 @@ def test_cli_secrets_never_appear_in_emitted_json(isolated_home,
     assert sentinel_secret not in rendered, (
         "client_secret leaked into molbuilder.json"
     )
-    # Sanity: the secret IS in the secret file, intact.
-    google_sk = (isolated_home / ".config" / "molbuilder"
-                 / "google_client_secret")
+    # Sanity: the secret IS in the secret file, intact.  ASK THE RESOLVER --
+    # this spelled ".config/molbuilder/google_client_secret" by hand until
+    # 2026-09-20 and broke the day every credential moved into `secrets/`.
+    from molbuilder.config_dir import google_client_secret as _google_sk
+    google_sk = _google_sk()
     assert google_sk.read_text() == sentinel_secret
     assert stat.S_IMODE(google_sk.stat().st_mode) == 0o600
 
@@ -445,3 +454,64 @@ def test_cli_google_requires_at_least_one_allowed_email(isolated_home,
     # aborts on EOF (in CliRunner).  Either way: molbuilder.json must
     # not exist after this attempt.
     assert not out.exists()
+
+
+class _App:
+    """Just the surface `_install_secret_key` touches."""
+    def __init__(self):
+        self.config = {}
+
+
+def test_first_server_run_creates_the_session_key_owner_only(isolated_home):
+    """The key is made at its one home, 0600, and signs with what it wrote."""
+    from molbuilder.config_dir import session_key
+    from molbuilder.web.auth import _install_secret_key
+
+    app = _App()
+    _install_secret_key(app)
+
+    sk = session_key()
+    assert sk.exists(), "first run must create the key"
+    assert stat.S_IMODE(sk.stat().st_mode) == 0o600
+    assert app.config["SECRET_KEY"] == sk.read_bytes()
+    assert len(sk.read_bytes()) >= 16
+
+
+def test_losing_the_first_run_race_adopts_the_other_start_s_key(
+        isolated_home, monkeypatch):
+    """Two servers starting together: the loser signs with the WINNER's key.
+
+    The interleaving is the defect, so it is what the test arranges: this
+    process sees no key, another start creates one, and only then does this
+    process write.  A plain replace would be quieter and worse -- the file
+    would hold the loser's key and the winner's sessions would die at its next
+    restart.  Neither: the write is refused and the existing key is adopted.
+    """
+    from molbuilder import config_dir as cd
+    from molbuilder.web import auth as web_auth
+    from molbuilder.config_dir import ensure_private_dir, session_key
+
+    winner = b"w" * 32
+    sk = session_key()
+    ensure_private_dir(sk.parent)
+    sk.write_bytes(winner)          # the other start got there first
+
+    # ...but this process looked BEFORE that happened.  One `None`, then the
+    # truth, which is exactly what the two calls in the function see.
+    real = cd.read_session_key
+    calls = {"n": 0}
+
+    def racy():
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real()
+    # ON `config_dir`, NOT on `web.auth`: the function imports the door inside
+    # its own body, so it gets a fresh reference every call and a patch on the
+    # importing module would simply not be seen.
+    monkeypatch.setattr(cd, "read_session_key", racy)
+
+    app = _App()
+    _install_secret_key = web_auth._install_secret_key
+    _install_secret_key(app)        # must not raise FileExistsError
+
+    assert app.config["SECRET_KEY"] == winner, "the loser must adopt"
+    assert sk.read_bytes() == winner, "the winner's key must survive"

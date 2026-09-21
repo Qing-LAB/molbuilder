@@ -836,11 +836,35 @@ def pytest_collection_modifyitems(config, items):
     decisions still belong on individual tests via explicit
     decorators.
     """
+    import importlib.util as _ilu
     import pytest as _pt
+
+    # THE SKIP BELONGS WITH THE MARKER, not in each file.  Every `*_e2e.py`
+    # drives headless chromium through pytest-playwright's `page` fixture,
+    # which only exists when that plugin is installed -- it is opt-in
+    # (`install-env.sh install molbuilder --with-dev-tools`), so on a plain
+    # install it is absent.  21 of 23 e2e files opened with their own
+    # `pytest.importorskip("playwright.sync_api")`; the two that forgot
+    # (`test_task_setup_one_folder_e2e.py`, `test_vibration_e2e.py`) did not
+    # skip -- they ERRORED with "fixture 'page' not found", which reads as a
+    # broken suite rather than absent tooling, and cost a push to diagnose on
+    # 2026-09-20.  A guard that each new file must remember is a guard that
+    # gets forgotten; this hook already knows which files are e2e, so it is
+    # the one place that can apply the rule to all of them, including the
+    # next one.  The per-file `importorskip` lines are now redundant but
+    # harmless, and are left for a separate sweep.
+    _has_playwright = _ilu.find_spec("playwright") is not None
+    _no_playwright = _pt.mark.skip(
+        reason="e2e needs pytest-playwright + chromium; install them with "
+               "`bash scripts/install-env.sh install molbuilder "
+               "--with-dev-tools --yes`")
+
     for item in items:
         fn = item.fspath.basename
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
             item.add_marker(_pt.mark.e2e)
+            if not _has_playwright:
+                item.add_marker(_no_playwright)
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)

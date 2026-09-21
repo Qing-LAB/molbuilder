@@ -90,11 +90,11 @@ _ROUTING_MOVED = (
 #: the generic "unknown top-level key".
 _SECRET_KEY_MOVED = (
     "{path}: 'secret_key_file' is no longer configured.  The session key has "
-    "ONE home -- <config dir>/secret_key, beside this file -- and is created "
+    "ONE home -- <config dir>/secrets/secret_key -- and is created "
     "there on first run (docs/configuration.md § 2.1e).  A key naming its own "
     "location is how it came to live in two places at once: this file pointed "
     "at ~/.molbuilder/secret.key while `auth-setup` wrote "
-    "<config dir>/secret_key, so running the wizard made a key the server "
+    "<config dir>/secrets/secret_key, so running the wizard made a key the server "
     "never read.  Delete the line; move the file if you want the sessions it "
     "signed to survive.")
 
@@ -272,6 +272,61 @@ def _validate_secret_pair(entry: Mapping[str, Any], idx: int) -> None:
             f"(path to a 0600 file) is required.  client_secret_file "
             f"is preferred so the config itself stays safe to share."
         )
+
+
+def provider_client_secret(entry: Mapping[str, Any]) -> str:
+    """**The provider's client secret, as a string.**
+
+    THE ONE DOOR A CONSUMER USES.  It hands back the secret itself -- never a
+    path, and never a hint about whether there was a file at all *(user,
+    2026-09-20: "the api should return the secret/key ... how to read and what
+    to find out is concealed")*.
+
+    `oauth.py` used to branch on the two shapes itself, expand ``~``, open the
+    file, strip it and decide what an empty one meant: five decisions about
+    what a secret IS, in a module about OAuth.  Worse, it had to know WHICH
+    shape the operator chose.  Both belong here, because this module owns the
+    provider entry's schema -- `_validate_secret_pair` above already enforces
+    that exactly one of the two is set, so this reads what that guaranteed.
+
+    **The operator still names the file.**  Sites and providers differ, so
+    `client_secret_file` stays theirs to choose; what is concealed is that
+    anyone downstream ever learns the name.  Adding a third shape later -- an
+    env var, a keyring -- changes this function and nothing that calls it.
+
+    Raises :class:`RuntimeConfigError` naming the provider, because every
+    failure here is a configuration mistake and the id is what makes it
+    actionable.  The message never contains the secret.
+    """
+    pid = entry.get("id", "?")
+    named = entry.get("client_secret_file")
+    if isinstance(named, str) and named:
+        path = Path(named).expanduser()
+        try:
+            text = path.read_text().strip()
+        except OSError as exc:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
+                f"client_secret_file could not be read ({exc.strerror}).  "
+                f"Check it exists and is readable by the server."
+            ) from exc
+        if not text:
+            raise RuntimeConfigError(
+                f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
+                f"client_secret_file is empty (or only whitespace).  Write "
+                f"the provider's client secret into it and restart."
+            )
+        return text
+
+    literal = entry.get("client_secret")
+    if isinstance(literal, str) and literal:
+        return literal
+
+    raise RuntimeConfigError(
+        f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: neither "
+        f"'client_secret' nor 'client_secret_file' is set "
+        f"(_validate_secret_pair should have caught this)."
+    )
 
 
 def _validate_oauth_common(entry: Dict[str, Any], idx: int) -> None:
@@ -536,7 +591,7 @@ _NOTIFY_SETTINGS_MOVED = (
     "{f}: '{key}' was retired on 2026-08-31 and is no longer read.\n"
     "\n"
     "The listener is switched on by the KEY FILE, which carries its own\n"
-    "route: `<config dir>/notify_keys`, written by `molbuilder\n"
+    "route: `<config dir>/secrets/notify_keys`, written by `molbuilder\n"
     "notify-token`.  Both settings were things molbuilder already knew --\n"
     "it chose the path and it issued the route -- so requiring them typed\n"
     "here meant a working key file could sit beside a listener that was\n"

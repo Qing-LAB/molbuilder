@@ -318,7 +318,7 @@ module builds a per-user path itself.
 *(Built 2026-08-31. Cited by `runtime_config._SECRET_KEY_MOVED`,
 `web.auth._install_secret_key` and `auth_setup.build_auth_block`.)*
 
-**The key is `<config dir>/secret_key`.** The server creates it there on its
+**The key is `<config dir>/secrets/secret_key`.** The server creates it there on its
 first start, at mode `0600`, and reads it from then on — one resolver
 (`config_dir.session_key()`) and one creator (`web/auth._install_secret_key`),
 so the reader and the writer cannot name different files. `molbuilder
@@ -330,7 +330,7 @@ server's own.
 
 ```
 molbuilder.json: 'secret_key_file' is no longer configured.  The session key
-has ONE home -- <config dir>/secret_key, beside this file -- and is created
+has ONE home -- <config dir>/secrets/secret_key -- and is created
 there on first run …
 ```
 
@@ -343,7 +343,7 @@ that has no spelling.
 
 **Why a configurable path was the wrong shape.** It is how the key came to live
 in two places at once — this machine's config said `~/.molbuilder/secret.key`
-while the wizard wrote `<config dir>/secret_key`, so running `auth-setup`
+while the wizard wrote the one the resolver named, so running `auth-setup`
 produced a fresh key the server never read *and reported success*. One file
 with one home cannot do that.
 
@@ -432,6 +432,16 @@ that needed both kept the weaker half.
 > strictly the **stronger** path rather than a compromise: `mkstemp` creates the
 > temp at `0600`, so there is no moment at any other mode at all, and the target
 > is never opened for writing.
+>
+> **`exclusive=True` is the same move for the second tension** *(2026-09-20)*.
+> *Create if absent* and *replace* are different operations, and the session key
+> needs the first: replacing it signs out everyone logged in. That was a named
+> exception below — `web/auth.py` opening `O_EXCL` by hand — which bought *never
+> replace* and paid with *never atomic*: a process dying between its `open` and
+> its `write` left a 0-byte key that every later start refused. `os.link`
+> creates the name or fails, as atomically as the rename it stands in for, so
+> the parameter gets both. **Where a second writer exists to buy one property,
+> check what it sold.**
 
 **How the API is used.** A caller never picks a writing strategy. It picks the
 door for the kind of file it has, and the door knows:
@@ -439,23 +449,26 @@ door for the kind of file it has, and the door knows:
 | to write | call | which is |
 |---|---|---|
 | a secret, whole | `auth_setup.write_secret_file(path, text)` | parent at `0700`, then `write_bytes(…, mode=0o600)` |
+| a secret that must **never be replaced** once it exists — the session key | `write_bytes(…, mode=0o600, exclusive=True)`, catching `FileExistsError` | creates the name or fails; the caller then reads the existing secret back and signs with **that**, so losing the race costs nothing |
 | `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
-| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job and may import nothing of ours — see below |
+| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job, where the only module of ours it can reach is one that travels with it — see below |
 
 **The shapes that are not `write_bytes` calls, and why each one is not.**
 *(The list was two long and said "nothing else may"; three more existed, which is
 how that sentence came to be false — B2. Naming them is the fix: an exception
-with a reason is a rule, an unnamed one is drift.)*
+with a reason is a rule, an unnamed one is drift. Naming them is also what
+retired one: written down, the session key's row read as a workaround rather
+than a reason, and on 2026-09-20 it became `exclusive=True` on the one writer.
+Four remain.)*
 
 | outside the one writer | why |
 |---|---|
 | an appended log (`serve_daemon.open_private`) | below |
-| **the session key's first creation** (`web/auth.py`) | `os.open(..., O_EXCL, 0600)`. The operation is *create if absent*, not *replace*: the one writer replaces by design, and replacing this file logs every signed-in person out. `O_EXCL` is what makes "only if it is not already there" the file system's decision rather than ours |
 | **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
 | **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made, never overwritten — a person may have added notes — so there is no previous content to protect, and none of them carries a credential |
-| **anything the monitor writes on a compute node** | it ships beside the job and may import nothing of ours — see below |
+| **anything the monitor writes on a compute node** | it ships beside the job, and `persist` does not travel with it — see below |
 
 **One of those needs the longer reason.** *(Two did until 2026-09-13: the
 auth wizard staged a temp, validated the bytes on disk and replaced — a second
@@ -470,12 +483,22 @@ where every caller gets it.)*
 machine that runs the job as `mb_monitor.py` and is executed by **the job's own
 python**, in a backend env where molbuilder is not installed
 (`runwrap.MONITOR_COMPANIONS`, `execution/running-a-job.md` § 2.0a). So its
-writes — the `util.csv` header and its rows — use `pathlib` and nothing of ours:
+writes — the `util.csv` header and its rows — use `pathlib`:
 importing `persist` here would make the monitor die at import on every node, with
 stderr going to `/dev/null`, which costs the run's status, its utilisation trace
-and its reports and says nothing. `config_dir.py` travels with it under the same
-rule and imports nothing of ours either. **Do not route these through the one
-writer.** They are the one place in this document where a truncated file is the
+and its reports and says nothing.
+
+**And the reason is SHIPPING, not stdlib-ness** *(stated exactly, 2026-09-21)*.
+`persist.py` is itself pure stdlib — so is `config_dir.py`; the property is
+*depends only on stdlib*, never *imports nothing of ours* (`config_dir.py`'s own
+header says so, and `scheduler/record.py` imports `persist` on the strength of
+it). What kills the import on a compute node is that `persist.py` is not
+THERE: `runwrap` ships exactly two files beside the job, `_monitor_source` and
+`_config_dir_source`. So the monitor's real rule is **stdlib-only AND travels**,
+and today that set is exactly `{config_dir}` — reached through the two-way
+import in `monitor._secrets_dir`, whose `ModuleNotFoundError` `load_channels`
+catches as reports-off rather than as a dead monitor. **Do not route these
+through the one writer.** They are the one place in this document where a truncated file is the
 cheaper risk, and the trade is deliberate.
 
 **An append is the other, and it is a real exception**, not an oversight: a
@@ -498,12 +521,28 @@ owners own — which is the change that was tried and reverted inside one day on
 2026-08-31 (`config_dir.py` records it) and that
 `test_config_dir_has_one_home.py::TestNoModuleNamesOneOfThoseFilesItself`
 refuses: that test asserts each of these filenames appears in **exactly** the
-module entitled to spell it. The door a caller wants already exists and is
-already path-free — it is the owning module's own resolver, and for the four
-per-user secret files
-secrets that is `config_dir.session_key()`,
-`config_dir.google_client_secret()`, `monitor.default_notify_path()` and
-`monitor.notify_keys_path()` (§ 3.1 lists every file's). Measured 2026-09-12:
+module entitled to spell it.
+
+**A CONSUMER OF A SECRET IS HANDED THE SECRET, NEVER A PATH TO IT** *(user,
+2026-09-20: "we should avoid user access the file directly, the api should
+return the KEY/SECRET")*. Where a credential is stored is not part of the
+contract a caller sees, because a path handed out is a path that reaches logs,
+tracebacks and responses. The value doors are:
+
+| credential | door | hands back |
+|---|---|---|
+| session key | `config_dir.read_session_key()` | bytes, or `None` when not yet made |
+| an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, whether the operator gave a literal or named a file |
+| notify channels | `monitor.load_channels()` | the channels, already judged |
+| run-report signing keys | `monitor.read_notify_keys()` | `(route, {user: key})` |
+
+The path resolvers — `config_dir.session_key()`,
+`config_dir.google_client_secret()`, `monitor.default_notify_path()`,
+`monitor.notify_keys_path()` (§ 3.1 lists every file's) — survive for
+**management** only: creating the file, auditing its mode, and showing an
+operator their own file. **TLS is the exception**: `get_tls` returns paths
+because the server library that consumes them takes paths, and file
+permissions are the control there. Measured 2026-09-12:
 **no module outside an owner joins a secret filename to a directory**, so the
 property a unified resolver would have been built to guarantee is one the code
 already has.
@@ -538,7 +577,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `task.1st.json` | the Task-setup tab | calculation | a partial description in flight; **removed** when the real one is saved |
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
-| `secrets/README` | `envs init-config` | machine | **how to treat the secret files this directory is for** — the `0700`/`0600` rule, what belongs there (things `molbuilder.json` names by PATH), mock `notify` channel examples for all three kinds, and the **three** secrets that cannot live there because they have one fixed home each: `secret_key` (§ 2.1e), `notify`, `notify_keys` |
+| `secrets/README` | `envs init-config` | machine | **how to treat the credentials this directory holds** — the `0700`/`0600` rule, the two kinds in it (fixed-home, which `molbuilder.json` cannot name, and operator-named), the **function each is reached through**, and mock `notify` channel examples for all three kinds |
 | `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), the `--set` fallback when molbuilder cannot be installed there, and that this machine's own record is `../environment.json` and not in that directory |
 
 ### 3.1 The tree — where all of it actually sits
@@ -555,17 +594,18 @@ $MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuil
 │                                      0700   config_dir.config_dir()
 ├── molbuilder.json        what you want              0600   runtime_config.machine_config_path()
 ├── environment.json       what THIS machine is              scheduler/record.machine_scope_path()
-├── secret_key             the session key            0600   config_dir.session_key()
-├── google_client_secret   Google's OAuth secret      0600   config_dir.google_client_secret()
-├── notify                 run-report channels        0600   monitor.default_notify_path()
-├── notify_keys            run-report signing keys    0600   monitor.notify_keys_path()
 ├── environments/          one record per OTHER machine  0700   scheduler/record.environments_dir()
 │   ├── README                  written by `envs init-config`
 │   └── <name>.json             probed ON that machine, copied here   scheduler/record.named_environment_path()
-└── secrets/               files molbuilder.json names by PATH   0700
+└── secrets/               EVERY credential                     0700   config_dir.secrets_dir()
     ├── README                  written by `envs init-config`
-    └── …                       a TLS key/cert, a provider's client secret —
-                                your names, because your config names them
+    ├── secret_key         the session key            0600   config_dir.session_key()
+    ├── google_client_secret  Google's OAuth secret   0600   config_dir.google_client_secret()
+    ├── notify             run-report channels        0600   monitor.default_notify_path()
+    ├── notify_keys        run-report signing keys    0600   monitor.notify_keys_path()
+    └── …                       a TLS key/cert, another provider's client
+                                secret — your names, because your config
+                                names them
 
 $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 │                                             config_dir.state_dir()
@@ -617,23 +657,108 @@ with a key in `molbuilder.json`**, which § 2.1d explains and which a
 *"points `paths` at one place"* until 2026-09-12, restating advice retired on
 2026-08-31.)
 
-**The three files `molbuilder.json` cannot name** are `secret_key`, `notify`
-and `notify_keys`. Each has one fixed home so a
-reader and a writer cannot mean different files — § 2.1e is the worked example of
-what happens otherwise, and `secret_key_file` / `notify_keys_file` are **refused**
-in config rather than ignored. Everything under `secrets/` is the opposite case
-by design: `molbuilder.json` names those by path, so the name is yours and the
-directory is a suggestion.
+**Every credential is in `secrets/`** *(2026-09-20, user: "all secret
+key/sensitive files should stay in secret directory, and only unified api can
+resolve them")*. The two kinds in there differ in **who names the file**, not in
+where it sits:
 
-**`google_client_secret` was listed as a fourth until 2026-09-13, and it is not
-one.** It is the DEFAULT home for Google's client secret; a provider entry may
-say `auth.providers[].client_secret_file` and `oauth.py` reads whatever the
-config names. So it is a file `molbuilder.json` CAN name — the same category as
-everything under `secrets/`, with a default home for convenience.
+| | named by | molbuilder's part | examples |
+|---|---|---|---|
+| **fixed home** | molbuilder, one function each; `molbuilder.json` **cannot** name them | creates them, and polices their mode | `secret_key`, `notify`, `notify_keys`, `google_client_secret` |
+| **operator-named** | you, via a path in `molbuilder.json` | reads the path and hands it on — nothing else | a TLS key, another provider's `client_secret_file` |
 
-**`secrets/` may be empty on a working installation** and often is — a
-workstation with no HTTPS and no sign-in needs nothing in it. An empty
-`environments/` likewise means you only ever run locally.
+**molbuilder is not a security manager** *(user, 2026-09-20: "we don't operate
+any TLS files — we just expose this information for any call that needs them.
+File mode or access control is the system's business")*. It polices the mode of
+what it CREATES — the first row, its own logs, and `secrets/` itself. A file you
+name is yours and the operating system's: molbuilder reads it, passes it on, and
+says nothing about its permissions.
+
+That line was drawn after a check briefly crossed it. It read `tls.key` and told
+the operator to `chmod 0600` a letsencrypt key at `0640 root:ssl-cert` — that
+tool's *correct* permission, where tightening it breaks group access and renewal
+undoes it anyway. Advice that is wrong to follow is worse than none. So `secrets/`
+is **offered** as a home for an operator-named credential, never enforced as one.
+
+`secret_key_file` and `notify_keys_file` remain **refused** in config rather than
+ignored, and that is the property § 2.1e exists for: one home and one resolver, so
+a reader and a writer cannot mean different files. **That was never a claim about
+which directory** — only about there being exactly one — which is why moving the
+four into `secrets/` costs nothing and removes the trap of a directory named
+`secrets` that did not hold the secrets.
+
+**The location rule is ENFORCED, not merely stated** *(2026-09-20)*. A `Place`
+in `placement.py` carries `credential_store=True` when the file's *purpose* is
+to hold a credential, and `placement.misplaced()` reports any such file whose
+resolver points outside `secrets/`. That is a **code** defect rather than a
+permissions one, so unlike the mode check it does not wait for the file to
+exist. It had to become executable: measured the same day, `session_key()`
+could be pointed back at the config root and **222 tests still passed**, because
+every test and every audit row asks the same resolver and so moves with it.
+Nothing compared the answer against the rule.
+
+**`credential_store` means KEPT** — a credential that survives the session. It is
+the only field the location rule reads, and defining it that way is what keeps
+the rule free of exceptions. A serve log *contains* a `client_secret` and a
+notebook runtime file *is* a token, but neither is kept: the log is an artifact,
+the token is regenerated every start and deleted every stop. Both are `False`
+here and both are still `0600`, because `mode` is the field that has always
+policed that.
+
+*This paragraph claimed something false for a few hours on 2026-09-20.* It said
+`credential_store` existed because it and a second field, `holds_credential`,
+"need different rules, so they are different fields" — but `holds_credential`
+was **read by nothing, ever**. A third field then carried an exemption for the
+notebook token whose own text read *"it is not a credential molbuilder KEEPS"*,
+which was the definition admitting it was wrong. Three fields compensating for
+one bad predicate; defining it as *kept* collapsed all three into this one and
+deleted the checker's exemption branch.
+
+**The one credential outside `secrets/`, and why.** The notebook's runtime file
+(`jupyter-<port>.json`) holds a token that authenticates a browser to a live
+kernel. It stays in the runtime directory, and the reason is carried as data on
+its own row — `Place.credential_store` is `False` and `Place.why` says why —
+rather than as a branch in the checker: it is not a credential molbuilder
+*keeps*, being regenerated at every start, deleted at every clean stop,
+meaningless without the live process, and one fact with the pidfile beside it.
+Caveat recorded there too: `runtime_dir()` falls back inside the state root when
+`$XDG_RUNTIME_DIR` is unset, so *"erased at logout"* is not guaranteed; the harm
+is bounded because a token to a dead server authenticates nothing.
+
+**Nothing builds these paths by hand.** Each is asked of its owner —
+`config_dir.session_key()`, `config_dir.google_client_secret()`,
+`monitor.default_notify_path()`, `monitor.notify_keys_path()`, and
+`config_dir.secrets_dir()` for the directory itself. The fifth credential, the
+notebook token, is the same: `config_dir.jupyter_runtime()` owns its path, and a
+consumer calls `jupyter.read_runtime()`, which hands back the token rather than
+the path. `jupyter.py` itself does hold the path — it creates the file at
+`0600` when the notebook starts and removes it when the notebook stops — and
+that is the same carve-out every other door has: a path function survives for
+MANAGEMENT, and it is the consumers that must be given the value instead.
+
+`tests/test_config_dir_has_one_home.py` fails if any door stops moving with
+`MOLBUILDER_CONFIG_DIR`, and an **AST** check there catches a filename built
+into a path outside its owner. It reads the parsed tree, not the text, so
+quote style, line breaks and `os.path.join` no longer matter; a constant
+assigned to a module-level name first is followed one level. Measured
+2026-09-20 against all four shapes that defeated the line-by-line version it
+replaced. Its limit is now the other direction: a fragment this module never
+joins — `"$cfg/notify"` handed to a *shell* — is invisible to it, which is
+what the paragraph below exists to close. Still a tripwire, not a proof.
+
+**Human-facing text derives from the table too** *(2026-09-20)*.
+`config_dir.relative_home(resolver)` renders a location as `secrets/notify` —
+config-relative, because the text `notify-token` prints is a shell recipe that
+resolves on a *cluster*. It was spelled by hand in three places and all three
+went stale in the move: the printed recipe, `this_machine.html`, and the
+issued-key panel in `this-machine/page.js`. Each told an operator to write a
+webhook where the monitor does not look, and a notifier swallows failures by
+design, so nothing would have said. The name-matching guard could not see them:
+the strings were `"$cfg/notify"` and HTML.
+
+**`secrets/` is no longer empty on a working installation** — the session key
+alone appears there on first server run. An empty `environments/` still means you
+only ever run locally.
 
 ### 3.2 What a first install seeds
 

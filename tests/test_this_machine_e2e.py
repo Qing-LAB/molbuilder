@@ -180,9 +180,20 @@ def test_the_page_states_every_branch_of_the_config_dir_rule(
             f"the page does not tell the reader about {branch}.  It is "
             f"resolved on the far machine, so stating it is the only thing "
             f"this page can honestly do about it.")
-    assert "notify" in shown, (
-        "the page names no file, so a reader learns the directory and not "
-        "what to put in it")
+    # THE WHOLE PATH, ASKED OF THE RESOLVER.  This was `"notify" in shown`,
+    # which the WRONG path also contains: mutating the template to
+    # `<config dir>/COMPLETELY-WRONG-PLACE/notify` left both e2e tests green
+    # (measured 2026-09-20).  The page's promise is where to put the file on
+    # the far machine, so the assertion has to be the directory too -- and
+    # taken from the monitor's own door, or it pins what the test believes
+    # rather than what the monitor opens.
+    from molbuilder.monitor import default_notify_path
+    from molbuilder.config_dir import relative_home
+    rel = relative_home(default_notify_path)
+    assert rel in shown, (
+        f"the page does not name {rel!r}, so a reader following it puts the "
+        f"channels file where the monitor does not look -- silently, because "
+        f"a notifier swallows every failure by design")
     assert errors == [], f"the page reported JS errors: {errors}"
 
 
@@ -238,7 +249,11 @@ def test_saving_writes_the_file_the_page_tells_you_to_write(
     _open(page, flask_server)
     _add_channel(page, "prod-alerts", _SECRET_URL)
 
-    dest = config_home / "notify"
+    # THE DOOR, not `config_home / "notify"`.  Built by hand this asserted the
+    # location the test believed; asked of the monitor it asserts the one the
+    # monitor will actually open, which is the promise the page makes.
+    from molbuilder.monitor import default_notify_path
+    dest = default_notify_path()
     assert dest.exists(), (
         f"the page says the monitor reads <config dir>/notify, but saving "
         f"through the form wrote no such file under {config_home}")
@@ -254,7 +269,10 @@ def test_saving_writes_the_file_the_page_tells_you_to_write(
     # top level is the retired single-destination shape, and says so.
     from molbuilder.monitor import load_channels
 
-    chans = load_channels(str(dest))
+    # No argument: `load_channels`'s first parameter is `log`, so passing the
+    # file here made it a LOG destination and proved nothing about which file
+    # was read.  It reads its own resolver -- the same one `dest` came from.
+    chans = load_channels()
     assert "prod-alerts" in chans, (
         f"the monitor's own reader does not find the channel in {dest}; it "
         f"sees {sorted(chans)}.  The page told the user to put a file here "
@@ -320,9 +338,9 @@ def test_a_listeners_key_never_reaches_the_page(page, flask_server,
     # machine unsigned, and nothing on screen would say so.
     from molbuilder.monitor import load_channels
 
-    stored = load_channels(str(config_home / "notify"))
+    stored = load_channels()
     assert _SECRET_KEY in json.dumps(stored), (
-        "the key was never written to <config dir>/notify, so the monitor "
+        "the key was never written where the monitor reads, so it "
         "has nothing to sign reports with")
 
 

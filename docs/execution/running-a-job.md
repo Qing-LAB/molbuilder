@@ -595,7 +595,7 @@ behaves exactly as before — `--continue` stays the manual path.
   calculation's own setting, in `task.json`'s `notify` block: on each SCF
   convergence, every N hours, or neither — a run ending always reports.
   **Where** is yours and never travels with the description: a JSON file at
-  `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`),
+  `<config dir>/secrets/notify`,
   mode 0600, holding a `url` and either a `key` or `headers`.
   Absent means no notifier at all and a run that behaves exactly as before.
 

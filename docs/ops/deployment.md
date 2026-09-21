@@ -239,8 +239,12 @@ TLS-terminating proxy (and binding loopback), or knowingly passing
 > section in `molbuilder.json`, the server runs with **no authentication at all**.
 > So `molbuilder serve start --host 0.0.0.0 --cert … --key …` passes the guard yet
 > exposes a **public, unauthenticated, fully read/write/delete `projects/` tree** —
-> TLS only encrypts the wire. (The guard's own message says so: *"still no
-> auth!"*.) A real public deployment must **turn auth on** (§3) **or** sit behind a
+> TLS only encrypts the wire. (The guard's own message says so: *"TLS IS NOT
+> AUTHENTICATION — it encrypts the wire and gates nothing"*. It read *"molbuilder
+> has no built-in auth"* until 2026-09-21 — true of a server with no `auth`
+> section, false of one with providers configured — so it now states the
+> condition instead of the unconditional claim.) A real public deployment must
+> **turn auth on** (§3) **or** sit behind a
 > proxy that authenticates (§2); `--cert/--key` alone is defense-in-depth, not
 > access control.
 
@@ -295,7 +299,7 @@ python -m molbuilder auth-setup --provider google
 Paste the client ID and secret at the prompts (the secret is typed
 with echo off), and list the Google accounts that may log in. The
 wizard writes everything: the `auth` section into `molbuilder.json`,
-and the secret into `~/.config/molbuilder/google_client_secret`
+and the secret into `<config dir>/secrets/google_client_secret`
 (mode `0600`, § 5.1). Nothing secret lands in the config file.
 
 **Step 3 — restart and test:**
@@ -321,7 +325,7 @@ ASURITE; add lab members by editing `allowed_users` in
 
 | what changed | what to do |
 |---|---|
-| rotate / replace the client secret | make a new secret on the same console page → overwrite `~/.config/molbuilder/google_client_secret` → `molbuilder serve restart` |
+| rotate / replace the client secret | make a new secret on the same console page → overwrite `<config dir>/secrets/google_client_secret` → `molbuilder serve restart` |
 | new host or port | add the new redirect URI in the console — `serve start` prints the exact URI to add |
 | add / remove people | edit `allowed_users` in `molbuilder.json` → `molbuilder serve restart` |
 
@@ -333,7 +337,7 @@ ASURITE; add lab members by editing `allowed_users` in
   `/login`; an `/api/*` request gets a clean `401` JSON naming the
   login URL. Always open regardless: the login/callback/logout
   routes, `/api/health`, and static assets.
-- The session cookie is signed with the key at `<config dir>/secret_key`
+- The session cookie is signed with the key at `<config dir>/secrets/secret_key`
   — one home, not a configured path (`configuration.md` § 2.1e) —
   auto-generated `0600` on first run, and the cookie is
   `Secure` + `HttpOnly` + `SameSite=Lax`.
@@ -551,15 +555,17 @@ mkdir -p -m 700 "$cfg"
 
 # The Flask session-signing key.  Nothing references it BY PATH -- the name
 # and the location are the contract (configuration.md § 2.1e), and the server
-# creates it on first run if you skip this.
-python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secret_key"
-chmod 600 "$cfg/secret_key"
+# creates it on first run if you skip this.  Every credential lives in
+# `secrets/` as of 2026-09-20; nothing molbuilder keeps sits beside the config.
+mkdir -p -m 700 "$cfg/secrets"
+python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secrets/secret_key"
+chmod 600 "$cfg/secrets/secret_key"
 
 # One file per OAuth provider (referenced by each provider's
 # "client_secret_file").  Content = exactly the client-secret string
 # from that provider's developer console, nothing else:
-printf '%s' 'GOCSPX-…' > "$cfg/google_client_secret"
-chmod 600 "$cfg/google_client_secret"
+printf '%s' 'GOCSPX-…' > "$cfg/secrets/google_client_secret"
+chmod 600 "$cfg/secrets/google_client_secret"
 ```
 
 Notes:

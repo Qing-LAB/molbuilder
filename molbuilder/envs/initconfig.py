@@ -29,11 +29,21 @@ the value arrives as an ARGUMENT, from a person answering a prompt (or from
 operator at install time is what the rule asks for; what it forbids is a
 generator guessing at emit time.
 
-**Never overwrites.**  Every step reports ``created`` or ``kept``, and a file
-that exists is never touched -- `configuration.md` M-6, *"the probe asks before
-it overwrites"*, generalised to the whole directory.  Re-running is a no-op
-that prints what is already there, which is what makes it safe to call from
-``bootstrap`` unconditionally.
+**Never overwrites what a PERSON wrote.**  Every step reports ``created`` or
+``kept``, and a file that exists is never touched -- `configuration.md` M-6,
+*"the probe asks before it overwrites"*, generalised to the whole directory.
+Re-running is a no-op that prints what is already there, which is what makes it
+safe to call from ``bootstrap`` unconditionally.
+
+**The two READMEs are the exception** *(user, 2026-09-20: "always overwrite")*.
+They are MOLBUILDER'S OWN TEXT, not the operator's, and the rule above was
+protecting the wrong thing: when the credentials moved into ``secrets/`` the
+seeded README went on telling every pre-existing install that they sit beside
+``molbuilder.json``, and it is the file an operator opens precisely when they
+do not already know. A wrong map is worse than no map. They report
+``rewritten`` when the text on disk differs and ``kept`` when it does not, so
+re-running is still a no-op -- the CONTENT is compared, which is what keeps
+that true while making a stale one impossible.
 
 **No new writer.**  The record goes through ``resolve_environment`` ->
 ``diagnostics.local_facts`` -> ``write_environment``, the same three steps in
@@ -51,7 +61,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ..config_dir import config_dir, ensure_private_dir, secrets_dir
+from ..config_dir import (PRIVATE_FILE_MODE, config_dir, ensure_private_dir,
+                          secrets_dir)
 
 __all__ = [
     "Step", "conda_hook", "seed_document", "seeding_blockers",
@@ -64,10 +75,12 @@ __all__ = [
 class Step:
     """One thing the seeding either made or found already there.
 
-    ``action`` is ``"created"`` or ``"kept"`` -- there is no third value,
-    because the module never modifies and never deletes.  ``note`` carries
-    what a person needs to act on: which activation form was written, or why
-    a preamble was not.
+    ``action`` is ``"created"``, ``"kept"`` or ``"rewritten"``.  The third
+    value exists for the two READMEs this module authors and nothing else:
+    the module still never deletes, and never modifies a file whose CONTENT
+    is a person's (see the note at the top).  ``note`` carries what a person
+    needs to act on: which activation form was written, or why a preamble was
+    not.
     """
     path: Path
     action: str
@@ -76,6 +89,10 @@ class Step:
     @property
     def created(self) -> bool:
         return self.action == "created"
+
+    @property
+    def rewritten(self) -> bool:
+        return self.action == "rewritten"
 
 
 def conda_hook(conda_binary: Optional[str]) -> Optional[str]:
@@ -399,49 +416,70 @@ _ENVIRONMENTS_README = 'molbuilder — environments\n=========================\n
 def _readme(directory: Path, text: str, note: str) -> List[Step]:
     """Write ``<directory>/README`` if absent.  One writer for both.
 
-    Never overwrites -- a person may have added their own notes to it, and
-    this module's whole discipline is that an existing file is reported and
-    left alone.
+    **Overwritten when it is out of date** *(user, 2026-09-20)*.  It used to be
+    left alone like everything else here, on the reason that a person may have
+    added notes -- but this is molbuilder's own text, and on 2026-09-20 the
+    credentials moved into `secrets/` while every install seeded before that
+    kept a README saying they live one level up.  That file is what an operator
+    opens when they do NOT already know where their credentials are, so a stale
+    one sends them to the wrong place with full confidence.  The write is
+    conditional on the CONTENT differing, not on a timestamp, so a second run
+    is still a no-op and still reports ``kept``.
+
+    **Written 0600 when it lands in `secrets/`** *(2026-09-20)*.  A plain
+    `write_text` takes the umask, which here meant 0664 -- inside a directory
+    whose own README says *"everything in it is 0600"*, and which the
+    placement audit now checks with a `*` pattern.  So `envs init-config`
+    seeded a file that `envs doctor` would immediately report.  It is only a
+    README, but a seeder that trips its own audit teaches an operator to
+    ignore the audit, which is the expensive part.  `environments/README`
+    keeps the umask: that directory holds machine records, not credentials.
     """
     path = directory / "README"
-    if path.exists():
+    try:
+        current = path.read_text(encoding="utf-8")
+    except OSError:
+        current = None
+    if current == text:
         return [Step(path, "kept")]
     path.write_text(text, encoding="utf-8")
-    return [Step(path, "created", note)]
+    if directory == secrets_dir():
+        path.chmod(PRIVATE_FILE_MODE)
+    if current is None:
+        return [Step(path, "created", note)]
+    return [Step(path, "rewritten",
+                 "it described the old layout -- replaced with the current one")]
 
 
 #: What ``secrets/README`` says.  It is a FILE rather than a docstring because
 #: the person who needs it is looking at the directory, not at the source --
 #: and because a conda-only install has no checkout to read docs from.
-_SECRETS_README = 'molbuilder — secrets\n====================\n\nThis directory is for secret FILES that `molbuilder.json` points at by PATH.\nIt is created mode 0700 (owner only), and everything in it should be 0600.\nNothing here is ever printed: `config_provenance` logs only the sections\nflagged safe, and any section holding a secret — or a path to one — is\nexcluded by construction.\n\nWHY THE MODES MATTER\n    0700 on this directory, 0600 on each file.  `molbuilder.json` is itself\n    checked for 0600 and WARNS (never refuses — refusing would lock you out\n    of your own server).  A world-readable directory around 0600 files is the\n    same mistake one level up, so this one is tight from the start.\n\n        ls -l ~/.config/molbuilder ~/.config/molbuilder/secrets\n        chmod 700 ~/.config/molbuilder/secrets\n        chmod 600 ~/.config/molbuilder/secrets/*\n\nWHAT BELONGS HERE\n    Files referenced by a PATH in molbuilder.json.  The path is yours to\n    choose, so this is the suggested home rather than a required one:\n\n      the TLS private key (and cert, if not system-managed)\n          "tls": {"cert": "~/.config/molbuilder/secrets/fullchain.pem",\n                  "key":  "~/.config/molbuilder/secrets/privkey.pem"}\n\n      an OAuth provider\'s client secret, for providers whose wizard takes a\n      file path (CAS, GitHub, Microsoft, ORCID) — written by\n      `molbuilder auth-setup`, which records the path it used\n\nTHREE FILES THAT CANNOT LIVE HERE\n    Each has ONE fixed home directly in the config directory, resolved by a\n    single function so the reader and the writer cannot disagree about which\n    file they mean.  molbuilder.json cannot name them:\n\n      ../secret_key            the session key.  Created on FIRST SERVER RUN\n                               at 0600.  Do not make it by hand; deleting it\n                               logs everyone out and a new one appears.\n                               (`secret_key_file` in config is REFUSED.)\n      ../notify                the run-report CHANNELS file — see below.\n      ../notify_keys           the operator\'s run-report signing keys.\n                               (`notify_keys_file` in config is REFUSED.)\n\n    ../google_client_secret is DIFFERENT and used to be listed above as a\n    fourth: it is the DEFAULT home for Google\'s client secret, written by\n    `molbuilder auth-setup`, and a provider entry may point elsewhere with\n    `auth.providers[].client_secret_file` — which is accepted and used.  So it\n    belongs with the files below, not with the three above.\n\n    So this directory may be empty on a working installation.  That is\n    normal: a workstation with no HTTPS and no sign-in needs nothing here.\n\nRUN-REPORT CHANNELS — `../notify`, NOT a file in here\n    Shape: {"channels": {"<name>": {"url": ..., "kind"?: ..., "key"?: ...}}}\n    `kind` is "molbuilder" | "slack" | "discord"; omitted, it is read off the\n    URL\'s host.  Absent file means no notifier and the run proceeds exactly as\n    with the feature off; a malformed file says so in the monitor log and\n    carries on, and one bad channel does not cost the others.\n\n    THE EASY WAY is the web UI (Settings → run reports), which writes this\n    file at 0600 for you.  `molbuilder notify-token` is for the OTHER side:\n    it writes ../notify_keys and PRINTS the JSON to paste on the machine that\n    runs the job.  The shapes below are for reading and for testing.\n\n    EXAMPLES.  The URLs are <ANGLE-BRACKET> placeholders rather than\n    realistic fakes, deliberately: a fake that LOOKS real IS a credential as\n    far as a secret scanner is concerned -- GitHub\'s push protection rejected\n    an earlier draft of THIS FILE for carrying a "Slack Incoming Webhook\n    URL".  Which is the clearest demonstration of the point below: for Slack\n    and Discord the URL *is* the secret.  Substitute the bracketed parts:\n\n      {\n        "channels": {\n          "local": {\n            "kind": "molbuilder",\n            "url":  "http://127.0.0.1:8765/hook",\n            "key":  "mock-local-key-not-a-real-secret"\n          },\n          "team-slack": {\n            "kind": "slack",\n            "url":  "https://hooks.slack.com/services/<TEAM-ID>/<CHANNEL-ID>/<TOKEN>"\n          },\n          "team-discord": {\n            "kind": "discord",\n            "url":  "https://discord.com/api/webhooks/<CHANNEL-ID>/<TOKEN>"\n          }\n        }\n      }\n\n    NOTE THE TWO SHAPES, because they differ in where the credential is:\n      * Slack and Discord put the credential IN THE URL.  A third party hands\n        you nothing but a URL, so the URL *is* the secret — which is why this\n        file is 0600 even when it looks like it holds no key.\n      * a molbuilder listener takes a plain url plus a `key` that SIGNS the\n        body and NEVER TRAVELS.  That is the shape to prefer when you control\n        the receiver: a leaked URL cannot be used to post as you.\n\n    A LOCAL LISTENER is the way to try this without a third party.  Point a\n    "molbuilder" channel at 127.0.0.1 and run anything that answers — the\n    signature is computed over the body with `key`, so a listener that does\n    not check it will still receive the report and show you the shape.\n\nIF YOU BACK THIS UP\n    Back up the whole config directory, not just this folder, and treat the\n    copy with the same care.  `secret_key` is the one file whose loss is\n    harmless (sessions end, a new key appears).  A leaked webhook URL, OAuth\n    client secret or TLS key is not.\n\nReference: docs/configuration.md § 2.1b (the mode rule), § 2.3 (how a secret\nis written -- atomically, so an interrupted write cannot destroy the one it\nreplaces), § 3.1 (the whole directory tree), § 2.1e (the session\nkey\'s one home), docs/execution/run-reports.md § 4.1b (channel kinds),\ndocs/ops/access-control.md (what sign-in exposes).\n'
+_SECRETS_README = 'molbuilder — secrets\n====================\n\nThis directory holds EVERY credential molbuilder keeps.\nIt is created mode 0700 (owner only), and everything in it is 0600.\nNothing here is ever printed: `config_provenance` logs only the sections\nflagged safe, and any section holding a secret — or a path to one — is\nexcluded by construction.\n\nWHY THE MODES MATTER\n    0700 on this directory, 0600 on each file.  `molbuilder.json` is itself\n    checked for 0600 and WARNS (never refuses — refusing would lock you out\n    of your own server).  A world-readable directory around 0600 files is the\n    same mistake one level up, so this one is tight from the start.\n\n        ls -l ~/.config/molbuilder ~/.config/molbuilder/secrets\n        chmod 700 ~/.config/molbuilder/secrets\n        chmod 600 ~/.config/molbuilder/secrets/*\n\nWHAT BELONGS HERE — everything sensitive\n    Two kinds, differing in WHO NAMES them, not in where they sit:\n\n  1. FIXED HOME.  molbuilder resolves these itself and molbuilder.json\n     CANNOT name them — one function each, so a reader and a writer can\n     never mean different files:\n\n      secret_key           the Flask session key.  Created on FIRST SERVER\n                           RUN at 0600.  Do not make it by hand; deleting it\n                           logs everyone out and a new one appears.\n                           (`secret_key_file` in config is REFUSED.)\n      notify               the run-report CHANNELS file — see below.\n      notify_keys          the operator\'s run-report signing keys.\n                           (`notify_keys_file` in config is REFUSED.)\n      google_client_secret the DEFAULT home for Google\'s client secret; a\n                           provider entry may point elsewhere with\n                           auth.providers[].client_secret_file, and that is\n                           read if set.\n\n  2. OPERATOR-NAMED.  Referenced by a PATH in molbuilder.json, so the name\n     is yours and this is their suggested home:\n\n      the TLS private key (and cert, if not system-managed)\n          "tls": {"cert": "~/.config/molbuilder/secrets/fullchain.pem",\n                  "key":  "~/.config/molbuilder/secrets/privkey.pem"}\n\n      an OAuth provider\'s client secret, for providers whose wizard takes a\n      file path (CAS, GitHub, Microsoft, ORCID) — written by\n      `molbuilder auth-setup`, which records the path it used\n\nHOW ANYTHING REACHES A FILE IN HERE\n    Through the one function that owns it, never by building the path:\n\n      config_dir.secrets_dir()            this directory\n      config_dir.session_key()            secret_key\n      config_dir.google_client_secret()   google_client_secret\n      monitor.default_notify_path()       notify\n      monitor.notify_keys_path()          notify_keys\n\n    That is enforced rather than advised.  `tests/test_config_dir_has_one_\n    home.py` fails if any module outside the owner joins one of these names\n    into a path, and fails if any door stops moving with\n    MOLBUILDER_CONFIG_DIR.  Set that variable and the whole directory\n    relocates — which is how you keep credentials off an NFS-mounted $HOME\n    on a login node.\n\n    THE FOUR ABOVE MOVED HERE ON 2026-09-20 (user).  They used to sit beside\n    molbuilder.json, one level up, on the rule "this directory is for what\n    the config NAMES".  A directory called `secrets` that did not hold the\n    secrets misled everyone who opened it.  What mattered was never WHICH\n    directory — only that each file has exactly one home and one resolver,\n    and that is unchanged.\n\nRUN-REPORT CHANNELS — the `notify` file in this directory\n    Shape: {"channels": {"<name>": {"url": ..., "kind"?: ..., "key"?: ...}}}\n    `kind` is "molbuilder" | "slack" | "discord"; omitted, it is read off the\n    URL\'s host.  Absent file means no notifier and the run proceeds exactly as\n    with the feature off; a malformed file says so in the monitor log and\n    carries on, and one bad channel does not cost the others.\n\n    THE EASY WAY is the web UI (Settings → run reports), which writes this\n    file at 0600 for you.  `molbuilder notify-token` is for the OTHER side:\n    it writes notify_keys and PRINTS the JSON to paste on the machine that\n    runs the job.  The shapes below are for reading and for testing.\n\n    EXAMPLES.  The URLs are <ANGLE-BRACKET> placeholders rather than\n    realistic fakes, deliberately: a fake that LOOKS real IS a credential as\n    far as a secret scanner is concerned -- GitHub\'s push protection rejected\n    an earlier draft of THIS FILE for carrying a "Slack Incoming Webhook\n    URL".  Which is the clearest demonstration of the point below: for Slack\n    and Discord the URL *is* the secret.  Substitute the bracketed parts:\n\n      {\n        "channels": {\n          "local": {\n            "kind": "molbuilder",\n            "url":  "http://127.0.0.1:8765/hook",\n            "key":  "mock-local-key-not-a-real-secret"\n          },\n          "team-slack": {\n            "kind": "slack",\n            "url":  "https://hooks.slack.com/services/<TEAM-ID>/<CHANNEL-ID>/<TOKEN>"\n          },\n          "team-discord": {\n            "kind": "discord",\n            "url":  "https://discord.com/api/webhooks/<CHANNEL-ID>/<TOKEN>"\n          }\n        }\n      }\n\n    NOTE THE TWO SHAPES, because they differ in where the credential is:\n      * Slack and Discord put the credential IN THE URL.  A third party hands\n        you nothing but a URL, so the URL *is* the secret — which is why this\n        file is 0600 even when it looks like it holds no key.\n      * a molbuilder listener takes a plain url plus a `key` that SIGNS the\n        body and NEVER TRAVELS.  That is the shape to prefer when you control\n        the receiver: a leaked URL cannot be used to post as you.\n\n    A LOCAL LISTENER is the way to try this without a third party.  Point a\n    "molbuilder" channel at 127.0.0.1 and run anything that answers — the\n    signature is computed over the body with `key`, so a listener that does\n    not check it will still receive the report and show you the shape.\n\nIF YOU BACK THIS UP\n    Back up the whole config directory, not just this folder, and treat the\n    copy with the same care.  `secret_key` is the one file whose loss is\n    harmless (sessions end, a new key appears).  A leaked webhook URL, OAuth\n    client secret or TLS key is not.\n\nReference: docs/configuration.md § 2.1b (the mode rule), § 2.3 (how a secret\nis written -- atomically, so an interrupted write cannot destroy the one it\nreplaces), § 3.1 (the whole directory tree), § 2.1e (the session\nkey\'s one home), docs/execution/run-reports.md § 4.1b (channel kinds),\ndocs/ops/access-control.md (what sign-in exposes).\n'
 
 
 def _seed_secrets_dir() -> List[Step]:
     """``secrets/`` and the README that says how to treat it.
 
-    The directory is a SUGGESTED home, not a required one: what goes in it are
-    files ``molbuilder.json`` names by PATH (the TLS key, a provider's
-    client-secret file), and a path is the operator's to choose.  What makes it
-    worth creating anyway is the README -- the mode rule, and the THREE files
-    that CANNOT live here.
+    **EVERY credential molbuilder keeps is in here** *(user, 2026-09-20)*, in
+    two kinds that differ in who NAMES the file, not in where it sits:
 
-    Those three are ``secret_key``, ``notify`` and ``notify_keys``
-    (`configuration.md` § 3.1): each resolves through one function in
-    `config_dir` and sits directly in the config directory, so a reader and a
-    writer cannot mean different files, and naming one in config is REFUSED
-    rather than ignored.  A README telling a person to put them here would be
-    actively wrong, so it tells them the opposite.
+    * **fixed home** -- ``secret_key``, ``notify``, ``notify_keys`` and
+      ``google_client_secret``.  Each resolves through one function, and
+      ``molbuilder.json`` cannot name the first three at all: ``secret_key_file``
+      and ``notify_keys_file`` are REFUSED rather than ignored, which is what
+      stops a reader and a writer meaning different files (§ 2.1e).
+    * **operator-named** -- a TLS key, another provider's ``client_secret_file``.
+      The config names these by path, so this is their suggested home.
 
-    ``google_client_secret`` is NOT one of them, and this docstring said it
-    was -- as one of "two" -- until 2026-09-13, while the README it describes
-    had already been corrected and spells out why: that file is the DEFAULT
-    home for Google's client secret, and `auth.providers[].client_secret_file`
-    may point elsewhere, which is accepted.  A file config MAY name is the
-    opposite of a file config CANNOT name.
+    THIS DOCSTRING DESCRIBED THE OPPOSITE UNTIL 2026-09-20, and so did the note
+    this function prints: that the directory was only for what config names,
+    and that three secrets *"CANNOT live here"*.  They moved in; the text did
+    not follow, and `envs init-config` went on telling operators the reverse of
+    what the code does.  The README it writes had already been corrected, so
+    one function handed out two contradictory descriptions of one directory.
 
-    An EMPTY ``secrets/`` is the normal state on a workstation with no HTTPS
-    and no sign-in.  The README says so, because an empty directory otherwise
-    reads as something half-done.
+    ``secrets/`` is no longer empty on a working installation -- the session key
+    appears on first server run.
     """
     steps: List[Step] = []
     _ensure_root()
@@ -453,8 +491,9 @@ def _seed_secrets_dir() -> List[Step]:
         steps.append(Step(d, "created",
                           "mode 0700 -- 0600 on everything you put in it"))
     steps.extend(_readme(d, _SECRETS_README,
-                         "the mode rule, mock channel examples, and the three "
-                         "secrets that cannot live here"))
+                         "the mode rule, the two kinds of credential in here, "
+                         "the function each is reached through, and mock "
+                         "channel examples"))
     return steps
 
 

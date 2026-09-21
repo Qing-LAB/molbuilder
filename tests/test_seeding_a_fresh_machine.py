@@ -403,7 +403,8 @@ def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
     from molbuilder.monitor import default_notify_path, load_channels
 
     initconfig.init_config("conda activate", probe=False)
-    readme = (fresh / "secrets" / "README").read_text(encoding="utf-8")
+    from molbuilder.config_dir import secrets_dir
+    readme = (secrets_dir() / "README").read_text(encoding="utf-8")
     block = re.search(r"(\{\n        \"channels\".*?\n      \})", readme, re.S)
     assert block, "the mock channel block should be in the README"
     doc = json.loads(block.group(1))
@@ -426,25 +427,47 @@ def test_the_secrets_readme_mock_channels_are_a_shape_that_parses(fresh):
 def test_the_secrets_directory_is_tight_and_explains_itself(fresh):
     """0700, with a README that does not tell a lie.
 
-    Two secrets have ONE fixed home each directly in the config dir and the
-    config deliberately cannot name them, so a README pointing a person at
-    `secrets/` for those would be actively wrong.
+    THE SECOND HALF OF THIS TEST WAS RETIRED 2026-09-20 rather than repaired.
+    It asserted the README carried `../secret_key`, `../google_client_secret`,
+    `../notify` and `../notify_keys` -- and said why: *"the `../` form is the
+    point: it says the file is one level UP, not here."*  Those four moved
+    INTO this directory, so the rule that assertion existed to protect no
+    longer exists.  A test kept alive by rewriting its expected strings would
+    assert nothing; what it now checks is the rule that replaced it -- the
+    README names the files that really are here, and names the FUNCTION each
+    is reached through, since the whole point is that nobody builds the path.
     """
+    from molbuilder.config_dir import secrets_dir
+
     initconfig.init_config("conda activate", probe=False)
-    d = fresh / "secrets"
+    d = secrets_dir()
 
     assert d.is_dir()
-    assert oct(d.stat().st_mode)[-3:] == "700", "it sits beside the session key"
+    assert oct(d.stat().st_mode)[-3:] == "700", "it holds every credential"
     readme = (d / "README").read_text(encoding="utf-8")
     assert "0600" in readme, "the mode rule is the point"
-    # The `../` form is the point: it says the file is one level UP, not here.
-    # Asserting the bare name would pass on "notify_keys" alone.
-    for fixed in ("../secret_key", "../google_client_secret",
-                  "../notify ", "../notify_keys"):
-        assert fixed in readme, (
-            f"{fixed.strip()} has one fixed home and the README must say so")
-    assert "may be empty" in readme, (
-        "an empty secrets/ is normal and should not read as half-done")
+    # `"secret_key" in readme` passed on the SUBSTRING of `secret_key_file`,
+    # which the README carries in an unrelated sentence -- measured
+    # 2026-09-20 by deleting the whole `secret_key` row and watching 25 tests
+    # stay green.  The rows are what must be there, so match the row.
+    for here in ("secret_key ", "google_client_secret ", "notify_keys "):
+        assert here in readme, (
+            f"the README has no row for {here.strip()}, so a reader opening "
+            f"this directory is not told the file lives here")
+    assert "../secret_key" not in readme, (
+        "the `../` form said the file was one level up; it is not, and a "
+        "README that still said so would be the lie this test exists to catch")
+    for door in ("config_dir.session_key()", "monitor.default_notify_path()",
+                 "monitor.notify_keys_path()", "config_dir.secrets_dir()"):
+        assert door in readme, (
+            f"the README must name {door} -- a reader who cannot see the "
+            f"resolver will build the path by hand, which is the defect")
+    # `assert "may be empty" in readme` stood here and was RETIRED with the
+    # rest, 2026-09-20.  That reassurance existed because the directory
+    # normally WAS empty -- it held only what `molbuilder.json` named, and a
+    # workstation with no HTTPS and no sign-in named nothing.  The session key
+    # now appears here on first server run, so the sentence would be false and
+    # the assertion was protecting it.
 
 
 def test_environments_is_not_looser_than_its_parent(fresh):

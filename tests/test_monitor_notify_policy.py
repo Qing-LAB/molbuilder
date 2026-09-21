@@ -212,7 +212,13 @@ def _file(tmp_path, monkeypatch, channels):
     directory, like everything else in the suite.
     """
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    f = tmp_path / "notify"
+    # ASK THE RESOLVER.  This joined `tmp_path / "notify"` until 2026-09-20 and
+    # so encoded the file's directory a second time -- when every credential
+    # moved into `secrets/`, eleven tests in this file failed by writing where
+    # nothing reads.  A test that hand-builds the path is the same defect the
+    # production rule forbids, one layer out.
+    f = M.default_notify_path()
+    f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"channels": channels}))
     return f
 
@@ -385,7 +391,7 @@ def test_a_broken_file_degrades_rather_than_raises(tmp_path, body, why, monkeypa
     could not be configured would be the tail wagging the dog: the run is
     the thing, and it is already going."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    f = tmp_path / "notify"
+    f = M.default_notify_path(); f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(body)
     assert M.load_channels() == {}, why
 
@@ -395,7 +401,7 @@ def test_the_old_single_destination_file_is_named_not_just_skipped(tmp_path, mon
     indistinguishable from never having set anything up -- which is the
     exact failure the setup surface exists to stop.  It says which."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    f = tmp_path / "notify"
+    f = M.default_notify_path(); f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"url": "https://hooks.slack.com/services/T/B/X"}))
     log = tmp_path / "m.log"
     log.write_text("")
@@ -578,7 +584,7 @@ def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path, monk
     path checked the RETURN value, which was correct all along.
     """
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    dest = tmp_path / "notify"
+    dest = M.default_notify_path(); dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("{not json")
     log = tmp_path / "m.log"
     log.write_text("")
@@ -593,7 +599,7 @@ def test_the_users_secret_is_never_echoed_into_the_log(tmp_path, monkeypatch):
     """The log is written into the run directory, which travels.  A
     complaint about a bad destination must not quote the destination."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    dest = tmp_path / "notify"
+    dest = M.default_notify_path(); dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text('{"channels": {"s": {"url": '
                     '"https://hooks.slack.com/services/T/B/SECRET"}}')
     log = tmp_path / "m.log"
@@ -643,14 +649,14 @@ def test_the_monitors_path_and_molbuilders_own_are_one_function(
     independently and two of them said so in prose: *"a comment is not a
     mechanism"*.  The monitor imports it rather than restating it.
     """
-    from molbuilder.config_dir import config_dir
+    from molbuilder.config_dir import secrets_dir
 
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert M.default_notify_path() == config_dir() / M.NOTIFY_FILENAME
+    assert M.default_notify_path() == secrets_dir() / M.NOTIFY_FILENAME
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "scratch"))
-    assert M.default_notify_path() == config_dir() / M.NOTIFY_FILENAME
+    assert M.default_notify_path() == secrets_dir() / M.NOTIFY_FILENAME
     assert str(M.default_notify_path()).startswith(str(tmp_path / "scratch")), \
         "XDG must move the token off $HOME -- that is the point of honouring it"
 
@@ -696,4 +702,5 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, (
         f"the shipped monitor could not resolve its own path:\n{proc.stderr}")
-    assert proc.stdout.strip() == str(tmp_path / "scratch/molbuilder/notify")
+    assert proc.stdout.strip() == str(
+        tmp_path / "scratch/molbuilder/secrets/notify")

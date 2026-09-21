@@ -32,8 +32,8 @@ step to the document that owns its details.
 | `~/.config/molbuilder/environment.json` | each machine | what this machine **is** — cores, GPUs, scheduler, queues | **`envs bootstrap` writes it** (§ 1); refresh with `jobset probe --write`, no `--name` (§ 3) |
 | `~/.config/molbuilder/environments/<name>.json` | your workstation | another machine's record, so you can describe work *for* it from here | probe there, copy here (§ 4) |
 | TLS cert/key + `auth` section | the machine that serves | HTTPS and sign-in — **only** when others reach your server | you (§ 5) |
-| `~/.config/molbuilder/notify_keys` | the machine that **serves** | the signing keys and the route. **This file is the switch** — the listener exists because it does | `molbuilder notify-token` (§ 6) |
-| `~/.config/molbuilder/notify` | the machine that **runs jobs** | the named channels the monitor posts to | you, on that machine, from what `notify-token` prints (§ 6) |
+| `<config dir>/secrets/notify_keys` | the machine that **serves** | the signing keys and the route. **This file is the switch** — the listener exists because it does | `molbuilder notify-token` (§ 6) |
+| `<config dir>/secrets/notify` | the machine that **runs jobs** | the named channels the monitor posts to | you, on that machine, from what `notify-token` prints (§ 6) |
 
 Everything else — templates, task files, decks, results — is made by the
 workflow itself, inside the projects tree.
@@ -196,7 +196,7 @@ straight:
 | half | file | set up |
 |---|---|---|
 | **when** to speak | the calculation's `task.json` | tick it on the Task-setup card — portable, no secrets |
-| **where** to send | `~/.config/molbuilder/notify` on the machine that **runs the job** | `molbuilder notify-token <you>` prints the address + key and says exactly where to put them; the Task-setup card can write the file for you when the job runs on the same machine |
+| **where** to send | `<config dir>/secrets/notify` on the machine that **runs the job** | `molbuilder notify-token <you>` prints the address + key and says exactly where to put them; the Task-setup card can write the file for you when the job runs on the same machine |
 
 On a cluster, that file lives in **your cluster home** (the card hands you
 the exact command to run there). Absent means silently off — a run without

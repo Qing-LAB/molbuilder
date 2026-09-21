@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 
 import pytest
 
@@ -218,3 +219,42 @@ def test_check_schema_rejects_the_wrong_artifact_at_the_same_major():
     # and the name helper itself
     assert persist.schema_name("molbuilder/task@1") == "molbuilder/task"
     assert persist.schema_name("garbage") == ""
+
+
+def test_write_bytes_exclusive_refuses_to_replace_and_leaves_the_original(
+        tmp_path):
+    """`exclusive=True` CREATES the name or fails -- it never clobbers.
+
+    The session key is why it exists: two servers starting together both reach
+    that write, and under last-writer-wins the second installs a new key over
+    the first, signing out everyone already logged in.  The caller needs the
+    loser to LOSE, so it can read the winner's key back and sign with that.
+    """
+    p = tmp_path / "secret_key"
+    persist.write_bytes(p, b"first-one-wins", mode=0o600)
+
+    with pytest.raises(FileExistsError):
+        persist.write_bytes(p, b"second-one-must-not", mode=0o600,
+                            exclusive=True)
+
+    # The point of the whole exercise: the original survived intact.
+    assert p.read_bytes() == b"first-one-wins"
+    # and the refused attempt staged a temp, which must not be left behind
+    assert list(tmp_path.iterdir()) == [p]
+
+
+def test_write_bytes_exclusive_creates_owner_only_and_clears_its_temp(
+        tmp_path):
+    """The absent case still writes, at the mode asked for, with no litter.
+
+    `os.link` leaves the staged temp under its own name rather than renaming
+    it away, so this half is not implied by the refusal case above: an
+    `exclusive` create that forgot to unlink would pass that test and drop a
+    second, readable copy of the secret beside it.
+    """
+    p = tmp_path / "secret_key"
+    persist.write_bytes(p, b"x" * 32, mode=0o600, exclusive=True)
+
+    assert p.read_bytes() == b"x" * 32
+    assert stat.S_IMODE(p.stat().st_mode) == 0o600
+    assert list(tmp_path.iterdir()) == [p]

@@ -551,3 +551,95 @@ def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path)
         "a file that ships beside a job cannot be imported without molbuilder:\n"
         f"{done.stdout}{done.stderr}")
     assert done.stdout.startswith("ok "), done.stdout
+
+
+def _declared_all(tree: ast.AST) -> list[str] | None:
+    """The module's ``__all__`` as a list of names, or None if it has none."""
+    node = None
+    for n in tree.body:                       # last wins, as Python does
+        if isinstance(n, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "__all__" for t in n.targets):
+            node = n.value
+    if node is None:
+        return None
+    return [e.value for e in getattr(node, "elts", [])
+            if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+
+
+def _module_level_names(tree: ast.AST) -> set[str]:
+    """Every name this module binds at module level.
+
+    Conditional bodies (``if TYPE_CHECKING``, ``try/except ImportError``) are
+    walked too: a name bound in one is still bound.
+    """
+    names: set[str] = set()
+
+    def take(n):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(n.name)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                names.add(a.asname or a.name.split(".")[0])
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+        elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+            names.add(n.target.id)
+
+    for n in tree.body:
+        take(n)
+        if isinstance(n, (ast.If, ast.Try)):
+            for sub in ast.walk(n):
+                take(sub)
+    return names
+
+
+def test_every_name_in_all_is_one_the_module_actually_has():
+    """``__all__`` is a promise, and `from <module> import *` collects on it.
+
+    `molbuilder.envs` named ``subprocess`` and ``shutil`` there while importing
+    neither, so `from molbuilder.envs import *` died with `AttributeError`.
+    They had been exported so tests could swap them out; `6533e66a` removed
+    that arrangement, took the imports with it, and left the promise standing.
+    Nothing caught it because nothing looks: the nearest check reads
+    `config_dir.__all__` through `getattr(..., None)`, which skips a missing
+    name in silence.
+
+    STATIC, and deliberately.  Importing all 92 declaring modules is the
+    truer test and the wrong one here -- `molbuilder/pyscf/` cannot import in
+    this env by design, so it would report the environment, not the promise.
+    Names and bindings are facts with one spelling, like the import edges
+    above, so reading them needs no interpretation.
+
+    Its one blind spot is `from x import *`, which would bind names this
+    cannot see; no module in the tree uses it, and the assertion below says so
+    if one starts.
+    """
+    pkg_root = Path(__file__).resolve().parent.parent / "molbuilder"
+    offenders: dict[str, list[str]] = {}
+    star: list[str] = []
+    for rel in _all_python_files():
+        try:
+            tree = ast.parse((pkg_root / rel).read_text(encoding="utf-8"))
+        except SyntaxError:                   # not this test's business
+            continue
+        if any(isinstance(n, ast.ImportFrom) and any(a.name == "*" for a in n.names)
+               for n in ast.walk(tree)):
+            star.append(str(rel))
+        declared = _declared_all(tree)
+        if not declared:
+            continue
+        have = _module_level_names(tree)
+        missing = [n for n in declared if n not in have]
+        if missing:
+            offenders[str(rel)] = missing
+
+    assert not star, (
+        "these modules use `from x import *`, which binds names this check "
+        "cannot see -- it is no longer sound, so either drop the star import "
+        "or make this test import the module instead:\n  " + "\n  ".join(star))
+    assert not offenders, (
+        "`__all__` names something the module does not have, so "
+        "`from <it> import *` raises AttributeError:\n  "
+        + "\n  ".join(f"{f}: {names}" for f, names in sorted(offenders.items())))

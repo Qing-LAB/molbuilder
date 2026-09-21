@@ -508,6 +508,16 @@ execution as starting one.
 Jupyter's own token auth stays on, and the server binds to loopback unless the
 operator says otherwise.
 
+**The token travels in the environment, not on the command line**
+*(2026-09-20)*. It was `--ServerApp.token=…` until then; `/proc` keeps
+`environ` owner-only and `cmdline` world-readable, so `JUPYTER_TOKEN` is the
+cheaper place for it. The flag had to be REMOVED rather than duplicated — an
+explicit trait beats jupyter-server's default, so leaving it would have kept
+the command line authoritative and the environment ignored.
+`test_jupyter_contract.py` asserts the token appears nowhere in the argv, over
+the whole list rather than one spelling, so a row reintroducing it under
+another trait name fails too.
+
 ## 7. The env
 
 `molbuilder-jupyternb`, one recipe in the registry like every other backend

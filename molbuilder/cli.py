@@ -29,10 +29,9 @@ import json
 import os
 import sys
 
-from . import template as _T
 import tempfile
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence
 
 import click
 
@@ -40,11 +39,6 @@ from .diagnostics import initialize as _initialize_diagnostics
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
-
-
-# --------------------------------------------------------------------- #
-#  stdin support                                                        #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #
@@ -64,6 +58,11 @@ from .structure import Structure
 # A parameter is said in a description, not on a command line.  Nothing else
 # generates options from a dataclass, and the two config files that mention
 # this bridge do so only to explain why a field opts out of it.
+
+
+# --------------------------------------------------------------------- #
+#  stdin support                                                        #
+# --------------------------------------------------------------------- #
 
 
 @contextlib.contextmanager
@@ -847,13 +846,24 @@ def cmd_modify(input_path, output_path,
 
     # Sub-option warnings: catch "ignored sub-option" cases up front so the
     # user notices before they expect them to take effect.
-    _ORIENT_DEFAULTS = {"axis": "z", "angle": 0.0, "center": "midpoint"}
+    # THE VALUE, NOT ITS NAME.  This read `locals()[name]` against a dict of
+    # parameter names, which couples a warning to the SPELLING of the
+    # signature: rename the `center` parameter and `locals()["center"]` raises
+    # `KeyError` (measured) -- from inside a cosmetic warning, so a rename
+    # that changes nothing about the operation takes the whole command down,
+    # and no test covers this path.  The electrode block below always passed
+    # values directly; this is now the same shape, and neither can drift.
+    _ORIENT_NONDEFAULTS = (
+        ("axis",   axis,   "z"),
+        ("angle",  angle,  0.0),
+        ("center", center, "midpoint"),
+    )
     if not op_types["--orient-axis"]:
-        for name, default in _ORIENT_DEFAULTS.items():
-            if locals()[name] != default:
+        for name, value, default in _ORIENT_NONDEFAULTS:
+            if value != default:
                 click.echo(
                     f"warning: --{name} is a sub-option of --orient-axis; "
-                    f"value {locals()[name]!r} is ignored without --orient-axis.",
+                    f"value {value!r} is ignored without --orient-axis.",
                     err=True,
                 )
     _ELECTRODE_NONDEFAULTS = (
@@ -1067,8 +1077,13 @@ def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
 # --------------------------------------------------------------------- #
 
 
+#: Binds no remote client can reach.  `0.0.0.0` is deliberately ABSENT -- it
+#: accepts from every NIC -- and so is the string `"0.0.0.0:127.0.0.1"`, which
+#: sat here until 2026-09-21: it is not a host, no `--host` value can equal it,
+#: and in a set that decides whether TLS is enforced it read as though
+#: `0.0.0.0` were half-excused.  `127.` is matched by prefix below, not here.
 _LOOPBACK_HOSTS = frozenset({
-    "127.0.0.1", "localhost", "::1", "0.0.0.0:127.0.0.1",
+    "127.0.0.1", "localhost", "::1",
 })
 
 
@@ -1084,9 +1099,19 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
                                   allow_insecure: bool) -> None:
     """Refuse to bind a non-loopback host without TLS.  This is
     molbuilder's "you can't just publish your projects/ tree on the
-    public internet by mistake" guard -- the file-ops endpoints
-    have no auth, so cleartext over a real network is two attacks
-    in one (passive sniffing + active tampering).
+    public internet by mistake" guard: cleartext over a real network is
+    two attacks in one (passive sniffing + active tampering), and what
+    is sniffed includes the session cookie.
+
+    **It checks host and TLS, and deliberately not auth**
+    (`deployment.md` § 1).  Auth is opt-in, so the two are independent
+    questions and TLS answers neither of them -- which is why the
+    message below says so rather than implying a `--cert` makes this
+    safe.  It said "the file-ops endpoints have no auth" until
+    2026-09-21, which was true of a server with no `auth` section and
+    false of one with providers configured, where every non-public
+    endpoint needs a session and `/api/*` answers 401
+    (`access-control.md` §§ 1.1, 2, 3.2).
 
     Operators who genuinely want plain HTTP on a non-loopback host
     (e.g., behind a TLS-terminating reverse proxy on the same
@@ -1110,13 +1135,19 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
         )
         return
     raise click.UsageError(
-        f"--host={host} is not a loopback address; binding it serves "
-        f"the entire projects/ tree (read + write + delete) to every "
-        f"client that can reach the interface.  molbuilder has no "
-        f"built-in auth -- the file API is fully open.\n\n"
+        f"--host={host} is not a loopback address and there is no TLS, "
+        f"so every request crosses the network in clear text -- the "
+        f"session cookie included.\n\n"
+        f"WHAT IS BEHIND IT depends on your `auth` section, which this "
+        f"guard does not look at: with providers configured, every "
+        f"non-public endpoint needs a session and /api/* answers 401; "
+        f"with no `auth` section there is no sign-in at all, and the "
+        f"projects/ tree is served read + write + delete to anyone who "
+        f"can reach the interface (docs/ops/access-control.md 1.1).\n\n"
         f"For a real deployment you have three reasonable options:\n"
-        f"  1. Pass --cert / --key to enable TLS (defense in depth; "
-        f"still no auth!).\n"
+        f"  1. Pass --cert / --key to enable TLS.  TLS IS NOT "
+        f"AUTHENTICATION -- it encrypts the wire and gates nothing; if "
+        f"sign-in is not on, turn it on too (`molbuilder auth-setup`).\n"
         f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
         f"auth (recommended -- see docs/ops/deployment.md).\n"
         f"  3. Pass --allow-insecure-binding to override this check "
@@ -1191,12 +1222,17 @@ def _resolve_tls(cert_cli, key_cli):
 
     Readability of the resolved paths is NOT checked here -- this
     function only resolves the precedence chain, so it stays pure
-    and the tests don't need to touch the filesystem.  The call site
-    (``cmd_serve``, ``cmd_watch_serve``) invokes
-    ``_check_tls_readable`` immediately after resolution so the
-    failure surfaces as a clean ``click.UsageError`` instead of the
-    bare ``PermissionError`` Werkzeug raises from
-    ``load_cert_chain`` deep in the stack.
+    and the tests don't need to touch the filesystem.
+    ``_refuse_an_unsafe_bind`` invokes ``_check_tls_readable`` immediately
+    after resolution so the failure surfaces as a clean
+    ``click.UsageError`` instead of the bare ``PermissionError`` Werkzeug
+    raises from ``load_cert_chain`` deep in the stack.
+
+    *(This named ``cmd_watch_serve`` as a second call site until 2026-09-21.
+    That verb was removed 2026-05-19 -- the note saying so is at the foot of
+    this file -- so the docstring outlived it by four months.  It named
+    ``cmd_serve`` as the other, which stopped being true when the three
+    refusals moved into one preflight.)*
     """
     cert, key = cert_cli, key_cli
     if cert and key:
@@ -1280,6 +1316,40 @@ def _check_tls_readable(cert, key) -> None:
     )
 
 
+def _refuse_an_unsafe_bind(host, cert, key, allow_insecure, no_auth):
+    """Every reason this (host, TLS, auth) combination must not start.
+
+    **One place, because `start` has to ask BEFORE it detaches.**  These three
+    refusals lived only in `cmd_serve`, which `serve start` reaches as a
+    CHILD -- after `daemonize()`, so the refusal went to the log while the
+    terminal had already printed "starting in the background" and exit 0.
+    Measured 2026-09-21: `serve start --host 0.0.0.0` with no TLS says it
+    started, names a log and a pidfile, and ends with "then: molbuilder serve
+    status" -- which is the failure `cmd_serve_start` records fixing for the
+    PORT check, in the same words: *"the failure then landed in the log AFTER
+    `daemonize()`, so nothing reached the terminal."*  That check was hoisted
+    and this one was not.
+
+    Returns the ssl context `cmd_serve` then runs with, so the resolution is
+    not spelled twice (D4: two implementations of one rule drift).
+    """
+    if no_auth:
+        # Auth-free is a LOCAL-ONLY convenience: refuse anything but a
+        # loopback bind so an unauthenticated server is never reachable off
+        # the machine.
+        if not _is_loopback_host(host):
+            raise click.ClickException(
+                f"--no-auth requires a loopback --host (got {host!r}); "
+                "refusing to start an unauthenticated server on a "
+                "non-loopback interface.")
+        return None                      # --no-auth never gets TLS
+    cert, key = _resolve_tls(cert, key)
+    _check_tls_readable(cert, key)
+    ssl_ctx = (cert, key) if cert and key else None
+    _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure)
+    return ssl_ctx
+
+
 @cli.command("auth-setup",
               short_help="generate molbuilder.json's auth block for "
                          "ASU CAS and/or Google OAuth (interactive)")
@@ -1321,12 +1391,12 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
         authenticate against.
       * The Google OAuth client secret is prompted via ``getpass``
         (hidden input, no echo, no shell history) and written to
-        ``<config dir>/google_client_secret`` with mode 0600;
+        ``<config dir>/secrets/google_client_secret`` with mode 0600;
         molbuilder.json names that file by PATH, never the literal.
       * molbuilder.json itself is written mode 0600.
 
     The session key is NOT this wizard's.  The server creates
-    ``<config dir>/secret_key`` on its first start and reads it from then
+    ``<config dir>/secrets/secret_key`` on its first start and reads it from then
     on (§ 2.1e).  Until 2026-09-13 this wizard regenerated it on every run
     -- every signed-in person logged out by a command whose docstring said
     "idempotent" -- and with a different encoding from the server's own
@@ -1518,7 +1588,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     )
     click.echo(
         "  (the session key is the server's: created at "
-        "<config dir>/secret_key on its first start and kept from then on)",
+        "<config dir>/secrets/secret_key on its first start and kept from then on)",
         err=True,
     )
     if want_google:
@@ -1744,7 +1814,8 @@ def cmd_notify_token(user, host, route, channel, replace):
     """
     import json as _json
     from . import auth_setup as _as
-    from .monitor import is_channel_name, notify_keys_path
+    from .monitor import (default_notify_path, is_channel_name,
+                          notify_keys_path)
 
     if not is_channel_name(channel):
         raise click.UsageError(
@@ -1823,20 +1894,27 @@ def cmd_notify_token(user, host, route, channel, replace):
     # design, so the job simply never reports.  The Task-setup card emits the
     # same three branches (task-setup/viewer.js); it stays shell text on both
     # surfaces because it resolves on the FAR machine, not this one.
+    # DERIVED, never spelled.  This said "the config directory's `notify`"
+    # and printed "$cfg/notify" below; when every credential moved into
+    # `secrets/` the recipe went on telling people to write a webhook where
+    # nothing reads it -- and a notifier swallows failures, so they would
+    # never learn.  `relative_home` answers from the monitor's own resolver.
+    from .config_dir import relative_home
+    _notify_rel = relative_home(default_notify_path)
     click.echo(f"\nOn the CLUSTER this is the channel `{channel}`, in the "
-               f"config directory's `notify`, mode 0600:\n")
+               f"config directory's `{_notify_rel}`, mode 0600:\n")
     click.echo(client)
     click.echo("\n  cfg=\"${MOLBUILDER_CONFIG_DIR:-"
                "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}\"")
-    click.echo("  mkdir -p -m 700 \"$cfg\"")
-    click.echo("  # paste the JSON above into \"$cfg/notify\"")
-    click.echo("  chmod 600 \"$cfg/notify\"")
+    click.echo(f"  mkdir -p -m 700 \"$cfg/{Path(_notify_rel).parent.as_posix()}\"")
+    click.echo(f"  # paste the JSON above into \"$cfg/{_notify_rel}\"")
+    click.echo(f"  chmod 600 \"$cfg/{_notify_rel}\"")
     # MERGE, NOT OVERWRITE -- and it has to be said, because the file now
     # holds every channel rather than one destination.  Pasting over a file
     # that already has a Slack channel in it deletes that channel, and
     # silently: nothing is sent there and nothing says why.
-    click.echo(f"\n  If `$cfg/notify` already exists, add `{channel}` to its "
-               f"`channels` object")
+    click.echo(f"\n  If `$cfg/{_notify_rel}` already exists, add `{channel}` "
+               f"to its `channels` object")
     click.echo( "  instead of replacing the file -- pasting over it deletes "
                 "the others, silently.")
     click.echo("\nOn an HPC login node $HOME is usually NFS-mounted and "
@@ -2111,18 +2189,15 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
     from .web.app import create_app
 
+    # THE SAME PREFLIGHT `serve start` RUNS BEFORE IT DETACHES.
+    ssl_ctx = _refuse_an_unsafe_bind(host, cert, key,
+                                     allow_insecure_binding, no_auth)
+
     if no_auth:
-        # Auth-free is a LOCAL-ONLY convenience: refuse anything but a
-        # loopback bind so an unauthenticated server is never reachable
-        # off the machine.  create_app(config={}) is the supported
-        # no-auth seam (see web/app.py:create_app); it ignores
-        # molbuilder.json entirely (no providers -> no login), and the
-        # projects root still resolves from the CWD.
-        if not _is_loopback_host(host):
-            raise click.ClickException(
-                f"--no-auth requires a loopback --host (got {host!r}); "
-                "refusing to start an unauthenticated server on a "
-                "non-loopback interface.")
+        # create_app(config={}) is the supported no-auth seam (see
+        # web/app.py:create_app); it ignores molbuilder.json entirely (no
+        # providers -> no login), and the projects root still resolves from
+        # the CWD.
         app = create_app(config={})
         # THIS PROCESS'S PORT, on the Flask app rather than through
         # `create_app(config=)` -- that argument is the RUNTIME config
@@ -2136,10 +2211,6 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         app.run(host=host, port=port, debug=debug, ssl_context=None)
         return
 
-    cert, key = _resolve_tls(cert, key)
-    _check_tls_readable(cert, key)
-    ssl_ctx = (cert, key) if cert and key else None
-    _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure_binding)
     scheme  = "https" if ssl_ctx else "http"
     app = create_app()
     # This process's port -- see `web.app.serve_port`.
@@ -2196,16 +2267,33 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # the same reason the notebook's clash warning is printed just below.
     # A REFUSAL rather than a warning: a web server that cannot bind has
     # nothing left to do, unlike a notebook whose server is still useful.
+    # AND WILL THE CHILD EVEN AGREE TO SERVE THIS BIND?  Same reason as the
+    # port check below, and the same failure it records: every refusal in
+    # `cmd_serve` is raised in the CHILD, which runs after `daemonize()`, so
+    # without this the terminal reads "starting in the background ... then:
+    # molbuilder serve status" at exit 0 while the server never came up
+    # (measured 2026-09-21, `--host 0.0.0.0` with no TLS).
+    _refuse_an_unsafe_bind(host, cert, key, allow_insecure_binding, no_auth)
     _held = _port_in_use(host, port)
-    if _held:
+    if _held is not None:
+        import errno as _errno
+        if _held.errno == _errno.EADDRINUSE:
+            raise click.ClickException(
+                f"port {port} is already in use on {host}, and no supervisor "
+                f"of yours holds it ({_held}).\n"
+                f"  Most likely an orphaned server child -- `kill -9` of a "
+                f"supervisor leaves one running, because the child has no "
+                f"PDEATHSIG and the pidfile is removed.\n"
+                f"  Find it with `ss -ltnp | grep :{port}` and stop it, or "
+                f"start on another port.")
+        # NOT "in use" -- SOMETHING ELSE.  Most often the host is not an
+        # address on this machine (EADDRNOTAVAIL), and the orphan advice
+        # above would send somebody hunting a process that does not exist.
         raise click.ClickException(
-            f"port {port} is already in use on {host}, and no supervisor of "
-            f"yours holds it ({_held}).\n"
-            f"  Most likely an orphaned server child -- `kill -9` of a "
-            f"supervisor leaves one running, because the child has no "
-            f"PDEATHSIG and the pidfile is removed.\n"
-            f"  Find it with `ss -ltnp | grep :{port}` and stop it, or "
-            f"start on another port.")
+            f"cannot bind {host}:{port} ({_held}).\n"
+            f"  The port is not reported busy; the address itself is the "
+            f"problem.  `--host` must name an interface this machine has -- "
+            f"`ip -br addr` lists them -- or 0.0.0.0 for all of them.")
     child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
              "--host", host, "--port", str(port), "--no-supervise"]
     if cert:
@@ -2293,21 +2381,30 @@ _PREDATES_NOTE = (
     "  for this server` in that case.")
 
 
-def _port_in_use(host: str, port: int) -> str:
-    """``""`` when the port is free to bind, else why it is not.
+def _port_in_use(host: str, port: int):
+    """``None`` when the bind would succeed, else the ``OSError`` saying why.
 
     A bind test on the address the CHILD will use, so the answer is the
     child's: a wildcard bind and a loopback bind fail differently, and
     guessing from `127.0.0.1` would pass a port held on another interface.
+
+    **It returns the error, not a sentence**, because "cannot bind" has more
+    than one cause and the caller has to tell them apart.  It returned
+    ``str(exc)`` and the caller opened with *"port N is already in use"*
+    whatever came back -- so a host that is simply not an address on this
+    machine produced *"port 8771 is already in use on 192.0.2.1 ([Errno 99]
+    Cannot assign requested address)"*, a sentence that contradicts its own
+    parenthetical, followed by advice to hunt an orphaned child with `ss`
+    that was never there (measured 2026-09-21).
     """
     import socket
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
-        return ""
+        return None
     except OSError as exc:
-        return str(exc)
+        return exc
 
 
 def _runtime_dir_dies_at_logout() -> str:

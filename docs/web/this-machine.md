@@ -83,7 +83,8 @@ cannot reach the machine it is for, which is why `notify-token` prints it too
 ## 3. Channels
 
 A **channel** is a name the person chose and what it resolves to. The file is
-`config_dir()/notify`, mode `0600`, and `run-reports.md` § 3 owns its format.
+`<config dir>/secrets/notify`, mode `0600`, and `run-reports.md` § 3 owns its
+format.
 
 Each row shows the name, the kind, the address under § 2's rule, and how the
 last test went. The actions are **Add**, **Test**, **Remove**.
@@ -128,7 +129,7 @@ producing.
 
 **Every config file molbuilder manages is saved on the machine molbuilder
 runs on** *(user, 2026-09-01)*. There is no mode, no probe and no branch: this
-page writes `config_dir()/notify` on this box.
+page writes `<config dir>/secrets/notify` on this box.
 
 > **It gated on `execution.mode != "submit"` until 2026-09-01**, reading
 > `submit` as *"the jobs run somewhere this server cannot reach"* and refusing
@@ -152,7 +153,7 @@ script will look for and where:
 
 | | |
 |---|---|
-| `<config dir>/notify` | the channels file, `0600`, same shape as here. A channel a description ticks must exist there under the same name, or nothing is sent to it — the monitor log says which |
+| `<config dir>/secrets/notify` | the channels file, `0600`, same shape as here. A channel a description ticks must exist there under the same name, or nothing is sent to it — the monitor log says which |
 | `<config dir>` is | `$MOLBUILDER_CONFIG_DIR` exactly as given; else `$XDG_CONFIG_HOME/molbuilder`; else `~/.config/molbuilder` — resolved **on that machine**, so it need not match this one's |
 
 It emits no shell and holds no key. An earlier version generated a

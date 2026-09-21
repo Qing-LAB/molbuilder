@@ -38,7 +38,7 @@ So the two halves live apart, and every rule below is a consequence:
 | | lives in | travels? |
 |---|---|---|
 | **the policy** — when to speak, and which channels **by name** | `task.json`'s `notify` block | **yes**, and safely: *"every six hours, to `slack`"* is true wherever the file is opened |
-| **the channels** — what each name resolves to: the address, and the secret | the user's own file, `$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`), mode `0600` | **no**, ever |
+| **the channels** — what each name resolves to: the address, and the secret | the user's own file, `<config dir>/secrets/notify`, mode `0600` | **no**, ever |
 
 **A name travels; what it points at does not** — and that is what lets a
 description say where its reports go at all. `"slack"` is a label the person
@@ -137,7 +137,7 @@ One mechanism, two kinds of destination. Both are a `POST` with a short
 timeout, individually guarded, **silent on failure** — an unreachable server
 must never cost the run anything.
 
-`config_dir()/notify` is a JSON object of **named channels**:
+`<config dir>/secrets/notify` is a JSON object of **named channels**:
 
 ```json
 {
@@ -550,8 +550,8 @@ same name replaces the credential without touching any description:
 
 | | file | shape | mode |
 |---|---|---|---|
-| the server | `notify_keys` in the config directory | `{"route": …, "keys": {user: key}}` | `0600` |
-| the cluster | `notify` in the config directory | `{"channels": {"<name>": {"url": …, "key": …}}}` | `0600` |
+| the server | `<config dir>/secrets/notify_keys` | `{"route": …, "keys": {user: key}}` | `0600` |
+| the cluster | `<config dir>/secrets/notify` | `{"channels": {"<name>": {"url": …, "key": …}}}` | `0600` |
 
 **`molbuilder.json` needs nothing.** The key file **is** the switch: the
 listener is registered when that file exists and carries a route, and not
@@ -661,7 +661,7 @@ damage if a destination is ever compromised: the worst it buys is noise.
 | how it reaches the wrapper | `jobset.Resources`, the road `continue_retries` already rides |
 | how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
 | when to fire | `monitor.run_monitor` |
-| what a channel name resolves to | `monitor.load_channels` → `config_dir()/notify` |
+| what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` |
 | which channels one run uses | `task.Notify.channels` → `--notify-channels` (§ 3.0) |
 | where results land | `$XDG_STATE_HOME/molbuilder/reports/<user>.jsonl` (default `~/.local/state/molbuilder/`), JSON Lines (§ 4.1a).  `$XDG_STATE_HOME` moves it -- `paths.reports` was retired 2026-08-31 and is now refused (`configuration.md` § 2.1d) |
 | what identifies a report | `monitor.run_identity` — label, job id, host (§ 4.1a) |

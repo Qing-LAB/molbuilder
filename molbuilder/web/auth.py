@@ -48,7 +48,6 @@ log in" prompt instead of choking on HTML).
 from __future__ import annotations
 
 import logging
-import os
 import secrets
 from typing import List, Mapping
 
@@ -503,15 +502,21 @@ def _setup_session_security(app, auth_cfg: Mapping) -> None:
         )
 
 
+#: Shortest session key this will sign with.  Stated once because it is read
+#: back and re-checked after the first-run write, and a floor that disagrees
+#: with itself is a floor that lets something through.
+_MIN_KEY_BYTES = 16
+
+
 def _install_secret_key(app) -> None:
     """Load Flask's session-signing key, generating it on first run.
 
-    **The key has ONE home** -- ``<config dir>/secret_key``, asked of
+    **The key has ONE home** -- ``<config dir>/secrets/secret_key``, asked of
     ``config_dir.session_key()`` (`configuration.md` § 2.1e).  It took a
     ``secret_key_file`` argument until 2026-08-31, and a configurable location
     for a single file is how it came to live in two places: the config pointed
     at ``~/.molbuilder/secret.key`` while the wizard wrote
-    ``<config dir>/secret_key``, so running ``auth-setup`` produced a key the
+    the path the resolver named, so running ``auth-setup`` produced a key the
     server never read and reported success.
 
     There is no ephemeral fallback any more, and its absence is the point.  It
@@ -519,32 +524,51 @@ def _install_secret_key(app) -> None:
     configurable -- and it degraded silently into sessions that died on every
     restart, behind a warning in a log nobody reads.
     """
-    from ..config_dir import session_key
+    from ..config_dir import read_session_key, session_key
     path = session_key()
-    if path.exists():
-        key_bytes = path.read_bytes()
-        if len(key_bytes) < 16:
+    # ASK FOR THE KEY, NOT THE PATH.  This did `path.read_bytes()` until
+    # 2026-09-20; `path` is still needed below for the first-run CREATE and
+    # for the message, but nothing here decodes the file any more.
+    key_bytes = read_session_key()
+    if key_bytes is not None:
+        if len(key_bytes) < _MIN_KEY_BYTES:
             raise RuntimeError(
                 f"molbuilder auth: the session key at {str(path)!r} is "
                 f"only {len(key_bytes)} bytes; refusing to use it "
-                f"(min 16).  Delete the file and it is regenerated on the "
-                f"next start."
+                f"(min {_MIN_KEY_BYTES}).  Delete the file and it is "
+                f"regenerated on the next start."
             )
         app.config["SECRET_KEY"] = key_bytes
         return
 
-    # First-run generate: make parent dir if needed, write atomically
-    # with restrictive permissions.  0700 on the directory, because a listable
-    # directory names the file even when the file itself is shut
-    # (`configuration.md` § 2.1b).
+    # First-run generate.  0700 on the directory, because a listable directory
+    # names the file even when the file itself is shut (§ 2.1b).
     from ..config_dir import ensure_private_dir
+    from ..persist import write_bytes
     ensure_private_dir(path.parent)
-    key_bytes = secrets.token_bytes(32)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    # THROUGH THE ONE WRITER (§ 2.3), which `auth_setup.write_secret_file`
+    # already uses for the other three secrets.  This was a hand-rolled
+    # `os.open(O_CREAT|O_EXCL)` + `os.write` until 2026-09-20, under a comment
+    # claiming it was atomic.  `exclusive=True` keeps what `O_EXCL` was there
+    # for -- an existing key is never replaced, because replacing it signs
+    # every logged-in person out -- and adds what it lacked: the bytes arrive
+    # through a temp, so the file is complete or absent, never partial.
     try:
-        os.write(fd, key_bytes)
-    finally:
-        os.close(fd)
+        write_bytes(path, secrets.token_bytes(32), mode=0o600, exclusive=True)
+    except FileExistsError:
+        # Another start won the race between the read above and this write.
+        # Not an error: its key is in the file, and the read below adopts it.
+        pass
+    # ADOPT WHAT LANDED, not the bytes this process generated.  The two are the
+    # same except in the race just caught, where the file's key is the one
+    # every other process will read.
+    key_bytes = read_session_key()
+    if key_bytes is None or len(key_bytes) < _MIN_KEY_BYTES:
+        raise RuntimeError(
+            f"molbuilder auth: wrote a session key to {str(path)!r} but "
+            f"cannot read a usable one back.  Check that file and the "
+            f"permissions on its directory."
+        )
     app.config["SECRET_KEY"] = key_bytes
 
 

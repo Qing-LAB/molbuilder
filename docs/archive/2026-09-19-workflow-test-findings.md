@@ -23,6 +23,26 @@
 > workflow this session exercised, and nothing else holds those numbers.
 
 
+> **ALL THREE CLOSED — archived 2026-09-20.** Each was re-derived against the
+> tree, and the commit that closed it is an ancestor of `main`:
+>
+> * **W1** — `f6d9011d`, *"handover: the tab writes the files and stops; no jump
+>   to Task setup"*. The fix was not to hand the sidebar selection over but to
+>   stop jumping at all (user, 2026-09-19: *"we just skip the fancy tab to tab
+>   jump connection to avoid implicit coupling"*), which removes the coupling
+>   rather than repairing one path through it.
+> * **W2** — `97a25580` and `4217f80e`: Task setup's `loadFolder` reads the
+>   folder's one answer instead of four files, and the reset list lost the two
+>   lines that let a previous calculation's cards survive a directory change.
+> * **W3** — `84553f7a`, *"a container has no run state, but it may have a
+>   PRODUCT"*. Resolved as option **(b)**: the container branch asks the door
+>   for `openable_in` and keeps `st = None`, so a composite's calculation-level
+>   record opens while the container still declares no run state.
+>
+> Kept for the measurement at the foot of the file, which is the only record of
+> that end-to-end walk.
+
+
 ## W1 — "Send to Task setup" opens the WRONG calculation
 The button's own text: *"...into the folder selected in the sidebar, then opens
 Task setup **there**."*  It wrote the handover correctly into

@@ -216,7 +216,7 @@ to parse a login page as data.
 
 ### 3.4 The session key lives outside the repo
 
-Sessions are signed with a key at `<config dir>/secret_key` — one home,
+Sessions are signed with a key at `<config dir>/secrets/secret_key` — one home,
 not a configured path (`configuration.md` § 2.1e)
 (conventionally in the config directory — `$XDG_CONFIG_HOME/molbuilder`,
 else `~/.config/molbuilder`). Not in `molbuilder.json`, not in the
