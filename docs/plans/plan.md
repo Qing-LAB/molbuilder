@@ -3673,6 +3673,24 @@ effort. The first three produce a run that converges on the wrong thing.
 * **`detect_layers`' `abs=1e-3`** and **`bulk_z_period`'s default approx** — the filed complaints are unfounded (both are effectively exact). What is real is P5, and separately that `LAYER_TOL_ANG = 0.5` — the decision of what counts as one layer — has no test at all.
 * **The junction `2.355`** — the stated failure mode is false: the Au planes are placed by absolute `start_z` at -6.855/-4.500/+4.500/+6.855 and cannot overlap. Only the retyped constant is real, and it is molbuilder's own `fcc_lattice.json` value, so deriving it is legitimate.
 
+### 11.4a Decisions recorded, to implement together
+
+Taken during the one-at-a-time review so the work can be batched rather
+than paid for in separate test cycles.
+
+* **The Modify tab asks what this machine can do** *(decided 2026-09-20,
+  not yet built)*. `/api/backends` exists, reports which builders resolve,
+  and **no page reads it** — its own handler comment says so. Meanwhile
+  `modify.html:145-197` offers all four backends and the duplex input
+  unconditionally, with static prose *"(Requires 3DNA…)"*. The server half
+  is now in place: a missing backend answers `200 / ok:false` with
+  `reason: "backend_unavailable"` and the backend name, so the page has
+  something to branch on. **The decision:** fetch `/api/backends` on Modify
+  mount, disable the options that do not resolve, and hide the two-strand
+  hint when no duplex-capable backend is present. Not "grey it out and hope"
+  — the refusal path stays as the backstop, because a backend can vanish
+  between page load and submit.
+
 ### 11.5a Rulings that close items — do not reopen without asking
 
 * **Hydrogens are added on purpose, and that stays.** `chemistry.add_hydrogens`
