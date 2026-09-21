@@ -201,7 +201,7 @@ seeds a config directory you can start from rather than one you have to
 discover:
 
 ```
-~/.config/molbuilder/              0700 -- it holds secrets
+~/.config/molbuilder/              0700
 ├── molbuilder.json                0600 -- a TEMPLATE: every section present
 │                                  and empty, each with a comment saying who
 │                                  fills it (you, a command, or a probe)
@@ -210,10 +210,17 @@ discover:
 │   └── README                     that the probe runs on the TARGET and the
 │                                  record is copied here -- the mistake this
 │                                  directory invites
-└── secrets/                       0700
-    └── README                     the mode rule, mock notify channels for
-                                   all three kinds, and the THREE secrets that
-                                   cannot live here (one fixed home each)
+└── secrets/                       0700 -- EVERY credential molbuilder keeps
+    └── README                     0600 -- the mode rule, the two kinds of
+                                   credential in here, the function each is
+                                   reached through, and mock notify channels
+
+The session key, the notify channels file, the run-report signing keys and
+Google's client secret all live in `secrets/`, and `molbuilder.json` carries
+paths to credentials, never the bytes. *(Until 2026-09-20 those four sat beside
+`molbuilder.json` and this tree said the README documented "the THREE secrets
+that cannot live here" — the opposite of what is now true.
+`configuration.md` § 3.1 owns the rule.)*
 ```
 
 Two things are **asked**, because install time is the one moment the answer is

@@ -566,7 +566,7 @@ because `path` was in the GET's answer and in no other (found in the browser,
 | Method · Path | Purpose |
 |---|---|
 | GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** — for Slack and Discord the address *is* the credential, and masking only that kind is a rule mislabelling can defeat. The only one of these the Task-setup tab calls |
-| PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `config_dir()/notify` — the path taken from the monitor's own function so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*. The one thing it clears is the retired single-destination shape's top-level `url`/`key`/`headers` |
+| PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `<config dir>/secrets/notify` — the path taken from the monitor's own function so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*. The one thing it clears is the retired single-destination shape's top-level `url`/`key`/`headers` |
 | DELETE `/api/notify/channels/<name>` | Remove one. **Absent is off**, and off is a state you can reach without a shell |
 | POST `/api/notify/channels/<name>/test` | Send one report to that channel and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |
 | GET `/api/notify/listener` | Whether **this server** receives reports: the route segment and who holds a key. Never a key |

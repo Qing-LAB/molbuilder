@@ -24,7 +24,11 @@
    hides when no folder is open. #}
 <main class="tm-tab">
 
-  <section class="card" id="tm-channels-card">
+  <!-- THE PATH, ONCE, FROM THE VIEW.  Both the disclosure below and
+       page.js's issued-key recipe need it; carrying it here means neither
+       spells it, and `relative_home` derives it from the monitor's own
+       resolver (docs/configuration.md 3.1). -->
+  <section class="card" id="tm-channels-card" data-notify-rel="{{ notify_rel }}">
     <h2>Where run reports go</h2>
     <p class="hint">A long calculation tells you how it is going by posting to
       a <strong>channel</strong> &mdash; your Slack, or a molbuilder server
@@ -119,7 +123,7 @@
         Nothing in the run script carries an address or a key &mdash; it
         assumes you have put them in place. What it looks for:</p>
       <dl class="tm-expects-list">
-        <dt><code>&lt;config dir&gt;/notify</code></dt>
+        <dt><code>&lt;config dir&gt;/{{ notify_rel }}</code></dt>
         <dd>the channels file, mode <code>0600</code>, in the same shape as
           the one on this page. A channel a description ticks must exist there
           by the same name, or nothing is sent to it &mdash; the monitor log

@@ -2192,7 +2192,10 @@ def _recommended_activation(conda_binary: "Optional[str]") -> tuple:
 def _render_init_config(steps: "Iterable") -> None:
     """One line per step: what it is, whether it appeared, and what to know."""
     for step in steps:
-        mark = "+" if step.created else "="
+        # `~` is the README this program authored and has just corrected --
+        # neither "appeared" nor "was already right", and rendering it as `=`
+        # would report a file that just CHANGED as one that did not.
+        mark = "+" if step.created else ("~" if step.rewritten else "=")
         click.echo(f"  {mark} {step.path}")
         if step.note:
             click.echo(f"      {step.note}")

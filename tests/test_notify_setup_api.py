@@ -33,7 +33,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     app = create_app(config={"rate_limit": {"enabled": False}})
-    return app.test_client(), tmp_path / ".config/molbuilder/notify"
+    # ASK THE DOOR for the path.  This built ".config/molbuilder/notify" by
+    # hand, so every test taking `path` from this fixture asserted the
+    # location the TEST believed rather than the one the app uses -- and all
+    # seven broke the day the file moved.  Taken from the monitor's own
+    # resolver, each of those tests now additionally proves the page writes
+    # where the reader reads.
+    from molbuilder.monitor import default_notify_path
+    return app.test_client(), default_notify_path()
 
 
 SECRET = "s3cr3t-value-nobody-should-see"
@@ -191,7 +198,11 @@ def test_it_writes_where_the_MONITOR_reads(client):
     assert path.exists()
     # AND IT PARSES AS WHAT THE MONITOR EXPECTS.  Same directory but a shape
     # the reader rejects would fail in exactly the same silence.
-    assert list(load_channels(str(path))) == ["lab"]
+    # `load_channels()` takes no path -- its first parameter is `log`, so
+    # `load_channels(str(path))` silently passed the notify file as a LOG
+    # destination and proved nothing about which file was read.  It reads its
+    # own resolver, which is the point being made here.
+    assert list(load_channels()) == ["lab"]
 
 
 # --------------------------------------------------------------------- #
@@ -433,7 +444,8 @@ def test_execution_mode_does_not_gate_the_write(tmp_path, monkeypatch):
     c = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     r = c.put(CH + "/lab", json={"url": "https://qlab/api/x", "key": SECRET})
     assert r.status_code == 200, "a scheduler on this box refused the write"
-    assert (cfgdir / "notify").exists()
+    from molbuilder.monitor import default_notify_path
+    assert default_notify_path().exists()
     body = c.get(CH).get_json()
     assert body["channels"][0]["name"] == "lab"
     for gone in ("execution_mode", "can_write_here"):

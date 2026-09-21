@@ -94,32 +94,18 @@ def _secret_file_mtime(entry: Mapping):
 
 
 def _read_secret(entry: Mapping) -> str:
-    """Read the OAuth client secret -- file path or literal string.
+    """The provider's client secret, from the one door that owns it.
 
-    Both shapes get an explicit empty-content check: an operator who
-    accidentally ``echo '' > ~/.config/molbuilder/<provider>_client_secret``
-    or leaves the literal string blank would otherwise see a confusing
-    OAuth-error-at-first-login instead of a clear config diagnostic.
+    This branched on `client_secret_file` vs `client_secret`, expanded ``~``,
+    opened the file, stripped it and judged an empty one -- five decisions
+    about what a secret IS, inside a module about OAuth, and it had to know
+    which shape the operator had chosen.  `runtime_config` owns the provider
+    entry's schema and now answers the only question this module actually
+    has: *what is the secret for this provider*.  Nothing here learns whether
+    a file was involved (`configuration.md` § 2.3).
     """
-    if "client_secret_file" in entry and entry["client_secret_file"]:
-        path = Path(os.path.expanduser(entry["client_secret_file"]))
-        secret = path.read_text().strip()
-        if not secret:
-            raise RuntimeError(
-                f"auth.providers[id={entry['id']!r}]: "
-                f"client_secret_file {str(path)!r} exists but is "
-                f"empty (or contains only whitespace).  Write the "
-                f"provider's client secret into that file and re-"
-                f"start molbuilder."
-            )
-        return secret
-    if "client_secret" in entry and entry["client_secret"]:
-        return entry["client_secret"]
-    raise RuntimeError(
-        f"auth.providers[id={entry['id']!r}]: neither client_secret "
-        f"nor client_secret_file is set (schema validation should "
-        f"have caught this -- check runtime_config._validate_secret_pair)."
-    )
+    from ...runtime_config import provider_client_secret
+    return provider_client_secret(entry)
 
 
 def _ensure_client(app, entry: Mapping):

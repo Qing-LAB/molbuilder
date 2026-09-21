@@ -905,8 +905,11 @@ def test_the_notify_card_offers_this_machines_channels(
     `type="password"` in the template, no `saveDestination` in any source --
     also stay: those quantify over a class, which is what text is for.
     """
-    from molbuilder.config_dir import config_dir
-    (config_dir() / "notify").write_text(json.dumps({"channels": {
+    # The monitor's own door, not `config_dir() / "notify"` -- joining it
+    # here put the file where nothing reads once credentials moved.
+    from molbuilder.monitor import default_notify_path
+    _n = default_notify_path(); _n.parent.mkdir(parents=True, exist_ok=True)
+    _n.write_text(json.dumps({"channels": {
         "lab": {"kind": "slack",
                 "url": "https://hooks.example.invalid/services/T0/B0/XyZzY"}}}),
         encoding="utf-8")

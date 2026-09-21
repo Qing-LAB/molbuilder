@@ -55,6 +55,7 @@ __all__ = [
     "config_dir", "state_dir", "runtime_dir", "logs_dir", "reports_dir",
     # The files with no format to own them -- spelled here and nowhere else.
     "session_key", "google_client_secret", "secrets_dir",
+    "relative_home",
     "serve_pidfile", "serve_log", "serve_stacks_log",
     "ports_with_pidfile",
     "jupyter_pidfile", "jupyter_log", "jupyter_runtime",
@@ -194,6 +195,14 @@ def runtime_dir() -> Path:
 #: What lives HERE is the files with no format to own: opaque secrets, a
 #: pidfile, a log.  Nobody else may spell these.
 #:
+#: WHERE they sit changed on 2026-09-20 (user): every secret now lives in
+#: `secrets/`, not beside `molbuilder.json`.  The property that matters is
+#: unchanged -- ONE fixed home per file, resolved by ONE function, which is
+#: what stops a reader and a writer meaning different files (2.1e).  That
+#: property was never about WHICH directory, only about there being exactly
+#: one; a directory named `secrets` that did not hold the secrets misled
+#: every reader who opened it.
+#:
 #: (Pulling `environment.json` and `notify` in here was tried and reverted the
 #: same day -- it took a name away from its format owner, which is the rule
 #: A11 exists to hold, and
@@ -205,34 +214,115 @@ def runtime_dir() -> Path:
 SESSION_KEY_FILENAME = "secret_key"
 GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
 
-#: The directory for files `molbuilder.json` names by path.
+#: The directory every credential lives in -- the ones with a fixed home
+#: (`secret_key`, `notify`, `notify_keys`) and the ones `molbuilder.json`
+#: names by path (a TLS key, a provider's client secret).
 SECRETS_DIRNAME = "secrets"
 
 
 def session_key() -> Path:
-    """The Flask session-signing key.
+    """The Flask session-signing key -- ``<config dir>/secrets/secret_key``.
 
-    One home and one name.  It was written as ``<config dir>/secret_key`` and
-    read as ``~/.molbuilder/secret.key`` -- two directories and two spellings
-    -- so running ``auth-setup`` produced a key the server never read and
-    reported success (`configuration.md` § 2.1e).
+    One home and one name, which is the whole point.  HISTORICALLY it was
+    written to one path and read from another (``~/.molbuilder/secret.key``)
+    -- two directories and two spellings -- so running ``auth-setup`` produced
+    a key the server never read and reported success (`configuration.md`
+    § 2.1e).  Both of those paths are dead; ask this function.
+
+    It moved under `secrets/` on 2026-09-20 with every other credential.  That
+    is a change of directory, not of the rule: still one home, still resolved
+    here, still not nameable in `molbuilder.json`.
     """
-    return config_dir() / SESSION_KEY_FILENAME
+    return secrets_dir() / SESSION_KEY_FILENAME
 
 
 def google_client_secret() -> Path:
-    """The Google OAuth client secret."""
-    return config_dir() / GOOGLE_CLIENT_SECRET_FILENAME
+    """The DEFAULT home for Google's OAuth client secret.
+
+    A default, not a fixed home: a provider entry may set
+    ``auth.providers[].client_secret_file`` and `oauth.py` reads whatever the
+    config names.  It moved into `secrets/` with the three fixed-home files
+    on 2026-09-20 so that every credential molbuilder writes lands in one
+    directory, whether or not the config could have named it.
+    """
+    return secrets_dir() / GOOGLE_CLIENT_SECRET_FILENAME
+
+
+def read_session_key() -> "bytes | None":
+    """The session key's BYTES, or ``None`` when it has not been made yet.
+
+    **Ask for the SECRET, not for the path to it** *(user, 2026-09-20: "we
+    should avoid user access the file directly, the api should return the
+    KEY/SECRET")*.  Every caller used to do ``session_key().read_bytes()``,
+    which is a second place that knows a credential is a file, how it is
+    encoded, and what an unreadable one means.  `monitor` already did this
+    correctly for its two -- `load_channels` and `read_notify_keys` hand back
+    values -- and these two were the ones still handing out a path.
+
+    ``None`` rather than an exception for "absent", because absent is an
+    ordinary state: the server makes the key on first run (`web/auth.py`).
+    A file that EXISTS but cannot be read is a different thing and raises.
+
+    This is not a `retrieve_secret("name")` registry, which
+    `configuration.md` § 2.3 refuses and which was reverted inside a day on
+    2026-08-31: a name-keyed table has to re-spell filenames their owners
+    own.  One named function per secret, on the module that owns it.
+    """
+    p = session_key()
+    if not p.exists():
+        return None
+    return p.read_bytes()
+
+
+def relative_home(resolve) -> str:
+    """Where a file sits RELATIVE to the config directory -- ``secrets/notify``.
+
+    **For the text molbuilder shows a person.**  `notify-token` prints a shell
+    recipe that runs on a CLUSTER, so it cannot use an absolute local path: it
+    builds `$cfg` from the same three branches `config_dir` does and joins a
+    name.  It joined ``notify``, and when the credentials moved into `secrets/`
+    the printed recipe went on telling people to write a webhook where nothing
+    reads it -- silently, because a notifier swallows every failure by design.
+    The AST guard could not catch that: it matches the literal ``"notify"`` and
+    the string there was ``"$cfg/notify"``.  Deriving the tail is what closes
+    it.
+
+    **It lives here, not in `placement`** *(moved 2026-09-20)*.  It never
+    touches that module's table -- it is `config_dir` arithmetic over a
+    resolver the caller supplies -- and `placement` in this codebase means JOB
+    placement nearly everywhere else (`scheduler/place.Placement`,
+    `calcdirs.Placement`, `placement.domain` through `jobset/`), so
+    `from .placement import relative_home` in `cli.py` read like scheduler
+    code.  Here it sits beside the function that defines what it is relative
+    TO, and it ships with this module to a compute node.
+
+    **A path outside the config directory RAISES**, deliberately.  The first
+    version returned the absolute path instead, which rendered as
+    ``$cfg//run/user/1000/molbuilder/jupyter-8888.json`` -- a broken recipe
+    from a function whose name promises a relative one.  Nothing can use that,
+    so a resolver that is not under the config directory is a call-site
+    mistake and says so.
+    """
+    return Path(resolve()).relative_to(Path(config_dir())).as_posix()
 
 
 def secrets_dir() -> Path:
-    """Files ``molbuilder.json`` names by PATH -- a TLS key, a client secret.
+    """Every credential molbuilder keeps, in one directory.
 
-    The suggested home rather than a required one: the config names those files,
-    so the name is the operator's.  The DIRECTORY still has one owner, which is
-    why this function exists -- `envs init-config` used to join ``root /
-    "secrets"`` itself, the only place in the tree naming that directory, and a
-    directory nobody owns is a directory the audit below cannot check (A11).
+    Two kinds live here and they differ in who names them, not in where they
+    sit *(2026-09-20)*:
+
+    * **fixed home** -- `secret_key`, `notify`, `notify_keys`.  Resolved by one
+      function each and NOT nameable in `molbuilder.json`, which refuses
+      `secret_key_file` / `notify_keys_file` outright.  That is what keeps a
+      reader and a writer from meaning different files (2.1e).
+    * **operator-named** -- a TLS key, a provider's `client_secret_file`.  The
+      config names these by path, so this is their suggested home and the name
+      is yours.
+
+    The DIRECTORY has one owner, which is why this function exists --
+    `envs init-config` used to join ``root / "secrets"`` itself, and a
+    directory nobody owns is one the placement audit cannot check (A11).
     """
     return config_dir() / SECRETS_DIRNAME
 

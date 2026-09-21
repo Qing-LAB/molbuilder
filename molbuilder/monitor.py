@@ -736,38 +736,48 @@ NOTIFY_FILENAME = "notify"
 NOTIFY_KEYS_FILENAME = "notify_keys"
 
 
-def _config_dir():
-    """molbuilder's config directory, from the one module that defines it.
+def _secrets_dir():
+    """Where every credential lives, from the one module that defines it.
 
     Imported two ways because this file runs two ways: inside the package on
     a login node, and as a standalone `mb_monitor.py` on a compute node with
     no molbuilder installed.  The wrapper ships `config_dir.py` beside it
-    (`runwrap._config_dir_source`), so the SAME EIGHT LINES answer on both
+    (`runwrap._config_dir_source`), so the SAME LINES answer on both
     machines.
 
-    Restating the rule here instead would be the fourth copy of it, which
-    `tests/test_config_dir_has_one_home.py` exists to prevent -- three
-    modules once computed it independently, and two of them said so in prose:
-    *"a comment is not a mechanism"*.
+    Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
+    be another copy of it, which `tests/test_config_dir_has_one_home.py`
+    exists to prevent: three modules once computed it independently and two
+    of them said so in prose, *"a comment is not a mechanism"*.
+
+    THIS REPLACED `_config_dir()` on 2026-09-20, when the credentials moved
+    into `secrets/` and both path functions below started asking for that
+    directory instead.  `_config_dir` was left behind for a few hours with no
+    callers -- and `test_machine_identity` was patching it to simulate the
+    missing companion, so the test went on passing while testing nothing.  A
+    dead function is worse than no function when something patches it.
+
+    Raises `ModuleNotFoundError` when the companion is absent, which
+    `load_channels` catches: absent is reports-off, never a dead monitor.
     """
     try:
-        from .config_dir import config_dir      # inside the package
+        from .config_dir import secrets_dir     # inside the package
     except ImportError:                          # shipped beside the job
-        from config_dir import config_dir
-    return config_dir()
+        from config_dir import secrets_dir
+    return secrets_dir()
 
 
 def default_notify_path() -> Path:
-    """Where the destination file lives: ``<config dir>/notify``.
+    """Where the destination file lives: ``<config dir>/secrets/notify``.
 
-    Honouring ``XDG_CONFIG_HOME`` -- which :func:`_config_dir` does, because
+    Honouring ``XDG_CONFIG_HOME`` -- which :func:`_secrets_dir` does, because
     `config_dir.py` does -- is load-bearing HERE in particular.  On an HPC
     login node ``$HOME`` is NFS-mounted and often snapshotted, and
     ``XDG_CONFIG_HOME=/scratch/$USER`` is how a person keeps a token off it.
     This file is read on a compute node; a path hardcoded to ``$HOME`` would
     give them no way to.
     """
-    return _config_dir() / NOTIFY_FILENAME
+    return _secrets_dir() / NOTIFY_FILENAME
 
 
 def notify_keys_path():
@@ -778,7 +788,7 @@ def notify_keys_path():
     it -- one more place to edit when a name changes, and the one that gets
     missed (A11).
     """
-    return _config_dir() / NOTIFY_KEYS_FILENAME
+    return _secrets_dir() / NOTIFY_KEYS_FILENAME
 
 
 # ── The server's key file, whole (A11: this module owns the format) ──────────

@@ -48,6 +48,22 @@ ROUTE = "x7KqTestSegment"
 PATH = f"/api/{ROUTE}"
 
 
+def _seed_keys(doc):
+    """Write the key file AT ITS ONE HOME, asked of the module that owns it.
+
+    Every site below built `<config dir>/notify_keys` by hand -- which is the
+    defect the production rule forbids, one layer out, and it is what broke
+    them all when every credential moved into `secrets/` on 2026-09-20.  Going
+    through the door means these tests now also prove the thing that matters:
+    the app reads where the test wrote, wherever that turns out to be.
+    """
+    from molbuilder.monitor import notify_keys_path
+    k = notify_keys_path()
+    k.parent.mkdir(parents=True, exist_ok=True)
+    k.write_text(json.dumps(doc) if not isinstance(doc, str) else doc)
+    return k
+
+
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     """A configured server, with the report store pointed inside tmp.
@@ -64,8 +80,7 @@ def store(tmp_path, monkeypatch):
     # place and carries its own route, so there is no config to set.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
-    keys = tmp_path / "cfg" / "notify_keys"
-    keys.write_text(json.dumps({"route": ROUTE, "keys": {USER: KEY}}))
+    keys = _seed_keys({"route": ROUTE, "keys": {USER: KEY}})
     app = create_app(config={"rate_limit": {"enabled": False}})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()          # rotating handlers are cached per user
@@ -114,7 +129,7 @@ def test_a_half_written_key_file_opens_no_door(
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
     if doc is not None:
-        (tmp_path / "cfg" / "notify_keys").write_text(json.dumps(doc))
+        _seed_keys(doc)
     app = create_app(config={"rate_limit": {"enabled": False}})
     # The LISTENER's blueprint specifically.  `notify_setup` also lives
     # under /api/notify/ and is always registered -- it is the signed-in
@@ -439,8 +454,7 @@ def test_a_failure_is_counted_by_the_limiter(tmp_path, monkeypatch):
     cfg = tmp_path / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
-    (cfg / "notify_keys").write_text(
-        json.dumps({"route": ROUTE, "keys": {USER: KEY}}))
+    _seed_keys({"route": ROUTE, "keys": {USER: KEY}})
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()
     N._recent.clear()
@@ -662,7 +676,7 @@ def _app_with_key_file(tmp_path, monkeypatch, text):
     cfg = tmp_path / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
-    (cfg / "notify_keys").write_text(text)
+    _seed_keys(text)
     from molbuilder.web.blueprints import notify as N
     N._loggers.clear()
     N._recent.clear()
@@ -706,13 +720,12 @@ def test_a_route_that_is_not_one_url_segment_is_refused_by_the_file(
     # The key file has ONE home, so the test puts its file there rather than
     # handing the reader a path (the reader stopped taking one, 2026-09-13).
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    p = tmp_path / "notify_keys"
     for bad in ("a/b", "", "has space", "x" * 200, "a.b", 42, None):
-        p.write_text(json.dumps({"route": bad, "keys": {USER: KEY}}))
+        _seed_keys({"route": bad, "keys": {USER: KEY}})
         route, keys = read_notify_keys()
         assert route is None and keys == {}, f"{bad!r} was accepted as a route"
     # ...and one that is fine, so it cannot pass by refusing everything.
-    p.write_text(json.dumps({"route": "  /x7Kq/  ", "keys": {USER: KEY}}))
+    _seed_keys({"route": "  /x7Kq/  ", "keys": {USER: KEY}})
     route, keys = read_notify_keys()
     assert route == "x7Kq", "surrounding slashes are trimmed"
     assert keys == {USER: KEY}

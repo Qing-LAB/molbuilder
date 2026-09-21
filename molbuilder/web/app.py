@@ -634,7 +634,18 @@ def create_app(*, config=None) -> Flask:
         # its notification channels and its run-report listener.  The ONLY
         # surface where a secret is typed, and it never reads one back.
         # The contract is docs/web/this-machine.md.
-        return render_template("this_machine.html")
+        #
+        # THE PATH IS PASSED IN, NOT WRITTEN IN THE TEMPLATE.  It read
+        # `<config dir>/notify` in HTML until 2026-09-20 and stayed that way
+        # when every credential moved into `secrets/` -- so the page told an
+        # operator to put a webhook where the monitor does not look, and the
+        # e2e test guarding it asserted only the word "notify", which the
+        # wrong path still contains.  `relative_home` answers from the
+        # monitor's own resolver, so this cannot drift again.
+        from ..monitor import default_notify_path
+        from ..config_dir import relative_home
+        return render_template("this_machine.html",
+                               notify_rel=relative_home(default_notify_path))
 
     @app.route("/transport-calculation")
     def transport_calculation_page():

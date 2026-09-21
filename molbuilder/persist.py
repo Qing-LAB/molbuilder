@@ -80,7 +80,8 @@ def read_json(path) -> Any:
 
 
 def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
-                mode: Optional[int] = None) -> Path:
+                mode: Optional[int] = None,
+                exclusive: bool = False) -> Path:
     """Write via a **unique** temp + ``os.replace`` — the checkpoint's shape
     (`checkpoint._atomic_write_bytes` carried it first and now delegates
     here), adopted package-wide at U8 (2026-08-12).
@@ -113,6 +114,21 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
     and a private writer (``auth_setup.write_secret_file``) that truncated the
     target in place, and every secret went through the second one; § 2.3 has
     the measurement.
+
+    **``exclusive`` is for a file that must never be REPLACED** -- it creates
+    the name or raises ``FileExistsError``, and the caller reads back what is
+    already there.  Last-writer-wins is right for an artifact a person is
+    re-saving; it is wrong for the session key, where replacing the file logs
+    out everyone signed in.  A parameter rather than a second writer, because a
+    second writer is what § 2.3 was written to stop.  The rename becomes
+    ``os.link``, which is equally atomic, does not follow a symlink planted at
+    the target, and fails rather than clobbers.  It is a LINK, so it cannot
+    cross a filesystem:
+    combining ``exclusive`` with a ``tmp_dir`` on another mount raises
+    ``OSError(EXDEV)``.  The default staging is the target's own directory, so
+    no present caller can reach that, and the two options are for opposite
+    situations anyway -- ``tmp_dir`` keeps litter out of a checkpointed folder,
+    and a credential is not in one.
     """
     target = Path(target)
     parent = Path(tmp_dir) if tmp_dir is not None else target.parent
@@ -130,13 +146,26 @@ def write_bytes(target, data: bytes, *, tmp_dir: Optional[Path] = None,
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
         os.chmod(tmp, mode)
-        os.replace(tmp, target)
+        if exclusive:
+            # CREATES the name or fails; never replaces.  `os.replace` below
+            # would silently destroy the file this call was told not to touch.
+            os.link(str(tmp), str(target))
+        else:
+            os.replace(tmp, target)
     except BaseException:
         try:
             tmp.unlink()
         except OSError:
             pass
         raise
+    if exclusive:
+        # `os.link` leaves the temp behind under its own name -- it is a
+        # second link to the same inode, not a rename.  Unlinking it after the
+        # target exists cannot lose the data.
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
     return target
 
 

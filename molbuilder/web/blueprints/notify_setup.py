@@ -68,7 +68,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -157,7 +157,19 @@ def _mask(url: str) -> str:
     return f"{u.scheme}://{host}/…{tail}" if tail else f"{u.scheme}://{host}/…"
 
 
-def _row(name: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+def _usable() -> Set[str]:
+    """The channel names the MONITOR accepts -- one reading of the file.
+
+    The page's only source of truth about whether a channel works.  Kept as
+    its own function so `_state` can read once and hand the answer to both
+    consumers rather than each asking again.
+    """
+    from ...monitor import load_channels
+    return set(load_channels())
+
+
+def _row(name: str, spec: Dict[str, Any],
+         usable: bool = True) -> Dict[str, Any]:
     """One channel, as everything outside this module may see it.
 
     **One door out**, so no route can forget: the key never appears, and the
@@ -191,11 +203,27 @@ def _row(name: str, spec: Dict[str, Any]) -> Dict[str, Any]:
         "tested_ok": ok if isinstance(ok, bool) else None,
         "tested_at": spec.get("tested_at") if isinstance(
             spec.get("tested_at"), (int, float)) else None,
+        # WILL THE MONITOR ACTUALLY USE IT.  Answered by `load_channels`, the
+        # reader a job runs -- not re-derived here.  This page listed every
+        # stored channel as fine while the monitor silently dropped the ones
+        # with no url or a non-string key: measured 2026-09-20, the page
+        # showed three channels and no problem while a job used one, and the
+        # Test button then denied one of the three existed.  A page that
+        # cannot be trusted about which channels work is worse than no page,
+        # and this module's own header says it exists to end that silence.
+        "usable":    usable,
     }
 
 
-def _rows() -> List[Dict[str, Any]]:
-    return [_row(n, s if isinstance(s, dict) else {})
+def _rows(usable: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    """Every STORED channel, each marked with whether the monitor accepts it.
+
+    Both halves are needed and neither alone is honest: `load_channels` alone
+    would hide a broken channel the operator can see in their own file, and
+    `_stored` alone cannot say whether it works.
+    """
+    usable = _usable() if usable is None else usable
+    return [_row(n, s if isinstance(s, dict) else {}, usable=n in usable)
             for n, s in sorted(_stored().items())]
 
 
@@ -216,11 +244,15 @@ def _state() -> Dict[str, Any]:
         file_mode = oct(path.stat().st_mode & 0o777)
     except OSError:
         file_mode = ""
-    return {"path": str(path), "channels": _rows(), "problem": _file_note(),
-            "mode": file_mode}
+    # ONE READING, PASSED DOWN.  `_rows` and `_file_note` each asked the
+    # monitor independently, so a single GET opened the 0600 file three times
+    # and logged its skip reasons three times over.  One answer, shared.
+    usable = _usable()
+    return {"path": str(path), "channels": _rows(usable),
+            "problem": _file_note(usable), "mode": file_mode}
 
 
-def _file_note() -> str:
+def _file_note(usable: Optional[Set[str]] = None) -> str:
     """What is wrong with the file, in words, or ``""``.
 
     A broken file and no file both mean nothing is sent and look identical
@@ -242,6 +274,18 @@ def _file_note() -> str:
             return ("this is the old single-destination file — save a "
                     "channel below and it becomes a named one")
         return "needs a 'channels' object"
+    # PER-CHANNEL, FROM THE MONITOR'S READER.  The checks above are file-level
+    # and have to read the raw text, because `load_channels` returning {} does
+    # not say WHY.  Per channel it does know, and re-implementing its rules
+    # here is what let the page call a file fine while the monitor skipped
+    # half of it.
+    usable = _usable() if usable is None else usable
+    skipped = sorted(set(_stored()) - usable)
+    if skipped:
+        return ("the monitor will skip " + ", ".join(repr(n) for n in skipped)
+                + " — each needs a 'url' string, and a 'key' if present must "
+                  "be a non-empty string.  Nothing is sent to a skipped "
+                  "channel and the monitor log says why.")
     return ""
 
 

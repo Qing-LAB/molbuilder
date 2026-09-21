@@ -1321,12 +1321,12 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
         authenticate against.
       * The Google OAuth client secret is prompted via ``getpass``
         (hidden input, no echo, no shell history) and written to
-        ``<config dir>/google_client_secret`` with mode 0600;
+        ``<config dir>/secrets/google_client_secret`` with mode 0600;
         molbuilder.json names that file by PATH, never the literal.
       * molbuilder.json itself is written mode 0600.
 
     The session key is NOT this wizard's.  The server creates
-    ``<config dir>/secret_key`` on its first start and reads it from then
+    ``<config dir>/secrets/secret_key`` on its first start and reads it from then
     on (§ 2.1e).  Until 2026-09-13 this wizard regenerated it on every run
     -- every signed-in person logged out by a command whose docstring said
     "idempotent" -- and with a different encoding from the server's own
@@ -1518,7 +1518,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     )
     click.echo(
         "  (the session key is the server's: created at "
-        "<config dir>/secret_key on its first start and kept from then on)",
+        "<config dir>/secrets/secret_key on its first start and kept from then on)",
         err=True,
     )
     if want_google:
@@ -1744,7 +1744,8 @@ def cmd_notify_token(user, host, route, channel, replace):
     """
     import json as _json
     from . import auth_setup as _as
-    from .monitor import is_channel_name, notify_keys_path
+    from .monitor import (default_notify_path, is_channel_name,
+                          notify_keys_path)
 
     if not is_channel_name(channel):
         raise click.UsageError(
@@ -1823,20 +1824,27 @@ def cmd_notify_token(user, host, route, channel, replace):
     # design, so the job simply never reports.  The Task-setup card emits the
     # same three branches (task-setup/viewer.js); it stays shell text on both
     # surfaces because it resolves on the FAR machine, not this one.
+    # DERIVED, never spelled.  This said "the config directory's `notify`"
+    # and printed "$cfg/notify" below; when every credential moved into
+    # `secrets/` the recipe went on telling people to write a webhook where
+    # nothing reads it -- and a notifier swallows failures, so they would
+    # never learn.  `relative_home` answers from the monitor's own resolver.
+    from .config_dir import relative_home
+    _notify_rel = relative_home(default_notify_path)
     click.echo(f"\nOn the CLUSTER this is the channel `{channel}`, in the "
-               f"config directory's `notify`, mode 0600:\n")
+               f"config directory's `{_notify_rel}`, mode 0600:\n")
     click.echo(client)
     click.echo("\n  cfg=\"${MOLBUILDER_CONFIG_DIR:-"
                "${XDG_CONFIG_HOME:-$HOME/.config}/molbuilder}\"")
-    click.echo("  mkdir -p -m 700 \"$cfg\"")
-    click.echo("  # paste the JSON above into \"$cfg/notify\"")
-    click.echo("  chmod 600 \"$cfg/notify\"")
+    click.echo(f"  mkdir -p -m 700 \"$cfg/{Path(_notify_rel).parent.as_posix()}\"")
+    click.echo(f"  # paste the JSON above into \"$cfg/{_notify_rel}\"")
+    click.echo(f"  chmod 600 \"$cfg/{_notify_rel}\"")
     # MERGE, NOT OVERWRITE -- and it has to be said, because the file now
     # holds every channel rather than one destination.  Pasting over a file
     # that already has a Slack channel in it deletes that channel, and
     # silently: nothing is sent there and nothing says why.
-    click.echo(f"\n  If `$cfg/notify` already exists, add `{channel}` to its "
-               f"`channels` object")
+    click.echo(f"\n  If `$cfg/{_notify_rel}` already exists, add `{channel}` "
+               f"to its `channels` object")
     click.echo( "  instead of replacing the file -- pasting over it deletes "
                 "the others, silently.")
     click.echo("\nOn an HPC login node $HOME is usually NFS-mounted and "

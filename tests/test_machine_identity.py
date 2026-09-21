@@ -149,7 +149,13 @@ def test_a_monitor_missing_its_companion_still_monitors(tmp_path, monkeypatch):
     (stderr goes to /dev/null under the wrapper)."""
     def _no_companion():
         raise ModuleNotFoundError("config_dir")
-    monkeypatch.setattr(monitor, "_config_dir", _no_companion)
+    # PATCH THE LIVE DOOR.  This patched `_config_dir` until 2026-09-20; when
+    # the credentials moved into `secrets/` the path functions started asking
+    # `_secrets_dir` instead, and patching the old name simulated nothing --
+    # the monitor resolved its file happily and never said "reports off".
+    # The test caught that, which is why `_config_dir` was deleted rather
+    # than left as a name something could go on patching.
+    monkeypatch.setattr(monitor, "_secrets_dir", _no_companion)
     monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
 
     out = tmp_path / "j.out"

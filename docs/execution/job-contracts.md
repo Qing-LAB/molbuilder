@@ -214,7 +214,7 @@ the wrapper at low priority, follows the launcher's **PID** — so it knows
 authoritatively when the run ended, rather than guessing from output markers —
 parses the run's artifacts as they grow, and appends what it learns to a log
 beside them. It carries a **notifier hook** — a destination the user configures in their own
-`$XDG_CONFIG_HOME/molbuilder/notify` (else `~/.config/molbuilder/notify`)
+`<config dir>/secrets/notify`
 (mode 0600; `MB_NOTIFY_URL` overrides it for a one-off),
 fired on the schedule the calculation states in `task.json`'s `notify` block.
 That is the deliberate customization point: what should happen when something
