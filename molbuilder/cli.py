@@ -42,11 +42,6 @@ from .structure import Structure
 
 
 # --------------------------------------------------------------------- #
-#  stdin support                                                        #
-# --------------------------------------------------------------------- #
-
-
-# --------------------------------------------------------------------- #
 #  add_dataclass_options: dataclass field metadata -> click.option      #
 # --------------------------------------------------------------------- #
 
@@ -63,6 +58,11 @@ from .structure import Structure
 # A parameter is said in a description, not on a command line.  Nothing else
 # generates options from a dataclass, and the two config files that mention
 # this bridge do so only to explain why a field opts out of it.
+
+
+# --------------------------------------------------------------------- #
+#  stdin support                                                        #
+# --------------------------------------------------------------------- #
 
 
 @contextlib.contextmanager
@@ -846,13 +846,24 @@ def cmd_modify(input_path, output_path,
 
     # Sub-option warnings: catch "ignored sub-option" cases up front so the
     # user notices before they expect them to take effect.
-    _ORIENT_DEFAULTS = {"axis": "z", "angle": 0.0, "center": "midpoint"}
+    # THE VALUE, NOT ITS NAME.  This read `locals()[name]` against a dict of
+    # parameter names, which couples a warning to the SPELLING of the
+    # signature: rename the `center` parameter and `locals()["center"]` raises
+    # `KeyError` (measured) -- from inside a cosmetic warning, so a rename
+    # that changes nothing about the operation takes the whole command down,
+    # and no test covers this path.  The electrode block below always passed
+    # values directly; this is now the same shape, and neither can drift.
+    _ORIENT_NONDEFAULTS = (
+        ("axis",   axis,   "z"),
+        ("angle",  angle,  0.0),
+        ("center", center, "midpoint"),
+    )
     if not op_types["--orient-axis"]:
-        for name, default in _ORIENT_DEFAULTS.items():
-            if locals()[name] != default:
+        for name, value, default in _ORIENT_NONDEFAULTS:
+            if value != default:
                 click.echo(
                     f"warning: --{name} is a sub-option of --orient-axis; "
-                    f"value {locals()[name]!r} is ignored without --orient-axis.",
+                    f"value {value!r} is ignored without --orient-axis.",
                     err=True,
                 )
     _ELECTRODE_NONDEFAULTS = (
@@ -1066,8 +1077,13 @@ def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
 # --------------------------------------------------------------------- #
 
 
+#: Binds no remote client can reach.  `0.0.0.0` is deliberately ABSENT -- it
+#: accepts from every NIC -- and so is the string `"0.0.0.0:127.0.0.1"`, which
+#: sat here until 2026-09-21: it is not a host, no `--host` value can equal it,
+#: and in a set that decides whether TLS is enforced it read as though
+#: `0.0.0.0` were half-excused.  `127.` is matched by prefix below, not here.
 _LOOPBACK_HOSTS = frozenset({
-    "127.0.0.1", "localhost", "::1", "0.0.0.0:127.0.0.1",
+    "127.0.0.1", "localhost", "::1",
 })
 
 
@@ -1083,9 +1099,19 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
                                   allow_insecure: bool) -> None:
     """Refuse to bind a non-loopback host without TLS.  This is
     molbuilder's "you can't just publish your projects/ tree on the
-    public internet by mistake" guard -- the file-ops endpoints
-    have no auth, so cleartext over a real network is two attacks
-    in one (passive sniffing + active tampering).
+    public internet by mistake" guard: cleartext over a real network is
+    two attacks in one (passive sniffing + active tampering), and what
+    is sniffed includes the session cookie.
+
+    **It checks host and TLS, and deliberately not auth**
+    (`deployment.md` § 1).  Auth is opt-in, so the two are independent
+    questions and TLS answers neither of them -- which is why the
+    message below says so rather than implying a `--cert` makes this
+    safe.  It said "the file-ops endpoints have no auth" until
+    2026-09-21, which was true of a server with no `auth` section and
+    false of one with providers configured, where every non-public
+    endpoint needs a session and `/api/*` answers 401
+    (`access-control.md` §§ 1.1, 2, 3.2).
 
     Operators who genuinely want plain HTTP on a non-loopback host
     (e.g., behind a TLS-terminating reverse proxy on the same
@@ -1109,13 +1135,19 @@ def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
         )
         return
     raise click.UsageError(
-        f"--host={host} is not a loopback address; binding it serves "
-        f"the entire projects/ tree (read + write + delete) to every "
-        f"client that can reach the interface.  molbuilder has no "
-        f"built-in auth -- the file API is fully open.\n\n"
+        f"--host={host} is not a loopback address and there is no TLS, "
+        f"so every request crosses the network in clear text -- the "
+        f"session cookie included.\n\n"
+        f"WHAT IS BEHIND IT depends on your `auth` section, which this "
+        f"guard does not look at: with providers configured, every "
+        f"non-public endpoint needs a session and /api/* answers 401; "
+        f"with no `auth` section there is no sign-in at all, and the "
+        f"projects/ tree is served read + write + delete to anyone who "
+        f"can reach the interface (docs/ops/access-control.md 1.1).\n\n"
         f"For a real deployment you have three reasonable options:\n"
-        f"  1. Pass --cert / --key to enable TLS (defense in depth; "
-        f"still no auth!).\n"
+        f"  1. Pass --cert / --key to enable TLS.  TLS IS NOT "
+        f"AUTHENTICATION -- it encrypts the wire and gates nothing; if "
+        f"sign-in is not on, turn it on too (`molbuilder auth-setup`).\n"
         f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
         f"auth (recommended -- see docs/ops/deployment.md).\n"
         f"  3. Pass --allow-insecure-binding to override this check "

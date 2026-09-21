@@ -239,8 +239,12 @@ TLS-terminating proxy (and binding loopback), or knowingly passing
 > section in `molbuilder.json`, the server runs with **no authentication at all**.
 > So `molbuilder serve start --host 0.0.0.0 --cert … --key …` passes the guard yet
 > exposes a **public, unauthenticated, fully read/write/delete `projects/` tree** —
-> TLS only encrypts the wire. (The guard's own message says so: *"still no
-> auth!"*.) A real public deployment must **turn auth on** (§3) **or** sit behind a
+> TLS only encrypts the wire. (The guard's own message says so: *"TLS IS NOT
+> AUTHENTICATION — it encrypts the wire and gates nothing"*. It read *"molbuilder
+> has no built-in auth"* until 2026-09-21 — true of a server with no `auth`
+> section, false of one with providers configured — so it now states the
+> condition instead of the unconditional claim.) A real public deployment must
+> **turn auth on** (§3) **or** sit behind a
 > proxy that authenticates (§2); `--cert/--key` alone is defense-in-depth, not
 > access control.
 
