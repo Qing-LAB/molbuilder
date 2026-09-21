@@ -72,11 +72,11 @@ def _assert_lattice_preserved(out, ref):
 
 
 class TestOpsPreservePeriodicity:
-    """Regression (2026-07 fresh-eyes review): a modify op must not silently
-    wipe the periodic cell / transport axis / vacuum / k-grid.  Before the fix
-    delete/add/orient/rotate/translate dropped them and a subsequent SIESTA
-    FDF omitted LatticeVectors / the k-grid -- a scientifically wrong cell,
-    no warning.
+    """A modify op must not silently wipe the periodic cell, transport axis
+    or vacuum: delete/add/orient/rotate/translate once dropped them and the
+    SIESTA FDF then omitted LatticeVectors -- a scientifically wrong cell,
+    no warning.  (k-grid is NOT among them: it belongs to `SiestaConfig`,
+    not to the geometry, so no op can carry or lose it.)
 
     NB: ``axis_kind`` / ``vacuum`` are non-geometric and carry VERBATIM through
     every op.  The lattice VECTORS carry verbatim through atom-count edits +

@@ -189,8 +189,7 @@ class TestSelectModesWithPriorResume:
         assert select_modes(_modes_fixture(), cfg, prior=prior) == [2, 5]
 
     def test_prior_without_es_does_nothing(self):
-        """prior=None and prior.modes-with-ES=[] both leave the
-        selection unchanged."""
+        """prior=None leaves the selection unchanged."""
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
                             es_explicit_indices=[2, 3])

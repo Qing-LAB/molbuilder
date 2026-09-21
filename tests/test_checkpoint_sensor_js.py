@@ -3,7 +3,7 @@ test design: docs/execution/checkpointing.md § 13).
 
 This file pins the *refresh model* the checkpoint sensor depends on,
 after the 2026-06-26 decision to replace background polling with
-explicit refresh (docs/web/projects.md).  Four
+explicit refresh (docs/web/projects.md).  Three
 guarantees, the last two about the panel's own source and behaviour:
 
   1. ``/api/checkpoint/state`` is CHEAP: it returns the documented
@@ -19,13 +19,11 @@ guarantees, the last two about the panel's own source and behaviour:
      ``{ok:false, error}`` envelope (HTTP 500, web-api.md bucket D)
      that the JS sensor renders as a 🔴 error pill -- NOT an unhandled
      crash or empty body.
-  3. ``checkpoint.js`` contains no ``setInterval`` -- there is no
-     background poll loop to reintroduce.
-  4. **The panel, RUN.**  The last section imports the module into
+  3. **The panel, RUN.**  The last section imports the module into
      Node against a stub DOM and a stub ``fetch``, drives it, and
      asserts on the requests it made and the DOM it wrote.
 
-That fourth part replaces a claim this file used to make: that the
+That third part replaces a claim this file used to make: that the
 refresh behaviour "is browser-scope and belongs to the Playwright
 E2E".  It does not, entirely -- which requests fire on
 directory-enter, whether re-entering the same directory re-reads it,
@@ -250,7 +248,7 @@ def test_state_git_failure_is_structured_error_not_crash(
 
 
 # ----------------------------------------------------------------- #
-#  3. no background poll loop in the JS                              #
+#  the panel's source parses                                         #
 # ----------------------------------------------------------------- #
 
 
