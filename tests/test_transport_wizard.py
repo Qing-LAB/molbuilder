@@ -219,19 +219,26 @@ def test_frozen_is_asked_before_moved():
 
 
 def _au111_lead(n_layers):
-    """A real fcc(111) Au lead, built by the same ASE path the app uses."""
-    from ase.build import fcc111
-    slab = fcc111("Au", size=(1, 1, n_layers), a=4.158,
-                  orthogonal=False, vacuum=10.0)
-    pos = np.asarray(slab.positions, dtype=float)
-    pos[:, 2] -= pos[:, 2].min()
-    s = Structure(elements=["Au"] * len(pos), positions=pos,
-                  regions={"L-electrode": list(range(len(pos)))})
-    s.frozen_atoms = list(range(len(pos)))
-    cell = np.asarray(slab.get_cell(), dtype=float)
-    cell[2] = [0.0, 0.0, pos[:, 2].max() + 10.0]
-    s.cell = cell
-    return s
+    """A lead built the way the app builds one — `modify.add_slab`.
+
+    THROUGH THE REAL SLAB API, not `ase.build.fcc111` by hand (user,
+    2026-09-21: *"Do you even know that we actually have a slab creation
+    API for all of this?"*).  The verdicts are identical either way —
+    checked — but a fixture that hand-rolls the builder is testing a
+    geometry nobody's workflow produces, and the whole subject here is
+    what a real lead does at its periodic boundary.
+    """
+    from molbuilder.modify import add_slab
+    seed = Structure(elements=["S"], positions=np.array([[0.0, 0.0, 30.0]]))
+    out = add_slab(seed, element="Au", plane="111",
+                   size=(2, 2, n_layers), grow="-z")
+    st = out.structure if hasattr(out, "structure") else out
+    au = [i for i, e in enumerate(st.elements) if e == "Au"]
+    st.regions = {"L-electrode": au,
+                  "bridge": [i for i in range(len(st.elements))
+                             if i not in au]}
+    st.frozen_atoms = list(au)
+    return st
 
 
 @pytest.mark.parametrize("n_layers,verdict", [
@@ -250,7 +257,7 @@ def test_a_faulted_seam_is_REPORTED_not_refused():
     """The discriminating half.  A 4-layer lead is not bulk and still
     composes -- the person may be doing exactly what they meant."""
     m = extract_electrode_model(_au111_lead(4), "L-electrode")
-    assert m.z_period == pytest.approx(9.6025, abs=1e-3)
+    assert m.z_period == pytest.approx(9.4182, abs=1e-3)
     assert m.n_layers == 4
 
 
