@@ -70,9 +70,18 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
 
     kw = {}
     cited = classify_citation(Path(cite_dir))
+    p = None
     if cited.deck is not None:
-        p = parse_fdf_params(cited.deck.read_text(encoding="utf-8",
-                                                  errors="replace"))
+        from ..units import UnknownUnit
+        try:
+            p = parse_fdf_params(cited.deck.read_text(encoding="utf-8",
+                                                      errors="replace"))
+        except UnknownUnit:
+            # A default this build cannot convert is not offered; the
+            # person fills the field themselves rather than starting from
+            # a number wrong by a fixed ratio.
+            p = None
+    if p is not None:
         for src, dst in _FROM_DECK.items():
             v = getattr(p, src, None)
             if v is not None:

@@ -38,3 +38,33 @@ HARTREE_EV: float = 27.211386245988
 #: 1 Rydberg in electronvolt — half a Hartree, DERIVED rather than typed, so
 #: the two cannot drift apart by a digit.  SIESTA speaks Rydberg.
 RYDBERG_EV: float = HARTREE_EV / 2.0
+
+#: Boltzmann's constant in eV per kelvin.  CODATA 2018.  SIESTA's
+#: ``ElectronicTemperature`` may be written as a temperature OR as an energy,
+#: so a reader of it needs this to answer in one unit.
+BOLTZMANN_EV_K: float = 8.617333262e-5
+
+#: The same constant in Hartree per kelvin — DERIVED, so the thermochemistry
+#: deck's spelling and the validation gate's cannot drift apart.
+BOLTZMANN_HARTREE_K: float = BOLTZMANN_EV_K / HARTREE_EV
+
+#: 1 Hartree in wavenumbers (cm⁻¹).  CODATA 2018.  The vibrational decks
+#: speak wavenumbers; the engines compute in Hartree.
+HARTREE_CM1: float = 219474.6313632
+
+#: 1 unified atomic mass unit in electron masses.  CODATA 2018.
+AMU_ELECTRON_MASS: float = 1822.888486209
+
+#: 1 atomic unit of electric dipole (e·a₀) in Debye.  CODATA 2018.
+AU_DIPOLE_DEBYE: float = 2.541746473
+
+#: 1 e·Å in Debye — DERIVED from the atomic-unit value above, so the two
+#: dipole spellings cannot drift.
+DEBYE_E_ANGSTROM: float = AU_DIPOLE_DEBYE / BOHR_ANGSTROM
+
+#: 1 Hartree/Bohr in eV/Å, **the ASE/NIST value**.  The name carries the
+#: convention because there are two: this one, and ``HARTREE_EV /
+#: BOHR_ANGSTROM`` = 51.422067476, which differs by 0.36 ppm.  Force numbers
+#: and the threshold lines drawn over them must use the SAME one or the line
+#: sits in the wrong place, so whichever a call site needs, it names.
+HARTREE_BOHR_EV_ANGSTROM_ASE: float = 51.42208619

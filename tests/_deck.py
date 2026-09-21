@@ -92,33 +92,13 @@ def fdf_block_rows(text: str, name: str) -> dict:
 
 
 def _energy_ev(value: str, unit: str, where: str) -> float:
-    """``value unit`` in eV.  The unit is REQUIRED.
+    """``value unit`` in eV, through `molbuilder.units`.
 
-    fdf's own default for a bare energy is Ry (`parse.fdf._ry`), and an
-    energy this reader meets is written in eV, so guessing either way
-    gets the other wrong by 13.6x -- the failure this reader exists to
-    catch.  A deck that states no unit is refused instead.
+    No default: fdf's own rule for a bare energy is Ry and this block is
+    written in eV, so either guess is wrong by 13.6x for the other.
     """
-    from molbuilder.constants import HARTREE_EV, RYDBERG_EV
-    u = (unit or "").lower()
-    if not u:
-        raise AssertionError(
-            f"{where}: energy {value!r} states no unit, and fdf's default "
-            f"(Ry) differs from what this block is written in (eV) -- "
-            f"refusing rather than picking one")
-    if u == "ev":
-        factor = 1.0
-    elif u in ("ry", "ryd", "rydberg"):
-        factor = RYDBERG_EV
-    elif u in ("ha", "hartree"):
-        factor = HARTREE_EV
-    else:
-        raise AssertionError(f"{where}: unknown energy unit {unit!r}")
-    try:
-        return float(value) * factor
-    except ValueError:
-        raise AssertionError(
-            f"{where}: {value!r} is not a number") from None
+    from molbuilder.units import energy_ev
+    return energy_ev(value, unit, what=f"energy {value!r}", source=where)
 
 
 def fdf_energy_window(text: str, block: str):

@@ -133,6 +133,45 @@ how "which layer does this go in?" becomes a guess.)*
 > gave the same file coordinates 4e-7 apart. A number every layer may reach
 > for cannot itself reach anything, or asking for one would drag a
 > dependency into the layer that asked.
+>
+> **`units` sits beside it and imports only it**, and holds the other half:
+> the *dialects* — which words an energy, a length or a temperature may be
+> written in, and the one door that turns one into a number. Same argument
+> `scheduler/quantities.py` makes for a wall time and a memory size, and it
+> is a codec on a basic unit for the same reason.
+
+**The rule these two carry, and it is one rule.** A physical constant has one
+home and a unit word has one vocabulary, because the cost of getting either
+wrong is paid somewhere else entirely — a wrong factor is invisible in the
+result and wrong by a fixed ratio in every number after it.
+
+| | |
+|---|---|
+| **A value** | lives in `constants`, and is DERIVED from a sibling wherever it can be (`RYDBERG_EV = HARTREE_EV / 2`), so two spellings cannot drift. Where two conventions genuinely differ, the name carries which one — `HARTREE_BOHR_EV_ANGSTROM_ASE`, because the CODATA-derived value is 0.36 ppm away and force numbers must agree with the thresholds drawn over them |
+| **A unit word** | lives in `units`, in the table for its quantity. No reader keeps its own word list; that is where a word goes missing, and a missing word is not an error but a number returned in the wrong unit |
+| **What a MISSING unit means** | belongs to the reader, because it is a fact about the format: a bare energy in an `.fdf` is Ry, one in a tbtrans contour block is eV. The reader passes its `default=`; passing none means a bare value is refused |
+| **An unknown word** | is refused, never passed through |
+
+**A second spelling is legal in exactly three places, and each has one
+answer.** These are mechanisms, not exceptions — the value still comes from
+the one home:
+
+* a **generated standalone script**, which runs where molbuilder is not
+  installed → *interpolate* the value in from `constants`
+  (`siesta/makov_payne.py`, `pyscf/vibration_emitters.py`);
+* the **browser**, which cannot import Python → *serve* it
+  (`web/blueprints/modify.py` serves the lattice table the same way). A
+  constant hand-typed into JavaScript is [`process/code-audit.md`
+  § 3.6](?doc=process/code-audit.md)'s anti-pattern, which already rules on
+  it: *"the server computes the answer and sends it"*;
+* a **class body copied by `inspect.getsource`**, where a module-level
+  import would not travel with the copy → pin the literal to `constants`
+  with a test rather than letting it stand alone.
+
+Anywhere else, import it. There is no lint: `082ba979` retired
+`test_one_home_for_a_constant.py` with the reasoning that *"the rule belongs
+in the document that owns the concept, and the drift is caught by reading the
+diff"* — this table is that rule.
 
 Reading the table is how you answer *"where does this new function go?"* —
 find the object it acts on, and that is the module. A function that acts on a

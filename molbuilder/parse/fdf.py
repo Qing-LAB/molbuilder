@@ -41,6 +41,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANG
+from molbuilder.units import (UnknownUnit, energy_ry, length_ang,
+                              temperature_k)
 
 
 def _norm(key: str) -> str:
@@ -84,15 +86,21 @@ def _to_float(s) -> Optional[float]:
         return None
 
 
-def _ry(toks: List[str]) -> Optional[float]:
-    """A SIESTA energy scalar (value [unit]) in Ry."""
+def _ry(toks: List[str], *, what: str = "an energy",
+        source: str = "the deck") -> Optional[float]:
+    """A SIESTA energy scalar (``value [unit]``) in Ry.
+
+    The unit words are `units.ENERGY_EV`'s; the DEFAULT is fdf's own --
+    a bare energy in a ``.fdf`` is Rydberg.  An unrecognised word raises
+    `units.UnknownUnit` rather than passing the number through.
+    """
     if not toks:
         return None
     v = _to_float(toks[0])
     if v is None:
         return None
-    unit = toks[1].lower() if len(toks) > 1 else "ry"
-    return v * 2.0 if unit in ("ha", "hartree") else v
+    return energy_ry(v, toks[1] if len(toks) > 1 else None,
+                     what=what, source=source, default="ry")
 
 
 @dataclass
@@ -140,18 +148,18 @@ def parse_fdf_params(text: str) -> FdfParams:
     if "paobasissize" in sc:
         p.basis_size = sc["paobasissize"][0] if sc["paobasissize"] else None
 
-    # ElectronicTemperature: an energy-or-temperature scalar.  K and
-    # meV cover what molbuilder's own emitters write; anything else is
-    # left None (deck default) rather than converted wrongly.
+    # ElectronicTemperature is an energy-OR-temperature scalar; SIESTA
+    # means the same physics by either, so `units.TEMPERATURE_K` carries
+    # both vocabularies and the energy words convert through k_B.  A bare
+    # value is K, which is fdf's rule.
     if "electronictemperature" in sc and sc["electronictemperature"]:
         toks = sc["electronictemperature"]
         v = _to_float(toks[0])
-        unit = toks[1].lower() if len(toks) > 1 else "k"
         if v is not None:
-            if unit == "k":
-                p.electronic_temperature_k = v
-            elif unit == "mev":
-                p.electronic_temperature_k = v * 11.604518            # k_B
+            p.electronic_temperature_k = temperature_k(
+                v, toks[1] if len(toks) > 1 else None,
+                what="ElectronicTemperature", source="the deck",
+                default="k")
 
     func = (sc.get("xcfunctional") or ["LDA"])[0]
     auth = (sc.get("xcauthors") or ["CA"])[0]
@@ -175,9 +183,10 @@ def parse_fdf_params(text: str) -> FdfParams:
     if "latticeconstant" in sc and sc["latticeconstant"]:
         v = _to_float(sc["latticeconstant"][0])
         if v is not None:
-            unit = (sc["latticeconstant"][1].lower()
-                    if len(sc["latticeconstant"]) > 1 else "ang")
-            lat_const = v * _BOHR_ANG if unit.startswith("bohr") else v
+            lat_const = length_ang(
+                v, (sc["latticeconstant"][1]
+                    if len(sc["latticeconstant"]) > 1 else None),
+                what="LatticeConstant", source="the deck", default="ang")
     if "latticevectors" in bl and len(bl["latticevectors"]) >= 3:
         try:
             vecs = [[lat_const * float(x) for x in row[:3]]

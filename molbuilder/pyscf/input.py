@@ -122,6 +122,8 @@ _STABILITY_ENERGY_TOL = 1e-8
 # the deck header's solvent line.
 from .scf_setup import SOLVENTS as _SOLVENTS
 from molbuilder.constants import HARTREE_EV as _HARTREE_EV
+from molbuilder.constants import (
+    HARTREE_BOHR_EV_ANGSTROM_ASE as _HARTREE_BOHR_EV_ANG_ASE)
 
 
 
@@ -1422,12 +1424,12 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     #
     # geomeTRIC's gmax is in Ha/Bohr; convert to eV/Å (the unit the
     # Results-tab force plot uses) so the threshold lines land on
-    # the right y-value.  Conversion constant 51.42208619 = ASE /
+    # the right y-value.  The ASE convention, named in `constants` /
     # NIST historical convention (matches MolwatchEmitter's
     # HARTREE_BOHR_TO_EV_ANG).  dmax / drms are already in Angstrom
     # (geomeTRIC's source, not its docs); etol is Hartree -> eV for
     # symmetry with the force plot.
-    _ha_bohr_to_ev_ang = 51.42208619
+    _ha_bohr_to_ev_ang = _HARTREE_BOHR_EV_ANG_ASE
     _max_force_eV = float(cfg.geom_gmax) * _ha_bohr_to_ev_ang
     _rms_force_eV = float(cfg.geom_grms) * _ha_bohr_to_ev_ang
     _energy_tol_eV = float(cfg.geom_etol) * _HARTREE_EV

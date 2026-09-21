@@ -55,7 +55,14 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         text = deck.read_text(encoding="utf-8")
     except OSError:
         return None
-    p = parse_fdf_params(text)
+    from ..units import UnknownUnit
+    try:
+        p = parse_fdf_params(text)
+    except UnknownUnit:
+        # No contract rather than a wrong one: recording a number this
+        # build could not convert would put a value in the record that
+        # the deck does not state.
+        return None
     contract = {k: v for k, v in {
         "basis_size":               p.basis_size,
         "energy_shift_ry":          p.energy_shift_ry,

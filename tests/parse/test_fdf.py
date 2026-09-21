@@ -207,3 +207,57 @@ class TestTheCoordinateFormatsAreConverted:
                 " 0.0 0.0 0.0 1\n x y z 1\n"
                 "%endblock AtomicCoordinatesAndAtomicSpecies\n")
         assert parse_fdf_params(text).coords_ang is None
+
+
+class TestTheUnitPolicyIsThisFormatS:
+    """`molbuilder.units` owns the WORDS; this format owns the DEFAULT.
+
+    fdf's rule is that a bare energy is Rydberg and a bare length is
+    Ångström — facts about the file format, not about the quantity, which
+    is why the reader states them rather than the units module. Nothing
+    pinned them, so the reader could adopt another format's default and
+    every unitless deck would shift by 13.6x with no test objecting.
+    """
+
+    def test_a_bare_energy_is_RYDBERG(self):
+        p = parse_fdf_params("MeshCutoff 250\n")
+        assert p.mesh_cutoff_ry == pytest.approx(250.0), (
+            "a unitless fdf energy is Ry, so it passes through unchanged")
+
+    def test_an_energy_in_eV_is_converted(self):
+        """The 13.6x defect, at the door a cited deck comes through."""
+        from molbuilder.constants import RYDBERG_EV
+        p = parse_fdf_params("MeshCutoff 4080 eV\n")
+        assert p.mesh_cutoff_ry == pytest.approx(4080.0 / RYDBERG_EV)
+        assert p.mesh_cutoff_ry == pytest.approx(299.874, abs=1e-3)
+
+    def test_an_energy_in_Hartree_is_converted(self):
+        p = parse_fdf_params("PAO.EnergyShift 1 Ha\n")
+        assert p.energy_shift_ry == pytest.approx(2.0)
+
+    def test_a_bare_temperature_is_KELVIN(self):
+        p = parse_fdf_params("ElectronicTemperature 300\n")
+        assert p.electronic_temperature_k == pytest.approx(300.0)
+
+    def test_a_temperature_written_as_an_ENERGY_is_converted(self):
+        """SIESTA accepts either; both had to be read, and `Ry` was
+        silently dropped before."""
+        for spelling in ("0.0019 Ry", "25.85 meV", "0.02585 eV"):
+            p = parse_fdf_params(f"ElectronicTemperature {spelling}\n")
+            assert p.electronic_temperature_k == pytest.approx(300.0, abs=0.5), \
+                spelling
+
+    def test_a_bare_lattice_constant_is_ANGSTROM(self):
+        from molbuilder.constants import BOHR_ANGSTROM
+        text = ("LatticeConstant {}\n%block LatticeVectors\n"
+                " 1 0 0\n 0 1 0\n 0 0 1\n%endblock LatticeVectors\n")
+        assert parse_fdf_params(text.format("4.0")).cell_ang[0][0] == \
+            pytest.approx(4.0)
+        assert parse_fdf_params(text.format("4.0 Bohr")).cell_ang[0][0] == \
+            pytest.approx(4.0 * BOHR_ANGSTROM)
+
+    def test_a_unit_this_build_cannot_convert_is_REFUSED(self):
+        """Not passed through: the whole point of the shared vocabulary."""
+        from molbuilder.units import UnknownUnit
+        with pytest.raises(UnknownUnit, match="furlongs"):
+            parse_fdf_params("MeshCutoff 250 furlongs\n")

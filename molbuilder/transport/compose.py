@@ -33,6 +33,7 @@ from ..config.transport import (REGION_LEFT_ELECTRODE,
 from ..structure import Structure
 from ..parse.fdf import _BOHR_ANG, parse_fdf_params
 from .sort import SortResult, categorical_sort
+from ..units import UnknownUnit
 from .wizard import ElectrodeModel, extract_electrode_model
 
 
@@ -722,7 +723,14 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # the same reading of the same bytes; a second parse in the
         # return was a second answer free to drift from the one the
         # gates ran on.
-        params = parse_fdf_params(deck_text)
+        try:
+            params = parse_fdf_params(deck_text)
+        except UnknownUnit as exc:
+            # A unit this build cannot convert is a citation it cannot
+            # honour: every number taken from the deck would be wrong by
+            # a fixed ratio.  The reader's own sentence names the field.
+            raise ComposeError(
+                f"the cited deck {deck.name} cannot be read: {exc}")
 
         # The labeled source structure, from THIS directory (4.1b) --
         # through the one door the swap and the tab's orientation
@@ -876,6 +884,22 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     return list(expected)
 
 
+def _params_or_none(deck_text):
+    """The recorded deck's parameters, or None when it states a unit this
+    build cannot convert.
+
+    A travelled record is REBUILT rather than re-gated, so an unreadable
+    unit here must not take the whole folder down -- the fields simply go
+    unanswered, which is what `None` already means to every consumer.
+    """
+    if not deck_text:
+        return None
+    try:
+        return parse_fdf_params(deck_text)
+    except UnknownUnit:
+        return None
+
+
 def load_compose_record(base_dir, *, citation: str, tree_root=None
                         ) -> Optional[ComposedJunction]:
     """The travelled copy, loaded back — or ``None`` when there is no
@@ -943,7 +967,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None
         relaxed=None,
         electrode_left=elec_l,
         electrode_right=elec_r,
-        fdf_params=(parse_fdf_params(deck_text) if deck_text else None),
+        fdf_params=(_params_or_none(deck_text)),
         deck_text=deck_text,
         provenance=provenance,
         form=form,

@@ -468,7 +468,8 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
     if pole and temp:
-        kT = 8.617333262e-5 * float(temp)          # eV
+        from ..constants import BOLTZMANN_EV_K
+        kT = BOLTZMANN_EV_K * float(temp)          # eV
         n = int(float(pole) / (math.pi * kT))
         if n < 20:
             need = 20.0 * math.pi * kT

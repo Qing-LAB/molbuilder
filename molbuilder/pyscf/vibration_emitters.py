@@ -99,6 +99,7 @@ from ..spectra.results import SCHEMA_VERSION
 # behind an import.
 _CM1_PER_AU_FREQ = 219474.6313632   # 1 atomic unit of frequency (= 2*Rydberg) in cm⁻¹
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
+from molbuilder.constants import DEBYE_E_ANGSTROM as _DEBYE_E_ANGSTROM
 
 
 # Default finite-difference step for Raman dα/dR.
@@ -450,11 +451,9 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
     """
     import numpy as _np
 
-    # (Debye per atomic unit of dipole) / (Angstrom per Bohr)
-    #   2.541746473 / 0.52917721092 = 4.803204...
-    # which is the elementary charge expressed in D/A -- the nuclear
-    # term de[a] = Z_a * I is a point charge, so the factor must be e.
-    _AU_BOHR_TO_DEBYE_ANG = 2.541746473 / 0.52917721092
+    # The elementary charge expressed in D/A -- the nuclear term
+    # de[a] = Z_a * I is a point charge, so the factor must be e.
+    _AU_BOHR_TO_DEBYE_ANG = _DEBYE_E_ANGSTROM
 
     def _infrared_class(infrared, mf_):
         """Upstream splits by reference, and so must we.

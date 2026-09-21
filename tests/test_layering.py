@@ -57,6 +57,11 @@ _L1_MODULES = {
                          # drag a dependency into every layer that needs a
                          # filename, which is most of them.
 
+    "units",             # the dialects a physical quantity is written in, and
+                         # the one door that converts one.  L1 for
+                         # `quantities.py`'s reason -- a codec on a basic unit
+                         # -- and it imports only `constants`, so the parsers,
+                         # the emitters and the composer can all reach it.
     "constants",         # the physical constants (Bohr, Hartree, Rydberg).
                          # Lower than everything, because it imports NOTHING at
                          # all -- which is the point: the Bohr radius was

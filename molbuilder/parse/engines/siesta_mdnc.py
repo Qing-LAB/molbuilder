@@ -64,12 +64,14 @@ from molbuilder.structure import Structure
 #: ``volume`` is already Ang**3, so a blanket assumption is wrong in the same
 #: file.  An unrecognised unit REFUSES (see :func:`_to`), because a future
 #: SIESTA that writes Angstrom would otherwise be scaled by 1.89 in silence.
-from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
-from molbuilder.constants import RYDBERG_EV as _RY_TO_EV
+from molbuilder.units import ENERGY_EV, LENGTH_ANGSTROM, convert
 
-_LENGTH: Dict[str, float] = {"bohr": _BOHR_TO_ANG, "ang": 1.0,
-                             "angstrom": 1.0}
-_ENERGY: Dict[str, float] = {"ry": _RY_TO_EV, "ev": 1.0}
+#: The dialects, from the one home.  netCDF variables carry their unit in a
+#: `units` attribute, so a missing one means the file did not say -- refused
+#: rather than defaulted, which is what `_to`'s `default=None` asks for.
+_LENGTH = LENGTH_ANGSTROM
+_ENERGY = ENERGY_EV
+
 
 #: netCDF classic files begin with "CDF" + a version byte; netCDF-4 is HDF5
 #: ("\x89HDF").
@@ -84,19 +86,13 @@ _ENERGY: Dict[str, float] = {"ry": _RY_TO_EV, "ev": 1.0}
 _MAGIC = (b"CDF\x01", b"CDF\x02", b"CDF\x05", b"\x89HDF")
 
 
-def _to(value, unit: str, table: Dict[str, float], *, what: str,
-        source: Path):
-    """Convert *value* to molbuilder units, or refuse."""
-    key = (unit or "").strip().lower()
-    factor = table.get(key)
-    if factor is None:
-        raise ValueError(
-            f"{source.name}: {what} carries unit {unit!r}, which this reader "
-            f"does not know how to convert (known: "
-            f"{', '.join(sorted(table))}).  Refusing rather than assuming a "
-            f"factor -- a wrong one is invisible in the result and wrong by "
-            f"a fixed ratio in every number downstream.")
-    return value * factor
+def _to(value, unit: str, table, *, what: str, source: Path):
+    """Convert *value* to molbuilder units, or refuse.
+
+    `units.convert` with no default: a netCDF variable that states no
+    unit is a file that did not say, and this reader will not guess.
+    """
+    return convert(value, unit, table, what=what, source=source.name)
 
 
 class SiestaMdNcFileParser(FileParser):

@@ -59,12 +59,14 @@ from ._sidecar import read_frozen_atoms
 
 
 # Hartree -> eV
+from molbuilder.constants import HARTREE_EV as _HARTREE_TO_EV
+# Hartree/Bohr -> eV/Ang, the ASE convention.  The same forces are
+# converted by `trajectory_log.emitter` and the thresholds drawn over them
+# by `pyscf.input`, both with this one; deriving it here instead
+# (HARTREE_EV / BOHR_ANGSTROM) gives a number 0.36 ppm away, so a force
+# read back would not equal the force emitted.
 from molbuilder.constants import (
-    HARTREE_EV as _HARTREE_TO_EV,
-    BOHR_ANGSTROM as _BOHR_ANGSTROM,
-)
-# Hartree/Bohr -> eV/Ang
-_HA_BOHR_TO_EV_ANG = _HARTREE_TO_EV / _BOHR_ANGSTROM
+    HARTREE_BOHR_EV_ANGSTROM_ASE as _HA_BOHR_TO_EV_ANG)
 
 
 _COMMENT_RE = re.compile(

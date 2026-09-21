@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pytest
 
+from molbuilder.units import UnknownUnit
+
 from _deck import (assert_fdf, fdf_block, fdf_block_rows, fdf_energy_window,
                    fdf_sets, fdf_value)
 
@@ -125,7 +127,7 @@ def test_a_bare_energy_is_REFUSED_rather_than_assumed():
     deck that states no unit gets a refusal, not a reading."""
     text = _WINDOW.replace("from -2.00000 eV to 2.00000 eV",
                            "from -2.00000 to 2.00000")
-    with pytest.raises(AssertionError, match="states no unit"):
+    with pytest.raises(UnknownUnit, match="states no unit"):
         fdf_energy_window(text, "TBT.Contour.window")
 
 
@@ -133,16 +135,19 @@ def test_an_absent_window_is_None_not_a_default():
     assert fdf_energy_window("SystemLabel probe\n", "TBT.Contour.window") is None
 
 
-@pytest.mark.parametrize("row,match", [
-    ("from -2.0 eV 2.0 eV", "no `to`"),
-    ("from to 2.0 eV",      "missing a bound"),
-    ("from -2.0 eV to",     "missing a bound"),
-    ("from x eV to 2.0 eV", "not a number"),
-    ("from -2.0 furlongs to 2.0 furlongs", "unknown energy unit"),
+@pytest.mark.parametrize("row,match,exc", [
+    ("from -2.0 eV 2.0 eV", "no `to`",          AssertionError),
+    ("from to 2.0 eV",      "missing a bound",  AssertionError),
+    ("from -2.0 eV to",     "missing a bound",  AssertionError),
+    ("from x eV to 2.0 eV", "not a number",     UnknownUnit),
+    ("from -2.0 furlongs to 2.0 furlongs", "does not know how to convert",
+     UnknownUnit),
 ])
-def test_a_malformed_row_names_the_block_and_the_problem(row, match):
+def test_a_malformed_row_names_the_block_and_the_problem(row, match, exc):
+    """The row GRAMMAR is this module's; the unit vocabulary is
+    `molbuilder.units`'.  Both refusals must still name the block."""
     text = _WINDOW.replace("from -2.00000 eV to 2.00000 eV", row)
-    with pytest.raises(AssertionError, match=match) as e:
+    with pytest.raises(exc, match=match) as e:
         fdf_energy_window(text, "TBT.Contour.window")
     assert "TBT.Contour.window" in str(e.value), (
         "a refusal must say which block it is about")
