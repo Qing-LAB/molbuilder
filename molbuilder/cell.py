@@ -506,13 +506,19 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: How far two adjacent-layer spacings in one block may differ before it
 #: is refused as a bulk lead.
 #:
-#: A frozen lead's spacings are equal by construction; this is the noise
-#: floor of the file round trip, not a per-atom budget.  A per-atom error
-#: `e` reaches `4e` here -- centroid `e`, gap `2e`, spread `4e` -- so it
-#: is not interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite
-#: the equal value.  A lead arrives only as a `.xyz` + sidecar pair, which
-#: the codec writes at six decimals: 1e-6 observed, against ~0.05 A for
-#: the smallest defect worth refusing (a relaxed surface layer).
+#: A frozen lead's spacings are equal by construction -- `modify.add_slab`
+#: gives layer z-values that are copies of one number -- so this is the
+#: noise floor of the file round trip and nothing else.
+#:
+#: DERIVED FROM THE WRITER, not from any file on disk.  A lead arrives as
+#: a `.xyz` + sidecar pair, which `structure.to_xyz` writes at six
+#: decimals: per-atom rounding <= 5e-7 A, and a spread is a difference of
+#: differences of layer means, so <= 4x that = 2e-6 A.  1e-3 leaves ~500x
+#: headroom over that and sits ~50x below the smallest defect worth
+#: refusing, a surface layer relaxed by ~0.05 A (1-3% of Au(111)'s 2.35).
+#:
+#: NOT interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite the
+#: equal value: that one is a budget PER ATOM, this one is on the spread.
 UNIFORM_SPACING_TOL_ANG = 1e-3
 
 

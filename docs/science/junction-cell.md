@@ -377,16 +377,16 @@ what the self-energy has to tile.
 > with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
 > a seam 0.33 Å too wide, silently.
 >
-> The tolerance is 1e-3 Å, and it exists only for the file round trip. A
-> frozen lead built by the slab API has its spacing EXACTLY: `add_slab` gives
-> layer z-values that are copies of one number, spread 8.9e-16 Å. The lead then
-> reaches here through one door — a `.xyz` + `.molstruct.json` pair
-> (`classify_citation` globs `*.xyz`; the recompose path reads `junction.xyz`)
-> — and the codec writes `12.6f`, so the widest spread across all eighteen real
-> labelled junctions under `projects/` is **1e-6 Å**. A real constrained
-> relaxation is tighter still: the frozen layers of `claude-junction`'s `.XV`
-> come back at **5.3e-10 Å**. So the threshold sits ~500× above the worst noise
-> that can occur and ~50× below the smallest thing worth refusing.
+> The tolerance is 1e-3 Å, and it exists only for the file round trip. A frozen
+> lead built by `add_slab` has its spacing exactly — the layer z-values are
+> copies of one number. The lead then reaches here through one door, a `.xyz` +
+> `.molstruct.json` pair, and `to_xyz` writes six decimals: per-atom rounding
+> ≤ 5e-7 Å, and a spread is a difference of differences of layer means, so
+> ≤ 4× that = **2e-6 Å**. The threshold sits ~500× above that and ~50× below
+> the smallest thing worth refusing, a surface layer relaxed by ~0.05 Å.
+>
+> The bound comes from the WRITER's format, not from any file on disk — a
+> number read off found data is a guess about what data will exist.
 >
 > *(It was briefly widened to 5e-3 on two arguments that do not survive contact
 > with the code — a 3-decimal PDB round trip, when a `.pdb` is not a citable
