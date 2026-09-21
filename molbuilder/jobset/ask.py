@@ -336,14 +336,20 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     function serves a terminal, a test, and anything else that can show a
     string and read a yes — the browser included.
     """
-    import sys
     import click
+    # THROUGH THE GUARDED DOOR.  This was a bare `sys.stdin.isatty()`, which
+    # raises on exactly the input this branch exists to handle: `ValueError`
+    # when stdin is closed, `AttributeError` when it is None.  So the one
+    # path written to decline GRACEFULLY with no terminal could die with a
+    # traceback instead.  `hints` is floor 1 with no dependencies, so asking
+    # it is a downward import (A7).
+    from ..envs.hints import stdin_can_answer
     echo = echo or click.echo
     echo(text)
     if auto_yes:
         echo("  (--yes)")
         return True
-    if prompt is None and not sys.stdin.isatty():
+    if prompt is None and not stdin_can_answer():
         # NO TERMINAL TO ASK.  S4 says the absence of `--yes` is not
         # permission, so this declines -- but it declines by SAYING WHY and
         # naming the flag, because a scripted run that aborts with no

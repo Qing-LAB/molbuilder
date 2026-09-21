@@ -118,7 +118,24 @@ def _serve(port: int, capture_cwd: Path) -> Iterator[subprocess.Popen]:
         str(REPO_ROOT) + (os.pathsep + existing_pp if existing_pp else "")
     )
 
-    host_env = os.environ.get("MOLBUILDER_HOST_ENV", "molbuilder")
+    # ASK THE ONE DOOR, do not re-spell the rule.  This read
+    # `os.environ.get("MOLBUILDER_HOST_ENV", "molbuilder")`, which is two
+    # thirds of `effective_name`: it honoured the per-invocation override and
+    # the default, and silently skipped `envs.host` in molbuilder.json -- the
+    # PERSISTENT home, which exists so the name survives a new shell.  An
+    # operator with `envs.host: mb-dev` got `mb-dev` from `envs list` and
+    # `conda run -n molbuilder` from here.  `effective_name`'s own docstring
+    # records that this same asymmetry once built a second host env and left
+    # the one in use invisible to the health report.
+    #
+    # Importing is safe HERE though not everywhere: this script's documented
+    # usage runs it inside the host env with Playwright, so the package and
+    # its dependencies are present.  Constraint (1) above, applied to this
+    # process rather than the child -- molbuilder is not pip-installed.
+    sys.path.insert(0, str(REPO_ROOT))
+    from molbuilder.diagnostics import get_capabilities
+    from molbuilder.envs.recipes import effective_name, recipe_by_name
+    host_env = effective_name(recipe_by_name("molbuilder"), get_capabilities())
     env_mgr  = _pick_env_manager()
     cmd = [
         env_mgr, "run", "-n", host_env, "--no-capture-output",
