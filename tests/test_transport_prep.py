@@ -296,10 +296,19 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
         prep_calculation(dest, "transmission")
         deck = (dest / "05_transmission"
                 / "T_05_transmission.fdf").read_text()
-        assert "-3.00000 eV" in deck or "-3.0" in deck, (
-            "the person's energy window must reach the TRANSMISSION deck -- "
-            "it is the one tbtrans runs, and the only place the window has "
-            "any effect")
+        # THE PARSER'S OUTPUT, NEVER THE TEXT (user ruling, 2026-09-21).
+        # This searched the WHOLE deck for the substring "-3.0", which
+        # matches a coordinate or a mesh cutoff just as happily, and says
+        # nothing about `to`.  Measured: with the emitter swapped so the
+        # window ran backwards, that assertion still passed.
+        from _deck import fdf_energy_window
+        lo, hi = fdf_energy_window(deck, "TBT.Contour.window")
+        assert lo == pytest.approx(-3.0), (
+            f"the person's energy window must reach the TRANSMISSION deck "
+            f"-- it is the one tbtrans runs, and the only place the window "
+            f"has any effect; got from={lo}")
+        assert hi == pytest.approx(2.0), (
+            f"and the upper bound is the default, untouched: got to={hi}")
 
     def test_a_lead_parameter_reaches_BOTH_leads(self, tmp_path):
         """`electrode_kz` declares two owning rungs, and a junction has two
