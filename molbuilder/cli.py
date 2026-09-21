@@ -1222,12 +1222,17 @@ def _resolve_tls(cert_cli, key_cli):
 
     Readability of the resolved paths is NOT checked here -- this
     function only resolves the precedence chain, so it stays pure
-    and the tests don't need to touch the filesystem.  The call site
-    (``cmd_serve``, ``cmd_watch_serve``) invokes
-    ``_check_tls_readable`` immediately after resolution so the
-    failure surfaces as a clean ``click.UsageError`` instead of the
-    bare ``PermissionError`` Werkzeug raises from
-    ``load_cert_chain`` deep in the stack.
+    and the tests don't need to touch the filesystem.
+    ``_refuse_an_unsafe_bind`` invokes ``_check_tls_readable`` immediately
+    after resolution so the failure surfaces as a clean
+    ``click.UsageError`` instead of the bare ``PermissionError`` Werkzeug
+    raises from ``load_cert_chain`` deep in the stack.
+
+    *(This named ``cmd_watch_serve`` as a second call site until 2026-09-21.
+    That verb was removed 2026-05-19 -- the note saying so is at the foot of
+    this file -- so the docstring outlived it by four months.  It named
+    ``cmd_serve`` as the other, which stopped being true when the three
+    refusals moved into one preflight.)*
     """
     cert, key = cert_cli, key_cli
     if cert and key:
@@ -2270,15 +2275,25 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # (measured 2026-09-21, `--host 0.0.0.0` with no TLS).
     _refuse_an_unsafe_bind(host, cert, key, allow_insecure_binding, no_auth)
     _held = _port_in_use(host, port)
-    if _held:
+    if _held is not None:
+        import errno as _errno
+        if _held.errno == _errno.EADDRINUSE:
+            raise click.ClickException(
+                f"port {port} is already in use on {host}, and no supervisor "
+                f"of yours holds it ({_held}).\n"
+                f"  Most likely an orphaned server child -- `kill -9` of a "
+                f"supervisor leaves one running, because the child has no "
+                f"PDEATHSIG and the pidfile is removed.\n"
+                f"  Find it with `ss -ltnp | grep :{port}` and stop it, or "
+                f"start on another port.")
+        # NOT "in use" -- SOMETHING ELSE.  Most often the host is not an
+        # address on this machine (EADDRNOTAVAIL), and the orphan advice
+        # above would send somebody hunting a process that does not exist.
         raise click.ClickException(
-            f"port {port} is already in use on {host}, and no supervisor of "
-            f"yours holds it ({_held}).\n"
-            f"  Most likely an orphaned server child -- `kill -9` of a "
-            f"supervisor leaves one running, because the child has no "
-            f"PDEATHSIG and the pidfile is removed.\n"
-            f"  Find it with `ss -ltnp | grep :{port}` and stop it, or "
-            f"start on another port.")
+            f"cannot bind {host}:{port} ({_held}).\n"
+            f"  The port is not reported busy; the address itself is the "
+            f"problem.  `--host` must name an interface this machine has -- "
+            f"`ip -br addr` lists them -- or 0.0.0.0 for all of them.")
     child = [sys.executable, "-m", "molbuilder", "serve", "foreground",
              "--host", host, "--port", str(port), "--no-supervise"]
     if cert:
@@ -2366,21 +2381,30 @@ _PREDATES_NOTE = (
     "  for this server` in that case.")
 
 
-def _port_in_use(host: str, port: int) -> str:
-    """``""`` when the port is free to bind, else why it is not.
+def _port_in_use(host: str, port: int):
+    """``None`` when the bind would succeed, else the ``OSError`` saying why.
 
     A bind test on the address the CHILD will use, so the answer is the
     child's: a wildcard bind and a loopback bind fail differently, and
     guessing from `127.0.0.1` would pass a port held on another interface.
+
+    **It returns the error, not a sentence**, because "cannot bind" has more
+    than one cause and the caller has to tell them apart.  It returned
+    ``str(exc)`` and the caller opened with *"port N is already in use"*
+    whatever came back -- so a host that is simply not an address on this
+    machine produced *"port 8771 is already in use on 192.0.2.1 ([Errno 99]
+    Cannot assign requested address)"*, a sentence that contradicts its own
+    parenthetical, followed by advice to hunt an orphaned child with `ss`
+    that was never there (measured 2026-09-21).
     """
     import socket
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
-        return ""
+        return None
     except OSError as exc:
-        return str(exc)
+        return exc
 
 
 def _runtime_dir_dies_at_logout() -> str:
