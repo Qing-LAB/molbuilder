@@ -1311,6 +1311,40 @@ def _check_tls_readable(cert, key) -> None:
     )
 
 
+def _refuse_an_unsafe_bind(host, cert, key, allow_insecure, no_auth):
+    """Every reason this (host, TLS, auth) combination must not start.
+
+    **One place, because `start` has to ask BEFORE it detaches.**  These three
+    refusals lived only in `cmd_serve`, which `serve start` reaches as a
+    CHILD -- after `daemonize()`, so the refusal went to the log while the
+    terminal had already printed "starting in the background" and exit 0.
+    Measured 2026-09-21: `serve start --host 0.0.0.0` with no TLS says it
+    started, names a log and a pidfile, and ends with "then: molbuilder serve
+    status" -- which is the failure `cmd_serve_start` records fixing for the
+    PORT check, in the same words: *"the failure then landed in the log AFTER
+    `daemonize()`, so nothing reached the terminal."*  That check was hoisted
+    and this one was not.
+
+    Returns the ssl context `cmd_serve` then runs with, so the resolution is
+    not spelled twice (D4: two implementations of one rule drift).
+    """
+    if no_auth:
+        # Auth-free is a LOCAL-ONLY convenience: refuse anything but a
+        # loopback bind so an unauthenticated server is never reachable off
+        # the machine.
+        if not _is_loopback_host(host):
+            raise click.ClickException(
+                f"--no-auth requires a loopback --host (got {host!r}); "
+                "refusing to start an unauthenticated server on a "
+                "non-loopback interface.")
+        return None                      # --no-auth never gets TLS
+    cert, key = _resolve_tls(cert, key)
+    _check_tls_readable(cert, key)
+    ssl_ctx = (cert, key) if cert and key else None
+    _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure)
+    return ssl_ctx
+
+
 @cli.command("auth-setup",
               short_help="generate molbuilder.json's auth block for "
                          "ASU CAS and/or Google OAuth (interactive)")
@@ -2150,18 +2184,15 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
     from .web.app import create_app
 
+    # THE SAME PREFLIGHT `serve start` RUNS BEFORE IT DETACHES.
+    ssl_ctx = _refuse_an_unsafe_bind(host, cert, key,
+                                     allow_insecure_binding, no_auth)
+
     if no_auth:
-        # Auth-free is a LOCAL-ONLY convenience: refuse anything but a
-        # loopback bind so an unauthenticated server is never reachable
-        # off the machine.  create_app(config={}) is the supported
-        # no-auth seam (see web/app.py:create_app); it ignores
-        # molbuilder.json entirely (no providers -> no login), and the
-        # projects root still resolves from the CWD.
-        if not _is_loopback_host(host):
-            raise click.ClickException(
-                f"--no-auth requires a loopback --host (got {host!r}); "
-                "refusing to start an unauthenticated server on a "
-                "non-loopback interface.")
+        # create_app(config={}) is the supported no-auth seam (see
+        # web/app.py:create_app); it ignores molbuilder.json entirely (no
+        # providers -> no login), and the projects root still resolves from
+        # the CWD.
         app = create_app(config={})
         # THIS PROCESS'S PORT, on the Flask app rather than through
         # `create_app(config=)` -- that argument is the RUNTIME config
@@ -2175,10 +2206,6 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
         app.run(host=host, port=port, debug=debug, ssl_context=None)
         return
 
-    cert, key = _resolve_tls(cert, key)
-    _check_tls_readable(cert, key)
-    ssl_ctx = (cert, key) if cert and key else None
-    _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure_binding)
     scheme  = "https" if ssl_ctx else "http"
     app = create_app()
     # This process's port -- see `web.app.serve_port`.
@@ -2235,6 +2262,13 @@ def cmd_serve_start(host, port, cert, key, allow_insecure_binding, no_auth,
     # the same reason the notebook's clash warning is printed just below.
     # A REFUSAL rather than a warning: a web server that cannot bind has
     # nothing left to do, unlike a notebook whose server is still useful.
+    # AND WILL THE CHILD EVEN AGREE TO SERVE THIS BIND?  Same reason as the
+    # port check below, and the same failure it records: every refusal in
+    # `cmd_serve` is raised in the CHILD, which runs after `daemonize()`, so
+    # without this the terminal reads "starting in the background ... then:
+    # molbuilder serve status" at exit 0 while the server never came up
+    # (measured 2026-09-21, `--host 0.0.0.0` with no TLS).
+    _refuse_an_unsafe_bind(host, cert, key, allow_insecure_binding, no_auth)
     _held = _port_in_use(host, port)
     if _held:
         raise click.ClickException(
