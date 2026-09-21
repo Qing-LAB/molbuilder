@@ -506,19 +506,23 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: How far two adjacent-layer spacings in one block may differ before it
 #: is refused as a bulk lead.
 #:
-#: A frozen lead's spacings are equal to the precision the numbers are
-#: written at, and no better: `modify.add_slab` takes its layer heights
-#: from an ASE-built slab and rounds them to six decimals
-#: (`modify.py`, `zs = sorted({round(float(z), 6) ...})`), so they agree
-#: to ~1e-6 A rather than bit-for-bit.  This is that noise floor.
+#: A frozen lead's spacings are equal by construction: `modify.add_slab`
+#: gives every atom in a layer the SAME z, and measuring an Au(111)
+#: 2x2x4 slab shows it -- within-layer spread 0.0, and the three
+#: spacings agreeing to 4e-16.  The builder contributes nothing.
+#: (`modify.py`'s `round(float(z), 6)` picks which layers to keep; the
+#: stored coordinates come from `all_pos` unrounded, so it is not a
+#: source of error here.  Reading it as one cost a wrong version of
+#: this comment on 2026-09-21.)
 #:
-#: DERIVED FROM THE WRITERS, not from any file on disk.  Both of them
-#: round at six decimals -- the slab builder above, and `to_xyz`, which
-#: writes `%12.6f`.  Per-atom rounding is therefore <= 5e-7 A, and a
-#: spread is a difference of differences of layer means, so <= 4x that
-#: = 2e-6 A.  1e-3 leaves ~500x headroom over that and sits ~50x below
-#: the smallest defect worth refusing, a surface layer relaxed by
-#: ~0.05 A (1-3% of Au(111)'s 2.35).
+#: So this is the noise floor of the FILE ROUND TRIP and nothing else,
+#: DERIVED FROM THE WRITER rather than from any file on disk: a lead
+#: arrives as a `.xyz` + sidecar pair, and `to_xyz` writes `%12.6f`.
+#: Per-atom rounding <= 5e-7 A, and a spread is a difference of
+#: differences of layer means, so <= 4x that = 2e-6 A.  1e-3 leaves
+#: ~500x headroom over that and sits ~50x below the smallest defect
+#: worth refusing, a surface layer relaxed by ~0.05 A (1-3% of
+#: Au(111)'s 2.35).
 #:
 #: NOT interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite the
 #: equal value: that one is a budget PER ATOM, this one is on the spread.

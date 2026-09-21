@@ -784,3 +784,50 @@ def test_the_refresh_button_covers_the_window_while_it_hashes():
         "the deep read ran with the window uncovered -- it hashes "
         "gigabytes and nothing was blocking the click behind it")
     assert out["after"] is False, "the window stayed covered afterwards"
+
+
+def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200():
+    """Cancel after the headers land but before the body is read.
+
+    `_fetchJSON` catches a failed `r.json()` because a reply may carry
+    no JSON at all.  That catch used to swallow the `AbortError` a
+    Cancel raises mid-body too, and the call then returned
+    `{http: 200, body: null}` -- which reads downstream as a server that
+    answered with nothing, so pressing Cancel painted "HTTP 200" as an
+    error.  Only the deep read carries a signal, so only it gets here.
+    """
+    out = run_node([_PANEL], r"""
+      globalThis.__replies = [%s];
+      const busy = (await import(new URL("../page-busy.js",
+                                 process.env.PANEL_URL).href)).pageBusy;
+      const inner = globalThis.fetch;
+      globalThis.fetch = async (url, opts = {}) => {
+        const r = await inner(url, opts);
+        if (!url.includes("deep=1")) return r;
+        // headers landed; the body never will, because Cancel fires
+        return { status: r.status, json: () => new Promise((_res, rej) => {
+          setTimeout(() => {
+            const e = new Error("aborted"); e.name = "AbortError"; rej(e);
+          }, 5);
+        }) };
+      };
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+      const before = __els["ps-checkpoint-toggle"].dataset["attr_data-state"];
+      __els["ps-checkpoint-refresh-btn"].click();
+      await new Promise(r => setTimeout(r, 10));
+      busy._runCancelers();
+      await new Promise(r => setTimeout(r, 40));
+      console.log(JSON.stringify({
+        before,
+        pill: __els["ps-checkpoint-toggle"].dataset["attr_data-state"],
+        held: busy.isClaimed(),
+      }));
+    """ % json.dumps(_STATE_REPLY),
+        globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["before"] == "clean", out
+    assert out["pill"] != "error", (
+        f"Cancel painted a failure the user did not have: pill={out['pill']}")
+    assert out["held"] is False, "the window stayed covered after Cancel"

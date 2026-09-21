@@ -45,6 +45,11 @@ class ComposeError(Exception):
 #: The composed record's on-disk names, beside the transport
 #: calculation's ``task.json`` (§ 4.1: the cited structure is COPIED in
 #: with provenance, and the folder then travels like any other).
+JUNCTION_GEOMETRY = "junction.xyz"          # the SORTED junction (codec pair)
+JUNCTION_DECK = "junction.cited.fdf"        # the attempt's own deck, verbatim
+PROVENANCE_FILE = "slot-provenance.json"
+PERMUTATION_FILE = "atom-permutation.json"
+
 #: How far two statements of the SAME cell may differ before the citation
 #: is refused.  The cell travels deck -> SIESTA -> ``.XV``: this project
 #: writes ``LatticeVectors`` at twelve decimals in Angstrom, SIESTA works
@@ -53,11 +58,6 @@ class ComposeError(Exception):
 #: 1e-9 A on any cell a junction has.  1e-6 A is three orders above that
 #: floor and far below any difference that means a different box.
 CELL_AGREEMENT_TOL_ANG = 1e-6
-
-JUNCTION_GEOMETRY = "junction.xyz"          # the SORTED junction (codec pair)
-JUNCTION_DECK = "junction.cited.fdf"        # the attempt's own deck, verbatim
-PROVENANCE_FILE = "slot-provenance.json"
-PERMUTATION_FILE = "atom-permutation.json"
 
 
 def record_files(form: str = "relaxation") -> Tuple[str, ...]:

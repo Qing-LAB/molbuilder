@@ -766,6 +766,22 @@ def detect_open_shell_metals(struct: Structure) -> List[str]:
         return found
     # Noble metals only: parity decides, over the NEUTRAL count, because the
     # charge is the caller's to state and this answers about the structure.
+    #
+    # AND THE COUNT NEEDS EVERY LABEL, which the loop above does not: it
+    # `continue`s past one that names no element, so the scan tolerates
+    # what the parity tail then crashed on.  Half a decision is not a
+    # decision -- the tail follows the scan and stands down, because a
+    # parity nobody can compute recommends nothing, and
+    # `check_species_labels` is what reports the label itself.
+    #
+    # This is the THIRD of the three whole-structure counts in this file
+    # (`check_spin_charge_parity`, `analyze_structure`, here).  The first
+    # stands down the same way; the second refuses on purpose and its two
+    # callers each catch that.  Missing this one left `validate()` raising
+    # `KeyError` out to the preflight as an HTTP 500 with no findings at
+    # all, for a noble-metal structure with one bad label.
+    if not every_label_resolves(struct):
+        return []
     if total_electrons(struct, 0) % 2 == 0:
         return []
     return found

@@ -73,27 +73,42 @@ class TestF4GateDerivesWhatChecksNeed:
         assert any(i.where == "cell.unresolved" and i.severity == "info"
                    for i in issues), [i.where for i in issues]
 
-    @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-    def test_an_unresolvable_species_label_is_reported_not_a_crash(self,
-                                                                   engine):
+    @pytest.mark.parametrize("engine,kind", [
+        ("siesta", "optimization"),
+        ("siesta", "vibration"),
+        ("pyscf",  "optimization"),
+        ("pyscf",  "vibration"),
+    ])
+    def test_an_unresolvable_species_label_is_reported_not_a_crash(
+            self, engine, kind):
         """The same rule one level down: a label naming no element is a
         finding, and the checks that cannot be answered without it stand
         down rather than taking the request with them.
 
-        An electron count needs Z for every atom, so `check_open_shell_metal`
-        and `check_spin_charge_parity` raised `KeyError` out through
-        `validate()` -- which reached the preflight as an HTML 500 and
-        delivered NO findings at all, including the one naming the label.
+        THE STRUCTURE IS A NOBLE-METAL CLUSTER ON PURPOSE.  An electron
+        count is reached from three places in `chemistry.py`, and two of
+        them are behind a metal: `detect_open_shell_metals` returns early
+        unless it finds one, and returns early AGAIN on an open-d metal
+        without counting -- so Au, not Fe, and not a bare molecule.  An
+        earlier version of this test used `["Xx", "H"]`, passed, and left
+        `validate()` still raising `KeyError` out to the preflight as an
+        HTTP 500 with no findings at all.  The kinds are here for the
+        same reason: the vibration route reaches the count through
+        `validation/spectra.py`, which the optimization route does not.
         """
         if engine == "pyscf":
             from molbuilder.config.pyscf import PySCFConfig
             cfg = PySCFConfig()
         else:
-            cfg = SiestaConfig(system_label="probe")
-        s = Structure(elements=["Xx", "H"],
-                      positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9]]),
-                      vacuum=(10.0, 10.0, 10.0))
-        issues = validate(s, cfg)          # must not raise
+            cfg = SiestaConfig(system_label="probe",
+                               spin_treatment="polarized")
+        s = Structure(
+            elements=["Au", "Au", "Au", "Au", "Xx"],
+            positions=np.array([[0.0, 0.0, 0.0], [2.9, 0.0, 0.0],
+                                [0.0, 2.9, 0.0], [2.9, 2.9, 0.0],
+                                [0.0, 0.0, 3.5]]),
+            vacuum=(12.0, 12.0, 12.0))
+        issues = validate(s, cfg, calculation=kind)      # must not raise
         named = [i for i in issues
                  if i.where == "chemistry.species_label"
                  and i.severity == "error"]

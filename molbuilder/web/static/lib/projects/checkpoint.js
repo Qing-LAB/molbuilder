@@ -549,7 +549,19 @@ async function _fetchJSON(method, url, body, signal) {
     if (signal) opts.signal = signal;
     const r = await fetch(url, opts);
     let payload = null;
-    try { payload = await r.json(); } catch (_) { /* empty body */ }
+    try {
+        payload = await r.json();
+    } catch (e) {
+        /* AN ABORT IS NOT AN EMPTY BODY.  This catch is here for a
+         * reply that carries no JSON, and it used to swallow anything --
+         * including the `AbortError` a Cancel raises when the headers
+         * have landed and the body has not.  The call then returned
+         * `{http: 200, body: null}`, which reads downstream as a server
+         * that answered with nothing, and Cancel painted "HTTP 200" as
+         * an error.  Only the deep read passes a signal, so only it can
+         * reach this. */
+        if (e && e.name === "AbortError") throw e;
+    }
     return { http: r.status, body: payload };
 }
 
@@ -575,6 +587,14 @@ async function _refresh(opts = {}) {
     if (!dir) return;
     _hideAdvisory();
     if (!opts.deep) return _readInto(dir, undefined, opts);
+    /* NOT OURS TO TAKE IF SOMEONE ELSE HAS IT.  `claim()` throws while
+     * claimed, and the cover does not make this button unreachable: it
+     * blocks the mouse but sets no `inert`, so Tab + Enter still fires
+     * the handler during a SMILES build or a task.json save.  Passing
+     * through on the outer cover is what `task-setup/viewer.js` does at
+     * its own writer, and it is the same answer here -- the window is
+     * already held, so there is nothing this claim would add. */
+    if (pageBusy.isClaimed()) return _readInto(dir, undefined, opts);
     // The three layers of § 10's recovery contract, spelled out: the
     // canceler aborts, Cancel runs it, and the `finally` uncovers
     // whatever happens.
