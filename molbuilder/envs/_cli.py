@@ -39,7 +39,7 @@ from .recipes import BUILTIN_RECIPES, effective_name, recipe_by_name
 #
 # Every ``molbuilder envs install`` run drops a full copy of its
 # terminal output at ``<log dir>/install-<recipe>-<TS>.log`` -- the log
-# directory is `runtime_config.logs_dir()` (configuration.md § 2.1d)
+# directory is `config_dir.logs_dir()` (configuration.md § 2.1d)
 # so the user can grep / diff / share install transcripts later
 # without rerunning the build.  The path is reported at the start of
 # the install and again at the end.
@@ -569,15 +569,15 @@ def cmd_repair(name: str, include_optional: bool,
         if issue.kind.endswith("-opt-in"):
             skipped_opt_in.append(issue)
             continue
-        base = issue.kind[:-len("-optional")] \
-            if issue.optional else issue.kind
         if issue.optional:
             (bucket if include_optional else skipped_optional).append(issue)
             continue
-        if base in ("conda-version", "conda-build"):
+        # NO `-optional` SUFFIX TO STRIP: the branch above takes every
+        # optional issue, so `kind` is undecorated by the time it is read.
+        if issue.kind in ("conda-version", "conda-build"):
             (bucket if include_version_fix else skipped_version).append(issue)
             continue
-        if base in ("conda-missing", "pip-missing", "pip-source"):
+        if issue.kind in ("conda-missing", "pip-missing", "pip-source"):
             bucket.append(issue)
     if skipped_opt_in:
         click.echo(
