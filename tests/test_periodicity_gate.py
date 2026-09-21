@@ -2077,3 +2077,48 @@ class TestARefusedCellIsA400:
 
     # `test_the_transport_door_refuses` deleted 2026-09-17 with POST /api/transport/render.
 
+
+
+class TestTheCellPageCanRepairWhatItRefuses:
+    """A bad box is ADMITTED at the load door precisely so it can be fixed
+    here (`blueprints/build.py`: *"a load that refused would leave a
+    structure with a bad box unopenable, and so unfixable"*).
+
+    The edit door then gated on the INCOMING state, so every op was
+    refused with the very sentence that asks the user to perform it.
+    """
+
+    def _mirrored(self):
+        import numpy as np
+        from molbuilder.structure import Structure
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0., 0., 0.], [0., 0., 1.]]))
+        s.cell = np.array([[10., 0, 0], [0, 0, 10.], [0, 10., 0]])
+        return s
+
+    def test_a_mirrored_cell_is_admitted_so_it_can_be_corrected(self):
+        """`__post_init__` refuses only a near-zero determinant."""
+        assert self._mirrored().cell is not None
+
+    def test_setting_a_good_cell_over_a_mirrored_one_is_ACCEPTED(self):
+        """The fix the refusal asks for -- 'swap any two of the three
+        rows' -- was itself refused."""
+        import numpy as np
+        from molbuilder.periodicity_gate import apply_edit
+        out, _receipts = apply_edit(self._mirrored(), "cell",
+                                    [[10., 0, 0], [0, 10., 0], [0, 0, 10.]])
+        assert float(np.linalg.det(np.asarray(out.cell, float))) > 0
+
+    def test_clearing_a_mirrored_cell_is_ACCEPTED(self):
+        from molbuilder.periodicity_gate import apply_edit
+        out, _receipts = apply_edit(self._mirrored(), "cell", None)
+        assert out.cell is None
+
+    def test_an_edit_that_LEAVES_the_box_mirrored_is_still_refused(self):
+        """The result is what is gated, so a repair that does not repair
+        must still be refused -- otherwise this fix would open a hole."""
+        import pytest as _pytest
+        from molbuilder.periodicity_gate import apply_edit
+        with _pytest.raises(ValueError, match="mirrored"):
+            apply_edit(self._mirrored(), "cell",
+                       [[10., 0, 0], [0, 0, 10.], [0, 20., 0]])
