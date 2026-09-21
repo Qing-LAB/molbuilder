@@ -403,39 +403,34 @@ def test_bulk_z_period_tolerates_the_noise_a_real_junction_carries():
     assert zper == pytest.approx(4.801245 + 2.400623)
 
 
-def test_bulk_z_period_admits_a_lead_that_came_through_a_3_DECIMAL_file():
-    """THE TOLERANCE WAS SIZED FOR ONE COORDINATE, APPLIED TO A SPREAD.
+def test_bulk_z_period_admits_what_the_REAL_path_does_to_a_built_lead():
+    """The tolerance's whole job, and its only one.
 
-    `structure.py` writes PDB at `%8.3f`, and `StructureCodec` writes a
-    `.pdb` + sidecar pair carrying regions and frozen atoms — so a lead
-    can arrive at 3 decimals.  Rounding of 5e-4 per atom becomes 2e-3 of
-    spread, and at the original 1e-3 this perfect, fully frozen Pt(111)
-    lead was REFUSED, with a message blaming the label boundary or a
-    missing freeze.  Au(111) at the same precision passed: the verdict
-    was decided by binary64, not by the crystal.
+    `modify.add_slab` gives layer z-values that are copies of one number
+    (measured spread 8.9e-16 A).  The lead then reaches `bulk_z_period`
+    through exactly one door -- a `.xyz` + `.molstruct.json` pair, which
+    the codec writes at `12.6f` -- and 1e-6 is the widest spread any of
+    the eighteen real labelled junctions shows.  These are those numbers.
+
+    REPLACED two tests on 2026-09-21 that pinned constructed scenarios: a
+    3-decimal PDB round trip (a `.pdb` is not a citable pair, so a lead
+    cannot arrive that way) and a lead spending the whole per-atom frozen
+    budget in an alternating pattern (real frozen atoms come back at
+    5e-10).  User: *"why would you write the PDB file when we always use
+    XYZ?"*  Neither was reachable, and both were arguments for widening a
+    threshold that did not need widening.
     """
-    pt111_6_layers_at_3dp = [0.0, 2.266, 4.531, 6.797, 9.062, 11.328]
-    zper, d, n = cellmod.bulk_z_period(pt111_6_layers_at_3dp)
+    d = 2.3545498678090       # Au(111) at a = 4.0782, straight from add_slab
+    exact = [i * d for i in range(6)]
+    cellmod.bulk_z_period(exact)                       # as built
+
+    six_dp = [round(z, 6) for z in exact]              # through the codec
+    gaps = np.diff(six_dp)
+    assert gaps.max() - gaps.min() <= 1e-6 + 1e-12, (
+        "the codec's own quantization is the only noise on this path")
+    zper, spacing, n = cellmod.bulk_z_period(six_dp)
     assert n == 6
-    assert d == pytest.approx(2.266, abs=1e-9)
-    assert zper == pytest.approx(11.328 + 2.266)
-
-
-def test_the_spacing_tolerance_admits_what_the_FROZEN_budget_allows():
-    """The two tolerances are not one standard, and the docstring used to
-    say they were.  `FROZEN_TOL_ANG` is a budget PER ATOM; this one is on
-    a difference of differences of means, so spending the first in full
-    yields four times as much of the second.  At 1e-3 the gate certified
-    a lead as unmoved and then refused it for having moved.
-    """
-    from molbuilder.transport.wizard import FROZEN_TOL_ANG
-    d, n = 2.0393, 6
-    worst = [i * d + 0.999 * FROZEN_TOL_ANG * (-1) ** i for i in range(n)]
-    gaps = np.diff(worst)
-    assert gaps.max() - gaps.min() == pytest.approx(4 * 0.999 * FROZEN_TOL_ANG), (
-        "the 4x relationship is the whole point; if this changes the "
-        "tolerance's derivation needs redoing")
-    cellmod.bulk_z_period(worst)          # must not raise
+    assert spacing == pytest.approx(d, abs=1e-6)
 
 
 def test_the_refusal_never_prints_a_spread_that_looks_equal_to_the_limit():

@@ -377,15 +377,24 @@ what the self-energy has to tile.
 > with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
 > a seam 0.33 Å too wide, silently.
 >
-> The tolerance is measured, not picked. Across every readable labelled junction
-> under `projects/` — 18 sidecars, 36 electrode blocks, 10 distinct geometries —
-> every electrode atom is frozen and the widest spread between any two spacings
-> of one block is **1e-6 Å**, the precision the coordinates were written at.
-> The tolerance is not sized off that, though: it is sized off the COARSEST
-> path, which is the 3-decimal PDB writer, and off the per-atom frozen budget.
-> See `UNIFORM_SPACING_TOL_ANG` in `cell.py` for the arithmetic — a per-atom
-> error of `e` becomes a spread of up to `4e`, which is the step the first
-> version of this number missed.
+> The tolerance is 1e-3 Å, and it exists only for the file round trip. A
+> frozen lead built by the slab API has its spacing EXACTLY: `add_slab` gives
+> layer z-values that are copies of one number, spread 8.9e-16 Å. The lead then
+> reaches here through one door — a `.xyz` + `.molstruct.json` pair
+> (`classify_citation` globs `*.xyz`; the recompose path reads `junction.xyz`)
+> — and the codec writes `12.6f`, so the widest spread across all eighteen real
+> labelled junctions under `projects/` is **1e-6 Å**. A real constrained
+> relaxation is tighter still: the frozen layers of `claude-junction`'s `.XV`
+> come back at **5.3e-10 Å**. So the threshold sits ~500× above the worst noise
+> that can occur and ~50× below the smallest thing worth refusing.
+>
+> *(It was briefly widened to 5e-3 on two arguments that do not survive contact
+> with the code — a 3-decimal PDB round trip, when a `.pdb` is not a citable
+> pair, and a lead spending the whole per-atom frozen budget, when real frozen
+> atoms come back at 5e-10. Both were constructed. What remains true is that
+> this is not `FROZEN_TOL_ANG`: that is a budget per atom, this is on a
+> difference of differences of means, so a per-atom error `e` shows up as `4e`
+> here. Equal by coincidence of scale, not by derivation.)*
 
 **The one caller** is `transport.wizard.extract_electrode_model`, where this
 began — the electrode wizard has always used it to derive the bulk lead's
