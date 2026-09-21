@@ -21,21 +21,55 @@ from molbuilder.units import (ENERGY_EV, LENGTH_ANGSTROM, TEMPERATURE_K,
 #  the vocabularies                                                     #
 # --------------------------------------------------------------------- #
 
+#: SIESTA 5.4.2's own energy dimension, read out of the shipped binary's
+#: libfdf table.  A word the engine accepts and this table lacks is not an
+#: error at read time -- it is a refusal where a number was expected.
+_SIESTA_ENERGY_WORDS = (
+    "eV", "meV", "Ry", "mRy", "Ha", "mHa", "Hartree", "mHartree",
+    "K", "Kelvin", "J", "kJ", "erg", "kcal/mol", "kJ/mol",
+    "Hz", "THz", "cm-1", "cm^-1", "cm**-1",
+)
+
+_SIESTA_LENGTH_WORDS = ("m", "cm", "nm", "Ang", "Bohr", "pm")
+
+
+@pytest.mark.parametrize("word", _SIESTA_ENERGY_WORDS)
+def test_every_energy_word_siesta_accepts_is_known(word):
+    """`eV` is the one that mattered: without it, a deck written in eV
+    read as Ry and every number after was 13.6x.  The rest are here
+    because the same hole is the same hole for any of them."""
+    assert energy_ev(1.0, word) > 0.0
+
+
+@pytest.mark.parametrize("word", _SIESTA_LENGTH_WORDS)
+def test_every_length_word_siesta_accepts_is_known(word):
+    assert length_ang(1.0, word) > 0.0
+
+
 @pytest.mark.parametrize("word,ev", [
     ("eV", 1.0), ("meV", 1e-3),
     ("Ry", RYDBERG_EV), ("Ryd", RYDBERG_EV), ("rydberg", RYDBERG_EV),
     ("Ha", HARTREE_EV), ("HARTREE", HARTREE_EV),
 ])
-def test_every_energy_word_siesta_accepts_is_known(word, ev):
-    """`eV` is the one that mattered: without it, a deck written in eV
-    read as Ry and every number after was 13.6x."""
+def test_the_common_energy_words_carry_the_right_factor(word, ev):
     assert energy_ev(1.0, word) == pytest.approx(ev)
+
+
+@pytest.mark.parametrize("word,ev,why", [
+    ("cm-1",     1.239841984e-4, "the wavenumber the vibrational decks speak"),
+    ("kcal/mol", 0.0433641,      "the unit a chemist quotes a barrier in"),
+    ("K",        8.617333262e-5, "kelvin IS an energy word to SIESTA"),
+])
+def test_the_derived_energy_words_are_physically_right(word, ev, why):
+    """Checked against published values, not against our own arithmetic."""
+    assert energy_ev(1.0, word) == pytest.approx(ev, rel=1e-6), why
 
 
 @pytest.mark.parametrize("word,ang", [
     ("Ang", 1.0), ("angstrom", 1.0), ("Bohr", BOHR_ANGSTROM), ("nm", 10.0),
+    ("pm", 1e-2), ("m", 1e10),
 ])
-def test_every_length_word_is_known(word, ang):
+def test_the_length_words_carry_the_right_factor(word, ang):
     assert length_ang(1.0, word) == pytest.approx(ang)
 
 
@@ -106,9 +140,14 @@ def test_the_refusal_says_why_it_refuses_rather_than_guessing():
 #  the Ry door                                                          #
 # --------------------------------------------------------------------- #
 
-def test_energy_ry_is_the_eV_door_divided_once():
-    """SIESTA's scalars are stored in Ry, so this is the shape `.fdf`
-    reads through; it must not be a second table."""
+def test_energy_ry_returns_Ry_exactly():
+    """SIESTA's scalars are stored in Ry, and `MeshCutoff 200 Ry` must
+    come back as 200.0 -- not 200.00000000000003, which is what
+    multiplying to eV and dividing back gives, and which `siesta/input`
+    writes into a deck verbatim."""
+    from molbuilder.parse.fdf import parse_fdf_params
+    for v in (100.0, 200.0, 250.0, 350.0, 400.0):
+        assert parse_fdf_params(f"MeshCutoff {v:g} Ry\n").mesh_cutoff_ry == v
     assert energy_ry(1.0, "Ry") == pytest.approx(1.0)
     assert energy_ry(1.0, "Ha") == pytest.approx(2.0)
     assert energy_ry(RYDBERG_EV, "eV") == pytest.approx(1.0)
@@ -168,13 +207,14 @@ def test_the_getsource_copied_emitter_matches_the_one_home():
         "the emitter no longer carries HARTREE_TO_EV -- if it now imports "
         "it, delete this test rather than loosening it")
     assert holder.HARTREE_TO_EV == pytest.approx(HARTREE_EV, rel=0, abs=0)
-    force = getattr(holder, "HARTREE_BOHR_TO_EV_ANG", None)
-    if force is not None:
-        assert force == pytest.approx(HARTREE_BOHR_EV_ANGSTROM_ASE,
-                                      rel=0, abs=0), (
-            "the emitter's force factor and the one every other reader "
-            "uses must be the SAME number, or a force read back does not "
-            "equal the force emitted")
+    assert hasattr(holder, "HARTREE_BOHR_TO_EV_ANG"), (
+        "the force factor is gone -- if the emitter no longer converts "
+        "forces, delete this half rather than letting it pass vacuously")
+    assert holder.HARTREE_BOHR_TO_EV_ANG == pytest.approx(
+        HARTREE_BOHR_EV_ANGSTROM_ASE, rel=0, abs=0), (
+        "the emitter's force factor and the one every other reader uses "
+        "must be the SAME number, or a force read back does not equal "
+        "the force emitted")
 
 
 def test_an_ARRAY_converts_elementwise():
@@ -185,3 +225,31 @@ def test_an_ARRAY_converts_elementwise():
     out = length_ang(np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0]]), "Bohr")
     assert out.shape == (2, 3)
     assert out[1][2] == pytest.approx(2 * BOHR_ANGSTROM)
+
+
+@pytest.mark.parametrize("js_name,expected_expr", [
+    ("EH_TO_EV",      "HARTREE_EV"),
+    ("_KB_EH",        "BOLTZMANN_HARTREE_K"),
+    ("_EH_TO_KCAL",   "HARTREE_EV / KCAL_MOL_EV"),
+    ("CM1_IN_KELVIN", "CM1_EV / BOLTZMANN_EV_K"),
+])
+def test_the_browsers_copy_of_a_constant_equals_the_one_home(js_name,
+                                                             expected_expr):
+    """`spectra/core.js` cannot import Python, so it carries its own
+    scalars.  `architecture.md` § 3 allows that for a handful of numbers
+    and requires this pin: the copy is only legal while it is equal.
+
+    Four of the five derive exactly from `constants`; `ZERO_POINT_Q` is a
+    composite with no single counterpart and is covered below.
+    """
+    import re
+    from pathlib import Path
+    import molbuilder.constants as C
+
+    js = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
+          / "static" / "lib" / "spectra" / "core.js").read_text()
+    m = re.search(rf"\b{re.escape(js_name)}\s*=\s*([0-9.eE+-]+)", js)
+    assert m, f"{js_name} is no longer in core.js -- drop this row or fix it"
+    expected = eval(expected_expr, {k: getattr(C, k) for k in dir(C)})
+    assert float(m.group(1)) == pytest.approx(expected, rel=1e-9), (
+        f"core.js {js_name} = {m.group(1)} but {expected_expr} = {expected}")

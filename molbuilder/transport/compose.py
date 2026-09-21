@@ -724,13 +724,12 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # return was a second answer free to drift from the one the
         # gates ran on.
         try:
-            params = parse_fdf_params(deck_text)
+            params = parse_fdf_params(deck_text, source=deck.name)
         except UnknownUnit as exc:
             # A unit this build cannot convert is a citation it cannot
             # honour: every number taken from the deck would be wrong by
             # a fixed ratio.  The reader's own sentence names the field.
-            raise ComposeError(
-                f"the cited deck {deck.name} cannot be read: {exc}")
+            raise ComposeError(f"the cited deck cannot be read: {exc}")
 
         # The labeled source structure, from THIS directory (4.1b) --
         # through the one door the swap and the tab's orientation

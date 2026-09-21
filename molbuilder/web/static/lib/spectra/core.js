@@ -2364,7 +2364,7 @@
     const ZERO_POINT_Q = 4.105804;
     // ħω / k_B per cm⁻¹, in kelvin: the temperature at which a mode's quantum
     // is comparable to kT.
-    const CM1_IN_KELVIN = 1.438777;
+    const CM1_IN_KELVIN = 1.4387768775281484;
 
     /* Above this, calling a nearest neighbour a "bond" would be a claim rather
      * than a label, so the readout says "nearest contact" instead.  Generous on

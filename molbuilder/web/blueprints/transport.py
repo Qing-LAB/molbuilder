@@ -42,6 +42,7 @@ from ._shared import (
 )
 
 from molbuilder.config.transport import TransportConfig
+from molbuilder.units import UnknownUnit
 from molbuilder.validation import validate as _validate
 
 
@@ -165,7 +166,17 @@ def api_transport_describe_attempt() -> Any:
         concluded = None
     else:
         deck_text = cited.deck.read_text()
-        p = parse_fdf_params(deck_text)
+        try:
+            p = parse_fdf_params(deck_text)
+        except UnknownUnit as exc:
+            # DESCRIBED, NOT REFUSED -- the same shape as the refusal
+            # above: this route answers with the junction it can see and
+            # appends what it could not read.  A deck stating a unit this
+            # build cannot convert is a card with one line missing, not a
+            # 500 on the tab.
+            return jsonify({"ok": True, "citation": citation,
+                            "form": cited.form,
+                            "summary": f"the deck cannot be read: {exc}"}), 200
         bits = []
         if p.basis_size:
             bits.append(str(p.basis_size))

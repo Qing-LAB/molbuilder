@@ -93,13 +93,16 @@ from ..spectra.results import SCHEMA_VERSION
 
 # Conversion factors used in the script.  Pinned here so the
 # string-emit and the unit-test cross-check from the same source.
-# Hartree-to-cm⁻¹ for ω = sqrt(force constant / mass) follows the
-# PySCF convention (see pyscf.hessian.thermo).  We use the explicit
-# constant in the script for transparency rather than hiding it
-# behind an import.
-_CM1_PER_AU_FREQ = 219474.6313632   # 1 atomic unit of frequency (= 2*Rydberg) in cm⁻¹
+from molbuilder.constants import AMU_ELECTRON_MASS as _AMU_ELECTRON_MASS
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
 from molbuilder.constants import DEBYE_E_ANGSTROM as _DEBYE_E_ANGSTROM
+from molbuilder.constants import HARTREE_CM1 as _HARTREE_CM1
+
+# Hartree-to-cm⁻¹ for ω = sqrt(force constant / mass) follows the PySCF
+# convention (see pyscf.hessian.thermo).  The value is interpolated into
+# the emitted script so it reads explicitly there, and comes from the one
+# home so it cannot drift from the one every other reader uses.
+_CM1_PER_AU_FREQ = _HARTREE_CM1   # 1 atomic unit of frequency in cm⁻¹
 
 
 # Default finite-difference step for Raman dα/dR.
@@ -706,7 +709,8 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
     out.append("# Convert masses to atomic units (electron masses).  The")
     out.append("# Hessian below is in Hartree/Bohr² and we want frequencies")
     out.append("# in a.u. before the wavenumber conversion.")
-    out.append("AMU_TO_AU   = 1822.888486209  # CODATA 2018; 1 Da in m_e units")
+    out.append(f"AMU_TO_AU   = {_AMU_ELECTRON_MASS!r}  "
+               f"# CODATA 2018; 1 Da in m_e units")
     out.append("MASSES_AU   = MASSES_AMU * AMU_TO_AU")
     out.append("")
     return out

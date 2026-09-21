@@ -68,3 +68,21 @@ DEBYE_E_ANGSTROM: float = AU_DIPOLE_DEBYE / BOHR_ANGSTROM
 #: and the threshold lines drawn over them must use the SAME one or the line
 #: sits in the wrong place, so whichever a call site needs, it names.
 HARTREE_BOHR_EV_ANGSTROM_ASE: float = 51.42208619
+
+#: Avogadro's number, per mole.  CODATA 2018 (exact by SI definition).
+AVOGADRO: float = 6.02214076e23
+
+#: 1 joule in electronvolt — the reciprocal of the elementary charge in
+#: coulombs, which SI fixes exactly.
+JOULE_EV: float = 1.0 / 1.602176634e-19
+
+#: 1 kcal/mol in electronvolt — DERIVED, since a calorie is defined as
+#: exactly 4.184 J.
+KCAL_MOL_EV: float = 4184.0 * JOULE_EV / AVOGADRO
+
+#: 1 hertz in electronvolt (Planck's constant in eV·s).  CODATA 2018.
+HZ_EV: float = 4.135667696e-15
+
+#: 1 wavenumber (cm⁻¹) in electronvolt — DERIVED from `HARTREE_CM1`, so
+#: the two spellings of the same physics cannot drift.
+CM1_EV: float = HARTREE_EV / HARTREE_CM1

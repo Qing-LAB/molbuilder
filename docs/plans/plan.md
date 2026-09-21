@@ -3248,7 +3248,7 @@ is `architecture.md` § 3.  There is no lint -- `082ba979` retired it in favour
 of that written rule. What has no home is the **reasoning**, and it is
 genuinely scientific. The worked example, found while measuring this:
 `trajectory_log/emitter.py` retypes `HARTREE_BOHR_TO_EV_ANG = 51.42208619`
-rather than deriving it from CODATA-2018 (which gives 51.422067476, ~4 ppm
+rather than deriving it from CODATA-2018 (which gives 51.422067476, ~0.4 ppm
 apart) — deliberately, so emitted forces line up with what a person reads in
 ASE, VASP and QE logs. That is a real convention choice with a real
 justification, and it lives in a code comment nobody will find.

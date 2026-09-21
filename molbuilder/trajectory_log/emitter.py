@@ -57,7 +57,7 @@ class MolwatchEmitter:
     # HARTREE_BOHR_TO_EV_ANG = 51.42208619 is the value used by ASE,
     # NIST historical tables, and most quantum-chemistry packages; the
     # CODATA-2018-derived value (27.211386245988 / 0.529177210903 =
-    # 51.422067476) differs by ~4 ppm.  We pick the ASE/literature
+    # 51.422067476) differs by ~0.4 ppm.  We pick the ASE/literature
     # convention so forces emitted here line up with what users see in
     # ASE / VASP / QE log files; the difference is well below the SCF
     # noise floor.

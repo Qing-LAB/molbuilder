@@ -151,6 +151,7 @@ result and wrong by a fixed ratio in every number after it.
 | **A unit word** | lives in `units`, in the table for its quantity. No reader keeps its own word list; that is where a word goes missing, and a missing word is not an error but a number returned in the wrong unit |
 | **What a MISSING unit means** | belongs to the reader, because it is a fact about the format: a bare energy in an `.fdf` is Ry, one in a tbtrans contour block is eV. The reader passes its `default=`; passing none means a bare value is refused |
 | **An unknown word** | is refused, never passed through |
+| **Bare arithmetic** — `x * BOHR_ANGSTROM`, where the unit is fixed and known and no word is being read | fine, and the common case. The rule is about where the NUMBER came from, not about wrapping every multiplication: `units` is for reading a unit WORD out of a file |
 
 **A second spelling is legal in exactly three places, and each has one
 answer.** These are mechanisms, not exceptions — the value still comes from
@@ -158,15 +159,26 @@ the one home:
 
 * a **generated standalone script**, which runs where molbuilder is not
   installed → *interpolate* the value in from `constants`
-  (`siesta/makov_payne.py`, `pyscf/vibration_emitters.py`);
-* the **browser**, which cannot import Python → *serve* it
-  (`web/blueprints/modify.py` serves the lattice table the same way). A
-  constant hand-typed into JavaScript is [`process/code-audit.md`
-  § 3.6](?doc=process/code-audit.md)'s anti-pattern, which already rules on
-  it: *"the server computes the answer and sends it"*;
+  (`siesta/makov_payne.py` is the exemplar: it interpolates
+  `HARTREE_EV` and `BOHR_ANGSTROM` in by name);
+* the **browser**, which cannot import Python. A *table* is **served** —
+  that is [`process/code-audit.md` § 3.6](?doc=process/code-audit.md)'s
+  ruling (*"shipping a periodic table into JavaScript is the same mistake
+  with a longer commute"*), and `web/blueprints/modify.py` serves the
+  lattice parameters that way. A handful of **scalars** is *pinned*
+  instead: serving five numbers adds a round trip and a failure mode to a
+  panel that works offline, and buys nothing a test does not. So the copy
+  stays in the `.js` and a test asserts it equals `constants`
+  (`tests/test_units.py`). The distinction is table vs scalar, not
+  Python vs JavaScript;
 * a **class body copied by `inspect.getsource`**, where a module-level
   import would not travel with the copy → pin the literal to `constants`
   with a test rather than letting it stand alone.
+
+A value enters `constants` **in the same change that routes its call
+sites**, or not at all — three did not, on 2026-09-21, and the diff was
+read; a second home standing beside an unrouted first one is the thing
+this is meant to prevent.
 
 Anywhere else, import it. There is no lint: `082ba979` retired
 `test_one_home_for_a_constant.py` with the reasoning that *"the rule belongs

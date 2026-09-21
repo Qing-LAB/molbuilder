@@ -47,6 +47,8 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from ..constants import BOLTZMANN_HARTREE_K as _BOLTZMANN_HARTREE_K
+from ..constants import HARTREE_CM1 as _HARTREE_CM1
 from .. import script_emit as _sc
 from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
@@ -417,8 +419,8 @@ def _vib_thermo_block() -> List[str]:
         "_freqs_cm1 = np.array([m['frequency_cm1'] for m in",
         "                       state['modes'] if not m['has_imag']])",
         "_freqs_cm1 = _freqs_cm1[_freqs_cm1 > 0]",
-        "_KB_EH = 3.166811563e-6        # Boltzmann, Eh/K",
-        "_CM1_TO_EH = 1.0 / 219474.6313632",
+        f"_KB_EH = {_BOLTZMANN_HARTREE_K!r}        # Boltzmann, Eh/K",
+        f"_CM1_TO_EH = 1.0 / {_HARTREE_CM1!r}",
         "def _vib_thermo_at(T):",
         "    '''ZPE + vibrational U, S at T (Eh, Eh/K) -- harmonic.'''",
         "    if not len(_freqs_cm1) or T <= 0:",

@@ -1895,10 +1895,11 @@ def estimate_dipole_moment_debye(struct: Structure,
 
     Uses :func:`estimate_partial_charges` and computes
     ``|sum(q_i * r_i)|`` with positions in Å and charges in
-    elementary units, converting via 1 e·Å = 4.80320 D.
+    elementary units, converting via `constants.DEBYE_E_ANGSTROM`.
     """
     if struct.n_atoms == 0:
         return 0.0
     q = estimate_partial_charges(struct, total_charge)
     p = (q[:, None] * struct.positions).sum(axis=0)   # e·Å
-    return float(np.linalg.norm(p) * 4.80320)         # -> Debye
+    from .constants import DEBYE_E_ANGSTROM
+    return float(np.linalg.norm(p) * DEBYE_E_ANGSTROM)   # -> Debye

@@ -235,9 +235,14 @@ class TestTheUnitPolicyIsThisFormatS:
         p = parse_fdf_params("PAO.EnergyShift 1 Ha\n")
         assert p.energy_shift_ry == pytest.approx(2.0)
 
-    def test_a_bare_temperature_is_KELVIN(self):
-        p = parse_fdf_params("ElectronicTemperature 300\n")
-        assert p.electronic_temperature_k == pytest.approx(300.0)
+    def test_a_bare_temperature_is_LEFT_UNANSWERED(self):
+        """SIESTA tags `K` as an ENERGY word and takes this keyword's
+        default from its own caller, which the shipped binary does not
+        reveal.  Kelvin and Rydberg differ by 1.6e5 here, so the honest
+        answer is None -- and every deck under `projects/` states the
+        unit, so nothing real depends on a guess."""
+        assert parse_fdf_params(
+            "ElectronicTemperature 300\n").electronic_temperature_k is None
 
     def test_a_temperature_written_as_an_ENERGY_is_converted(self):
         """SIESTA accepts either; both had to be read, and `Ry` was

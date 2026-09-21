@@ -39,11 +39,15 @@ from __future__ import annotations
 
 from typing import Mapping, Optional
 
-from molbuilder.constants import (BOHR_ANGSTROM, BOLTZMANN_EV_K, HARTREE_EV,
+from molbuilder.constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
+                                  BOLTZMANN_EV_K, HARTREE_EV,
+                                  JOULE_EV as _J_EV,
+                                  KCAL_MOL_EV as _KCAL_MOL_EV,
+                                  HZ_EV as _HZ_EV, CM1_EV as _CM1_EV,
                                   RYDBERG_EV)
 
 __all__ = [
-    "ENERGY_EV", "LENGTH_ANGSTROM", "TEMPERATURE_K",
+    "ENERGY_EV", "ENERGY_RY", "LENGTH_ANGSTROM", "TEMPERATURE_K",
     "UnknownUnit", "convert", "energy_ev", "energy_ry", "length_ang",
     "temperature_k",
 ]
@@ -53,34 +57,64 @@ class UnknownUnit(ValueError):
     """A unit word no table in this module knows."""
 
 
-#: Energy unit word -> the value in eV.  The words are what SIESTA, TranSIESTA
-#: and tbtrans accept in the files this project reads.
+#: Energy unit word -> the value in eV.
+#:
+#: The words are SIESTA 5.4.2's own energy dimension, read out of the
+#: shipped binary's libfdf table, plus `ryd`/`rydberg` as spellings this
+#: project accepts on the way in.  `K`/`Kelvin` are here because SIESTA
+#: files them under ENERGY, not temperature -- k_B is the pivot.
 ENERGY_EV: Mapping[str, float] = {
     "ev": 1.0,
     "mev": 1e-3,
     "ry": RYDBERG_EV,
+    "mry": RYDBERG_EV * 1e-3,
     "ryd": RYDBERG_EV,
     "rydberg": RYDBERG_EV,
     "ha": HARTREE_EV,
+    "mha": HARTREE_EV * 1e-3,
     "hartree": HARTREE_EV,
+    "mhartree": HARTREE_EV * 1e-3,
+    "k": BOLTZMANN_EV_K,
+    "kelvin": BOLTZMANN_EV_K,
+    "j": _J_EV,
+    "kj": _J_EV * 1e3,
+    "erg": _J_EV * 1e-7,
+    "kcal/mol": _KCAL_MOL_EV,
+    "kj/mol": _J_EV * 1e3 / _AVOGADRO,
+    "hz": _HZ_EV,
+    "thz": _HZ_EV * 1e12,
+    "cm-1": _CM1_EV,
+    "cm^-1": _CM1_EV,
+    "cm**-1": _CM1_EV,
 }
 
-#: Length unit word -> the value in Ångström.
+#: Energy unit word -> the value in Ry.  DERIVED from the eV table, so a
+#: word cannot be in one and missing from the other -- but `ry` lands on
+#: exactly 1.0, which is why this exists rather than dividing the eV
+#: answer: `200 Ry` through `v * RYDBERG_EV / RYDBERG_EV` comes back
+#: 200.00000000000003, and SIESTA's own emitter writes that straight into
+#: a deck.
+ENERGY_RY: Mapping[str, float] = {w: ev / RYDBERG_EV
+                                  for w, ev in ENERGY_EV.items()}
+
+#: Length unit word -> the value in Ångström.  SIESTA's own length
+#: dimension, plus `angstrom` as a spelling this project accepts.
 LENGTH_ANGSTROM: Mapping[str, float] = {
     "ang": 1.0,
     "angstrom": 1.0,
     "bohr": BOHR_ANGSTROM,
+    "m": 1e10,
+    "cm": 1e8,
     "nm": 10.0,
+    "pm": 1e-2,
 }
 
-#: Temperature unit word -> the value in kelvin.  An ENERGY written here is
-#: converted through Boltzmann's constant, because SIESTA's
-#: ``ElectronicTemperature`` accepts either and means the same physics by
-#: both — which is the one place the two vocabularies meet.
-TEMPERATURE_K: Mapping[str, float] = dict(
-    {"k": 1.0, "kelvin": 1.0},
-    **{word: ev / BOLTZMANN_EV_K for word, ev in ENERGY_EV.items()},
-)
+#: Temperature unit word -> the value in kelvin.  DERIVED from the energy
+#: table through k_B, because SIESTA files kelvin as an energy word and a
+#: keyword like ``ElectronicTemperature`` takes either.
+TEMPERATURE_K: Mapping[str, float] = {
+    w: ev / BOLTZMANN_EV_K for w, ev in ENERGY_EV.items()
+}
 
 
 def convert(value: float, unit: Optional[str], table: Mapping[str, float], *,
@@ -137,8 +171,8 @@ def energy_ev(value, unit=None, *, what="an energy", source="the deck",
 def energy_ry(value, unit=None, *, what="an energy", source="the deck",
               default=None) -> float:
     """An energy in Ry — what SIESTA's own scalars are stored as."""
-    return energy_ev(value, unit, what=what, source=source,
-                     default=default) / RYDBERG_EV
+    return convert(value, unit, ENERGY_RY, what=what, source=source,
+                   default=default)
 
 
 def length_ang(value, unit=None, *, what="a length", source="the deck",

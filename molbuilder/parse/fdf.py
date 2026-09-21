@@ -41,8 +41,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANG
-from molbuilder.units import (UnknownUnit, energy_ry, length_ang,
-                              temperature_k)
+from molbuilder.units import energy_ry, length_ang, temperature_k
 
 
 def _norm(key: str) -> str:
@@ -130,7 +129,7 @@ class FdfParams:
     xc_authors: Optional[str] = None
 
 
-def parse_fdf_params(text: str) -> FdfParams:
+def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     sc, bl = _parse_fdf(text)
     p = FdfParams()
 
@@ -142,9 +141,11 @@ def parse_fdf_params(text: str) -> FdfParams:
             pass
 
     if "meshcutoff" in sc:
-        p.mesh_cutoff_ry = _ry(sc["meshcutoff"])
+        p.mesh_cutoff_ry = _ry(sc["meshcutoff"], what="MeshCutoff", source=source)
     if "paoenergyshift" in sc:
-        p.energy_shift_ry = _ry(sc["paoenergyshift"])
+        p.energy_shift_ry = _ry(sc["paoenergyshift"],
+                                what="PAO.EnergyShift",
+                                source=source)
     if "paobasissize" in sc:
         p.basis_size = sc["paobasissize"][0] if sc["paobasissize"] else None
 
@@ -156,10 +157,16 @@ def parse_fdf_params(text: str) -> FdfParams:
         toks = sc["electronictemperature"]
         v = _to_float(toks[0])
         if v is not None:
-            p.electronic_temperature_k = temperature_k(
-                v, toks[1] if len(toks) > 1 else None,
-                what="ElectronicTemperature", source="the deck",
-                default="k")
+            # NO DEFAULT.  SIESTA tags `K` as an ENERGY word and takes
+            # this keyword's default unit from its own caller, which is
+            # not recoverable from the shipped binary -- so a bare value
+            # is left unanswered rather than read as one guess or the
+            # other, which differ by 1.6e5.  Every deck in `projects/`
+            # writes the unit.
+            if len(toks) > 1:
+                p.electronic_temperature_k = temperature_k(
+                    v, toks[1], what="ElectronicTemperature",
+                    source=source)
 
     func = (sc.get("xcfunctional") or ["LDA"])[0]
     auth = (sc.get("xcauthors") or ["CA"])[0]
@@ -186,7 +193,7 @@ def parse_fdf_params(text: str) -> FdfParams:
             lat_const = length_ang(
                 v, (sc["latticeconstant"][1]
                     if len(sc["latticeconstant"]) > 1 else None),
-                what="LatticeConstant", source="the deck", default="ang")
+                what="LatticeConstant", source=source, default="ang")
     if "latticevectors" in bl and len(bl["latticevectors"]) >= 3:
         try:
             vecs = [[lat_const * float(x) for x in row[:3]]
