@@ -195,6 +195,22 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
     except Exception as exc:                       # noqa: BLE001
         return (f"the periodic seam could not be classified ({exc}); "
                 f"the lead's tiling is UNCHECKED")
+    n_layers = len(detect_layers(pos[:, 2], LAYER_TOL_ANG))
+    if n_layers < 3:
+        # TWO LAYERS CANNOT SAY.  A,B is fcc and hcp alike -- the block
+        # carries only two registries, so ABAB and ABC agree on every
+        # layer it has and the tiling picks one without the block having
+        # chosen.  `classify_seam` answers `continues, period 2` here for
+        # any plane, which is right for (100)/(110) and wrong for (111),
+        # and nothing on the lead path knows which plane it is.  So the
+        # limit is stated rather than a verdict asserted.
+        return (f"the periodic seam is UNDETERMINED: {n_layers} layers "
+                f"carry only {n_layers} stacking registries, so this block "
+                f"cannot say which crystal it tiles into -- ABAB and ABC "
+                f"agree on everything it contains.  On fcc(111) that is "
+                f"the difference between gold and hcp.  A lead thick "
+                f"enough to state its own stacking is at least one whole "
+                f"period (3 layers for (111); junction-cell.md § 3.1).")
     if v.verdict == "continues":
         per = f" (stacking period {v.period} layers)" if v.period else ""
         return (f"the periodic seam CONTINUES the crystal{per}: the layer "
