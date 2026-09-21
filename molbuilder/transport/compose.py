@@ -33,8 +33,7 @@ from ..config.transport import (REGION_LEFT_ELECTRODE,
 from ..structure import Structure
 from ..parse.fdf import _BOHR_ANG, parse_fdf_params
 from .sort import SortResult, categorical_sort
-from .wizard import (FROZEN_TOL_ANG, ElectrodeModel,
-                     extract_electrode_model)
+from .wizard import ElectrodeModel, extract_electrode_model
 
 
 class ComposeError(Exception):
@@ -591,15 +590,27 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     place in TranSIESTA's deck order (`engine_atom_index`).
     """
     from ..parse.ion import max_orbital_rc_ang
-    try:
-        models = tuple(
-            extract_electrode_model(dev, region,
-                                    prior_positions=prior_positions,
-                                    atom_ids=atom_ids)
-            for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE))
-    except ValueError as exc:
+    # BOTH BLOCKS, THEN RAISE.  A generator here short-circuited on the
+    # first bad lead, so a junction with two broken blocks was fixed and
+    # re-relaxed once per block.  The loop this consolidated accumulated
+    # across both regions before raising, and that is worth keeping.
+    models, refusals = [], []
+    for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
+        try:
+            models.append(extract_electrode_model(
+                dev, region, prior_positions=prior_positions,
+                atom_ids=atom_ids))
+        except ValueError as exc:
+            refusals.append(str(exc))
+    if len(refusals) == 1:
         raise ComposeError(
-            f"the labeled electrode block cannot serve as a lead: {exc}")
+            f"the labeled electrode block cannot serve as a lead: "
+            f"{refusals[0]}")
+    if refusals:
+        raise ComposeError(
+            "neither labeled electrode block can serve as a lead. "
+            + "  ".join(f"({i}) {r}." for i, r in enumerate(refusals, 1)))
+    models = tuple(models)
     for model in models:
         # THE TILING CHECK MOVED INTO THE EXTRACTION on 2026-09-20.
         # It stood here comparing each layer spacing against the MEDIAN
@@ -893,10 +904,14 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None
     The record answers for the citation it was made from: a
     ``task.json`` re-pointed at a different attempt must NOT keep
     serving the old copy, so a citation mismatch reads as *no record*.
-    The § 3 lead gates re-run on the loaded structure (cheap, pure);
-    the frozen gate does not — it compared against the CITED source,
-    which is exactly what a travelled folder no longer has, and the
-    provenance records that it passed when the copy was made.
+    The § 3 lead gates re-run on the loaded structure (cheap, pure) —
+    frozen-declared and evenly-spaced both need only the structure.  The
+    UNMOVED comparison does not re-run: it measures against the geometry
+    the relaxation started from, which is exactly what a travelled folder
+    no longer carries, and the provenance records that it passed when the
+    copy was made.  *(This said "the frozen gate does not", before
+    2026-09-20 split the declaration from the movement and gave them
+    separate names; only the second half was ever meant.)*
 
     *tree_root* is what keeps the principal-layer half of those gates
     working here: the orbital ranges live in the CITED directory's
@@ -933,10 +948,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None
         except ComposeError:
             ion_dir = None      # the citation moved: UNVERIFIED, honestly
     # NO `prior_positions` HERE, and that is not an omission: this
-    # rebuilds from a junction that was already composed, so the unmoved
-    # comparison was made when the record was written and its starting
-    # geometry is not part of the record.  The frozen and even-spacing
-    # checks still run -- they need only the structure.
+    # rebuilds from a junction that was already composed, and the
+    # geometry the relaxation started from is not part of the record.
+    # For a form-A record the unmoved comparison ran when the record was
+    # written; for a form B one it never ran at all, because form B has
+    # no starting geometry anywhere -- which is exactly why the frozen
+    # DECLARATION is asked separately, and it does re-run here, as does
+    # even-spacing.  Both need only the structure.
     elec_l, elec_r = _extract_and_gate_electrodes(
         dev, atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)
     deck_text = deck_path.read_text() if deck_path.is_file() else None

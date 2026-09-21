@@ -33,7 +33,8 @@ from molbuilder.config.transport import (REGION_BRIDGE,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import Structure
-from molbuilder.transport.compose import (FROZEN_TOL_ANG, ComposeError,
+from molbuilder.transport.wizard import FROZEN_TOL_ANG
+from molbuilder.transport.compose import (ComposeError,
                                           compose_junction, read_xv,
                                           write_compose_record)
 
@@ -434,6 +435,25 @@ class TestTheGates:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
         assert "not evenly spaced" in msg and "3.6000" in msg
+
+    def test_BOTH_bad_leads_are_reported_not_just_the_first(self, tmp_path):
+        """Fix one, re-relax, discover the other, re-relax again — that is
+        what reporting only the first block costs, and a metal junction's
+        relaxation is not cheap.  The loop this gate consolidated
+        accumulated across both regions before raising; a generator
+        expression quietly reintroduced the short circuit."""
+        root = tmp_path / "projects"
+        broken = _junction_struct(
+            layers_l=[0.0, 2.5, 5.0, 7.5, 10.0, 13.6],
+            layers_r=[22.0, 24.5, 27.0, 29.5, 32.0, 35.1])
+        _write_tree(root, broken)
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        msg = str(e.value)
+        assert "L-electrode" in msg and "R-electrode" in msg, (
+            f"both blocks are broken; both must be named: {msg}")
+        assert "3.6000" in msg and "3.1000" in msg, (
+            f"and each must carry its own numbers: {msg}")
 
     def test_a_block_that_does_not_tile_is_told_THAT_first(self, tmp_path):
         """The order of these two gates is a DEPENDENCY, not taste.

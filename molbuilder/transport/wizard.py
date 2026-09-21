@@ -35,7 +35,8 @@ What the USER must still verify (warned, not guaranteed)
 
 * **The bulk z-period.**  A finite slab does not tell us the lead's true
   periodic repeat unambiguously.  We *derive* it as
-  ``z_period = z_span + d_interlayer`` (median interlayer spacing) so the
+  ``z_period = z_span + d_interlayer`` (the block's one layer spacing,
+  checked rather than averaged) so the
   slab tiles seamlessly under uniform spacing, and **warn** that the user
   must confirm it matches the real bulk lattice (e.g. the layer count is a
   whole stacking period — a multiple of 3 for FCC(111) ABC).  ``--z-period``
@@ -96,7 +97,7 @@ class ElectrodeModel:
     z_period: float                  # proposed bulk repeat (Å)
     z_span: float                    # top-layer − bottom-layer z (Å)
     n_layers: int
-    d_interlayer: float              # median interlayer spacing (Å)
+    d_interlayer: float              # THE layer spacing (Å) -- checked equal
     n_atoms: int
     notes: List[str] = field(default_factory=list)
 
@@ -181,6 +182,22 @@ def _atoms_named(device: Structure, idxs, atom_ids=None,
     return shown + more
 
 
+def _spacing_or_refuse(layer_z, label: str):
+    """:func:`cell.bulk_z_period`, with the block's name on the refusal.
+
+    The rule is `cell`'s and stays there; the LABEL is this layer's, and
+    `cell` has no way to know it.  Without this the message read "the
+    labeled electrode block cannot serve as a lead" with no name in it --
+    a regression on the check it replaced, which said "the {label} block
+    does not TILE".  On a two-lead junction of one element that leaves a
+    person no way to tell which end to re-label.
+    """
+    try:
+        return bulk_z_period(layer_z)
+    except ValueError as exc:
+        raise ValueError(f"the {label} block: {exc}") from exc
+
+
 def _refuse_unless_frozen_bulk(
     device: Structure,
     label: str,
@@ -204,9 +221,9 @@ def _refuse_unless_frozen_bulk(
             f"the self-energy attaches to, so every atom carrying an "
             f"electrode label must be held still — freeze them (the Modify "
             f"tab's selection writes \"frozen_atoms\"), then relax and cite "
-            f"again.  Freezing them AFTER this relaxation does not help: "
-            f"these atoms have already moved with the bridge, and the "
-            f"geometry they are in now is not bulk")
+            f"again.  Freezing them now does not make the geometry they are "
+            f"already in bulk -- nothing held them while the bridge relaxed, "
+            f"so whether they moved was never constrained")
 
     if prior_positions is None:
         return
@@ -227,7 +244,8 @@ def _refuse_unless_frozen_bulk(
         raise ValueError(
             f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
             f"relaxation: {shown}{more}.  Frozen means unmoved "
-            f"(engines/transport.md § 3, ruling Q3): the electrode blocks "
+            f"(archive/2026-09-01-transport-design.md § 3, ruling Q3): the "
+            f"electrode blocks "
             f"are the seam the self-energies attach to.  Re-relax the "
             f"junction with the electrode atoms constrained, or fix the "
             f"labels")
@@ -325,7 +343,7 @@ def extract_electrode_model(
         # This used to recompute the median inline, which is a second copy of
         # the rule cell.bulk_z_period owns (science/junction-cell.md § 5).
         if len(layer_z) >= 2:
-            _derived, d_inter, n_layers = bulk_z_period(layer_z)
+            _derived, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
         else:
             d_inter, n_layers = float("nan"), len(layer_z)
         z_span = float(layer_z[-1] - layer_z[0]) if layer_z else 0.0
@@ -333,14 +351,14 @@ def extract_electrode_model(
             f"z-period set explicitly to {zper:.3f} Å (overriding the "
             f"layer-spacing estimate).")
     else:
-        zper, d_inter, n_layers = bulk_z_period(layer_z)
+        zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
         z_span = float(layer_z[-1] - layer_z[0])
         notes.append(
-            f"z-period DERIVED as z_span ({z_span:.3f}) + median interlayer "
+            f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
             f"({d_inter:.3f}) = {zper:.3f} Å.  VERIFY this matches the lead's "
             f"true bulk repeat (e.g. {n_layers} layers is a whole stacking "
-            f"period — a multiple of 3 for FCC(111) ABC); override with "
-            f"--z-period if not.")
+            f"period — a multiple of 3 for FCC(111) ABC).  NOTHING ENFORCES "
+            f"that count: see junction-cell.md § 3.1.")
 
     if z_span < min_thickness_ang:
         notes.append(
@@ -381,5 +399,6 @@ def extract_electrode_model(
 __all__ = [
     "DEFAULT_ELECTRODE_KZ",
     "ElectrodeModel",
+    "FROZEN_TOL_ANG",
     "extract_electrode_model",
 ]

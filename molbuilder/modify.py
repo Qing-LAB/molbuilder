@@ -824,7 +824,7 @@ def _finish_slab(struct, metal_pos, element, full):
     #
     # THE PADDING IT ARGUED FOR BELONGS TO THE LEAD, NOT TO THIS BOX, and it
     # lives there: `transport.wizard.extract_electrode_model` derives the
-    # electrode's bulk repeat as `z_span + median interlayer` through
+    # electrode's bulk repeat as `z_span + its one layer spacing` through
     # `cell.bulk_z_period` (junction-cell.md § 5), so the next periodic image's
     # first layer lands one spacing above the top instead of on it.  NOTHING
     # HERE CALLS THAT -- the sentence removed on 2026-09-20 left behind a claim

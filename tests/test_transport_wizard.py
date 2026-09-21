@@ -177,7 +177,12 @@ def test_an_unevenly_spaced_lead_is_refused():
     dev.positions = pos
     with pytest.raises(ValueError) as e:
         extract_electrode_model(dev, "L-electrode")
-    assert "not evenly spaced" in str(e.value)
+    msg = str(e.value)
+    assert "not evenly spaced" in msg
+    assert "L-electrode" in msg, (
+        f"the refusal must say WHICH block -- on a two-lead junction of "
+        f"one element there is otherwise no way to tell which end to "
+        f"re-label: {msg}")
 
 
 def test_frozen_is_asked_before_moved():

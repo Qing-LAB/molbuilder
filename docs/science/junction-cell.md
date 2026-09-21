@@ -358,13 +358,14 @@ block whose layers disagree by more than that, naming the spacings. It also
 raises on a single layer, where there is no spacing to measure at all.
 
 **There is no statistic here, and that is the point** *(user ruling,
-2026-09-20)*. A lead is frozen bulk: `engines/transport.md` § 4 —
+2026-09-20)*. A lead is frozen bulk: `engines/transport.md` § 2a.9 —
 *"the lead atoms are frozen bulk by construction"* — and its § 2a.9 table,
 where the electrode region *"coincides exactly with the frozen-atom set the
 relaxation already carries"*. Its layers therefore sit where the builder put
 them, one spacing apart, and the honest operation is to check that and read the
-value off. Reading it off the *built* slab also means an `inter_layer_offset`
-override is honoured without being passed in.
+value off. Reading it off the *built* slab is also what makes it the LEAD's
+number rather than a recipe's: whatever the device was actually built with is
+what the self-energy has to tile.
 
 > **This said `median(Δlayer)` until 2026-09-20**, justified here as *"robust to
 > a slightly relaxed outermost layer"*. That is backwards under § 4 of the
@@ -376,9 +377,15 @@ override is honoured without being passed in.
 > with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
 > a seam 0.33 Å too wide, silently.
 >
-> The tolerance is measured, not picked: across the eleven labelled junctions
-> under `projects/`, the widest spread between any two spacings of one electrode
-> block is **1e-6 Å**, the precision the coordinates were written at.
+> The tolerance is measured, not picked. Across every readable labelled junction
+> under `projects/` — 18 sidecars, 36 electrode blocks, 10 distinct geometries —
+> every electrode atom is frozen and the widest spread between any two spacings
+> of one block is **1e-6 Å**, the precision the coordinates were written at.
+> The tolerance is not sized off that, though: it is sized off the COARSEST
+> path, which is the 3-decimal PDB writer, and off the per-atom frozen budget.
+> See `UNIFORM_SPACING_TOL_ANG` in `cell.py` for the arithmetic — a per-atom
+> error of `e` becomes a spread of up to `4e`, which is the step the first
+> version of this number missed.
 
 **The one caller** is `transport.wizard.extract_electrode_model`, where this
 began — the electrode wizard has always used it to derive the bulk lead's
@@ -392,14 +399,22 @@ engine. *(This section named `modify.add_slab` as a second caller until
 decides whether a labelled block can serve as a lead, asking in order: every
 atom **declared frozen** (refused naming the atoms and telling you to freeze
 them); **unmoved**, when the caller supplies the geometry the relaxation started
-from; then **evenly spaced**, which is the call above. *(Consolidated there on
+from; then **evenly spaced**, which is the call above.
+
+> **It does NOT ask the layer-COUNT question**, and § 3.1's condition is not
+> enforced anywhere. Measured 2026-09-20 on real ASE Au(111) leads, all of which
+> pass the three checks above: 3 layers → `continues`, **4 → `eclipsed`** (a
+> head-on Au–Au contact at 2.40 Å across the seam where bulk is 2.94),
+> **5 → `twin`**, 6 → `continues`. So a 4-layer lead passes this gate and is not
+> bulk. `cell.classify_seam` already measures exactly this and needs no plane
+> stated, but it is called only from the Modify tab, never on a lead. The
+> wizard emits a note asking the person to check the count; nothing refuses. *(Consolidated there on
 the user's ruling — "one unified check and gate/extraction process". Two of
 those decisions used to sit in `transport/compose.py`, one of them in a branch
 that only a cited relaxation reached, so a junction handed in as a finished
 `.xyz` + `.molstruct.json` pair was never asked whether its leads were frozen.)*
 
 **The monolayer case.** A one-layer slab has no spacing to *measure* — there
-is only one layer to measure between. This mattered while the builder PADDED
 is only one layer to measure between. This mattered while the builder PADDED
 the cell for you; § 6 retired that on 2026-08-31 and `add_slab` sets
 `c = z_extent` verbatim, so nothing needs the spacing at build time any more.

@@ -471,12 +471,12 @@ def resolve_and_check(struct: Structure, *,
 # --------------------------------------------------------------------- #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
-#  Contract: docs/science/junction-cell.md.  Two callers derive the      #
-#  same number for two boxes -- the junction cell that flanks a molecule #
-#  (modify.add_slab) and the bulk-lead cell TranSIESTA needs            #
-#  (transport.wizard.extract_electrode_model).  It lived in the wizard   #
-#  first; it is here so the second caller reuses it instead of growing   #
-#  a second copy that can disagree.                                      #
+#  Contract: docs/science/junction-cell.md § 5.  ONE caller --           #
+#  transport.wizard.extract_electrode_model, the bulk-lead cell          #
+#  TranSIESTA needs.  This said "two callers ... (modify.add_slab)"      #
+#  until 2026-09-20; modify does not call it and has not since § 6       #
+#  retired the padding that wanted it.  It lives here, below the         #
+#  engine, because the repeat of a layered box is a fact about the box.  #
 # --------------------------------------------------------------------- #
 
 #: Two atoms whose z differ by less than this are the same atomic layer.
@@ -508,19 +508,39 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: How far two adjacent-layer spacings in the SAME block may differ before
 #: the block is refused as a bulk lead.
 #:
-#: There is ONE spacing in a bulk lead, and this tolerance exists for float
-#: noise around it -- a coordinate written to a file at six decimals, or one
-#: that went through the Angstrom -> Bohr -> Angstrom round trip of an
-#: ``.XV``.  It is the standard the electrodes are already held to elsewhere
-#: (``transport.compose.FROZEN_TOL_ANG``, *frozen means unmoved*), restated
-#: here rather than imported because ``cell`` is L1 and ``transport`` is not.
+#: There is ONE spacing in a bulk lead.  This tolerance is the noise floor
+#: around it, and it is NOT a per-atom budget -- getting that wrong is what
+#: made the first version of this number refuse correct leads:
 #:
-#: MEASURED, not picked.  Across the eleven labelled junctions under
-#: ``projects/`` -- Au-BDT-Au, BDT-Au, single-molecule-BDT, claude-junction --
-#: the widest spread between any two spacings of one electrode block is
-#: **1e-6 A**, which is the precision the coordinates were written at.  This
-#: is a thousand times that.
-UNIFORM_SPACING_TOL_ANG = 1e-3
+#:   a per-atom coordinate error of  e
+#:   -> a layer centroid off by up to  e      (a mean of those coordinates)
+#:   -> a GAP off by up to            2e      (a difference of two centroids)
+#:   -> a SPREAD of up to             4e      (max gap minus min gap)
+#:
+#: So the floor is four times the coarsest per-atom error on any path that
+#: reaches here, and two floors matter:
+#:
+#:   * **File precision.**  The coarsest coordinate writer in this repo is
+#:     the PDB one -- ``%8.3f`` (`structure.py`), and `StructureCodec` writes
+#:     a ``.pdb`` + sidecar pair carrying regions and frozen atoms, so a lead
+#:     can arrive through it.  e = 5e-4 -> spread up to **2e-3**.  Measured:
+#:     at 3 decimals a perfect frozen Pt(111) lead lands at exactly 1.0e-3
+#:     and was REFUSED at the old 1e-3, while Au(111) at the same precision
+#:     passed -- the verdict decided by binary64, not by the crystal.
+#:   * **The frozen budget.**  ``transport.wizard.FROZEN_TOL_ANG`` is 1e-3
+#:     PER ATOM, so a lead that legitimately passes "frozen means unmoved"
+#:     can show a spread of **4e-3**.  At 1e-3 the gate certified a lead as
+#:     unmoved and then refused it for having moved.
+#:
+#: 5e-3 clears both, and is still an order of magnitude below the smallest
+#: defect worth catching: a surface layer relaxed by ~0.05 A (1-3% of
+#: Au(111)'s 2.35).  On the eighteen readable labelled junctions under
+#: ``projects/`` the widest spread in any electrode block is 1e-6 A.
+#:
+#: IT SAID 1e-3 AND "the standard the electrodes are already held to
+#: (`FROZEN_TOL_ANG`)" UNTIL 2026-09-20.  They are not the same standard;
+#: one is a displacement, the other a second difference of means.
+UNIFORM_SPACING_TOL_ANG = 5e-3
 
 
 def bulk_z_period(
@@ -536,8 +556,8 @@ def bulk_z_period(
     current top layer instead of on top of it.
 
     **THERE IS NO STATISTIC HERE, AND THAT IS THE POINT** *(user ruling,
-    2026-09-20)*.  A lead is frozen bulk: ``engines/transport.md`` § 4 —
-    *"the lead atoms are frozen bulk by construction"* — and its § 2a.9
+    2026-09-20)*.  A lead is frozen bulk.  ``engines/transport.md`` § 2a.9 says it
+    twice: *"the lead atoms are frozen bulk by construction"*, and in its
     table, where the electrode region *"coincides exactly with the
     frozen-atom set the relaxation already carries"*.  Its layers
     therefore sit where the builder put them, one spacing apart, and the
@@ -571,7 +591,7 @@ def bulk_z_period(
         raise ValueError(
             f"the layers are not evenly spaced: "
             f"{', '.join(f'{g:.4f}' for g in diffs)} A "
-            f"(a spread of {spread:.4f} A, more than {tol_ang:g} A), so "
+            f"(a spread of {spread:.4f} A, more than {tol_ang:.4f} A), so "
             f"repeating this block does not reproduce a bulk lead.  A lead "
             f"is frozen bulk, so every spacing is the one the slab was built "
             f"with — either the label boundary cuts a partial layer "
