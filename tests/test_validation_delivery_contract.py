@@ -73,6 +73,33 @@ class TestF4GateDerivesWhatChecksNeed:
         assert any(i.where == "cell.unresolved" and i.severity == "info"
                    for i in issues), [i.where for i in issues]
 
+    @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+    def test_an_unresolvable_species_label_is_reported_not_a_crash(self,
+                                                                   engine):
+        """The same rule one level down: a label naming no element is a
+        finding, and the checks that cannot be answered without it stand
+        down rather than taking the request with them.
+
+        An electron count needs Z for every atom, so `check_open_shell_metal`
+        and `check_spin_charge_parity` raised `KeyError` out through
+        `validate()` -- which reached the preflight as an HTML 500 and
+        delivered NO findings at all, including the one naming the label.
+        """
+        if engine == "pyscf":
+            from molbuilder.config.pyscf import PySCFConfig
+            cfg = PySCFConfig()
+        else:
+            cfg = SiestaConfig(system_label="probe")
+        s = Structure(elements=["Xx", "H"],
+                      positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.9]]),
+                      vacuum=(10.0, 10.0, 10.0))
+        issues = validate(s, cfg)          # must not raise
+        named = [i for i in issues
+                 if i.where == "chemistry.species_label"
+                 and i.severity == "error"]
+        assert named, [f"{i.where}/{i.severity}" for i in issues]
+        assert "Xx" in named[0].message
+
 
 class TestR5FindingsAreNeverWarnings:
     """PINS: docs/science/validation.md § 4.1 clause R5 — one channel means one

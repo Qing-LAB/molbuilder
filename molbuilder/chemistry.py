@@ -355,6 +355,28 @@ def total_electrons(struct: Structure, charge: int = 0) -> int:
     return sum(atomic_number(el) for el in struct.elements) - int(charge)
 
 
+def every_label_resolves(struct: Structure) -> bool:
+    """Can an electron count be taken at all?
+
+    A check whose question needs Z asks this first and STANDS DOWN when
+    the answer is no -- it does not report the bad label, because
+    ``validation.chemistry.check_species_labels`` owns that finding and
+    a second copy would be the same fact twice.  Standing down is not
+    the same as passing: the count is unanswerable, so the check says
+    nothing rather than saying nothing is wrong.
+
+    Unlike the per-atom skip an ECP check can do, an electron count is
+    over the WHOLE structure -- one unresolvable label leaves no partial
+    answer -- so this is all-or-nothing by nature.
+    """
+    for el in struct.elements:
+        try:
+            resolve_element(str(el).strip())
+        except KeyError:
+            return False
+    return True
+
+
 def atomic_mass(element: str) -> float:
     """Standard atomic weight of ``element``, in amu.
 
@@ -413,6 +435,10 @@ def check_spin_charge_parity(struct: Structure, charge: int, spin: int
     if spin < 0:
         return (f"spin={spin} is negative; spin counts unpaired "
                 f"electrons (2S), must be 0 or positive")
+    # Parity IS an electron count, so it stands down on a label naming
+    # no element rather than reporting it -- see `every_label_resolves`.
+    if not every_label_resolves(struct):
+        return None
     n_elec = total_electrons(struct, charge)
     # Electron-count sanity: over-ionised past the nucleus is impossible.
     if n_elec < 0:

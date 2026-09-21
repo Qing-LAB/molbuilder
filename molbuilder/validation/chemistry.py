@@ -269,7 +269,17 @@ def check_open_shell_metal(struct: Structure, *,
     ``docs/science/validation.md`` § 5.3 and § 3.4
     (noble-metal cluster-context rule).
     """
-    from ..chemistry import analyze_structure
+    from ..chemistry import analyze_structure, every_label_resolves
+
+    # The recommendation comes from an electron count, so it stands down
+    # on a label naming no element -- same rule as
+    # `_check_metal_basis_adequacy` above, and `check_species_labels`
+    # owns that finding.  Without this, `analyze_structure` raised
+    # `KeyError` out through `validate()` and reached the preflight as an
+    # HTML 500, taking every other finding with it.
+    if not every_label_resolves(struct):
+        return []
+
     analysis = analyze_structure(struct)
     # Only warn when the analyzer's recommendation is OPEN-SHELL but
     # the user picked a closed-shell SCF.  When the analyzer says
