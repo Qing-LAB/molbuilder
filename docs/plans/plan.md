@@ -138,7 +138,6 @@ re-deriving before it is acted on.
 | **D10** | `scripts/capture-readme-screenshots.py:121` reads `MOLBUILDER_HOST_ENV` with its own default | a third spelling that ignores `envs.host`. Dev script, so low cost |
 | **H8** | `envs/__init__.py` `__all__` still names `"subprocess"` and `"shutil"` | the imports were deleted and the `__all__` entries were not swept, so **`from molbuilder.envs import *` raises `AttributeError`**. Nothing imports it that way today, which is the only reason it is latent |
 | **H8b** | `envs/_cli.py:572-573` computes `base` from a stripped `issue.kind` | never read — the `if issue.optional:` two lines below `continue`s first |
-| **J2** | `scheduler/probe.py:16` says the CLI merges via `runtime_config.write_config_scope` | `cmd_probe_scheduler` uses `write_environment`. The docstring names the wrong writer |
 | **F1** | the five A-rules with no checker | **needs your call.** The documents now say so honestly (`architecture.md:792-798`, *"Five of them are wishes right now"*); whether they get a checker back is unanswered |
 | **F2** | restore the `pyscf-properties` artifact | **needs your call.** Measured: zero pyscf packages in the host env; `molbuilder-pySCF` carries `pyscf_properties-0.1.0.dist-info` |
 

@@ -17,13 +17,19 @@
 > **What was still open moved to `plan.md` § 2**, which is the one list
 > (user, 2026-09-10). Those rows carry the measurement that proved them open.
 >
-> Three statements in the body are known false and are left as written,
+> Four statements in the body are known false and are left as written,
 > because rewriting an archived record is how you lose the evidence:
 > § 2's "Nothing here has been started"; § 1's `write_secret_file` row
 > claiming the parent is forced `0700` (J4 deliberately stopped that —
 > measured: a `0775` config root stays `0775`, and `placement.findings()`
-> reports it instead); and § 3.0's Z5 row saying four path climbs remain,
-> when none do.
+> reports it instead); § 3.0's Z5 row saying four path climbs remain,
+> when none do; and **J3's row saying `conda info --json` has three readers
+> that each parse it themselves** — true the day this was written, false the
+> next. `diagnostics.manager_info` became THE one reader on 2026-09-13 and its
+> own docstring records the three it replaced; `_manager_root`, `_env_prefix`
+> and `probe_env_state` all ask it, and the subprocess is spelled once
+> (`diagnostics.py:324`). That is why J3 is not among the rows carried to
+> `plan.md` § 2a — it was already closed when this was archived.
 
 
 **Role:** Plan · **Domain:** ops / envs / configuration
