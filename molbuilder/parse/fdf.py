@@ -37,8 +37,7 @@ deck states), `web/blueprints/transport.py`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANG

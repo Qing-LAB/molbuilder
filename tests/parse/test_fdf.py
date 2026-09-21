@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.parse.fdf import _norm, _parse_fdf, system_label
+from molbuilder.constants import BOHR_ANGSTROM as _B
+from molbuilder.parse.fdf import (_norm, _parse_fdf, parse_fdf_params,
+                                  system_label)
 
 
 class TestTheKeywordRuleIsTheFormatS:
@@ -140,3 +142,68 @@ class TestTheFermiLevelIsKept:
         cyc = _build_cycle_dict_from_header(
             3, [-1.0, -2.0, -3.0, 0.01, -4.83, 0.02], head)
         assert cyc["energy"] == -2.0 and cyc["cycle"] == 3
+
+
+class TestTheCoordinateFormatsAreConverted:
+    """``coords_ang`` is the frozen gate's baseline.
+
+    `transport/compose.py` hands it to the extraction as the geometry the
+    relaxation STARTED from, and every electrode atom is compared against
+    the ``.XV`` at 1e-3 A.  A wrong conversion here does not look like a
+    parse error -- it looks like a lead that moved, so a correct junction
+    is refused and the person is told to re-relax something that is fine.
+
+    All six formats SIESTA accepts here, plus the refusal: nothing
+    referenced ``coords_ang`` from a test before this.
+    """
+
+    CELL = ("%block LatticeVectors\n 10.0 0 0\n 0 10.0 0\n 0 0 20.0\n"
+            "%endblock LatticeVectors\n")
+
+    def _deck(self, fmt: str, z: float) -> str:
+        return (self.CELL + f"AtomicCoordinatesFormat {fmt}\n"
+                "%block AtomicCoordinatesAndAtomicSpecies\n"
+                " 0.0 0.0 0.0 1\n"
+                f" 0.0 0.0 {z} 1\n"
+                "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+
+    @pytest.mark.parametrize("fmt,z_in", [
+        ("Ang",                    2.5),
+        ("NotScaledCartesianAng",  2.5),
+        ("Bohr",                   2.5 / _B),
+        ("NotScaledCartesianBohr", 2.5 / _B),
+        ("Fractional",             0.125),      # of c = 20 A
+        ("ScaledByLatticeVectors", 0.125),
+    ])
+    def test_every_accepted_format_lands_in_angstrom(self, fmt, z_in):
+        """Same physical atom, six spellings, one answer."""
+        p = parse_fdf_params(self._deck(fmt, z_in))
+        assert p.coords_ang is not None, f"{fmt} produced no coordinates"
+        assert p.coords_ang[1][2] == pytest.approx(2.5, abs=1e-9), (
+            f"{fmt}: 2.5 A came back as {p.coords_ang[1][2]}")
+        assert p.atom_z_span_ang == pytest.approx(2.5, abs=1e-9)
+
+    def test_a_format_that_cannot_be_converted_is_REFUSED_not_guessed(self):
+        """`ScaledCartesian` scales by the lattice CONSTANT, which this
+        does not read -- so it answers None, and `compose` refuses the
+        citation rather than comparing against invented coordinates."""
+        p = parse_fdf_params(self._deck("ScaledCartesian", 2.5))
+        assert p.coords_ang is None
+
+    def test_fractional_without_a_cell_is_refused(self):
+        """Fractional coordinates mean nothing without the vectors that
+        scale them."""
+        text = ("AtomicCoordinatesFormat Fractional\n"
+                "%block AtomicCoordinatesAndAtomicSpecies\n"
+                " 0.0 0.0 0.0 1\n 0.0 0.0 0.125 1\n"
+                "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+        assert parse_fdf_params(text).coords_ang is None
+
+    def test_a_row_that_is_not_numbers_takes_the_whole_block_down(self):
+        """Half a geometry is worse than none: the gate must not compare
+        against a partly-read structure."""
+        text = (self.CELL + "AtomicCoordinatesFormat Ang\n"
+                "%block AtomicCoordinatesAndAtomicSpecies\n"
+                " 0.0 0.0 0.0 1\n x y z 1\n"
+                "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+        assert parse_fdf_params(text).coords_ang is None
