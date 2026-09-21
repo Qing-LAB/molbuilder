@@ -1744,9 +1744,6 @@ class Structure:
             info        = _copy.deepcopy(self.info) if self.info else {},
         )
 
-    #: The name this carried until 2026-09-21, when `info` joined it.
-    _carry_periodicity = _carry_nonatom
-
     def copy(self) -> "Structure":
         """Return a deep-ish copy: all metadata lists are duplicated;
         ``positions`` is copied so the new Structure can be mutated
@@ -1765,7 +1762,7 @@ class Structure:
             title         = self.title,
             regions       = {k: list(v) for k, v in self.regions.items()},
             annotations   = copy_annotations(self.annotations),
-            **self._carry_periodicity(),
+            **self._carry_nonatom(),
         )
 
     def affine(self, linear: Sequence[Sequence[float]],
@@ -1790,7 +1787,7 @@ class Structure:
         (det +1), so the cell stays non-singular."""
         L = np.asarray(linear, dtype=float).reshape(3, 3)
         t = np.asarray(translation, dtype=float).reshape(3)
-        per = self._carry_periodicity()
+        per = self._carry_nonatom()
         if per.get("cell") is not None:
             per["cell"] = per["cell"] @ L.T
         if per.get("cell_origin") is not None:
@@ -1890,7 +1887,7 @@ class Structure:
         # `pbc` out by hand and dropped the other three, so appending to a
         # slab turned its TRANSPORT axis back into an ordinary periodic one,
         # forgot the stored cell corner and the vacuum, and reported nothing.
-        # `_carry_periodicity` is the single list of the non-atom lattice
+        # `_carry_nonatom` is the single list of the non-atom lattice
         # fields and every other op-helper already spreads it; `concat` was
         # written before that rule and never joined it.
         base = next((s for s in structures if s.cell is not None), None)

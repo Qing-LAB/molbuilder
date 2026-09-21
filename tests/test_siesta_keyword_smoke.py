@@ -573,3 +573,45 @@ def test_siesta_defaults_omitted_coordinates_to_BOHR(tmp_path):
     assert got.coords_ang[1][2] == pytest.approx(1.4 * BOHR_ANGSTROM), (
         f"SIESTA read this deck in Bohr; parse/fdf.py read "
         f"{got.coords_ang[1][2]} A, which is Angstrom")
+
+
+def test_siesta_scales_lattice_vectors_by_ONE_when_no_constant_is_given(
+        tmp_path):
+    """The OTHER omitted keyword, and the one we had only asserted.
+
+    A bare `LatticeConstant 10.0` is refused (above).  OMITTING it is a
+    different question and `parse/fdf.py` answers it with 1 Ang -- a
+    number that was written down from a manual rather than asked of the
+    engine, in the same change that removed two other invented defaults.
+    If SIESTA scales by anything else, every cell read from a deck
+    without the keyword is wrong by that factor, silently.
+    """
+    binary = _require_siesta_binary()
+    (tmp_path / "d").mkdir(parents=True, exist_ok=True)
+    deck = _unit_probe_deck(
+        tmp_path / "d", coord_format="Ang",
+        extra_lines=("%block LatticeVectors\n"
+                     " 4.0 0.0 0.0\n 0.0 4.0 0.0\n 0.0 0.0 4.0\n"
+                     "%endblock LatticeVectors\n"))
+    out = _run_siesta_on_fdf(binary, deck, work_dir=deck.parent)
+    text = out.stdout + out.stderr
+
+    # SIESTA echoes the cell it built, in Ang.  A 4.0 vector read with a
+    # unit lattice constant stays 4.0; any other constant scales it.
+    import re
+    m = re.search(r"outcell: Unit cell vectors \(Ang\):\s*\n\s*"
+                  r"([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", text)
+    if m is None:
+        m = re.search(r"outcell: Cell vector modules \(Ang\)\s*:\s*"
+                      r"([-\d.]+)", text)
+    assert m, (f"could not read the cell SIESTA built:\n{text[-1500:]}")
+    assert float(m.group(1)) == pytest.approx(4.0, abs=1e-3), (
+        f"SIESTA scaled a 4.0 lattice vector to {m.group(1)} with no "
+        f"LatticeConstant, so its default is not 1 Ang; parse/fdf.py's "
+        f"default must follow THIS, not a manual")
+
+    # AND OUR READER FOLLOWS IT.
+    from molbuilder.parse.fdf import parse_fdf_params
+    got = parse_fdf_params(deck.read_text(), source="probe.fdf")
+    assert got.cell_ang is not None
+    assert got.cell_ang[0][0] == pytest.approx(4.0)

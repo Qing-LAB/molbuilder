@@ -204,13 +204,15 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
         # any plane, which is right for (100)/(110) and wrong for (111),
         # and nothing on the lead path knows which plane it is.  So the
         # limit is stated rather than a verdict asserted.
-        return (f"the periodic seam is UNDETERMINED: {n_layers} layers "
-                f"carry only {n_layers} stacking registries, so this block "
-                f"cannot say which crystal it tiles into -- ABAB and ABC "
-                f"agree on everything it contains.  On fcc(111) that is "
-                f"the difference between gold and hcp.  A lead thick "
-                f"enough to state its own stacking is at least one whole "
-                f"period (3 layers for (111); junction-cell.md § 3.1).")
+        plural = "layer" if n_layers == 1 else "layers"
+        return (f"the periodic seam is UNDETERMINED: a block of "
+                f"{n_layers} {plural} carries fewer stacking registries "
+                f"than one period, so it cannot say which crystal it "
+                f"tiles into -- ABAB and ABC agree on everything it "
+                f"contains, which on fcc(111) is the difference between "
+                f"gold and hcp.  A lead that states its own stacking is "
+                f"at least one whole period thick (3 layers for (111); "
+                f"junction-cell.md § 3.1).")
     if v.verdict == "continues":
         per = f" (stacking period {v.period} layers)" if v.period else ""
         return (f"the periodic seam CONTINUES the crystal{per}: the layer "

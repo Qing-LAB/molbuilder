@@ -267,8 +267,14 @@ class TestTheUnitPolicyIsThisFormatS:
             pytest.approx(4.0 * BOHR_ANGSTROM)
 
     def test_an_ABSENT_lattice_constant_is_one_angstrom(self):
-        """Different from a bare one: omitting the keyword is legal and
-        SIESTA takes 1 Ang, so the vectors are read as written."""
+        """Different from a bare one: omitting the keyword is legal, and
+        this reader scales by 1 Ang, so the vectors are read as written.
+
+        THAT NUMBER IS PINNED TO THE ENGINE, not to this file:
+        `test_siesta_keyword_smoke.py` builds a deck with no
+        `LatticeConstant` and checks the cell SIESTA actually reports.
+        This test is the reader's half of that pair and proves nothing
+        about SIESTA on its own."""
         assert parse_fdf_params(
             "%block LatticeVectors\n 4 0 0\n 0 4 0\n 0 0 4\n"
             "%endblock LatticeVectors\n").cell_ang[0][0] == pytest.approx(4.0)

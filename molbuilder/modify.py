@@ -124,7 +124,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         title=struct.title,
         regions=new_regions,
         annotations=new_annotations,
-        **struct._carry_periodicity(),   # deleting atoms keeps the lattice
+        **struct._carry_nonatom(),   # deleting atoms keeps the lattice
     )
 
 
@@ -247,7 +247,7 @@ def add_atom(
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
-        **struct._carry_periodicity(),   # appending an atom keeps the lattice
+        **struct._carry_nonatom(),   # appending an atom keeps the lattice
     )
 
 
