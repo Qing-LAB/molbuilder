@@ -801,12 +801,13 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 >
 > **They are not equally checkable, and saying "five wishes" hid that**
 > *(re-derived 2026-09-21)*. **A7 is partly mechanised already** — its row says
-> where, and where not. **A8 is the one candidate left**: it is stated as a set
-> operation on names ("a door's parameter names, intersected with the fields of
-> every object it already takes, must be empty"), and parameter names and
-> dataclass fields are facts with one spelling, like import edges — a checker
-> would read the program rather than describe it. **A1 and A4 cannot be
-> checked**: "assembles `<NN>_<name>`" has no exact definition across f-strings,
+> where, and where not. **A8 reads like the one candidate left, and is not** —
+> its row records the attempt. Being *stated* as a set operation on names is
+> not the same as being decidable: the intersection is computable, and what it
+> computes is not the rule, because § 3.1's own carve-out for a parameter that
+> belongs to the invocation rather than to the job is semantic. Built and run
+> on 2026-09-21: two candidates, both correct code, zero violations.
+> **A1 and A4 cannot be checked either**: "assembles `<NN>_<name>`" has no exact definition across f-strings,
 > `.format`, `%` and concatenation, and "re-derives" is semantic — two
 > functions computing one thing look nothing alike. For those two, *review* is
 > not a gap to be closed; it is the honest label.
@@ -820,7 +821,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
 | **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **partly checked** — `tests/test_layering.py` parses every file's imports (relative ones too: dropping those once hid ~493 of ~700) and enforces L1/L2/L3 **between top-level packages**. It classifies a file by its top-level name, so it cannot see a floor boundary **inside** one — and `jobset/` alone holds floors 3–7, so `runstatus.py` (6) importing `_cli.py` (7) reads as `jobset` → `jobset` and passes. That half is **review**, against § 2.1's table |
-| **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | **review** (see the note under this table) — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
+| **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | **review — and the checker was BUILT and rejected, 2026-09-21.** The formulation below is exact and mechanical: read the eleven § 3 classes' fields from their own definitions, read every signature, intersect. Run over the tree it returned **two candidates and zero real violations**, so **the rule currently holds everywhere**. Both candidates collide on `name`: `describe.build_description` takes `Sequence[Stage]` *and* a `name` that its docstring calls *"what the user called this calculation"* — it reads the real stage names off the objects (`tuple(s.name for s in ladder)`), so it is a model citizen that the check flags anyway; `submit._prepare_side_group` takes a `JobSet` and the SHELF's name. Telling those apart needs § 3.1's own carve-out — *a parameter belonging to the invocation rather than to the job* — which is semantic and unreadable from a signature. Shipping it would ship a growing exemption list for correct code, which is what got `test_architecture_rules.py` deleted. The formulation stays here as **what a reviewer computes by hand** |
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | **review** (see the note under this table) — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |

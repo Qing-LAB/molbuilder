@@ -158,7 +158,7 @@ re-derived against the tree before its row was removed:
 
 | # | item | measured 2026-09-20 |
 |---|---|---|
-| **F1** | the A-rules whose checker was deleted | **re-derived 2026-09-21, and "five rules with no checker" was too flat.** **A7** is partly mechanised — `test_layering.py` enforces the layers BETWEEN top-level packages but classifies by top-level name, so it cannot see a floor boundary inside one (`jobset/` alone holds floors 3–7); its row now says so. **A8** is the one real candidate: it is stated as a set operation on names, and parameter names and dataclass fields are facts with one spelling, like import edges. **A1 and A4 cannot be checked** — "assembles `<NN>_<name>`" has no exact definition across f-strings, `.format`, `%` and concatenation, and "re-derives" is semantic. For those two *review* is the honest label, not a gap. **What is left to decide: A8 only** |
+| **F1** | the A-rules whose checker was deleted | ✅ **CLOSED 2026-09-21 — by building the one checker that looked viable and measuring it.** **A7** is partly mechanised and its row now says which half. **A8** was the candidate; the checker was written (§ 3's eleven classes' fields × every signature, all from the AST) and run: **two candidates, both correct code, zero violations** — so the rule holds, and the check cannot tell a `Stage`'s `name` from *"what the user called this calculation"*, which is § 3.1's own invocation-vs-job carve-out and is semantic. Rejected, and recorded in A8's row so it is not re-attempted. **A1 and A4** cannot be checked at all. Nothing left to decide |
 
 Two more are recorded there and are **out of scope by that document's own § 5**,
 not by neglect: `script-preparation.md:202` vs `runwrap.py:2295` on who reads
