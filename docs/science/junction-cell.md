@@ -401,14 +401,30 @@ atom **declared frozen** (refused naming the atoms and telling you to freeze
 them); **unmoved**, when the caller supplies the geometry the relaxation started
 from; then **evenly spaced**, which is the call above.
 
-> **It does NOT ask the layer-COUNT question**, and § 3.1's condition is not
-> enforced anywhere. Measured 2026-09-20 on real ASE Au(111) leads, all of which
-> pass the three checks above: 3 layers → `continues`, **4 → `eclipsed`** (a
-> head-on Au–Au contact at 2.40 Å across the seam where bulk is 2.94),
-> **5 → `twin`**, 6 → `continues`. So a 4-layer lead passes this gate and is not
-> bulk. `cell.classify_seam` already measures exactly this and needs no plane
-> stated, but it is called only from the Modify tab, never on a lead. The
-> wizard emits a note asking the person to check the count; nothing refuses. *(Consolidated there on
+> **The layer-COUNT question is MEASURED AND REPORTED, never refused** — the
+> same line the electrode ORIENTATION is drawn on (`blueprints/transport.py`:
+> *"THE CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED"*, user ruling
+> 2026-08-29). A lead tiles, so its top layer meets its own bottom layer one
+> cell up, and § 3.1's condition decides whether that seam continues the
+> crystal. Measured on real fcc(111) Au leads, all of which pass the three
+> checks above:
+>
+> | layers | seam | nearest metal across it |
+> |---|---|---|
+> | 3 | `continues` | 2.94 Å — bulk `a/√2` |
+> | **4** | **`eclipsed`** | **2.40 Å — head-on Au–Au** |
+> | **5** | **`twin`** | 2.94 Å, stacking reversed |
+> | 6 | `continues` | 2.94 Å |
+>
+> So a 4-layer lead is not bulk, and it composes. `extract_electrode_model`
+> runs `cell.classify_seam` on every lead and puts the verdict — with the
+> layer count named as the cause — in `ElectrodeModel.notes`, which
+> `/api/transport/describe_attempt` prefixes with the block name and draws on
+> the card. *(Until 2026-09-20 the note instead told the reader to "VERIFY …
+> a multiple of 3 for FCC(111) ABC" — homework, about a quantity this module
+> already measures — and no reader looked at `ElectrodeModel.notes` at all,
+> so it was computed on every compose and dropped. The person owns the
+> science; what they are owed is the measurement.)* *(Consolidated there on
 the user's ruling — "one unified check and gate/extraction process". Two of
 those decisions used to sit in `transport/compose.py`, one of them in a branch
 that only a cited relaxation reached, so a junction handed in as a finished

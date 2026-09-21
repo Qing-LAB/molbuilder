@@ -56,7 +56,8 @@ from typing import List, Optional
 
 import numpy as np
 
-from ..cell import LAYER_TOL_ANG, bulk_z_period, detect_layers
+from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
+                    detect_layers)
 from ..structure import Structure
 from .transiesta import (
     _compute_cell_from_extents,
@@ -180,6 +181,45 @@ def _atoms_named(device: Structure, idxs, atom_ids=None,
     shown = ", ".join(name(i) for i in idxs[:limit])
     more = f" and {len(idxs) - limit} more" if len(idxs) > limit else ""
     return shown + more
+
+
+def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
+    """What this lead's periodic boundary does to the crystal — MEASURED.
+
+    A lead tiles along z, so its own top layer meets its own bottom layer
+    one cell up.  Whether that seam CONTINUES the crystal depends on the
+    layer count: (111) stacks ABC, so only a multiple of three continues;
+    four layers puts the image's first layer back on the same sites as
+    the top one (`eclipsed`, a head-on metal contact at the interlayer
+    distance instead of the nearest-neighbour one), and five gives a
+    mirror `twin`.  `junction-cell.md` § 3.1.
+
+    **REPORTED, NEVER REFUSED** — the same line
+    `blueprints/transport.py` draws for the electrode ORIENTATION: *"THE
+    CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user ruling,
+    2026-08-29)"*.  A faulted seam is wrong for a bulk lead and the
+    person is the one who knows whether they meant it; what they are
+    owed is the measurement, not a veto.
+
+    This replaced a note that told the reader to *"VERIFY … a multiple of
+    3 for FCC(111) ABC"* — homework, about a quantity `cell.classify_seam`
+    was already able to measure and this module already imports.
+    """
+    cell = np.array([lat_a, lat_b, [0.0, 0.0, float(zper)]], dtype=float)
+    try:
+        v = classify_seam(pos, cell)
+    except Exception as exc:                       # noqa: BLE001
+        return (f"the periodic seam could not be classified ({exc}); "
+                f"the lead's tiling is UNCHECKED")
+    if v.verdict == "continues":
+        per = f" (stacking period {v.period} layers)" if v.period else ""
+        return (f"the periodic seam CONTINUES the crystal{per}: the layer "
+                f"one cell up sits where the stacking says it should, "
+                f"{v.gap:.3f} Å from the top layer.")
+    return (f"the periodic seam is {v.verdict.upper()} — {v.message}.  "
+            f"This lead is what TranSIESTA turns into the self-energy, so "
+            f"a faulted seam is a faulted bulk Hamiltonian.  Not refused: "
+            f"you may mean it (junction-cell.md § 3.1).")
 
 
 def _spacing_or_refuse(layer_z, label: str):
@@ -355,10 +395,9 @@ def extract_electrode_model(
         z_span = float(layer_z[-1] - layer_z[0])
         notes.append(
             f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
-            f"({d_inter:.3f}) = {zper:.3f} Å.  VERIFY this matches the lead's "
-            f"true bulk repeat (e.g. {n_layers} layers is a whole stacking "
-            f"period — a multiple of 3 for FCC(111) ABC).  NOTHING ENFORCES "
-            f"that count: see junction-cell.md § 3.1.")
+            f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.")
+
+    notes.append(_seam_note(pos, lat_a, lat_b, zper))
 
     if z_span < min_thickness_ang:
         notes.append(

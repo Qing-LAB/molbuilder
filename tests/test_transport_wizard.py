@@ -197,3 +197,66 @@ def test_frozen_is_asked_before_moved():
         extract_electrode_model(dev, "L-electrode", prior_positions=prior)
     msg = str(e.value)
     assert "NOT FROZEN" in msg and "MOVED" not in msg
+
+
+# --------------------------------------------------------------------- #
+#  the seam: MEASURED and REPORTED, never refused                       #
+# --------------------------------------------------------------------- #
+#
+# `junction-cell.md` § 3.1: a lead tiles along z, so its top layer meets
+# its own bottom layer one cell up, and only a whole number of stacking
+# periods continues the crystal -- a multiple of 3 on fcc(111).  Four
+# layers puts the image's first layer back on the same sites (ECLIPSED, a
+# head-on metal contact), five gives a mirror TWIN.
+#
+# NOT A REFUSAL, on the same line the electrode ORIENTATION is drawn on
+# (`blueprints/transport.py`: "THE CONVENTION IS CHECKED AND REPORTED,
+# NEVER ENFORCED", user ruling 2026-08-29).  The person owns the science;
+# what they are owed is the measurement.  Until 2026-09-20 they were
+# owed it and did not get it: the note said "VERIFY ... a multiple of 3
+# for FCC(111) ABC" -- homework about a quantity `cell.classify_seam`
+# already measures and this module already imports.
+
+
+def _au111_lead(n_layers):
+    """A real fcc(111) Au lead, built by the same ASE path the app uses."""
+    from ase.build import fcc111
+    slab = fcc111("Au", size=(1, 1, n_layers), a=4.158,
+                  orthogonal=False, vacuum=10.0)
+    pos = np.asarray(slab.positions, dtype=float)
+    pos[:, 2] -= pos[:, 2].min()
+    s = Structure(elements=["Au"] * len(pos), positions=pos,
+                  regions={"L-electrode": list(range(len(pos)))})
+    s.frozen_atoms = list(range(len(pos)))
+    cell = np.asarray(slab.get_cell(), dtype=float)
+    cell[2] = [0.0, 0.0, pos[:, 2].max() + 10.0]
+    s.cell = cell
+    return s
+
+
+@pytest.mark.parametrize("n_layers,verdict", [
+    (3, "CONTINUES"), (4, "ECLIPSED"), (5, "TWIN"), (6, "CONTINUES"),
+])
+def test_the_seam_verdict_is_measured_and_said(n_layers, verdict):
+    """The whole table, because the interesting half is the failures and
+    a test on 3 and 6 alone would pass with the check deleted."""
+    m = extract_electrode_model(_au111_lead(n_layers), "L-electrode")
+    seam = [n for n in m.notes if "periodic seam" in n]
+    assert len(seam) == 1, f"exactly one seam note: {m.notes}"
+    assert verdict in seam[0], f"{n_layers} layers -> {seam[0]}"
+
+
+def test_a_faulted_seam_is_REPORTED_not_refused():
+    """The discriminating half.  A 4-layer lead is not bulk and still
+    composes -- the person may be doing exactly what they meant."""
+    m = extract_electrode_model(_au111_lead(4), "L-electrode")
+    assert m.z_period == pytest.approx(9.6025, abs=1e-3)
+    assert m.n_layers == 4
+
+
+def test_the_faulted_seam_note_names_the_LAYER_COUNT_as_the_cause():
+    """'Your seam is eclipsed' is not actionable; 'four layers is not a
+    whole number of 3-layer periods' is."""
+    m = extract_electrode_model(_au111_lead(4), "L-electrode")
+    note = next(n for n in m.notes if "periodic seam" in n)
+    assert "LAYER COUNT" in note and "4 layers" in note and "3-layer" in note, note

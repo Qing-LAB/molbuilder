@@ -2309,11 +2309,13 @@ because Σ is built from how this cell tiles. On (111), an electrode region whos
 layer count is not a multiple of 3 tiles into a **twin** (4 or 7 layers give
 something worse — an eclipsed, head-on contact), so Σ then describes a faulted
 crystal rather than bulk gold. Six layers in the electrode region satisfies it;
-four does not. **Nothing enforces this** — the composer checks that the lead's
-layers are evenly spaced, not that there is a whole number of stacking periods
-of them. (`--z-period` was the advertised override; that flag went with
-`molbuilder transport electrode` on 2026-09-17 and no caller passes the
-`z_period=` argument it became.)
+four does not. **This is measured and reported, never enforced** (the rule the
+electrode orientation follows): `extract_electrode_model` classifies the lead's
+periodic seam and the card says `CONTINUES`, `ECLIPSED` or `TWIN`, naming the
+layer count as the cause. A faulted seam composes — you may mean it — but it is
+a faulted bulk Hamiltonian, because this lead is what becomes the self-energy.
+(`--z-period` used to be advertised here as the override; that flag went with
+`molbuilder transport electrode` on 2026-09-17.)
 
 *The device cell boundary (I8 — open).* The device runs at `kz = 1`; beyond the
 outermost lead layers sit the semi-infinite leads, entering only as Σ. What lies
