@@ -131,15 +131,34 @@ is spent — **86 of ~95 items DONE**, re-derived from the code, its invariants
 was left. Each carries the measurement that proved it open, so none needs
 re-deriving before it is acted on.
 
+**Seven of the eight closed on 2026-09-21, and one row is left.** Each was
+re-derived against the tree before its row was removed:
+
+* **J2** — `scheduler/probe.py` named `write_config_scope`; `probe --write`
+  writes `environment.json` through `write_environment`. Docstring fixed.
+* **J3** — was never open here. `diagnostics.manager_info` became the one
+  reader of `conda info --json` on **2026-09-13**, the day after the hand-over
+  was written, which is why it was not carried into this list at all. The
+  archived body still describes the old state and its header now says so.
+* **B8**, **H8**, **H8b** — `envs` (`889a9ca9`): a comment naming a module with
+  no such function, two `__all__` entries that made `import *` raise, and a
+  strip the control flow could not reach.
+* **D9**, **D10** — `jobset` + `scripts` (`f8ffd458`): the bare `isatty` that
+  could raise on the very input it was written for, and a script that honoured
+  two thirds of the host-env rule.
+* **F2** — **closed as a decision, 2026-09-21.** The question was whether to
+  restore a deliberately broken PyPI `pyscf-properties` in the HOST env so the
+  2026-09-11 observation could be pointed at. No: the fact is permanent and
+  readable from what is installed — the dist-info reads `0.1.0` while
+  `direct_url.json` names a git commit, which *is* the version collision
+  `force=True` exists for. `recipes.py`'s comment now states that reason
+  instead of citing the vanished artifact, so nothing depends on the evidence
+  being recreated — and recreating it would put pyscf back in the env it must
+  never be in.
+
 | # | item | measured 2026-09-20 |
 |---|---|---|
-| **B8** | `envs/_cli.py:42` cites `runtime_config.logs_dir()` as the log directory | the attribute does not exist (`hasattr` → False); the code below it correctly asks `config_dir.logs_dir()`. A comment naming a door that was never there |
-| **D9** | `jobset/ask.py:346` does a bare `sys.stdin.isatty()` | the guarded form (`hints.stdin_can_answer()`) exists and the sibling in `envs/_cli.py:2223` uses it. This is the last unguarded spelling |
-| **D10** | `scripts/capture-readme-screenshots.py:121` reads `MOLBUILDER_HOST_ENV` with its own default | a third spelling that ignores `envs.host`. Dev script, so low cost |
-| **H8** | `envs/__init__.py` `__all__` still names `"subprocess"` and `"shutil"` | the imports were deleted and the `__all__` entries were not swept, so **`from molbuilder.envs import *` raises `AttributeError`**. Nothing imports it that way today, which is the only reason it is latent |
-| **H8b** | `envs/_cli.py:572-573` computes `base` from a stripped `issue.kind` | never read — the `if issue.optional:` two lines below `continue`s first |
-| **F1** | the five A-rules with no checker | **needs your call.** The documents now say so honestly (`architecture.md:792-798`, *"Five of them are wishes right now"*); whether they get a checker back is unanswered |
-| **F2** | restore the `pyscf-properties` artifact | **needs your call.** Measured: zero pyscf packages in the host env; `molbuilder-pySCF` carries `pyscf_properties-0.1.0.dist-info` |
+| **F1** | the A-rules whose checker was deleted | **re-derived 2026-09-21, and "five rules with no checker" was too flat.** **A7** is partly mechanised — `test_layering.py` enforces the layers BETWEEN top-level packages but classifies by top-level name, so it cannot see a floor boundary inside one (`jobset/` alone holds floors 3–7); its row now says so. **A8** is the one real candidate: it is stated as a set operation on names, and parameter names and dataclass fields are facts with one spelling, like import edges. **A1 and A4 cannot be checked** — "assembles `<NN>_<name>`" has no exact definition across f-strings, `.format`, `%` and concatenation, and "re-derives" is semantic. For those two *review* is the honest label, not a gap. **What is left to decide: A8 only** |
 
 Two more are recorded there and are **out of scope by that document's own § 5**,
 not by neglect: `script-preparation.md:202` vs `runwrap.py:2295` on who reads
@@ -334,7 +353,6 @@ checkable rather than hopeful:
 > exactly that, and it is code written for this very milestone two days
 > before the audit. **A completeness check over function names cannot see a
 > re-implementation**; the row below was added by reading the files.
-
 
 | what it does today | where | outcome, measured 2026-09-18 |
 |---|---|---|
@@ -726,7 +744,6 @@ its two offerable files, and the absence of any `.transport.json` in
 ---
 
 
-
 ## 5d / 5i / 5j — CLOSED, archived 2026-09-07
 
 *In [`archive/2026-09-07-plan-closed-sections.md`](?doc=archive/2026-09-07-plan-closed-sections.md); the 2026-09-10 consolidation moved this pointer's body to [`archive/2026-09-10-plan-consolidation.md`](?doc=archive/2026-09-10-plan-consolidation.md).*
@@ -965,7 +982,6 @@ This section is the contract. The measurements it rests on
 (`script_emit.py:1319`'s concatenation, the 12/520/980-vs-1222 positions, the
 reproduced duplicate-keyword refusal, `Parameter.writes`) are re-checkable, and
 should be re-checked rather than trusted if this is picked up later.
-
 
 ## 5f. Architecture seams — dropped by the consolidation, recovered 2026-09-06
 
@@ -1218,7 +1234,6 @@ green run had hidden all of them.
    (checked on disk), and all three spectrumchart box traps.
 
 
-
 ## 5k — CLOSED 2026-09-08
 
 *The paths framework's first program, M1–M8. **Its rule is the part that survived**: [`execution/project-layout.md` § 4.5](?doc=execution/project-layout.md), enforced by `tools/classify_path_finders.py --check` and `tests/test_path_framework.py`. The follow-on STANDARD that was to replace the API (§ 5l) is **retired 2026-09-17**; this section's rule and guards are untouched by that. Body archived 2026-09-10.*
@@ -1276,7 +1291,6 @@ wrong row and destroyed it. Caught and restored the same hour. The plan has had
 this collision before (`N3`/`N4`/`N5` mean one thing in § 2 and another in
 § 5l.6 before it was retired); a section that numbers its own rows must
 prefix them.
-
 
 | step | what | done when |
 |---|---|---|
@@ -1788,7 +1802,6 @@ emitted unconditionally, with a test.
 > testing a number rather than a keyword, scoped to `TS.Voltage` lines now.
 > The Methods sentence reports only emitted values, which closes the one
 > defect here with a publication consequence.
-
 
 
 Each verified present in the installed binary, with the manual's default.
@@ -3170,7 +3183,6 @@ two are reconcilable and the argument must be written down rather than assumed:
 Per § 0, the open rows belong in § 2. This section holds the order and the
 reasoning; § 2 holds what is outstanding.
 
-
 ---
 
 ## 6. Closed by consolidation — archived
@@ -3370,7 +3382,6 @@ never catch them:
 4. Rows 8 and 9 as their own fix.
 5. Rows 13-14 fold into § 7's survey.
 
-
 ## 9. ATOM as a pseudopotential validator — PENDING, not started
 
 *(User, 2026-09-19. Recorded now so the scope is honest; the immediate work
@@ -3527,7 +3538,6 @@ page. It is the half that clearing cannot cover: there are two ways a
 surface shows the wrong folder — state that LINGERS and an answer that
 LANDS LATE — and Task setup had no `AbortController` among its twelve
 calls, so the second was unguarded entirely.
-
 
 ### 10.2a The second day — the Results panel owns its folder *(2026-09-20)*
 
