@@ -1644,10 +1644,13 @@ def cmd_runtime_info(input_path, out_path, pretty):
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
+            # INSIDE the try: `parse()` raises ParseError too -- a readable
+            # trajectory whose stem is not a legal run label is the shipped
+            # case -- and one line lower it escaped as a traceback.
+            traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
-        traj = parser.parse(resolved)
 
     # frozen_atoms is a Python set in-memory; convert to a sorted list
     # for JSON.  Any other non-JSON-native types should fail loudly so
@@ -3279,10 +3282,13 @@ def cmd_watch_parse(input_path, frames_only, pretty):
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
+            # INSIDE the try: `parse()` raises ParseError too -- a readable
+            # trajectory whose stem is not a legal run label is the shipped
+            # case -- and one line lower it escaped as a traceback.
+            traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
-        traj = parser.parse(resolved)
 
     payload = trajectory_to_legacy_dict(traj)
     if frames_only:
