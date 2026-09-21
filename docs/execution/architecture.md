@@ -791,15 +791,25 @@ week refining a geometry you would have rejected in a minute.
 
 Each is written so it can be **checked**, because a rule nobody checks is a wish.
 
-> **Five of them are wishes right now, and this table said otherwise until
+> **Five of them lost their checker, and this table said otherwise until
 > 2026-09-13.** A1, A4, A7, A8 and A11 named `tests/test_architecture_rules.py`
 > in the *checked by* column. That file was deleted on 2026-09-10 in
 > `082ba979`, with 17 others, for asserting the shape of the repository rather
 > than a result — when one went red the code was not wrong, the layout had
 > moved. The property each row states is unchanged and still worth stating: it
-> is what a checker WOULD assert, and what a reviewer reads the diff for. What
-> is gone is the red bar. Whether these five get a checker back is an open
-> decision, not an oversight.
+> is what a checker WOULD assert, and what a reviewer reads the diff for.
+>
+> **They are not equally checkable, and saying "five wishes" hid that**
+> *(re-derived 2026-09-21)*. **A7 is partly mechanised already** — its row says
+> where, and where not. **A8 is the one candidate left**: it is stated as a set
+> operation on names ("a door's parameter names, intersected with the fields of
+> every object it already takes, must be empty"), and parameter names and
+> dataclass fields are facts with one spelling, like import edges — a checker
+> would read the program rather than describe it. **A1 and A4 cannot be
+> checked**: "assembles `<NN>_<name>`" has no exact definition across f-strings,
+> `.format`, `%` and concatenation, and "re-derives" is semantic — two
+> functions computing one thing look nothing alike. For those two, *review* is
+> not a gap to be closed; it is the honest label.
 
 | | rule | checked by |
 |---|---|---|
@@ -809,7 +819,7 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** (see the note under this table) — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
-| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **review** (see the note under this table), whose floor map must match § 2.1's table |
+| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **partly checked** — `tests/test_layering.py` parses every file's imports (relative ones too: dropping those once hid ~493 of ~700) and enforces L1/L2/L3 **between top-level packages**. It classifies a file by its top-level name, so it cannot see a floor boundary **inside** one — and `jobset/` alone holds floors 3–7, so `runstatus.py` (6) importing `_cli.py` (7) reads as `jobset` → `jobset` and passes. That half is **review**, against § 2.1's table |
 | **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | **review** (see the note under this table) — a generator door's parameter names, intersected with the fields of every object it already takes, must be empty |
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |

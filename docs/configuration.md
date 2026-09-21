@@ -453,7 +453,7 @@ door for the kind of file it has, and the door knows:
 | `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
-| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job and may import nothing of ours — see below |
+| anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job, where the only module of ours it can reach is one that travels with it — see below |
 
 **The shapes that are not `write_bytes` calls, and why each one is not.**
 *(The list was two long and said "nothing else may"; three more existed, which is
@@ -468,7 +468,7 @@ Four remain.)*
 | an appended log (`serve_daemon.open_private`) | below |
 | **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
 | **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made, never overwritten — a person may have added notes — so there is no previous content to protect, and none of them carries a credential |
-| **anything the monitor writes on a compute node** | it ships beside the job and may import nothing of ours — see below |
+| **anything the monitor writes on a compute node** | it ships beside the job, and `persist` does not travel with it — see below |
 
 **One of those needs the longer reason.** *(Two did until 2026-09-13: the
 auth wizard staged a temp, validated the bytes on disk and replaced — a second
@@ -483,12 +483,22 @@ where every caller gets it.)*
 machine that runs the job as `mb_monitor.py` and is executed by **the job's own
 python**, in a backend env where molbuilder is not installed
 (`runwrap.MONITOR_COMPANIONS`, `execution/running-a-job.md` § 2.0a). So its
-writes — the `util.csv` header and its rows — use `pathlib` and nothing of ours:
+writes — the `util.csv` header and its rows — use `pathlib`:
 importing `persist` here would make the monitor die at import on every node, with
 stderr going to `/dev/null`, which costs the run's status, its utilisation trace
-and its reports and says nothing. `config_dir.py` travels with it under the same
-rule and imports nothing of ours either. **Do not route these through the one
-writer.** They are the one place in this document where a truncated file is the
+and its reports and says nothing.
+
+**And the reason is SHIPPING, not stdlib-ness** *(stated exactly, 2026-09-21)*.
+`persist.py` is itself pure stdlib — so is `config_dir.py`; the property is
+*depends only on stdlib*, never *imports nothing of ours* (`config_dir.py`'s own
+header says so, and `scheduler/record.py` imports `persist` on the strength of
+it). What kills the import on a compute node is that `persist.py` is not
+THERE: `runwrap` ships exactly two files beside the job, `_monitor_source` and
+`_config_dir_source`. So the monitor's real rule is **stdlib-only AND travels**,
+and today that set is exactly `{config_dir}` — reached through the two-way
+import in `monitor._secrets_dir`, whose `ModuleNotFoundError` `load_channels`
+catches as reports-off rather than as a dead monitor. **Do not route these
+through the one writer.** They are the one place in this document where a truncated file is the
 cheaper risk, and the trade is deliberate.
 
 **An append is the other, and it is a real exception**, not an oversight: a

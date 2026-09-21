@@ -953,9 +953,10 @@ def is_channel_name(name: str) -> bool:
     """Is this a usable channel name?
 
     **The door for everyone**, and it has to be here: this module ships to a
-    compute node as a standalone stdlib-only file, so it can import nothing
-    from the package -- which makes it the only end of the exchange that
-    CAN own the rule.  `task.py` validates the names a description carries
+    compute node as a standalone file, where the only molbuilder module it
+    can reach is one that TRAVELS WITH IT -- today just `config_dir`, through
+    the two-way import in `_secrets_dir`.  `task.py` is not on that list, so
+    this end is the only one that CAN own the rule.  `task.py` validates the names a description carries
     by asking this, rather than restating a regex that would then be free to
     drift from the file those names have to match.
     """
