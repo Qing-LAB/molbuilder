@@ -6,11 +6,11 @@ bridge between them, and transport takes the lead atoms **out of that file**
 by their label.  The leads must come through the relaxation untouched, or the
 self-energies attach to a geometry that is not the bulk they claim to be.
 
-**What this is not.**  `transport/compose.py` already refuses a citation whose
-electrode atoms MOVED.  That gate is correct and it is also too late: it runs
-when transport composes, after the relaxation has been paid for.  This asks
-the question one step earlier and far more cheaply — *are these atoms declared
-frozen*, rather than *did they end up unmoved*.
+**What this is not.**  `transport.wizard.extract_electrode_model` already
+refuses a lead that is not frozen, and one that moved.  Those gates are correct
+and they are also too late: they run when transport composes, after the
+relaxation has been paid for.  This asks the same question one step earlier,
+where it is still cheap to act on — before the run, not after it.
 """
 from __future__ import annotations
 
@@ -68,9 +68,10 @@ def test_the_bridge_is_not_required_to_be_frozen():
 def test_it_warns_rather_than_refusing_and_the_line_is_deliberate():
     """A structure carrying electrode labels is heading for transport but
     has not committed: a person may deliberately relax the whole junction
-    once before freezing the leads for the run that counts.  The REFUSAL
-    belongs at compose, where transport is the intent, and is already
-    there."""
+    once before freezing the leads for the run that counts.  Refusing here
+    would block that.  The REFUSAL belongs at compose, where transport IS
+    the intent, and it is there --
+    `wizard.extract_electrode_model` (tests/test_transport_wizard.py)."""
     assert check_electrode_labels_are_frozen(_junction(frozen=[]))[0].severity \
         == "warn"
 

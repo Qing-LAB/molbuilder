@@ -350,21 +350,56 @@ and a strained or unusual slab is judged on what it is.
 
 ## 5. Where this lives in the code
 
-**One home.** The derivation is `cell.bulk_z_period(layer_z)`, returning
-`(z_period, d_interlayer, n_layers)` with `z_period = z_span + median(Δlayer)`.
-The median (not the mean) makes it robust to a slightly relaxed outermost layer,
-and reading the spacing off the *built* slab means an `inter_layer_offset`
-override is honoured automatically. It raises `ValueError` on a single layer,
-where the repeat is genuinely underivable.
+**One home, and one question.** The derivation is `cell.bulk_z_period(layer_z)`,
+returning `(z_period, d_interlayer, n_layers)` with `z_period = z_span + d`.
+`d` is **the** spacing — the one every adjacent pair of layers is *checked* to
+share, to within `UNIFORM_SPACING_TOL_ANG` (1e-3 Å) — and the function refuses a
+block whose layers disagree by more than that, naming the spacings. It also
+raises on a single layer, where there is no spacing to measure at all.
 
-It began in `transport/wizard.py`, where the electrode wizard has always used it
-to derive the bulk lead's z-period, together with a note telling the user to
-confirm the layer count is a whole stacking period. Moving it to `cell` (L1)
-lets the junction builder use the same function instead of growing a second
-copy — the two callers are `transport.wizard.extract_electrode_model` and
-`modify.add_slab`.
+**There is no statistic here, and that is the point** *(user ruling,
+2026-09-20)*. A lead is frozen bulk: `engines/transport.md` § 4 —
+*"the lead atoms are frozen bulk by construction"* — and its § 2a.9 table,
+where the electrode region *"coincides exactly with the frozen-atom set the
+relaxation already carries"*. Its layers therefore sit where the builder put
+them, one spacing apart, and the honest operation is to check that and read the
+value off. Reading it off the *built* slab also means an `inter_layer_offset`
+override is honoured without being passed in.
+
+> **This said `median(Δlayer)` until 2026-09-20**, justified here as *"robust to
+> a slightly relaxed outermost layer"*. That is backwards under § 4 of the
+> transport contract: a relaxed layer **inside** an electrode region means the
+> region was mislabelled or was never frozen, and absorbing it hands back a
+> plausible spacing, a plausible period, and a deck built on a lead that is not
+> bulk. The condition to refuse cannot also be the condition to smooth over.
+> The median could not even see the case it was written for on a short lead —
+> with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
+> a seam 0.33 Å too wide, silently.
+>
+> The tolerance is measured, not picked: across the eleven labelled junctions
+> under `projects/`, the widest spread between any two spacings of one electrode
+> block is **1e-6 Å**, the precision the coordinates were written at.
+
+**The one caller** is `transport.wizard.extract_electrode_model`, where this
+began — the electrode wizard has always used it to derive the bulk lead's
+z-period, with a note telling the user to confirm the layer count is a whole
+stacking period. It sits in `cell` (L1) so the rule has a home below the
+engine. *(This section named `modify.add_slab` as a second caller until
+2026-09-20. It is not one, and § 6 below says why: `add_slab` sets
+`c = z_extent` verbatim, so nothing there needs a spacing.)*
+
+**And the gate around it.** `extract_electrode_model` is the one place that
+decides whether a labelled block can serve as a lead, asking in order: every
+atom **declared frozen** (refused naming the atoms and telling you to freeze
+them); **unmoved**, when the caller supplies the geometry the relaxation started
+from; then **evenly spaced**, which is the call above. *(Consolidated there on
+the user's ruling — "one unified check and gate/extraction process". Two of
+those decisions used to sit in `transport/compose.py`, one of them in a branch
+that only a cited relaxation reached, so a junction handed in as a finished
+`.xyz` + `.molstruct.json` pair was never asked whether its leads were frozen.)*
 
 **The monolayer case.** A one-layer slab has no spacing to *measure* — there
+is only one layer to measure between. This mattered while the builder PADDED
 is only one layer to measure between. This mattered while the builder PADDED
 the cell for you; § 6 retired that on 2026-08-31 and `add_slab` sets
 `c = z_extent` verbatim, so nothing needs the spacing at build time any more.
@@ -383,7 +418,7 @@ their own structure.
 
 | Concern | Home |
 |---|---|
-| the rule `z_period = z_span + d` | `cell.bulk_z_period` |
+| the rule `z_period = z_span + d`, **and the refusal when the spacings differ** | `cell.bulk_z_period` |
 | grouping atoms into layers | `cell.detect_layers` |
 | layers per stacking period, by surface | `cell.STACKING_PERIOD` |
 | **what the boundary does to the crystal** | **`cell.classify_seam`** (§ 4.1) — the measurement; the wording is `blueprints/modify.py`, the same split `_lattice_notes` uses |

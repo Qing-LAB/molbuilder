@@ -433,15 +433,21 @@ class TestTheGates:
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
-        assert "TILE" in msg and "3.600" in msg
+        assert "not evenly spaced" in msg and "3.6000" in msg
 
     def test_a_block_that_does_not_tile_is_told_THAT_first(self, tmp_path):
         """The order of these two gates is a DEPENDENCY, not taste.
         Every number the orbital-range condition uses comes from the
-        layer spacing -- a block that does not tile has a meaningless
-        median, hence a meaningless period and gap.  Checked second, it
-        was refused for "orbital range exceeds the gap": true about
-        invented numbers, and the wrong thing to go and fix."""
+        layer spacing, so a block that does not tile has no period and
+        no gap.  Checked second, it was refused for "orbital range
+        exceeds the gap": true about invented numbers, and the wrong
+        thing to go and fix.
+
+        SINCE 2026-09-20 THE ORDER IS STRUCTURAL rather than a choice
+        made here -- `wizard.extract_electrode_model` refuses the block,
+        so it never becomes a model for the orbital condition to measure.
+        The test stays because the property is the same one and it is
+        what a person experiences."""
         root = tmp_path / "projects"
         broken = _junction_struct(
             layers_l=[0.0, 2.5, 5.0, 7.5, 10.0, 13.6])
@@ -452,7 +458,7 @@ class TestTheGates:
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
-        assert "TILE" in msg, (
+        assert "not evenly spaced" in msg, (
             "the block's real defect is that it does not tile; the "
             "refusal talks about something derived from it instead")
         assert "orbital interaction range" not in msg
@@ -780,6 +786,86 @@ class TestFormB:
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         assert "unambiguously" in str(e.value)
+
+    def test_the_refusal_names_the_atom_the_PERSON_can_find(self, tmp_path):
+        """`engine_atom_index`: the canonical atom identity is the index
+        in the SOURCE FILE's order, which is what the Modify tab shows and
+        what "go and freeze atom N" has to mean.  `categorical_sort` puts
+        the device in TranSIESTA's deck order first, so a refusal built
+        from the sorted device's own indices names an atom the person
+        cannot find.
+
+        THIS FIXTURE IS DELIBERATELY OUT OF ORDER -- the bridge is written
+        first -- because the ordinary one sorts to the identity, where a
+        missing translation and a correct one print the same number and
+        the test would prove nothing.
+        """
+        from molbuilder.workingcopy_structure import StructureCodec
+        from molbuilder.transport.sort import categorical_sort
+        root = tmp_path / "projects"
+        d = root / "shuffled"
+        d.mkdir(parents=True)
+
+        # bridge FIRST in the file, then the two leads
+        elements = [el for el, _z in _BRIDGE] + ["Au"] * 12
+        zs = ([z for _el, z in _BRIDGE] + list(_LAYERS_L) + list(_LAYERS_R))
+        regions = {REGION_BRIDGE: [0, 1, 2, 3],
+                   REGION_LEFT_ELECTRODE: list(range(4, 10)),
+                   REGION_RIGHT_ELECTRODE: list(range(10, 16))}
+        s2 = Structure(elements=elements,
+                       positions=np.array([[1.0, 1.0, z] for z in zs]),
+                       regions=regions,
+                       frozen_atoms=list(range(4, 16)),
+                       cell=np.diag([8.0, 8.0, 40.0]))
+        # atom 4 is the L-electrode's first, and the sort moves it to 0
+        s2.frozen_atoms = [i for i in s2.frozen_atoms if i != 4]
+        srt = categorical_sort(s2)
+        assert srt.sorted_to_original[0] == 4, (
+            "the fixture must actually permute or this proves nothing")
+
+        StructureCodec().write(s2, d / "junction.xyz")
+        with pytest.raises(ComposeError) as e:
+            compose_junction("shuffled", tree_root=root)
+        msg = str(e.value)
+        assert "1 atom(s)" in msg, (
+            f"exactly one lead atom was left unfrozen; naming more means "
+            f"the region or the frozen set was not remapped by the sort: "
+            f"{msg}")
+        assert "4 (Au)" in msg, (
+            f"the atom must be named by its identity in the person's own "
+            f"file (4), not by its place in the deck order (0): {msg}")
+
+    def test_a_pair_whose_leads_are_not_frozen_is_refused(self, tmp_path):
+        """THE HOLE THIS ROUTE HAD until 2026-09-20.  Form B has no
+        starting geometry, so the frozen-unmoved comparison cannot run --
+        and that comparison was the ONLY frozen check compose made, in a
+        branch form A alone reached.  A pair labelled `L-electrode` with
+        nothing frozen composed cleanly and produced a deck whose
+        self-energy attached to a geometry that had relaxed.
+
+        The declaration is now asked of every route, which is the whole
+        reason it is asked separately from the movement."""
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "loose"
+        d.mkdir(parents=True)
+        s2 = _junction_struct()
+        s2.frozen_atoms = []
+        StructureCodec().write(s2, d / "junction.xyz")
+        with pytest.raises(ComposeError) as e:
+            compose_junction("loose", tree_root=root)
+        msg = str(e.value)
+        assert "NOT FROZEN" in msg, msg
+        assert "freeze them" in msg, f"and it must say what to do: {msg}"
+
+    def test_a_pair_with_frozen_leads_and_a_free_bridge_composes(self, tmp_path):
+        """The discriminating half: the gate asks about the LEADS, and a
+        correct junction has a free bridge."""
+        root, cite = self._pair_dir(tmp_path)
+        out = compose_junction(cite, tree_root=root)
+        free = set(range(len(out.sorted.structure.elements))) - set(
+            out.sorted.structure.frozen_atoms or ())
+        assert free, "the fixture must leave the bridge free or this proves nothing"
 
     def test_a_pair_without_a_cell_is_refused(self, tmp_path):
         from molbuilder.workingcopy_structure import StructureCodec

@@ -143,19 +143,144 @@ class ElectrodeModel:
 # --------------------------------------------------------------------- #
 
 
+#: How far a FROZEN atom may sit from where the relaxation started before
+#: the constraint is judged broken (``engines/transport.md`` § 3: *frozen
+#: means unmoved*).  A real constrained relaxation reproduces its fixed
+#: atoms to writing precision; this absorbs the Angstrom -> Bohr ->
+#: Angstrom round trip of an ``.XV``, never a physical drift.
+#:
+#: LIVED IN ``compose.py`` UNTIL 2026-09-20, beside the loop that used it.
+#: It moved with that loop: the gate it belongs to is now part of building
+#: the lead, so the number is here and ``compose`` imports it.
+FROZEN_TOL_ANG = 1e-3
+
+
+def _atoms_named(device: Structure, idxs, atom_ids=None,
+                 limit: int = 6) -> str:
+    """``3 (Au), 4 (Au) and 12 more`` — the spelling the preflight warning
+    uses (`validation/sidecar.py`), so the same fact reads the same way
+    wherever a person meets it.
+
+    **IN THE IDENTITY THE PERSON CAN ACT ON.**  `engine_atom_index`: the
+    canonical atom identity is the 0-based index into the structure as
+    the SOURCE FILE ordered it, and that is what the Modify tab shows and
+    what "go and freeze these" refers to.  A device that has been through
+    `categorical_sort` is in TranSIESTA's deck order instead, so *atom_ids*
+    carries the sort's ``sorted_to_original`` and the number printed is
+    the one in the person's own file.  ``None`` means this device's own
+    indices are already canonical.
+    """
+    els = getattr(device, "elements", ()) or ()
+
+    def name(i):
+        shown_i = atom_ids[i] if atom_ids is not None else i
+        return f"{shown_i} ({els[i]})" if i < len(els) else str(shown_i)
+
+    shown = ", ".join(name(i) for i in idxs[:limit])
+    more = f" and {len(idxs) - limit} more" if len(idxs) > limit else ""
+    return shown + more
+
+
+def _refuse_unless_frozen_bulk(
+    device: Structure,
+    label: str,
+    idxs,
+    prior_positions: Optional[np.ndarray],
+    atom_ids=None,
+) -> None:
+    """The lead must be frozen, and must have stayed where it was.
+
+    Split out so :func:`extract_electrode_model` reads as *check, then
+    build* rather than interleaving the two; see that docstring for why
+    the order of these questions is a dependency and not a preference.
+    """
+    frozen = set(getattr(device, "frozen_atoms", None) or ())
+    loose = [i for i in idxs if i not in frozen]
+    if loose:
+        raise ValueError(
+            f"{len(loose)} atom(s) in {label!r} are NOT FROZEN: "
+            f"{_atoms_named(device, loose, atom_ids)}.  A lead is the "
+            f"pristine bulk "
+            f"the self-energy attaches to, so every atom carrying an "
+            f"electrode label must be held still — freeze them (the Modify "
+            f"tab's selection writes \"frozen_atoms\"), then relax and cite "
+            f"again.  Freezing them AFTER this relaxation does not help: "
+            f"these atoms have already moved with the bridge, and the "
+            f"geometry they are in now is not bulk")
+
+    if prior_positions is None:
+        return
+    prior = np.asarray(prior_positions, dtype=float)
+    now = np.asarray(device.positions, dtype=float)
+    if prior.shape != now.shape:
+        raise ValueError(
+            f"cannot check {label!r} against the geometry the relaxation "
+            f"started from: {len(prior)} atoms there, {len(now)} here")
+    moved = [(i, float(np.linalg.norm(now[i] - prior[i]))) for i in idxs]
+    moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
+    if moved:
+        shown = "; ".join(
+            f"atom {atom_ids[i] if atom_ids is not None else i} "
+            f"({device.elements[i]}) moved {d:.4f} A"
+            for i, d in moved[:6])
+        more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
+        raise ValueError(
+            f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
+            f"relaxation: {shown}{more}.  Frozen means unmoved "
+            f"(engines/transport.md § 3, ruling Q3): the electrode blocks "
+            f"are the seam the self-energies attach to.  Re-relax the "
+            f"junction with the electrode atoms constrained, or fix the "
+            f"labels")
+
+
 def extract_electrode_model(
     device: Structure,
     label: str,
     *,
+    prior_positions: Optional[np.ndarray] = None,
+    atom_ids=None,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> ElectrodeModel:
-    """Build an :class:`ElectrodeModel` for one ``*-electrode`` region.
+    """Build an :class:`ElectrodeModel` for one ``*-electrode`` region —
+    and refuse the region outright if it is not a bulk lead.
 
     The lateral cell is the **device's** (a, b) — so the lead tiles the
     device cross-section (I6).  The z-period is derived from the layer
     spacing unless ``z_period`` is given.
+
+    **THIS IS THE ONE GATE** *(user ruling, 2026-09-20: "one unified
+    check and gate/extraction process")*.  Three separate places used to
+    decide whether a labelled block could serve as a lead — a warning in
+    `validation/sidecar.py`, a frozen-unmoved loop in `compose_junction`
+    that only form A ever reached, and a tiling check in
+    `_extract_and_gate_electrodes` comparing each spacing against a
+    median of itself.  A block handed in as a finished pair (form B) met
+    none of them, and a lead that was never frozen produced a deck.
+
+    So the questions are asked here, in the order their answers depend on
+    one another, and each refusal names what to go and do:
+
+    1. **Declared frozen.**  Every atom of the region is in
+       ``frozen_atoms``.  ``engines/transport.md`` § 4: the lead atoms
+       are frozen bulk by construction.
+    2. **Actually unmoved**, when *prior_positions* is given — the
+       geometry the relaxation STARTED from, in this structure's own
+       index order.  Form B has no such geometry and passes on 1 alone,
+       which is the whole reason 1 exists.
+    3. **Evenly spaced** — :func:`cell.bulk_z_period`, which refuses a
+       block whose layers do not share one spacing and hands back that
+       spacing when they do.
+
+    1 comes before 2 because it is the cheaper question and its answer is
+    the fix for both; 1 and 2 come before 3 because the spacings of a
+    block that moved describe nothing.  Raises ``ValueError``;
+    ``compose`` turns it into a ``ComposeError`` verbatim.
+
+    *atom_ids* maps this device's indices back to the canonical ones the
+    person sees, for devices that have been through `categorical_sort`;
+    see :func:`_atoms_named`.
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}
@@ -166,6 +291,9 @@ def extract_electrode_model(
             f"(labels must end with the *-electrode convention)")
     block_name, idxs = electrodes[label]
     idxs = sorted(idxs)
+
+    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
+                               atom_ids)
 
     pos = np.asarray(device.positions, dtype=float)[idxs]
     elems = [device.elements[i] for i in idxs]

@@ -362,16 +362,45 @@ def test_bulk_z_period_single_layer_raises():
         cellmod.bulk_z_period([0.0])
 
 
-def test_bulk_z_period_uses_the_median_not_the_mean():
-    """A relaxed outermost layer must not drag the repeat with it.
+def test_bulk_z_period_refuses_layers_that_are_not_evenly_spaced():
+    """A lead is frozen bulk, so its spacings are the one the slab was
+    built with — and a block where they are not is refused, not averaged.
 
-    junction-cell.md § 5 names the median as the point of the choice; a
-    mean would let one loose surface layer set the whole lattice repeat.
+    REPLACED `test_bulk_z_period_uses_the_median_not_the_mean` on
+    2026-09-20 (user ruling: "that single value should be the space we
+    use... only checking of a single value").  That test asserted the
+    median ignores a 3.00 A outlier among 2.35 A layers, which is exactly
+    the case this refuses: an outlier inside an electrode region means the
+    region was mislabelled or was never frozen, and smoothing it over
+    hands back a plausible period for a lead that is not bulk.
     """
-    # 2.35 spacing throughout except a surface layer that relaxed outward
-    layers = [0.0, 2.35, 4.70, 7.05, 10.05]
-    _zper, d, _n = cellmod.bulk_z_period(layers)
-    assert d == pytest.approx(2.35), "median must ignore the 3.00 outlier"
+    with pytest.raises(ValueError) as e:
+        cellmod.bulk_z_period([0.0, 2.35, 4.70, 7.05, 10.05])
+    msg = str(e.value)
+    assert "2.3500" in msg and "3.0000" in msg, (
+        f"the spacings must be named so a person can see which one is "
+        f"odd: {msg}")
+    assert "frozen" in msg, "and the reason it must not vary"
+
+
+def test_bulk_z_period_refuses_a_three_layer_block_the_median_could_not_judge():
+    """THE CASE THE OLD RULE COULD NOT SEE.  With only two spacings,
+    `median` is the mean of both, so the outlier moved the answer instead
+    of being rejected by it: [0, 2.35, 5.35] gave d = 2.675 and a seam
+    0.33 A too wide, silently.  A spread check has no such floor."""
+    with pytest.raises(ValueError):
+        cellmod.bulk_z_period([0.0, 2.35, 5.35])
+
+
+def test_bulk_z_period_tolerates_the_noise_a_real_junction_carries():
+    """The other half: the tolerance must not refuse real data.  These
+    are the L-electrode layer centroids of
+    `projects/Au-BDT-Au/.../AuBDTAu_partOpt_frame38`, whose two spacings
+    differ by 1e-6 A — the precision the coordinates were written at."""
+    zper, d, n = cellmod.bulk_z_period([0.0, 2.400623, 4.801245])
+    assert n == 3
+    assert d == pytest.approx(2.400623)
+    assert zper == pytest.approx(4.801245 + 2.400623)
 
 
 def test_stacking_period_is_abc_on_111_and_abab_otherwise():

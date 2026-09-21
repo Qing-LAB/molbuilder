@@ -33,20 +33,14 @@ from ..config.transport import (REGION_LEFT_ELECTRODE,
 from ..structure import Structure
 from ..parse.fdf import _BOHR_ANG, parse_fdf_params
 from .sort import SortResult, categorical_sort
-from .wizard import ElectrodeModel, extract_electrode_model
+from .wizard import (FROZEN_TOL_ANG, ElectrodeModel,
+                     extract_electrode_model)
 
 
 class ComposeError(Exception):
     """A citation the composition cannot honour — the message names
     exactly what to run (or fix) first, ready to surface verbatim."""
 
-
-#: How far a FROZEN atom may sit from its source position before the
-#: constraint is judged broken (§ 3: *frozen means unmoved*).  Real
-#: constrained relaxations reproduce fixed atoms to writing precision;
-#: this absorbs unit round-trips (Å → Bohr → Å through the ``.XV``),
-#: never a physical drift.
-FROZEN_TOL_ANG = 1e-3
 
 #: The composed record's on-disk names, beside the transport
 #: calculation's ``task.json`` (§ 4.1: the cited structure is COPIED in
@@ -564,55 +558,65 @@ def _write_atomically(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _extract_and_gate_electrodes(dev: Structure, *, ion_dir=None):
-    """Extract both leads from the sorted device and run the § 3 gates
-    that live at the LEAD level, **tiling first and then the
-    principal-layer condition** — the second is computed from numbers
-    the first validates (the frozen gate ran before the overlay; label
-    completeness is the sort's).  Refusals name the block and the
-    numbers (user ruling Q3).
+def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
+                                 atom_ids=None, ion_dir=None):
+    """Extract both leads from the sorted device, then measure the one
+    § 3 condition that needs files from outside the structure.
 
-    The principal-layer condition compares the orbital INTERACTION
-    RANGE against the lead's PERIOD (§ 3's own wording) -- and the
-    ranges are READ, never guessed: SIESTA leaves ``<El>.ion`` beside
-    every run, and *ion_dir* (the cited directory) is where they are
-    looked for.  No readable ``.ion`` for an element -> the condition
-    is honestly UNVERIFIED (a note on the model; TranSIESTA verifies
-    lead connectivity itself at run time), never a refusal on a number
-    nobody measured."""
-    from ..cell import LAYER_TOL_ANG, detect_layers
+    **WHAT A LEAD MUST BE is `wizard.extract_electrode_model`'s** — every
+    atom frozen, unmoved if a starting geometry is given, evenly spaced —
+    and a block that is none of those never becomes a model.  *(Consolidated
+    there 2026-09-20 on the user's ruling; a frozen-unmoved loop in
+    `compose_junction` and a tiling check in this function used to make two
+    of those decisions here, and form B reached neither.)*  This function
+    passes the inputs through and turns the refusal into a `ComposeError`.
+
+    What stays is the principal-layer condition, because it is the one
+    that cannot be answered from the structure: it compares the orbital
+    INTERACTION RANGE against the lead's PERIOD (§ 3's own wording) and
+    the ranges are READ, never guessed — SIESTA leaves ``<El>.ion``
+    beside every run, and *ion_dir* (the cited directory) is where they
+    are looked for.  No readable ``.ion`` for an element -> the condition
+    is honestly UNVERIFIED (a note on the model; TranSIESTA verifies lead
+    connectivity itself at run time), never a refusal on a number nobody
+    measured.
+
+    *prior_positions* is the geometry the cited relaxation STARTED from,
+    already permuted into *dev*'s order, or ``None`` when there is none to
+    compare against — form B, and the recompose-from-record path, where
+    the comparison was made when the record was written.
+
+    *atom_ids* is the sort's ``sorted_to_original``, so a refusal names
+    atoms by the identity in the person's own file rather than by their
+    place in TranSIESTA's deck order (`engine_atom_index`).
+    """
     from ..parse.ion import max_orbital_rc_ang
     try:
-        models = (extract_electrode_model(dev, REGION_LEFT_ELECTRODE),
-                  extract_electrode_model(dev, REGION_RIGHT_ELECTRODE))
+        models = tuple(
+            extract_electrode_model(dev, region,
+                                    prior_positions=prior_positions,
+                                    atom_ids=atom_ids)
+            for region in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE))
     except ValueError as exc:
         raise ComposeError(
             f"the labeled electrode block cannot serve as a lead: {exc}")
     for model in models:
-        # ---- TILING FIRST, and the order is a DEPENDENCY, not taste.
-        # Every number the principal-layer condition below uses is
-        # derived from the layer spacing: the period is span + median
-        # interlayer, so a block whose label boundary cuts a partial
-        # layer has a meaningless median, a meaningless period, and a
-        # meaningless gap.  Checked second, that block was refused for
-        # "orbital range exceeds the gap" -- a true statement about
-        # invented numbers, and the wrong thing to go and fix.
-        layer_z = detect_layers(model.positions[:, 2], LAYER_TOL_ANG)
-        gaps = [layer_z[i + 1] - layer_z[i]
-                for i in range(len(layer_z) - 1)]
-        odd = [g for g in gaps
-               if abs(g - model.d_interlayer) > LAYER_TOL_ANG]
-        if odd:
-            raise ComposeError(
-                f"the {model.label} block does not TILE along the "
-                f"transport axis: its layers sit at spacings "
-                f"{', '.join(f'{g:.3f}' for g in gaps)} A (median "
-                f"{model.d_interlayer:.3f} A), so repeating the block "
-                f"does not reproduce a bulk lead "
-                f"(transport-design.md 3).  The label boundary likely "
-                f"cuts a partial layer -- re-label the block on whole "
-                f"bulk layers.")
-
+        # THE TILING CHECK MOVED INTO THE EXTRACTION on 2026-09-20.
+        # It stood here comparing each layer spacing against the MEDIAN
+        # of the same spacings -- a reference drawn from the numbers it
+        # was judging, at a 0.5 A tolerance borrowed from
+        # `LAYER_TOL_ANG`, whose job is deciding what counts as one
+        # layer.  `cell.bulk_z_period` now refuses an unevenly spaced
+        # block outright and hands back the single spacing, so a model
+        # that exists at all has already tiled (user ruling: one
+        # unified check; there is one spacing in a bulk lead and no
+        # statistic is taken of it).
+        #
+        # The ORDER it argued for still holds and is now structural:
+        # every number the principal-layer condition below uses comes
+        # from the period, and a block that does not tile has no period
+        # to compute one from.  It cannot be checked second any more
+        # because such a block never becomes a model.
         # Thick enough -- the principal-layer condition.  Two orbitals
         # couple within rc_i + rc_j of each other.  The nearest atoms
         # of NEXT-NEAREST lead cells are separated along transport by
@@ -702,6 +706,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         cell = np.asarray(struct.cell, dtype=float)
         xv_pos = np.asarray(struct.positions, dtype=float)
         deck = xv_path = None
+        src_pos = None
         deck_text = None
         params = None
         concluded = None
@@ -744,8 +749,11 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
                 f"but {xv_path.name} carries {len(xv_elements)} -- the "
                 f"two files do not describe the same relaxation.")
 
-        # frozen means unmoved (§ 3, ruling Q3) -- start = the deck's
-        # own coordinates, end = the .XV (4.1b: the gate is form A's).
+        # THE GEOMETRY THE RELAXATION STARTED FROM (4.1b), read here
+        # because only form A has one: the deck's own coordinate block.
+        # The extraction compares it against the .XV to decide "frozen
+        # means unmoved" (§ 3, ruling Q3); without it that question has
+        # no start to measure from and the refusal below says so.
         if params.coords_ang is None:
             raise ComposeError(
                 f"the deck {deck.name} carries no convertible "
@@ -759,23 +767,14 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
                 f"the deck {deck.name}'s coordinate block ({len(src_pos)} "
                 f"atoms) does not match {xv_path.name} ({len(xv_pos)}) -- "
                 f"the two files do not describe the same relaxation.")
-        moved = []
-        for label in (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE):
-            for i in struct.regions.get(label, ()):
-                d = float(np.linalg.norm(xv_pos[i] - src_pos[i]))
-                if d > FROZEN_TOL_ANG:
-                    moved.append((i, struct.elements[i], label, d))
-        if moved:
-            shown = "; ".join(f"atom {i} ({el}, {lab}) moved {d:.4f} A"
-                              for i, el, lab, d in moved[:6])
-            more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
-            raise ComposeError(
-                f"{len(moved)} electrode atom(s) MOVED during the cited "
-                f"relaxation: {shown}{more}.  Frozen means unmoved "
-                f"(transport-design.md 3, ruling Q3): the electrode "
-                f"blocks are the seam the self-energies attach to.  "
-                f"Re-relax the junction with the electrode atoms "
-                f"constrained, or fix the labels.")
+        # THE UNMOVED CHECK MOVED INTO THE EXTRACTION on 2026-09-20.
+        # It compared `src_pos` against the .XV here, for the two
+        # electrode regions, and form B -- a labeled pair handed in as
+        # the finished structure -- never reached it, so a lead that was
+        # never frozen composed cleanly on that route.  `src_pos` is now
+        # handed to the extraction, which asks the same question of a
+        # lead it is about to build, and asks the cheaper one first:
+        # whether the atoms were declared frozen at all.
 
     relaxed = Structure(
         elements=list(struct.elements),
@@ -798,10 +797,20 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     sorted_res = categorical_sort(relaxed)
     dev = sorted_res.structure
 
-    # the electrode models, extracted from the SORTED blocks -- the
-    # wizard's analysis (layer period, thickness floor, lateral cell
-    # from the device) is the § 3 tiling/thickness gate in code form.
-    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=cite_dir)
+    # The electrode models, extracted from the SORTED blocks -- and the
+    # § 3 lead gates, which is the same step: a block that is not frozen
+    # bulk does not become a model (`wizard.extract_electrode_model`).
+    #
+    # The starting geometry goes in the SORTED device's index order, so
+    # the gate compares atom i against atom i; `sorted_to_original[new] =
+    # old` is exactly the indexing `categorical_sort` used to build the
+    # sorted positions.  The same tuple travels as `atom_ids` so a
+    # refusal names atoms the way the person's own file does.
+    prior = (None if src_pos is None
+             else src_pos[list(sorted_res.sorted_to_original)])
+    elec_l, elec_r = _extract_and_gate_electrodes(
+        dev, prior_positions=prior,
+        atom_ids=sorted_res.sorted_to_original, ion_dir=cite_dir)
 
     provenance = {
         "schema": "molbuilder/slot-provenance@1",
@@ -923,7 +932,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None
             ion_dir, _cited = resolve_citation(citation, Path(tree_root))
         except ComposeError:
             ion_dir = None      # the citation moved: UNVERIFIED, honestly
-    elec_l, elec_r = _extract_and_gate_electrodes(dev, ion_dir=ion_dir)
+    # NO `prior_positions` HERE, and that is not an omission: this
+    # rebuilds from a junction that was already composed, so the unmoved
+    # comparison was made when the record was written and its starting
+    # geometry is not part of the record.  The frozen and even-spacing
+    # checks still run -- they need only the structure.
+    elec_l, elec_r = _extract_and_gate_electrodes(
+        dev, atom_ids=sorted_res.sorted_to_original, ion_dir=ion_dir)
     deck_text = deck_path.read_text() if deck_path.is_file() else None
     return ComposedJunction(
         sorted=sorted_res,

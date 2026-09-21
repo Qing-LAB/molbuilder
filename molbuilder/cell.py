@@ -505,21 +505,55 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
     return [float(np.mean(layer)) for layer in layers]
 
 
-def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
-    """Propose the bulk repeat from the layer centroids.
+#: How far two adjacent-layer spacings in the SAME block may differ before
+#: the block is refused as a bulk lead.
+#:
+#: There is ONE spacing in a bulk lead, and this tolerance exists for float
+#: noise around it -- a coordinate written to a file at six decimals, or one
+#: that went through the Angstrom -> Bohr -> Angstrom round trip of an
+#: ``.XV``.  It is the standard the electrodes are already held to elsewhere
+#: (``transport.compose.FROZEN_TOL_ANG``, *frozen means unmoved*), restated
+#: here rather than imported because ``cell`` is L1 and ``transport`` is not.
+#:
+#: MEASURED, not picked.  Across the eleven labelled junctions under
+#: ``projects/`` -- Au-BDT-Au, BDT-Au, single-molecule-BDT, claude-junction --
+#: the widest spread between any two spacings of one electrode block is
+#: **1e-6 A**, which is the precision the coordinates were written at.  This
+#: is a thousand times that.
+UNIFORM_SPACING_TOL_ANG = 1e-3
 
-    Returns ``(z_period, d_interlayer, n_layers)`` where
-    ``d_interlayer`` is the *median* adjacent-layer spacing (robust to a
-    slightly off top/bottom layer) and
-    ``z_period = z_span + d_interlayer`` so the slab tiles seamlessly:
-    the next periodic image's first layer lands exactly one interlayer
-    spacing above the current top layer.
 
-    The median is measured on the slab AS BUILT, so an ``inter_layer_offset``
-    override is honoured without being passed in.
+def bulk_z_period(
+    layer_z: Sequence[float],
+    tol_ang: float = UNIFORM_SPACING_TOL_ANG,
+) -> Tuple[float, float, int]:
+    """The bulk repeat of a lead, from its layer centroids.
 
-    Raises ``ValueError`` on fewer than 2 layers (the repeat is
-    undeterminable from a single layer — the caller must supply it).
+    Returns ``(z_period, d_interlayer, n_layers)``.  ``d_interlayer`` is
+    THE spacing — the one every adjacent pair of layers is checked to
+    share — and ``z_period = z_span + d_interlayer``, so the next
+    periodic image's first layer lands exactly one spacing above the
+    current top layer instead of on top of it.
+
+    **THERE IS NO STATISTIC HERE, AND THAT IS THE POINT** *(user ruling,
+    2026-09-20)*.  A lead is frozen bulk: ``engines/transport.md`` § 4 —
+    *"the lead atoms are frozen bulk by construction"* — and its § 2a.9
+    table, where the electrode region *"coincides exactly with the
+    frozen-atom set the relaxation already carries"*.  Its layers
+    therefore sit where the builder put them, one spacing apart, and the
+    honest operation is to CHECK that and read the value off.
+
+    This returned ``median(gaps)`` until 2026-09-20, on the stated
+    argument that a median is *"robust to a slightly relaxed outermost
+    layer"*.  A median is wrong when the block is frozen bulk: a relaxed
+    layer inside an electrode region means the region was mislabelled or
+    was never frozen, and absorbing it hands back a plausible spacing, a
+    plausible period, and a deck built on a lead that is not bulk.  The
+    condition to refuse cannot also be the condition to smooth over.
+
+    Raises ``ValueError`` — naming the spacings — when they disagree by
+    more than *tol_ang*, and on fewer than 2 layers, where there is no
+    spacing to measure at all.
     """
     n = len(layer_z)
     if n < 2:
@@ -527,7 +561,23 @@ def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
             "cannot derive a bulk z-period from a single atomic layer; "
             "pass an explicit z_period (the lead's bulk lattice repeat)")
     diffs = np.diff(np.asarray(layer_z, dtype=float))
-    d_interlayer = float(np.median(diffs))
+    # THE SPREAD, not each gap against an average of them.  A reference
+    # drawn from the same numbers moves with them, so a block with half
+    # its spacings wrong would shift the reference and the check would
+    # agree with itself.  `max - min` asks the question directly and
+    # needs no reference at all.
+    spread = float(diffs.max() - diffs.min())
+    if spread > tol_ang:
+        raise ValueError(
+            f"the layers are not evenly spaced: "
+            f"{', '.join(f'{g:.4f}' for g in diffs)} A "
+            f"(a spread of {spread:.4f} A, more than {tol_ang:g} A), so "
+            f"repeating this block does not reproduce a bulk lead.  A lead "
+            f"is frozen bulk, so every spacing is the one the slab was built "
+            f"with — either the label boundary cuts a partial layer "
+            f"(re-label the block on whole bulk layers), or these atoms were "
+            f"not frozen and have relaxed away from bulk")
+    d_interlayer = float(diffs[0])
     z_span = float(layer_z[-1] - layer_z[0])
     z_period = z_span + d_interlayer
     return z_period, d_interlayer, n

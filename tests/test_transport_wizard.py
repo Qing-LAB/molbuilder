@@ -31,9 +31,16 @@ def _au_device():
     z1 = z0 + 1.5 + 2 * 1.8 + 1.5
     for layer in range(4):                       # right electrode
         elems.append("Au"); pos.append([1.0, 1.0, z1 + layer * d]); right.append(i); i += 1
-    return Structure(
+    s = Structure(
         elements=elems, positions=np.asarray(pos, dtype=float),
         regions={"L-electrode": left, "bridge": bridge, "R-electrode": right})
+    # THE LEADS ARE FROZEN, because a junction's are: `engines/transport.md`
+    # § 4, and the extraction refuses a block that is not (2026-09-20).  The
+    # bridge is deliberately left free -- that is the shape of a real
+    # junction, and a fixture that froze everything would pass a gate that
+    # only asks about the leads for the wrong reason.
+    s.frozen_atoms = left + right
+    return s
 
 
 # --------------------------------------------------------------------- #
@@ -84,3 +91,104 @@ def test_extract_thin_electrode_notes_warning():
 # two writers, both deleted.  What EXTRACTION does is still checked above,
 # and that is the part `compose.py` uses: prep renders the extracted lead
 # through the framework (`prep.py` -> `as_structure` -> `spec_for`).
+
+
+# --------------------------------------------------------------------- #
+#  the gate: what disqualifies a labelled block from being a lead       #
+# --------------------------------------------------------------------- #
+#
+# ONE FUNCTION DECIDES THIS (user ruling, 2026-09-20: "one unified check
+# and gate/extraction process").  Until then a frozen-unmoved loop in
+# `compose_junction` and a tiling check in `_extract_and_gate_electrodes`
+# answered two of these, and a junction handed in as a finished pair
+# (compose's form B) reached neither -- so a lead that was never frozen
+# produced a deck.  These tests are on the extraction because that is
+# where the answer now lives, for every caller and both forms.
+
+
+def test_an_unfrozen_lead_is_refused_and_told_to_freeze():
+    """The refusal a person acts on: WHICH atoms, and what to do."""
+    dev = _au_device()
+    dev.frozen_atoms = []
+    with pytest.raises(ValueError) as e:
+        extract_electrode_model(dev, "L-electrode")
+    msg = str(e.value)
+    assert "NOT FROZEN" in msg
+    assert "0 (Au)" in msg, f"the atoms must be named: {msg}"
+    assert "freeze them" in msg, f"and the fix must be named: {msg}"
+
+
+def test_one_unfrozen_atom_is_enough():
+    """A lead is bulk or it is not; there is no mostly-frozen lead."""
+    dev = _au_device()
+    dev.frozen_atoms = [0, 1, 2]          # the 4th Au of L is loose
+    with pytest.raises(ValueError) as e:
+        extract_electrode_model(dev, "L-electrode")
+    assert "1 atom(s)" in str(e.value) and "3 (Au)" in str(e.value)
+
+
+def test_the_bridge_is_not_required_to_be_frozen():
+    """THE DISCRIMINATING CASE.  A junction's whole point is that the
+    bridge relaxes while the leads do not, so a gate that demanded every
+    atom be frozen would refuse every correct junction."""
+    dev = _au_device()                     # bridge atoms 4, 5 are free
+    assert extract_electrode_model(dev, "L-electrode").n_layers == 4
+
+
+def test_a_lead_that_moved_is_refused_when_a_starting_geometry_is_given():
+    """`frozen` is a declaration; this is the outcome.  Both are asked,
+    because a label can carry the declaration and the relaxation can
+    still have moved the atom."""
+    dev = _au_device()
+    prior = np.asarray(dev.positions, dtype=float).copy()
+    prior[2, 2] -= 0.05
+    with pytest.raises(ValueError) as e:
+        extract_electrode_model(dev, "L-electrode", prior_positions=prior)
+    msg = str(e.value)
+    assert "MOVED" in msg and "atom 2 (Au)" in msg and "0.0500" in msg
+
+
+def test_an_unmoved_lead_passes_with_a_starting_geometry():
+    """The half without which 'it refuses' would be satisfied by
+    refusing always."""
+    dev = _au_device()
+    prior = np.asarray(dev.positions, dtype=float).copy()
+    m = extract_electrode_model(dev, "L-electrode", prior_positions=prior)
+    assert m.z_period == pytest.approx(4 * 2.35)
+
+
+def test_without_a_starting_geometry_the_frozen_DECLARATION_still_holds():
+    """Compose's form B — a labelled pair handed in as the finished
+    structure — has nothing to compare against, and that is precisely why
+    the declaration is asked separately.  It was the route with no frozen
+    check at all before 2026-09-20."""
+    dev = _au_device()
+    dev.frozen_atoms = []
+    with pytest.raises(ValueError, match="NOT FROZEN"):
+        extract_electrode_model(dev, "L-electrode", prior_positions=None)
+
+
+def test_an_unevenly_spaced_lead_is_refused():
+    """Wired, not merely present in `cell`: the extraction is where a
+    caller meets this, and the refusal names the spacings."""
+    dev = _au_device()
+    pos = np.asarray(dev.positions, dtype=float)
+    pos[3, 2] += 0.6                       # the 4th layer of L, pushed out
+    dev.positions = pos
+    with pytest.raises(ValueError) as e:
+        extract_electrode_model(dev, "L-electrode")
+    assert "not evenly spaced" in str(e.value)
+
+
+def test_frozen_is_asked_before_moved():
+    """The ORDER is a dependency: an unfrozen lead's answer to 'did it
+    move' is noise, and freezing is the fix for both.  A block that is
+    neither frozen nor unmoved must be told the first thing."""
+    dev = _au_device()
+    dev.frozen_atoms = []
+    prior = np.asarray(dev.positions, dtype=float).copy()
+    prior[2, 2] -= 0.05
+    with pytest.raises(ValueError) as e:
+        extract_electrode_model(dev, "L-electrode", prior_positions=prior)
+    msg = str(e.value)
+    assert "NOT FROZEN" in msg and "MOVED" not in msg
