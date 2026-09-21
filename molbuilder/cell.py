@@ -508,39 +508,40 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: How far two adjacent-layer spacings in the SAME block may differ before
 #: the block is refused as a bulk lead.
 #:
-#: There is ONE spacing in a bulk lead.  This tolerance is the noise floor
-#: around it, and it is NOT a per-atom budget -- getting that wrong is what
-#: made the first version of this number refuse correct leads:
+#: There is ONE spacing in a bulk lead, and a frozen lead built by the slab
+#: API has it EXACTLY: measured on `modify.add_slab(element="Au",
+#: plane="111", size=(2,2,6))`, the six layer z-values are copies of the
+#: same number and the spread between gaps is **8.9e-16 A** -- float64
+#: epsilon.  This tolerance exists only for what the file round trip adds
+#: on the way back in.
 #:
-#:   a per-atom coordinate error of  e
-#:   -> a layer centroid off by up to  e      (a mean of those coordinates)
-#:   -> a GAP off by up to            2e      (a difference of two centroids)
-#:   -> a SPREAD of up to             4e      (max gap minus min gap)
+#: MEASURED ON THE ONLY PATH THAT EXISTS.  A lead reaches here as a `.xyz`
+#: + `.molstruct.json` pair and nothing else: `classify_citation` globs
+#: `*.xyz`, and the recompose path reads `junction.xyz`.  The codec writes
+#: `12.6f`, and across all eighteen readable labelled junctions under
+#: `projects/` the widest spread in any electrode block is **1e-6 A**.  A
+#: real constrained relaxation is tighter still -- the frozen layers of
+#: `claude-junction`'s `.XV` come back with a spread of **5.3e-10 A**.
 #:
-#: So the floor is four times the coarsest per-atom error on any path that
-#: reaches here, and two floors matter:
+#: So 1e-3 is ~500x the worst noise that can actually occur, and ~50x
+#: below the smallest thing worth refusing: a surface layer relaxed by
+#: ~0.05 A (1-3% of Au(111)'s 2.35), let alone a label boundary cutting a
+#: partial layer, which is half an interlayer spacing or more.
 #:
-#:   * **File precision.**  The coarsest coordinate writer in this repo is
-#:     the PDB one -- ``%8.3f`` (`structure.py`), and `StructureCodec` writes
-#:     a ``.pdb`` + sidecar pair carrying regions and frozen atoms, so a lead
-#:     can arrive through it.  e = 5e-4 -> spread up to **2e-3**.  Measured:
-#:     at 3 decimals a perfect frozen Pt(111) lead lands at exactly 1.0e-3
-#:     and was REFUSED at the old 1e-3, while Au(111) at the same precision
-#:     passed -- the verdict decided by binary64, not by the crystal.
-#:   * **The frozen budget.**  ``transport.wizard.FROZEN_TOL_ANG`` is 1e-3
-#:     PER ATOM, so a lead that legitimately passes "frozen means unmoved"
-#:     can show a spread of **4e-3**.  At 1e-3 the gate certified a lead as
-#:     unmoved and then refused it for having moved.
+#: IT WAS BRIEFLY 5e-3, on two arguments that do not survive contact with
+#: the code (user, 2026-09-21: *"why would you write the PDB file when we
+#: always use XYZ?"*).  One was a 3-decimal PDB round trip -- but a `.pdb`
+#: is not a citable pair, so a lead cannot arrive that way.  The other was
+#: a lead spending the whole per-atom `FROZEN_TOL_ANG` budget in an
+#: alternating pattern; real frozen atoms come back at 5e-10.  Both were
+#: constructed, and neither is a reason to widen a threshold.
 #:
-#: 5e-3 clears both, and is still an order of magnitude below the smallest
-#: defect worth catching: a surface layer relaxed by ~0.05 A (1-3% of
-#: Au(111)'s 2.35).  On the eighteen readable labelled junctions under
-#: ``projects/`` the widest spread in any electrode block is 1e-6 A.
-#:
-#: IT SAID 1e-3 AND "the standard the electrodes are already held to
-#: (`FROZEN_TOL_ANG`)" UNTIL 2026-09-20.  They are not the same standard;
-#: one is a displacement, the other a second difference of means.
-UNIFORM_SPACING_TOL_ANG = 5e-3
+#: WHAT REMAINS TRUE from that episode, and is why this is not simply
+#: `FROZEN_TOL_ANG`: the two are not the same standard.  That one is a
+#: budget PER ATOM; this one is on `max(gap) - min(gap)`, a difference of
+#: differences of means, so a per-atom error `e` becomes up to `4e` here.
+#: They are numerically equal by coincidence of scale, not by derivation.
+UNIFORM_SPACING_TOL_ANG = 1e-3
 
 
 def bulk_z_period(
