@@ -1609,15 +1609,12 @@ def test_the_leads_own_measurements_reach_the_card(
     """WIRED, NOT MERELY COMPUTED.
 
     `extract_electrode_model` measures the periodic seam and the
-    principal-layer condition and writes both to `ElectrodeModel.notes`
-    — and until 2026-09-20 every reader stopped at `composed.sorted.notes`,
-    so the one measurement that says whether a lead is really bulk was
-    computed on every compose and thrown away.  A note nobody reads is
-    not a limit stated.
+    principal-layer condition into `ElectrodeModel.notes`; a note no
+    reader reaches is not a limit stated.
 
-    Reported, never enforced — the same rule the electrode ORIENTATION
-    is drawn under (user ruling 2026-08-29).  So the 4-layer case must
-    come back as a DESCRIPTION, not a refusal.
+    Reported, never enforced -- the rule the electrode orientation is
+    drawn under -- so the 4-layer case comes back as a description, not
+    a refusal.
     """
     cite = _labelled_au_lead_junction(isolated_projects_root, n_layers)
     r = web_client.get(f"/api/transport/describe_attempt?path={cite}")

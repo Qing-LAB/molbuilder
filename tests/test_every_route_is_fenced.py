@@ -85,7 +85,7 @@ def test_every_path_taking_route_reaches_the_one_fence(web_client):
 
     assert len(routes) >= 30, (
         f"only {len(routes)} path-taking routes found -- the detector has "
-        f"stopped detecting, which fails open. Measured 36 on 2026-09-20.")
+        f"stopped detecting, which fails open -- there are ~36.")
 
     unfenced = [(r, e) for r, e, src in routes if not _REACHES_FENCE.search(src)]
     assert not unfenced, (

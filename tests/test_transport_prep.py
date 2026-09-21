@@ -296,11 +296,6 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
         prep_calculation(dest, "transmission")
         deck = (dest / "05_transmission"
                 / "T_05_transmission.fdf").read_text()
-        # THE PARSER'S OUTPUT, NEVER THE TEXT (user ruling, 2026-09-21).
-        # This searched the WHOLE deck for the substring "-3.0", which
-        # matches a coordinate or a mesh cutoff just as happily, and says
-        # nothing about `to`.  Measured: with the emitter swapped so the
-        # window ran backwards, that assertion still passed.
         from _deck import fdf_energy_window
         lo, hi = fdf_energy_window(deck, "TBT.Contour.window")
         assert lo == pytest.approx(-3.0), (

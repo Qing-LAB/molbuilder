@@ -23,11 +23,7 @@ __all__ = ["fdf_value", "fdf_sets", "assert_fdf",
 
 
 def _norm(label: str) -> str:
-    """fdf's own `labeleq` normalisation -- THE PRODUCT'S, not a copy.
-
-    This file carried a character-identical second definition until
-    2026-09-21.  Two spellings of one rule is how they drift, and the
-    rule belongs to the parser that reads decks for real."""
+    """fdf's own `labeleq` normalisation, from the parser that owns it."""
     from molbuilder.parse.fdf import _norm as _fdf_norm
     return _fdf_norm(label)
 
@@ -65,24 +61,16 @@ def assert_fdf(text: str, keyword: str, value: str) -> None:
 
 
 # --------------------------------------------------------------------- #
-#  BLOCKS -- and never by reading the text                              #
+#  Blocks                                                              #
 # --------------------------------------------------------------------- #
 #
-# USER RULING, 2026-09-21: *"don't ever use text to validate numbers --
-# parsers outcome should be what you guard, not the text."*
+# The scalar helpers above cannot see inside a `%block`, so these hand
+# the block over as the parser read it.  Assert on these, never on the
+# deck text: a substring only notices a number that disappeared, not one
+# that moved to another block, flipped sign, or changed unit.
 #
-# The scalar half of this file has existed since 2026-08-19 for the
-# padding reason above.  Blocks had no reader, so every test that needed
-# one hand-rolled it, and the two that read `%block TBT.Contour.window`
-# hand-rolled it DIFFERENTLY: one sliced token rows, the other searched
-# the whole deck for `"-3.0"`.  Measured 2026-09-21 -- with the emitter
-# swapped so the window ran BACKWARDS (`from +2 eV to -2 eV`, physically
-# nonsense), 79 tests passed.  A substring only notices a number that
-# disappears; it cannot notice one that moved, flipped, or changed unit.
-#
-# These delegate to `molbuilder.parse.fdf._parse_fdf` -- the SAME reader
-# the product uses on a cited deck -- rather than growing a third parser
-# in the test tree.
+# `molbuilder.parse.fdf._parse_fdf` does the reading -- the same reader
+# the product uses on a cited deck.
 
 
 def fdf_block(text: str, name: str):
@@ -113,16 +101,12 @@ def _energy_ev(value: str, unit: str) -> float:
 def fdf_energy_window(text: str, block: str):
     """``from V [unit] to V [unit]`` inside *block*, as ``(from_eV, to_eV)``.
 
-    THE ONE SPECIALTY of a tbtrans contour row (user, 2026-09-21): both
-    bounds live on a single row with the keyword ``to`` between them, so
-    `fdf_block_rows` alone leaves the second value buried at index 2.
-    Returns ``None`` when the block or the row is absent -- the caller
-    asserts on that, rather than this inventing a default.
-
-    Converted to eV so a unit change is CAUGHT rather than silently
-    reinterpreted: a deck that switched to Ry while keeping the same
-    figures would move the window by 13.6x, and comparing numbers alone
-    would not see it.
+    A tbtrans contour row puts both bounds on ONE row with ``to`` between
+    them, so `fdf_block_rows` alone leaves the second value at index 2 of
+    the ``from`` row.  Returns ``None`` when the block or the row is
+    absent, so the caller asserts on that rather than this inventing a
+    default.  Converted to eV, so a deck that switched unit while keeping
+    the same figures is caught instead of silently reinterpreted.
     """
     rows = fdf_block_rows(text, block)
     toks = rows.get("from")

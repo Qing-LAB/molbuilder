@@ -34,11 +34,9 @@ def _au_device():
     s = Structure(
         elements=elems, positions=np.asarray(pos, dtype=float),
         regions={"L-electrode": left, "bridge": bridge, "R-electrode": right})
-    # THE LEADS ARE FROZEN, because a junction's are: `engines/transport.md`
-    # § 4, and the extraction refuses a block that is not (2026-09-20).  The
-    # bridge is deliberately left free -- that is the shape of a real
-    # junction, and a fixture that froze everything would pass a gate that
-    # only asks about the leads for the wrong reason.
+    # The leads are frozen, as a junction's are (`engines/transport.md` § 4);
+    # the bridge is deliberately left free, so a gate asking about every atom
+    # rather than the leads would fail here.
     s.frozen_atoms = left + right
     return s
 
@@ -97,13 +95,8 @@ def test_extract_thin_electrode_notes_warning():
 #  the gate: what disqualifies a labelled block from being a lead       #
 # --------------------------------------------------------------------- #
 #
-# ONE FUNCTION DECIDES THIS (user ruling, 2026-09-20: "one unified check
-# and gate/extraction process").  Until then a frozen-unmoved loop in
-# `compose_junction` and a tiling check in `_extract_and_gate_electrodes`
-# answered two of these, and a junction handed in as a finished pair
-# (compose's form B) reached neither -- so a lead that was never frozen
-# produced a deck.  These tests are on the extraction because that is
-# where the answer now lives, for every caller and both forms.
+# One function decides this, so the tests sit on the extraction: it is
+# where the answer lives, for every caller and both citation forms.
 
 
 def test_an_unfrozen_lead_is_refused_and_told_to_freeze():

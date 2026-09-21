@@ -471,12 +471,10 @@ def resolve_and_check(struct: Structure, *,
 # --------------------------------------------------------------------- #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
-#  Contract: docs/science/junction-cell.md § 5.  ONE caller --           #
-#  transport.wizard.extract_electrode_model, the bulk-lead cell          #
-#  TranSIESTA needs.  This said "two callers ... (modify.add_slab)"      #
-#  until 2026-09-20; modify does not call it and has not since § 6       #
-#  retired the padding that wanted it.  It lives here, below the         #
-#  engine, because the repeat of a layered box is a fact about the box.  #
+#  Contract: docs/science/junction-cell.md § 5.  One caller --          #
+#  transport.wizard.extract_electrode_model, the bulk-lead cell         #
+#  TranSIESTA needs.  It lives here, below the engine, because the      #
+#  repeat of a layered box is a fact about the box.                     #
 # --------------------------------------------------------------------- #
 
 #: Two atoms whose z differ by less than this are the same atomic layer.
@@ -505,42 +503,16 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
     return [float(np.mean(layer)) for layer in layers]
 
 
-#: How far two adjacent-layer spacings in the SAME block may differ before
-#: the block is refused as a bulk lead.
+#: How far two adjacent-layer spacings in one block may differ before it
+#: is refused as a bulk lead.
 #:
-#: There is ONE spacing in a bulk lead, and a frozen lead built by the slab
-#: API has it EXACTLY: measured on `modify.add_slab(element="Au",
-#: plane="111", size=(2,2,6))`, the six layer z-values are copies of the
-#: same number and the spread between gaps is **8.9e-16 A** -- float64
-#: epsilon.  This tolerance exists only for what the file round trip adds
-#: on the way back in.
-#:
-#: MEASURED ON THE ONLY PATH THAT EXISTS.  A lead reaches here as a `.xyz`
-#: + `.molstruct.json` pair and nothing else: `classify_citation` globs
-#: `*.xyz`, and the recompose path reads `junction.xyz`.  The codec writes
-#: `12.6f`, and across all eighteen readable labelled junctions under
-#: `projects/` the widest spread in any electrode block is **1e-6 A**.  A
-#: real constrained relaxation is tighter still -- the frozen layers of
-#: `claude-junction`'s `.XV` come back with a spread of **5.3e-10 A**.
-#:
-#: So 1e-3 is ~500x the worst noise that can actually occur, and ~50x
-#: below the smallest thing worth refusing: a surface layer relaxed by
-#: ~0.05 A (1-3% of Au(111)'s 2.35), let alone a label boundary cutting a
-#: partial layer, which is half an interlayer spacing or more.
-#:
-#: IT WAS BRIEFLY 5e-3, on two arguments that do not survive contact with
-#: the code (user, 2026-09-21: *"why would you write the PDB file when we
-#: always use XYZ?"*).  One was a 3-decimal PDB round trip -- but a `.pdb`
-#: is not a citable pair, so a lead cannot arrive that way.  The other was
-#: a lead spending the whole per-atom `FROZEN_TOL_ANG` budget in an
-#: alternating pattern; real frozen atoms come back at 5e-10.  Both were
-#: constructed, and neither is a reason to widen a threshold.
-#:
-#: WHAT REMAINS TRUE from that episode, and is why this is not simply
-#: `FROZEN_TOL_ANG`: the two are not the same standard.  That one is a
-#: budget PER ATOM; this one is on `max(gap) - min(gap)`, a difference of
-#: differences of means, so a per-atom error `e` becomes up to `4e` here.
-#: They are numerically equal by coincidence of scale, not by derivation.
+#: A frozen lead's spacings are equal by construction; this is the noise
+#: floor of the file round trip, not a per-atom budget.  A per-atom error
+#: `e` reaches `4e` here -- centroid `e`, gap `2e`, spread `4e` -- so it
+#: is not interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite
+#: the equal value.  A lead arrives only as a `.xyz` + sidecar pair, which
+#: the codec writes at six decimals: 1e-6 observed, against ~0.05 A for
+#: the smallest defect worth refusing (a relaxed surface layer).
 UNIFORM_SPACING_TOL_ANG = 1e-3
 
 
@@ -551,30 +523,18 @@ def bulk_z_period(
     """The bulk repeat of a lead, from its layer centroids.
 
     Returns ``(z_period, d_interlayer, n_layers)``.  ``d_interlayer`` is
-    THE spacing — the one every adjacent pair of layers is checked to
-    share — and ``z_period = z_span + d_interlayer``, so the next
-    periodic image's first layer lands exactly one spacing above the
-    current top layer instead of on top of it.
+    the spacing every adjacent pair of layers is checked to share, and
+    ``z_period = z_span + d_interlayer``, so the next periodic image's
+    first layer lands one spacing above the top layer rather than on it.
 
-    **THERE IS NO STATISTIC HERE, AND THAT IS THE POINT** *(user ruling,
-    2026-09-20)*.  A lead is frozen bulk.  ``engines/transport.md`` § 2a.9 says it
-    twice: *"the lead atoms are frozen bulk by construction"*, and in its
-    table, where the electrode region *"coincides exactly with the
-    frozen-atom set the relaxation already carries"*.  Its layers
-    therefore sit where the builder put them, one spacing apart, and the
-    honest operation is to CHECK that and read the value off.
+    A lead is frozen bulk (``engines/transport.md`` § 2a.9), so its
+    layers sit where the builder put them and the spacing is read off
+    rather than averaged: an outlier means the region was mislabelled or
+    was never frozen, which is a refusal, not something to smooth over.
 
-    This returned ``median(gaps)`` until 2026-09-20, on the stated
-    argument that a median is *"robust to a slightly relaxed outermost
-    layer"*.  A median is wrong when the block is frozen bulk: a relaxed
-    layer inside an electrode region means the region was mislabelled or
-    was never frozen, and absorbing it hands back a plausible spacing, a
-    plausible period, and a deck built on a lead that is not bulk.  The
-    condition to refuse cannot also be the condition to smooth over.
-
-    Raises ``ValueError`` — naming the spacings — when they disagree by
+    Raises ``ValueError`` -- naming the spacings -- when they differ by
     more than *tol_ang*, and on fewer than 2 layers, where there is no
-    spacing to measure at all.
+    spacing to measure.
     """
     n = len(layer_z)
     if n < 2:
@@ -582,11 +542,8 @@ def bulk_z_period(
             "cannot derive a bulk z-period from a single atomic layer; "
             "pass an explicit z_period (the lead's bulk lattice repeat)")
     diffs = np.diff(np.asarray(layer_z, dtype=float))
-    # THE SPREAD, not each gap against an average of them.  A reference
-    # drawn from the same numbers moves with them, so a block with half
-    # its spacings wrong would shift the reference and the check would
-    # agree with itself.  `max - min` asks the question directly and
-    # needs no reference at all.
+    # max - min, not each gap against an average of them: a reference
+    # drawn from the same numbers moves with them.
     spread = float(diffs.max() - diffs.min())
     if spread > tol_ang:
         raise ValueError(

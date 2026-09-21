@@ -856,15 +856,9 @@ class TestFormB:
             f"file (4), not by its place in the deck order (0): {msg}")
 
     def test_a_pair_whose_leads_are_not_frozen_is_refused(self, tmp_path):
-        """THE HOLE THIS ROUTE HAD until 2026-09-20.  Form B has no
-        starting geometry, so the frozen-unmoved comparison cannot run --
-        and that comparison was the ONLY frozen check compose made, in a
-        branch form A alone reached.  A pair labelled `L-electrode` with
-        nothing frozen composed cleanly and produced a deck whose
-        self-energy attached to a geometry that had relaxed.
-
-        The declaration is now asked of every route, which is the whole
-        reason it is asked separately from the movement."""
+        """Form B has no starting geometry, so the unmoved comparison
+        cannot run here -- which is exactly why the frozen DECLARATION is
+        asked separately, and of every route."""
         from molbuilder.workingcopy_structure import StructureCodec
         root = tmp_path / "projects"
         d = root / "loose"

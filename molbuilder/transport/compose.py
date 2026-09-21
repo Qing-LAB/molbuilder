@@ -562,13 +562,11 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
     """Extract both leads from the sorted device, then measure the one
     § 3 condition that needs files from outside the structure.
 
-    **WHAT A LEAD MUST BE is `wizard.extract_electrode_model`'s** — every
-    atom frozen, unmoved if a starting geometry is given, evenly spaced —
-    and a block that is none of those never becomes a model.  *(Consolidated
-    there 2026-09-20 on the user's ruling; a frozen-unmoved loop in
-    `compose_junction` and a tiling check in this function used to make two
-    of those decisions here, and form B reached neither.)*  This function
-    passes the inputs through and turns the refusal into a `ComposeError`.
+    What a lead must BE is `wizard.extract_electrode_model`'s question
+    -- every atom frozen, unmoved if a starting geometry is given,
+    evenly spaced -- and a block that is none of those never becomes a
+    model.  This passes the inputs through and turns the refusal into a
+    `ComposeError`.
 
     What stays is the principal-layer condition, because it is the one
     that cannot be answered from the structure: it compares the orbital
@@ -612,22 +610,10 @@ def _extract_and_gate_electrodes(dev: Structure, *, prior_positions=None,
             + "  ".join(f"({i}) {r}." for i, r in enumerate(refusals, 1)))
     models = tuple(models)
     for model in models:
-        # THE TILING CHECK MOVED INTO THE EXTRACTION on 2026-09-20.
-        # It stood here comparing each layer spacing against the MEDIAN
-        # of the same spacings -- a reference drawn from the numbers it
-        # was judging, at a 0.5 A tolerance borrowed from
-        # `LAYER_TOL_ANG`, whose job is deciding what counts as one
-        # layer.  `cell.bulk_z_period` now refuses an unevenly spaced
-        # block outright and hands back the single spacing, so a model
-        # that exists at all has already tiled (user ruling: one
-        # unified check; there is one spacing in a bulk lead and no
-        # statistic is taken of it).
-        #
-        # The ORDER it argued for still holds and is now structural:
-        # every number the principal-layer condition below uses comes
-        # from the period, and a block that does not tile has no period
-        # to compute one from.  It cannot be checked second any more
-        # because such a block never becomes a model.
+        # Tiling is the extraction's: `cell.bulk_z_period` refuses an
+        # unevenly spaced block, so a model that exists has tiled.  The
+        # principal-layer condition below needs its period, which is why
+        # that order is structural rather than a choice made here.
         # Thick enough -- the principal-layer condition.  Two orbitals
         # couple within rc_i + rc_j of each other.  The nearest atoms
         # of NEXT-NEAREST lead cells are separated along transport by
@@ -778,14 +764,8 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
                 f"the deck {deck.name}'s coordinate block ({len(src_pos)} "
                 f"atoms) does not match {xv_path.name} ({len(xv_pos)}) -- "
                 f"the two files do not describe the same relaxation.")
-        # THE UNMOVED CHECK MOVED INTO THE EXTRACTION on 2026-09-20.
-        # It compared `src_pos` against the .XV here, for the two
-        # electrode regions, and form B -- a labeled pair handed in as
-        # the finished structure -- never reached it, so a lead that was
-        # never frozen composed cleanly on that route.  `src_pos` is now
-        # handed to the extraction, which asks the same question of a
-        # lead it is about to build, and asks the cheaper one first:
-        # whether the atoms were declared frozen at all.
+        # `src_pos` goes to the extraction, which asks whether these
+        # atoms moved as part of deciding whether the block is a lead.
 
     relaxed = Structure(
         elements=list(struct.elements),

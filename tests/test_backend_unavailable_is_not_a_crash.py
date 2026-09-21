@@ -5,10 +5,9 @@ engine that fell over, a bug"*.  A missing optional backend is none of
 those: the request was well-formed and molbuilder is refusing it, which is
 the contract's ADVISORY case -- 200 with ``ok: false``.
 
-It answered **500** until 2026-09-20, for both shapes below, because
-`BackendUnavailable` had no handler anywhere in the repo and fell into the
-route's generic ``except Exception``.  So asking for a duplex without X3DNA
-reported as a crash, naming a tool the person may never have heard of.
+Without a handler, `BackendUnavailable` falls into the route's generic
+``except Exception`` and a duplex requested without X3DNA reports as a
+crash, naming a tool the person may never have heard of.
 """
 from __future__ import annotations
 

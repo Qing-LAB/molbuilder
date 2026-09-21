@@ -412,13 +412,8 @@ def test_bulk_z_period_admits_what_the_REAL_path_does_to_a_built_lead():
     the codec writes at `12.6f` -- and 1e-6 is the widest spread any of
     the eighteen real labelled junctions shows.  These are those numbers.
 
-    REPLACED two tests on 2026-09-21 that pinned constructed scenarios: a
-    3-decimal PDB round trip (a `.pdb` is not a citable pair, so a lead
-    cannot arrive that way) and a lead spending the whole per-atom frozen
-    budget in an alternating pattern (real frozen atoms come back at
-    5e-10).  User: *"why would you write the PDB file when we always use
-    XYZ?"*  Neither was reachable, and both were arguments for widening a
-    threshold that did not need widening.
+    A `.pdb` is not a citable pair, so the codec's six decimals are the
+    coarsest precision a lead can arrive at.
     """
     d = 2.3545498678090       # Au(111) at a = 4.0782, straight from add_slab
     exact = [i * d for i in range(6)]

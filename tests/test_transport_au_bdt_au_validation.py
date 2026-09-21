@@ -336,12 +336,11 @@ def test_the_transmission_window_carries_the_configured_point_count():
     assert rows.get("points") == [str(cfg.transmission_n_points)]
     assert rows.get("part") == ["line"], (
         "tbtrans refuses anything but a line part for this contour")
-    # THE BOUNDS, through the parser -- they are the x-axis of T(E) and
-    # were asserted nowhere until 2026-09-21.  NOT against E_F: whether
-    # a `%block TBT.Contour` line's energies are absolute or E_F-relative
-    # is a recorded OPEN question (`config/transport.py`,
-    # `transport/stages.py`, `record.py`), so this pins that the deck
-    # carries what the CONFIG said, and nothing about what it means.
+    # The bounds are the x-axis of T(E).  Pinned against the CONFIG, not
+    # against E_F: whether a `%block TBT.Contour` line's energies are
+    # absolute or E_F-relative is an open question (`config/transport.py`,
+    # `transport/stages.py`, `record.py`), so this says what the deck
+    # carries, nothing about what it means.
     from _deck import fdf_energy_window
     lo, hi = fdf_energy_window(_live_device_deck(cfg.system_label),
                                "TBT.Contour.window")

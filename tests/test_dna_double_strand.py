@@ -58,10 +58,9 @@ def test_ds_rejected_on_non_x3dna_backend():
     `test_backends.py::test_dispatch_unknown_backend_raises_value_error`
     states the split: *"Unknown backend name is a usage error, not a
     missing-tool error -- ValueError, not BackendUnavailable."*  A duplex
-    is a perfectly good request; X3DNA simply is not installed.  These two
-    asserted `ValueError` until 2026-09-20, when the duplex gate started
-    raising the dedicated type so the web route could answer the
-    contract's ADVISORY 200 instead of a 500 (`web-api.md` § 1).
+    is a perfectly good request; X3DNA simply is not installed.  The
+    dedicated type is what lets the web route answer the contract's
+    advisory 200 rather than a 500 (`web-api.md` § 1).
     """
     with pytest.raises(BackendUnavailable, match="requires X3DNA"):
         build_dna("ds,ATGC", backend="rdkit")

@@ -145,32 +145,23 @@ class ElectrodeModel:
 # --------------------------------------------------------------------- #
 
 
-#: How far a FROZEN atom may sit from where the relaxation started before
-#: the constraint is judged broken (``engines/transport.md`` § 3: *frozen
-#: means unmoved*).  A real constrained relaxation reproduces its fixed
-#: atoms to writing precision; this absorbs the Angstrom -> Bohr ->
-#: Angstrom round trip of an ``.XV``, never a physical drift.
-#:
-#: LIVED IN ``compose.py`` UNTIL 2026-09-20, beside the loop that used it.
-#: It moved with that loop: the gate it belongs to is now part of building
-#: the lead, so the number is here and ``compose`` imports it.
+#: How far a frozen atom may sit from where the relaxation started
+#: before the constraint is judged broken (``engines/transport.md`` § 3).
+#: A constrained relaxation reproduces its fixed atoms to writing
+#: precision; this absorbs the .XV's Angstrom/Bohr round trip.
 FROZEN_TOL_ANG = 1e-3
 
 
 def _atoms_named(device: Structure, idxs, atom_ids=None,
                  limit: int = 6) -> str:
-    """``3 (Au), 4 (Au) and 12 more`` — the spelling the preflight warning
-    uses (`validation/sidecar.py`), so the same fact reads the same way
-    wherever a person meets it.
+    """``3 (Au), 4 (Au) and 12 more`` -- the spelling `validation/sidecar`
+    uses, in the identity the person can act on.
 
-    **IN THE IDENTITY THE PERSON CAN ACT ON.**  `engine_atom_index`: the
-    canonical atom identity is the 0-based index into the structure as
-    the SOURCE FILE ordered it, and that is what the Modify tab shows and
-    what "go and freeze these" refers to.  A device that has been through
-    `categorical_sort` is in TranSIESTA's deck order instead, so *atom_ids*
-    carries the sort's ``sorted_to_original`` and the number printed is
-    the one in the person's own file.  ``None`` means this device's own
-    indices are already canonical.
+    `engine_atom_index`: the canonical atom identity is the index in the
+    source file's order, which is what the Modify tab shows.  A device
+    that has been through `categorical_sort` is in TranSIESTA's deck
+    order instead, so *atom_ids* carries ``sorted_to_original``; ``None``
+    means this device's indices are already canonical.
     """
     els = getattr(device, "elements", ()) or ()
 
@@ -184,26 +175,19 @@ def _atoms_named(device: Structure, idxs, atom_ids=None,
 
 
 def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
-    """What this lead's periodic boundary does to the crystal — MEASURED.
+    """What this lead's periodic boundary does to the crystal, measured.
 
-    A lead tiles along z, so its own top layer meets its own bottom layer
-    one cell up.  Whether that seam CONTINUES the crystal depends on the
-    layer count: (111) stacks ABC, so only a multiple of three continues;
-    four layers puts the image's first layer back on the same sites as
-    the top one (`eclipsed`, a head-on metal contact at the interlayer
-    distance instead of the nearest-neighbour one), and five gives a
-    mirror `twin`.  `junction-cell.md` § 3.1.
+    A lead tiles along z, so its top layer meets its own bottom layer one
+    cell up.  Whether that seam continues the crystal is a layer-COUNT
+    question: (111) stacks ABC, so only a multiple of three continues;
+    four layers puts the image's first layer back on the same sites
+    (`eclipsed`, a head-on contact at the interlayer distance instead of
+    the nearest-neighbour one) and five gives a mirror `twin`.
+    `junction-cell.md` § 3.1.
 
-    **REPORTED, NEVER REFUSED** — the same line
-    `blueprints/transport.py` draws for the electrode ORIENTATION: *"THE
-    CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user ruling,
-    2026-08-29)"*.  A faulted seam is wrong for a bulk lead and the
-    person is the one who knows whether they meant it; what they are
-    owed is the measurement, not a veto.
-
-    This replaced a note that told the reader to *"VERIFY … a multiple of
-    3 for FCC(111) ABC"* — homework, about a quantity `cell.classify_seam`
-    was already able to measure and this module already imports.
+    Reported, never refused -- the rule `blueprints/transport.py` states
+    for the electrode orientation.  A faulted seam is wrong for a bulk
+    lead and the person is the one who knows whether they meant it.
     """
     cell = np.array([lat_a, lat_b, [0.0, 0.0, float(zper)]], dtype=float)
     try:
@@ -225,12 +209,9 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
 def _spacing_or_refuse(layer_z, label: str):
     """:func:`cell.bulk_z_period`, with the block's name on the refusal.
 
-    The rule is `cell`'s and stays there; the LABEL is this layer's, and
-    `cell` has no way to know it.  Without this the message read "the
-    labeled electrode block cannot serve as a lead" with no name in it --
-    a regression on the check it replaced, which said "the {label} block
-    does not TILE".  On a two-lead junction of one element that leaves a
-    person no way to tell which end to re-label.
+    The rule is `cell`'s; the label is this layer's, and `cell` has no
+    way to know it.  Without it a two-lead junction of one element gives
+    no way to tell which end to re-label.
     """
     try:
         return bulk_z_period(layer_z)
@@ -308,37 +289,26 @@ def extract_electrode_model(
     device cross-section (I6).  The z-period is derived from the layer
     spacing unless ``z_period`` is given.
 
-    **THIS IS THE ONE GATE** *(user ruling, 2026-09-20: "one unified
-    check and gate/extraction process")*.  Three separate places used to
-    decide whether a labelled block could serve as a lead — a warning in
-    `validation/sidecar.py`, a frozen-unmoved loop in `compose_junction`
-    that only form A ever reached, and a tiling check in
-    `_extract_and_gate_electrodes` comparing each spacing against a
-    median of itself.  A block handed in as a finished pair (form B) met
-    none of them, and a lead that was never frozen produced a deck.
+    **This is the one gate.**  Three questions, in the order their
+    answers depend on one another, each refusal naming what to do:
 
-    So the questions are asked here, in the order their answers depend on
-    one another, and each refusal names what to go and do:
+    1. **Declared frozen** -- every atom of the region is in
+       ``frozen_atoms`` (``engines/transport.md`` § 4: the lead atoms
+       are frozen bulk by construction).
+    2. **Actually unmoved**, when *prior_positions* is given -- the
+       geometry the relaxation started from, in this structure's index
+       order.  Form B has none and passes on 1 alone, which is why 1
+       exists separately.
+    3. **Evenly spaced** -- :func:`cell.bulk_z_period`, which refuses a
+       block whose layers do not share one spacing.
 
-    1. **Declared frozen.**  Every atom of the region is in
-       ``frozen_atoms``.  ``engines/transport.md`` § 4: the lead atoms
-       are frozen bulk by construction.
-    2. **Actually unmoved**, when *prior_positions* is given — the
-       geometry the relaxation STARTED from, in this structure's own
-       index order.  Form B has no such geometry and passes on 1 alone,
-       which is the whole reason 1 exists.
-    3. **Evenly spaced** — :func:`cell.bulk_z_period`, which refuses a
-       block whose layers do not share one spacing and hands back that
-       spacing when they do.
-
-    1 comes before 2 because it is the cheaper question and its answer is
-    the fix for both; 1 and 2 come before 3 because the spacings of a
-    block that moved describe nothing.  Raises ``ValueError``;
-    ``compose`` turns it into a ``ComposeError`` verbatim.
+    1 before 2 because it is cheaper and its answer is the fix for both;
+    1 and 2 before 3 because the spacings of a block that moved describe
+    nothing.  Raises ``ValueError``; `compose` turns it into a
+    ``ComposeError`` verbatim.
 
     *atom_ids* maps this device's indices back to the canonical ones the
-    person sees, for devices that have been through `categorical_sort`;
-    see :func:`_atoms_named`.
+    person sees; see :func:`_atoms_named`.
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}
