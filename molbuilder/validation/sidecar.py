@@ -72,16 +72,18 @@ def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
     self-energies attach to a geometry that is not the bulk they claim to be.
 
     **There is already a gate for that, and it is not this one.**
-    `transport/compose.py` refuses a citation whose electrode atoms MOVED,
-    comparing the cited deck's coordinates against the `.XV`. That check is
-    correct and it is also **too late**: it runs when transport composes, which
-    is after the relaxation has been paid for. Label the leads, forget to
-    freeze them, and nothing objects until a metal junction's relaxation has
-    already run and must be thrown away.
+    `transport.wizard.extract_electrode_model` refuses a lead whose atoms are
+    not frozen, and refuses one that moved when the caller hands it the
+    geometry the relaxation started from. Those refusals are correct and they
+    are also **too late**: they run when transport composes, which is after the
+    relaxation has been paid for. Label the leads, forget to freeze them, and
+    nothing objects until a metal junction's relaxation has already run and
+    must be thrown away.
 
-    So this asks the question one step earlier, where it is cheap: *are these
-    atoms declared frozen*, rather than *did they end up unmoved*. The two
-    catch different failures and neither substitutes for the other.
+    So this asks the same question one step earlier, where it is cheap — and
+    where it is still ACTIONABLE, because the run has not happened yet. That
+    is the whole of what this adds; the compose-time refusal is what makes a
+    bad junction impossible, and this is what makes it avoidable.
 
     **A warning, not a refusal**, and the line is worth stating. A structure
     carrying electrode labels is heading for transport, but it has not

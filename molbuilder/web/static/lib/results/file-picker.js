@@ -635,6 +635,27 @@
                 .then(r => r.json())
                 .then(body => {
                     if (disposed || signal.aborted) return;
+                    /* AND THE ANSWER HAS TO BE ABOUT THE FOLDER WE ASKED
+                     * ABOUT.  This is the rule the rest of the session
+                     * established -- `calcdir.json`'s `of` on disk,
+                     * `said.dir !== _dir` in Task setup -- and the Results
+                     * picker was the one surface still missing it, which is
+                     * the tab the rule was LEARNED on.
+                     *
+                     * Abort is not the same guarantee.  `_abortInFlight`
+                     * covers the common case, but a response already in the
+                     * microtask queue when abort lands still resolves, and
+                     * an abort that races a re-entrant scan does not order
+                     * the two replies.  Clearing state cannot fix a LATE
+                     * ANSWER; only tagging can, and the tag is free because
+                     * `boundDir` is right here.
+                     *
+                     * Compared against OUR OWN request, not against
+                     * `body.run_dir`: the server resolves symlinks, so its
+                     * spelling of the path may legitimately differ from the
+                     * one we sent, and a string compare on that would refuse
+                     * every correct answer under a symlinked projects root. */
+                    if (boundDir !== dir) return;
                     if (!body || body.ok !== true) {
                         // Fetch failed (file listing API errored).
                         // Keep the bar visible so Refresh is still
@@ -908,9 +929,24 @@
         /** The server's answer for one path -- `{role, parser, engine}` --
          * so the viewer dispatches on it instead of re-reading the name. */
         function _metaFor(file) {
+            /* THE WHOLE RECORD, not a hand-picked three.  `presenters.md`
+             * § 2 defines `meta` as `{role, label, stage, parser, engine}`
+             * for `match`, `resultCategory` and `absorbs` alike -- and this
+             * returned three of the five, so a presenter reading
+             * `meta.label` or `meta.stage` inside `match()` got `undefined`
+             * and fell through to its filename test.  Latent only because
+             * no `match` reads them yet; `absorbs` does, and it gets the
+             * full record by a different route, which is the drift.
+             *
+             * Picking fields by hand is the same fault as the event
+             * listener that rebuilt the detail and silently dropped `dir`
+             * (fixed 2026-09-20): two shapes of one record, kept in step by
+             * memory. */
             const hit = (cachedResults || []).find(r => r.path === file);
-            return hit ? { role: hit.role, parser: hit.parser,
-                           engine: hit.engine } : null;
+            if (!hit) return null;
+            return { role:   hit.role,   label:  hit.label,
+                     stage:  hit.stage,  parser: hit.parser,
+                     engine: hit.engine };
         }
 
         function _emitFileSelected(file) {

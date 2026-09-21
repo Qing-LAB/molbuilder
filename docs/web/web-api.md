@@ -760,7 +760,11 @@ and returns the canonical envelope:
   "xyz": "<xyz bytes>", "elements": [ … ], "n_residues": 1, "extra": { … } }
 ```
 
-Failures come back in the envelope: a path escaping the roots → 403/404, a
+Failures come back in the envelope: a path escaping the roots → **400**
+(the status table above gives the reasoning: the picker roots are the
+addressable space, so a path outside them is a bad request, not a
+forbidden one). *(This said 403/404 until 2026-09-20, contradicting the
+table in the same document.)*  A
 missing file → 404 `no such file: <path>`, a parse/sidecar fault → 400. (The
 same route also accepts a multipart `file=` upload or a raw
 `{ text, filename? }` body.)

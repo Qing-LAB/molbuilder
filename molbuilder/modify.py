@@ -816,12 +816,20 @@ def _finish_slab(struct, metal_pos, element, full):
     # electrode defines the junction's in-plane periodicity.  Skipped if the z
     # extent is degenerate (would make a singular cell); the caller can set one.
     #
-    # z is the atoms' extent PLUS ONE INTERLAYER SPACING (science/junction-cell.md
-    # § 1).  The extent alone puts the bottom atom's image at z_min + c = z_max --
-    # exactly on the top atom, at zero distance -- and SIESTA stops.  The spacing
-    # comes from cell.bulk_z_period, the same derivation the electrode wizard uses
-    # for the bulk lead (§ 5), measured on the slab AS BUILT so an
-    # ``inter_layer_offset`` override is honoured without being passed in.
+    # z is the atoms' extent, VERBATIM -- see the block below, which is the
+    # live rule.  This said "PLUS ONE INTERLAYER SPACING" until 2026-09-20,
+    # thirteen lines above the comment recording that `junction-cell.md` § 6
+    # retired exactly that.  Two rules in one function is worse than one
+    # wrong rule: a reader cannot tell which is live.
+    #
+    # THE PADDING IT ARGUED FOR BELONGS TO THE LEAD, NOT TO THIS BOX, and it
+    # lives there: `transport.wizard.extract_electrode_model` derives the
+    # electrode's bulk repeat as `z_span + its one layer spacing` through
+    # `cell.bulk_z_period` (junction-cell.md § 5), so the next periodic image's
+    # first layer lands one spacing above the top instead of on it.  NOTHING
+    # HERE CALLS THAT -- the sentence removed on 2026-09-20 left behind a claim
+    # that it did, and a reader who went looking found no such call.  This `c`
+    # is the junction's own box: measured and set.
     all_pos = np.vstack([struct.positions, metal_pos])
     z_extent = float(all_pos[:, 2].max() - all_pos[:, 2].min())
     slab_cell = np.asarray(full.get_cell(), dtype=float)

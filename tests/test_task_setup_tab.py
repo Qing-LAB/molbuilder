@@ -1561,3 +1561,76 @@ class TestTheFolderDoor:
         assert body["template"]["ok"] is False, "and says which part failed"
         assert body["description"] is not None, (
             "the description is still there to read")
+
+
+def _labelled_au_lead_junction(root, n_layers):
+    """A form-B citable pair (§ 4.1b) whose leads are real fcc(111) Au.
+
+    `_cited_junction` above is two carbon atoms with no regions, so it
+    never reaches the electrode models -- the seam note needs a junction
+    that actually has leads.
+    """
+    import numpy as np
+    from ase.build import fcc111
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    slab = fcc111("Au", size=(1, 1, n_layers), a=4.158,
+                  orthogonal=False, vacuum=0.0)
+    lead = np.asarray(slab.positions, dtype=float)
+    lead[:, 2] -= lead[:, 2].min()
+    span = lead[:, 2].max()
+    right = lead.copy()
+    right[:, 2] += span + 8.0
+    bridge = np.array([[lead[0, 0], lead[0, 1], span + 4.0]])
+
+    pos = np.vstack([lead, bridge, right])
+    n = len(lead)
+    s = Structure(
+        elements=["Au"] * n + ["S"] + ["Au"] * n,
+        positions=pos,
+        regions={"L-electrode": list(range(n)),
+                 "bridge": [n],
+                 "R-electrode": list(range(n + 1, 2 * n + 1))})
+    s.frozen_atoms = list(range(n)) + list(range(n + 1, 2 * n + 1))
+    cell = np.asarray(slab.get_cell(), dtype=float)
+    cell[2] = [0.0, 0.0, pos[:, 2].max() + 10.0]
+    s.cell = cell
+
+    d = root / "seamjunction"
+    d.mkdir(parents=True, exist_ok=True)
+    StructureCodec().write(s, d / "junction.xyz")
+    return "seamjunction"
+
+
+@pytest.mark.parametrize("n_layers,verdict", [(4, "ECLIPSED"), (6, "CONTINUES")])
+def test_the_leads_own_measurements_reach_the_card(
+        web_client, isolated_projects_root, n_layers, verdict):
+    """WIRED, NOT MERELY COMPUTED.
+
+    `extract_electrode_model` measures the periodic seam and the
+    principal-layer condition and writes both to `ElectrodeModel.notes`
+    — and until 2026-09-20 every reader stopped at `composed.sorted.notes`,
+    so the one measurement that says whether a lead is really bulk was
+    computed on every compose and thrown away.  A note nobody reads is
+    not a limit stated.
+
+    Reported, never enforced — the same rule the electrode ORIENTATION
+    is drawn under (user ruling 2026-08-29).  So the 4-layer case must
+    come back as a DESCRIPTION, not a refusal.
+    """
+    cite = _labelled_au_lead_junction(isolated_projects_root, n_layers)
+    r = web_client.get(f"/api/transport/describe_attempt?path={cite}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["form"] == "structure", body
+    summary = body["summary"]
+    assert verdict in summary, f"the seam verdict must reach the card: {summary}"
+    # BOTH leads emit the same seam sentence, so without the prefix a
+    # person reads the verdict twice with nothing saying which end it is
+    # about.  Pin the prefix, not merely the label -- the principal-layer
+    # note already contains "L-electrode", so a looser assertion passes
+    # with the prefix deleted.
+    for lead in ("L-electrode", "R-electrode"):
+        assert f"{lead}: the periodic seam" in summary, (
+            f"each lead's seam note must be attributed to it: {summary}")

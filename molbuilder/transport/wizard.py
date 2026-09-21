@@ -35,7 +35,8 @@ What the USER must still verify (warned, not guaranteed)
 
 * **The bulk z-period.**  A finite slab does not tell us the lead's true
   periodic repeat unambiguously.  We *derive* it as
-  ``z_period = z_span + d_interlayer`` (median interlayer spacing) so the
+  ``z_period = z_span + d_interlayer`` (the block's one layer spacing,
+  checked rather than averaged) so the
   slab tiles seamlessly under uniform spacing, and **warn** that the user
   must confirm it matches the real bulk lattice (e.g. the layer count is a
   whole stacking period — a multiple of 3 for FCC(111) ABC).  ``--z-period``
@@ -55,7 +56,8 @@ from typing import List, Optional
 
 import numpy as np
 
-from ..cell import LAYER_TOL_ANG, bulk_z_period, detect_layers
+from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
+                    detect_layers)
 from ..structure import Structure
 from .transiesta import (
     _compute_cell_from_extents,
@@ -96,7 +98,7 @@ class ElectrodeModel:
     z_period: float                  # proposed bulk repeat (Å)
     z_span: float                    # top-layer − bottom-layer z (Å)
     n_layers: int
-    d_interlayer: float              # median interlayer spacing (Å)
+    d_interlayer: float              # THE layer spacing (Å) -- checked equal
     n_atoms: int
     notes: List[str] = field(default_factory=list)
 
@@ -143,19 +145,200 @@ class ElectrodeModel:
 # --------------------------------------------------------------------- #
 
 
+#: How far a FROZEN atom may sit from where the relaxation started before
+#: the constraint is judged broken (``engines/transport.md`` § 3: *frozen
+#: means unmoved*).  A real constrained relaxation reproduces its fixed
+#: atoms to writing precision; this absorbs the Angstrom -> Bohr ->
+#: Angstrom round trip of an ``.XV``, never a physical drift.
+#:
+#: LIVED IN ``compose.py`` UNTIL 2026-09-20, beside the loop that used it.
+#: It moved with that loop: the gate it belongs to is now part of building
+#: the lead, so the number is here and ``compose`` imports it.
+FROZEN_TOL_ANG = 1e-3
+
+
+def _atoms_named(device: Structure, idxs, atom_ids=None,
+                 limit: int = 6) -> str:
+    """``3 (Au), 4 (Au) and 12 more`` — the spelling the preflight warning
+    uses (`validation/sidecar.py`), so the same fact reads the same way
+    wherever a person meets it.
+
+    **IN THE IDENTITY THE PERSON CAN ACT ON.**  `engine_atom_index`: the
+    canonical atom identity is the 0-based index into the structure as
+    the SOURCE FILE ordered it, and that is what the Modify tab shows and
+    what "go and freeze these" refers to.  A device that has been through
+    `categorical_sort` is in TranSIESTA's deck order instead, so *atom_ids*
+    carries the sort's ``sorted_to_original`` and the number printed is
+    the one in the person's own file.  ``None`` means this device's own
+    indices are already canonical.
+    """
+    els = getattr(device, "elements", ()) or ()
+
+    def name(i):
+        shown_i = atom_ids[i] if atom_ids is not None else i
+        return f"{shown_i} ({els[i]})" if i < len(els) else str(shown_i)
+
+    shown = ", ".join(name(i) for i in idxs[:limit])
+    more = f" and {len(idxs) - limit} more" if len(idxs) > limit else ""
+    return shown + more
+
+
+def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
+    """What this lead's periodic boundary does to the crystal — MEASURED.
+
+    A lead tiles along z, so its own top layer meets its own bottom layer
+    one cell up.  Whether that seam CONTINUES the crystal depends on the
+    layer count: (111) stacks ABC, so only a multiple of three continues;
+    four layers puts the image's first layer back on the same sites as
+    the top one (`eclipsed`, a head-on metal contact at the interlayer
+    distance instead of the nearest-neighbour one), and five gives a
+    mirror `twin`.  `junction-cell.md` § 3.1.
+
+    **REPORTED, NEVER REFUSED** — the same line
+    `blueprints/transport.py` draws for the electrode ORIENTATION: *"THE
+    CONVENTION IS CHECKED AND REPORTED, NEVER ENFORCED (user ruling,
+    2026-08-29)"*.  A faulted seam is wrong for a bulk lead and the
+    person is the one who knows whether they meant it; what they are
+    owed is the measurement, not a veto.
+
+    This replaced a note that told the reader to *"VERIFY … a multiple of
+    3 for FCC(111) ABC"* — homework, about a quantity `cell.classify_seam`
+    was already able to measure and this module already imports.
+    """
+    cell = np.array([lat_a, lat_b, [0.0, 0.0, float(zper)]], dtype=float)
+    try:
+        v = classify_seam(pos, cell)
+    except Exception as exc:                       # noqa: BLE001
+        return (f"the periodic seam could not be classified ({exc}); "
+                f"the lead's tiling is UNCHECKED")
+    if v.verdict == "continues":
+        per = f" (stacking period {v.period} layers)" if v.period else ""
+        return (f"the periodic seam CONTINUES the crystal{per}: the layer "
+                f"one cell up sits where the stacking says it should, "
+                f"{v.gap:.3f} Å from the top layer.")
+    return (f"the periodic seam is {v.verdict.upper()} — {v.message}.  "
+            f"This lead is what TranSIESTA turns into the self-energy, so "
+            f"a faulted seam is a faulted bulk Hamiltonian.  Not refused: "
+            f"you may mean it (junction-cell.md § 3.1).")
+
+
+def _spacing_or_refuse(layer_z, label: str):
+    """:func:`cell.bulk_z_period`, with the block's name on the refusal.
+
+    The rule is `cell`'s and stays there; the LABEL is this layer's, and
+    `cell` has no way to know it.  Without this the message read "the
+    labeled electrode block cannot serve as a lead" with no name in it --
+    a regression on the check it replaced, which said "the {label} block
+    does not TILE".  On a two-lead junction of one element that leaves a
+    person no way to tell which end to re-label.
+    """
+    try:
+        return bulk_z_period(layer_z)
+    except ValueError as exc:
+        raise ValueError(f"the {label} block: {exc}") from exc
+
+
+def _refuse_unless_frozen_bulk(
+    device: Structure,
+    label: str,
+    idxs,
+    prior_positions: Optional[np.ndarray],
+    atom_ids=None,
+) -> None:
+    """The lead must be frozen, and must have stayed where it was.
+
+    Split out so :func:`extract_electrode_model` reads as *check, then
+    build* rather than interleaving the two; see that docstring for why
+    the order of these questions is a dependency and not a preference.
+    """
+    frozen = set(getattr(device, "frozen_atoms", None) or ())
+    loose = [i for i in idxs if i not in frozen]
+    if loose:
+        raise ValueError(
+            f"{len(loose)} atom(s) in {label!r} are NOT FROZEN: "
+            f"{_atoms_named(device, loose, atom_ids)}.  A lead is the "
+            f"pristine bulk "
+            f"the self-energy attaches to, so every atom carrying an "
+            f"electrode label must be held still — freeze them (the Modify "
+            f"tab's selection writes \"frozen_atoms\"), then relax and cite "
+            f"again.  Freezing them now does not make the geometry they are "
+            f"already in bulk -- nothing held them while the bridge relaxed, "
+            f"so whether they moved was never constrained")
+
+    if prior_positions is None:
+        return
+    prior = np.asarray(prior_positions, dtype=float)
+    now = np.asarray(device.positions, dtype=float)
+    if prior.shape != now.shape:
+        raise ValueError(
+            f"cannot check {label!r} against the geometry the relaxation "
+            f"started from: {len(prior)} atoms there, {len(now)} here")
+    moved = [(i, float(np.linalg.norm(now[i] - prior[i]))) for i in idxs]
+    moved = [(i, d) for i, d in moved if d > FROZEN_TOL_ANG]
+    if moved:
+        shown = "; ".join(
+            f"atom {atom_ids[i] if atom_ids is not None else i} "
+            f"({device.elements[i]}) moved {d:.4f} A"
+            for i, d in moved[:6])
+        more = f" and {len(moved) - 6} more" if len(moved) > 6 else ""
+        raise ValueError(
+            f"{len(moved)} atom(s) in {label!r} MOVED during the cited "
+            f"relaxation: {shown}{more}.  Frozen means unmoved "
+            f"(archive/2026-09-01-transport-design.md § 3, ruling Q3): the "
+            f"electrode blocks "
+            f"are the seam the self-energies attach to.  Re-relax the "
+            f"junction with the electrode atoms constrained, or fix the "
+            f"labels")
+
+
 def extract_electrode_model(
     device: Structure,
     label: str,
     *,
+    prior_positions: Optional[np.ndarray] = None,
+    atom_ids=None,
     z_period: Optional[float] = None,
     layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> ElectrodeModel:
-    """Build an :class:`ElectrodeModel` for one ``*-electrode`` region.
+    """Build an :class:`ElectrodeModel` for one ``*-electrode`` region —
+    and refuse the region outright if it is not a bulk lead.
 
     The lateral cell is the **device's** (a, b) — so the lead tiles the
     device cross-section (I6).  The z-period is derived from the layer
     spacing unless ``z_period`` is given.
+
+    **THIS IS THE ONE GATE** *(user ruling, 2026-09-20: "one unified
+    check and gate/extraction process")*.  Three separate places used to
+    decide whether a labelled block could serve as a lead — a warning in
+    `validation/sidecar.py`, a frozen-unmoved loop in `compose_junction`
+    that only form A ever reached, and a tiling check in
+    `_extract_and_gate_electrodes` comparing each spacing against a
+    median of itself.  A block handed in as a finished pair (form B) met
+    none of them, and a lead that was never frozen produced a deck.
+
+    So the questions are asked here, in the order their answers depend on
+    one another, and each refusal names what to go and do:
+
+    1. **Declared frozen.**  Every atom of the region is in
+       ``frozen_atoms``.  ``engines/transport.md`` § 4: the lead atoms
+       are frozen bulk by construction.
+    2. **Actually unmoved**, when *prior_positions* is given — the
+       geometry the relaxation STARTED from, in this structure's own
+       index order.  Form B has no such geometry and passes on 1 alone,
+       which is the whole reason 1 exists.
+    3. **Evenly spaced** — :func:`cell.bulk_z_period`, which refuses a
+       block whose layers do not share one spacing and hands back that
+       spacing when they do.
+
+    1 comes before 2 because it is the cheaper question and its answer is
+    the fix for both; 1 and 2 come before 3 because the spacings of a
+    block that moved describe nothing.  Raises ``ValueError``;
+    ``compose`` turns it into a ``ComposeError`` verbatim.
+
+    *atom_ids* maps this device's indices back to the canonical ones the
+    person sees, for devices that have been through `categorical_sort`;
+    see :func:`_atoms_named`.
     """
     electrodes = {lab: (name, idxs)
                   for lab, name, idxs in _find_electrode_regions(device)}
@@ -166,6 +349,9 @@ def extract_electrode_model(
             f"(labels must end with the *-electrode convention)")
     block_name, idxs = electrodes[label]
     idxs = sorted(idxs)
+
+    _refuse_unless_frozen_bulk(device, label, idxs, prior_positions,
+                               atom_ids)
 
     pos = np.asarray(device.positions, dtype=float)[idxs]
     elems = [device.elements[i] for i in idxs]
@@ -197,7 +383,7 @@ def extract_electrode_model(
         # This used to recompute the median inline, which is a second copy of
         # the rule cell.bulk_z_period owns (science/junction-cell.md § 5).
         if len(layer_z) >= 2:
-            _derived, d_inter, n_layers = bulk_z_period(layer_z)
+            _derived, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
         else:
             d_inter, n_layers = float("nan"), len(layer_z)
         z_span = float(layer_z[-1] - layer_z[0]) if layer_z else 0.0
@@ -205,14 +391,13 @@ def extract_electrode_model(
             f"z-period set explicitly to {zper:.3f} Å (overriding the "
             f"layer-spacing estimate).")
     else:
-        zper, d_inter, n_layers = bulk_z_period(layer_z)
+        zper, d_inter, n_layers = _spacing_or_refuse(layer_z, label)
         z_span = float(layer_z[-1] - layer_z[0])
         notes.append(
-            f"z-period DERIVED as z_span ({z_span:.3f}) + median interlayer "
-            f"({d_inter:.3f}) = {zper:.3f} Å.  VERIFY this matches the lead's "
-            f"true bulk repeat (e.g. {n_layers} layers is a whole stacking "
-            f"period — a multiple of 3 for FCC(111) ABC); override with "
-            f"--z-period if not.")
+            f"z-period DERIVED as z_span ({z_span:.3f}) + layer spacing "
+            f"({d_inter:.3f}) = {zper:.3f} Å, from {n_layers} layers.")
+
+    notes.append(_seam_note(pos, lat_a, lat_b, zper))
 
     if z_span < min_thickness_ang:
         notes.append(
@@ -253,5 +438,6 @@ def extract_electrode_model(
 __all__ = [
     "DEFAULT_ELECTRODE_KZ",
     "ElectrodeModel",
+    "FROZEN_TOL_ANG",
     "extract_electrode_model",
 ]

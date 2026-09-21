@@ -223,6 +223,17 @@ def api_transport_describe_attempt() -> Any:
         # can act on without matching prose.
         for note in composed.sorted.notes:
             status = status + "  ⚠ " + note
+        # AND THE LEADS' OWN MEASUREMENTS, which reached nothing until
+        # 2026-09-20.  `extract_electrode_model` measures the periodic
+        # seam and the principal-layer condition and writes both to
+        # `ElectrodeModel.notes` -- and every reader stopped at
+        # `sorted.notes`, so the one place that says whether a lead is
+        # really bulk was computed and dropped.  Same rule as the line
+        # above: checked and reported, never enforced.  Labelled,
+        # because "the seam is ECLIPSED" is useless without which end.
+        for model in (composed.electrode_left, composed.electrode_right):
+            for note in (model.notes if model is not None else ()):
+                status = status + f"  ⚠ {model.label}: " + note
         if (electrode_orientation(composed.sorted.structure)
                 == ORDER_INVERTED):
             fix = "swap_electrodes"

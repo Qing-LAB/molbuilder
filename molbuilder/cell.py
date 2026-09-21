@@ -471,12 +471,12 @@ def resolve_and_check(struct: Structure, *,
 # --------------------------------------------------------------------- #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
-#  Contract: docs/science/junction-cell.md.  Two callers derive the      #
-#  same number for two boxes -- the junction cell that flanks a molecule #
-#  (modify.add_slab) and the bulk-lead cell TranSIESTA needs            #
-#  (transport.wizard.extract_electrode_model).  It lived in the wizard   #
-#  first; it is here so the second caller reuses it instead of growing   #
-#  a second copy that can disagree.                                      #
+#  Contract: docs/science/junction-cell.md § 5.  ONE caller --           #
+#  transport.wizard.extract_electrode_model, the bulk-lead cell          #
+#  TranSIESTA needs.  This said "two callers ... (modify.add_slab)"      #
+#  until 2026-09-20; modify does not call it and has not since § 6       #
+#  retired the padding that wanted it.  It lives here, below the         #
+#  engine, because the repeat of a layered box is a fact about the box.  #
 # --------------------------------------------------------------------- #
 
 #: Two atoms whose z differ by less than this are the same atomic layer.
@@ -505,21 +505,75 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
     return [float(np.mean(layer)) for layer in layers]
 
 
-def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
-    """Propose the bulk repeat from the layer centroids.
+#: How far two adjacent-layer spacings in the SAME block may differ before
+#: the block is refused as a bulk lead.
+#:
+#: There is ONE spacing in a bulk lead.  This tolerance is the noise floor
+#: around it, and it is NOT a per-atom budget -- getting that wrong is what
+#: made the first version of this number refuse correct leads:
+#:
+#:   a per-atom coordinate error of  e
+#:   -> a layer centroid off by up to  e      (a mean of those coordinates)
+#:   -> a GAP off by up to            2e      (a difference of two centroids)
+#:   -> a SPREAD of up to             4e      (max gap minus min gap)
+#:
+#: So the floor is four times the coarsest per-atom error on any path that
+#: reaches here, and two floors matter:
+#:
+#:   * **File precision.**  The coarsest coordinate writer in this repo is
+#:     the PDB one -- ``%8.3f`` (`structure.py`), and `StructureCodec` writes
+#:     a ``.pdb`` + sidecar pair carrying regions and frozen atoms, so a lead
+#:     can arrive through it.  e = 5e-4 -> spread up to **2e-3**.  Measured:
+#:     at 3 decimals a perfect frozen Pt(111) lead lands at exactly 1.0e-3
+#:     and was REFUSED at the old 1e-3, while Au(111) at the same precision
+#:     passed -- the verdict decided by binary64, not by the crystal.
+#:   * **The frozen budget.**  ``transport.wizard.FROZEN_TOL_ANG`` is 1e-3
+#:     PER ATOM, so a lead that legitimately passes "frozen means unmoved"
+#:     can show a spread of **4e-3**.  At 1e-3 the gate certified a lead as
+#:     unmoved and then refused it for having moved.
+#:
+#: 5e-3 clears both, and is still an order of magnitude below the smallest
+#: defect worth catching: a surface layer relaxed by ~0.05 A (1-3% of
+#: Au(111)'s 2.35).  On the eighteen readable labelled junctions under
+#: ``projects/`` the widest spread in any electrode block is 1e-6 A.
+#:
+#: IT SAID 1e-3 AND "the standard the electrodes are already held to
+#: (`FROZEN_TOL_ANG`)" UNTIL 2026-09-20.  They are not the same standard;
+#: one is a displacement, the other a second difference of means.
+UNIFORM_SPACING_TOL_ANG = 5e-3
 
-    Returns ``(z_period, d_interlayer, n_layers)`` where
-    ``d_interlayer`` is the *median* adjacent-layer spacing (robust to a
-    slightly off top/bottom layer) and
-    ``z_period = z_span + d_interlayer`` so the slab tiles seamlessly:
-    the next periodic image's first layer lands exactly one interlayer
-    spacing above the current top layer.
 
-    The median is measured on the slab AS BUILT, so an ``inter_layer_offset``
-    override is honoured without being passed in.
+def bulk_z_period(
+    layer_z: Sequence[float],
+    tol_ang: float = UNIFORM_SPACING_TOL_ANG,
+) -> Tuple[float, float, int]:
+    """The bulk repeat of a lead, from its layer centroids.
 
-    Raises ``ValueError`` on fewer than 2 layers (the repeat is
-    undeterminable from a single layer — the caller must supply it).
+    Returns ``(z_period, d_interlayer, n_layers)``.  ``d_interlayer`` is
+    THE spacing — the one every adjacent pair of layers is checked to
+    share — and ``z_period = z_span + d_interlayer``, so the next
+    periodic image's first layer lands exactly one spacing above the
+    current top layer instead of on top of it.
+
+    **THERE IS NO STATISTIC HERE, AND THAT IS THE POINT** *(user ruling,
+    2026-09-20)*.  A lead is frozen bulk.  ``engines/transport.md`` § 2a.9 says it
+    twice: *"the lead atoms are frozen bulk by construction"*, and in its
+    table, where the electrode region *"coincides exactly with the
+    frozen-atom set the relaxation already carries"*.  Its layers
+    therefore sit where the builder put them, one spacing apart, and the
+    honest operation is to CHECK that and read the value off.
+
+    This returned ``median(gaps)`` until 2026-09-20, on the stated
+    argument that a median is *"robust to a slightly relaxed outermost
+    layer"*.  A median is wrong when the block is frozen bulk: a relaxed
+    layer inside an electrode region means the region was mislabelled or
+    was never frozen, and absorbing it hands back a plausible spacing, a
+    plausible period, and a deck built on a lead that is not bulk.  The
+    condition to refuse cannot also be the condition to smooth over.
+
+    Raises ``ValueError`` — naming the spacings — when they disagree by
+    more than *tol_ang*, and on fewer than 2 layers, where there is no
+    spacing to measure at all.
     """
     n = len(layer_z)
     if n < 2:
@@ -527,7 +581,23 @@ def bulk_z_period(layer_z: Sequence[float]) -> Tuple[float, float, int]:
             "cannot derive a bulk z-period from a single atomic layer; "
             "pass an explicit z_period (the lead's bulk lattice repeat)")
     diffs = np.diff(np.asarray(layer_z, dtype=float))
-    d_interlayer = float(np.median(diffs))
+    # THE SPREAD, not each gap against an average of them.  A reference
+    # drawn from the same numbers moves with them, so a block with half
+    # its spacings wrong would shift the reference and the check would
+    # agree with itself.  `max - min` asks the question directly and
+    # needs no reference at all.
+    spread = float(diffs.max() - diffs.min())
+    if spread > tol_ang:
+        raise ValueError(
+            f"the layers are not evenly spaced: "
+            f"{', '.join(f'{g:.4f}' for g in diffs)} A "
+            f"(a spread of {spread:.4f} A, more than {tol_ang:.4f} A), so "
+            f"repeating this block does not reproduce a bulk lead.  A lead "
+            f"is frozen bulk, so every spacing is the one the slab was built "
+            f"with — either the label boundary cuts a partial layer "
+            f"(re-label the block on whole bulk layers), or these atoms were "
+            f"not frozen and have relaxed away from bulk")
+    d_interlayer = float(diffs[0])
     z_span = float(layer_z[-1] - layer_z[0])
     z_period = z_span + d_interlayer
     return z_period, d_interlayer, n

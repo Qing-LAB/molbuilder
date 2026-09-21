@@ -2550,11 +2550,16 @@ class TestFilesUpload:
     def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
         """A raw `..` in `target_dir` reaching resolution.
 
-        `web-api.md` § 2.1. Honest note (2026-09-09): this target resolves
-        outside the root, so containment refuses it without the string check --
-        but because the sibling outside-root test cannot fail (see above), this
-        is currently the ONLY test proving upload reaches the fence at all.
-        Keep it until that one is repaired.
+        `web-api.md` § 2.1. This target resolves outside the root, so
+        containment refuses it without the string check -- the `..` test is
+        defence in depth over the resolution step.
+
+        *(An honest note here said this was "the ONLY test proving upload
+        reaches the fence at all", because the sibling outside-root test could
+        not fail. That sibling was repaired -- it builds its path outside the
+        picker root and excludes the echoed path from the match -- so this
+        note described a gap that had been closed, and told a reader to keep a
+        test "until that one is repaired".)*
         """
         # Defense in depth: '..' in raw target_dir string is rejected
         # even though the resolution step would also catch it.

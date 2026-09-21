@@ -1912,7 +1912,7 @@ be.
 
 | Layer | Module | Role |
 |---|---|---|
-| Composition | `transport/compose.py` | citation → parsed `.XV` → frozen gate → categorical sort → electrode extraction; the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
+| Composition | `transport/compose.py` | citation → parsed `.XV` → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry`, `_emit_basis_and_xc` and `_emit_transiesta_block` as its emission library |
@@ -2309,7 +2309,13 @@ because Σ is built from how this cell tiles. On (111), an electrode region whos
 layer count is not a multiple of 3 tiles into a **twin** (4 or 7 layers give
 something worse — an eclipsed, head-on contact), so Σ then describes a faulted
 crystal rather than bulk gold. Six layers in the electrode region satisfies it;
-four does not. Override with `--z-period` when you know the true repeat.
+four does not. **This is measured and reported, never enforced** (the rule the
+electrode orientation follows): `extract_electrode_model` classifies the lead's
+periodic seam and the card says `CONTINUES`, `ECLIPSED` or `TWIN`, naming the
+layer count as the cause. A faulted seam composes — you may mean it — but it is
+a faulted bulk Hamiltonian, because this lead is what becomes the self-energy.
+(`--z-period` used to be advertised here as the override; that flag went with
+`molbuilder transport electrode` on 2026-09-17.)
 
 *The device cell boundary (I8 — open).* The device runs at `kz = 1`; beyond the
 outermost lead layers sit the semi-infinite leads, entering only as Σ. What lies

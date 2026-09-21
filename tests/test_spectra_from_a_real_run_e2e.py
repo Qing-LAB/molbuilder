@@ -24,10 +24,15 @@ So this walks it:
      page's own "Load once" button;
   5. read the modes off the screen.
 
-**2.3 seconds of compute.**  RHF/STO-3G on three atoms — the same level of
-theory `test_pyscf_smoke.py` uses as its reference for the same reason: it is
-the most exhaustively documented case in the literature, so a wrong answer is
-our bug and not numerical weather.
+**2.3 seconds of compute.**  RHF/STO-3G on three atoms — the most
+exhaustively documented case in the literature, so a wrong answer is our bug
+and not numerical weather.  *(This cited `test_pyscf_smoke.py` as using the
+same level of theory for the same reason.  That file was RETIRED 2026-09-20:
+its stated job — catching a deck that renders but does not run — is done here
+and in three siblings, through `prepare_deck` rather than `render_script`, so
+it tested a path production does not take; and its "literature reference" was
+in fact PySCF's own printed output at fifty times the tolerance its header
+cited.)*
 
 **Why CO2 and not something smaller.**  A diatomic has one mode and would pass
 on almost any wiring.  CO2 is the smallest molecule whose spectrum has a shape

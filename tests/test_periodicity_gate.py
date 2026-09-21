@@ -204,9 +204,11 @@ class TestTheStateTable:
         Contract: `model/structure-periodicity.md` § 6.1 (containment is required
         along non-periodic axes) + § 6.1a.
 
-        KNOWN WEAK: the axis half of the claim is asserted as `"a" in str(exc)`,
-        which any English sentence satisfies. See the audit note; the assertion
-        wants `"axis a"` or the `where` id, not the letter.
+        *(This carried a "KNOWN WEAK" note saying the axis half was asserted
+        as `"a" in str(exc)` -- any English sentence satisfies that.  Fixed
+        since: the assertions below require `"along a"` AND that b and c are
+        not named.  The note outlived the weakness by long enough to
+        contradict the code fifteen lines under it.)*
         """
         s = _mol()
         s.cell = np.eye(3) * 1.0                     # extent 2 Å can't fit
