@@ -20,11 +20,17 @@ and every value downstream is wrong by a fixed ratio.  The ratio between a
 Rydberg and an electronvolt is 13.6.
 
 **The vocabulary is shared; the POLICY is the caller's.**  What a missing
-unit means is a fact about the format being read, not about the quantity: a
-bare energy in an ``.fdf`` really is Ry, and one in a tbtrans contour block
-really is eV.  So each reader passes its own *default* and decides whether an
-unknown word is a refusal — but no reader keeps its own word list, because
-that is where a word goes missing.
+unit means is a fact about the FORMAT being read, and the format's own engine
+is the only authority on it: libfdf refuses a physical value with no unit, so
+`parse/fdf.py` passes no default and leaves a bare value unanswered, while a
+tbtrans contour block is written in eV.  Each reader states its own rule and
+decides whether an unknown word is a refusal — but no reader keeps its own
+word list, because that is where a word goes missing.
+
+A default here is never a judgement call.  `tests/test_siesta_keyword_smoke.py`
+asks the shipped binary what the engine does and asserts this side follows.
+The two defaults that were invented instead were both wrong, and one of them
+refused a correct junction.
 
 **Refusing beats assuming.**  A wrong factor is invisible in the result and
 wrong by a fixed ratio in every number downstream, so an unknown unit raises
