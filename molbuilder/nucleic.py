@@ -167,7 +167,15 @@ def build_dna(
         # GATE: any duplex needs X3DNA -- canonical via fiber, arbitrary via rebuild.
         resolved = backend if backend != "auto" else auto_backend_name()
         if resolved != "threedna":
-            raise ValueError(
+            # `BackendUnavailable`, not `ValueError`: this is the same
+            # condition `_threedna` raises when 3DNA is absent -- the
+            # machine cannot do it -- and one condition wants one type, so
+            # one handler at the route covers both (`web-api.md` § 1).  It
+            # was a bare ValueError, which fell into the generic
+            # `except Exception` and answered HTTP 500: a tool the person
+            # chose not to install, reported as a crash.
+            from .builders.backends import BackendUnavailable
+            raise BackendUnavailable(
                 "double-strand DNA requires X3DNA (the 'threedna' backend, which "
                 "builds duplex geometry via fiber / rebuild).  "
                 + ("It isn't installed / detected. " if resolved is None

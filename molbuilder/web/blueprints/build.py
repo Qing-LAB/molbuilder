@@ -62,6 +62,7 @@ import pathlib
 from datetime import datetime
 from typing import Any, Dict
 
+from ...builders.backends import BackendUnavailable as _BackendUnavailable
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
@@ -350,6 +351,23 @@ def api_build_molecule():
             struct, backend_used = _BUILDERS[kind](text, return_backend=True)
         else:
             struct = _BUILDERS[kind](text)
+    except _BackendUnavailable as exc:
+        # NOT A SERVER FAULT.  `web-api.md` § 1 defines 5xx as *"an I/O
+        # error, an engine that fell over, a bug"* -- a backend the person
+        # chose not to install is none of those, and answering 500 tells
+        # them molbuilder crashed when it did not.  It is the contract's
+        # ADVISORY case, word for word: *"the request was well-formed and
+        # the validator refused it"* -> 200 with `ok: false`.
+        #
+        # `reason` and `backend` are machine-readable so the page can act
+        # on it -- the Modify tab offers all four backends whether or not
+        # they are installed, and this is what would let it stop.  The
+        # message itself is unchanged: `design.md` requires it to name the
+        # preconditions checked, the download URL, the licence terms and
+        # the fallbacks, and it does.
+        return jsonify({"ok": False, "reason": "backend_unavailable",
+                        "backend": requested or "auto",
+                        "error": str(exc)}), 200
     except ImportError as exc:
         return jsonify({"ok": False,
                         "error": f"missing dependency: {exc}"}), 500
