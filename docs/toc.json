@@ -33,9 +33,6 @@
         {
           "path": "plans/2026-09-12-env-config-handover.md",
           "label": "Hand-over: envs + config (2026-09-12)"
-        },
-        {
-          "path": "plans/2026-09-19-workflow-test-findings.md"
         }
       ]
     },
@@ -565,6 +562,11 @@
           "path": "archive/2026-09-10-plan-consolidation.md",
           "label": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10",
           "subtitle": "Plan rows closed, withdrawn and measured untrue — consolidated 2026-09-10"
+        },
+        {
+          "path": "archive/2026-09-20-workflow-test-findings.md",
+          "label": "Workflow-test findings, 2026-09-19 (claude-junction regeneration)",
+          "subtitle": "Workflow-test findings, 2026-09-19 (claude-junction regeneration)"
         },
         {
           "path": "archive/MIGRATION.md",

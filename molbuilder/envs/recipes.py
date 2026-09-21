@@ -1382,11 +1382,24 @@ _PYSCF = Recipe(
             # the installed direct_url.json, which is what the audit
             # reads, so what landed stays auditable without one.
             source="git+https://github.com/pyscf/properties.git",
-            # The installed version cannot tell the two trees apart:
-            # master and the only sdist BOTH declare 0.1.0, so a plain
-            # install reads as already satisfied and does nothing
-            # (measured 2026-09-11 -- the tree stayed PyPI's and
-            # ``infrared`` stayed absent).
+            # FORCE, BECAUSE THE VERSION STRING CANNOT SAY WHICH TREE
+            # THIS IS.  Master and the only sdist BOTH declare 0.1.0, so
+            # a plain install over an existing PyPI copy reads as already
+            # satisfied and does nothing -- leaving the tree WITHOUT
+            # ``infrared`` in place while the good one was reachable.
+            # That is the failure this flag exists for, and it is a
+            # different one from an unreachable GitHub, which
+            # ``fallback_to_index`` below handles and says out loud.
+            #
+            # The fact is permanent and checkable from what is installed:
+            # the dist-info reads 0.1.0 while ``direct_url.json`` names a
+            # git commit.  (It cited a one-off 2026-09-11 observation
+            # until 2026-09-20; that had been made by installing the PyPI
+            # copy into the HOST env -- where pyscf must never be -- and
+            # was removed the next day along with the two empty
+            # directories pip left, which were making ``import pyscf``
+            # succeed there.  Nothing to go and look at, and nothing that
+            # needs to be put back.)
             force=True,
             # ``polarizability`` (required -- Raman has no fallback path)
             # is byte-identical in the sdist, so an unreachable GitHub
