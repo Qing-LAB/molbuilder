@@ -781,7 +781,7 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
 
 
 def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
-                  token: str, root_dir: str,
+                  root_dir: str,
                   cert: Optional[str], key: Optional[str],
                   lab_dirs: Optional[Dict[str, str]] = None) -> List[str]:
     """The ``jupyter lab`` command line, as the door will carry it.
@@ -795,8 +795,13 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     The computed half is here because each row needs something only this
     process knows, which is the file's own admission rule read backwards:
 
-    * ``token`` -- generated per start so the tab can build a URL nobody has
-      to copy.  A CREDENTIAL; it lives in a 0600 runtime file.
+    **The token is not emitted here** *(2026-09-20)*.  It rides
+    ``JUPYTER_TOKEN`` in the child's environment (`start_notebook`), because
+    ``/proc/<pid>/cmdline`` is world-readable and ``/proc/<pid>/environ`` is
+    not.  jupyter-server reads that variable through its own ``token``
+    default, so the flag has to be ABSENT rather than duplicated -- an
+    explicit trait would win over the default and the environment would be
+    ignored.
     * ``tornado_settings`` -- the ``frame-ancestors`` grant.  Jupyter refuses
       to be framed by default and the tab is an iframe (§ 2).
     * ``ip`` / ``port`` / ``root_dir`` -- the bind address, the derived port,
@@ -828,7 +833,6 @@ def notebook_argv(conda: str, env_name: str, *, host: str, port: int,
     settings.update({
         "ServerApp.ip": host,
         "ServerApp.port": port,
-        "ServerApp.token": token,
         "ServerApp.root_dir": root_dir,
         "ServerApp.tornado_settings": json.dumps(
             {"headers": {"Content-Security-Policy": frame_ancestors}}),
@@ -905,7 +909,7 @@ def run_shepherd(serve_port: int, *, host: str,
     # Hoisting `prepare_lab_home` had fixed the measured case and left the
     # invariant false (found in review 2026-09-15).
     argv = notebook_argv(caps.conda_binary, env_name, host=host, port=port,
-                         token=token, root_dir=str(projects_root()),
+                         root_dir=str(projects_root()),
                          cert=cert, key=key, lab_dirs=lab_dirs)
     scheme = "https" if (cert and key) else "http"
     # BRACKET AN IPv6 LITERAL.  `--host ::1` produced `http://::1:8001/lab`,
@@ -947,6 +951,11 @@ def run_shepherd(serve_port: int, *, host: str,
     # the framed Lab a `jupyterlab-plotly` labextension built against a
     # `plotly` this env does not have.
     env = dict(os.environ)
+    # The token travels here rather than on the command line: `environ` is
+    # owner-only, `cmdline` is not.  Verified end to end 2026-09-20 -- the
+    # runtime file's token authenticates against the running server, and the
+    # argv carries no token at all.
+    env["JUPYTER_TOKEN"] = token
     try:
         # NO PIPE AND NO SINK.  This process's stdout and stderr ARE the
         # notebook log -- the supervisor opened it and handed it over -- so

@@ -104,7 +104,7 @@ def test_every_authored_setting_reaches_the_argv():
     """
     rules = J.load_rules()
     argv = J.notebook_argv("conda", "env", host="127.0.0.1", port=6007,
-                           token="T", root_dir="/p", cert=None, key=None,
+                           root_dir="/p", cert=None, key=None,
                            lab_dirs={})
     assert rules.server, "the table declares no [server] settings at all"
     for trait, value in rules.server.items():
@@ -121,11 +121,28 @@ def test_a_runtime_setting_reaches_the_argv_through_the_same_emitter():
     same `--trait=value` spelling.
     """
     argv = J.notebook_argv("conda", "env", host="1.2.3.4", port=6007,
-                           token="SEKRIT", root_dir="/p", cert=None, key=None,
+                           root_dir="/p", cert=None, key=None,
                            lab_dirs={"LabApp.workspaces_dir": "/w"})
-    assert "--ServerApp.token=SEKRIT" in argv
+    # The example WAS `--ServerApp.token=SEKRIT`, which is no longer emitted
+    # at all -- see the test below.  `ip` and `workspaces_dir` are computed
+    # the same way and carry the same point.
     assert "--ServerApp.ip=1.2.3.4" in argv
     assert "--LabApp.workspaces_dir=/w" in argv
+
+
+def test_the_notebook_token_never_reaches_the_command_line():
+    """The token rides `JUPYTER_TOKEN`, because `/proc` keeps `environ`
+    owner-only and `cmdline` world-readable.
+
+    Asserted over the WHOLE argv rather than one spelling: what matters is the
+    value being absent, so a row reintroducing it under another trait name has
+    to fail here too.
+    """
+    secret = "tok-must-not-appear-on-the-command-line"
+    argv = J.notebook_argv("conda", "env", host="127.0.0.1", port=6007,
+                           root_dir="/p", cert=None, key=None, lab_dirs={})
+    assert not any(secret in part for part in argv), argv
+    assert not any("token" in part.lower() for part in argv), argv
 
 
 # --------------------------------------------------------------------- #

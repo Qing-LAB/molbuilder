@@ -14,8 +14,11 @@
 #
 #   ServerApp.ip                a CLI argument
 #   ServerApp.port              derived -- `jupyter_port(serve_port)`
-#   ServerApp.token             generated per start; a credential gets no
-#                               home in the repository
+#   ServerApp.token             NOT emitted since 2026-09-20.  It rides
+#                               JUPYTER_TOKEN in the child's environment
+#                               instead -- /proc keeps environ owner-only and
+#                               cmdline world-readable.  A token row here
+#                               would put it back on the command line.
 #   ServerApp.root_dir          the projects root
 #   ServerApp.tornado_settings  the `frame-ancestors` grant, DERIVED from
 #                               `serve_port_of(port)`.  A security header
