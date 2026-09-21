@@ -248,6 +248,17 @@ def validate(struct: Structure, cfg, *,
     issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
 
+    # AN UNRESOLVABLE SPECIES LABEL STOPS HERE, because nothing after it
+    # can work: every electron count, every open-shell test and every
+    # basis question needs an atomic number, and `resolve_element` raises
+    # `KeyError` without one.  That escaped `validate()` as an HTML 500
+    # from the preflight -- taking with it the one finding a person can
+    # act on, which `check_species_labels` had already produced.
+    from .chemistry import check_species_labels as _check_species
+    _labels = _check_species(struct)
+    if any(i.severity == "error" for i in _labels):
+        return issues + _labels
+
     # Engine-specific dispatch via the registry.  isinstance() picks
     # up subclasses too, so a future engine config that subclasses
     # an existing one inherits its validator unless it registers its
