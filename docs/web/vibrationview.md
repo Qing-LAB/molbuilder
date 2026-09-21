@@ -1120,4 +1120,4 @@ neither does this document (§ 4).
 >
 > The work is tracked in task #19 (#104), and the tab-side wiring it depends on —
 > handing `mount` to the code that owns the mode-viewer element on `/results` — in
-> [`audit-2026-08-05-tab-ui.md`](?doc=web/audit-2026-08-05-tab-ui.md) § A1.
+> [`archive/2026-09-21-audit-2026-08-05-tab-ui.md`](?doc=archive/2026-09-21-audit-2026-08-05-tab-ui.md) § A1.

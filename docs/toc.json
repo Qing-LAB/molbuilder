@@ -240,12 +240,6 @@
           "path": "web/bench-summary.md"
         },
         {
-          "path": "web/modify-persistency-investigation.md"
-        },
-        {
-          "path": "web/audit-2026-08-05-tab-ui.md"
-        },
-        {
           "path": "web/spectrumchart.md"
         }
       ]
@@ -577,6 +571,16 @@
           "path": "archive/2026-09-19-workflow-test-findings.md",
           "label": "Workflow-test findings, 2026-09-19 — archived 2026-09-20 (historical record)",
           "subtitle": "Workflow-test findings, 2026-09-19 — archived 2026-09-20 (historical record)"
+        },
+        {
+          "path": "archive/2026-09-21-audit-2026-08-05-tab-ui.md",
+          "label": "Tab-UI static audit — 2026-08-05 — archived 2026-09-21 (historical record)",
+          "subtitle": "Tab-UI static audit — 2026-08-05 — archived 2026-09-21 (historical record)"
+        },
+        {
+          "path": "archive/2026-09-21-modify-persistency-investigation.md",
+          "label": "Persistency on the Molbuilder tab — what is kept, by whom, and what is missing — archived 2026-09-21",
+          "subtitle": "Persistency on the Molbuilder tab — what is kept, by whom, and what is missing — archived 2026-09-21"
         },
         {
           "path": "archive/MIGRATION.md",

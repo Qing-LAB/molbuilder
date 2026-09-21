@@ -1,6 +1,23 @@
-# Persistency on the Molbuilder tab — what is kept, by whom, and what is missing
+# Persistency on the Molbuilder tab — what is kept, by whom, and what is missing — archived 2026-09-21
 
-**Role:** investigation
+**Role:** investigation *(archived — its work is built)*
+
+> **Not a source of truth.** Both questions it was opened for are settled:
+>
+> * § 5's *"one piece of work, and it is small"* **is built** — verified in
+>   the code on 2026-09-21: `modify/structure/page.js` writes
+>   `{v: 1, loadedFrom, lastSavedTo}` under the page's own tag and reads it at
+>   mount, which is exactly what § 3.3 specified and what closes the
+>   Load-button bug in § 3.1 by construction.
+> * the contract question — is *Save to project* a fifth kind of saving? — was
+>   answered 2026-08-19 and is struck through in § 5.
+>
+> One suggestion survives, and it is a suggestion rather than a defect: a
+> restore and a re-read read identically on screen. It is carried in
+> `plans/plan.md` § 2 so this document does not have to be.
+>
+> Left uncorrected as history: § 5 cites a **§ 3.4** that does not exist
+> (the section stops at 3.3).
 **Domain:** web
 **Started:** 2026-08-03
 **Companions:** [`molview.md`](?doc=web/molview.md) § 11.2 · § 11.2a · § 11.3 —
