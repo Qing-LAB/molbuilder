@@ -529,10 +529,30 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
 
 
 def _emit_dipole_derivative_rule() -> List[str]:
-    """The Hessian + dmu/dR rule, spliced from :func:`dipole_derivatives`."""
+    """The Hessian + dmu/dR rule, spliced from :func:`dipole_derivatives`.
+
+    **The constant travels as a VALUE, because the function does not travel
+    with its module.**  `inspect.getsource` lifts the body and nothing else,
+    so a name the body reads from module scope is simply undefined in the
+    deck -- and the deck runs under the job's own python, where this package
+    is not importable at all.
+
+    That is how `_DEBYE_E_ANGSTROM` broke every IR run between 2026-09-20 and
+    2026-09-21.  The line had been self-contained arithmetic,
+    ``2.541746473 / 0.52917721092``; unifying the constants replaced it with
+    the name -- right for every other reader of `constants.py`, and wrong for
+    the one function that is shipped as text.  `NameError` at runtime, the
+    deck exits 1, and six e2e tests fail on the empty result rather than on
+    the cause.
+
+    Emitted rather than interpolated into the source so the value still has
+    ONE home: it is read from `constants.py` here, exactly as `BOHR_TO_ANG`
+    and `AMU_TO_AU` already are.
+    """
     import inspect
     src = inspect.getsource(dipole_derivatives)
-    return [ln.rstrip() for ln in src.splitlines()]
+    return ([f"_DEBYE_E_ANGSTROM = {_DEBYE_E_ANGSTROM!r}", ""]
+            + [ln.rstrip() for ln in src.splitlines()])
 
 
 def _emit_homo_rule() -> List[str]:
