@@ -897,10 +897,23 @@ class EnvState:
             lines.append("    conda-meta/history).  Remove it yourself, then re-run:")
             lines.append(f"      rm -rf {self.prefix}")
         elif s is EnvPresence.GHOST:
+            # BOTH HALVES OF THIS WERE FALSE until 2026-09-21.  It named
+            # `remove_cmd()` as the manual fix and said `--clean` "will do the
+            # same thing".  Measured: `conda env remove -n <name>` refuses with
+            # `EnvironmentLocationNotFound` -- it resolves the name to a prefix
+            # and there is no directory there, which is what GHOST MEANS.  And
+            # `--clean` does not do the same thing: `_run_steps` skips the
+            # REMOVE step for exactly this state ("nothing to remove: no
+            # directory on disk", added because conda exits 1 on an absent env
+            # and that broke `--clean` on fresh machines).  It still FIXES the
+            # ghost, by the other route -- `can_resume` is PRESENT-only, so the
+            # create runs and restores the directory the entry names.
             lines.append("  → GHOST: the registry lists this env but the directory")
-            lines.append("    it names is gone.  Fix manually with:")
-            lines.append(f"      {self.remove_cmd()}")
-            lines.append("    or re-run with --clean which will do the same thing.")
+            lines.append("    it names is gone.  `conda env remove` will not clear")
+            lines.append("    it -- with no directory to act on the manager refuses.")
+            lines.append("    Re-run with --clean: the removal step is skipped for")
+            lines.append("    this state, and the create that follows restores the")
+            lines.append("    directory the entry names.")
         elif s is EnvPresence.BROKEN:
             lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
             lines.append("    it's not a real conda env -- residue from a failed")

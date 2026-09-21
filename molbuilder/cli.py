@@ -29,10 +29,9 @@ import json
 import os
 import sys
 
-from . import template as _T
 import tempfile
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Sequence
+from typing import Iterator, Optional, Sequence
 
 import click
 

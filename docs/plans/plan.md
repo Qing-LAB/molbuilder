@@ -166,12 +166,15 @@ the rank count, and `oauth.py`'s two independent `expanduser` readings of
 `client_secret_file`. One is **deferred by your ruling**: `recipes.py:431`
 resolves the CUDA version at import, so `nvidia-smi` runs on every invocation.
 
-**Three fresh residues the audit turned up, not on anyone's list:**
-`envs/install.py:903` advises *"re-run with --clean which will do the same
-thing"*, which R1's own fix made false — `_run_steps` now SKIPS the remove step
-when nothing is on disk, which is exactly the GHOST state the advice is printed
-for. And `cli.py:32`/`:35` import `template as _T` and `typing.Iterable`,
-neither used.
+~~**Three fresh residues the audit turned up, not on anyone's list:**~~
+✅ **ALL THREE CLOSED 2026-09-21.** `cli.py`'s two unused imports are gone.
+The GHOST advice was wrong in **both** halves, not the one recorded here:
+`conda env remove -n <name>` does not clear a ghost either — it resolves the
+name to a prefix and refuses with `EnvironmentLocationNotFound`, there being no
+directory, which is what GHOST *means* (measured 2026-09-21). And `--clean`
+does fix it, by the route the note missed: the REMOVE step is skipped, but
+`can_resume` is PRESENT-only, so the create still runs and restores the
+directory the entry names. The message says that now.
 
 ## 3. Configuration and ops — merged
 
