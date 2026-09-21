@@ -81,21 +81,44 @@ def fdf_block(text: str, name: str):
 
 
 def fdf_block_rows(text: str, name: str) -> dict:
-    """``%block <name>`` as ``{first token (lowered): remaining tokens}``."""
+    """``%block <name>`` as ``{first token (lowered): remaining tokens}``.
+
+    Only for blocks keyed by their first token.  Two rows sharing one
+    leading token collapse to the last -- use :func:`fdf_block` for a
+    block whose rows repeat (``TS.Elecs``, coordinates, lattice vectors).
+    """
     rows = fdf_block(text, name)
     return {} if rows is None else {r[0].lower(): r[1:] for r in rows if r}
 
 
-def _energy_ev(value: str, unit: str) -> float:
+def _energy_ev(value: str, unit: str, where: str) -> float:
+    """``value unit`` in eV.  The unit is REQUIRED.
+
+    fdf's own default for a bare energy is Ry (`parse.fdf._ry`), and an
+    energy this reader meets is written in eV, so guessing either way
+    gets the other wrong by 13.6x -- the failure this reader exists to
+    catch.  A deck that states no unit is refused instead.
+    """
     from molbuilder.constants import HARTREE_EV, RYDBERG_EV
-    u = (unit or "ev").lower()
+    u = (unit or "").lower()
+    if not u:
+        raise AssertionError(
+            f"{where}: energy {value!r} states no unit, and fdf's default "
+            f"(Ry) differs from what this block is written in (eV) -- "
+            f"refusing rather than picking one")
     if u == "ev":
-        return float(value)
-    if u in ("ry", "ryd", "rydberg"):
-        return float(value) * RYDBERG_EV
-    if u in ("ha", "hartree"):
-        return float(value) * HARTREE_EV
-    raise AssertionError(f"unknown energy unit in the deck: {unit!r}")
+        factor = 1.0
+    elif u in ("ry", "ryd", "rydberg"):
+        factor = RYDBERG_EV
+    elif u in ("ha", "hartree"):
+        factor = HARTREE_EV
+    else:
+        raise AssertionError(f"{where}: unknown energy unit {unit!r}")
+    try:
+        return float(value) * factor
+    except ValueError:
+        raise AssertionError(
+            f"{where}: {value!r} is not a number") from None
 
 
 def fdf_energy_window(text: str, block: str):
@@ -121,5 +144,6 @@ def fdf_energy_window(text: str, block: str):
     if not lo or not hi:
         raise AssertionError(
             f"%block {block} `from ... to ...` is missing a bound: {toks!r}")
-    return (_energy_ev(lo[0], lo[1] if len(lo) > 1 else ""),
-            _energy_ev(hi[0], hi[1] if len(hi) > 1 else ""))
+    where = f"%block {block}"
+    return (_energy_ev(lo[0], lo[1] if len(lo) > 1 else "", where),
+            _energy_ev(hi[0], hi[1] if len(hi) > 1 else "", where))
