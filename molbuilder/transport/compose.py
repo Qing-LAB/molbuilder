@@ -87,6 +87,38 @@ def record_files(form: str = "relaxation") -> Tuple[str, ...]:
     return always + ((JUNCTION_DECK,) if form == "relaxation" else ())
 
 
+def _unusable_cell(struct) -> Optional[str]:
+    """Why this structure's cell cannot carry a junction — or ``None``.
+
+    ONE QUESTION, BOTH FORMS.  Form A spelled this out and form B asked only
+    *"is the cell None?"*, which was enough for as long as
+    ``Structure.__post_init__`` refused a zero-volume lattice outright.  That
+    refusal was removed on 2026-09-21 so a pair holding a bad box could be
+    OPENED and corrected on the Cell page (§ 8.2, *"reading does not judge"*)
+    -- and form B had been relying on it without saying so.  Measured: a
+    form-B sidecar whose ``cell`` is a row of zeros loaded, passed the
+    ``is None`` guard, and died in ``transiesta.axis_vacuum`` as a raw
+    ``LinAlgError: Singular matrix`` -- a traceback where every other bad
+    citation gets a sentence.
+
+    A junction needs a real box (`science/junction-cell.md`): the transverse
+    vectors set the k-mesh and the image separation, and the transport vector
+    is the device length.  None of those exist in a degenerate cell.
+    """
+    if struct.cell is None:
+        return "states no cell"
+    c = np.asarray(struct.cell, dtype=float)
+    if c.shape != (3, 3) or not np.all(np.isfinite(c)):
+        return "states a cell that is not three finite vectors"
+    # The ONE threshold, from the module that owns the question -- not a
+    # fourth literal (`cell.py`'s header records the era of four).
+    from ..cell import ZERO_VOLUME_TOL
+    if abs(float(np.linalg.det(c))) < ZERO_VOLUME_TOL:
+        return ("states a cell with no volume (its vectors are not "
+                "linearly independent)")
+    return None
+
+
 def _cells_agree_or_refuse(a_name: str, a, b_name: str, b) -> None:
     """Two statements of one cell must be the same cell.
 
@@ -548,9 +580,9 @@ def labeled_citation_structure(cited: CitedDir):
         # authority applies them together.
         #
         # AND THE CORNER IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
-        # coordinates came from the `.XV` -- SIESTA's own frame, cell at
-        # (0,0,0) (`structure-periodicity.md` § 6: `null` = `(0,0,0)`) --
-        # while the sidecar's `cell_origin` is the low corner of the box the
+        # coordinates came from the `.XV` -- SIESTA's own frame, which anchors
+        # the cell at (0,0,0) -- while the sidecar's `cell_origin` is the
+        # low corner of the box the
         # author drew around DIFFERENT coordinates.  A full replace adopts it,
         # and `render_fdf` then shifts these atoms by `-cell_origin` a second
         # time: a junction saved from `add_slab` came out translated by its
@@ -558,6 +590,13 @@ def labeled_citation_structure(cited: CitedDir):
         # The cell above is a SHAPE and survives the change of frame; the
         # origin does not, so it is stripped here -- explicitly, which is what
         # `model/structure.md` § 2.2a asks of a field that does not travel.
+        #
+        # STRIPPED, NOT SET TO ZERO.  `null` does not mean "the corner is
+        # (0,0,0)" -- it means DERIVE it (`structure-periodicity.md` § 6
+        # clause 2a), and for a `.XV`, whose atoms are already inside
+        # [0, cell), the derivation answers "no shift".  If a relaxation
+        # drifted an atom outside the box the derivation wraps it back in,
+        # which is right and is what an explicit zero would have prevented.
         apply_to_structure(struct, {
             **_side,
             "cell": _side.get("cell") or [[float(x) for x in row]
@@ -811,10 +850,11 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     if cited.form == "structure":
         # ---- form B: the labeled pair IS the final structure ---------
         struct = StructureCodec().load(cited.xyz)
-        if struct.cell is None:
+        _bad = _unusable_cell(struct)
+        if _bad:
             raise ComposeError(
                 f"the cited pair {cited.xyz.name} + "
-                f"{cited.sidecar.name} carries no cell -- a junction "
+                f"{cited.sidecar.name} {_bad} -- a junction "
                 f"needs its lattice (science/junction-cell.md).  Set "
                 f"the cell in the sidecar (the Modify tab's Cell page "
                 f"writes it), then cite again.")
@@ -865,16 +905,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # below and raises a bare ValueError there -- and `prep` catches
         # only ComposeError/SortError, so it reaches the person as a
         # traceback instead of a sentence.
-        _bad = None
-        if struct.cell is None:
-            _bad = "states no cell"
-        else:
-            _c = np.asarray(struct.cell, dtype=float)
-            if _c.shape != (3, 3) or not np.all(np.isfinite(_c)):
-                _bad = "states a cell that is not three finite vectors"
-            elif abs(float(np.linalg.det(_c))) < 1e-8:
-                _bad = "states a cell with no volume (its vectors are "\
-                       "not linearly independent)"
+        _bad = _unusable_cell(struct)
         if _bad:
             raise ComposeError(
                 f"the cited relaxation in {cited.path} {_bad} -- a junction "

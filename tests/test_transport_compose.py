@@ -954,6 +954,39 @@ class TestFormB:
             "the refusal states the whole condition")
 
 
+    def test_a_form_B_pair_with_a_flat_box_is_refused_by_name(self, tmp_path):
+        """Form B asked only *"is the cell None?"*, and that was enough for
+        exactly as long as `Structure.__post_init__` refused a zero-volume
+        lattice outright.
+
+        That refusal was removed 2026-09-21 so a pair holding a bad box could
+        be OPENED and fixed on the Cell page (`structure-periodicity.md`
+        § 8.2, "reading does not judge") — and this guard had been relying on
+        it without saying so. Measured before the fix: the pair loaded, passed
+        `cell is None`, and died in `transiesta.axis_vacuum` as a raw
+        `LinAlgError: Singular matrix` — a traceback where every other bad
+        citation gets a sentence. Form A had always checked the determinant;
+        both now ask one question.
+        """
+        import json as _json
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "J"
+        d.mkdir(parents=True)
+        struct = _junction_struct()
+        StructureCodec().write(struct, d / "j.xyz")
+        side = _json.loads((d / "j.molstruct.json").read_text())
+        side["cell"] = [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]]   # flat
+        (d / "j.molstruct.json").write_text(_json.dumps(side))
+
+        # It still OPENS -- that is the § 8.2 half, and it must not regress.
+        assert StructureCodec().load(d / "j.xyz").cell is not None
+
+        with pytest.raises(ComposeError) as e:
+            compose_junction("J", tree_root=root)
+        assert "no volume" in str(e.value), str(e.value)
+
+
 class TestTheRecordedContract:
     """`transport.md` § 3.1's form B, third shade: a pair whose
     sidecar carries `info.calculation` seals like a cited deck."""
