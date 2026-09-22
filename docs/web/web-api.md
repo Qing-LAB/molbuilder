@@ -509,7 +509,7 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 99 routes
+## 3. Endpoint index — all 100 routes
 
 > **99 since 2026-09-19**, when `GET /api/task-setup/folder` landed — the
 > Task setup page's one per-directory answer ([`task-setup.md`](?doc=web/task-setup.md)
@@ -580,6 +580,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/build/load` | Load a structure (path / upload / raw text) |
 | POST `/api/build/molecule` | Build a molecule from a backend |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
+| GET `/api/modify/spacings` | `?element=Au&plane=111&reference=experimental` → `{ok, element, plane, system, reference, a, d_interlayer, nearest_neighbour}`. **The crystallography is the backend's**: the Slab panel used to compute `a/√3` and `a/2` as JavaScript literals and had no `d(110)` at all, so someone building fcc(110) was shown two spacings, neither the number the Cell page asks them to type. `cell.interplanar_spacing` derives them all from one rule (the first allowed reflection for the lattice's centring) and this is the door it reaches the browser through. **`reference` is required** — `experimental`, `pbe`, or a number in Å; no default, because which reference a constant came from moves it by ~2 % |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,calibrate,slab}` | The seven structure edits |
 | POST `/api/modify/append` | `{structure, addition}` → the two structures as one, with `addition` **centred on the world origin** and appended. **This is what a load and a generate do**: they add to what is open rather than replacing it (user, 2026-09-07), so a session is assembled piece by piece; replacing is a separate gesture — Start empty, then load. TWO envelopes in one body, read by the same reader (§ 1). A label the open structure already carries is **numbered** on the way in (`benzene#` → `benzene#2`) so two fragments stay separately selectable; the reserved `frozen_atoms` keeps its spelling, because something downstream acts on that exact name. The **open structure's cell is kept**, and a dropped one is said in `notices` |
 | POST `/api/modify/slab` | `{structure, element, plane, m, n, layers, start_registry, sequence, grow, start_z, orthogonal, dx, dy, lattice_constant?}` → the structure with one fcc slab appended. **Placed absolutely** — `dx`, `dy` and `start_z` are from the world origin — so it reads **no selection** at all, which is what it was built to change: it replaced `electrode`, which centred on one (`?doc=archive/2026-09-01-modify-redesign-plan.md` § 3, removed § 3.4a). `start_registry` picks which stacking registry the layer at `start_z` sits on (A/B/C, taken mod the surface's period); `sequence` (`"ABC"` / `"ACB"`) says which way the registry cycle is walked, **read along the growth direction**; `grow` says which side of `start_z` the slab occupies. `sequence` replaced `stacking`, which named downward behaviour only and did nothing at all growing `+z` |
