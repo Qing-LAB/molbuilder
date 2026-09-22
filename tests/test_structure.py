@@ -15,14 +15,14 @@ def test_basic_construction(water_structure):
     assert "H2O" in s.summary()
 
 
-def test_to_xyz_round_trip_to_disk(water_structure, tmp_path):
+def test_to_xyz_renders_the_document(water_structure):
+    # The "round trip to disk" half of this test went with `to_xyz(path)`
+    # (2026-09-22): the writer returns TEXT and the codec owns the file, so
+    # what reaches disk is `test_workingcopy_structure.py`'s to assert.
     s = water_structure
     text = s.to_xyz()
     assert text.startswith("3\n")
     assert "O" in text and "H" in text
-    p = tmp_path / "out.xyz"
-    s.to_xyz(str(p))
-    assert p.read_text() == text
 
 
 def test_to_pdb_basic_structure(water_structure):

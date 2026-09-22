@@ -109,3 +109,25 @@ def test_load_rejects_unknown_format_explicitly(tmp_path):
     weird.write_text("data_x\n_cell_length_a 10.0\n")
     with pytest.raises(ValueError, match="unsupported structure format"):
         CODEC.load(weird)
+
+
+def test_it_writes_utf8_regardless_of_the_platform_locale(tmp_path):
+    """An explicit encoding, never the platform's, or a non-ASCII title is
+    silently corrupted on cp1252 -- and the codec's own `load` reads
+    `utf-8-sig`, so a locale-encoded write would not even round-trip here.
+
+    This pinned `Structure.to_extxyz(path)` until 2026-09-22. The argument is
+    gone (the writers return text; the codec owns the file), so the concern
+    moved to the code that now does the writing rather than being deleted
+    with the call site.
+    """
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    s = Structure.from_xyz("3\nwater\nO 0 0 0\nH 0.957 0 0\nH -0.239 0.927 0\n")
+    s.title = "wasser — Ångström"
+    path = tmp_path / "t.xyz"
+    StructureCodec().write(s, path, frames=[s.positions, s.positions])
+
+    assert "Ångström" in path.read_text(encoding="utf-8")
+    assert StructureCodec().load(path).title == "wasser — Ångström"

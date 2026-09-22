@@ -758,7 +758,7 @@ def _run_electrode(tmp_path, st, spec):
     """Build `st`, run one `--electrode` flag over it, return the result."""
     from molbuilder.workingcopy_structure import StructureCodec
     inp = tmp_path / "in.xyz"
-    st.to_xyz(inp)
+    StructureCodec().write(st, inp)
     out = tmp_path / "out.xyz"
     assert cli.main(["modify", str(inp), str(out), "--electrode", spec]) == 0
     return StructureCodec().load(out)
@@ -799,7 +799,8 @@ def test_a_centre_index_off_the_end_is_refused_by_the_flag(tmp_path):
     from molbuilder.structure import Structure
     st = Structure(elements=["S"], positions=np.array([[0., 0., 0.]]))
     inp = tmp_path / "in.xyz"
-    st.to_xyz(inp)
+    from molbuilder.workingcopy_structure import StructureCodec
+    StructureCodec().write(st, inp)
     with pytest.raises(SystemExit):
         cli.main(["modify", str(inp), str(tmp_path / "o.xyz"),
                   "--electrode", "Au:111:2x2x1@contact=2.4:+z=5"])

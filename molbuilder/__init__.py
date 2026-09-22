@@ -14,8 +14,9 @@ Public API:
     >>> from molbuilder.workingcopy_structure import StructureCodec
     >>> s = StructureCodec().load("structure.xyz")   # the pair
 
-    >>> s.to_xyz("out.xyz")
-    >>> s.to_pdb("out.pdb")
+    # Save geometry to disk -- always the PAIR, never a lone file:
+    >>> StructureCodec().write(s, "out.xyz")   # + out.molstruct.json
+    >>> print(s.to_xyz())                      # the TEXT, for a deck
     >>> print(s.to_pyscf(as_string=True))
     >>> atoms = s.to_ase()
 

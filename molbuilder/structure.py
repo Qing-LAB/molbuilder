@@ -1572,28 +1572,33 @@ class Structure:
     #  Output: XYZ                                                        #
     # ------------------------------------------------------------------ #
 
-    def to_xyz(self, path: Optional[str] = None, *, comment: str = "") -> str:
-        """Return XMol .xyz text; if *path* is given, also write to it.
+    def to_xyz(self, *, comment: str = "") -> str:
+        """Return XMol .xyz text.  TEXT, not a file -- see
+        :func:`_require_text` for the read side of the same rule;
+        ``StructureCodec().write(struct, path)`` writes files.
 
         The result drops directly into a SIESTA
         ``%block AtomicCoordinatesAndAtomicSpecies`` once you map symbols
         to species indices, or into any other code that reads .xyz.
+
+        WHY THE ``path`` ARGUMENT IS GONE (2026-09-22).  The read side was
+        closed deliberately -- ``from_xyz`` refuses a path and points at the
+        codec, because the one door for a STORED structure reads the
+        ``.molstruct.json`` beside it.  The write side was left open, and it
+        is the half that loses data: a lone ``.xyz`` written here drops the
+        frozen atoms, the region labels and the explicit cell on the floor,
+        silently and at exit 0.  `model/structure.md` § 2.4 states the rule
+        both halves now keep -- *every structure-to-bytes translation goes
+        through this codec* -- and a writer that cannot be handed a path is
+        how the violation stops being representable rather than being fixed
+        again each time it reappears.
         """
         buf = StringIO()
         buf.write(f"{self.n_atoms}\n")
         buf.write((comment or self.title or "Built by molbuilder").strip() + "\n")
         for el, (x, y, z) in zip(self.elements, self.positions):
             buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
-        text = buf.getvalue()
-        if path:
-            # ``encoding="utf-8"`` is REQUIRED: without it Python falls
-            # back to the platform locale, which silently corrupts non-
-            # ASCII residue names / title comments on cp1252 / latin-1
-            # systems (and disagrees with the encoding-utf-8-sig read
-            # StructureCodec.load performs).
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: extended XYZ (one frame, or a whole trajectory)            #
@@ -1601,12 +1606,14 @@ class Structure:
 
     def to_extxyz(
         self,
-        path: Optional[str] = None,
         *,
         frames: Optional[Sequence[Any]] = None,
         comment: str = "",
     ) -> str:
-        """Return extended-XYZ text for this structure, or for *frames* of it.
+        """Return extended-XYZ TEXT for this structure, or for *frames* of it.
+        Not a file: ``StructureCodec().write(struct, path, frames=...)``
+        writes one, and :meth:`to_xyz` records why the ``path`` argument is
+        gone.
 
         Extended XYZ is plain XYZ with the per-frame comment line carrying
         key=value metadata -- the convention ASE reads and writes, and what
@@ -1678,20 +1685,16 @@ class Structure:
             buf.write(f"{title} {head}\n" if title else f"{head}\n")
             for el, (x, y, z) in zip(self.elements, frame):
                 buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
-        text = buf.getvalue()
-        if path:
-            # Same rule as ``to_xyz``: explicit utf-8, never the platform
-            # locale, or a non-ASCII title is silently corrupted on cp1252.
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: PDB                                                        #
     # ------------------------------------------------------------------ #
 
-    def to_pdb(self, path: Optional[str] = None) -> str:
-        """Standard PDB. Hydrogens included, single MODEL, no CONECT."""
+    def to_pdb(self) -> str:
+        """Standard PDB TEXT. Hydrogens included, single MODEL, no CONECT.
+        Not a file: ``StructureCodec().write(struct, path)`` writes one, and
+        :meth:`to_xyz` records why the ``path`` argument is gone."""
         buf = StringIO()
         if self.title:
             buf.write(f"TITLE     {self.title:<70s}\n")
@@ -1717,13 +1720,7 @@ class Structure:
                 f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {el:>2s}\n"
             )
         buf.write("END\n")
-        text = buf.getvalue()
-        if path:
-            # ``encoding="utf-8"`` parity with ``to_xyz`` + the
-            # encoding-utf-8-sig read StructureCodec.load performs.
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: PySCF                                                      #

@@ -216,8 +216,9 @@ MARK ON IT; a record that is gone cannot carry a mark.
 
 | Method | Format | Guarantees |
 |---|---|---|
-| `to_xyz(path=None, *, comment="")` (`:1490`) | xmol XYZ | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
-| `to_pdb(path=None)` (`:1608`) | PDB ATOM records | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
+| `to_xyz(*, comment="")` | xmol XYZ **text** | line 1 = `N`; line 2 = comment-or-title; then `El x y z` per atom |
+| `to_extxyz(*, frames=None, comment="")` | extended-XYZ **text** | the comment line carries `Lattice=` (the RESOLVED cell) and `pbc=`; one block per frame |
+| `to_pdb()` | PDB ATOM records, as **text** | TITLE if set; serial capped `99999` (overflow → `*****`); residue id capped `9999`; chain id truncated to 1 char |
 | `to_pyscf(*, as_string=False)` (`:1647`) | PySCF `gto.M` atom kwarg | `(symbol,(x,y,z))` tuples; multi-line string if `as_string=True` |
 | `to_ase()` (`:1674`) | `ase.Atoms` | raises `ImportError` with install hint if ASE absent |
 | `from_xyz(text, *, title=None, frames_out=None)` (`:1206`) | XYZ **text** | see requirements below |
@@ -227,6 +228,18 @@ MARK ON IT; a record that is gone cannot carry a mark.
 — a `Path` raises `TypeError` naming the door instead). To read a *file*, call
 `StructureCodec().load(path)`: it reads the `.molstruct.json` beside the
 geometry, which a bare reader cannot.
+
+**And so do the writers, since 2026-09-22: they RETURN a document and cannot
+be handed a path.** `to_xyz`, `to_extxyz` and `to_pdb` each took an optional
+`path` and wrote a lone file to it. That is the half that loses data — the
+frozen atoms, the region labels and the explicit cell go on the floor,
+silently and at exit 0 — and it is the door every violation in this document's
+history walked through. To write a *file*, call
+`StructureCodec().write(struct, path)`, which writes the pair.
+
+The rule is now carried by the signatures rather than by this paragraph: a
+lone-geometry write is not a call anyone can express. Two production callers
+had to change for it, one of them the package's own front-page example.
 
 > **A guesser stood here until 2026-09-07.** `_resolve_source` tried
 > `os.path.isfile` first and fell back to "treat it as text", so `from_xyz`
@@ -650,7 +663,8 @@ derives a filename or re-serialises a sidecar; `scratch_blob` / `from_scratch`
 were retired with the `{xyz, sidecar}` blob shape that was their only reason to
 exist (§ 2.4).
 
-**Open work** (`plans/plan.md` **W15**): route the **CLI** load/save through
-`StructureCodec` so a CLI save emits the `.xyz` + `.molstruct.json` pair like
-the web save does (task #73) — today the CLI writes geometry only, which is the
-last surface not obeying the rule in § 2.4.
+**Closed 2026-09-22 (was `plans/plan.md` **W15**, task #73).** The CLI's
+converters route through `StructureCodec`, so a CLI save emits the pair like
+the web save does — `modify` since 2026-09-07, `xv2xyz` with this change. And
+the door that made the violation reachable is shut rather than merely unused:
+the writers no longer accept a path at all (§ 2.3). Every surface obeys § 2.4.
