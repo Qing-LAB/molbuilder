@@ -1074,24 +1074,67 @@ def cmd_modify(input_path, output_path,
 
 
 @cli.command("xv2xyz",
-             short_help="translate a SIESTA .XV to extended-XYZ (cell-preserving)")
+             short_help="translate a SIESTA .XV into a structure pair")
 @click.argument("xv_path", metavar="input.XV",
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
-def cmd_xv2xyz(xv_path: Path, xyz_path: Path) -> int:
-    """Convert a SIESTA ``.XV`` final-coordinates file to extended-XYZ.
+@click.option("--from-run", "from_run", is_flag=True, default=False,
+              help="Also read the frozen atoms this run declared, from the "
+                   "siblings of input.XV (.out echo, sidecar, then .fdf).")
+def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
+    """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
-    The periodic cell is preserved on the comment line as an ASE
-    ``Lattice="..."`` header (Å), so the cell travels with the structure into
-    a description and reaches the deck ``jobset prep`` renders, instead of the
-    geometry arriving as a molecule in a vacuum box.  This is the convenient
-    ``.XV`` extraction entry; the underlying API is
-    ``molbuilder.parse.coords.xv_to_xyz``.
+    THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This wrote a bare
+    ``.xyz`` with the cell hand-packed into an ASE ``Lattice="..."`` comment,
+    justified by a round-trip through a module that does not exist; the reader
+    that actually reopens it goes through the codec, so the cell comes off the
+    sidecar. Now the codec writes both halves and the cell rides where every
+    other converter puts it.
+
+    A ``.XV`` is a SIESTA artifact, so its lattice is real and its axes are
+    periodic -- nothing here defaults a box the file already knows.
+
+    What the file does NOT carry is which atoms were held: SIESTA writes the
+    final coordinates, not the constraints. ``--from-run`` goes and reads them
+    from the siblings. It is a FLAG, not a sniff: silently pulling a
+    frozen-atom set out of a directory because it looked like a run is hard to
+    notice when it is wrong.
     """
-    from .parse.coords import xv_to_xyz
-    text = xv_to_xyz(xv_path, xyz_path)
-    n = text.splitlines()[0].strip() if text else "?"
-    click.echo(f"Wrote {xyz_path}: {n} atoms (cell preserved as Lattice=…)")
+    from .parse.coords.siesta_xv import SiestaXVError, read_xv_with_cell
+    from .workingcopy_structure import StructureCodec
+
+    try:
+        struct, cell = read_xv_with_cell(xv_path)
+    except SiestaXVError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    # THE AXIS KINDS ARE STATED, NOT LEFT TO DERIVE.  `Structure` reads a
+    # bare cell as fully periodic -- but only when `axis_kind` is unset, and
+    # `replace` carries the reader's `isolated` default forward, so attaching
+    # the cell alone produced a box with vacuum axes. `isolated` means
+    # "re-derive the box from atom extents plus padding", which discards the
+    # cell this verb exists to preserve.
+    #
+    # `periodic` is also what actually happened: SIESTA computes under
+    # periodic boundary conditions, molecule-in-a-box runs included, and the
+    # box in the `.XV` is the box that ran. Using it verbatim is faithful for
+    # a slab and for a molecule alike.
+    changes: dict = {"cell": cell, "axis_kind": ("periodic",) * 3}
+
+    frozen: list[int] = []
+    if from_run:
+        from .parse.engines._sidecar import read_frozen_atoms_for_siesta
+        frozen = sorted(read_frozen_atoms_for_siesta(str(xv_path)))
+        if frozen:
+            changes["frozen_atoms"] = frozen
+
+    struct = struct.replace(**changes)
+
+    StructureCodec().write(struct, xyz_path)
+    held = (f", {len(frozen)} frozen" if frozen
+            else (", no frozen atoms found" if from_run else ""))
+    click.echo(f"Wrote the pair at {xyz_path}: {struct.n_atoms} atoms, "
+               f"cell preserved{held}")
     return 0
 
 

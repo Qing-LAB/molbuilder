@@ -141,9 +141,15 @@ def read_xv_with_cell(path: Union[str, Path]):
     """``(Structure, cell_ang)`` from ONE pass over the file.
 
     THE DOOR FOR CALLERS THAT WANT BOTH, and every caller did: the
-    FileParser, the web Modify door and `xv_to_xyz` each called
-    `read_xv` and then `read_xv_cell`, parsing the same file twice.
+    FileParser, the web Modify door and the since-deleted `xv_to_xyz` each
+    called `read_xv` and then `read_xv_cell`, parsing the same file twice.
     Strict, like `read_xv`: a malformed file raises.
+
+    The cell comes back BESIDE the structure rather than on it, because the
+    FileParser puts it in `StructureResult.cell` and `read_xv_cell` wants the
+    matrix alone.  A caller writing the structure out has to attach it --
+    and state the axis kinds while doing so, since `replace` carries this
+    reader's `isolated` default forward (see the `xv2xyz` verb).
     """
     p = Path(path)
     lines = _nonblank_lines(p)
@@ -254,32 +260,21 @@ read_xv = _read_xv
 read_xv_cell = _read_xv_cell
 
 
-def xv_to_xyz(xv_path: Union[str, Path],
-              xyz_path: Optional[Union[str, Path]] = None) -> str:
-    """Translate a SIESTA ``.XV`` into extended-XYZ text (written to
-    ``xyz_path`` when given), **preserving the periodic cell**.
-
-    A SIESTA ``.XV`` carries the lattice; a plain ``.xyz`` would drop it
-    and a downstream generator would invent a vacuum cell -- wrong for a
-    periodic junction.  So the cell is emitted on the comment line as the
-    ASE extended-XYZ ``Lattice="..."`` header (row-major, Å), which
-    ``molbuilder.siesta.convert`` (via ASE) round-trips back into the FDF
-    cell.  Coordinates come from :func:`read_xv` (Å), the cell from
-    :func:`read_xv_cell` (Å).
-
-    Returns the extended-XYZ text.  This is the convenient ``.XV`` data-
-    extraction entry (also exposed as the ``molbuilder xv2xyz`` CLI).
-    """
-    xv_path = Path(xv_path)
-    struct, cell = read_xv_with_cell(xv_path)
-    if cell is not None:
-        flat = " ".join(f"{v:.8f}"
-                        for v in np.asarray(cell, dtype=float).reshape(-1))
-        comment = f'Lattice="{flat}" Properties=species:S:1:pos:R:3'
-    else:
-        comment = struct.title or xv_path.stem
-    return struct.to_xyz(str(xyz_path) if xyz_path is not None else None,
-                         comment=comment)
+# `xv_to_xyz` LIVED HERE UNTIL 2026-09-22, and it wrote a bare `.xyz`.
+#
+# It hand-built the extended-XYZ `Lattice="..."` comment that
+# `Structure.to_extxyz` owns (omitting `pbc=`), and its docstring justified
+# the header by naming a round-trip through `molbuilder.siesta.convert` --
+# a module that does not exist.  The reader that actually reopens the file,
+# `siesta/input.py::_struct_from_file`, goes through `StructureCodec().load`,
+# so the cell arrives from the SIDECAR and the header was carrying a fact the
+# pair already carries.  Meanwhile the half the header cannot carry -- the
+# frozen atoms a run declared -- was dropped on the floor.
+#
+# Its one production caller was the `xv2xyz` CLI verb, which now reads through
+# `read_xv_with_cell` and writes through the codec like every other converter
+# (`model/structure.md` § 2.4).  Deleted rather than repointed: a second
+# `.XV`-to-file path is the shape this whole consolidation removes.
 
 
 __all__ = [

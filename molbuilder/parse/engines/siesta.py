@@ -1850,43 +1850,19 @@ class SiestaParser:
         # overlay + filters force arrows to free atoms only.
         # SIESTA's ``.out`` reports only the AGGREGATE "Max …
         # constrained" value, not which atoms are constrained; we
-        # have to recover the indices from another source.  Two
-        # paths are tried in order:
+        # have to recover the indices from another source.
         #
-        #   1. ``.molstruct.json`` sidecar — the canonical source
-        #      when present (writes shared with the modify-tab's
-        #      sidecar-aware save path).
-        #   2. Sibling ``.fdf`` input's ``%block Geometry.
-        #      Constraints`` — fallback for runs where no sidecar
-        #      was written but the input's constraint block carries
-        #      the indices we need.  2026-06-14 addition: the chart
-        #      was showing the constrained trace correctly while
-        #      the "Hide frozen atoms" toggle stayed hidden because
-        #      step 1 was empty for these runs (see
-        #      docs/process/code-audit.md, cross-source-of-
-        #      truth gap).
+        # ONE PRECEDENCE, ONE HOME.  The .out echo -> sidecar -> .fdf order
+        # (2026-06-14 contract fix; this comment used to enumerate it, and
+        # was already stale at two paths where the code tried three) is the
+        # function's, in the module that owns all three sources.  `xv2xyz
+        # --from-run` needs the same order for a `.XV`, and a second copy of
+        # a precedence is how two answers start disagreeing.
         #
-        # Both helpers return empty on any failure — frozen-atom
-        # data is optional UI metadata.
-        from ._sidecar import (
-            read_frozen_atoms,
-            read_frozen_atoms_from_siesta_fdf,
-            read_frozen_atoms_from_siesta_out,
-        )
-        # 2026-06-14 contract fix: read constraints from the .out's
-        # OWN ``siesta: Constraints applied in the following order:``
-        # echo as the primary source.  No filename heuristic needed
-        # because the data lives in the same file we're parsing.
-        # Fall back to sidecar -> paired .fdf only when the .out
-        # echo is absent.  Order matters: the .out is authoritative
-        # (SIESTA ran with whatever it parsed), the sidecar is
-        # user-edited, the .fdf is what was on disk at some point
-        # before the run.
-        frozen_set = read_frozen_atoms_from_siesta_out(path)
-        if not frozen_set:
-            frozen_set = read_frozen_atoms(path)
-        if not frozen_set:
-            frozen_set = read_frozen_atoms_from_siesta_fdf(path)
+        # Every source returns empty on any failure — frozen-atom data is
+        # optional UI metadata and must not break trajectory loading.
+        from ._sidecar import read_frozen_atoms_for_siesta
+        frozen_set = read_frozen_atoms_for_siesta(path)
         if frozen_set:
             runtime_info["frozen_atoms"] = sorted(frozen_set)
 
