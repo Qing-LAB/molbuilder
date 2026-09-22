@@ -35,7 +35,6 @@ reads.  These tests pin:
 from __future__ import annotations
 
 from pathlib import Path
-import json
 from textwrap import dedent
 
 import pytest
@@ -344,8 +343,29 @@ class TestTheSidecarPathLearnsTheSameLesson:
 
     @staticmethod
     def _sidecar(d, name, frozen):
-        from molbuilder.structure import FROZEN_LABEL
-        (d / name).write_text(json.dumps({"regions": {FROZEN_LABEL: frozen}}))
+        """Write a REAL sidecar at ``name``, through the API.
+
+        This hand-wrote ``{"regions": {FROZEN_LABEL: [...]}}`` -- a shape
+        nothing has ever put on disk. It survived because the reader hand-read
+        the JSON too, so the test and the code agreed with each other and
+        neither agreed with the format: no ``schema_version``, no
+        ``n_atoms_total``, no ``structure_hash``. When the reader was routed
+        through `molstruct.load` (2026-09-22) the envelope check refused it,
+        which is the check EXISTING to stop a v3 file loading with its frozen
+        atoms silently dropped.
+
+        So the payload comes off the codec now. A structure big enough to hold
+        the indices, the indices declared on it, and the pair generator makes
+        the sidecar -- the same bytes a save writes.
+        """
+        from molbuilder.sidecars import molstruct
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        n = max(frozen) + 1 if frozen else 1
+        struct = Structure(elements=["C"] * n,
+                           positions=[[float(i), 0.0, 0.0] for i in range(n)],
+                           frozen_atoms=list(frozen))
+        molstruct.save(d / name, StructureCodec().pair(struct).sidecar)
 
     @pytest.mark.parametrize("artifact", [
         "bdt.out",                            # unstaged — worked before

@@ -149,12 +149,23 @@ METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
 #: value on demand.  A key whose fact lives nowhere else cannot be retired
 #: this way -- it needs a schema bump and a reader that migrates it.
 #:
-#: SHARED, because there are TWO gates: the sidecar loader refuses stray keys
-#: while the payload is still whole (`parse/sidecars/molstruct.py`), and
-#: `apply_metadata_dict` refuses them again on the way onto a Structure.  The
-#: retirement was written into the second one only, so an old sidecar still
-#: failed at the FIRST -- measured 2026-09-22, and the reason this is one
-#: list rather than two.
+#: SHARED, because THREE gates ask this question, not two.  Both halves of
+#: this merge found the bug and each found a different part of its extent:
+#:
+#:   1. `parse.sidecars.molstruct.load_text` -- refuses stray keys while the
+#:      payload is still whole, deliberately upstream (the v3 frozen-atom
+#:      loss went through a guard that sat downstream of the leak);
+#:   2. `sidecars.molstruct.apply_to_structure` -- refuses them again before
+#:      applying;
+#:   3. `apply_metadata_dict` -- refuses them on the way onto a Structure.
+#:
+#: The retirement was written into (3) only, so an old sidecar failed at (1)
+#: and never reached it.  Derived from the writer, not from a file tree:
+#: `metadata_to_dict` emitted `pbc` on every build before 2026-09-22, so
+#: EVERY pair this project has ever written carries it.  Gate (2) is not
+#: reachable from `StructureCodec.load` -- (1) answers first -- but it takes
+#: a payload directly, so a caller that builds one in code hits it, and a
+#: guard that disagrees with its neighbours is the next version of this bug.
 RETIRED_METADATA_KEYS = ("pbc",)
 
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
@@ -408,9 +419,10 @@ class Structure:
     frozen_atoms:  Optional[List[int]] = None
     # Periodic lattice (2026-06-27).  ``cell`` is the (3, 3) matrix whose
     # ROWS are the lattice vectors in Angstrom (ASE convention), or None
-    # for a non-periodic molecule.  ``pbc`` is per-axis periodicity:
-    # True = periodic (the structure tiles, no vacuum), False = vacuum
-    # along that axis.  This is the SOURCE OF TRUTH for the cell — the
+    # for a non-periodic molecule.  Per-axis periodicity is ``axis_kind``
+    # below; the boolean view is :meth:`pbc`, computed on demand, and this
+    # comment described it as a field beside ``cell`` until 2026-09-22.
+    # The cell here is the SOURCE OF TRUTH for the box — the
     # transport/SIESTA emitters preserve it verbatim instead of
     # fabricating an orthorhombic vacuum box from atom extents.  Both
     # default to "no lattice" so every existing call site is unchanged.
@@ -510,9 +522,9 @@ class Structure:
                 raise ValueError(f"{name} has length {len(arr)}, expected {n}")
 
         # Normalise the periodic lattice.  A provided cell must be a
-        # 3x3 of finite floats; pbc defaults to "fully periodic" when a
-        # cell is present (a lattice implies periodicity) and "no
-        # periodicity" when it is absent.
+        # 3x3 of finite floats.  What a missing ``axis_kind`` defaults to is
+        # decided below, off the cell's presence -- "a lattice implies
+        # periodicity", isolated without one.
         if self.cell is not None:
             cell = np.asarray(self.cell, dtype=float)
             if cell.shape != (3, 3) or not np.all(np.isfinite(cell)):
@@ -927,8 +939,9 @@ class Structure:
         so saying nothing would be a silent loss -- it is named and refused.
         A retired key is one THIS project used to write and has since stopped:
         the file is not wrong, it is older, and refusing it would make a pair
-        that opened yesterday unopenable today for no gain.  ``_RETIRED``
-        below is that list, with the date and the reason on each entry.
+        that opened yesterday unopenable today for no gain.
+        ``RETIRED_METADATA_KEYS`` (module scope, because two more gates ask
+        the same question upstream of this one and must agree) is that list.
 
         Retiring a key is only safe when nothing is lost by ignoring it, and
         that has to be shown rather than assumed.  For ``pbc`` it is: the
@@ -959,8 +972,10 @@ class Structure:
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
         # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
-        # axis_kind<->pbc reconciliation (axis_kind authoritative), cell_origin
-        # only-with-a-cell, and region/frozen/annotation indices in range.
+        # ``axis_kind`` default and value check (there is no reconciliation
+        # step any more -- the second periodicity field it reconciled against
+        # went on 2026-09-22), cell_origin only-with-a-cell, and
+        # region/frozen/annotation indices in range.
         self.__post_init__()
 
     # ------------------------------------------------------------------ #
@@ -1657,28 +1672,33 @@ class Structure:
     #  Output: XYZ                                                        #
     # ------------------------------------------------------------------ #
 
-    def to_xyz(self, path: Optional[str] = None, *, comment: str = "") -> str:
-        """Return XMol .xyz text; if *path* is given, also write to it.
+    def to_xyz(self, *, comment: str = "") -> str:
+        """Return XMol .xyz text.  TEXT, not a file -- see
+        :func:`_require_text` for the read side of the same rule;
+        ``StructureCodec().write(struct, path)`` writes files.
 
         The result drops directly into a SIESTA
         ``%block AtomicCoordinatesAndAtomicSpecies`` once you map symbols
         to species indices, or into any other code that reads .xyz.
+
+        WHY THE ``path`` ARGUMENT IS GONE (2026-09-22).  The read side was
+        closed deliberately -- ``from_xyz`` refuses a path and points at the
+        codec, because the one door for a STORED structure reads the
+        ``.molstruct.json`` beside it.  The write side was left open, and it
+        is the half that loses data: a lone ``.xyz`` written here drops the
+        frozen atoms, the region labels and the explicit cell on the floor,
+        silently and at exit 0.  `model/structure.md` § 2.4 states the rule
+        both halves now keep -- *every structure-to-bytes translation goes
+        through this codec* -- and a writer that cannot be handed a path is
+        how the violation stops being representable rather than being fixed
+        again each time it reappears.
         """
         buf = StringIO()
         buf.write(f"{self.n_atoms}\n")
         buf.write((comment or self.title or "Built by molbuilder").strip() + "\n")
         for el, (x, y, z) in zip(self.elements, self.positions):
             buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
-        text = buf.getvalue()
-        if path:
-            # ``encoding="utf-8"`` is REQUIRED: without it Python falls
-            # back to the platform locale, which silently corrupts non-
-            # ASCII residue names / title comments on cp1252 / latin-1
-            # systems (and disagrees with the encoding-utf-8-sig read
-            # StructureCodec.load performs).
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: extended XYZ (one frame, or a whole trajectory)            #
@@ -1686,12 +1706,14 @@ class Structure:
 
     def to_extxyz(
         self,
-        path: Optional[str] = None,
         *,
         frames: Optional[Sequence[Any]] = None,
         comment: str = "",
     ) -> str:
-        """Return extended-XYZ text for this structure, or for *frames* of it.
+        """Return extended-XYZ TEXT for this structure, or for *frames* of it.
+        Not a file: ``StructureCodec().write(struct, path, frames=...)``
+        writes one, and :meth:`to_xyz` records why the ``path`` argument is
+        gone.
 
         Extended XYZ is plain XYZ with the per-frame comment line carrying
         key=value metadata -- the convention ASE reads and writes, and what
@@ -1703,7 +1725,7 @@ class Structure:
             Cell page reports, so a file and the viewer it came from cannot
             describe different systems.
         ``pbc``
-            Which axes are periodic (``T``/``F``), from :attr:`pbc`.  It is what
+            Which axes are periodic (``T``/``F``), from :meth:`pbc`.  It is what
             keeps the Lattice honest: an isolated molecule still HAS a resolved
             box -- its bounding box plus vacuum -- and writing that without
             ``pbc="F F F"`` would tell the reader the system repeats when it
@@ -1763,20 +1785,16 @@ class Structure:
             buf.write(f"{title} {head}\n" if title else f"{head}\n")
             for el, (x, y, z) in zip(self.elements, frame):
                 buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
-        text = buf.getvalue()
-        if path:
-            # Same rule as ``to_xyz``: explicit utf-8, never the platform
-            # locale, or a non-ASCII title is silently corrupted on cp1252.
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: PDB                                                        #
     # ------------------------------------------------------------------ #
 
-    def to_pdb(self, path: Optional[str] = None) -> str:
-        """Standard PDB. Hydrogens included, single MODEL, no CONECT."""
+    def to_pdb(self) -> str:
+        """Standard PDB TEXT. Hydrogens included, single MODEL, no CONECT.
+        Not a file: ``StructureCodec().write(struct, path)`` writes one, and
+        :meth:`to_xyz` records why the ``path`` argument is gone."""
         buf = StringIO()
         if self.title:
             buf.write(f"TITLE     {self.title:<70s}\n")
@@ -1802,13 +1820,7 @@ class Structure:
                 f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {el:>2s}\n"
             )
         buf.write("END\n")
-        text = buf.getvalue()
-        if path:
-            # ``encoding="utf-8"`` parity with ``to_xyz`` + the
-            # encoding-utf-8-sig read StructureCodec.load performs.
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
-        return text
+        return buf.getvalue()
 
     # ------------------------------------------------------------------ #
     #  Output: PySCF                                                      #
@@ -1877,11 +1889,17 @@ class Structure:
 
         None of these are per-atom, so an add / delete / rigid transform
         carries them verbatim.  Dropping any of them silently reverts a
-        periodic or transport cell to isolated defaults (axis_kind -> derived
-        from pbc, vacuum -> 0) -- e.g. deleting a stray atom would wipe a
-        transport cell, and the emitted SIESTA FDF would omit
-        ``LatticeVectors``.  Every op-helper that rebuilds a Structure spreads
-        this so those facts survive the edit.
+        periodic or transport cell to isolated defaults -- ``axis_kind`` falls
+        back to ``isolated`` on every axis when no cell is carried either, and
+        ``vacuum`` to 0.  Deleting a stray atom would then wipe a transport
+        cell, and the emitted SIESTA FDF would omit ``LatticeVectors``.
+
+        (This read "axis_kind -> derived from pbc" until 2026-09-22.  The
+        derivation runs the other way now, and `pbc` is not carried at all:
+        it is :meth:`pbc`, computed from ``axis_kind`` on demand.)
+
+        Every op-helper that rebuilds a Structure spreads this so those facts
+        survive the edit.
 
         ``info`` RIDES HERE TOO, and the reason is the opposite of what
         dropping it looks like.  An edit is meant to OUTDATE the recorded
@@ -2052,7 +2070,7 @@ class Structure:
         A DERIVED cell (``cell`` None) / unset origin (``cell_origin`` None) needs no
         update: ``resolve_cell`` / ``resolve_cell_origin`` recompute it from the new
         atom extents.  Index-preserving, so regions / frozen / annotations / axis_kind
-        / vacuum / pbc carry verbatim.  For a pure rotation ``linear`` is orthogonal
+        / vacuum carry verbatim.  For a pure rotation ``linear`` is orthogonal
         (det +1), so the cell stays non-singular."""
         L = np.asarray(linear, dtype=float).reshape(3, 3)
         t = np.asarray(translation, dtype=float).reshape(3)

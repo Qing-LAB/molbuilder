@@ -348,8 +348,9 @@ def to_dict(
 
     ``fields`` is the metadata field dict -- the SAME shape
     :meth:`Structure.metadata_to_dict` produces (``regions`` / ``frozen_atoms``
-    / ``cell`` / ``cell_origin`` / ``pbc`` / ``axis_kind`` / ``vacuum`` /
-    ``annotations``).  STRICT type: ``annotations`` are JSON channel dicts, NOT
+    / ``cell`` / ``cell_origin`` / ``axis_kind`` / ``vacuum`` /
+    ``annotations``).  ``pbc`` was in this list until 2026-09-22 and is not a
+    stored field any more -- see ``structure.RETIRED_METADATA_KEYS``.  STRICT type: ``annotations`` are JSON channel dicts, NOT
     ``AtomChannel`` objects -- serialise a live map with
     :func:`molbuilder.structure.annotations_to_json` first.  A subset is fine
     (an absent key -> the Structure default).  This ONE dict-shaped parameter
@@ -421,7 +422,7 @@ def to_dict(
         "structure_hash":  structure_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
         # (metadata_to_dict, via structure_fields_via_dataclass): regions /
-        # frozen_atoms / cell / cell_origin / pbc / axis_kind / vacuum /
+        # frozen_atoms / cell / cell_origin / axis_kind / vacuum /
         # annotations.  Spread -- NOT re-listed -- so a field added to the
         # dataclass rides onto the sidecar automatically and this layer can no
         # longer drop or drift one (`model/structure.md` § 2.2: the ONE
@@ -580,7 +581,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     """Apply a loaded sidecar payload's metadata onto ``struct`` IN PLACE.
 
     Delegates the whole field set (regions / frozen_atoms / cell / cell_origin /
-    pbc / axis_kind / vacuum / annotations) to
+    axis_kind / vacuum / annotations) to
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
     dict->struct authority (`model/structure.md` § 2.2).  Because the writer
     (``Structure.metadata_to_dict``) and this reader share that one method, they
@@ -608,10 +609,21 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
-    from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
+    from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                                      RETIRED_METADATA_KEYS)
+    # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
+    # question, and it has to give the same answer as the other two
+    # (`structure.RETIRED_METADATA_KEYS` says which and why).
+    #
+    # `StructureCodec.load` never reaches here with a stray key, because
+    # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
+    # payload DIRECTLY, so a caller that builds one in code does reach it --
+    # and a guard that disagrees with its neighbours about what is retired
+    # is how this bug happened in the first place.
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
-             and k not in IDENTITY_FIELDS and k != "info"]
+             and k not in IDENTITY_FIELDS and k != "info"
+             and k not in RETIRED_METADATA_KEYS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "

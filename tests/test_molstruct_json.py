@@ -875,11 +875,18 @@ class TestARetiredKeyIsAcceptedNotRefused:
 
     `pbc` left `METADATA_FIELDS` on 2026-09-22 -- it was the boolean view
     of `axis_kind` and could never disagree with it. Every `.molstruct.json`
-    written before that carries the key, and `apply_metadata_dict` REFUSES
-    unknown keys by design, so without the `_RETIRED` list every existing
-    pair would have stopped loading.
+    written before that carries the key, because `metadata_to_dict` emitted
+    it on every earlier build.
 
-    THE MUTATION THIS CATCHES: delete `_RETIRED` (or drop `pbc` from it) and
+    THREE gates refuse an unrecognised key, and they must agree:
+    `parse.sidecars.molstruct.load_text` (first, while the payload is
+    whole), `sidecars.molstruct.apply_to_structure`, and
+    `apply_metadata_dict` (last, onto the Structure). The retirement was
+    written into the last one only, so an old sidecar failed at the first
+    and never reached it. Both halves of the 2026-09-22 merge found this
+    independently and each saw a different part of its extent.
+
+    THE MUTATION THIS CATCHES: drop `pbc` from `RETIRED_METADATA_KEYS` and
     nothing else in the suite notices, because every fixture writes a
     current-format file. The damage lands only on files a user already has
     -- which is exactly the failure a test suite built from fresh fixtures
@@ -929,9 +936,28 @@ class TestARetiredKeyIsAcceptedNotRefused:
         """RETIRED is not the same as UNKNOWN, and the difference is the
         user's file. A key this project never wrote is a fact they believe
         they stored and this build cannot honour -- named and refused, not
-        dropped."""
-        from molbuilder.structure import Structure
+        dropped.
+
+        Asserted at TWO gates in one test, because the property is that the
+        gates AGREE and a gate is not a call site: the door a user reaches
+        (`StructureCodec.load`, which answers at `load_text`) and the
+        structure-side authority underneath it.
+        """
+        import json
         import numpy as np
+        from molbuilder.sidecars.molstruct import MolstructJsonError
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+
         s = Structure(elements=["C"], positions=np.zeros((1, 3)))
         with pytest.raises(ValueError, match="unknown metadata"):
             s.apply_metadata_dict({"invented_by_nobody": [1, 2, 3]})
+
+        xyz = tmp_path / "j.xyz"
+        StructureCodec().write(self._current(), xyz)
+        side = tmp_path / "j.molstruct.json"
+        payload = json.loads(side.read_text())
+        payload["invented_by_nobody"] = [1, 2, 3]
+        side.write_text(json.dumps(payload))
+        with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
+            StructureCodec().load(xyz)

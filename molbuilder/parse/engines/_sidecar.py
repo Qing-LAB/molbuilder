@@ -6,9 +6,17 @@ that package on 2026-06-21 -- this is the only copy (provenance:
 `docs/archive/old_docs/protocols/parse-module.md` § 8).
 
 Three sources are supported.  All return a set of 0-based int indices;
-the empty set means "no frozen atoms known from this source."  A
-caller (typically the absorbed SIESTA parser body) consults them in
-order and uses the first non-empty result:
+the empty set means "no frozen atoms known from this source."
+
+THE ORDER IS SIESTA'S, and it lives in
+:func:`read_frozen_atoms_for_siesta` at the bottom of this file -- not
+in every caller.  This docstring used to say "a caller consults them in
+order" and list the precedence, while exactly one caller (the SIESTA
+`.out` parser) implemented it inline; `pyscf.py` and `molwatch.py` use
+the sidecar alone, correctly, because a PySCF run has neither a
+constraints echo nor an `.fdf`.  A prose precedence with one
+implementation is a second copy waiting to be written, so it is a
+function now and the two SIESTA callers share it.
 
   1. ``read_frozen_atoms_from_siesta_out(out_path)`` — read from the
      SIESTA ``.out``'s own ``siesta: Constraints applied in the
@@ -30,7 +38,6 @@ a failure here must not break trajectory loading.
 
 from __future__ import annotations
 
-import json as _json
 import os
 import re
 from typing import Set
@@ -45,8 +52,13 @@ def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
     suffix-strip fallbacks for PySCF/geomeTRIC outputs)."""
     base, fname = os.path.split(traj_path)
     stem = fname
+    # `.XV` is here for the same reason `.out` is: it is a SIESTA artifact
+    # whose name IS the systemlabel, so the calculation's stem is what remains
+    # when it is stripped.  Without it `j.XV` composed `j.XV.molstruct.json`
+    # and the rung fallback then refused the real `j.molstruct.json`, because
+    # the prefix test below compares stems and `j.XV` is not `j`.
     for _role in ("_optim.xyz", ".xyz", ".pyscf.log", ".out",
-                  ".molwatch.log"):
+                  ".molwatch.log", ".XV"):
         if stem.endswith(_role):
             stem = stem[: -len(_role)]
             break
@@ -137,12 +149,22 @@ def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
 
     if sidecar_path is None:
         return set()
+    # THROUGH THE DOOR, not around it.  `molstruct.load` is the sidecar
+    # reader (`model/structure-molstruct.md`), and this function imported it
+    # on the very next line to call `frozen_atoms` while reading the bytes
+    # itself -- so the envelope was never validated and, with no `encoding=`
+    # at all, a non-ASCII region label decoded under the platform locale.
+    # `_load` reads `utf-8-sig` (BOM-tolerant) and validates.
+    #
+    # THE CONTRACT IS UNCHANGED: "empty set on any failure".  It raises
+    # `MolstructJsonError`, a ValueError subclass, and wraps OSError in one,
+    # so the same except clause still answers nothing for a sidecar that is
+    # missing, malformed, or of a different structure.
+    from molbuilder.sidecars import molstruct
     try:
-        with open(sidecar_path, "r", errors="replace") as fh:
-            data = _json.load(fh)
+        data = molstruct.load(sidecar_path)
     except (OSError, ValueError):
         return set()
-    from molbuilder.sidecars import molstruct
     return set(molstruct.frozen_atoms(data))
 
 
@@ -339,4 +361,34 @@ def read_frozen_atoms_from_siesta_fdf(traj_path: str) -> Set[int]:
             if i >= 1:
                 frozen_one_based.add(i)
 
-    return {i - 1 for i in frozen_one_based}
+    # SIESTA's `.fdf` writes constraints 1-based; translate back to the
+    # 0-based Structure identity through the engine index API (never a bare
+    # n - 1, which would be wrong for a 0-based engine).  The SAME sentence
+    # and the SAME call as `read_frozen_atoms_from_siesta_out` above -- two
+    # readers of one fact, and until 2026-09-22 only one of them routed.
+    from ...engine_atom_index import from_engine_index
+    return {from_engine_index(n, "siesta") for n in frozen_one_based}
+
+
+def read_frozen_atoms_for_siesta(path: str, label: str = "") -> Set[int]:
+    """Frozen-atom 0-based indices for a SIESTA artifact at ``path``,
+    from the first of the three sources above that answers.
+
+    Order, and why: the ``.out``'s own ``Constraints applied`` echo is
+    AUTHORITATIVE -- it is what the engine actually applied, and it lives in
+    the very file being parsed, so no filename heuristic can point it at the
+    wrong run.  The sidecar comes next: it is the user's own declaration for
+    this structure.  The ``.fdf`` is last, because it is what was on disk at
+    some point before the run rather than what ran.
+
+    No source is gated on the artifact's extension.  Asked about a ``.XV``,
+    the echo reader opens a file that has no echo and answers the empty set,
+    which is the right answer rather than a special case -- and the other two
+    reach the same siblings from a ``.XV`` name as from a ``.out`` one.
+    """
+    frozen = read_frozen_atoms_from_siesta_out(path)
+    if not frozen:
+        frozen = read_frozen_atoms(path, label)
+    if not frozen:
+        frozen = read_frozen_atoms_from_siesta_fdf(path)
+    return frozen

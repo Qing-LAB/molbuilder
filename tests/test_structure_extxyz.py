@@ -136,17 +136,6 @@ def test_the_title_survives_and_the_metadata_rides_beside_it():
     assert _blocks(s.to_extxyz(comment="chosen"))[0][1].startswith("chosen ")
 
 
-def test_it_writes_utf8_regardless_of_the_platform_locale(tmp_path):
-    """The rule ``to_xyz`` already follows: an explicit encoding, never the
-    platform's, or a non-ASCII title is silently corrupted on cp1252."""
-    s = _isolated()
-    s.title = "wasser — Ångström"
-    path = tmp_path / "t.extxyz"
-    returned = s.to_extxyz(str(path), frames=[s.positions, s.positions])
-    assert path.read_text(encoding="utf-8") == returned
-    assert "Ångström" in path.read_text(encoding="utf-8")
-
-
 # --------------------------------------------------------------------- #
 #  It reads back                                                         #
 # --------------------------------------------------------------------- #

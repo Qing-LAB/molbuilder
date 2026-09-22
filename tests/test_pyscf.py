@@ -421,8 +421,8 @@ def test_invalid_inputs_raise(h2o, kwargs, name):
 def test_loaded_structure_to_pyscf_script(h2o, tmp_path):
     """Mirror the FDF flow: build -> load -> render PySCF."""
     xyz_p = tmp_path / "h2o.xyz"
-    h2o.to_xyz(str(xyz_p))
     from molbuilder.workingcopy_structure import StructureCodec
+    StructureCodec().write(h2o, xyz_p)
     s2 = StructureCodec().load(str(xyz_p))
     text = render_script(s2, PySCFConfig(job_name="reloaded"))
     assert 'JOB = "reloaded"' in text

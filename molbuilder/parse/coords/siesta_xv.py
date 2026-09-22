@@ -24,6 +24,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 
+from molbuilder.chemistry import symbol_for_z
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import StructureResult
 from molbuilder.structure import Structure
@@ -42,6 +43,145 @@ from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR
 class SiestaXVError(ValueError):
     """Raised when a ``.XV`` file can't be parsed (malformed shape,
     wrong atom count, unreadable Z mapping)."""
+
+
+def _nonblank_lines(p: Path) -> List[str]:
+    """The file's non-blank lines.  THE ONE READ every door below shares.
+
+    ``utf-8-sig`` accepts an optional BOM.  `_read_xv` used plain ``utf-8``
+    and `_read_xv_cell` used ``utf-8-sig``, so a BOM'd ``.XV`` broke the
+    atoms and not the cell -- one file, two answers.
+    """
+    return [ln for ln in p.read_text(encoding="utf-8-sig",
+                                     errors="replace").splitlines()
+            if ln.strip()]
+
+
+def _cell_from(lines: List[str], name: str) -> np.ndarray:
+    """The 3x3 cell in Å from the leading three rows.  STRICT: raises.
+
+    The tolerant door is this one with its failures swallowed -- which is
+    the relationship `_read_xv_cell`'s docstring has always described
+    ("it will raise SiestaXVError on the same file").  Writing it once and
+    catching, rather than twice with different strictness, is what stops
+    the two drifting.
+    """
+    cell_bohr = np.zeros((3, 3), dtype=float)
+    for i in range(3):
+        toks = lines[i].split()
+        if len(toks) < 3:
+            raise SiestaXVError(
+                f"{name}: cell row {i+1} has {len(toks)} tokens; "
+                f"expected at least 3."
+            )
+        try:
+            cell_bohr[i] = [float(toks[0]), float(toks[1]), float(toks[2])]
+        except ValueError as exc:
+            raise SiestaXVError(
+                f"{name}: cell row {i+1} has a non-numeric component."
+            ) from exc
+        # `float("nan")` and `float("inf")` PARSE, so the try above does not
+        # catch them -- and since 2026-09-22 this matrix goes onto a
+        # `Structure`, whose `__post_init__` refuses a non-finite cell with a
+        # bare `ValueError`.  Every caller here catches `SiestaXVError` only,
+        # so that one escaped: the CLI printed a traceback, and the compose
+        # route, which catches `ComposeError`, answered HTTP 500.  The file is
+        # what is wrong, so the file's own reader says so.
+        if not np.all(np.isfinite(cell_bohr[i])):
+            raise SiestaXVError(
+                f"{name}: cell row {i+1} has a non-finite component "
+                f"({' '.join(toks[:3])}); a lattice vector must be a finite "
+                f"length."
+            )
+    return cell_bohr * _ANGSTROM_PER_BOHR
+
+
+def _atoms_from(lines: List[str], name: str):
+    """``(elements, positions_ang)``.  STRICT: raises SiestaXVError."""
+    try:
+        n_atoms = int(lines[3].strip().split()[0])
+    except (ValueError, IndexError) as exc:
+        raise SiestaXVError(
+            f"{name}: line 4 must be an integer atom count; got "
+            f"{lines[3]!r}"
+        ) from exc
+    if n_atoms <= 0:
+        raise SiestaXVError(
+            f"{name}: atom count must be > 0; got {n_atoms}."
+        )
+    atom_lines = lines[4:4 + n_atoms]
+    if len(atom_lines) != n_atoms:
+        raise SiestaXVError(
+            f"{name}: header declares {n_atoms} atoms but only "
+            f"{len(atom_lines)} lines follow."
+        )
+
+    elements: List[str] = []
+    positions_bohr = np.zeros((n_atoms, 3), dtype=float)
+    for i, raw in enumerate(atom_lines):
+        toks = raw.split()
+        if len(toks) < 5:
+            raise SiestaXVError(
+                f"{name}: atom row {i+1} has {len(toks)} tokens; "
+                f"expected at least 5 (ispec iza x y z [vx vy vz])."
+            )
+        try:
+            iza = int(toks[1])
+        except ValueError as exc:
+            raise SiestaXVError(
+                f"{name}: atom row {i+1} has non-integer Z {toks[1]!r}."
+            ) from exc
+        # MOLBUILDER'S OWN TABLE, not ase's.  `transport.compose`'s reader
+        # already used `symbol_for_z`; this one imported
+        # `ase.data.chemical_symbols`, so unifying the two readers also
+        # drops a third-party import from the parse layer rather than
+        # spreading it.  The wording of the refusal is kept because the
+        # tests pin it.
+        try:
+            elements.append(symbol_for_z(iza))
+        except ValueError as exc:
+            raise SiestaXVError(
+                f"{name}: atom row {i+1} has atomic number {iza} "
+                f"outside the element table."
+            ) from exc
+        positions_bohr[i] = [
+            float(toks[2]), float(toks[3]), float(toks[4]),
+        ]
+    return elements, positions_bohr * _ANGSTROM_PER_BOHR
+
+
+def read_xv_with_cell(path: Union[str, Path]):
+    """``(Structure, cell_ang)`` from ONE pass over the file.
+
+    THE DOOR FOR CALLERS THAT WANT BOTH, and every caller did: the
+    FileParser, the web Modify door and the since-deleted `xv_to_xyz` each
+    called `read_xv` and then `read_xv_cell`, parsing the same file twice.
+    Strict, like `read_xv`: a malformed file raises.
+
+    THE STRUCTURE CARRIES THE CELL, and the tuple's second element is the
+    same matrix for the two callers that want it bare (the FileParser fills
+    `StructureResult.cell`; `read_xv_cell` answers the matrix alone).
+
+    It did not, until 2026-09-22, and the omission was load-bearing in the
+    wrong direction.  A cell-less `Structure` gets `axis_kind = isolated` on
+    every axis, `replace` carries that forward, and attaching the cell
+    afterwards does NOT re-derive it -- so `xv2xyz` restated the axis kinds
+    by hand to undo a default that should never have applied.  A file that
+    states a lattice should produce a structure that has one, and then
+    `Structure.__post_init__` applies ITS default (a stated cell means
+    periodic on every axis) in the one place that owns that rule.
+    """
+    p = Path(path)
+    lines = _nonblank_lines(p)
+    if len(lines) < 4:
+        raise SiestaXVError(
+            f"{p.name}: file too short ({len(lines)} non-blank lines); "
+            f"expected at least 3 cell rows + atom count + atoms."
+        )
+    cell = _cell_from(lines, p.name)
+    elements, positions_ang = _atoms_from(lines, p.name)
+    return Structure(elements=elements, positions=positions_ang,
+                     cell=cell, title=p.stem), cell
 
 
 def _read_xv(path: Union[str, Path]) -> Structure:
@@ -67,87 +207,7 @@ def _read_xv(path: Union[str, Path]) -> Structure:
     dataclass); :func:`_read_xv_cell` exposes the cell for callers
     that need it.
     """
-    p = Path(path)
-    text = p.read_text(encoding="utf-8", errors="replace")
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    if len(lines) < 4:
-        raise SiestaXVError(
-            f"{p.name}: file too short ({len(lines)} non-blank lines); "
-            f"expected at least 3 cell rows + atom count + atoms."
-        )
-
-    # Cell: 3 rows × 6 floats; the trailing 3 are cell-velocity (vc/dt).
-    cell_bohr = np.zeros((3, 3), dtype=float)
-    for i in range(3):
-        toks = lines[i].split()
-        if len(toks) < 3:
-            raise SiestaXVError(
-                f"{p.name}: cell row {i+1} has {len(toks)} tokens; "
-                f"expected at least 3."
-            )
-        cell_bohr[i] = [float(toks[0]), float(toks[1]), float(toks[2])]
-    # Cell is read for the helper :func:`_read_xv_cell`; the returned
-    # Structure stays geometry-only.
-
-    try:
-        n_atoms = int(lines[3].strip().split()[0])
-    except (ValueError, IndexError) as exc:
-        raise SiestaXVError(
-            f"{p.name}: line 4 must be an integer atom count; got "
-            f"{lines[3]!r}"
-        ) from exc
-    if n_atoms <= 0:
-        raise SiestaXVError(
-            f"{p.name}: atom count must be > 0; got {n_atoms}."
-        )
-
-    atom_lines = lines[4:4 + n_atoms]
-    if len(atom_lines) != n_atoms:
-        raise SiestaXVError(
-            f"{p.name}: header declares {n_atoms} atoms but only "
-            f"{len(atom_lines)} lines follow."
-        )
-
-    elements: List[str] = []
-    positions_bohr = np.zeros((n_atoms, 3), dtype=float)
-    # Lazy import: ase isn't a build-time dep for every consumer.
-    try:
-        from ase.data import chemical_symbols as _SYMBOLS
-    except ImportError as exc:                                  # pragma: no cover
-        raise SiestaXVError(
-            "ase is required to map .XV atomic numbers to element "
-            "symbols.  Install ase or read .XV via molbuilder's own "
-            "tools."
-        ) from exc
-
-    for i, raw in enumerate(atom_lines):
-        toks = raw.split()
-        if len(toks) < 5:
-            raise SiestaXVError(
-                f"{p.name}: atom row {i+1} has {len(toks)} tokens; "
-                f"expected at least 5 (ispec iza x y z [vx vy vz])."
-            )
-        try:
-            iza = int(toks[1])
-        except ValueError as exc:
-            raise SiestaXVError(
-                f"{p.name}: atom row {i+1} has non-integer Z {toks[1]!r}."
-            ) from exc
-        if iza <= 0 or iza >= len(_SYMBOLS):
-            raise SiestaXVError(
-                f"{p.name}: atom row {i+1} has atomic number {iza} "
-                f"outside the element table (1..{len(_SYMBOLS)-1})."
-            )
-        elements.append(_SYMBOLS[iza])
-        positions_bohr[i] = [
-            float(toks[2]), float(toks[3]), float(toks[4]),
-        ]
-
-    return Structure(
-        elements=elements,
-        positions=positions_bohr * _ANGSTROM_PER_BOHR,
-        title=p.stem,
-    )
+    return read_xv_with_cell(path)[0]
 
 
 def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
@@ -156,27 +216,22 @@ def _read_xv_cell(path: Union[str, Path]) -> Optional[np.ndarray]:
     the structure portion is :func:`_read_xv`'s responsibility (it
     will raise SiestaXVError on the same file).
 
+    TOLERANT ON PURPOSE, and `validation/identity.py` is why: it asks for
+    the cell ALONE, so a file whose cell rows are sound and whose atom
+    list is corrupt must still answer a cell.  That is why this reads the
+    first three rows and does not touch the atoms.
+
     Cell rows are in Bohr per SIESTA convention; we convert to Å here.
     Velocity columns (the trailing 3 floats) are discarded.
     """
-    path = Path(path)   # accept str (public alias read_xv_cell)
+    p = Path(path)   # accept str (public alias read_xv_cell)
     try:
-        text = path.read_text(encoding="utf-8-sig", errors="replace")
-    except OSError:
-        return None
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    if len(lines) < 3:
-        return None
-    cell_bohr = np.zeros((3, 3), dtype=float)
-    for i in range(3):
-        toks = lines[i].split()
-        if len(toks) < 3:
+        lines = _nonblank_lines(p)
+        if len(lines) < 3:
             return None
-        try:
-            cell_bohr[i] = [float(toks[0]), float(toks[1]), float(toks[2])]
-        except ValueError:
-            return None
-    return cell_bohr * _ANGSTROM_PER_BOHR
+        return _cell_from(lines, p.name)
+    except (OSError, SiestaXVError):
+        return None
 
 
 class SiestaXVFileParser(FileParser):
@@ -199,8 +254,10 @@ class SiestaXVFileParser(FileParser):
 
     @classmethod
     def parse(cls, path: Path) -> StructureResult:
-        structure = _read_xv(path)
-        cell = _read_xv_cell(path)
+        # ONE PASS.  This called `_read_xv` and then `_read_xv_cell`,
+        # reading and parsing the same file twice for the two halves of
+        # one answer.
+        structure, cell = read_xv_with_cell(path)
         return build_structure_result(
             structure=structure,
             cell=cell,
@@ -223,37 +280,27 @@ read_xv = _read_xv
 read_xv_cell = _read_xv_cell
 
 
-def xv_to_xyz(xv_path: Union[str, Path],
-              xyz_path: Optional[Union[str, Path]] = None) -> str:
-    """Translate a SIESTA ``.XV`` into extended-XYZ text (written to
-    ``xyz_path`` when given), **preserving the periodic cell**.
-
-    A SIESTA ``.XV`` carries the lattice; a plain ``.xyz`` would drop it
-    and a downstream generator would invent a vacuum cell -- wrong for a
-    periodic junction.  So the cell is emitted on the comment line as the
-    ASE extended-XYZ ``Lattice="..."`` header (row-major, Å), which
-    ``molbuilder.siesta.convert`` (via ASE) round-trips back into the FDF
-    cell.  Coordinates come from :func:`read_xv` (Å), the cell from
-    :func:`read_xv_cell` (Å).
-
-    Returns the extended-XYZ text.  This is the convenient ``.XV`` data-
-    extraction entry (also exposed as the ``molbuilder xv2xyz`` CLI).
-    """
-    xv_path = Path(xv_path)
-    struct = _read_xv(xv_path)
-    cell = _read_xv_cell(xv_path)
-    if cell is not None:
-        flat = " ".join(f"{v:.8f}"
-                        for v in np.asarray(cell, dtype=float).reshape(-1))
-        comment = f'Lattice="{flat}" Properties=species:S:1:pos:R:3'
-    else:
-        comment = struct.title or xv_path.stem
-    return struct.to_xyz(str(xyz_path) if xyz_path is not None else None,
-                         comment=comment)
+# `xv_to_xyz` LIVED HERE UNTIL 2026-09-22, and it wrote a bare `.xyz`.
+#
+# It hand-built the extended-XYZ `Lattice="..."` comment that
+# `Structure.to_extxyz` owns (omitting `pbc=`), and its docstring justified
+# the header by naming a round-trip through `molbuilder.siesta.convert` --
+# a module that does not exist.  The reader that actually reopens the file,
+# `siesta/input.py::_struct_from_file`, goes through `StructureCodec().load`,
+# so the cell arrives from the SIDECAR and the header was carrying a fact the
+# pair already carries.  Meanwhile the half the header cannot carry -- the
+# frozen atoms a run declared -- was dropped on the floor.
+#
+# Its one production caller was the `xv2xyz` CLI verb, which now reads through
+# `read_xv_with_cell` and writes through the codec like every other converter
+# (`model/structure.md` § 2.4).  Deleted rather than repointed: a second
+# `.XV`-to-file path is the shape this whole consolidation removes.
 
 
 __all__ = [
     "SiestaXVError",
     "SiestaXVFileParser",
     "read_xv",
+    "read_xv_cell",
+    "read_xv_with_cell",
 ]

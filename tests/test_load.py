@@ -53,7 +53,7 @@ def test_a_path_is_refused_and_the_door_is_named(tmp_path):
     """
     s = molbuilder.build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
-    s.to_xyz(str(p))
+    p.write_text(s.to_xyz())
 
     for spelling in (p, str(p)):
         with pytest.raises(TypeError, match="StructureCodec"):
@@ -73,7 +73,7 @@ def test_the_text_the_file_holds_still_parses(tmp_path):
     """The reader did not get narrower about DOCUMENTS, only about paths."""
     s = molbuilder.build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
-    s.to_xyz(str(p))
+    p.write_text(s.to_xyz())
     s2 = Structure.from_xyz(p.read_text())
     assert s2.n_atoms == s.n_atoms
     np.testing.assert_allclose(s2.positions, s.positions, atol=1e-4)
@@ -115,7 +115,7 @@ def test_from_pdb_text():
 def test_a_pdb_file_is_read_through_the_door(tmp_path):
     s = molbuilder.build_peptide("ARNDC")
     p = tmp_path / "pep.pdb"
-    s.to_pdb(str(p))
+    p.write_text(s.to_pdb())
     from molbuilder.workingcopy_structure import StructureCodec
     assert StructureCodec().load(p).n_atoms == s.n_atoms
     # The document itself still parses.
@@ -167,7 +167,7 @@ def test_the_door_dispatches_by_extension_and_reads_the_pair(tmp_path):
         "H   0.957  0.000  0.000\n"
         "H  -0.239  0.927  0.000\n")
     xyz_p = tmp_path / "s.xyz"
-    water.to_xyz(str(xyz_p))
+    xyz_p.write_text(water.to_xyz())
     pdb_p = tmp_path / "s.pdb"
     pdb_p.write_text(water.to_pdb())
 

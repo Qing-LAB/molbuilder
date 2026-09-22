@@ -27,11 +27,10 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..chemistry import symbol_for_z
 from ..config.transport import (REGION_LEFT_ELECTRODE,
                                 REGION_RIGHT_ELECTRODE)
 from ..structure import Structure
-from ..parse.fdf import _BOHR_ANG, parse_fdf_params
+from ..parse.fdf import parse_fdf_params
 from .sort import SortResult, categorical_sort
 from ..units import UnknownUnit
 from .wizard import ElectrodeModel, extract_electrode_model
@@ -171,30 +170,31 @@ def _cells_agree_or_refuse(a_name: str, a, b_name: str, b) -> None:
 def read_xv(path) -> Tuple[np.ndarray, List[str], np.ndarray]:
     """SIESTA's ``.XV`` → ``(cell_ang (3,3), elements, positions_ang)``.
 
-    The format is SIESTA's own: three cell rows (vector + velocity, in
-    Bohr), an atom count, then one row per atom —
-    ``species_index  Z  x y z  vx vy vz`` (Bohr).  The atom ORDER is the
-    deck's order, which is the source structure's order — that identity
-    is why the overlay in :func:`compose_junction` is a plain
-    positional replacement.
+    THE PARSE MODULE'S READER, reshaped.  This used to be a second, complete
+    `.XV` parser -- same name, different return type, sitting beside
+    `parse/coords/siesta_xv.py`, whose own first paragraph says "this is the
+    only `.XV` reader".  `constants.py` records what the pair already cost:
+    the two carried different Bohr radii, so "the same file gave coordinates
+    4e-7 apart depending on which reader was asked".  Unifying the constant
+    fixed that number and left both parsers standing; this removes the
+    second one.
+
+    The TUPLE SHAPE stays, because `compose_junction`'s overlay wants the
+    three arrays positionally and the atom ORDER is the deck's order -- that
+    identity is why the overlay is a plain positional replacement.
     """
-    path = Path(path)
-    lines = [ln.split() for ln in path.read_text().split("\n") if ln.strip()]
-    if len(lines) < 4:
-        raise ComposeError(f"{path} is not a .XV file (too short)")
+    from ..parse.coords.siesta_xv import SiestaXVError, read_xv_with_cell
     try:
-        cell = np.array([[float(x) for x in lines[i][:3]]
-                         for i in range(3)]) * _BOHR_ANG
-        n = int(lines[3][0])
-        rows = lines[4:4 + n]
-        if len(rows) != n:
-            raise ValueError(f"declares {n} atoms, carries {len(rows)}")
-        elements = [symbol_for_z(int(r[1])) for r in rows]
-        pos = np.array([[float(x) for x in r[2:5]]
-                        for r in rows]) * _BOHR_ANG
-    except (ValueError, IndexError) as exc:
+        struct, cell = read_xv_with_cell(Path(path))
+    except SiestaXVError as exc:
         raise ComposeError(f"{path} does not parse as a .XV file: {exc}")
-    return cell, elements, pos
+    except OSError as exc:
+        raise ComposeError(f"{path} could not be read: {exc}")
+    if cell is None:                      # defensive: the strict door raises
+        raise ComposeError(f"{path} carries no cell")
+    return (np.asarray(cell, dtype=float),
+            list(struct.elements),
+            np.asarray(struct.positions, dtype=float))
 
 
 @dataclass(frozen=True)
@@ -386,8 +386,14 @@ def recorded_contract_of(cited: CitedDir) -> Optional[Dict[str, object]]:
     disagree about what counts as recorded."""
     if cited.form != "structure" or cited.sidecar is None:
         return None
+    # THROUGH THE DOOR.  `labeled_structure_from` in this same module reads
+    # sidecars with `molstruct.load`; this one hand-parsed, twenty lines away,
+    # under a docstring promising "ONE reader".  `load` validates the envelope
+    # and reads `utf-8-sig`.  `MolstructJsonError` is a ValueError, so "else
+    # None" is unchanged for a sidecar that is missing or malformed.
+    from ..sidecars import molstruct as _molstruct
     try:
-        raw = json.loads(cited.sidecar.read_text(encoding="utf-8"))
+        raw = _molstruct.load(cited.sidecar)
     except (OSError, ValueError):
         return None
     block = (raw.get("info") or {}).get("calculation")         if isinstance(raw.get("info"), dict) else None
@@ -615,8 +621,26 @@ def labeled_citation_structure(cited: CitedDir):
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
             "cell_origin": None,
-            "axis_kind": _side.get("axis_kind")
-                         or ["periodic", "periodic", "transport"],
+            # STATED, NOT DEFAULTED.  This read `_side.get("axis_kind") or
+            # [...]`, and the `or` could never fire: `load_sidecar`
+            # normalises the payload through a scratch `Structure`, whose
+            # `__post_init__` always fills the kinds -- so a sidecar that
+            # states none arrives as `["isolated"] * 3`, which is truthy.
+            # The sidecar's kinds therefore won every time, and an authoring
+            # pair saved before a box was committed carries `isolated`.
+            #
+            # Measured 2026-09-22: the emitted deck then read
+            # `c (transport)  isolated` and shipped "the transport axis (c)
+            # has vacuum / is not periodic; the electrode .TSHS cannot attach
+            # seamlessly" about a junction that is periodic in-plane and open
+            # along z BY CONSTRUCTION -- the regression the comment above
+            # says was fixed, live again through the sidecar branch.
+            #
+            # A cited relaxation being composed into a junction has exactly
+            # one answer here (`engines/transport.md` § 5 I8: the device has
+            # open boundary along transport), so it is stated outright rather
+            # than offered as a fallback the loader makes unreachable.
+            "axis_kind": ["periodic", "periodic", "transport"],
         })
         if struct.regions:
             return struct, sidecars[0]
@@ -671,9 +695,23 @@ def swap_electrode_labels(cited: CitedDir) -> str:
     # accepts either an in-body block OR a sidecar beside the deck).
     from ..sidecars.molstruct import is_sidecar
     if is_sidecar(source):
-        data = json.loads(source.read_text())
-        data["regions"] = _swapped(data.get("regions"))
-        _write_atomically(source, json.dumps(data, indent=2) + "\n")
+        # THE SIDECAR'S OWN READER AND WRITER, AND ITS LOCK.  This was a raw
+        # `json.loads` / `json.dumps` pair: no envelope validation, no
+        # `encoding=` on the read, and -- the one that bites silently --
+        # `json.dumps` without `ensure_ascii=False`, which `molstruct.dumps`
+        # documents as "what keeps a non-ASCII region label a literal instead
+        # of an escape, so a second writer without it produces a different
+        # file for the same structure".  Swapping the electrodes of a junction
+        # labelled `α-helix` rewrote that label escaped.
+        #
+        # And it is a read-modify-write, which `save` says must hold the lock:
+        # "if you're doing a read-modify-write cycle, wrap the entire cycle in
+        # `with_lock`".
+        from ..sidecars import molstruct as _molstruct
+        with _molstruct.with_lock(source):
+            data = _molstruct.load(source)
+            data["regions"] = _swapped(data.get("regions"))
+            _molstruct.save(source, data)
         return source.name
 
     from ..script_emit import _extract_atom_metadata_dict

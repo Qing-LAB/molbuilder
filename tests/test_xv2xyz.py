@@ -1,9 +1,24 @@
-"""Tests for the convenient .XV extraction API/CLI
-(``molbuilder.parse.coords.xv_to_xyz`` + ``molbuilder xv2xyz``).
+"""Tests for the .XV extraction CLI (``molbuilder xv2xyz``) and the one
+``.XV`` reader beneath it (``molbuilder.parse.coords.read_xv_with_cell``).
 
-The key contract: a SIESTA ``.XV`` carries the periodic cell, and the
-translation must PRESERVE it (as an ASE extended-XYZ ``Lattice=`` header) so
-a downstream describe + prep keeps the real cell, not a vacuum box.
+The contract, restated 2026-09-22: a SIESTA ``.XV`` carries the periodic
+cell, and the translation must PRESERVE it -- but through the PAIR, not
+through a hand-built ``Lattice=`` comment. The pair is what
+``siesta/input.py::_struct_from_file`` reopens, so the cell survives into a
+describe + prep and the geometry does not arrive as a molecule in a vacuum
+box.
+
+TWO MODES. A bare ``.XV`` states the geometry and the lattice, and
+everything else is written at `Structure`'s default -- applied by
+`Structure`, never restated by the verb. ``--from-run`` says a metadata
+source sits beside it: a sidecar is applied WHOLE (axis kinds, labels, held
+atoms, padding), and with no sidecar the run still declares its held atoms
+in the ``.out`` echo or the ``.fdf``.
+
+The axis kinds are the half that matters most and the half a ``.XV`` cannot
+state: ``periodic``, ``isolated`` and ``transport`` are three different
+physics (`model/structure-periodicity.md` § 2), and only a metadata source
+knows which. Pinned below so the verb cannot go back to guessing.
 """
 from __future__ import annotations
 
@@ -13,7 +28,7 @@ import pytest
 from click.testing import CliRunner
 
 from molbuilder import cli
-from molbuilder.parse.coords import read_xv, read_xv_cell, xv_to_xyz
+from molbuilder.parse.coords import read_xv, read_xv_cell, read_xv_with_cell
 
 # The one home (`molbuilder/constants.py`); this file carried a stale
 # `0.5291772108` until 2026-09-09.
@@ -28,6 +43,17 @@ _XV = (
     "  1   6   0.0 0.0 0.0   0.0 0.0 0.0\n"
     "  2   1   1.0 0.0 0.0   0.0 0.0 0.0\n"
     "  3  79   0.0 2.0 0.0   0.0 0.0 0.0\n"
+)
+
+# The deck that drove the run, holding the constraint block `--from-run`
+# must recover. 1-based on disk (SIESTA's convention); {0, 2} once routed
+# through the engine index API.
+_FDF = (
+    "SystemLabel j\n"
+    "%block Geometry.Constraints\n"
+    "  position 1\n"
+    "  position 3\n"
+    "%endblock Geometry.Constraints\n"
 )
 
 
@@ -52,35 +78,121 @@ def test_read_xv_cell_in_angstrom(xv):
     assert cell[0][0] == pytest.approx(10.0 * _ANG, rel=1e-6)
 
 
-def test_xv_to_xyz_preserves_cell(xv, tmp_path):
+def test_read_xv_with_cell_puts_the_cell_on_the_structure(xv):
+    """A file that states a lattice yields a structure that HAS one.
+
+    It did not until 2026-09-22, and that omission was what made `xv2xyz`
+    restate the axis kinds by hand: a cell-less Structure defaults to
+    `isolated` on every axis, `replace` carries that forward, and attaching
+    a cell afterwards does not re-derive it.
+    """
+    struct, cell = read_xv_with_cell(xv)
+    assert struct.n_atoms == 3
+    assert cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
+    assert struct.cell is not None
+    assert struct.cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
+    # and the kinds come from `Structure`, not from this reader
+    assert struct.axis_kind == ("periodic", "periodic", "periodic")
+
+
+def test_xv2xyz_writes_the_pair(xv, tmp_path):
     out = tmp_path / "j.xyz"
-    text = xv_to_xyz(xv, out)
+    res = CliRunner().invoke(cli.cli, ["xv2xyz", str(xv), str(out)])
+    assert res.exit_code == 0, res.output
+    # BOTH halves, or the cell had nowhere to go.
     assert out.is_file()
-    lines = text.splitlines()
-    assert lines[0].strip() == "3"                 # atom count
-    assert 'Lattice="' in lines[1]                 # cell on comment line
-    assert "Properties=species:S:1:pos:R:3" in lines[1]
-    # the 10-Bohr cell -> ~5.2918 Å appears in the Lattice header
-    assert f"{10.0 * _ANG:.8f}" in lines[1]
+    assert (tmp_path / "j.molstruct.json").is_file()
+    assert out.read_text().splitlines()[0].strip() == "3"
 
 
-def test_xv_to_xyz_roundtrips_through_struct_reader(xv, tmp_path):
+def test_xv2xyz_cell_reaches_the_siesta_reader(xv, tmp_path):
+    """The round trip that matters: what the deck generator reopens.
+
+    This is the assertion the old `Lattice=` header existed to satisfy. It
+    still holds with the header gone, because `_struct_from_file` reads the
+    PAIR -- which is why deleting the header was safe rather than lucky.
+    """
     out = tmp_path / "j.xyz"
-    xv_to_xyz(xv, out)
+    assert CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out)]).exit_code == 0
+
     from molbuilder.siesta.input import _struct_from_file
     s, cell = _struct_from_file(str(out))
     assert s.n_atoms == 3
     assert cell is not None
     assert cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
+    # A lattice implies periodicity -- stated once, in `Structure`.
+    assert s.axis_kind == ("periodic", "periodic", "periodic")
 
 
-def test_cli_xv2xyz(xv, tmp_path):
-    out = tmp_path / "out.xyz"
-    res = CliRunner().invoke(cli.cli, ["xv2xyz", str(xv), str(out)])
+def test_xv2xyz_leaves_frozen_atoms_alone_without_the_flag(xv, tmp_path):
+    """The flag is the whole point: the deck is RIGHT THERE and unread."""
+    (tmp_path / "j.fdf").write_text(_FDF)
+    out = tmp_path / "j.xyz"
+    assert CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out)]).exit_code == 0
+
+    from molbuilder.workingcopy_structure import StructureCodec
+    assert StructureCodec().load(out).frozen_atoms == []
+
+
+def test_xv2xyz_from_run_recovers_the_declared_frozen_atoms(xv, tmp_path):
+    (tmp_path / "j.fdf").write_text(_FDF)
+    out = tmp_path / "j.xyz"
+    res = CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
     assert res.exit_code == 0, res.output
-    assert out.is_file()
-    # The artifact says 3 atoms where an XYZ says it -- its first line.
-    # (Replaced `"444" not in output`, a negative on an arbitrary literal
-    # that could never fail; found 2026-08-12.)
-    assert out.read_text().splitlines()[0].strip() == "3"
-    assert 'Lattice="' in out.read_text().splitlines()[1]
+
+    from molbuilder.workingcopy_structure import StructureCodec
+    # 1-based `position 1` / `position 3` in the deck -> 0-based on the
+    # Structure, through `engine_atom_index`, never a bare `n - 1`.
+    assert StructureCodec().load(out).frozen_atoms == [0, 2]
+
+
+def test_xv2xyz_from_run_with_nothing_to_find_is_not_an_error(xv, tmp_path):
+    out = tmp_path / "j.xyz"
+    res = CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
+    assert res.exit_code == 0, res.output
+    # It SAYS there was nothing, rather than writing defaults in silence.
+    assert "no sidecar and no constraints declared" in res.output
+
+
+def test_xv2xyz_from_run_applies_the_sidecar_whole(xv, tmp_path):
+    """A sidecar is a whole metadata source, so all of it is applied --
+    not the frozen atoms with the rest left behind.
+
+    The AXIS KINDS are the point. A `.XV` cannot tell a bulk axis from a
+    slab's vacuum from a junction's leads, and the three drive different
+    physics: `validation/siesta.py` warns that k > 1 on a `transport` axis
+    "imposes a fake periodicity", and `resolve_cell_origin` puts a
+    transport axis's box corner at the atoms and a periodic one at zero.
+    Guessing `periodic` here silently disables the first and moves the box.
+    """
+    (tmp_path / "j.fdf").write_text(_FDF)
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    # THROUGH THE DOOR, in the test too -- the sidecar beside `j.XV` is
+    # written by the codec, not hand-packed here. A junction: periodic in
+    # plane, the leads along z.
+    StructureCodec().write(
+        Structure(elements=["C", "H", "Au"],
+                  positions=[[0, 0, 0], [1, 0, 0], [0, 2, 0]],
+                  cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]],
+                  axis_kind=("periodic", "periodic", "transport"),
+                  regions={"L-electrode": [2]},
+                  frozen_atoms=[1]),
+        tmp_path / "j.xyz")
+
+    out = tmp_path / "out.xyz"
+    res = CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
+    assert res.exit_code == 0, res.output
+
+    got = StructureCodec().load(out)
+    assert got.frozen_atoms == [1]                 # the sidecar's, not the deck's
+    assert got.axis_kind == ("periodic", "periodic", "transport")
+    assert got.regions["L-electrode"] == [2]
+    # THE `.XV`'s CELL SURVIVES the apply: the sidecar's 9 A box does not
+    # overrule the lattice the run actually ended on.
+    assert got.cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)

@@ -224,7 +224,15 @@ def _lattice_block(struct: Structure,
         # further down ("the transport axis has vacuum / is not periodic")
         # could never fire on a transport axis at all.  `axis_kind` is the
         # field that distinguishes them, and it is what this was asking for.
-        kinds = struct.axis_kind or ("periodic",) * 3
+        # The fallback AGREES WITH ITS TEN NEIGHBOURS.  It arrived as the
+        # literal swap for the old `struct.pbc or (True,)*3` field read and
+        # said `("periodic",) * 3`, while every other `axis_kind or ...` in
+        # the tree -- including `Structure.pbc()` itself -- answers
+        # `("isolated",) * 3`.  All eleven are unreachable (`__post_init__`
+        # always fills the kinds), but this is the one whose waking would
+        # relabel every axis in an emitted deck and silence the warning
+        # below, so it is the one that must not disagree.
+        kinds = struct.axis_kind or ("isolated",) * 3
         vac = axis_vacuum(cell, struct.positions)
         lines += [
             "# Explicit lattice preserved from the structure (NOT",
