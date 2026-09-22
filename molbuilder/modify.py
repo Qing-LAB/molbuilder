@@ -890,17 +890,16 @@ def _finish_slab(struct, metal_pos, element, full):
     # clause 1 calls truth and which is what "Use default" restores --
     # and would drop every field added to `Structure` after today.
     #
-    # THE BOX IS STATED AS A WHOLE, `pbc` INCLUDED.  When the layers come out
-    # coplanar there is no z extent to capture (above), so this op has no cell
-    # to give -- and a `pbc` carried from the source is then a periodic axis
-    # with no lattice, which `resolve_cell()` refuses outright.  Four fields,
-    # one decision: the captured box, or no box at all.
+    # THE BOX IS STATED AS A WHOLE.  When the layers come out coplanar there
+    # is no z extent to capture (above), so this op has no cell to give -- and
+    # a periodicity carried from the source would then be a periodic axis with
+    # no lattice, which `resolve_cell()` refuses outright.  One decision: the
+    # captured box, or no box at all.
     captured = ({"cell": elc_cell,
                  "cell_origin": elc_cell_origin,
                  "axis_kind": elc_axis_kind}
                 if elc_cell is not None else
-                {"cell": None, "cell_origin": None, "axis_kind": None,
-                 "pbc": (False, False, False)})
+                {"cell": None, "cell_origin": None, "axis_kind": None})
     out = Structure(
         **{**struct._carry_nonatom(), **captured},
         elements=list(struct.elements) + [element] * n_new,

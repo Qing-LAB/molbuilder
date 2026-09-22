@@ -397,14 +397,15 @@ class TestTheBoxItCaptures:
         from molbuilder.structure import Structure
         canvas = Structure(elements=["Au", "Au"],
                            positions=np.array([[0., 0, 0], [2., 0, 0]]),
-                           cell=np.diag([4., 4., 4.]), pbc=(True, True, True))
+                           cell=np.diag([4., 4., 4.]),
+                           axis_kind=("periodic",) * 3)
         out = _slab(canvas, size=(2, 2, 1), start_z=0.0)
 
         pos = np.asarray(out.positions, dtype=float)
         assert pos[:, 2].max() - pos[:, 2].min() < 1e-6, (
             "the fixture no longer goes degenerate")
         assert out.cell is None, "there was no z extent to capture"
-        assert out.pbc == (False, False, False), (
+        assert out.axis_kind == ("isolated",) * 3, (
             "no cell was captured, yet the result still claims periodicity")
         out.resolve_cell()          # must not raise
 

@@ -139,25 +139,20 @@ class TestTheDerivedCopyIsACopy:
         assert carrying.replace(info={}).info == {}
         assert carrying.info, "stripping the copy emptied the source"
 
-    def test_a_stated_pbc_is_not_overruled_by_the_carried_kinds(self):
-        """The one field for which "state only what CHANGES" was false.
+    # `test_a_stated_pbc_is_not_overruled_by_the_carried_kinds` and
+    # `test_kinds_that_agree_with_the_stated_pbc_are_kept` were RETIRED
+    # 2026-09-22, with the special case they pinned.
+    #
+    # They guarded a patch inside `replace()`: because the method seeded BOTH
+    # `pbc` and `axis_kind` from the source, and `__post_init__` let the kind
+    # win, a caller who stated only the boolean had it silently discarded --
+    # so `replace()` compared the two and dropped the carried kind when they
+    # contradicted.  A precedence rule in two places, which is what the door
+    # exists to prevent.
+    #
+    # `pbc` is no longer a field (user: "why the fuck need pbc when axis_kind
+    # fully contains this information and more").  There is one periodicity
+    # field to carry, nothing to reconcile, and `replace(pbc=...)` is a
+    # TypeError rather than a case to handle -- pinned by
+    # `test_structure_periodicity.py::TestAxisKindIsTheOnePeriodicityField`.
 
-        ``axis_kind`` outranks ``pbc`` in ``__post_init__``, and this door
-        seeds BOTH from the source — so a caller who stated only ``pbc``
-        had it silently discarded by kinds describing the box they had
-        just stopped asking for.
-        """
-        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
-                      cell=np.diag([4.0, 4.0, 4.0]),
-                      axis_kind=("periodic", "periodic", "periodic"))
-        assert s.replace(pbc=(False, False, False)).pbc == (False, False, False)
-
-    def test_kinds_that_agree_with_the_stated_pbc_are_kept(self):
-        """`transport` is a distinction no boolean can carry back, so the
-        carried kinds only step aside when they CONTRADICT what was
-        stated — never when they merely say more."""
-        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
-                      cell=np.diag([4.0, 4.0, 4.0]),
-                      axis_kind=("periodic", "periodic", "transport"))
-        out = s.replace(pbc=(True, True, True))
-        assert out.axis_kind == ("periodic", "periodic", "transport")
