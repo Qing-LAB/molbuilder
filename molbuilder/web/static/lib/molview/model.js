@@ -458,7 +458,16 @@ export function createModel(opts) {
      * (`recordEdit()` -- inside the gate, so a read-only viewer or a
      * failed edit never reaches it), never cleared by the viewer:
      * un-editing is what Retract is for, and both flags ride the pair like
-     * everything in the store. */
+     * everything in the store.
+     *
+     * ONE CALLER LEFT, and it is the one edit the server never sees.
+     * `structure_modified` is decided in Python now: the geometry ops POST
+     * to `/api/modify/<name>` and the cell goes through
+     * `/api/structure/periodicity`, and both answers are adopted, so
+     * marking here as well would be one rule in two languages.
+     * `writeLabel` makes no request at all -- it rewrites `annotations`
+     * in place -- so `labels_modified` has nowhere else it could be
+     * decided. */
     function markContractOutdated(what) {
         const c = structure && structure.info && structure.info.calculation;
         if (!c || typeof c !== "object") return;
@@ -662,7 +671,12 @@ export function createModel(opts) {
             // failed edit never reaches it either, so nothing is recorded
             // (§ 11.1).
             recordEdit(checkpoint);
-            markContractOutdated();
+            // NOT MARKED HERE.  Every op in this door runs in Python
+            // (`/api/modify/<name>`) and the answer is adopted whole by
+            // `structureFromServer`, which reads `structure.info` -- so the
+            // outdated mark arrives already set, from the one place that
+            // decides it (`model/structure.md` § 2.2a).  Setting it again
+            // was the same rule written twice.
             // An operation that grows or shrinks the structure clears the
             // selection: a kept one could point at an atom that is no longer the
             // one it meant. A count-preserving transform leaves it alone.
@@ -694,8 +708,17 @@ export function createModel(opts) {
         readData: readData,
         // A cell edit does not move an atom, so the frame and its range are
         // untouched — this is why § 10.5 makes it an overlay refresh.
-        applyCell: (block, said) => {
-            settle(() => { structure.periodicity = block; }, {
+        applyCell: (block, said, recorded) => {
+            settle(() => {
+                structure.periodicity = block;
+                // ADOPTED, NOT RE-DECIDED.  `periodicity_gate.apply_edit`
+                // marks the recorded contract outdated, and the answer
+                // carries it; setting the flag again here would be the
+                // same rule in two languages (`structure.md` § 2.2a).
+                if (recorded && typeof recorded === "object") {
+                    structure.info = recorded;
+                }
+            }, {
                 redraw: "cell",
                 notices: (said && said.length)
                     ? said : null,
@@ -704,7 +727,6 @@ export function createModel(opts) {
             // through one door (§ 6.2), and a box set wrong is as recoverable
             // as any atom that moved.
             recordEdit(true);
-            markContractOutdated();
         },
     });
 

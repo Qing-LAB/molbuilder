@@ -946,7 +946,9 @@ export function createCellEdit(handed) {
         /* The answer's notices ride WITH the block it describes (§ 6.8). They
          * are passed on verbatim -- the server's own words, its own levels --
          * because rewording a warning here would put a second author on it. */
-        handed.applyCell(block, Array.isArray(answer.notices) ? answer.notices : []);
+        handed.applyCell(block,
+                         Array.isArray(answer.notices) ? answer.notices : [],
+                         answer.info);
         return block;
     };
 }

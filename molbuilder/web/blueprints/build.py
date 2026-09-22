@@ -526,6 +526,12 @@ def api_periodicity():
     return jsonify({
         "ok": True,
         "periodicity": new_struct.to_wire()["periodicity"],
+        # THE RECORD RIDES WITH THE BLOCK.  `apply_edit` marks the recorded
+        # contract outdated (a box edit is an edit), and this is the only
+        # answer the caller adopts -- so without `info` here the mark would
+        # be decided in Python and then set a second time in the browser.
+        # One decider; `model-jobs.js` takes it from here.
+        "info": new_struct.info,
         "notices": notices,
     })
 
