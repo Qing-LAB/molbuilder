@@ -24,7 +24,6 @@ for the next person to rediscover from a structure that would not unfreeze.
 from __future__ import annotations
 
 import dataclasses
-import sys
 
 import numpy as np
 import pytest
@@ -73,22 +72,36 @@ class TestStatingRegionsStatesTheWholeStore:
 
 
 class TestTheInterpreterHook:
+    """WHICH stdlib helper dispatches through ``__replace__`` — and which
+    does not, which this class asserted backwards until 2026-09-22.
+
+    It claimed `dataclasses.replace` would route through the hook on 3.13+,
+    "so the door becomes automatic on a newer interpreter".  Checked against
+    the stdlib source: `dataclasses.replace` ends
+    `return obj.__class__(**changes)` and never mentions `__replace__`, on
+    any version.  The 3.13 addition is `copy.replace`, a different helper.
+
+    The consequence was not academic.  The trap test below was
+    `skipif(>=3.13)` on that belief, so a 3.13 upgrade would have SILENCED
+    the only guard on the aliasing while the aliasing was still there.
+    """
 
     def test_the_replace_hook_is_installed(self):
-        """``__replace__`` is what Python 3.13+ dispatches
-        ``dataclasses.replace`` through, so the door becomes automatic on a
-        newer interpreter without any call site changing."""
+        """For `copy.replace` (3.13+), which is the helper that honours it."""
         assert Structure.__replace__ is Structure.replace
 
-    @pytest.mark.skipif(sys.version_info >= (3, 13),
-                        reason="3.13+ routes dataclasses.replace through "
-                               "__replace__, so the trap is gone")
-    def test_on_312_the_stdlib_helper_still_carries_the_trap(self, held):
-        """Stated, not hidden.  This interpreter has no ``__replace__`` hook,
-        so ``dataclasses.replace`` keeps the old behaviour and
-        ``Structure.replace`` is the only correct door.  When this repo moves
-        to 3.13 this test starts being skipped and the door becomes belt AND
-        braces."""
+    def test_the_stdlib_dataclasses_helper_never_routes_through_the_hook(self):
+        """The claim, asserted against the stdlib rather than believed."""
+        import inspect
+        assert "__replace__" not in inspect.getsource(dataclasses.replace)
+
+    def test_the_stdlib_helper_carries_the_trap_on_every_version(self, held):
+        """NOT skipped on 3.13 — there is no version where this stops being
+        true, so `Structure.replace` is the only correct door, permanently.
+
+        Kept as a live assertion rather than a comment because the whole
+        reason `replace()` exists is that this alternative looks equivalent
+        and is not."""
         got = dataclasses.replace(held, regions={"electrode_L": [1]})
         assert got.regions == {"electrode_L": [1], FROZEN_LABEL: [0]}
 

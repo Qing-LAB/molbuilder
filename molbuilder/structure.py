@@ -1194,11 +1194,15 @@ class Structure:
         frozen door is not re-passed. A caller who states ``frozen_atoms`` (with
         or without ``regions``) gets exactly what they asked for.
 
-        Also installed as ``__replace__``, so on Python 3.13+ plain
-        ``dataclasses.replace`` routes through this automatically. **On 3.12 it
-        does not** — the interpreter has no such hook — so on this interpreter
-        ``dataclasses.replace(struct, regions=…)`` still carries the trap and
-        this method is the only correct door.
+        **``dataclasses.replace`` NEVER routes here, on any version.**  This
+        said it did from 3.13; checked against the stdlib source 2026-09-22,
+        `dataclasses.replace` ends `return obj.__class__(**changes)` and the
+        word ``__replace__`` does not appear in the function at all.  What
+        3.13 added is `copy.replace`, a DIFFERENT helper, and that one does
+        dispatch through the hook -- which is the only reason the alias below
+        is worth keeping.  So `dataclasses.replace(struct, ...)` carries the
+        trap on every interpreter, and this method is the only correct door,
+        with no upgrade that changes it.
 
         IT IS ``copy()`` PLUS THE CHANGES, and that is the second reason to
         use it.  ``dataclasses.replace`` re-passes the mutable fields BY
@@ -1230,7 +1234,9 @@ class Structure:
         kw.update(changes)
         return type(self)(**kw)
 
-    #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
+    #: `copy.replace` (3.13+) dispatches here; `dataclasses.replace` does
+    #: NOT, on any version -- it calls `obj.__class__(**changes)` directly.
+    #: Inert on 3.12, which has no `copy.replace`.
     __replace__ = replace
 
     # ------------------------------------------------------------------ #
