@@ -159,3 +159,12 @@ test-artifacts/
 *.tar.bz2
 *.tar.xz
 *.tgz
+
+# Reference full texts: only the openly-licensed one is committed.
+# Besley2008 / Tao2021 / Ghysels2008 are publisher copies obtained through an
+# institutional subscription -- fine to hold locally, not to redistribute.
+# docs/science/refs/README.md carries every citation and DOI, so they stay
+# findable without being in the repository.
+docs/science/refs/Besley2008-phva-si100.*
+docs/science/refs/Tao2021-revised-gsva.*
+docs/science/refs/Ghysels2008-mbh-simbioma-abstract.*

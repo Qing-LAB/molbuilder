@@ -29,6 +29,12 @@
         {
           "path": "plans/plan.md",
           "label": "The plan (one file)"
+        },
+        {
+          "path": "plans/2026-09-21-normal-mode-unification-design.md"
+        },
+        {
+          "path": "plans/2026-09-22-vibration-audit.md"
         }
       ]
     },
@@ -63,13 +69,16 @@
     },
     {
       "label": "Science",
-      "meta": "Scientific correctness: validation, chemistry, pseudopotentials",
+      "meta": "Scientific correctness: validation, chemistry, normal modes, pseudopotentials",
       "children": [
         {
           "path": "science/overview.md"
         },
         {
           "path": "science/validation.md"
+        },
+        {
+          "path": "science/normal-modes.md"
         },
         {
           "path": "science/chemistry-correctness.md"

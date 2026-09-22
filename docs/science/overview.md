@@ -28,9 +28,11 @@ flowchart TD
     O["science/overview.md<br/>(you are here) — the promise · when it blocks · the check catalog"]
     V["validation.md<br/>the runtime machinery"]
     C["chemistry-correctness.md<br/>the (charge, spin) science + control surface"]
+    N["normal-modes.md<br/>what a vibration count counts — and what it removes"]
     P["pseudopotentials.md<br/>the .psml coverage checks"]
     O --> V
     O --> C
+    O --> N
     O --> P
 ```
 
@@ -38,6 +40,7 @@ flowchart TD
 |---|---|
 | [`validation.md`](?doc=science/validation.md) | need the analyzer / adapter / consumer machinery (`analyze_structure` → `ChemistryAnalysis`, the per-engine registry, `check_open_shell_metal`, the `validation/` package) |
 | [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) | are auditing whether the chemistry is right — the 5 control points, the spin/charge science, the pure primitives, the hemeC-dithiol post-mortem |
+| [`normal-modes.md`](?doc=science/normal-modes.md) | touch anything that counts, filters, warns about or displays vibrational modes — why `3N−6` becomes `3·N_free − n_rigid(F)` when atoms are held, and why the leftover whole-body motions are removed before diagonalisation rather than detected after |
 | [`pseudopotentials.md`](?doc=science/pseudopotentials.md) | work on `.psml` pseudopotential checks (coverage, XC, dead KB projector, generator-version) |
 
 ---
