@@ -1,6 +1,26 @@
 # Structure I/O — what is duplicated, and how it should be organised
 
-**Role:** plan — consolidation, from a full reading
+**Role:** plan — consolidation, from a full reading · **ARCHIVED 2026-09-22,
+closed.** All six steps are resolved: 1, 2, 3, 5 and 6 landed; 4 was withdrawn
+on reading, and so was the grep-style guard this plan wanted with step 6.
+
+**What it was right about.** The three defects it opened with *were* one
+shape, and finishing the shape found more of it than patching the three would
+have: the write-side path doors are closed (`to_xyz` / `to_extxyz` / `to_pdb`
+return text and cannot be handed a path), the `.XV` format has one parser, and
+`xv2xyz` writes the pair.
+
+**What it was wrong about, both found by reading rather than by a test.**
+Step 5's note asserted a `.XV` is `("periodic",) * 3` because SIESTA computes
+under periodic boundary conditions — `axis_kind` is not that question, and the
+junction this plan validated against is `periodic, periodic, transport`. And
+§ 1.7's "fix the docstring, do not add an entry point" held only while the
+precedence had one caller.
+
+**Where the remaining work went.** The `.xyz`-loses-`transport` case, the D5
+sweep and the transport residue leads are rows in
+[`plans/2026-09-22-handover.md`](?doc=plans/2026-09-22-handover.md) § 4 and
+§ 5b. Nothing from this plan is still open.
 **Domain:** model · parse · engines · cli
 **Opened:** 2026-09-22
 **Why it exists:** three separate defects (a bare `.xyz` writer, a bare `n-1`,
