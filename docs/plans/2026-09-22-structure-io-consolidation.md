@@ -257,9 +257,34 @@ All six are done: 1–3 and 5–6 landed, 4 was withdrawn on reading.
   calculation directory" and silently pulling in a frozen-atom set is hard to
   notice when wrong.
 
-A `.XV` is a SIESTA artifact, so its periodicity is `("periodic",) * 3` — which
-is also what makes `science/normal-modes.md` § 3.1a give 3 rigid-body modes
-rather than 6 for a slab.
+> **That line was wrong, and it got written into the code.** *(corrected
+> 2026-09-22, on reading the incoming `pbc` → `axis_kind` work.)*
+>
+> A `.XV` is a SIESTA artifact, and SIESTA does compute under periodic
+> boundary conditions — but `axis_kind` is not "did the engine use PBC". It is
+> the three-way model in `structure-periodicity.md` § 2, where the kinds drive
+> different physics: only `periodic` is k-sampleable, `isolated` means the
+> images are artefacts of the box, and `transport` means the leads replace
+> them.
+>
+> Measured on the very run this plan used as its proof:
+> `projects/BDT-Au/structure/RAW_BDT-Au111.molstruct.json` declares that
+> junction `['periodic','periodic','transport']`, and the geometry agrees — z
+> is the one orthogonal axis and its atoms span 34.406 Å of 36.807, a 2.4 Å
+> gap, about one Au(111) interlayer spacing, which § 2 gives as the definition
+> of a transport axis. Writing `periodic` over it silences
+> `validation/siesta.py`'s *"k > 1 imposes a fake periodicity"* warning and
+> moves the box corner (`resolve_cell_origin` treats the two kinds
+> differently).
+>
+> **The rule was already stated and did not need inventing** (user,
+> 2026-09-22): a metadata source beside the `.XV` is an option switch; a bare
+> `.XV` gets its metadata at DEFAULT values. So the verb states nothing. The
+> reader returns a `Structure` **carrying its cell** — which is what S1 above
+> said and this plan's step 3 had not finished — and `Structure.__post_init__`
+> applies the default in the one place that owns it. `--from-run` applies a
+> sidecar WHOLE through `molstruct.apply_to_structure`, because a sidecar is a
+> whole metadata source and the axis kinds are the half a `.XV` most needs.
 
 ---
 
@@ -322,3 +347,34 @@ reads a bare cell as fully periodic — *only when `axis_kind` is unset*, and
 "re-derive the box from atom extents plus padding" and discards the cell the
 verb exists to preserve. `xv2xyz` states `axis_kind` explicitly. Any other
 caller that attaches a cell to an already-built structure has the same trap.
+
+---
+
+## 7. What reading the incoming work turned up
+
+`43e88c9a` (`pbc` stops being a stored field; `axis_kind` is the only
+periodicity field) landed on the remote while this plan was being executed.
+Reading it in full, rather than from its commit message, found two things.
+
+**A defect in it, measured.** Its message states the read-side contract —
+*"the key is ACCEPTED AND IGNORED on read rather than refused ... these are
+files people already have"* — and that rule is right. It was taught to
+`apply_metadata_dict`, which is the **last** of three places enforcing which
+keys a sidecar may carry. `parse.sidecars.molstruct.load_text` checks first
+(deliberately moved there, because the v3 frozen-atom loss went through a
+guard sitting downstream of the leak), then
+`sidecars.molstruct.apply_to_structure`. Neither knew, so the forgiving guard
+was never reached: **46 of the 53 sidecars under `projects/` carry `pbc`, and
+`StructureCodec().load` raised on every one**. One list at module scope,
+three guards reading it.
+
+**And a defect in this plan's own step 5**, above — the `("periodic",) * 3`
+line, which the sharper meaning of `axis_kind` made visible.
+
+The shape both share is the one § 1 is about: **a rule enforced in more than
+one place drifts at whichever copy the next change forgets.** § 1.2 found it
+in the companion lookups, § 1.3 in the index conventions, § 1.4 in the JSON
+reads. Here it was a key list in three guards, and a periodicity default in
+`Structure` and restated in a converter. Neither was found by a test — one
+was found by reading the incoming change against the contract, the other by
+reading the contract against code already shipped.
