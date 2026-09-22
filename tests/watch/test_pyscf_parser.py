@@ -8,7 +8,6 @@ result with the right source_format.
 
 from __future__ import annotations
 
-import json
 import math
 
 import pytest
@@ -221,18 +220,31 @@ def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
         # atom 1 gradient = (0.005, 0, 0) → magnitude 0.005
         "GRADIENT 0.30 0.0 0.0 0.005 0.0 0.0\n"
     )
-    side = tmp_path / "myjob.molstruct.json"
-    side.write_text(json.dumps({
-        "schema_version": 3, "n_atoms_total": 2,
-        "structure_hash": "a" * 64,
-        # ONE LABEL STORE: frozen atoms are a LABEL INSIDE `regions`, not a
-        # sibling key.  This fixture said `regions: {} , frozen_atoms: [0]`
-        # until 2026-08-03 -- "nothing is labelled" and "atom 0 is frozen" at
-        # once -- so the reader found no frozen atoms, the constrained list came
-        # back empty, and the test died on an IndexError rather than on the
-        # masking behaviour it is about.
-        "regions": {"frozen_atoms": [0]}, "selection_rules": {},
-    }))
+    # THE SIDECAR IS WRITTEN BY THE CODEC, not hand-packed.
+    #
+    # This declared `"schema_version": 3` and hand-built the payload. It
+    # worked only for as long as the reader hand-read the JSON too: once
+    # `read_frozen_atoms` was routed through `molstruct.load` (2026-09-22)
+    # the version check refused it -- correctly, because a v3 sidecar keeps
+    # its frozen atoms under a top-level key this reader does not name, so
+    # reading one would return a payload that looks complete and is not.
+    #
+    # The refusal reappeared as exactly the symptom the comment below
+    # records from 2026-08-03: no frozen atoms found, an empty constrained
+    # list, and an IndexError instead of the masking assertion. Same
+    # symptom, different cause, and the fix is the same either way -- let
+    # the writer that owns the format write it.
+    #
+    # ONE LABEL STORE: frozen atoms are a LABEL INSIDE `regions`, not a
+    # sibling key. The fixture said `regions: {}, frozen_atoms: [0]` until
+    # 2026-08-03 -- "nothing is labelled" and "atom 0 is frozen" at once.
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+    StructureCodec().write(
+        Structure(elements=["H", "H"],
+                  positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+                  frozen_atoms=[0]),
+        tmp_path / "myjob.xyz")
 
     result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
     # Unconstrained tracks atom 0 (the frozen one with huge force).
