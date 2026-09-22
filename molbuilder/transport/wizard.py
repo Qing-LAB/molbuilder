@@ -129,10 +129,11 @@ class ElectrodeModel:
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
         # STATED AT CONSTRUCTION, not assigned afterwards.  A field write
-        # skips `__post_init__`, so the cell was never checked and `pbc`
-        # was never reconciled: the lead carried `axis_kind` periodic
-        # beside `pbc` (False, False, False), and `_lattice_block` reads
-        # `pbc` -- so every electrode deck shipped "the transport axis has
+        # skips `__post_init__`, so the cell was never checked and the
+        # periodicity was never settled: the lead carried `axis_kind`
+        # periodic beside a `pbc` field of (False, False, False), and
+        # `_lattice_block` read that boolean -- so every electrode deck
+        # shipped "the transport axis has
         # vacuum / is not periodic; the electrode .TSHS cannot attach
         # seamlessly" about a lead this very function declares periodic.
         #

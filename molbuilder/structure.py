@@ -419,9 +419,10 @@ class Structure:
     frozen_atoms:  Optional[List[int]] = None
     # Periodic lattice (2026-06-27).  ``cell`` is the (3, 3) matrix whose
     # ROWS are the lattice vectors in Angstrom (ASE convention), or None
-    # for a non-periodic molecule.  ``pbc`` is per-axis periodicity:
-    # True = periodic (the structure tiles, no vacuum), False = vacuum
-    # along that axis.  This is the SOURCE OF TRUTH for the cell — the
+    # for a non-periodic molecule.  Per-axis periodicity is ``axis_kind``
+    # below; the boolean view is :meth:`pbc`, computed on demand, and this
+    # comment described it as a field beside ``cell`` until 2026-09-22.
+    # The cell here is the SOURCE OF TRUTH for the box — the
     # transport/SIESTA emitters preserve it verbatim instead of
     # fabricating an orthorhombic vacuum box from atom extents.  Both
     # default to "no lattice" so every existing call site is unchanged.
@@ -521,9 +522,9 @@ class Structure:
                 raise ValueError(f"{name} has length {len(arr)}, expected {n}")
 
         # Normalise the periodic lattice.  A provided cell must be a
-        # 3x3 of finite floats; pbc defaults to "fully periodic" when a
-        # cell is present (a lattice implies periodicity) and "no
-        # periodicity" when it is absent.
+        # 3x3 of finite floats.  What a missing ``axis_kind`` defaults to is
+        # decided below, off the cell's presence -- "a lattice implies
+        # periodicity", isolated without one.
         if self.cell is not None:
             cell = np.asarray(self.cell, dtype=float)
             if cell.shape != (3, 3) or not np.all(np.isfinite(cell)):
@@ -971,8 +972,10 @@ class Structure:
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
         # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
-        # axis_kind<->pbc reconciliation (axis_kind authoritative), cell_origin
-        # only-with-a-cell, and region/frozen/annotation indices in range.
+        # ``axis_kind`` default and value check (there is no reconciliation
+        # step any more -- the second periodicity field it reconciled against
+        # went on 2026-09-22), cell_origin only-with-a-cell, and
+        # region/frozen/annotation indices in range.
         self.__post_init__()
 
     # ------------------------------------------------------------------ #
@@ -1722,7 +1725,7 @@ class Structure:
             Cell page reports, so a file and the viewer it came from cannot
             describe different systems.
         ``pbc``
-            Which axes are periodic (``T``/``F``), from :attr:`pbc`.  It is what
+            Which axes are periodic (``T``/``F``), from :meth:`pbc`.  It is what
             keeps the Lattice honest: an isolated molecule still HAS a resolved
             box -- its bounding box plus vacuum -- and writing that without
             ``pbc="F F F"`` would tell the reader the system repeats when it
@@ -1886,11 +1889,17 @@ class Structure:
 
         None of these are per-atom, so an add / delete / rigid transform
         carries them verbatim.  Dropping any of them silently reverts a
-        periodic or transport cell to isolated defaults (axis_kind -> derived
-        from pbc, vacuum -> 0) -- e.g. deleting a stray atom would wipe a
-        transport cell, and the emitted SIESTA FDF would omit
-        ``LatticeVectors``.  Every op-helper that rebuilds a Structure spreads
-        this so those facts survive the edit.
+        periodic or transport cell to isolated defaults -- ``axis_kind`` falls
+        back to ``isolated`` on every axis when no cell is carried either, and
+        ``vacuum`` to 0.  Deleting a stray atom would then wipe a transport
+        cell, and the emitted SIESTA FDF would omit ``LatticeVectors``.
+
+        (This read "axis_kind -> derived from pbc" until 2026-09-22.  The
+        derivation runs the other way now, and `pbc` is not carried at all:
+        it is :meth:`pbc`, computed from ``axis_kind`` on demand.)
+
+        Every op-helper that rebuilds a Structure spreads this so those facts
+        survive the edit.
 
         ``info`` RIDES HERE TOO, and the reason is the opposite of what
         dropping it looks like.  An edit is meant to OUTDATE the recorded
@@ -2061,7 +2070,7 @@ class Structure:
         A DERIVED cell (``cell`` None) / unset origin (``cell_origin`` None) needs no
         update: ``resolve_cell`` / ``resolve_cell_origin`` recompute it from the new
         atom extents.  Index-preserving, so regions / frozen / annotations / axis_kind
-        / vacuum / pbc carry verbatim.  For a pure rotation ``linear`` is orthogonal
+        / vacuum carry verbatim.  For a pure rotation ``linear`` is orthogonal
         (det +1), so the cell stays non-singular."""
         L = np.asarray(linear, dtype=float).reshape(3, 3)
         t = np.asarray(translation, dtype=float).reshape(3)
