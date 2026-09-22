@@ -93,16 +93,23 @@ from ..spectra.results import SCHEMA_VERSION
 
 # Conversion factors used in the script.  Pinned here so the
 # string-emit and the unit-test cross-check from the same source.
-from molbuilder.constants import AMU_ELECTRON_MASS as _AMU_ELECTRON_MASS
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
 from molbuilder.constants import DEBYE_E_ANGSTROM as _DEBYE_E_ANGSTROM
+from molbuilder.constants import (
+    CM1_PER_SQRT_HARTREE_BOHR2_AMU as _CM1_PER_SQRT_HARTREE_BOHR2_AMU)
 from molbuilder.constants import HARTREE_CM1 as _HARTREE_CM1
 
 # Hartree-to-cm⁻¹ for ω = sqrt(force constant / mass) follows the PySCF
 # convention (see pyscf.hessian.thermo).  The value is interpolated into
 # the emitted script so it reads explicitly there, and comes from the one
 # home so it cannot drift from the one every other reader uses.
-_CM1_PER_AU_FREQ = _HARTREE_CM1   # 1 atomic unit of frequency in cm⁻¹
+# AMU, NOT ELECTRON MASSES.  The deck weights its Hessian with the same
+# amu array PySCF's `harmonic_analysis` uses, so eigenvalues land in
+# Hartree/(Bohr²·amu) and this is their conversion.  It was `HARTREE_CM1`
+# -- true atomic units -- while the masses were electron masses, which is
+# self-consistent for FREQUENCIES and wrong for everything that reads the
+# eigenvectors' normalisation (2026-09-21).
+_CM1_PER_SQRT_EH_BOHR2_AMU = _CM1_PER_SQRT_HARTREE_BOHR2_AMU
 
 
 # Default finite-difference step for Raman dα/dR.
@@ -320,8 +327,9 @@ def _emit_constants(struct: Structure,
     out.append("")
     out.append("# Unit conversions (kept inline so the math in the script")
     out.append("# is self-contained without needing molbuilder at runtime).")
-    out.append(f"CM1_PER_AU_FREQ            = {_CM1_PER_AU_FREQ!r}  "
-               f"# 1 a.u. of freq in cm⁻¹")
+    out.append(f"CM1_PER_SQRT_EH_BOHR2_AMU  = "
+               f"{_CM1_PER_SQRT_EH_BOHR2_AMU!r}  "
+               f"# cm⁻¹ per sqrt(Eh/(Bohr²·amu))")
     out.append(f"BOHR_TO_ANG                = {_BOHR_TO_ANG!r}")
     out.append("")
     out.append("# Bibliography keys used in the Methods text + inline comments.")
@@ -547,7 +555,7 @@ def _emit_dipole_derivative_rule() -> List[str]:
 
     Emitted rather than interpolated into the source so the value still has
     ONE home: it is read from `constants.py` here, exactly as `BOHR_TO_ANG`
-    and `AMU_TO_AU` already are.
+    and `MASSES_AMU` already are.
     """
     import inspect
     src = inspect.getsource(dipole_derivatives)
@@ -725,13 +733,17 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
     out.append(")")
     out.append("ELEMENTS    = [a[0] for a in ATOMS]")
     out.append("N_ATOMS     = mol.natm")
-    out.append("MASSES_AMU  = np.asarray(mol.atom_mass_list(), dtype=float)")
-    out.append("# Convert masses to atomic units (electron masses).  The")
-    out.append("# Hessian below is in Hartree/Bohr² and we want frequencies")
-    out.append("# in a.u. before the wavenumber conversion.")
-    out.append(f"AMU_TO_AU   = {_AMU_ELECTRON_MASS!r}  "
-               f"# CODATA 2018; 1 Da in m_e units")
-    out.append("MASSES_AU   = MASSES_AMU * AMU_TO_AU")
+    out.append("# ONE mass array, and `isotope_avg=True` is not a")
+    out.append("# preference -- `atom_mass_list()` DEFAULTS to integer mass")
+    out.append("# NUMBERS (H=1, Cl=35), while PySCF's own harmonic_analysis")
+    out.append("# and thermo.thermo() both use the isotope-averaged masses")
+    out.append("# (H=1.008, Cl=35.45).  The deck took the default and the")
+    out.append("# all-free path took PySCF's, so freezing an atom silently")
+    out.append("# moved every C-H stretch by ~12 cm-1 (2026-09-21).")
+    out.append("# thermo.thermo() hardcodes it and takes no mass argument,")
+    out.append("# so this is the only convention that agrees with itself.")
+    out.append("MASSES_AMU  = np.asarray(mol.atom_mass_list(isotope_avg=True),")
+    out.append("                         dtype=float)")
     out.append("")
     return out
 
@@ -1125,7 +1137,11 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    #   norm_mode       : (n_modes, N_ATOMS, 3) Cartesian normal")
     out.append("    #                     modes in the canonical mass-weighted")
     out.append("    #                     unit-norm convention.")
-    out.append("    _ha = _mb_thermo.harmonic_analysis(mol, HESS)")
+    # THE SAME ARRAY, PASSED IN.  `harmonic_analysis` recomputes its own
+    # masses when `mass=` is omitted, which is how the two paths came to
+    # disagree.  Handing it ours makes one array authoritative.
+    out.append("    _ha = _mb_thermo.harmonic_analysis(mol, HESS,")
+    out.append("                                       mass=MASSES_AMU)")
     out.append("    FREQ_CM1 = np.asarray([_signed_wavenumber(w)")
     out.append("                            for w in _ha['freq_wavenumber']])")
     out.append("    HAS_IMAG = [bool(f < 0) for f in FREQ_CM1]")
@@ -1145,7 +1161,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # 2-D index k = 3*atom + direction.")
     out.append("    _h2 = _hess_free.transpose(0, 2, 1, 3).reshape(")
     out.append("        3 * N_FREE, 3 * N_FREE)")
-    out.append("    _masses_free = MASSES_AU[_free_idx]")
+    out.append("    _masses_free = MASSES_AMU[_free_idx]")
     out.append("    _msqrt_inv = 1.0 / np.sqrt(_masses_free)")
     out.append("    # Mass-weight: H_ij <- H_ij / sqrt(m_i * m_j) for each 3x3")
     out.append("    # atom-atom block, by broadcasting the per-atom 1/sqrt(m)")
@@ -1163,7 +1179,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # negative ω_au for an imaginary mode (negative eigenvalue")
     out.append("    # of the mass-weighted Hessian).  Then convert a.u. -> cm⁻¹.")
     out.append("    _omega_au = np.sign(_eigvals) * np.sqrt(np.abs(_eigvals))")
-    out.append("    FREQ_CM1  = _omega_au * CM1_PER_AU_FREQ")
+    out.append("    FREQ_CM1  = _omega_au * CM1_PER_SQRT_EH_BOHR2_AMU")
     out.append("    HAS_IMAG  = [bool(f < 0) for f in FREQ_CM1]")
     out.append("    # Convert each eigenvector L_mw of the mass-weighted Hessian")
     out.append("    # back to a Cartesian normal mode L_cart via")

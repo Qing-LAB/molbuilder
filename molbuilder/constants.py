@@ -55,6 +55,22 @@ HARTREE_CM1: float = 219474.6313632
 #: 1 unified atomic mass unit in electron masses.  CODATA 2018.
 AMU_ELECTRON_MASS: float = 1822.888486209
 
+#: cm⁻¹ per sqrt(Hartree / (Bohr²·amu)) -- the frequency conversion for a
+#: Hessian mass-weighted in AMU rather than in electron masses.  ≈ 5140.48.
+#:
+#: **DERIVED, not typed**, because it is exactly the two constants above and a
+#: third spelling of the same physics is how they drift apart.  A Hessian in
+#: Hartree/Bohr² weighted by amu gives eigenvalues in Hartree/(Bohr²·amu); the
+#: electron-mass convention would give true atomic units and use `HARTREE_CM1`
+#: directly.  Both are correct; mixing them silently is not, which is what the
+#: vibration deck did until 2026-09-21 -- PySCF's `harmonic_analysis` weights
+#: in amu and the deck's frozen-atom path weighted in electron masses, so the
+#: two paths disagreed about mode normalisation by sqrt(AMU_ELECTRON_MASS) and
+#: every frozen IR intensity came out ~1823x too small.
+#:
+#: (No `math.sqrt`: this module imports nothing at all -- see the header.)
+CM1_PER_SQRT_HARTREE_BOHR2_AMU: float = HARTREE_CM1 / (AMU_ELECTRON_MASS ** 0.5)
+
 #: 1 atomic unit of electric dipole (e·a₀) in Debye.  CODATA 2018.
 AU_DIPOLE_DEBYE: float = 2.541746473
 
