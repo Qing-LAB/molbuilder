@@ -18,7 +18,7 @@ the primary session before it entered this plan. Of the findings checked:
 
 | checked | held up | corrected |
 |---|---|---|
-| 24 | 22 | 2 (both *understated* — a gate count of 2 that is 3, a "five docstrings" that was nine) |
+| 26 | 24 | 2 (both *understated* — a gate count of 2 that is 3, a "five docstrings" that was nine) |
 
 One agent claim was **wrong** and is not in this plan: that all four `info`
 doors accept a non-finite float. `set_info` refuses it (`TypeError`); only
@@ -290,6 +290,77 @@ which `sort.PARTITION_LABELS` cannot compose.
 
 ---
 
+## 5a. The tests — the count must come DOWN, and three rules are unpinned
+
+*(The seventh review. Every duplicate cluster below is backed by a mutant: one
+change to production and the listed tests go red **together**. All mutations
+ran in an isolated `git worktree`; the eight taken before that was arranged
+were re-run there and all eight reproduced.)*
+
+**~28 of 441 in-scope tests are removable** — 24 duplicates and 4 that cannot
+fail or assert a shape. `docs/process/testing.md` already says unifying an API
+must REDUCE the count; it has been going up.
+
+Twelve clusters, each with the bit it carries and the one test to keep. The
+largest: **16 tests carry the single fact "the default isolated vacuum gap is
+3 Å"** (mutant: `3.0 → 5.0`), three of them byte-identical assertion triples in
+three files. Three of the sixteen are thin-wrapper tests on `cell.resolve()`,
+which just forwards to `Structure` and decides nothing — `testing.md` puts
+those on the `Structure` side. Next largest: **9 tests assert the same literal
+corner `[7.5, 7.5, 7.5]` on the same fixture**; keep three, one per layer.
+
+### Three cannot-fail tests, each measured
+
+- **`test_periodicity_gate.py:1126`** is the *inverted* test `testing.md` § 3a
+  names. Its assertion is
+  `assert "Thin vacuum" not in texts or "4.0" not in texts`. Measured: the
+  first disjunct is **False** today — the answer *does* carry
+  `cell.vacuum_thin` — and the test passes only because
+  `validation/siesta.py:409` formats with `{v:g}`, rendering `4.0` as `"4"`.
+  Mutating the number format **failed** it; deleting the whole check
+  **passed** it. Fails on cosmetics, passes on deletion.
+- **`test_cell.py:202`** asserts `"a " in found.message` to mean "it names the
+  axis letters". `"a "` occurs three times in the prose. Dropping the axis
+  letters while keeping the clearances left all 46 tests in the file green.
+  This is the identical defect `test_periodicity_gate.py:222` records having
+  fixed on 2026-09-09 — *"`\"a\" in str(exc.value)` stood here until
+  2026-09-09 and could not fail: the letter is in 'than', 'cannot', every
+  English sentence."*
+- **`test_cell.py:588`** asserts a **signature** via `inspect.signature`. The
+  same ruling is observable as a result: `interplanar_spacing("fcc","111")`
+  raises `TypeError`. Assert that instead.
+
+And **`TestDocMatchesTheDoor`** (3 tests) reads shipped text with
+`pathlib.read_text()` — the shape `testing.md` retired 18 files of on
+2026-09-10. It iterates `OPS`, so **a shrinking `OPS` is invisible to it**:
+removing the `block` op left all three green while the six `TestTheBlockOp`
+tests failed. It is blind in the one direction that loses a user a button.
+
+### Three documented rules that nothing pins
+
+| the rule | where it is stated | the mutant, and what happened |
+|---|---|---|
+| `write(struct, "x.pdb")` must produce a readable PDB pair | `structure.md:446` records it as a **measured defect fixed 2026-09-07** — *"the door could not read back what it had just written"* | restored the pre-fix behaviour → **460 passed, 1 skipped.** And suite-wide: **0** tests write a `.pdb` through the codec, **0** pass `fmt=` |
+| geometry is replaced **before** the sidecar, and the write is both-or-neither | `structure.md:354`, § 2.4 clause 4 | reversed the order the document forbids → **441 passed.** `atomic=` has no caller in the suite |
+| an explicit cell that fits the structure but not structure + vacuum **centres** it | `structure-periodicity.md:485`, the corner table's fourth row | deleted the centring branch → **441 passed** |
+
+The first is the sharpest: a regression that actually happened, with its
+numbers written down, is re-introducible today with the suite green.
+
+### And 15 fixtures hand-build a `structure_hash` no writer can emit
+
+`sha256_of_file` returns 64 hex chars; the write gate only asks
+`isinstance(str) and len >= 16`. So `"b"*32`, `"0"*32` and
+`"sha256:" + "0"*64` all pass and none is a value the codec produces.
+Tightening the gate to the real shape failed **15** in-scope tests — and
+three of them failed with *"Regex pattern did not match"*, meaning their
+`pytest.raises` was matching a **different** error than the one they name.
+That is the sharper risk: they would pass and fail for reasons unrelated to
+their subject. Same shape as the sixteen sidecar fixtures already fixed, one
+layer down.
+
+---
+
 ## 6. Needs a ruling, not a fix
 
 1. **X2 ①** — a frame-range `.xyz` read back without its sidecar loses
@@ -361,8 +432,16 @@ Confirmed non-findings, recorded so nobody fixes them by analogy.
    Then § 2's behavioural list, which is the part that needs reading.
 7. **§ 3 and § 4** — fix each at its owner, never at the instance. Start with
    the `replace()` guard, because it is what makes the rest safe to touch.
-8. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
+8. **§ 5a's three unpinned rules** — write them before §§ 3/4 touch the code
+   they guard. The `.pdb` one first: it is a regression with numbers already
+   written down.
+9. **§ 5a's four cannot-fail tests** — retire or rewrite. They are worse than
+   absent, because they read as coverage.
+10. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
+    cluster's mutant re-run afterwards to confirm the keeper still goes red.
+11. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
 
-**What this audit did not cover:** the tests review was still running when
-this was written; its duplicate-cluster analysis slots into § 3 and § 4, and
-its verdict on the three legacy shim classes decides § 5's last row.
+**Standing on its own, not part of the order:** the 15 hand-built
+`structure_hash` fixtures (§ 5a). They agree with the writer today only
+because the gate is loose, so they are a latent break rather than a defect —
+convert them as each file is touched for another reason.
