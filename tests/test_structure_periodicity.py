@@ -34,34 +34,47 @@ def _s(**kw):
     return Structure(elements=["C", "H"], positions=[[0, 0, 0], [2, 0, 0]], **kw)
 
 
-class TestAxisKindReconciliation:
-    def test_molecule_no_cell_derives_isolated(self):
-        s = _s()
-        assert s.axis_kind == ("isolated", "isolated", "isolated")
-        assert s.pbc == (False, False, False)
+class TestAxisKindIsTheOnePeriodicityField:
+    """`axis_kind` is the only periodicity state a Structure holds.
 
-    def test_cell_present_derives_periodic(self):
+    It used to be one of two. `pbc` was a stored field carrying the boolean
+    view, and `__post_init__` reconciled them on every construction —
+    deriving one from the other and settling which won. It could not hold a
+    fact `axis_kind` did not (the mapping flattens `periodic` and
+    `transport` onto the same True), so it was a duplicate to keep in step,
+    and it forced a special case in `replace()` for the caller who stated
+    only the view. Retired 2026-09-22, user: *"why the fuck need pbc when
+    axis_kind fully contains this information and more"*.
+
+    The boolean survives as the `pbc()` ACCESSOR, for the two outside
+    formats that need one — see `TestPbcIsAnInteropAccessor`.
+    """
+
+    def test_molecule_no_cell_is_isolated(self):
+        assert _s().axis_kind == ("isolated", "isolated", "isolated")
+
+    def test_cell_present_is_periodic(self):
         s = _s(cell=np.eye(3) * 5)
         assert s.axis_kind == ("periodic", "periodic", "periodic")
-        assert s.pbc == (True, True, True)
 
-    def test_explicit_axis_kind_derives_pbc(self):
-        # transport -> ASE pbc True (periodic box, Γ-sampled); isolated -> False.
+    def test_transport_is_never_guessed(self):
+        """A cell alone says "there is a lattice", not "this is a device".
+        Only a builder states `transport`, which is precisely the fact the
+        retired boolean could not carry."""
+        assert "transport" not in _s(cell=np.eye(3) * 5).axis_kind
+
+    def test_a_stated_kind_is_kept_verbatim(self):
         s = _s(cell=np.eye(3) * 5,
                axis_kind=("periodic", "periodic", "transport"))
         assert s.axis_kind == ("periodic", "periodic", "transport")
-        assert s.pbc == (True, True, True)
 
-    def test_isolated_axis_kind_derives_pbc_false(self):
-        s = _s(cell=np.eye(3) * 5,
-               axis_kind=("periodic", "periodic", "isolated"))
-        assert s.pbc == (True, True, False)
-
-    def test_axis_kind_wins_over_pbc(self):
-        # axis_kind is authoritative: a conflicting pbc is overwritten.
-        s = _s(cell=np.eye(3) * 5, pbc=(False, False, False),
-               axis_kind=("periodic", "periodic", "periodic"))
-        assert s.pbc == (True, True, True)
+    def test_the_boolean_view_is_no_longer_a_field(self):
+        """Constructing with it is an error, not a silent second opinion."""
+        import dataclasses as _dc
+        from molbuilder.structure import Structure as _S
+        assert "pbc" not in {f.name for f in _dc.fields(_S)}
+        with pytest.raises(TypeError):
+            _s(cell=np.eye(3) * 5, pbc=(False, False, False))
 
     def test_invalid_axis_kind_raises(self):
         with pytest.raises(ValueError, match="axis_kind"):
@@ -135,7 +148,7 @@ class TestSidecarRoundTrip:
         ms.apply_to_structure(s, d)
         assert s.axis_kind == ("periodic", "periodic", "transport")
         assert not hasattr(s, "kgrid")
-        assert s.pbc == (True, True, True)   # derived: transport -> True
+        assert s.pbc() == (True, True, True)  # the accessor: transport -> True
 
 
 
@@ -156,7 +169,7 @@ class TestElectrodeCaptureCell:
         out = add_slab(dev, "Au", "111", (2, 2, 3), start_z=2.4)
         assert out.cell is not None, "electrode cell must be captured, not discarded"
         assert out.axis_kind == ("periodic", "periodic", "transport")
-        assert out.pbc == (True, True, True)          # transport -> True
+        assert out.pbc() == (True, True, True)        # accessor: transport -> True
         assert out.cell[2, 2] > 0.0
         # in-plane vectors are non-degenerate (hexagonal for fcc111)
         assert abs(float(np.linalg.det(out.cell))) > 1e-6

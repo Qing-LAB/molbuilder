@@ -218,7 +218,13 @@ def _lattice_block(struct: Structure,
     lines = ["LatticeConstant        1.0 Ang"]
     if cell is not None:
         cell = np.asarray(cell, dtype=float)
-        pbc = struct.pbc or (True, True, True)
+        # THE KIND, NOT THE BOOLEAN.  This read `struct.pbc`, which flattens
+        # `transport` and `periodic` to the same True -- so the per-axis line
+        # below labelled every transport axis "periodic", and the warning
+        # further down ("the transport axis has vacuum / is not periodic")
+        # could never fire on a transport axis at all.  `axis_kind` is the
+        # field that distinguishes them, and it is what this was asking for.
+        kinds = struct.axis_kind or ("periodic",) * 3
         vac = axis_vacuum(cell, struct.positions)
         lines += [
             "# Explicit lattice preserved from the structure (NOT",
@@ -226,12 +232,15 @@ def _lattice_block(struct: Structure,
         ]
         names = ("a", "b", "c (transport)")
         for ax in range(3):
-            kind = "periodic" if pbc[ax] else "vacuum"
+            kind = kinds[ax]
             lines.append(
                 f"#   {names[ax]:<14} {kind:<8} | empty span "
                 f"{vac[ax]:.2f} Å")
         # Transport axis (c) must be periodic / seamless for the leads.
-        if vac[2] > _VACUUM_FLAG_ANG or not pbc[2]:
+        # A transport axis is the device length matched to the leads -- the
+        # seam question is about vacuum at the boundary, not about the kind.
+        # `isolated` here IS the failure this warns about.
+        if vac[2] > _VACUUM_FLAG_ANG or kinds[2] == "isolated":
             lines.append(
                 "# WARNING: the transport axis (c) has vacuum / is not "
                 "periodic;")
@@ -239,7 +248,7 @@ def _lattice_block(struct: Structure,
                 "#   the electrode .TSHS cannot attach seamlessly "
                 "(Brandbyge 2002 § III).")
         for ax in (0, 1):
-            if pbc[ax] and vac[ax] > _VACUUM_FLAG_ANG:
+            if kinds[ax] != "isolated" and vac[ax] > _VACUUM_FLAG_ANG:
                 lines.append(
                     f"# NOTE: transverse axis {names[ax]} declared periodic "
                     f"but leaves {vac[ax]:.1f} Å empty — confirm the surface "

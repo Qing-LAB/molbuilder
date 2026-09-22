@@ -30,7 +30,6 @@ def _hex_device():
     for k in range(4):
         elems.append("Au"); pos.append([1.0, 1.0, z1 + k * d]); R.append(i); i += 1
     return Structure(elements=elems, positions=np.asarray(pos, float), cell=HEX,
-                     pbc=(True, True, True),
                      regions={"L-electrode": L, "bridge": B, "R-electrode": R})
 
 
@@ -39,11 +38,16 @@ def _hex_device():
 # ------------------------------------------------------------------ #
 
 
-def test_structure_cell_and_pbc_defaults():
+def test_structure_cell_and_periodicity_defaults():
+    """No cell means a vacuum box; a stated cell means a lattice.  The
+    boolean view follows from the kind rather than being stored beside it
+    (`pbc` was retired as a field 2026-09-22)."""
     s = Structure(elements=["C"], positions=np.zeros((1, 3)))
-    assert s.cell is None and s.pbc == (False, False, False)
+    assert s.cell is None
+    assert s.axis_kind == ("isolated",) * 3 and s.pbc() == (False,) * 3
     s2 = Structure(elements=["C"], positions=np.zeros((1, 3)), cell=HEX)
-    assert s2.cell.shape == (3, 3) and s2.pbc == (True, True, True)
+    assert s2.cell.shape == (3, 3)
+    assert s2.axis_kind == ("periodic",) * 3 and s2.pbc() == (True,) * 3
 
 
 def test_structure_cell_validation():
@@ -72,32 +76,37 @@ def test_a_degenerate_cell_is_reported_rather_than_unopenable():
     assert [i.where for i in issues] == ["cell.no_volume"]
 
 
-def test_copy_translated_preserve_cell_and_pbc():
+def test_copy_translated_preserve_cell_and_axis_kind():
     s = Structure(elements=["C", "N"], positions=np.array([[0, 0, 0], [1.0, 0, 0]]),
-                  cell=HEX, pbc=(True, True, False))
+                  cell=HEX, axis_kind=("periodic", "periodic", "isolated"))
     for clone in (s.copy(), s.translated([1.0, 2.0, 3.0]), s.centered()):
         assert clone.cell is not None and np.allclose(clone.cell, HEX)
-        assert clone.pbc == (True, True, False)
+        assert clone.axis_kind == ("periodic", "periodic", "isolated")
+        assert clone.pbc() == (True, True, False)
     # copy is independent (no shared array)
     s.copy().cell[0, 0] = 999.0
     assert s.cell[0, 0] == pytest.approx(17.30)
 
 
 def test_sidecar_cell_round_trip(tmp_path):
-    d = msj.to_dict({"cell": HEX, "pbc": (True, True, False)},
+    d = msj.to_dict({"cell": HEX,
+                     "axis_kind": ("periodic", "periodic", "isolated")},
                     n_atoms_total=1, structure_hash="0" * 32)
-    assert d["pbc"] == [True, True, False]
+    assert d["axis_kind"] == ["periodic", "periodic", "isolated"]
+    assert "pbc" not in d, "the retired duplicate must not be written again"
     p = tmp_path / "x.molstruct.json"
     msj.save(p, d)
     loaded = msj.load(p)
     s = Structure(elements=["C"], positions=np.zeros((1, 3)))
     msj.apply_to_structure(s, loaded)
-    assert np.allclose(s.cell, HEX) and s.pbc == (True, True, False)
+    assert np.allclose(s.cell, HEX)
+    assert s.axis_kind == ("periodic", "periodic", "isolated")
+    assert s.pbc() == (True, True, False)
 
 
 def test_sidecar_without_cell_is_nonperiodic():
     d = msj.to_dict(n_atoms_total=1, structure_hash="0" * 32)
-    del d["cell"]; del d["pbc"]                       # simulate an old v3 file
+    del d["cell"]                                     # simulate an old v3 file
     s = Structure(elements=["C"], positions=np.zeros((1, 3)))
     msj.apply_to_structure(s, d)
     assert s.cell is None

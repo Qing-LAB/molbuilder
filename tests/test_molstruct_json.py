@@ -746,7 +746,7 @@ class TestPbcFollowsAxisKind:
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "isolated")
         # pbc follows axis_kind -- NOT all-True from cell-presence (the F3 bug)
-        assert tuple(bool(x) for x in s.pbc) == (True, True, False)
+        assert s.pbc() == (True, True, False)
 
     def test_celled_without_axis_kind_or_pbc_is_periodic(self):
         """A cell with no `axis_kind` and no `pbc` still reads as periodic in all three
@@ -763,7 +763,7 @@ class TestPbcFollowsAxisKind:
         s = Structure.from_xyz("2\n\nH 0 0 0\nH 0 0 0.74\n")
         msj.apply_to_structure(s, d)
         assert tuple(s.axis_kind) == ("periodic", "periodic", "periodic")
-        assert tuple(bool(x) for x in s.pbc) == (True, True, True)
+        assert s.pbc() == (True, True, True)
 
 
 class TestInfoBlock:

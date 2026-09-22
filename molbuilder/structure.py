@@ -128,7 +128,7 @@ FROZEN_LABEL = "frozen_atoms"
 #: than partly applied: a key this does not know is a fact the caller believes
 #: it stored, and silently dropping it is how a structure reaches a calculation
 #: missing labels nobody noticed were gone.
-METADATA_FIELDS = ("regions", "cell", "cell_origin", "pbc", "axis_kind",
+METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
                    "vacuum", "annotations")
 
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
@@ -389,12 +389,19 @@ class Structure:
     # fabricating an orthorhombic vacuum box from atom extents.  Both
     # default to "no lattice" so every existing call site is unchanged.
     cell:          Optional[np.ndarray]            = None
-    pbc:           Optional[Tuple[bool, bool, bool]] = None
-    # Per-axis periodicity KIND (structure-periodicity.md) -- the authoritative
-    # periodicity field.  Values: "periodic" (k-sampled / tileable lattice),
-    # "isolated" (vacuum box), "transport" (electrode-matched, semi-infinite).
-    # ``pbc`` above is the DERIVED ASE view (periodic|transport -> True,
-    # isolated -> False).  None -> derived from ``pbc``/``cell`` in __post_init__.
+    # Per-axis periodicity KIND (structure-periodicity.md) -- THE periodicity
+    # field, and since 2026-09-22 the only one.  Values: "periodic" (k-sampled
+    # / tileable lattice), "isolated" (vacuum box), "transport"
+    # (electrode-matched, semi-infinite).  None -> "periodic" on every axis
+    # when a cell is stated, "isolated" otherwise; `transport` is never
+    # guessed, a builder states it.
+    #
+    # There was a second field, ``pbc``, holding the boolean view of this one
+    # (periodic|transport -> True, isolated -> False).  It could not hold a
+    # fact this does not -- the mapping is onto, not one-to-one -- so it was a
+    # duplicate that `__post_init__` recomputed on every construction, and the
+    # two declarations each claimed to be the source of truth.  The boolean is
+    # now :meth:`pbc`, an accessor for the two outside formats that need one.
     axis_kind:     Optional[Tuple[str, str, str]] = None
     # Isolation padding (Å) on isolated axes -- the PER-SIDE vacuum gap.
     # (k-grid is NOT here: it's a reciprocal-space SAMPLING knob, a CALCULATION
@@ -488,26 +495,24 @@ class Structure:
             # answers `None` rather than raising (`_frac_coords`,
             # `cell._fractional`).
             self.cell = cell
-        if self.pbc is None:
-            self.pbc = ((True, True, True) if self.cell is not None
-                        else (False, False, False))
-        else:
-            pbc = tuple(bool(b) for b in self.pbc)
-            if len(pbc) != 3:
-                raise ValueError(
-                    f"Structure.pbc must have exactly 3 entries "
-                    f"(one per axis); got {len(pbc)}"
-                )
-            self.pbc = pbc
-
-        # Reconcile axis_kind <-> pbc (structure-periodicity.md).  axis_kind is
-        # authoritative; pbc is its derived ASE view.  "transport" can't be
-        # recovered from a boolean, so legacy pbc-only callers get
-        # periodic/isolated; a builder sets transport explicitly.
+        # ONE PERIODICITY FIELD (2026-09-22).  ``axis_kind`` is it.  There used
+        # to be a second, ``pbc``, and this block reconciled them every time --
+        # deriving one from the other and settling which won.  It could not be
+        # anything but redundant: ``pbc`` is ``axis_kind`` with `transport` and
+        # `periodic` both flattened to True, so it never held a fact
+        # ``axis_kind`` did not, and could never legally disagree.  Storing it
+        # bought a duplicate to keep in step, and the declaration carried two
+        # adjacent comments each claiming to be the source of truth.
+        #
+        # The boolean view survives as :meth:`pbc`, which is an INTEROP
+        # accessor and nothing more -- ASE takes booleans and the extxyz
+        # header writes `pbc="T T F"`.  Nothing inside molbuilder reads it.
         _KINDS = ("periodic", "isolated", "transport")
         if self.axis_kind is None:
-            self.axis_kind = tuple("periodic" if b else "isolated"
-                                   for b in self.pbc)
+            # A stated cell means a lattice; no cell means a vacuum box.
+            # `transport` is never guessed -- a builder says it.
+            self.axis_kind = (("periodic",) * 3 if self.cell is not None
+                              else ("isolated",) * 3)
         else:
             ak = tuple(str(k) for k in self.axis_kind)
             if len(ak) != 3 or any(k not in _KINDS for k in ak):
@@ -516,7 +521,6 @@ class Structure:
                     f"got {self.axis_kind!r}"
                 )
             self.axis_kind = ak
-            self.pbc = tuple(k != "isolated" for k in ak)   # pbc DERIVED
         # cell_origin: the low corner an EXPLICIT cell emanates from (§ 3c).  Only
         # meaningful WITH an explicit cell -- a derived cell computes its origin from
         # atom extents (resolve_cell_origin), so a stray cell_origin without a cell is
@@ -544,6 +548,32 @@ class Structure:
         # sees no behaviour change.
         self._validate_regions(n)
         self._validate_annotations(n)
+
+    def pbc(self) -> Tuple[bool, bool, bool]:
+        """Per-axis periodicity as BOOLEANS — an interop accessor, not state.
+
+        ``periodic`` and ``transport`` are both True; ``isolated`` is False.
+
+        **Nothing inside molbuilder should call this.**  The mapping is onto,
+        not one-to-one, so the answer cannot tell a device axis from a bulk
+        one — ask :attr:`axis_kind`, which says which it is.  Reading the
+        boolean instead is a measured defect, not a hypothetical:
+        ``transiesta._lattice_block`` labelled every **transport** axis
+        ``periodic`` in the deck it wrote, and its "the transport axis is not
+        periodic" warning could never fire, both because a boolean cannot
+        express the distinction it was branching on.
+
+        It exists for the two formats outside this project that require the
+        boolean form and have no richer one:
+
+          * ASE — ``Atoms(pbc=…)`` (:meth:`to_ase`);
+          * extended XYZ — the ``pbc="T T F"`` header (:meth:`to_extxyz`).
+
+        It was a stored field until 2026-09-22 (user: *"why the fuck need pbc
+        when axis_kind fully contains this information and more"*).
+        """
+        return tuple(k != "isolated" for k in
+                     (self.axis_kind or ("isolated",) * 3))
 
     def resolve_cell(self) -> Optional[np.ndarray]:
         """The 3x3 lattice for this structure (structure-periodicity.md § 3).
@@ -807,8 +837,6 @@ class Structure:
             "cell":         self.cell.tolist() if self.cell is not None else None,
             "cell_origin":  (self.cell_origin.tolist()
                              if self.cell_origin is not None else None),
-            "pbc":          ([bool(x) for x in self.pbc]
-                             if self.pbc is not None else None),
             "axis_kind":    (list(self.axis_kind)
                              if self.axis_kind is not None else None),
             "vacuum":       ([float(x) for x in self.vacuum]
@@ -853,7 +881,15 @@ class Structure:
         out-of-range index, ...), sourced from the same invariants a freshly
         constructed Structure enforces."""
         data = data or {}
-        unknown = [k for k in data if k not in METADATA_FIELDS]
+        #: Keys a sidecar on disk may carry that this version no longer
+        #: stores.  ACCEPTED AND IGNORED, never refused: the file is the
+        #: user's and predates the change, and the no-shims rule is about
+        #: renames in code, not formats people already have.  `pbc` went on
+        #: 2026-09-22 -- it was the boolean view of `axis_kind` and could
+        #: never disagree with it, so there is nothing in it to read back.
+        _RETIRED = ("pbc",)
+        unknown = [k for k in data
+                   if k not in METADATA_FIELDS and k not in _RETIRED]
         if unknown:
             raise ValueError(
                 f"Structure.apply_metadata_dict: unknown metadata "
@@ -867,8 +903,6 @@ class Structure:
                              if data.get("cell") is not None else None)
         self.cell_origin  = (np.asarray(data["cell_origin"], dtype=float)
                              if data.get("cell_origin") is not None else None)
-        self.pbc          = (tuple(bool(x) for x in data["pbc"])
-                             if data.get("pbc") is not None else None)
         self.axis_kind    = (tuple(str(k) for k in data["axis_kind"])
                              if data.get("axis_kind") is not None else None)
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
@@ -1177,23 +1211,6 @@ class Structure:
             **self._carry_nonatom(),
         }
         kw.update(changes)
-        # `axis_kind` OUTRANKS `pbc` in ``__post_init__``, and this method seeds
-        # BOTH from the source -- so a caller who stated only `pbc` had it
-        # silently discarded by the carried kind.  That was the one field for
-        # which "state only what CHANGES" was false.  When the stated booleans
-        # CONTRADICT the carried kinds, those kinds describe a box the caller
-        # has just stopped asking for, so they step aside and the kinds are
-        # derived from what WAS asked.  When the two agree the carried kinds
-        # stay, because `transport` is a distinction no boolean can carry back.
-        if changes.get("pbc") is not None and "axis_kind" not in changes:
-            carried = kw.get("axis_kind")
-            try:
-                stated = tuple(bool(b) for b in changes["pbc"])
-            except TypeError:
-                stated = None                 # __post_init__ refuses it below
-            if (carried is not None and stated is not None
-                    and tuple(k != "isolated" for k in carried) != stated):
-                kw["axis_kind"] = None
         return type(self)(**kw)
 
     #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
@@ -1365,7 +1382,14 @@ class Structure:
             positions=np.asarray(first.get_positions(), dtype=float),
             title=(title if title is not None else comment),
             cell=(cell.tolist() if carries_cell else None),
-            pbc=(periodic if carries_cell else None),
+            # THE BOOLEANS BECOME KINDS AT THE DOOR.  extxyz carries only
+            # `pbc="T T F"`, so this is the one place in the project that
+            # legitimately starts from booleans -- and it converts here
+            # rather than storing a second periodicity field.  `transport`
+            # cannot be recovered from a boolean and is not guessed; a pair's
+            # sidecar restores it.
+            axis_kind=(tuple("periodic" if b else "isolated"
+                             for b in periodic) if carries_cell else None),
         )
 
     # ------------------------------------------------------------------ #
@@ -1665,7 +1689,7 @@ class Structure:
         if cell is not None:
             flat = " ".join(f"{v:.6f}" for row in np.asarray(cell) for v in row)
             lattice = f'Lattice="{flat}" '
-        flags = " ".join("T" if p else "F" for p in self.pbc)
+        flags = " ".join("T" if p else "F" for p in self.pbc())
         head = (f'{lattice}Properties=species:S:1:pos:R:3 pbc="{flags}"')
         title = (comment or self.title or "Built by molbuilder").strip()
 
@@ -1780,7 +1804,7 @@ class Structure:
         return Atoms(symbols=self.elements, positions=self.positions,
                      cell=(None if resolved is None
                            else np.asarray(resolved, dtype=float)),
-                     pbc=self.pbc)
+                     pbc=self.pbc())
 
     # ------------------------------------------------------------------ #
     #  Combine / translate / center -- handy small utilities              #
@@ -1816,7 +1840,6 @@ class Structure:
             cell        = (self.cell.copy() if self.cell is not None else None),
             cell_origin = (self.cell_origin.copy()
                            if self.cell_origin is not None else None),
-            pbc         = self.pbc,
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
