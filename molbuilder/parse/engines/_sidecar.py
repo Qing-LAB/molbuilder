@@ -30,7 +30,6 @@ a failure here must not break trajectory loading.
 
 from __future__ import annotations
 
-import json as _json
 import os
 import re
 from typing import Set
@@ -137,12 +136,22 @@ def read_frozen_atoms(traj_path: str, label: str = "") -> Set[int]:
 
     if sidecar_path is None:
         return set()
+    # THROUGH THE DOOR, not around it.  `molstruct.load` is the sidecar
+    # reader (`model/structure-molstruct.md`), and this function imported it
+    # on the very next line to call `frozen_atoms` while reading the bytes
+    # itself -- so the envelope was never validated and, with no `encoding=`
+    # at all, a non-ASCII region label decoded under the platform locale.
+    # `_load` reads `utf-8-sig` (BOM-tolerant) and validates.
+    #
+    # THE CONTRACT IS UNCHANGED: "empty set on any failure".  It raises
+    # `MolstructJsonError`, a ValueError subclass, and wraps OSError in one,
+    # so the same except clause still answers nothing for a sidecar that is
+    # missing, malformed, or of a different structure.
+    from molbuilder.sidecars import molstruct
     try:
-        with open(sidecar_path, "r", errors="replace") as fh:
-            data = _json.load(fh)
+        data = molstruct.load(sidecar_path)
     except (OSError, ValueError):
         return set()
-    from molbuilder.sidecars import molstruct
     return set(molstruct.frozen_atoms(data))
 
 

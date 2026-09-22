@@ -386,8 +386,14 @@ def recorded_contract_of(cited: CitedDir) -> Optional[Dict[str, object]]:
     disagree about what counts as recorded."""
     if cited.form != "structure" or cited.sidecar is None:
         return None
+    # THROUGH THE DOOR.  `labeled_structure_from` in this same module reads
+    # sidecars with `molstruct.load`; this one hand-parsed, twenty lines away,
+    # under a docstring promising "ONE reader".  `load` validates the envelope
+    # and reads `utf-8-sig`.  `MolstructJsonError` is a ValueError, so "else
+    # None" is unchanged for a sidecar that is missing or malformed.
+    from ..sidecars import molstruct as _molstruct
     try:
-        raw = json.loads(cited.sidecar.read_text(encoding="utf-8"))
+        raw = _molstruct.load(cited.sidecar)
     except (OSError, ValueError):
         return None
     block = (raw.get("info") or {}).get("calculation")         if isinstance(raw.get("info"), dict) else None
@@ -671,9 +677,23 @@ def swap_electrode_labels(cited: CitedDir) -> str:
     # accepts either an in-body block OR a sidecar beside the deck).
     from ..sidecars.molstruct import is_sidecar
     if is_sidecar(source):
-        data = json.loads(source.read_text())
-        data["regions"] = _swapped(data.get("regions"))
-        _write_atomically(source, json.dumps(data, indent=2) + "\n")
+        # THE SIDECAR'S OWN READER AND WRITER, AND ITS LOCK.  This was a raw
+        # `json.loads` / `json.dumps` pair: no envelope validation, no
+        # `encoding=` on the read, and -- the one that bites silently --
+        # `json.dumps` without `ensure_ascii=False`, which `molstruct.dumps`
+        # documents as "what keeps a non-ASCII region label a literal instead
+        # of an escape, so a second writer without it produces a different
+        # file for the same structure".  Swapping the electrodes of a junction
+        # labelled `α-helix` rewrote that label escaped.
+        #
+        # And it is a read-modify-write, which `save` says must hold the lock:
+        # "if you're doing a read-modify-write cycle, wrap the entire cycle in
+        # `with_lock`".
+        from ..sidecars import molstruct as _molstruct
+        with _molstruct.with_lock(source):
+            data = _molstruct.load(source)
+            data["regions"] = _swapped(data.get("regions"))
+            _molstruct.save(source, data)
         return source.name
 
     from ..script_emit import _extract_atom_metadata_dict
