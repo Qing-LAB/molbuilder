@@ -473,9 +473,12 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         Appending a slab onto a molecule the user had given 8 Å of vacuum
         replaced that vacuum with the slab's deliberate zero and turned two
         isolated axes crystalline — silently, because afterwards nothing was
-        outside the box for `cell.check` to notice. A cell is the one thing
-        a fragment can supply that the canvas lacks; the rest are facts OF
-        the canvas, exactly as `info` is.
+        outside the box for `cell.check` to notice.
+
+        `model/structure.md` § 2.2b is the rule: the CELL comes from
+        whoever states one, `axis_kind` / `vacuum` / `info` come from the
+        canvas. The slab's box IS adopted here and that is correct — it is
+        the only lattice in play. What must not ride in with it is the rest.
         """
         import numpy as np
         from molbuilder.structure import Structure
