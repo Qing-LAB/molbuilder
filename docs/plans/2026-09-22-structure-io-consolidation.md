@@ -7,6 +7,16 @@
 a duplicate `.XV` parser) turned out to be **one shape**, and patching them
 one at a time would have left the shape.
 
+> **A SECOND PLAN FROM THE SAME DAY covers adjacent ground and neither
+> document knew about the other when it was written:**
+> [`plans/2026-09-22-handover.md`](?doc=plans/2026-09-22-handover.md), the
+> cell/origin/lattice session. Its open row **X2 ②** is the same shape as the
+> `_json.load`-where-`molstruct.load`-belongs case below, at a different site
+> (`transport/compose.py`'s L/R electrode swap). Its § 2a also records two
+> data-model changes landed the same day — `pbc` retired as a field, and
+> `info` made a namespace with its own doors — which touch the codec paths
+> this plan is about. Read both before acting on either.
+
 **Read in full before writing this:** `parse/engines/_sidecar.py` (342 lines),
 `parse/coords/siesta_xv.py` (259), `workingcopy_structure.py` (379),
 `transport/compose.py`'s `.XV`/sidecar paths, `docs/model/structure.md` § 2.4,
