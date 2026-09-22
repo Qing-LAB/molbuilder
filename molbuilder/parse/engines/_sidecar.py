@@ -339,4 +339,10 @@ def read_frozen_atoms_from_siesta_fdf(traj_path: str) -> Set[int]:
             if i >= 1:
                 frozen_one_based.add(i)
 
-    return {i - 1 for i in frozen_one_based}
+    # SIESTA's `.fdf` writes constraints 1-based; translate back to the
+    # 0-based Structure identity through the engine index API (never a bare
+    # n - 1, which would be wrong for a 0-based engine).  The SAME sentence
+    # and the SAME call as `read_frozen_atoms_from_siesta_out` above -- two
+    # readers of one fact, and until 2026-09-22 only one of them routed.
+    from ...engine_atom_index import from_engine_index
+    return {from_engine_index(n, "siesta") for n in frozen_one_based}
