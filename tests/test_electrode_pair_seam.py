@@ -45,7 +45,7 @@ def _junction(plane, layers, *, registry_plus=0, registry_minus=0):
     """Two slabs facing each other, built the way `--electrode` builds them.
 
     Mirrors `cli.py`'s own call site: one `add_slab` per side, the side
-    mapped to the walk through `_CONTINUES_THE_CRYSTAL`, and `c` set to
+    mapped to the walk through `_WALK_ALONG_GROWTH`, and `c` set to
     `z_span + d` as § 6.1 instructs the user to.  The only thing varied is
     `start_registry`, which the CLI leaves at its default.
     """

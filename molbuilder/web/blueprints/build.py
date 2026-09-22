@@ -913,7 +913,7 @@ def api_build_load():
             return jsonify({"ok": False,
                             "error": "info: must be an object of "
                                      "key -> value"}), 400
-        struct.info = dict(info_block)
+        struct.apply_info_dict(info_block)
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom

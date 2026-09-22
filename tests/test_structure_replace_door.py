@@ -90,10 +90,14 @@ class TestTheInterpreterHook:
         """For `copy.replace` (3.13+), which is the helper that honours it."""
         assert Structure.__replace__ is Structure.replace
 
-    def test_the_stdlib_dataclasses_helper_never_routes_through_the_hook(self):
-        """The claim, asserted against the stdlib rather than believed."""
-        import inspect
-        assert "__replace__" not in inspect.getsource(dataclasses.replace)
+    # `test_the_stdlib_dataclasses_helper_never_routes_through_the_hook`
+    # was RETIRED the day it was written (2026-09-22).  It asserted that the
+    # string "__replace__" does not appear in
+    # `inspect.getsource(dataclasses.replace)` -- a grep over SOURCE TEXT,
+    # which `process/testing.md` disqualifies unless the goal has no other
+    # check.  It has one: the test below demonstrates the behaviour itself,
+    # on a real Structure, and would fail the moment the stdlib started
+    # dispatching.  The source check only restated it less directly.
 
     def test_the_stdlib_helper_carries_the_trap_on_every_version(self, held):
         """NOT skipped on 3.13 — there is no version where this stops being

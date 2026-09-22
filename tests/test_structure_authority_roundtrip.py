@@ -506,3 +506,72 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         out = getattr(out[0] if isinstance(out, tuple) else out, "structure",
                       out[0] if isinstance(out, tuple) else out)
         assert out.info.get("calculation", {}).get("contract")
+
+
+class TestInfoIsANamespaceOfClusters:
+    """PINS: `model/structure.md` § 2.2a — `info` is a namespace, one
+    top-level key per subsystem, and nothing writes inside someone else's.
+
+    WHY IT NEEDED A DOOR *(user, 2026-09-22)*.  The shape was already
+    decided on the browser side — `molview.data.info` has offered
+    `set(key, value)` / `remove(key)` since it shipped — and Python had no
+    equivalent. So three callers assigned `struct.info` directly, which
+    replaces the WHOLE store: any subsystem recording its own metadata
+    would take the recorded calculation contract with it unless it thought
+    to copy that across too.
+    """
+
+    @staticmethod
+    def _recorded():
+        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]))
+        s.set_info("calculation", {"engine": "siesta",
+                                   "contract": {"mesh_cutoff_ry": 400}})
+        return s
+
+    def test_one_cluster_does_not_disturb_another(self):
+        """The whole point: this is what a bare `struct.info = {...}` got
+        wrong."""
+        s = self._recorded()
+        s.set_info("provenance", {"built_by": "the slab wizard"})
+        assert s.info["calculation"]["contract"] == {"mesh_cutoff_ry": 400}
+        assert s.info["provenance"] == {"built_by": "the slab wizard"}
+
+    def test_a_cluster_is_dropped_explicitly_and_alone(self):
+        """§ 2.2a: a strip is explicit. `drop_info` says it for one cluster,
+        `replace(info={})` for the whole store."""
+        s = self._recorded()
+        s.set_info("provenance", {"built_by": "x"})
+        assert s.drop_info("provenance") is True
+        assert sorted(s.info) == ["calculation"]
+        assert s.drop_info("provenance") is False, "already gone is not an error"
+
+    def test_a_cluster_must_survive_the_sidecar(self):
+        """`info` is written to `.molstruct.json`, so a value that cannot be
+        JSON is refused HERE — with the caller and the bad value both in
+        hand — rather than at the writer, several steps later, on a
+        structure that has since been edited."""
+        s = self._recorded()
+        with pytest.raises(ValueError, match="JSON"):
+            s.set_info("bad", {"fn": object()})
+        with pytest.raises(ValueError, match="non-empty"):
+            s.set_info("", {})
+        assert sorted(s.info) == ["calculation"], "a refusal changed nothing"
+
+    def test_the_whole_store_door_checks_the_shape(self):
+        """`apply_info_dict` is the in-place sibling of `replace(info=...)`
+        and the one the three whole-store writers needed — a sidecar load, a
+        caller-stated block, and the Results tab's run record each adopt an
+        entire store rather than one cluster."""
+        s = self._recorded()
+        with pytest.raises(ValueError, match="cluster-name"):
+            s.apply_info_dict(["not", "a", "dict"])
+        s.apply_info_dict({"calculation": {"engine": "pyscf"}})
+        assert s.info == {"calculation": {"engine": "pyscf"}}
+        s.apply_info_dict(None)
+        assert s.info == {}, "None clears it -- 'this pair records nothing'"
+
+    # NOT TESTED HERE: that the store survives a pair round trip.
+    # `test_molstruct_json.py::test_info_rides_the_pair_whole` already
+    # asserts exactly that, through the same codec door, on a nested store.
+    # A second copy would be a test per call site, which earns no place
+    # (`process/testing.md`).

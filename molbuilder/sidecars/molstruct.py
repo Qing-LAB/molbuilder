@@ -636,7 +636,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # absent means "nothing recorded", and a stale store must not survive
     # a pair that no longer carries one.
     raw_info = sidecar_data.get("info")
-    struct.info = dict(raw_info) if isinstance(raw_info, dict) else {}
+    # THROUGH THE DOOR.  A sidecar states the whole store, so this is the
+    # whole-store door -- and it is a door rather than an assignment so the
+    # shape is checked here, at the file that supplied it, instead of at
+    # the writer several steps later (§ 2.2a).
+    struct.apply_info_dict(raw_info if isinstance(raw_info, dict) else None)
     try:
         struct.apply_metadata_dict(
             {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})

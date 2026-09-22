@@ -41,6 +41,7 @@ them through (see the methods + their tests).
 from __future__ import annotations
 
 import copy as _copy
+import json as _json
 
 from dataclasses import dataclass, field
 from io import StringIO
@@ -446,6 +447,20 @@ class Structure:
     #: `copy`, `concat`, the ops, the codecs.  A rebuild that simply did
     #: not list the field is a defect: a vanished contract cannot be told
     #: apart from one that was never recorded.
+    #:
+    #: **IT IS A NAMESPACE OF CLUSTERS, ONE PER SUBSYSTEM** *(user,
+    #: 2026-09-22)*.  A top-level key is a cluster name and its value is
+    #: that subsystem's own metadata; nothing else writes inside someone
+    #: else's cluster.  `calculation` is the one this project ships -- the
+    #: recorded contract a finished run leaves on the pair -- and any
+    #: further non-structural metadata goes beside it under its own name
+    #: rather than being flattened in with it.
+    #:
+    #: That shape was already decided on the browser side, where
+    #: `molview.data.info` has offered `set(key, value)` / `remove(key)`
+    #: since it shipped.  Python had no equivalent, which is exactly why
+    #: three callers assigned the whole store by hand; :meth:`set_info`,
+    #: :meth:`drop_info` and :meth:`apply_info_dict` are that half.
     info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1867,6 +1882,89 @@ class Structure:
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
         )
+
+    # ------------------------------------------------------------------ #
+    #  The `info` namespace -- one cluster per subsystem (§ 2.2a)         #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _json_safe(value, where: str):
+        """A cluster must survive the sidecar, so it must be JSON.
+
+        Checked on the way IN, where the caller and the offending value are
+        both in hand -- not at save time, several steps away, on a structure
+        that has already been edited.  Mirrors the browser's own door, which
+        does the same round-trip before accepting a cluster.
+        """
+        try:
+            return _json.loads(_json.dumps(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{where}: the value must be JSON-serialisable, because "
+                f"`info` is written to the .molstruct.json sidecar -- "
+                f"{exc}") from exc
+
+    def set_info(self, key: str, value: Any) -> None:
+        """Write ONE cluster of :attr:`info`, in place, leaving the rest alone.
+
+        ``info`` is a namespace: a top-level key names a subsystem and owns
+        everything under it (§ 2.2a).  This writes one of them, which is the
+        difference that matters -- assigning ``struct.info`` replaces the
+        WHOLE store, so a caller recording its own metadata would take the
+        recorded calculation contract with it unless it happened to copy that
+        across too.
+
+        The browser has had this since MolView shipped
+        (``molview.data.info.set``); this is the Python half, which was
+        missing, which is why three callers assigned the attribute directly.
+        """
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "Structure.set_info: the cluster name must be a non-empty "
+                "string (it is a top-level key in `info`)")
+        safe = self._json_safe(value, f"Structure.set_info({key!r})")
+        self.info = dict(self.info or {})
+        self.info[key] = safe
+
+    def drop_info(self, key: str) -> bool:
+        """Remove ONE cluster.  ``True`` if it was there.
+
+        A STRIP IS EXPLICIT (§ 2.2a), and this is how one is said for a
+        single cluster -- as against `replace(info={})`, which says it for
+        the whole store.  Removing a cluster that is not there is not an
+        error: the caller asked for it to be gone and it is.
+        """
+        if not self.info or key not in self.info:
+            return False
+        self.info = {k: v for k, v in self.info.items() if k != key}
+        return True
+
+    def apply_info_dict(self, data: Optional[dict]) -> None:
+        """Replace the WHOLE ``info`` store, in place.
+
+        The in-place sibling of ``replace(info=...)``, and the door the three
+        whole-store writers needed: a sidecar load, a caller-stated block,
+        and the Results tab's run record each adopt an entire store rather
+        than one cluster.  They assigned ``struct.info`` directly for want of
+        this, so nothing checked the shape and a non-dict or an
+        unserialisable value travelled until it reached the sidecar writer.
+
+        ``None`` or ``{}`` clears it -- which is what "this pair records
+        nothing" means, and is why absence and emptiness are the same here.
+        """
+        if data is None:
+            self.info = {}
+            return
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Structure.apply_info_dict: `info` is an object of "
+                f"cluster-name -> value (§ 2.2a); got {type(data).__name__}")
+        bad = [k for k in data if not isinstance(k, str) or not k]
+        if bad:
+            raise ValueError(
+                f"Structure.apply_info_dict: cluster names must be non-empty "
+                f"strings; got {bad!r}")
+        self.info = self._json_safe(dict(data), "Structure.apply_info_dict")
 
     def mark_contract_outdated(self, what: str = "structure") -> None:
         """An edit OUTDATES the recorded contract; it does not erase it.

@@ -394,7 +394,7 @@ def _frame0_structure(
             struct = apply_periodicity_only(struct, {"periodicity": per})
         info = run_info_for_dir(search_dir) if search_dir else None
         if isinstance(info, dict) and info:
-            struct.info = dict(info)
+            struct.apply_info_dict(info)
         return struct.to_dict()
     except Exception:                                   # noqa: BLE001
         # A run that cannot be assembled still OPENS -- the frames are the
