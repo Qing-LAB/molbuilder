@@ -67,6 +67,8 @@ the same day, with what it turned out to be.
 
 **Rows that were done, withdrawn, or measured untrue are NOT here.** They are in [`archive/2026-09-10-plan-consolidation.md`](?doc=archive/2026-09-10-plan-consolidation.md), with what each one turned out to be. Read § 5a before acting on any row below: a row is evidence of when it was written.
 
+> **A narrative handover for these four rows** — what the work was for, what changed and why, and what to do first — is [`plans/2026-09-22-handover.md`](?doc=plans/2026-09-22-handover.md). Read it before acting on **X1**, **X2**, **X3** or **D5**: the rows below are evidence, the handover is the context.
+
 | # | area | item | from | state |
 |---|---|---|---|---|
 | **E1** | engine / science | **Benchmark iteration count, settable per calculation.** No field exists on `task.json` or `Resources` — confirmed 2026-09-07. **Bigger than the row says:** the archived design was a one-point `bench` entry overriding the pin, and that path is now explicitly closed — `_cli.py:1961` `pins = {**declared_pins, **_MEASUREMENT_PINS}`, with the comment that measurement pins *"must win over any declaration — one-point declarations and value-axis coordinates alike."* So this needs a written precedence rule reversed, not a field added | `bench-and-junction` § 2.1 | not started |
