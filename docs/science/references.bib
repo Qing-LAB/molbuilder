@@ -40,6 +40,237 @@
 }
 % @verified 2026-05-11 QQ
 
+% ----- Separating vibration from whole-body motion -----
+
+@article{Eckart1935,
+  author  = {Eckart, Carl},
+  title   = {Some Studies Concerning Rotating Axes and Polyatomic Molecules},
+  journal = {Physical Review},
+  volume  = {47},
+  number  = {7},
+  pages   = {552--558},
+  year    = {1935},
+  doi     = {10.1103/PhysRev.47.552}
+  % The separation of vibration from overall translation and rotation --
+  % the rotating-axes (Eckart) conditions.  Cite in
+  % science/normal-modes.md SS 2 for the separation itself.  Do NOT cite it
+  % for "the rotational zeros are exact only at a stationary point": that is
+  % the standard Hessian argument and belongs to Wilson1955, not to this
+  % paper.  (Narrowed 2026-09-21 after reading the abstract.)
+}
+% @verified 2026-09-21 -- Crossref + APS record: title, author, Phys. Rev. 47(7)
+% 552-558 (1935), DOI 10.1103/PhysRev.47.552 all match.
+
+@article{LiJensen2002,
+  author  = {Li, Hui and Jensen, Jan H.},
+  title   = {Partial {H}essian vibrational analysis: the localization of the
+             molecular vibrational energy and entropy},
+  journal = {Theoretical Chemistry Accounts: Theory, Computation,
+             and Modeling},
+  volume  = {107},
+  number  = {4},
+  pages   = {211--219},
+  year    = {2002},
+  doi     = {10.1007/s00214-001-0317-7}
+  % NAMES and analyses partial Hessian vibrational analysis -- it does not
+  % originate it; Ghysels2007's abstract attributes the approach to Head
+  % (Head1997).  Cite the pair, in that order, in
+  % science/normal-modes.md SS 3 and in any Methods paragraph describing a
+  % run with frozen atoms.  (Attribution corrected 2026-09-21.)
+}
+% @verified 2026-09-21 -- Crossref: title, Li/Jensen, Theor. Chem. Acc.
+% 107(4) 211-219 (2002), DOI 10.1007/s00214-001-0317-7 all match.
+
+@article{Ghysels2007,
+  author  = {Ghysels, An and Van Neck, Dimitri and Van Speybroeck, Veronique
+             and Verstraelen, Toon and Waroquier, Michel},
+  title   = {Vibrational modes in partially optimized molecular systems},
+  journal = {Journal of Chemical Physics},
+  volume  = {126},
+  number  = {22},
+  pages   = {224102},
+  year    = {2007},
+  doi     = {10.1063/1.2737444}
+  % The mobile block Hessian (MBH), an extension of Head's partial Hessian
+  % to partially optimised systems.  Its abstract is the reason this entry
+  % is here: the method "avoids artificially introduced imaginary
+  % frequencies and keeps track of the invariance under global translations
+  % and rotations" -- the exact concern science/normal-modes.md SS 3 governs.
+  % Cite beside Head1997/LiJensen2002 wherever the residual whole-body
+  % motion of a partially frozen system is discussed.
+}
+% @verified 2026-09-21 -- Crossref: title, five authors, J. Chem. Phys.
+% 126(22) 224102 (2007), DOI 10.1063/1.2737444 all match.  Abstract read via
+% a public summary; full text is paywalled (no OA copy per Unpaywall).
+
+@article{Head1997,
+  author  = {Head, John D.},
+  title   = {Computation of vibrational frequencies for adsorbates on
+             surfaces},
+  journal = {International Journal of Quantum Chemistry},
+  volume  = {65},
+  number  = {5},
+  pages   = {827--838},
+  year    = {1997},
+  doi     = {10.1002/(SICI)1097-461X(1997)65:5<827::AID-QUA47>3.0.CO;2-U}
+  % THE ORIGIN of the partial-Hessian approach: diagonalise a mass-weighted
+  % second-derivative block for the adsorbate while the substrate is held.
+  % Cite FIRST wherever the partial Hessian is named -- Ghysels2007's
+  % abstract credits the approach to Head, and citing LiJensen2002 alone
+  % mis-attributes it (corrected 2026-09-21).
+}
+% @verified 2026-09-21 -- Crossref: title, John D. Head, Int. J. Quantum
+% Chem. 65(5) 827-838 (1997), DOI matches.  Full text paywalled.
+
+@article{Vester2024,
+  author  = {Vester, Jonas and Olsen, J{\'o}gvan Magnus Haugaard},
+  title   = {Assessing the Partial {H}essian Approximation in {QM/MM}-Based
+             Vibrational Analysis},
+  journal = {Journal of Chemical Theory and Computation},
+  volume  = {20},
+  number  = {21},
+  pages   = {9533--9546},
+  year    = {2024},
+  doi     = {10.1021/acs.jctc.4c00882}
+  % THE COUNTER-CASE, and the reason science/normal-modes.md SS 3.1 counts by
+  % rank instead of projecting six directions: for a molecule in frozen
+  % solvent this paper shows that "projecting out translation and rotation,
+  % usually done for systems in isolation" is "invalid within the PHVA
+  % approximation" and "can adversely affect other normal modes".  Cite
+  % wherever the removal of whole-body motion under a freeze is justified,
+  % so the limit of that removal is cited with it.
+  % OPEN ACCESS (CC-BY 4.0); full text in docs/science/refs/.
+}
+% @verified 2026-09-21 -- Europe PMC record + full text read directly:
+% title, Vester/Olsen, J. Chem. Theory Comput. 20(21) 9533-9546 (2024),
+% DOI 10.1021/acs.jctc.4c00882, licence "cc by".
+
+@article{Besley2008,
+  author  = {Besley, Nicholas A. and Bryan, James A.},
+  title   = {Partial {H}essian Vibrational Analysis of Organic Molecules
+             Adsorbed on {Si}(100)},
+  journal = {The Journal of Physical Chemistry C},
+  volume  = {112},
+  number  = {11},
+  pages   = {4308--4314},
+  year    = {2008},
+  doi     = {10.1021/jp076167x}
+  % PHVA in practice, and the clearest statement of WHICH Hessian is
+  % sliced: "these derivatives are computed for the adsorbate-molecule
+  % system, and hence the interaction with the surface is included
+  % explicitly", the block corresponding to "assigning an infinite mass to
+  % all of the atoms excluded from the Hessian matrix".  That is exactly
+  % what molbuilder's frozen path does.  Cite in science/normal-modes.md
+  % SS 3 for the construction.
+}
+% @verified 2026-09-21 -- Crossref: title, Besley/Bryan, J. Phys. Chem. C
+% 112(11) 4308-4314 (2008), DOI 10.1021/jp076167x all match.  Full text read.
+
+@misc{Ghysels2008,
+  author       = {Ghysels, A. and Van Speybroeck, V. and Van Neck, D. and
+                  Brooks, B. R. and Waroquier, M.},
+  title        = {Normal modes in partially optimized molecular systems:
+                  the Mobile Block Hessian ({MBH}) approach},
+  howpublished = {Conference abstract, SimBioMa 2008},
+  year         = {2008}
+  % A CONFERENCE ABSTRACT -- cited for one corroborating statement only,
+  % never for a derivation.  It states the defect of a partially optimised
+  % geometry in one line: "The Cartesian Hessian has only 3 zero-eigenvalues
+  % instead of 6, implying that the rotational invariance is not manifest
+  % anymore."  That is independent confirmation of science/normal-modes.md
+  % SS 4 (translations exact everywhere, rotations only at a stationary
+  % point).  It also confirms the PHVA attribution to Head, citing
+  % Head1997 first and LiJensen2002 second.
+}
+% @verified 2026-09-21 -- read directly (docs/science/refs/).  No DOI: it is
+% a conference abstract, not a journal article.
+
+@article{Tao2021,
+  author  = {Tao, Yunwen and Zou, Wenli and Nanayakkara, Sadisha and
+             Freindorf, Marek and Kraka, Elfi},
+  title   = {A revised formulation of the generalized subsystem vibrational
+             analysis ({GSVA})},
+  journal = {Theoretical Chemistry Accounts},
+  volume  = {140},
+  number  = {3},
+  pages   = {31},
+  year    = {2021},
+  doi     = {10.1007/s00214-021-02727-y}
+  % Places PHVA in its family -- partial Hessian diagonalization, PHVA, MBH,
+  % vibrational subsystem analysis (VSA), GSVA -- and states the shared
+  % limitation plainly: "all these approaches share a common deficiency --
+  % the unphysical partitioning of the full Hessian matrix, which causes
+  % information loss about the interaction between the subsystem and its
+  % environment."  Cite in science/normal-modes.md SS 3 so the method
+  % molbuilder implements is named among its alternatives, and its cost is
+  % stated rather than implied.
+}
+% @verified 2026-09-21 -- Crossref: title, five authors, Theor. Chem. Acc.
+% 140(3) 31 (2021), DOI 10.1007/s00214-021-02727-y all match.  Full text read.
+
+@misc{QChemPHVA,
+  author       = {{Q-Chem, Inc.}},
+  title        = {Partial {H}essian Vibrational Analysis},
+  howpublished = {\url{https://manual.q-chem.com/6.3/partial-hess.html}},
+  note         = {Q-Chem 6.3 User's Manual SS 10.7.4; accessed 2026-09-21}
+  % A SHIPPING IMPLEMENTATION, cited for one fact molbuilder's own code
+  % contradicts: "only the part of the Hessian matrix comprising the second
+  % derivatives of a subset of the atoms defined by the user is computed.
+  % ... This results in a significant decrease in the cost of the
+  % calculation."  Q-Chem computes the block; molbuilder computes the full
+  % Hessian and slices it, so it makes the same promise and does not keep
+  % it.  Cite wherever the cost of freezing is discussed.
+}
+% @verified 2026-09-21 -- page read directly (rendered; the HTML is
+% JavaScript-built, so a plain fetch returns navigation only).
+
+@article{Ghysels2010,
+  author  = {Ghysels, An and Van Speybroeck, Veronique and Pauwels, Ewald and
+             Catak, Saron and Brooks, Bernard R. and Van Neck, Dimitri and
+             Waroquier, Michel},
+  title   = {Comparative study of various normal mode analysis techniques
+             based on partial {H}essians},
+  journal = {Journal of Computational Chemistry},
+  volume  = {31},
+  number  = {5},
+  pages   = {994--1007},
+  year    = {2010},
+  doi     = {10.1002/jcc.21386}
+  % Compares PHVA, MBH, VSA and relatives side by side.  Cited in
+  % science/normal-modes.md SS 4 for the statement that survives from the
+  % physics side: "Although the PES is still invariant under the six global
+  % translations and rotations, the zero eigenvalues corresponding to global
+  % rotations may be lacking."  Open access via PMC4245204.
+}
+% @verified 2026-09-21 -- Crossref: title, seven authors, J. Comput. Chem.
+% 31(5) 994-1007, DOI 10.1002/jcc.21386.  Crossref's `issued` is 2009 (the
+% online-first date); the journal issue is 2010, which is what is recorded.
+
+@article{ASE2017,
+  author  = {Larsen, Ask Hjorth and Mortensen, Jens J{\o}rgen and Blomqvist,
+             Jakob and Castelli, Ivano E. and Christensen, Rune and
+             Du{\l}ak, Marcin and others},
+  title   = {The atomic simulation environment --- a {P}ython library for
+             working with atoms},
+  journal = {Journal of Physics: Condensed Matter},
+  volume  = {29},
+  number  = {27},
+  pages   = {273002},
+  year    = {2017},
+  doi     = {10.1088/1361-648X/aa680e}
+  % THE STATE OF PRACTICE, and the reason this project's hand-written frozen
+  % path is not eccentric.  ASE's `Vibrations(atoms, indices=[...])` displaces
+  % only the chosen atoms and then does exactly
+  %     omega2, modes = np.linalg.eigh(self.im[:, None] * H * self.im)
+  % -- mass-weight, diagonalise, NO projection, 3n modes for n displaced
+  % atoms.  That is line for line what molbuilder's frozen branch does.  Cite
+  % wherever the claim "this is what everyone does" is made, and beside it the
+  % consequence: the leftover whole-body motion stays in the list.
+  % Source read 2026-09-21: gitlab.com/ase/ase ase/vibrations/vibrations.py
+}
+% @verified 2026-09-21 -- Crossref: title, J. Phys. Condens. Matter 29(27)
+% 273002 (2017), DOI 10.1088/1361-648X/aa680e.  Source file read directly.
+
 % ----- PySCF (engine) -----
 
 @article{Sun2020,

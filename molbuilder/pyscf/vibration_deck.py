@@ -358,7 +358,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         ]
     if getattr(cfg, "save_optimized_xyz", False):
         out += [
-            "    _save_xyz(mol, _mb_outfile(JOB + '_optimized.xyz'),",
+            "    _save_structure(mol, _mb_outfile(JOB + '_optimized.xyz'),",
             "              'Relaxed geometry (vibration deck)')",
         ]
     out += [
@@ -628,10 +628,11 @@ def vibration_spec(struct: Structure, cfg, *,
         # two decks cannot drift about either text.
         if getattr(cfg, "save_initial_xyz", False) or getattr(
                 cfg, "save_optimized_xyz", False):
-            from .input import emit_save_helper
-            out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)))
+            from .input import _sidecar_for, emit_save_helper
+            out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)),
+                                    _sidecar_for(struct))
         if getattr(cfg, "save_initial_xyz", False):
-            out.append("_save_xyz(mol, _mb_outfile(JOB + '_initial.xyz'),")
+            out.append("_save_structure(mol, _mb_outfile(JOB + '_initial.xyz'),")
             out.append("          'Input geometry (pre-relaxation)')")
         if getattr(cfg, "write_molwatch_log", False):
             from .input import _emit_molwatch_emitter

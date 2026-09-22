@@ -31,6 +31,15 @@
           "label": "The plan (one file)"
         },
         {
+          "path": "plans/2026-09-21-normal-mode-unification-design.md"
+        },
+        {
+          "path": "plans/2026-09-22-vibration-audit.md"
+        },
+        {
+          "path": "plans/2026-09-22-structure-io-consolidation.md"
+        },
+        {
           "path": "plans/2026-09-22-handover.md",
           "label": "Handover \u2014 cell/origin/lattice, 2026-09-22"
         }
@@ -67,13 +76,16 @@
     },
     {
       "label": "Science",
-      "meta": "Scientific correctness: validation, chemistry, pseudopotentials",
+      "meta": "Scientific correctness: validation, chemistry, normal modes, pseudopotentials",
       "children": [
         {
           "path": "science/overview.md"
         },
         {
           "path": "science/validation.md"
+        },
+        {
+          "path": "science/normal-modes.md"
         },
         {
           "path": "science/chemistry-correctness.md"

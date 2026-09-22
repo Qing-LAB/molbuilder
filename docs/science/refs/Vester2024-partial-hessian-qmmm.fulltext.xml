@@ -1,0 +1,1043 @@
+
+<!DOCTYPE article
+  PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Archiving and Interchange DTD with MathML3 v1.4 20241031//EN" "JATS-archivearticle1-4-mathml3.dtd">
+<article xml:lang="EN" article-type="research-article" dtd-version="1.4"><processing-meta base-tagset="archiving" mathml-version="3.0" table-model="xhtml" tagset-family="jats"><restricted-by>pmc</restricted-by></processing-meta><front><journal-meta><journal-id journal-id-type="nlm-ta">J Chem Theory Comput</journal-id><journal-id journal-id-type="iso-abbrev">J Chem Theory Comput</journal-id><journal-id journal-id-type="pmc-domain-id">822</journal-id><journal-id journal-id-type="pmc-domain">acssd</journal-id><journal-id journal-id-type="nlm-id">101232704</journal-id><journal-id journal-id-type="publisher-id">ct</journal-id><journal-title-group><journal-title>Journal of Chemical Theory and Computation</journal-title></journal-title-group><issn pub-type="ppub">1549-9618</issn><issn pub-type="epub">1549-9626</issn><?publisher_abbrev acs?><custom-meta-group><custom-meta><meta-name>pmc-is-collection-domain</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-collection-title</meta-name><meta-value>ACS AuthorChoice</meta-value></custom-meta></custom-meta-group></journal-meta><article-meta><article-id pub-id-type="pmcid">PMC11562069</article-id><article-id pub-id-type="pmcid-ver">PMC11562069.1</article-id><article-id pub-id-type="pmcaid">11562069</article-id><article-id pub-id-type="pmcaiid">11562069</article-id><article-id pub-id-type="pmid">39423336</article-id><article-id pub-id-type="doi">10.1021/acs.jctc.4c00882</article-id><article-version article-version-type="pmc-version">1</article-version><article-categories><subj-group><subject>Article</subject></subj-group></article-categories><title-group><article-title>Assessing the Partial
+Hessian Approximation in QM/MM-Based
+Vibrational Analysis</article-title></title-group><contrib-group><contrib contrib-type="author" corresp="yes" id="ath1"><contrib-id contrib-id-type="orcid" authenticated="true">https://orcid.org/0000-0001-8584-1295</contrib-id><name name-style="western"><surname>Vester</surname><given-names initials="J">Jonas</given-names></name><xref rid="cor1" ref-type="other">*</xref><xref rid="aff1" ref-type="aff">†</xref></contrib><contrib contrib-type="author" corresp="yes" id="ath2"><contrib-id contrib-id-type="orcid" authenticated="true">https://orcid.org/0000-0001-7487-944X</contrib-id><name name-style="western"><surname>Olsen</surname><given-names initials="JMH">Jógvan Magnus Haugaard</given-names></name><xref rid="cor2" ref-type="other">*</xref><xref rid="aff1" ref-type="aff">†</xref><xref rid="aff2" ref-type="aff">‡</xref></contrib><aff id="aff1"><label>†</label>DTU
+Chemistry, <institution>Technical University of Denmark</institution>, DK-2800 Kgs. Lyngby, <country>Denmark</country></aff><aff id="aff2"><label>‡</label>Hylleraas
+Centre for Quantum Molecular Sciences, Department of Chemistry, <institution>UiT The Arctic University of Norway</institution>, N-9037 Tromsø, <country>Norway</country></aff></contrib-group><author-notes><corresp id="cor1"><label>*</label>Email: <email>jvest@kemi.dtu.dk</email>.</corresp><corresp id="cor2"><label>*</label>Email: <email>jmho@kemi.dtu.dk</email>.</corresp></author-notes><pub-date pub-type="epub"><day>18</day><month>10</month><year>2024</year></pub-date><pub-date pub-type="collection"><day>12</day><month>11</month><year>2024</year></pub-date><volume>20</volume><issue>21</issue><issue-id pub-id-type="pmc-issue-id">475023</issue-id><fpage>9533</fpage><lpage>9546</lpage><history><date date-type="received"><day>08</day><month>07</month><year>2024</year></date><date date-type="accepted"><day>07</day><month>10</month><year>2024</year></date><date date-type="rev-recd"><day>25</day><month>09</month><year>2024</year></date></history><pub-history><event event-type="pmc-release"><date><day>14</day><month>11</month><year>2024</year></date></event><event event-type="pmc-live"><date><day>15</day><month>11</month><year>2024</year></date></event><event event-type="pmc-last-change"><date iso-8601-date="2024-11-15 10:25:55.500"><day>15</day><month>11</month><year>2024</year></date></event></pub-history><permissions><copyright-statement>© 2024 The Authors. Published by American Chemical Society</copyright-statement><copyright-year>2024</copyright-year><copyright-holder>The Authors</copyright-holder><license><ali:license_ref xmlns:ali="http://www.niso.org/schemas/ali/1.0/" specific-use="textmining" content-type="ccbylicense">https://creativecommons.org/licenses/by/4.0/</ali:license_ref><license-p>Permits the broadest form of re-use including for commercial purposes, provided that author attribution and integrity are maintained (<ext-link xmlns:xlink="http://www.w3.org/1999/xlink" ext-link-type="uri" xlink:href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</ext-link>).</license-p></license></permissions><self-uri xmlns:xlink="http://www.w3.org/1999/xlink" content-type="pmc-pdf" xlink:href="ct4c00882.pdf"><?pdf-name ct4c00882.pdf?><?pdf-size 4545178?><?pdf-md5 5e960f42ed423762643d159e6e5ed6e4?><?pdf-image-server-status NEVER_LOAD?><?pdf-cloudpmc-urn urn:app:1e11/11562069/5e960f42ed42/ct4c00882.pdf?></self-uri><abstract><p content-type="toc-graphic"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="ab-tgr1" position="float" orientation="portrait" xlink:href="ct4c00882_0008.jpg"><?image-name ct4c00882_0008.jpg?><?image-size 105573?><?image-md5 b36380535ddc9f413b5ffa1788a38441?><?image-image-server-status NEVER_LOAD?><?image-original-height 411?><?image-original-width 750?><?image-scaled-height 411?><?image-scaled-width 750?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/b36380535ddc/ct4c00882_0008.jpg?><?thumb-name ct4c00882_0008.gif?><?thumb-size 17782?><?thumb-md5 6af1981c49105e49b0ecf70d48449a06?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 79?><?thumb-scaled-width 145?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/6af1981c4910/ct4c00882_0008.gif?></graphic></p><p>The partial Hessian
+approximation is often used in vibrational
+analysis of quantum mechanics/molecular mechanics (QM/MM) systems
+because calculating the full Hessian matrix is computationally impractical.
+This approach aligns with the core concept of QM/MM, which focuses
+on the QM subsystem. Thus, using the partial Hessian approximation
+implies that the main interest is in the local vibrational modes of
+the QM subsystem. Here, we investigate the accuracy and applicability
+of the partial Hessian vibrational analysis (PHVA) approach as it
+is typically used within QM/MM, i.e., only the Hessian belonging to
+the QM subsystem is computed. We focus on solute–solvent systems
+with small, rigid solutes. To separate two of the major sources of
+errors, we perform two separate analyses. First, we study the effects
+of the partial Hessian approximation on local normal modes, harmonic
+frequencies, and harmonic IR and Raman intensities by comparing them
+to those obtained using full Hessians, where both partial and full
+Hessians are calculated at the QM level. Then, we quantify the errors
+introduced by QM/MM used with the PHVA by comparing normal modes,
+frequencies, and intensities obtained using partial Hessians calculated
+using a QM/MM-type embedding approach to those obtained using partial
+Hessians calculated at the QM level. Another aspect of the PHVA is
+the appearance of normal modes resembling the translation and rotation
+of the QM subsystem. These pseudotranslational and pseudorotational
+modes should be removed as they are collective vibrations of the atoms
+in the QM subsystem relative to a frozen MM subsystem and, thus, not
+well-described. We show that projecting out translation and rotation,
+usually done for systems in isolation, can adversely affect other
+normal modes. Instead, the pseudotranslational and pseudorotational
+modes can be identified and removed.</p></abstract><funding-group><award-group><funding-source><institution-wrap><institution>Villum Fonden</institution><institution-id institution-id-type="doi">10.13039/100008398</institution-id></institution-wrap></funding-source><award-id>VIL29478</award-id></award-group></funding-group><funding-group><award-group><funding-source><institution-wrap><institution>Norges ForskningsrÃ¥d</institution><institution-id institution-id-type="doi">10.13039/501100005416</institution-id></institution-wrap></funding-source><award-id>262695</award-id></award-group></funding-group><custom-meta-group><custom-meta><meta-name>pmc-status-qastatus</meta-name><meta-value>0</meta-value></custom-meta><custom-meta><meta-name>pmc-status-live</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-status-embargo</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-status-released</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-open-access</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-olf</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-manuscript</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-legally-suppressed</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-has-pdf</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-has-supplement</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-pdf-only</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-suppress-copyright</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-is-real-version</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-is-scanned-article</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-preprint</meta-name><meta-value>no</meta-value></custom-meta><custom-meta><meta-name>pmc-prop-in-epmc</meta-name><meta-value>yes</meta-value></custom-meta><custom-meta><meta-name>pmc-license-ref</meta-name><meta-value>CC BY</meta-value></custom-meta><custom-meta><meta-name>document-id-old-9</meta-name><meta-value>ct4c00882</meta-value></custom-meta><custom-meta><meta-name>document-id-new-14</meta-name><meta-value>ct4c00882</meta-value></custom-meta><custom-meta><meta-name>ccc-price</meta-name><meta-value/></custom-meta></custom-meta-group></article-meta></front><body><sec id="sec1"><label>1</label><title>Introduction</title><p>The simulation of large
+molecular systems poses substantial challenges
+that are particularly significant when quantum mechanical modeling
+is required, such as in calculations or simulations involving chemical
+reactions or light–matter interactions. Computational methods
+rooted in molecular quantum mechanics are limited to relatively small
+systems due to the high computational cost. To tackle this issue,
+the common strategy is to employ a multiscale quantum mechanics/molecular
+mechanics (QM/MM) approach.<sup><xref ref-type="bibr" rid="ref1">1</xref>−<xref ref-type="bibr" rid="ref5">5</xref></sup> Here, the system is partitioned into two subsystems: the region
+of interest (the QM subsystem), treated quantum mechanically, and
+the surrounding environment (the MM subsystem), described using classical
+molecular mechanics. This approach has the benefit of preserving the
+atomistic structure of the environment, which is crucial for accurately
+representing directional and structural influences on, e.g., molecular
+properties. The QM/MM approach enables the calculation of local molecular
+properties, including vibrational properties that provide valuable
+insights into the chemical structure, bonding characteristics, and
+intermolecular interactions.<sup><xref ref-type="bibr" rid="ref6">6</xref>,<xref ref-type="bibr" rid="ref7">7</xref></sup></p><p>There are two
+main computational approaches for simulating vibrational
+spectra. In the dynamic approach, spectra are obtained from Fourier-transformed
+time-correlation functions of relevant properties, e.g., dipoles for
+infrared (IR) and polarizabilities for Raman spectra, obtained through
+molecular dynamics (MD) simulations.<sup><xref ref-type="bibr" rid="ref8">8</xref>−<xref ref-type="bibr" rid="ref10">10</xref></sup> In the static approach,
+known as vibrational analysis, vibrational frequencies and normal
+modes are obtained from an eigenanalysis of the molecular Hessian
+and the associated intensities are calculated using geometrical derivatives
+of the relevant properties.<sup><xref ref-type="bibr" rid="ref11">11</xref></sup> The dynamic
+approach includes temperature effects and anharmonicity for the QM
+subsystem but may require a relatively large number of property calculations.
+In contrast, a vibrational analysis is performed on geometry-optimized
+structures, thus requiring fewer calculations, i.e., one per conformer.
+However, it does not include temperature effects and requires more
+elaborate calculations to include anharmonicity.<sup><xref ref-type="bibr" rid="ref12">12</xref>,<xref ref-type="bibr" rid="ref13">13</xref></sup> In this work, we focus on the vibrational analysis approach as part
+of a larger effort to develop an efficient approach to simulate vibrational
+spectra of large and complex molecular systems.</p><p>Performing vibrational
+analysis of large QM/MM systems is impractical
+due to the computational cost of calculating the full Hessian, mainly
+the computationally expensive derivatives with respect to the positions
+of the nuclei in the QM subsystem. One way to reduce the computational
+cost is the partial Hessian vibrational analysis (PHVA) approximation.<sup><xref ref-type="bibr" rid="ref14">14</xref>−<xref ref-type="bibr" rid="ref16">16</xref></sup> Using PHVA within QM/MM<sup><xref ref-type="bibr" rid="ref17">17</xref>−<xref ref-type="bibr" rid="ref19">19</xref></sup> usually implies that only geometrical
+derivatives with respect to QM nuclei are included, i.e., only the
+QM–QM block of the Hessian matrix is calculated, disregarding
+the MM–MM, QM–MM, and MM–QM blocks. The outcome
+is a system with mobile QM atoms surrounded by immobile MM atoms.
+Here, we will refer to this approach as QM/MM-PHVA. Other more advanced
+partial Hessian approaches have been proposed, such as the mobile
+block Hessian (MBH)<sup><xref ref-type="bibr" rid="ref20">20</xref>−<xref ref-type="bibr" rid="ref22">22</xref></sup> and the vibrational subsystem analysis (VSA)<sup><xref ref-type="bibr" rid="ref23">23</xref>−<xref ref-type="bibr" rid="ref25">25</xref></sup> approaches. In this work, we only consider the PHVA. Specifically,
+we will use it with the fragment-based polarizable embedding (PE)
+model<sup><xref ref-type="bibr" rid="ref26">26</xref>,<xref ref-type="bibr" rid="ref27">27</xref></sup> extended recently to enable calculations
+of analytical Hessians and geometrical property derivatives.<sup><xref ref-type="bibr" rid="ref28">28</xref></sup> The fragment-based PE approach is one of several
+PE models that implement analytic Hessians using an atomistic polarizable
+environment.<sup><xref ref-type="bibr" rid="ref28">28</xref>−<xref ref-type="bibr" rid="ref33">33</xref></sup></p><p>The eigenanalysis of the partial Hessian in the QM/MM-PHVA
+approach
+results in 3<italic toggle="yes">N</italic> normal modes and corresponding frequencies
+(where <italic toggle="yes">N</italic> is the number of atoms in the QM subsystem).
+A minimum of six normal modes (assuming a nonlinear molecule) correspond
+to vibrations that can be characterized as full or partial pseudotranslational
+and pseudorotational modes because they resemble translations and
+rotations of the QM subsystem in a vacuum. These modes would involve
+atoms in both the QM and MM subsystems in the full Hessian vibrational
+analysis, but because the MM atoms are immobile by design, it is only
+the QM atoms that are collectively vibrating inside a cage defined
+by the MM atoms. Pseudotranslational and pseudorotational modes are
+low-frequency but not necessarily the lowest ones, and moreover, more
+than six modes may have pseudotranslational and/or pseudorotational
+character. These normal modes are not well described, and there is
+thus a need to identify those most affected so they can be filtered
+out. The practice of projecting out translation and rotation as part
+of the vibrational analysis for molecules in a vacuum is invalid within
+the PHVA approximation. Instead, we introduce a simple scheme to identify
+the problematic modes and quantify the pseudotranslational and/or
+pseudorotational character.</p><p>The PHVA approach, using pure QM
+and MM methods, has shown promising
+results for local modes.<sup><xref ref-type="bibr" rid="ref34">34</xref>−<xref ref-type="bibr" rid="ref37">37</xref></sup> These studies are encouraging for the focused QM/MM-PHVA
+approach, which also targets local modes within the QM subsystem.
+In our study, we assess the QM/MM-PHVA method, applying it to solute–solvent
+systems with small, rigid solutes. We also investigate the impact
+of expanding the QM subsystem by including selected solvent molecules.
+Our goal is to evaluate the errors introduced by the QM/MM-PHVA approximation
+on harmonic frequencies and the corresponding IR and Raman intensities.
+To achieve this, we computed full Hessians, dipole gradients, and
+polarizability gradients based on full QM calculations for several
+model systems. We can assess the errors from the PHVA by comparing
+the partial Hessian and property gradients to the full quantities.
+Subsequently, we will analyze the discrepancies introduced by the
+QM/MM approach by comparing partial Hessians obtained from full QM
+calculations to those derived from QM/MM calculations.</p></sec><sec id="sec2"><label>2</label><title>Methods</title><sec id="sec2.1"><label>2.1</label><title>Computational Details</title><p>We use seven
+solute–solvent systems to investigate the errors introduced
+by the QM/MM-PHVA approach on normal modes, frequencies, IR intensities,
+and Raman intensities. The systems consist of single solute molecules
+surrounded by multiple solvent molecules: furan in benzene, naphthalene
+in acetonitrile, pyridine in methanol, 1,3-butadiene in water, uracil
+in methanol, propanamide in water, and formaldehyde in water. The
+starting structures were obtained from Reinholdt et al.<sup><xref ref-type="bibr" rid="ref38">38</xref></sup> First, we extracted spheres with an 8 Å
+radius, where the center of mass of the solutes is at the center of
+the spheres. Preliminary calculations indicated that using an 8 Å
+radius yields similar frequencies and intensities compared to larger
+radii, up to 24 Å. Furthermore, the exact system size is not
+critically important since these structures are used for internal
+comparison. We also prepared small model systems of pyridine in methanol,
+1,3-butadiene in water, uracil in methanol, propanamide in water,
+and formaldehyde in water by removing most solvent molecules. Thus,
+between 4 and 11 solvent molecules surrounding the solute molecules
+were kept (more details in <xref rid="tbl1" ref-type="other">Table <xref rid="tbl1" ref-type="other">1</xref></xref>).</p><table-wrap id="tbl1" position="float" orientation="portrait"><label>Table 1</label><caption><title>List of Investigated Solute–Solvent
+Systems</title></caption><table frame="hsides" rules="groups" border="0"><colgroup span="1"><col align="left" span="1"/><col align="char" char="." span="1"/><col align="char" char="." span="1"/></colgroup><thead><tr><th style="border:none;" align="center" colspan="1" rowspan="1"> </th><th colspan="2" align="center" char="." rowspan="1">number
+of solvent molecules<hr/></th></tr><tr><th style="border:none;" align="center" colspan="1" rowspan="1">system</th><th style="border:none;" align="center" char="." colspan="1" rowspan="1">large</th><th style="border:none;" align="center" char="." colspan="1" rowspan="1">small</th></tr></thead><tbody><tr><td style="border:none;" align="left" colspan="1" rowspan="1">furan
+in benzene</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">15</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1"> </td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">naphthalene in acetonitrile</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">19</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1"> </td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">pyridine in methanol</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">30</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">6</td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">1,3-butadiene in water</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">65</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">7</td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">uracil in methanol</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">32</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">4</td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">propanamide in water</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">71</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">6</td></tr><tr><td style="border:none;" align="left" colspan="1" rowspan="1">formaldehyde in water</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">86</td><td style="border:none;" align="char" char="." colspan="1" rowspan="1">11</td></tr></tbody></table></table-wrap><p>The HF/pcseg-1<sup><xref ref-type="bibr" rid="ref39">39</xref></sup> level
+of theory was
+used for the full QM calculations on the small model systems. For
+the QM/MM calculations on the large systems and the small model systems,
+the solutes were also modeled at the HF/pcseg-1 level of theory, while
+the effects from the surrounding solvent environment were included
+using the fragment-based PE model. Additionally, for formaldehyde
+in water, we also considered a system where the two water molecules
+hydrogen-bonded to the formaldehyde are included in the QM subsystem
+and thus also treated at HF/pcseg-1 level of theory. The embedding
+potentials representing the solvents were obtained using the PyFraME
+Python package.<sup><xref ref-type="bibr" rid="ref40">40</xref></sup> Each solvent molecule
+is described by atom-centered multipoles, up to and including quadrupoles,
+atom-centered dipole–dipole polarizabilities, and a Lennard-Jones
+6–12 potential. The multipoles and polarizabilities were derived
+using the LoProp scheme<sup><xref ref-type="bibr" rid="ref41">41</xref>,<xref ref-type="bibr" rid="ref42">42</xref></sup> based on PBE0/6-31+G*<sup><xref ref-type="bibr" rid="ref43">43</xref>−<xref ref-type="bibr" rid="ref45">45</xref></sup> calculations performed with the Dalton program package.<sup><xref ref-type="bibr" rid="ref46">46</xref>,<xref ref-type="bibr" rid="ref47">47</xref></sup> The Lennard-Jones parameters were sourced from the GAFF force field,<sup><xref ref-type="bibr" rid="ref48">48</xref></sup> as provided by Van der Spoel et al.<sup><xref ref-type="bibr" rid="ref49">49</xref></sup> on <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://virtualchemistry.org/">https://virtualchemistry.org/</uri>, with the exception of water
+in the formaldehyde in water system, for which the CHARMM TIP3P Lennard-Jones
+parameters were applied.<sup><xref ref-type="bibr" rid="ref50">50</xref></sup></p><p>The geomeTRIC
+package<sup><xref ref-type="bibr" rid="ref51">51</xref></sup> was used together
+with the LSDalton program<sup><xref ref-type="bibr" rid="ref46">46</xref>,<xref ref-type="bibr" rid="ref52">52</xref></sup> for the geometry optimizations.
+The environmental contributions for the QM/MM geometry optimizations
+were included using the FraME library.<sup><xref ref-type="bibr" rid="ref53">53</xref></sup> The small model systems were geometry optimized using full QM and
+QM/MM. Note that the solvent was frozen in all QM/MM optimizations.</p><p>The molecular properties of interest are the molecular Hessian,
+dipole gradients, and polarizability gradients (with incident light
+of 514.5 nm). These properties were calculated using LSDalton with
+the OpenRSP library,<sup><xref ref-type="bibr" rid="ref54">54</xref>−<xref ref-type="bibr" rid="ref56">56</xref></sup> and using FraME to calculate environmental contributions.
+The IR and Raman intensities were derived from the dipole gradients
+and the polarizability gradients, respectively, as detailed by Dundas
+et al.<sup><xref ref-type="bibr" rid="ref28">28</xref></sup> Frequencies and normal modes were
+obtained from eigenanalysis of the Hessians.</p></sec><sec id="sec2.2"><label>2.2</label><title>Quantification
+of Pseudotranslation and Pseudorotation</title><p>In the following,
+we introduce a scheme to quantify pseudotranslational
+and pseudorotational contributions in normal modes in the QM/MM-PHVA
+approach. Like in standard vibrational analysis, the partial Hessian
+is mass-weighted and diagonalized, yielding 3<italic toggle="yes">N</italic> eigenvectors
+and eigenvalues. Then, the solute is centered by translating its center
+of mass to the origin of the coordinate system, and the three (or
+two if the molecule is linear) principal axes of inertia <bold>I</bold><sub>1</sub>, <bold>I</bold><sub>2</sub>, and <bold>I</bold><sub>3</sub> are determined. The principal axes of inertia are used to
+build vectors that describe rotation. The vectors corresponding to
+translations <bold>D</bold><sub>1</sub>, <bold>D</bold><sub>2</sub>, and <bold>D</bold><sub>3</sub> of the αth atom are defined
+as<disp-formula id="eq1"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m001.jpg"><?image-name ct4c00882_m001.jpg?><?image-size 3931?><?image-md5 f9fd25af4976802cb9206dafd2514e66?><?image-image-server-status NEVER_LOAD?><?image-original-height 57?><?image-original-width 242?><?image-scaled-height 57?><?image-scaled-width 242?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/f9fd25af4976/ct4c00882_m001.jpg?><?thumb-name ct4c00882_m001.gif?><?thumb-size 2770?><?thumb-md5 3a877e917867fdeaa23644d524a7b5b3?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 47?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/3a877e917867/ct4c00882_m001.gif?></graphic><label>1</label></disp-formula>where <italic toggle="yes">m</italic><sub>α</sub> is the atomic mass. The vectors corresponding
+to rotations <bold>D</bold><sub>4</sub>, <bold>D</bold><sub>5</sub>, and <bold>D</bold><sub>6</sub> are defined as<disp-formula id="eq2"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m002.jpg"><?image-name ct4c00882_m002.jpg?><?image-size 2515?><?image-md5 df804d57d20d9ad89df49bc3ab2a3c84?><?image-image-server-status NEVER_LOAD?><?image-original-height 15?><?image-original-width 258?><?image-scaled-height 15?><?image-scaled-width 258?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/df804d57d20d/ct4c00882_m002.jpg?><?thumb-name ct4c00882_m002.gif?><?thumb-size 1869?><?thumb-md5 1704a25c90bb00ba6e9b53ef70e17b4a?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 12?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/1704a25c90bb/ct4c00882_m002.gif?></graphic><label>2</label></disp-formula>where <bold>R</bold><sub>α</sub> is the position
+vector of the αth atom relative to the center
+of mass of all atoms. The normalized total vector <bold>D</bold><sub><italic toggle="yes">j</italic></sub> corresponding to a rotation or translation
+of the entire molecule consisting of <italic toggle="yes">N</italic> atoms can
+be written as<disp-formula id="eq3"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m003.jpg"><?image-name ct4c00882_m003.jpg?><?image-size 1760?><?image-md5 248788bb197cdde9e0e3b5028e7b11aa?><?image-image-server-status NEVER_LOAD?><?image-original-height 88?><?image-original-width 68?><?image-scaled-height 88?><?image-scaled-width 68?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/248788bb197c/ct4c00882_m003.jpg?><?thumb-name ct4c00882_m003.gif?><?thumb-size 2848?><?thumb-md5 063a090f36d8303ddd4f861d87dc6a39?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 129?><?thumb-scaled-width 100?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/063a090f36d8/ct4c00882_m003.gif?></graphic><label>3</label></disp-formula>where <italic toggle="yes">c</italic><sub><italic toggle="yes">j</italic></sub> is a normalization factor. In the case of linear
+molecules, <bold>D</bold><sub>6</sub> will not be generated. The pseudotranslational
+contributions in the <italic toggle="yes">i</italic>th normal mode are defined
+as<disp-formula id="eq4"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m004.jpg"><?image-name ct4c00882_m004.jpg?><?image-size 2806?><?image-md5 b3a3186c19edbba57f39cf4d16c02002?><?image-image-server-status NEVER_LOAD?><?image-original-height 19?><?image-original-width 250?><?image-scaled-height 19?><?image-scaled-width 250?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/b3a3186c19ed/ct4c00882_m004.jpg?><?thumb-name ct4c00882_m004.gif?><?thumb-size 1932?><?thumb-md5 edbe1f67ca4ef51d11a1cf3d69958f00?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 15?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/edbe1f67ca4e/ct4c00882_m004.gif?></graphic><label>4</label></disp-formula>where <bold>L</bold><sub><italic toggle="yes">i</italic></sub> is the <italic toggle="yes">i</italic>th
+normalized eigenvector of the mass-weighted Hessian and <bold>D</bold><sub>1</sub>, <bold>D</bold><sub>2</sub>, and <bold>D</bold><sub>3</sub> are the normalized vectors describing translation in <italic toggle="yes">x</italic>, <italic toggle="yes">y</italic>, and <italic toggle="yes">z</italic> directions,
+respectively. Similarly, the pseudorotational contributions in the <italic toggle="yes">i</italic>th normal mode are defined as<disp-formula id="eq5"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m005.jpg"><?image-name ct4c00882_m005.jpg?><?image-size 2734?><?image-md5 5eb3039b8ae689f6b75fe45760611986?><?image-image-server-status NEVER_LOAD?><?image-original-height 18?><?image-original-width 253?><?image-scaled-height 18?><?image-scaled-width 253?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/5eb3039b8ae6/ct4c00882_m005.jpg?><?thumb-name ct4c00882_m005.gif?><?thumb-size 1969?><?thumb-md5 dfa89ef42d468f688e4cef2eac5dc022?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 14?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/dfa89ef42d46/ct4c00882_m005.gif?></graphic><label>5</label></disp-formula>where <bold>D</bold><sub>4</sub>, <bold>D</bold><sub>5</sub>, and <bold>D</bold><sub>6</sub> are
+the normalized vectors describing rotation around the principal axes
+of inertia. Since the vectors <bold>D</bold><sub><italic toggle="yes">j</italic></sub> are normalized and the eigenvectors <bold>L</bold><sub><italic toggle="yes">i</italic></sub> form an orthonormal basis, the following applies:<disp-formula id="eq6"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m006.jpg"><?image-name ct4c00882_m006.jpg?><?image-size 2604?><?image-md5 fa2a093c39174414a908aff3e894b1c5?><?image-image-server-status NEVER_LOAD?><?image-original-height 30?><?image-original-width 198?><?image-scaled-height 30?><?image-scaled-width 198?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/fa2a093c3917/ct4c00882_m006.jpg?><?thumb-name ct4c00882_m006.gif?><?thumb-size 874?><?thumb-md5 23e54ed3d2bf62e1eabdb408cbe49a48?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 30?><?thumb-scaled-width 198?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/23e54ed3d2bf/ct4c00882_m006.gif?></graphic><label>6</label></disp-formula><disp-formula id="eq7"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m007.jpg"><?image-name ct4c00882_m007.jpg?><?image-size 2491?><?image-md5 27e5ab7fc127f562ca487a121b436985?><?image-image-server-status NEVER_LOAD?><?image-original-height 30?><?image-original-width 201?><?image-scaled-height 30?><?image-scaled-width 201?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/27e5ab7fc127/ct4c00882_m007.jpg?><?thumb-name ct4c00882_m007.gif?><?thumb-size 2031?><?thumb-md5 77a364b138bc6e247dc0ee3cce5c9f6c?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 30?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/77a364b138bc/ct4c00882_m007.gif?></graphic><label>7</label></disp-formula></p></sec><sec id="sec2.3"><label>2.3</label><title>Hessian Comparison</title><p>We investigate
+the errors of the QM/MM-PHVA approach by comparing it to full QM calculations
+on the small model systems. For these systems, we calculated full
+QM Hessians, dipole gradients, and polarizability gradients, as well
+as partial QM/MM Hessians, dipole gradients, and polarizability gradients.
+Partial QM Hessians, dipole gradients, and polarizability gradients
+were extracted from the full QM quantities.</p><p>We used two schemes
+to compare the partial and full QM Hessians. The first scheme gives
+the contribution of environment molecules to the normal-mode eigenvectors
+of the full QM Hessian eigenvectors, which will not be present in
+the partial QM or QM/MM Hessians. To quantify this contribution, we
+divide each normalized eigenvector into two parts<disp-formula id="eq8"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m008.jpg"><?image-name ct4c00882_m008.jpg?><?image-size 1062?><?image-md5 bf45fe0a7e2847add33b14e0981df259?><?image-image-server-status NEVER_LOAD?><?image-original-height 40?><?image-original-width 57?><?image-scaled-height 40?><?image-scaled-width 57?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/bf45fe0a7e28/ct4c00882_m008.jpg?><?thumb-name ct4c00882_m008.gif?><?thumb-size 498?><?thumb-md5 005f824381edec9713099a87508aabee?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 40?><?thumb-scaled-width 57?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/005f824381ed/ct4c00882_m008.gif?></graphic><label>8</label></disp-formula>where <bold>C</bold><sub><italic toggle="yes">i</italic></sub> corresponds to the core QM part (i.e., the
+solute) and <bold>E</bold><sub><italic toggle="yes">i</italic></sub> corresponds
+to the MM environment
+(i.e., the solvent). Then, we define the environmental contributions
+EC<sub><italic toggle="yes">i</italic></sub> to the <italic toggle="yes">i</italic>th normal
+mode <bold>L</bold><sub arrange="stack"><italic toggle="yes">i</italic></sub><sup arrange="stack">FH</sup> as<disp-formula id="eq9"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m009.jpg"><?image-name ct4c00882_m009.jpg?><?image-size 1598?><?image-md5 184f58183c5d0a72675462ceec121c93?><?image-image-server-status NEVER_LOAD?><?image-original-height 34?><?image-original-width 104?><?image-scaled-height 34?><?image-scaled-width 104?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/184f58183c5d/ct4c00882_m009.jpg?><?thumb-name ct4c00882_m009.gif?><?thumb-size 557?><?thumb-md5 863d3b87523f4781c0ae46e0370613c6?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 34?><?thumb-scaled-width 104?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/863d3b87523f/ct4c00882_m009.gif?></graphic><label>9</label></disp-formula>with<disp-formula id="eq10"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m010.jpg"><?image-name ct4c00882_m010.jpg?><?image-size 2773?><?image-md5 40fdefb76daeacaf068fb02ec3758b4a?><?image-image-server-status NEVER_LOAD?><?image-original-height 34?><?image-original-width 177?><?image-scaled-height 34?><?image-scaled-width 177?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/40fdefb76dae/ct4c00882_m010.jpg?><?thumb-name ct4c00882_m010.gif?><?thumb-size 948?><?thumb-md5 ab408fd568404caf61e74f29fb705f12?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 34?><?thumb-scaled-width 177?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/ab408fd56840/ct4c00882_m010.gif?></graphic><label>10</label></disp-formula></p><p>To identify
+which normal modes to compare from the full and partial
+QM Hessians, we calculated the overlap, i.e., the dot product, between
+the <bold>C</bold><sub><italic toggle="yes">i</italic></sub> vectors and the <bold>L</bold><sub arrange="stack"><italic toggle="yes">i</italic></sub><sup arrange="stack">PH</sup> eigenvectors of the partial QM Hessian. This
+shows the similarity between normal modes from the full and partial
+QM Hessians. The most similar normal modes were then used for the
+second scheme, where the directional deviation between the eigenvectors
+of the full and partial QM Hessians was calculated. For this, we define
+the angular deviation AD<sub><italic toggle="yes">i</italic></sub> of the <italic toggle="yes">i</italic>th normal mode as<disp-formula id="eq11"><graphic xmlns:xlink="http://www.w3.org/1999/xlink" position="anchor" orientation="portrait" xlink:href="ct4c00882_m011.jpg"><?image-name ct4c00882_m011.jpg?><?image-size 1938?><?image-md5 1525094c23832c8e1e57f897b5c21305?><?image-image-server-status NEVER_LOAD?><?image-original-height 17?><?image-original-width 179?><?image-scaled-height 17?><?image-scaled-width 179?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/1525094c2383/ct4c00882_m011.jpg?><?thumb-name ct4c00882_m011.gif?><?thumb-size 718?><?thumb-md5 93946d51aab9d092443890dd502d115a?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 17?><?thumb-scaled-width 179?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/93946d51aab9/ct4c00882_m011.gif?></graphic><label>11</label></disp-formula>Here θ is the angle between
+the normalized <bold>C</bold><sub><italic toggle="yes">i</italic></sub> and <bold>L</bold><sub arrange="stack"><italic toggle="yes">i</italic></sub><sup arrange="stack">PH</sup> vectors. The angular deviation was also used
+to compare the partial
+QM and QM/MM Hessians.</p></sec></sec><sec id="sec3"><label>3</label><title>Results and Discussion</title><p>In the first
+part of this section, we investigate the pseudotranslational
+and pseudorotational contributions in the normal modes calculated
+using the QM/MM approach for the seven solute–solvent systems:
+furan in benzene, naphthalene in acetonitrile, pyridine in methanol,
+1,3-butadiene in water, uracil in methanol, propanamide in water,
+and formaldehyde in water, including also the expanded QM subsystem
+for formaldehyde in water. We also investigate how the removal of
+the pseudotranslation and pseudorotation through projection, as described
+by Wilson et al.,<sup><xref ref-type="bibr" rid="ref11">11</xref></sup> affects frequencies,
+IR intensities, and Raman intensities of the remaining normal modes.
+Then, we turn toward a more detailed assessment of errors introduced,
+first, by the partial Hessian approximation and, second, by the use
+of QM/MM. To this end, we compare normal modes, frequencies, IR intensities,
+and Raman intensities obtained using the full and partial QM Hessians
+and the partial QM and QM/MM Hessians, respectively, of the five small
+model systems: pyridine in methanol, 1,3-butadiene in water, uracil
+in methanol, propanamide in water, and formaldehyde in water, including
+again the expanded QM subsystem for formaldehyde in water. In this
+context, we note that the eigenvectors and eigenvalues obtained from
+the PHVA are directly affected by the reduction of the full Hessian,
+whereas the dipole and polarizability gradients, and thus the IR and
+Raman intensities, are indirectly affected through the transformation
+from Cartesian to mass-weighted internal coordinates. The systems
+are summarized in <xref rid="tbl1" ref-type="other">Table <xref rid="tbl1" ref-type="other">1</xref></xref>. The seven large systems are used in the first part (<xref rid="sec3.1" ref-type="other">Section <xref rid="sec3.1" ref-type="other">3.1</xref></xref>), and the five
+small model systems are used in the second part (<xref rid="sec3.2" ref-type="other">Sections <xref rid="sec3.2" ref-type="other">3.2</xref></xref> and <xref rid="sec3.3" ref-type="other">3.3</xref>).</p><sec id="sec3.1"><label>3.1</label><title>Pseudotranslation and Pseudorotation</title><p>From a theoretical point of view, translation and rotation should
+not be projected out of the partial Hessian because, while some normal
+modes resemble translation and rotation, they are, in fact, collective
+vibrations between the QM and MM subsystems. We refer to those modes
+as pseudotranslation and pseudorotation. Instead of projecting out
+translation and rotation from the partial Hessian, a more effective
+approach is to identify modes with pseudotranslational and pseudorotational
+contributions that exceed a threshold and remove them since they are
+not well described.</p><p>In this study, we have found that the lowest-frequency
+modes of a partial Hessian will often be mixtures of internal motions
+of the QM subsystem with pseudotranslational and pseudorotational
+contributions. The projection results in a redistribution of the internal
+motion of the mixed modes to the other modes. This can alter the character
+of the affected modes.</p><p>Practically, the projection can be performed,
+and here we examine
+the effect on frequencies, IR intensities, and Raman intensities for
+the seven solute–solvent systems. The results for the six solute–solvent
+systems where only the solute molecule is in the QM subsystem are
+presented in <xref rid="fig1" ref-type="fig">Figure <xref rid="fig1" ref-type="fig">1</xref></xref>, while the results for formaldehyde in water with and without two
+solvent molecules in the QM subsystem are presented in <xref rid="fig2" ref-type="fig">Figure <xref rid="fig2" ref-type="fig">2</xref></xref>. Here, we investigate the
+absolute differences in frequencies, as well as the relative and normalized
+absolute differences in IR and Raman intensities. The normalized absolute
+differences refer to normalizing the absolute differences by the maximum
+absolute difference across all modes except the six lowest ones. <xref rid="fig1" ref-type="fig">Figures <xref rid="fig1" ref-type="fig">1</xref></xref> and <xref rid="fig2" ref-type="fig">2</xref> also include the pseudotranslational and pseudorotational
+contributions to all normal modes calculated using <xref rid="eq4" ref-type="disp-formula">eqs <xref rid="eq4" ref-type="disp-formula">4</xref></xref> and <xref rid="eq5" ref-type="disp-formula">5</xref>, respectively.</p><fig id="fig1" position="float" orientation="portrait"><label>Figure 1</label><caption><p>Identification
+and quantification of pseudotranslational contributions
+(PTC) and pseudorotational contributions (PRC) in normal modes of
+a series of solute–solvent systems and a comparison of frequencies,
+IR intensities, and Raman intensities before and after projecting
+out translation and rotation. Note that some bars are truncated due
+to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr1" position="float" orientation="portrait" xlink:href="ct4c00882_0001.jpg"><?image-name ct4c00882_0001.jpg?><?image-size 170714?><?image-md5 07e21b1b1a2d8bd0752460d9b45ca25e?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 2621?><?image-original-width 2025?><?image-scaled-height 874?><?image-scaled-width 675?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/07e21b1b1a2d/ct4c00882_0001.jpg?><?thumb-name ct4c00882_0001.gif?><?thumb-size 16916?><?thumb-md5 36c82b996376bf5d5417488836a96dda?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 129?><?thumb-scaled-width 100?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/36c82b996376/ct4c00882_0001.gif?></graphic></fig><fig id="fig2" position="float" orientation="portrait"><label>Figure 2</label><caption><p>Identification and quantification
+of pseudotranslational contributions
+(PTC) and pseudorotational contributions (PRC) in normal modes of
+formaldehyde in water (left) without and (right) with the inclusion
+of two water molecules in the QM subsystem and thus in the partial
+QM/MM Hessian, as well as a comparison of frequencies, IR intensities,
+and Raman intensities before and after projecting out translation
+and rotation. Note that some bars are truncated due to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr2" position="float" orientation="portrait" xlink:href="ct4c00882_0002.jpg"><?image-name ct4c00882_0002.jpg?><?image-size 78622?><?image-md5 ee971fbe98026d0b58836007e32ba587?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 885?><?image-original-width 2092?><?image-scaled-height 295?><?image-scaled-width 697?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/ee971fbe9802/ct4c00882_0002.jpg?><?thumb-name ct4c00882_0002.gif?><?thumb-size 14102?><?thumb-md5 f7e172a999b3a6386a2c2185089d6ee5?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 80?><?thumb-scaled-width 189?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/f7e172a999b3/ct4c00882_0002.gif?></graphic></fig><p>Of the six systems presented in <xref rid="fig1" ref-type="fig">Figure <xref rid="fig1" ref-type="fig">1</xref></xref>, the ones that are the least
+affected by
+the projection are furan in benzene and naphthalene in acetonitrile.
+In both cases, most of the pseudotranslational and pseudorotational
+contributions are in the six lowest-frequency modes. For furan in
+benzene, none of the other modes exceed pseudotranslational and -rotational
+contributions by more than 0.002%. A few modes in naphthalene in acetonitrile
+have pseudotranslational and pseudorotational contributions of around
+0.3%. Although still small, the impact on the Raman intensities of
+those modes is substantial, about 30 to 35% relative difference while
+also having a considerable absolute difference. In both systems, the
+frequency is not altered appreciably by the projection.</p><p>In the
+cases of pyridine in methanol and 1,3-butadiene in water,
+the pseudotranslational and pseudorotational contributions for all
+modes except the six lowest-frequency modes go up to around 3%. The
+projection affects frequencies, IR intensities, and Raman intensities
+for both systems. The maximum frequency difference is around 3 cm<sup>–1</sup>, while the relative intensity differences are higher
+for pyridine in methanol (up to 76% for Raman and 68% for IR) than
+for 1,3-butadiene in water (up to 57% for Raman and 52% for IR). The
+absolute differences are also substantial for the aforementioned modes
+with high relative differences, so we expect to see a noticeable difference
+in the spectra for these systems.</p><p>Uracil in methanol and propanamide
+in water were affected the most
+by the projection. In both cases, there is at least one normal mode
+outside the six lowest-frequency modes with pseudotranslational and
+pseudorotational contributions exceeding 10%. For these normal modes,
+the projection substantially impacts the frequencies and intensities.
+Specifically for uracil in methanol, normal mode 29 has 14% each pseudotranslational
+and pseudorotational contributions, where the frequency changes by
+about 17 cm<sup>–1</sup>, the relative Raman intensity by about
+103%, and the relative IR intensity by about 36%. For propanamide
+in water, normal mode 30 has 45% pseudorotational and 35% pseudotranslational
+contributions, where the change in frequency is about 129 cm<sup>–1</sup>, about 383% for the Raman intensity, and about 64% for the IR intensity.
+For the aforementioned normal modes with high relative differences,
+the absolute differences are also substantial and will thus lead to
+major differences in the spectra.</p><p>In <xref rid="fig2" ref-type="fig">Figure <xref rid="fig2" ref-type="fig">2</xref></xref>, we
+examine the effects of adding solvent molecules to the QM subsystem
+by comparing calculations on formaldehyde in water with and without
+two water molecules in the QM subsystem. In the following and in <xref rid="fig2" ref-type="fig">Figure <xref rid="fig2" ref-type="fig">2</xref></xref>, the latter is referred
+to as the formaldehyde–water cluster in water. The results
+for formaldehyde in water are consistent with the other solute–solvent
+systems presented in <xref rid="fig1" ref-type="fig">Figure <xref rid="fig1" ref-type="fig">1</xref></xref>. Specifically, pseudotranslational and pseudorotational contributions
+are observed only in the six lowest-frequency modes. For all other
+normal modes, the frequency errors are minimal, with the highest error
+being in normal mode 5, which exhibits a frequency error of around
+1 cm<sup>–1</sup>. Notably, normal mode 5 also shows the greatest
+absolute difference in both IR and Raman intensities, with a relative
+difference of 9% for IR intensity and 6% for Raman intensity. For
+the formaldehyde–water cluster in water, the projection affects
+a significantly larger number of normal modes beyond the six lowest-frequency
+modes. The majority of pseudotranslational and pseudorotational contributions
+are concentrated in the 13 lowest-frequency modes, each of which shows
+contributions of at least 10%. However, up to the 18 lowest-frequency
+modes exhibit at least 1% pseudotranslational and pseudorotational
+contributions. On most of the 18 lowest-frequency modes, the projection
+has a considerable impact on frequencies and intensities. Specifically,
+modes 19–24 exhibit substantial frequency errors ranging from
+55 to 85 cm<sup>–1</sup>, all corresponding to intermolecular
+stretching or bending modes in the formaldehyde–water cluster.
+Interestingly, the normal modes in the formaldehyde–water cluster
+that have the greatest overlap with the normal modes in formaldehyde
+in water are among the 13 highest-frequency modes, which exhibit similarly
+low errors as those in formaldehyde in water. Therefore, the increase
+in pseudotranslational and pseudorotational contributions and the
+associated errors seen in the formaldehyde–water cluster likely
+stem from the inclusion of the two solvent water molecules to the
+QM subsystem.</p><p>This analysis shows that projecting out translation
+and rotation
+can substantially affect frequencies, IR intensities, and Raman intensities.
+Generally, the normal modes most affected are the low-frequency ones,
+while the high-frequency modes are unaffected. It is also noteworthy
+that the IR and Raman intensities are more sensitive than the frequencies.
+For example, for a normal mode in 1,3-butadiene in water, the difference
+was more than 50% while the frequency only changed by about 3 cm<sup>–1</sup>. Moreover, by including solvent molecules in the
+QM subsystem, the pseudotranslational and pseudorotational contributions
+are affecting more normal modes compared to systems without solvent
+molecules. In the systems where only the solute is in the QM subsystem,
+these contributions are visible in, at most, nine of the lowest-frequency
+modes. Clearly, the impact of projection can be substantial, and since
+it is also unfounded, a better approach to eliminating the problematic
+modes is to quantify the pseudotranslational and pseudorotational
+contributions and remove the modes with contributions higher than
+a threshold.</p></sec><sec id="sec3.2"><label>3.2</label><title>Comparison between Full
+and Partial QM Hessians</title><p>To investigate the errors introduced
+by the PHVA approximation
+itself, i.e., not including errors from QM/MM, we compare the full
+and partial QM Hessians as well as the frequencies, IR intensities,
+and Raman intensities derived using these Hessians. To keep the computational
+cost low, we used the small model systems pyridine in methanol, 1,3-butadiene
+in water, uracil in methanol, propanamide in water, and formaldehyde
+in water (see <xref rid="fig3" ref-type="fig">Figure <xref rid="fig3" ref-type="fig">3</xref></xref>). For the latter, we also include the formaldehyde–water
+cluster in water, i.e., where the two water molecules hydrogen-bonded
+to formaldehyde are included in the partial QM Hessian. We compared
+the absolute errors in frequencies and relative and normalized absolute
+errors in the IR and Raman intensities of the normal modes with a
+high similarity according to the method described in <xref rid="sec2.3" ref-type="other">Section <xref rid="sec2.3" ref-type="other">2.3</xref></xref>. The normalized absolute
+error is calculated as the absolute difference divided by the maximum
+absolute difference of all normal modes except the six lowest-frequency
+modes. In addition to the pseudotranslational and pseudorotational
+contributions, we also calculated the environmental contribution (<xref rid="eq9" ref-type="disp-formula">eq <xref rid="eq9" ref-type="disp-formula">9</xref></xref>) and angular deviation
+(<xref rid="eq11" ref-type="disp-formula">eq <xref rid="eq11" ref-type="disp-formula">11</xref></xref>). The environmental
+contribution is a measurement of the degree to which molecules in
+the solvent environment are involved in a given normal mode, while
+the angular deviations are a measure of the directional similarity
+between the vibrations in the solute before and after applying the
+PHVA approximation. The results are presented in <xref rid="fig4" ref-type="fig">Figures <xref rid="fig4" ref-type="fig">4</xref></xref> and <xref rid="fig5" ref-type="fig">5</xref>.</p><fig id="fig3" position="float" orientation="portrait"><label>Figure 3</label><caption><p>Geometries of the five small model systems: pyridine in methanol,
+1,3-butadiene in water, uracil in methanol, propanamide in water,
+and formaldehyde in water. QM molecules are depicted as van der Waals
+spheres and MM molecules as sticks. For formaldehyde in water, we
+only depict the formaldehyde–water cluster in water.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr3" position="float" orientation="portrait" xlink:href="ct4c00882_0003.jpg"><?image-name ct4c00882_0003.jpg?><?image-size 57377?><?image-md5 0b65181205c81f7a926e1ae1c0abcd75?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 509?><?image-original-width 2088?><?image-scaled-height 170?><?image-scaled-width 696?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/0b65181205c8/ct4c00882_0003.jpg?><?thumb-name ct4c00882_0003.gif?><?thumb-size 13385?><?thumb-md5 847eb1180277ae8aabd396fb08a2432b?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 49?><?thumb-scaled-width 200?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/847eb1180277/ct4c00882_0003.gif?></graphic></fig><fig id="fig4" position="float" orientation="portrait"><label>Figure 4</label><caption><p>Comparison of normal modes obtained from full and partial
+QM Hessians
+of small model systems. Depicted are the environmental contributions
+(EC), the angular deviations (AD), the pseudotranslational contributions
+(PTC), the pseudorotational contributions (PRC), the frequency change,
+and the IR and Raman intensity changes. Note that some bars are truncated
+due to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr4" position="float" orientation="portrait" xlink:href="ct4c00882_0004.jpg"><?image-name ct4c00882_0004.jpg?><?image-size 160856?><?image-md5 d815c2df81b1d90c316b5d3aa6cedf83?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 1902?><?image-original-width 2092?><?image-scaled-height 634?><?image-scaled-width 697?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/d815c2df81b1/ct4c00882_0004.jpg?><?thumb-name ct4c00882_0004.gif?><?thumb-size 18185?><?thumb-md5 47acc7f57583124f2366eb7575c1aba4?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 91?><?thumb-scaled-width 100?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/47acc7f57583/ct4c00882_0004.gif?></graphic></fig><fig id="fig5" position="float" orientation="portrait"><label>Figure 5</label><caption><p>Comparison of normal
+modes obtained from full and partial QM Hessians
+of formaldehyde in water (left) without and (right) with the inclusion
+of two water molecules in the partial QM Hessian. Depicted are the
+environmental contributions (EC), the angular deviations (AD), the
+pseudotranslational contributions (PTC), the pseudorotational contributions
+(PRC), the frequency change, and the IR and Raman intensity changes.
+Note that some bars are truncated due to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr5" position="float" orientation="portrait" xlink:href="ct4c00882_0005.jpg"><?image-name ct4c00882_0005.jpg?><?image-size 92871?><?image-md5 7a027de3e611b78f0741a8ebecca6be4?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 943?><?image-original-width 2092?><?image-scaled-height 314?><?image-scaled-width 697?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/7a027de3e611/ct4c00882_0005.jpg?><?thumb-name ct4c00882_0005.gif?><?thumb-size 16117?><?thumb-md5 bc45c53bdba578621a0d83d60c4683e1?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 80?><?thumb-scaled-width 177?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/bc45c53bdba5/ct4c00882_0005.gif?></graphic></fig><p>As expected, normal modes with substantial pseudotranslational
+and pseudorotational contributions also include a high environmental
+contribution and angular deviation. For the systems without solvent
+molecules in the partial Hessian, the pseudotranslational and pseudorotational
+contributions appear in the six lowest-frequency modes, except in
+the case of propanamide in water, where there are also contributions
+in the seventh-lowest frequency mode. For the formaldehyde–water
+cluster in water, the 12 lowest-frequency modes have non-negligible
+pseudotranslational and pseudorotational contributions. These normal
+modes are not well described within the PHVA approximation, which
+is also reflected in the high errors in frequencies and intensities.
+The following discussion does not consider the normal modes with high
+pseudotranslational and pseudorotational contributions.</p><p>To better
+understand the errors in the intensities due to the PHVA
+approximation, we need to consider the truncation of the dipole and
+polarizability gradients, i.e., the removal of the derivatives with
+respect to the positions of nuclei in the solvent environment, as
+well as the fact that the gradients are transformed using the transformation
+matrix obtained from the partial Hessian. Hence, the origin of the
+intensity errors can come from the truncation of the Hessian and the
+truncation of the gradients. The total impact is reflected by the
+relative intensity differences. Since the environmental contributions
+are correlated to the expected changes in the transformation matrix,
+it is possible to identify for some modes if the high relative intensity
+difference is dominated by the truncation of the Hessian or by the
+truncation of the gradients. It is important to emphasize that we
+also consider the normalized absolute intensity difference, which
+is highest for the largest peak in the spectrum and expected to be
+considerably large for other intense peaks in the spectrum. Our focus
+lies on considering cases where both the normalized absolute intensity
+differences and the relative intensity differences are substantial,
+as this indicates a noticeable difference in the final spectrum.</p><p>For pyridine in methanol, the frequencies are largely unaffected
+in the high-frequency part of the spectrum and with minor errors in
+the low-frequency part. The maximum error is around 3 cm<sup>–1</sup>. The impact on IR and Raman intensities, on the other hand, is substantial.
+In particular, the IR intensities of normal modes 13, 14, 24, and
+25 and the Raman intensity of normal mode 24 have considerable relative
+and absolute errors. These four normal modes represent in-plane bending
+motions of the pyridine molecule, which couple to the C–O stretching
+mode of methanol in the case of modes 13 and 14 and to the torsion
+mode of methanol in the case of modes 24 and 25. These modes have
+environmental contributions that are removed through the PHVA approximation,
+which explains the resulting frequency errors and, to some degree,
+the intensity errors. Similar to the normal modes with high errors,
+mixing between solute and solvent vibrations is also observed in other
+modes, yet the associated frequencies and intensities have low errors.
+For example, in normal mode 9, a mixing between an in-plane bending
+mode in pyridine and the O–H rocking mode in methanol can be
+observed. However, since normal mode 9 has a low intensity in both
+the partial and full treatment, the absolute error introduced to the
+IR intensities is also low. The degree of environmental contribution
+is similar to the other aforementioned modes with higher errors, but
+the relative intensity errors are small. Therefore, for this particular
+mode, the errors must be dominated by the truncation of the dipole
+and polarizability gradients, which, however, does not have a strong
+impact on the final intensities.</p><p>For 1,3-butadiene in water,
+the errors in the frequencies are also
+minor, except for mode 24, where the error is about 5 cm<sup>–1</sup>. The errors in IR and Raman intensities are primarily in the low-frequency
+end of the spectrum, where especially normal mode 24 stands out with
+large relative and absolute errors for both IR and Raman intensities.
+In the high-frequency part of the spectrum, only the IR intensity
+of normal mode 8 has substantial relative and absolute errors. Both
+of these modes have high environmental contributions. Normal mode
+8 includes C=C stretching in 1,3-butadiene that couples to
+O–H bending in some water molecules, while normal mode 24 includes
+rotation around the central C–C bond in 1,3-butadiene and rotation
+of some water molecules. Notably, both IR and Raman intensities for
+normal mode 24 become much smaller in the PHVA. This implies that
+the water rotation contributes much stronger to the IR and Raman intensities
+than the 1,3-butadiene deformation vibration around the central C–C
+bond.</p><p>In contrast to the other solute–solvent systems,
+the normal
+modes of uracil in methanol have much higher frequency errors across
+the entire spectrum. The frequencies of normal modes 9, 23, 25, and
+27 are close to 10 cm<sup>–1</sup>, while the frequencies of
+modes 5, 8, 11, 14, and 29 are around 5 cm<sup>–1</sup>. All
+of these normal modes have clear environmental contributions, and
+some low-frequency modes also have angular deviations. However, it
+is worth noting that the size of the environmental contributions does
+not necessarily correlate with the size of the errors. For example,
+the environmental contributions are rather small for normal mode 5,
+yet the frequency error is substantial. The IR intensity errors are
+most pronounced in normal modes 8, 9, 11, and 14, where the large
+environmental contributions come from O–H rocking motions of
+methanol that are mixed with in-plane bending modes of uracil. The
+Raman intensity errors are highest in normal modes 11, 24, and 25,
+where the two latter modes correspond to in-plane bending motions
+of uracil mixed with torsion motions of methanol. An explanation for
+the frequency errors that appear across the entire frequency range
+is that uracil, with its two carbonyl and two amide groups, provides
+two hydrogen-bond acceptors and two hydrogen-bond donors. The PHVA
+approximation substantially affects the description of the coupling
+between the atoms involved in the hydrogen bonds, which are involved
+in several normal modes across the entire frequency range.</p><p>The
+frequency errors for propanamide in water are generally small,
+but two modes stand out with high errors, namely modes 23 and 24,
+with errors of about 45 and 20 cm<sup>–1</sup>, respectively.
+The intensity errors are mostly prominent in the lower-frequency normal
+modes, except for normal mode 1. The largest IR intensity errors are
+observed for normal mode 1, 23, 24, and 25. The Raman errors are low
+overall. A closer look at normal modes 23, 24, and 25 reveals that
+all three modes consist of NH<sub>2</sub> wagging motions mixed with
+rotations of some water molecules. Normal mode 1, on the other hand,
+is a mixture of the NH<sub>2</sub> asymmetric stretching mode in propanamide
+and the asymmetric stretching mode of some water molecules. All of
+these modes have substantial environmental contributions, and the
+low-frequency modes also have angular deviations. There are also normal
+modes with clear environmental contributions but small errors overall.
+This applies to normal modes 8 and 9, which correspond to NH<sub>2</sub> bending and C=O stretching motions of propanamide mixed with
+water bending motions. Both modes result in a high IR intensity in
+both the full and partial counterparts, which indicates that the water
+bending contributes little to the IR intensity of these modes.</p><p>For formaldehyde in water (results presented in <xref rid="fig5" ref-type="fig">Figure <xref rid="fig5" ref-type="fig">5</xref></xref>), the frequency errors are
+generally small, approximately 1 cm<sup>–1</sup>. Similarly,
+the errors are also small for the normal modes local to the formaldehyde
+of the formaldehyde–water cluster, i.e., normal modes that
+have substantial overlap with the normal modes of formaldehyde in
+water, which is normal modes 5, 6, 7, 10, 11, and 12 in the formaldehyde–water
+cluster. These modes have small to no environmental contributions.
+Moreover, they do not exhibit substantial errors in absolute or relative
+IR and Raman intensities. Conversely, normal modes 1, 2, 3, 4, 8,
+and 9 in the formaldehyde–water cluster involve the stretching
+and bending of the two water molecules. Modes 13–19 correspond
+to intermolecular vibrations in the QM subsystem, with modes 13–18
+corresponding to intermolecular bending modes and mode 19 representing
+an intermolecular stretching mode. Normal modes involving the two
+water molecules in the formaldehyde–water cluster show noticeable
+environmental contributions. The largest frequency errors (40–50
+cm<sup>–1</sup>) are observed in the intermolecular bending
+modes 13, 15, and 17, while the most considerable errors in IR and
+Raman intensities are found in the water stretching modes 2, 3, and
+4. Notably, modes 17 and 18 also exhibit substantial relative and
+absolute Raman intensity errors. It is expected that molecular vibrations
+of the two water molecules are strongly coupled to the motions of
+other water molecules due to hydrogen bonding, thus potentially having
+a substantial effect on all intramolecular and intermolecular modes
+involving water in the partial Hessian. Interestingly, the carbonyl
+stretching mode of formaldehyde remains well-described both with and
+without including water molecules in the partial Hessian.</p><p>Generally,
+for normal modes consisting of local vibrational motions
+in the solute and solvent separately, using the PHVA approximation
+does not have a substantial effect. Conversely, if a normal mode involves
+collective motions of atoms in the solute and solvent, the PHVA approximation
+may introduce large errors. This becomes especially apparent in the
+formaldehyde–water cluster, where the molecular vibrations
+of the two water molecules in the cluster are strongly coupled to
+the water molecules in the solvent. Although the environmental contribution
+does not distinguish between the two cases, large environmental contributions
+typically indicate large frequency errors due to the lack of coupling
+between solute and solvent atoms in the partial Hessian. However,
+as seen in mode 5 for uracil in methanol, the environmental contribution
+can be small while large errors still occur. Conversely, there are
+also instances, e.g., normal modes 8 and 9 of propanamide in water,
+with clear environmental contributions, yet the errors are relatively
+small. The intensity errors, on the other hand, are typically dominated
+by the truncation of the dipole and polarizability gradients. The
+impact of the truncated properties is shown by the relative intensity
+differences. Together with the environmental contributions, which
+indicate the errors of the transformation matrix, it becomes apparent
+for some normal modes if it is the truncation of the Hessian that
+dominates or the truncation of the dipole and polarizability gradients.
+In the cases investigated here, there are many normal modes with a
+high relative intensity error and low environmental contributions.
+Thus, the intensity errors are mostly dominated by the truncation
+of the dipole and polarizability gradients. The angular deviation
+is only visible in the low-frequency part of the spectrum and is generally
+negligible in the rest of the spectrum, indicating that the molecular
+vibrations in the solute do not change substantially. Although it
+cannot be generalized without further investigation, for our test
+cases, the IR intensities of the high-frequency modes were more affected
+than the Raman intensities. Simultaneous large relative and absolute
+errors for the Raman intensities are only observed in a few cases.
+For our systems, it is to some degree due to the higher number of
+high-intensity normal modes in IR compared to Raman. Also, it is worth
+noting that the solvent environment contributes to some high-frequency
+modes that are usually considered to be very local, e.g., normal mode
+1 of propanamide in water. Hence, one cannot assume that all high-frequency
+modes will not be affected by the PHVA approximation. The inclusion
+of water molecules in the partial Hessian of the formaldehyde in water
+system did not impact the local modes of the formaldehyde but resulted
+in high errors in the delocalized normal modes corresponding to intermolecular
+modes within the formaldehyde–water cluster and in the normal
+modes of the two included water molecules.</p></sec><sec id="sec3.3"><label>3.3</label><title>Comparison
+between Partial QM and QM/MM Hessians</title><p>Here, we investigate
+the differences between the normal modes obtained
+from the partial QM and QM/MM Hessians. The partial QM Hessian is
+considered the reference for the partial QM/MM Hessian. The errors
+observed here are thus in addition to those found in the previous
+section. However, it is possible that there is a cancellation of errors.
+We look at the angular deviation between the normal modes, the absolute
+difference in pseudotranslational and pseudorotational contributions,
+the absolute difference in frequencies, and the relative and normalized
+absolute difference in IR and Raman intensities. The results of this
+investigation are shown in <xref rid="fig6" ref-type="fig">Figures <xref rid="fig6" ref-type="fig">6</xref></xref> and <xref rid="fig7" ref-type="fig">7</xref>. The QM/MM geometries
+were obtained from a constrained QM/MM geometry optimization of the
+fully optimized structures in <xref rid="fig3" ref-type="fig">Figure <xref rid="fig3" ref-type="fig">3</xref></xref>. To check the similarity between the QM- and QM/MM-optimized
+structures, we calculated the root-mean-square deviations (RMSDs)
+of the nuclear positions. The RMSDs are 0.20 Å for pyridine in
+methanol, 0.31 Å for 1,3-butadiene in water, 0.02 Å for
+uracil in methanol, and 0.06 Å for propanamide in water. The
+structural differences are thus larger for pyridine in methanol and
+1,3-butadiene in water than for propanamide in water and uracil in
+methanol. Since the solvent environments are frozen, the RMSDs are
+from the solute only. The change in geometry can be internally in
+the solute and displacements of the solute as a whole within the solvent
+cage. For formaldehyde in water, the RMSD is 0.05 Å. In the formaldehyde–water
+cluster in water, the RMSD increases to 0.21 Å, which includes
+the contribution from changes in the geometry of the two water molecules.
+When the water molecules in the formaldehyde–water cluster
+are not considered, the RMSD for formaldehyde alone is 0.05 Å.
+Additionally, the RMSD between the formaldehyde molecules in the two
+QM/MM systems is 0.04 Å.</p><fig id="fig6" position="float" orientation="portrait"><label>Figure 6</label><caption><p>Comparison of normal modes obtained from the
+partial QM and QM/MM
+Hessians of small models systems. Depicted are the angular deviations
+(AD), the absolute difference in pseudotranslational contributions
+(PTC), the absolute difference in pseudorotational contributions (PRC),
+the frequency change, and the IR and Raman intensity changes. Note
+that some bars are truncated due to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr6" position="float" orientation="portrait" xlink:href="ct4c00882_0006.jpg"><?image-name ct4c00882_0006.jpg?><?image-size 171676?><?image-md5 c80a6597cc4e76f0c50cc5992f60663b?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 1909?><?image-original-width 2092?><?image-scaled-height 636?><?image-scaled-width 697?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/c80a6597cc4e/ct4c00882_0006.jpg?><?thumb-name ct4c00882_0006.gif?><?thumb-size 19505?><?thumb-md5 81f67213c7d3d6cd39bd65c420f98055?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 91?><?thumb-scaled-width 100?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/81f67213c7d3/ct4c00882_0006.gif?></graphic></fig><fig id="fig7" position="float" orientation="portrait"><label>Figure 7</label><caption><p>Comparison
+of normal modes obtained from the partial QM and QM/MM
+Hessians of formaldehyde in water (left) without and (right) with
+the inclusion of two water molecules. Depicted are the angular deviations
+(AD), the absolute difference in pseudotranslational contributions
+(PTC), the absolute difference in pseudorotational contributions (PRC),
+the frequency change, and the IR and Raman intensity changes. Note
+that some bars are truncated due to scale limits.</p></caption><graphic xmlns:xlink="http://www.w3.org/1999/xlink" id="gr7" position="float" orientation="portrait" xlink:href="ct4c00882_0007.jpg"><?image-name ct4c00882_0007.jpg?><?image-size 101186?><?image-md5 695b5f4bc048bb551c7dba08bca00291?><?image-image-server-status LOAD_COMPLETED?><?image-original-height 971?><?image-original-width 2092?><?image-scaled-height 324?><?image-scaled-width 697?><?image-cloudpmc-urn urn:cdn:blobs/1e11/11562069/695b5f4bc048/ct4c00882_0007.jpg?><?thumb-name ct4c00882_0007.gif?><?thumb-size 16679?><?thumb-md5 876c0a5b3ef9761f997ec7084d67841b?><?thumb-image-server-status NEVER_LOAD?><?thumb-scaled-height 80?><?thumb-scaled-width 172?><?thumb-cloudpmc-urn urn:cdn:blobs/1e11/11562069/876c0a5b3ef9/ct4c00882_0007.gif?></graphic></fig><p>For pyridine in methanol, the errors in the frequencies
+are mostly
+below 10 cm<sup>–1</sup>, apart from those of normal modes
+4, 17, 21, 25, and 26 that go above. The IR intensities associated
+with normal modes 4 and 23 have high relative and absolute errors,
+and the same applies to the Raman intensities of normal modes 3, 4,
+5, and 17. The change in pseudotranslational and pseudorotational
+contributions occurs only in the six lowest frequency modes. The angular
+deviations are relatively high for the high-frequency modes 2, 3,
+4, and 5, as well as for the lower-frequency modes 15, 16, 17, 18,
+and 19. This could explain the errors observed for those modes. Based
+on our results, we are not able to quantify to which degree the angular
+deviations stem from structural or property differences.</p><p>Similarly,
+for butadiene in water there are errors in the frequencies
+of most normal modes, although they are overall lower. For normal
+modes 3, 16, and 24, the frequency error is around 10 cm<sup>–1</sup>, while high relative and absolute errors are found for the IR intensity
+of normal mode 15 and the Raman intensities of normal modes 16 and
+24. The partial QM/MM Hessian results in a small pseudorotational
+contribution in normal mode 24, i.e., the seventh-lowest frequency
+mode. This may explain the high frequency and Raman intensity errors
+associated with this mode. The angular deviations are relatively small
+for all normal modes except the four lowest frequency modes. This
+is surprising when considering that the RMSD between the QM and QM/MM
+geometries is larger than the one for pyridine in methanol, where
+the angular deviations were substantially larger.</p><p>The normal
+modes of both uracil in methanol and propanamide in
+water have large frequency errors. Especially modes 1, 2, and 18 in
+uracil in methanol and modes 1, 2, and 21 in propanamide in water
+have errors close to or above 100 cm<sup>–1</sup>. These large
+errors seem to be related to the fact that all of the modes include
+vibrations of an N–H moiety that is involved in hydrogen bonds
+to solvent molecules. Hydrogen bonds crossing the QM–MM boundary
+are only partially described within the QM/MM model. This is also
+reflected through the change in the N–H bond length that increases
+by 0.015 Å for uracil in methanol and 0.017 Å for propanamide
+in water when going from full QM to QM/MM, indicating too strong hydrogen
+bonds. Additionally, the frequency errors are likely made worse by
+basis-set superposition errors in the reference calculations. On the
+other hand, the normal modes that include C=O stretching, i.e.,
+modes 5 and 6 in uracil in methanol and modes 8 and 9 in propanamide
+in water, which are also involved in hydrogen bonds, have relatively
+low errors. Unlike the N–H bond length, the C=O bond
+length does not change substantially in uracil in methanol. In propanamide
+in water, the C=O bond is elongated by 0.012 Å. This is
+in line with the difference in angular deviations of the modes. The
+lower errors of the C=O stretching modes compared to the N–H
+stretching suggest a higher sensitivity for hydrogen-bond donors than
+for hydrogen-bond acceptors. In regards to the pseudotranslational
+and pseudorotational contributions, although small, there are changes
+outside of the six lowest frequency modes. For example, for normal
+mode 30 for uracil in methanol and normal modes 27, 28, 29, and 30
+for propanamide in water. Except for normal mode 30 for propanamide
+in water, all of these modes had no contributions in the partial QM
+Hessian and, therefore, arose solely from the partial QM/MM Hessian.</p><p>In the comparison of formaldehyde in water and the formaldehyde–water
+cluster in water, we focus on the local vibrational modes of formaldehyde
+as those are the ones of main interest. The normal modes of formaldehyde
+in water are asymmetric C–H<sub>2</sub> stretching (mode 1),
+symmetric C–H<sub>2</sub> stretching (mode 2), C=O stretching
+(mode 3), C–H<sub>2</sub> scissoring (mode 4), C–H<sub>2</sub> rocking (mode 5), and C–H<sub>2</sub> wagging (mode
+6) which in the formaldehyde–water cluster correspond to normal
+modes 4, 5, 8, 10, 12, and 13, respectively.</p><p>The asymmetric
+C–H<sub>2</sub> stretching mode of formaldehyde
+in water is reproduced well by the QM/MM-PHVA with minor frequency
+and intensity errors. Increasing the size of the QM subsystem results
+in a larger frequency error of 23 cm<sup>–1</sup> and also
+larger but minor relative and absolute Raman intensity errors. In
+the symmetric C–H<sub>2</sub> stretching mode, the frequency
+error is slightly reduced from 13 to 12 cm<sup>–1</sup>. In
+contrast, the improvement of the C=O stretching mode is more
+substantial. Here the frequency error is lowered from 14 to 8 cm<sup>–1</sup>. The intensities are also substantially improved
+in terms of normalized absolute difference, but the relative errors
+are small in both systems, so it is not likely to be visible in a
+spectrum. The C–H<sub>2</sub> scissoring mode is well described
+in both systems but slightly worse in the formaldehyde–water
+cluster, while the C–H<sub>2</sub> rocking and wagging modes
+are reproduced better using the expanded QM subsystem. For the scissoring
+mode, the frequency error goes up from 0 to 3 cm<sup>–1</sup>, but intensities are slightly improved. In the rocking and wagging
+modes, the frequency errors are reduced from 10 to 0 cm<sup>–1</sup> and 13 to 7 cm<sup>–1</sup>, respectively, and the intensities
+of the rocking mode are also improved.</p><p>Overall, the partial
+QM/MM PHVA approach increases the pseudotranslational
+and pseudorotational contributions to other low-frequency modes outside
+of the six lowest ones. Thus, it becomes more important to investigate
+the pseudotranslation and pseudorotational contributions. The angular
+deviations are considerable for all systems in different parts of
+the frequency spectrum. Overall, the intensities obtained from the
+QM PHVA are largely reproduced by the QM/MM PHVA. Substantial errors
+were only observed for a few modes. Concerning frequencies, the errors
+are mostly below 10 cm<sup>–1</sup>, but in some cases they
+are higher. Very high errors of 100 to 200 cm<sup>–1</sup> are
+observed for normal modes involving hydrogen-bond donors, such as
+those in uracil in methanol and propanamide in water. For the formaldehyde
+in water system, expanding the QM subsystem to include the two hydrogen-bonded
+water molecules led to improvements in some vibrational modes but
+also had adverse effects on others. Notably, the C=O stretching
+mode was better reproduced, which is expected given the enhanced interaction
+with the solvent environment. The adverse effects could be due to
+an imbalanced description of the solvent environment. Thus, to gain
+an overall improved description, it would be preferable to enclose
+the solute with additional QM solvent molecules.</p></sec></sec><sec id="sec4"><label>4</label><title>Conclusions</title><p>In this work, we analyzed
+the accuracy and applicability
+of the
+PHVA approximation when used with QM/MM for solute–solvent
+systems with small, rigid solutes. To assess the errors, we examined
+the normal modes of seven different systems and their associated frequencies,
+IR intensities, and Raman intensities. For one of the systems, we
+also investigated the effects of expanding the QM subsystem by including
+solvent molecules.</p><p>First, we addressed how to identify vibrational
+modes of the QM
+subsystem that include relative motions between the QM and MM subsystems
+and can be characterized as pseudotranslation and pseudorotation.
+This revealed that up to nine of the lowest-frequency modes were affected
+for the systems where the QM subsystem only included the solute. For
+the system with an expanded QM subsystem, 13 normal modes were affected,
+indicating that larger and more flexible QM subsystems are more prone
+to experiencing pseudotranslational and pseudorotational contributions
+in their normal modes. This suggests that as the QM subsystem is expanded
+to include more solvent molecules, the coupling between the QM and
+MM subsystems becomes more pronounced, leading to additional modes
+being influenced by these mixed motions. As a result, careful attention
+must be paid to properly identifying and removing these pseudotranslational
+and pseudorotational modes to avoid misinterpreting the vibrational
+spectrum. We also investigated the impact of removing the pseudotranslational
+and pseudorotational contributions by projecting out translation and
+rotation. This will remove the pseudotranslational and pseudorotational
+contributions, but since the modes are usually mixed modes, any internal
+motion of the affected modes is redistributed to other modes. Thus,
+some normal modes can be adversely affected by the projection. Instead
+of projecting out translation and rotation, the normal modes with
+substantial pseudotranslational and pseudorotational contributions
+should be removed.</p><p>In the next analysis, we investigated the
+errors that are introduced
+through the PHVA approximation by comparing full and partial QM Hessians.
+This comparison revealed that if the environment participates in a
+normal mode, the errors in frequencies due to the PHVA approximation
+generally increase. However, with respect to the errors in the intensities,
+the truncation of the dipole and polarizability gradients was mostly
+the dominating factor rather than the transformation to normal coordinates
+using an approximate transformation matrix. Thus, there were cases
+where the environment did not contribute particularly strongly to
+a normal mode, but still substantial changes in the intensity were
+observed. Regarding the angular deviations, they were mainly observed
+in the low-frequency part of the spectrum. Thus, the vibrational motions
+of the QM subsystem in the other parts of the spectrum were largely
+unaltered. Although the environmental contributions were also most
+prominent in the low-frequency part, there were, in some cases, also
+substantial contributions to the higher-frequency modes. The expanded
+QM subsystem did not have any negative effect on the local normal
+modes of the solute compared to the nonexpanded QM subsystem.</p><p>Finally, we investigated the errors that are introduced by the
+QM/MM PHVA compared to the QM PHVA. Here, we observed very large
+errors in the frequencies of normal modes involving hydrogen-bond
+donors that hydrogen bond with solvent molecules in the environment.
+The intensities were less affected overall in terms of having simultaneously
+large relative and absolute errors. Only a few normal modes had substantial
+intensity errors. An additional source of error introduced by the
+QM/MM PHVA is the structural differences, which we quantified by calculating
+the root-mean-square deviations (RMSD) of nuclear positions. Although
+larger RMSDs could be observed for two of the systems, which most
+likely contributed substantially to the overall errors of these systems,
+they were not necessarily the most critical factor since the systems
+with low RMSDs had higher errors than the ones with high RMSDs. The
+angular deviations revealed that many normal modes from the QM/MM
+Hessians were dissimilar in direction compared to the normal modes
+from the partial QM Hessians, potentially due to the aforementioned
+difference in geometries. Nonetheless, we were not able to find a
+clear correlation between the errors and the angular deviations. Our
+results based on calculations using an expanded QM subsystem show
+that while some vibrational modes improved, others were negatively
+affected, most likely due to an imbalanced description of the solvent
+environment. Including more QM solvent molecules may enhance overall
+accuracy.</p><p>In summary, our investigations give insights into
+the errors in
+the vibrational frequencies and associated IR and Raman intensities
+when using the PHVA approximation both for full QM and QM/MM approaches.
+Notably, the errors were more pronounced in the low-frequency part
+of the spectrum, but they can also be substantial in the higher-frequency
+parts. Additionally, we show how to identify normal modes with high
+pseudotranslational and pseudorotational contributions so that they
+can be removed since they are poorly described within the PHVA approximations.
+Lastly, with regard to the QM/MM scheme, our work shows that hydrogen-bonded
+solvent molecules should be included in the QM subsystem to avoid
+very large errors. In particular, when there are hydrogen-bond donors
+in the QM subsystem.</p></sec></body><back><notes notes-type="data-availability" id="notes-1"><title>Data Availability Statement</title><p>The data presented
+in this paper is available at <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://doi.org/10.5281/zenodo.12684650">https://doi.org/10.5281/zenodo.12684650</uri></p></notes><notes notes-type="COI-statement" id="NOTES-d14e1468-autogenerated"><p>The authors declare no
+competing financial interest.</p></notes><ack><title>Acknowledgments</title><p>The authors are grateful to Magnus Ringholm for
+insightful
+discussions that enriched this paper. J.M.H.O. gratefully acknowledges
+financial support from VILLUM FONDEN (Grant No. VIL29478) and the
+Research Council of Norway through its Centres of Excellence scheme
+(Grant No. 262695). Computational resources for this work were provided
+by DeiC National HPC (g.a. DeiC-DTU-N2-2023026) and used at the Danish
+National Life Science Supercomputing Center, Computerome.</p></ack><ref-list><title>References</title><ref id="ref1"><mixed-citation publication-type="journal" id="cit1"><name name-style="western"><surname>Warshel</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Levitt</surname><given-names>M.</given-names></name>
+<article-title>Theoretical studies
+of enzymic reactions: dielectric,
+electrostatic and steric stabilization of the carbonium ion in the
+reaction of lysozyme</article-title>. <source>J. Mol. Biol.</source>
+<year>1976</year>, <volume>103</volume>, <fpage>227</fpage>–<lpage>249</lpage>. <pub-id pub-id-type="doi">10.1016/0022-2836(76)90311-9</pub-id>.<pub-id pub-id-type="pmid">985660</pub-id>
+</mixed-citation></ref><ref id="ref2"><mixed-citation publication-type="journal" id="cit2"><name name-style="western"><surname>Senn</surname><given-names>H. M.</given-names></name>; <name name-style="western"><surname>Thiel</surname><given-names>W.</given-names></name>
+<article-title>QM/MM studies of enzymes</article-title>. <source>Curr. Opin. Chem.
+Biol.</source>
+<year>2007</year>, <volume>11</volume>, <fpage>182</fpage>–<lpage>187</lpage>. <pub-id pub-id-type="doi">10.1016/j.cbpa.2007.01.684</pub-id>.<pub-id pub-id-type="pmid">17307018</pub-id>
+</mixed-citation></ref><ref id="ref3"><mixed-citation publication-type="journal" id="cit3"><name name-style="western"><surname>Lin</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Truhlar</surname><given-names>D. G.</given-names></name>
+<article-title>QM/MM:
+what have we learned, where are we, and where
+do we go from here?</article-title>. <source>Theor. Chem. Acc.</source>
+<year>2007</year>, <volume>117</volume>, <fpage>185</fpage>–<lpage>199</lpage>. <pub-id pub-id-type="doi">10.1007/s00214-006-0143-z</pub-id>.</mixed-citation></ref><ref id="ref4"><mixed-citation publication-type="journal" id="cit4"><name name-style="western"><surname>Senn</surname><given-names>H. M.</given-names></name>; <name name-style="western"><surname>Thiel</surname><given-names>W.</given-names></name>
+<article-title>QM/MM methods for biomolecular
+systems</article-title>. <source>Angew.
+Chem., Int. Ed.</source>
+<year>2009</year>, <volume>48</volume>, <fpage>1198</fpage>–<lpage>1229</lpage>. <pub-id pub-id-type="doi">10.1002/anie.200802019</pub-id>.<pub-id pub-id-type="pmid">19173328</pub-id></mixed-citation></ref><ref id="ref5"><mixed-citation publication-type="journal" id="cit5"><name name-style="western"><surname>Brunk</surname><given-names>E.</given-names></name>; <name name-style="western"><surname>Rothlisberger</surname><given-names>U.</given-names></name>
+<article-title>Mixed Quantum Mechanical/Molecular Mechanical Molecular
+Dynamics Simulations of Biological Systems in Ground and Electronically
+Excited States</article-title>. <source>Chem. Rev.</source>
+<year>2015</year>, <volume>115</volume>, <fpage>6217</fpage>–<lpage>6263</lpage>. <pub-id pub-id-type="doi">10.1021/cr500628b</pub-id>.<pub-id pub-id-type="pmid">25880693</pub-id>
+</mixed-citation></ref><ref id="ref6"><mixed-citation publication-type="journal" id="cit6"><name name-style="western"><surname>Morzan</surname><given-names>U. N.</given-names></name>; <name name-style="western"><surname>Alonso de Armino</surname><given-names>D. J.</given-names></name>; <name name-style="western"><surname>Foglia</surname><given-names>N. O.</given-names></name>; <name name-style="western"><surname>Ramirez</surname><given-names>F.</given-names></name>; <name name-style="western"><surname>Gonzalez
+Lebrero</surname><given-names>M. C.</given-names></name>; <name name-style="western"><surname>Scherlis</surname><given-names>D. A.</given-names></name>; <name name-style="western"><surname>Estrin</surname><given-names>D. A.</given-names></name>
+<article-title>Spectroscopy in
+complex environments from QM–MM simulations</article-title>. <source>Chem. Rev.</source>
+<year>2018</year>, <volume>118</volume>, <fpage>4071</fpage>–<lpage>4113</lpage>. <pub-id pub-id-type="doi">10.1021/acs.chemrev.8b00026</pub-id>.<pub-id pub-id-type="pmid">29561145</pub-id>
+</mixed-citation></ref><ref id="ref7"><mixed-citation publication-type="journal" id="cit7"><name name-style="western"><surname>Baiz</surname><given-names>C. R.</given-names></name>; <name name-style="western"><surname>Błasiak</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Bredenbeck</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Cho</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Choi</surname><given-names>J.-H.</given-names></name>; <name name-style="western"><surname>Corcelli</surname><given-names>S. A.</given-names></name>; <name name-style="western"><surname>Dijkstra</surname><given-names>A. G.</given-names></name>; <name name-style="western"><surname>Feng</surname><given-names>C.-J.</given-names></name>; <name name-style="western"><surname>Garrett-Roe</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Ge</surname><given-names>N.-H.</given-names></name>; <name name-style="western"><surname>Hanson-Heine</surname><given-names>M. W. D.</given-names></name>; <name name-style="western"><surname>Hirst</surname><given-names>J. D.</given-names></name>; <name name-style="western"><surname>Jansen</surname><given-names>T. L. C.</given-names></name>; <name name-style="western"><surname>Kwac</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Kubarych</surname><given-names>K. J.</given-names></name>; <name name-style="western"><surname>Londergan</surname><given-names>C. H.</given-names></name>; <name name-style="western"><surname>Maekawa</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Reppert</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Saito</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Roy</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Skinner</surname><given-names>J. L.</given-names></name>; <name name-style="western"><surname>Stock</surname><given-names>G.</given-names></name>; <name name-style="western"><surname>Straub</surname><given-names>J. E.</given-names></name>; <name name-style="western"><surname>Thielges</surname><given-names>M. C.</given-names></name>; <name name-style="western"><surname>Tominaga</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Tokmakoff</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Torii</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Wang</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Webb</surname><given-names>L. J.</given-names></name>; <name name-style="western"><surname>Zanni</surname><given-names>M. T.</given-names></name>
+<article-title>Vibrational Spectroscopic Map, Vibrational
+Spectroscopy, and Intermolecular Interaction</article-title>. <source>Chem. Rev.</source>
+<year>2020</year>, <volume>120</volume>, <fpage>7152</fpage>–<lpage>7218</lpage>. <pub-id pub-id-type="doi">10.1021/acs.chemrev.9b00813</pub-id>.<pub-id pub-id-type="pmid">32598850</pub-id>
+<pub-id pub-id-type="pmcid">PMC7710120</pub-id></mixed-citation></ref><ref id="ref8"><mixed-citation publication-type="journal" id="cit8"><name name-style="western"><surname>Gaigeot</surname><given-names>M.-P.</given-names></name>; <name name-style="western"><surname>Sprik</surname><given-names>M.</given-names></name>
+<article-title>Ab Initio Molecular Dynamics Computation of the Infrared Spectrum
+of Aqueous Uracil</article-title>. <source>J. Phys. Chem. B</source>
+<year>2003</year>, <volume>107</volume>, <fpage>10344</fpage>–<lpage>10358</lpage>. <pub-id pub-id-type="doi">10.1021/jp034788u</pub-id>.</mixed-citation></ref><ref id="ref9"><mixed-citation publication-type="journal" id="cit9"><name name-style="western"><surname>Thomas</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Brehm</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Fligg</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Vöhringer</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Kirchner</surname><given-names>B.</given-names></name>
+<article-title>Computing vibrational spectra from
+ab initio molecular
+dynamics</article-title>. <source>Phys. Chem. Chem. Phys.</source>
+<year>2013</year>, <volume>15</volume>, <fpage>6608</fpage>–<lpage>6622</lpage>. <pub-id pub-id-type="doi">10.1039/c3cp44302g</pub-id>.<pub-id pub-id-type="pmid">23416970</pub-id>
+</mixed-citation></ref><ref id="ref10"><mixed-citation publication-type="journal" id="cit10"><name name-style="western"><surname>Ditler</surname><given-names>E.</given-names></name>; <name name-style="western"><surname>Luber</surname><given-names>S.</given-names></name>
+<article-title>Vibrational spectroscopy
+by means of first-principles molecular dynamics
+simulations</article-title>. <source>Wiley Interdiscip. Rev.: Comput.
+Mol. Sci.</source>
+<year>2022</year>, <volume>12</volume>, <elocation-id>e1605</elocation-id><pub-id pub-id-type="doi">10.1002/wcms.1605</pub-id>.</mixed-citation></ref><ref id="ref11"><mixed-citation publication-type="book" id="cit11"><person-group person-group-type="allauthors"><name name-style="western"><surname>Wilson</surname><given-names>E. B.</given-names></name>; <name name-style="western"><surname>Decius</surname><given-names>J. C.</given-names></name>; <name name-style="western"><surname>Cross</surname><given-names>P. C.</given-names></name></person-group><source>Molecular Vibrations:
+The Theory of Infrared and Raman Vibrational Spectra</source>; <publisher-name>Dover Publications</publisher-name>, <publisher-loc>New York</publisher-loc>, <year>1955</year>.</mixed-citation></ref><ref id="ref12"><mixed-citation publication-type="journal" id="cit12"><name name-style="western"><surname>Barone</surname><given-names>V.</given-names></name>
+<article-title>Anharmonic
+vibrational properties by a fully automated second-order perturbative
+approach</article-title>. <source>J. Chem. Phys.</source>
+<year>2005</year>, <volume>122</volume>, <elocation-id>014108</elocation-id><pub-id pub-id-type="doi">10.1063/1.1824881</pub-id>.<pub-id pub-id-type="pmid">15638643</pub-id></mixed-citation></ref><ref id="ref13"><mixed-citation publication-type="journal" id="cit13"><name name-style="western"><surname>Bloino</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Barone</surname><given-names>V.</given-names></name>
+<article-title>A second-order perturbation theory route to vibrational
+averages and transition properties of molecules: general formulation
+and application to infrared and vibrational circular dichroism spectroscopies</article-title>. <source>J. Chem. Phys.</source>
+<year>2012</year>, <volume>136</volume>, <elocation-id>124108</elocation-id><pub-id pub-id-type="doi">10.1063/1.3695210</pub-id>.<pub-id pub-id-type="pmid">22462836</pub-id>
+</mixed-citation></ref><ref id="ref14"><mixed-citation publication-type="journal" id="cit14"><name name-style="western"><surname>Jin</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Head</surname><given-names>J. D.</given-names></name>
+<article-title>Theoretical investigation
+of molecular water adsorption
+on the Al (111) surface</article-title>. <source>Surf. Sci.</source>
+<year>1994</year>, <volume>318</volume>, <fpage>204</fpage>–<lpage>216</lpage>. <pub-id pub-id-type="doi">10.1016/0039-6028(94)90355-7</pub-id>.</mixed-citation></ref><ref id="ref15"><mixed-citation publication-type="journal" id="cit15"><name name-style="western"><surname>Calvin</surname><given-names>M. D.</given-names></name>; <name name-style="western"><surname>Head</surname><given-names>J. D.</given-names></name>; <name name-style="western"><surname>Jin</surname><given-names>S.</given-names></name>
+<article-title>Theoretically
+modelling the water
+bilayer on the Al (111) surface using cluster calculations</article-title>. <source>Surf. Sci.</source>
+<year>1996</year>, <volume>345</volume>, <fpage>161</fpage>–<lpage>172</lpage>. <pub-id pub-id-type="doi">10.1016/0039-6028(95)00862-4</pub-id>.</mixed-citation></ref><ref id="ref16"><mixed-citation publication-type="journal" id="cit16"><name name-style="western"><surname>Head</surname><given-names>J. D.</given-names></name>
+<article-title>Computation
+of vibrational frequencies for adsorbates on surfaces</article-title>. <source>Int. J. Quantum Chem.</source>
+<year>1997</year>, <volume>65</volume>, <fpage>827</fpage>–<lpage>838</lpage>. <pub-id pub-id-type="doi">10.1002/(SICI)1097-461X(1997)65:5&lt;827::AID-QUA47&gt;3.0.CO;2-U</pub-id>.</mixed-citation></ref><ref id="ref17"><mixed-citation publication-type="journal" id="cit17"><name name-style="western"><surname>Cui</surname><given-names>Q.</given-names></name>; <name name-style="western"><surname>Karplus</surname><given-names>M.</given-names></name>
+<article-title>Molecular properties
+from combined QM/MM methods. I.
+Analytical second derivative and vibrational calculations</article-title>. <source>J. Chem. Phys.</source>
+<year>2000</year>, <volume>112</volume>, <fpage>1133</fpage>–<lpage>1149</lpage>. <pub-id pub-id-type="doi">10.1063/1.480658</pub-id>.</mixed-citation></ref><ref id="ref18"><mixed-citation publication-type="journal" id="cit18"><name name-style="western"><surname>Li</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Jensen</surname><given-names>J. H.</given-names></name>
+<article-title>Partial Hessian vibrational analysis: the localization
+of the molecular vibrational energy and entropy</article-title>. <source>Theor. Chem. Acc.</source>
+<year>2002</year>, <volume>107</volume>, <fpage>211</fpage>–<lpage>219</lpage>. <pub-id pub-id-type="doi">10.1007/s00214-001-0317-7</pub-id>.</mixed-citation></ref><ref id="ref19"><mixed-citation publication-type="journal" id="cit19"><name name-style="western"><surname>Nonella</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Mathias</surname><given-names>G.</given-names></name>; <name name-style="western"><surname>Tavan</surname><given-names>P.</given-names></name>
+<article-title>Infrared Spectrum of
+p-Benzoquinone
+in Water Obtained from a QM/MM Hybrid Molecular Dynamics Simulation</article-title>. <source>J. Phys. Chem. A</source>
+<year>2003</year>, <volume>107</volume>, <fpage>8638</fpage>–<lpage>8647</lpage>. <pub-id pub-id-type="doi">10.1021/jp027747r</pub-id>.</mixed-citation></ref><ref id="ref20"><mixed-citation publication-type="journal" id="cit20"><name name-style="western"><surname>Ghysels</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Van Neck</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Van Speybroeck</surname><given-names>V.</given-names></name>; <name name-style="western"><surname>Verstraelen</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Waroquier</surname><given-names>M.</given-names></name>
+<article-title>Vibrational modes in partially optimized molecular
+systems</article-title>. <source>J. Chem. Phys.</source>
+<year>2007</year>, <volume>126</volume>, <elocation-id>224102</elocation-id><pub-id pub-id-type="doi">10.1063/1.2737444</pub-id>.<pub-id pub-id-type="pmid">17581039</pub-id>
+</mixed-citation></ref><ref id="ref21"><mixed-citation publication-type="journal" id="cit21"><name name-style="western"><surname>Ghysels</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Van Neck</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Waroquier</surname><given-names>M.</given-names></name>
+<article-title>Cartesian formulation of the mobile
+block Hessian approach to vibrational analysis in partially optimized
+systems</article-title>. <source>J. Chem. Phys.</source>
+<year>2007</year>, <volume>127</volume>, <elocation-id>164108</elocation-id><pub-id pub-id-type="doi">10.1063/1.2789429</pub-id>.<pub-id pub-id-type="pmid">17979320</pub-id>
+</mixed-citation></ref><ref id="ref22"><mixed-citation publication-type="journal" id="cit22"><name name-style="western"><surname>Ghysels</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Woodcock</surname><given-names>H. L.</given-names></name>; <name name-style="western"><surname>Larkin</surname><given-names>J. D.</given-names></name>; <name name-style="western"><surname>Miller</surname><given-names>B. T.</given-names></name>; <name name-style="western"><surname>Shao</surname><given-names>Y.</given-names></name>; <name name-style="western"><surname>Kong</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Neck</surname><given-names>D. V.</given-names></name>; <name name-style="western"><surname>Speybroeck</surname><given-names>V. V.</given-names></name>; <name name-style="western"><surname>Waroquier</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Brooks</surname><given-names>B. R.</given-names></name>
+<article-title>Efficient Calculation of QM/MM Frequencies
+with the Mobile Block Hessian</article-title>. <source>J. Chem. Theory
+Comput.</source>
+<year>2011</year>, <volume>7</volume>, <fpage>496</fpage>–<lpage>514</lpage>. <pub-id pub-id-type="doi">10.1021/ct100473f</pub-id>.<pub-id pub-id-type="pmid">26596169</pub-id>
+</mixed-citation></ref><ref id="ref23"><mixed-citation publication-type="journal" id="cit23"><name name-style="western"><surname>Zheng</surname><given-names>W.</given-names></name>; <name name-style="western"><surname>Brooks</surname><given-names>B. R.</given-names></name>
+<article-title>Probing the local
+dynamics of nucleotide-binding pocket
+coupled to the global dynamics: myosin versus kinesin</article-title>. <source>Biophys. J.</source>
+<year>2005</year>, <volume>89</volume>, <fpage>167</fpage>–<lpage>178</lpage>. <pub-id pub-id-type="doi">10.1529/biophysj.105.063305</pub-id>.<pub-id pub-id-type="pmid">15879477</pub-id>
+<pub-id pub-id-type="pmcid">PMC1366515</pub-id></mixed-citation></ref><ref id="ref24"><mixed-citation publication-type="journal" id="cit24"><name name-style="western"><surname>Woodcock</surname><given-names>H. L.</given-names></name>; <name name-style="western"><surname>Zheng</surname><given-names>W.</given-names></name>; <name name-style="western"><surname>Ghysels</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Shao</surname><given-names>Y.</given-names></name>; <name name-style="western"><surname>Kong</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Brooks</surname><given-names>B. R.</given-names></name>
+<article-title>Vibrational subsystem analysis: A
+method for probing
+free energies and correlations in the harmonic limit</article-title>. <source>J. Chem. Phys.</source>
+<year>2008</year>, <volume>129</volume>, <elocation-id>214109</elocation-id><pub-id pub-id-type="doi">10.1063/1.3013558</pub-id>.<pub-id pub-id-type="pmid">19063546</pub-id>
+<pub-id pub-id-type="pmcid">PMC2676147</pub-id></mixed-citation></ref><ref id="ref25"><mixed-citation publication-type="journal" id="cit25"><name name-style="western"><surname>Hafner</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Zheng</surname><given-names>W.</given-names></name>
+<article-title>Approximate normal mode analysis based on vibrational subsystem analysis
+with high accuracy and efficiency</article-title>. <source>J. Chem.
+Phys.</source>
+<year>2009</year>, <volume>130</volume>, <elocation-id>194111</elocation-id><pub-id pub-id-type="doi">10.1063/1.3141022</pub-id>.<pub-id pub-id-type="pmid">19466825</pub-id>
+</mixed-citation></ref><ref id="ref26"><mixed-citation publication-type="journal" id="cit26"><name name-style="western"><surname>Olsen</surname><given-names>J. M.</given-names></name>; <name name-style="western"><surname>Aidas</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Kongsted</surname><given-names>J.</given-names></name>
+<article-title>Excited states in solution through
+polarizable embedding</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2010</year>, <volume>6</volume>, <fpage>3721</fpage>–<lpage>3734</lpage>. <pub-id pub-id-type="doi">10.1021/ct1003803</pub-id>.</mixed-citation></ref><ref id="ref27"><mixed-citation publication-type="book" id="cit27"><person-group person-group-type="allauthors"><name name-style="western"><surname>Olsen</surname><given-names>J. M. H.</given-names></name>; <name name-style="western"><surname>Kongsted</surname><given-names>J.</given-names></name></person-group><source>Advances in Quantum Chemistry</source>; <publisher-name>Elsevier</publisher-name>, <year>2011</year>; Vol. <volume>61</volume>, pp <fpage>107</fpage>–<lpage>143</lpage>.</mixed-citation></ref><ref id="ref28"><mixed-citation publication-type="journal" id="cit28"><name name-style="western"><surname>Dundas</surname><given-names>K. O. H. M.</given-names></name>; <name name-style="western"><surname>Beerepoot</surname><given-names>M. T.</given-names></name>; <name name-style="western"><surname>Ringholm</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Reine</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Bast</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>List</surname><given-names>N. H.</given-names></name>; <name name-style="western"><surname>Kongsted</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Ruud</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Olsen</surname><given-names>J. M. H.</given-names></name>
+<article-title>Harmonic
+infrared and Raman spectra in molecular environments using the polarizable
+embedding model</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2021</year>, <volume>17</volume>, <fpage>3599</fpage>–<lpage>3617</lpage>. <pub-id pub-id-type="doi">10.1021/acs.jctc.0c01323</pub-id>.<pub-id pub-id-type="pmid">34009969</pub-id>
+<pub-id pub-id-type="pmcid">PMC8278393</pub-id></mixed-citation></ref><ref id="ref29"><mixed-citation publication-type="journal" id="cit29"><name name-style="western"><surname>Lipparini</surname><given-names>F.</given-names></name>; <name name-style="western"><surname>Cappelli</surname><given-names>C.</given-names></name>; <name name-style="western"><surname>Scalmani</surname><given-names>G.</given-names></name>; <name name-style="western"><surname>De Mitri</surname><given-names>N.</given-names></name>; <name name-style="western"><surname>Barone</surname><given-names>V.</given-names></name>
+<article-title>Analytical
+first and second derivatives for a fully polarizable QM/classical
+hamiltonian</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2012</year>, <volume>8</volume>, <fpage>4270</fpage>–<lpage>4278</lpage>. <pub-id pub-id-type="doi">10.1021/ct300635c</pub-id>.<pub-id pub-id-type="pmid">26605590</pub-id>
+</mixed-citation></ref><ref id="ref30"><mixed-citation publication-type="journal" id="cit30"><name name-style="western"><surname>Giovannini</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Olszowka</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Cappelli</surname><given-names>C.</given-names></name>
+<article-title>Effective
+fully polarizable QM/MM
+approach to model vibrational circular dichroism spectra of systems
+in aqueous solution</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2016</year>, <volume>12</volume>, <fpage>5483</fpage>–<lpage>5492</lpage>. <pub-id pub-id-type="doi">10.1021/acs.jctc.6b00768</pub-id>.<pub-id pub-id-type="pmid">27704812</pub-id>
+</mixed-citation></ref><ref id="ref31"><mixed-citation publication-type="journal" id="cit31"><name name-style="western"><surname>Giovannini</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Olszowka</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Egidi</surname><given-names>F.</given-names></name>; <name name-style="western"><surname>Cheeseman</surname><given-names>J. R.</given-names></name>; <name name-style="western"><surname>Scalmani</surname><given-names>G.</given-names></name>; <name name-style="western"><surname>Cappelli</surname><given-names>C.</given-names></name>
+<article-title>Polarizable embedding
+approach for
+the analytical calculation of Raman and Raman optical activity spectra
+of solvated systems</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2017</year>, <volume>13</volume>, <fpage>4421</fpage>–<lpage>4435</lpage>. <pub-id pub-id-type="doi">10.1021/acs.jctc.7b00628</pub-id>.<pub-id pub-id-type="pmid">28767240</pub-id>
+</mixed-citation></ref><ref id="ref32"><mixed-citation publication-type="journal" id="cit32"><name name-style="western"><surname>Becca</surname><given-names>J. C.</given-names></name>; <name name-style="western"><surname>Chen</surname><given-names>X.</given-names></name>; <name name-style="western"><surname>Jensen</surname><given-names>L.</given-names></name>
+<article-title>A discrete
+interaction model/quantum
+mechanical method for simulating surface-enhanced Raman spectroscopy
+in solution</article-title>. <source>J. Chem. Phys.</source>
+<year>2021</year>, <volume>154</volume>, <elocation-id>224705</elocation-id><pub-id pub-id-type="doi">10.1063/5.0051256</pub-id>.<pub-id pub-id-type="pmid">34241237</pub-id>
+</mixed-citation></ref><ref id="ref33"><mixed-citation publication-type="journal" id="cit33"><name name-style="western"><surname>Pei</surname><given-names>Z.</given-names></name>; <name name-style="western"><surname>Mao</surname><given-names>Y.</given-names></name>; <name name-style="western"><surname>Shao</surname><given-names>Y.</given-names></name>; <name name-style="western"><surname>Liang</surname><given-names>W.</given-names></name>
+<article-title>Analytic high-order energy derivatives
+for metal nanoparticle-mediated infrared and Raman scattering spectra
+within the framework of quantum mechanics/molecular mechanics model
+with induced charges and dipoles</article-title>. <source>J. Chem. Phys.</source>
+<year>2022</year>, <volume>157</volume>, <elocation-id>164110</elocation-id><pub-id pub-id-type="doi">10.1063/5.0118205</pub-id>.<pub-id pub-id-type="pmid">36319412</pub-id>
+<pub-id pub-id-type="pmcid">PMC9616608</pub-id></mixed-citation></ref><ref id="ref34"><mixed-citation publication-type="journal" id="cit34"><name name-style="western"><surname>Besley</surname><given-names>N. A.</given-names></name>; <name name-style="western"><surname>Metcalf</surname><given-names>K. A.</given-names></name>
+<article-title>Computation of the amide I band of polypeptides and
+proteins using a partial Hessian approach</article-title>. <source>J.
+Chem. Phys.</source>
+<year>2007</year>, <volume>126</volume>, <elocation-id>035101</elocation-id><pub-id pub-id-type="doi">10.1063/1.2426344</pub-id>.<pub-id pub-id-type="pmid">17249900</pub-id>
+</mixed-citation></ref><ref id="ref35"><mixed-citation publication-type="journal" id="cit35"><name name-style="western"><surname>Ghysels</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Van Speybroeck</surname><given-names>V.</given-names></name>; <name name-style="western"><surname>Pauwels</surname><given-names>E.</given-names></name>; <name name-style="western"><surname>Catak</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Brooks</surname><given-names>B. R.</given-names></name>; <name name-style="western"><surname>Van Neck</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Waroquier</surname><given-names>M.</given-names></name>
+<article-title>Comparative study of various normal
+mode analysis techniques based on partial Hessians</article-title>. <source>J. Comput. Chem.</source>
+<year>2010</year>, <volume>31</volume>, <fpage>994</fpage>–<lpage>1007</lpage>. <pub-id pub-id-type="doi">10.1002/jcc.21386</pub-id>.<pub-id pub-id-type="pmid">19813181</pub-id>
+<pub-id pub-id-type="pmcid">PMC4245204</pub-id></mixed-citation></ref><ref id="ref36"><mixed-citation publication-type="journal" id="cit36"><name name-style="western"><surname>Hanson-Heine</surname><given-names>M. W. D.</given-names></name>; <name name-style="western"><surname>George</surname><given-names>M. W.</given-names></name>; <name name-style="western"><surname>Besley</surname><given-names>N. A.</given-names></name>
+<article-title>Rapid anharmonic vibrational corrections
+derived from partial Hessian analysis</article-title>. <source>J. Chem.
+Phys.</source>
+<year>2012</year>, <volume>136</volume>, <elocation-id>224102</elocation-id><pub-id pub-id-type="doi">10.1063/1.4727853</pub-id>.<pub-id pub-id-type="pmid">22713031</pub-id>
+</mixed-citation></ref><ref id="ref37"><mixed-citation publication-type="journal" id="cit37"><name name-style="western"><surname>Bowling</surname><given-names>P. E.</given-names></name>; <name name-style="western"><surname>Dasgupta</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Herbert</surname><given-names>J. M.</given-names></name>
+<article-title>Eliminating imaginary vibrational
+frequencies in quantum-chemical cluster models of enzymatic active
+sites</article-title>. <source>J. Chem. Inf. Model.</source>
+<year>2024</year>, <volume>64</volume>, <fpage>3912</fpage>–<lpage>3922</lpage>. <pub-id pub-id-type="doi">10.1021/acs.jcim.4c00221</pub-id>.<pub-id pub-id-type="pmid">38648614</pub-id>
+</mixed-citation></ref><ref id="ref38"><mixed-citation publication-type="journal" id="cit38"><name name-style="western"><surname>Reinholdt</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Van den Heuvel</surname><given-names>W.</given-names></name>; <name name-style="western"><surname>Kongsted</surname><given-names>J.</given-names></name>
+<article-title>Analytic geometric gradients for
+the polarizable density embedding model</article-title>. <source>Int.
+J. Quantum Chem.</source>
+<year>2023</year>, <volume>123</volume>, <elocation-id>e27177</elocation-id><pub-id pub-id-type="doi">10.1002/qua.27177</pub-id>.<pub-id pub-id-type="pmid">37002869</pub-id></mixed-citation></ref><ref id="ref39"><mixed-citation publication-type="journal" id="cit39"><name name-style="western"><surname>Jensen</surname><given-names>F.</given-names></name>
+<article-title>Unifying general
+and segmented contracted basis sets. Segmented polarization consistent
+basis sets</article-title>. <source>J. Chem. Theory Comput.</source>
+<year>2014</year>, <volume>10</volume>, <fpage>1074</fpage>–<lpage>1085</lpage>. <pub-id pub-id-type="doi">10.1021/ct401026a</pub-id>.<pub-id pub-id-type="pmid">26580184</pub-id>
+</mixed-citation></ref><ref id="ref40"><mixed-citation publication-type="undeclared" id="cit40"><person-group person-group-type="allauthors"><name name-style="western"><surname>Olsen</surname><given-names>J. M. H.</given-names></name>; <name name-style="western"><surname>Reinholdt</surname><given-names>P.</given-names></name></person-group><article-title>PyFraME: Python
+Framework for Fragment-based Multiscale Embedding</article-title>, <year>2021</year>; <pub-id pub-id-type="doi">10.5281/zenodo.4899311</pub-id>.</mixed-citation></ref><ref id="ref41"><mixed-citation publication-type="journal" id="cit41"><name name-style="western"><surname>Gagliardi</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Lindh</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Karlström</surname><given-names>G.</given-names></name>
+<article-title>Local properties of quantum chemical
+systems: The LoProp approach</article-title>. <source>J. Chem. Phys.</source>
+<year>2004</year>, <volume>121</volume>, <fpage>4494</fpage>–<lpage>4500</lpage>. <pub-id pub-id-type="doi">10.1063/1.1778131</pub-id>.<pub-id pub-id-type="pmid">15332879</pub-id>
+</mixed-citation></ref><ref id="ref42"><mixed-citation publication-type="undeclared" id="cit42"><person-group person-group-type="allauthors"><name name-style="western"><surname>Vahtras</surname><given-names>O.</given-names></name></person-group><article-title>LoProp for Dalton</article-title>, <year>2015</year>; <pub-id pub-id-type="doi">10.5281/zenodo.13276</pub-id>.</mixed-citation></ref><ref id="ref43"><mixed-citation publication-type="journal" id="cit43"><name name-style="western"><surname>Francl</surname><given-names>M. M.</given-names></name>; <name name-style="western"><surname>Pietro</surname><given-names>W. J.</given-names></name>; <name name-style="western"><surname>Hehre</surname><given-names>W. J.</given-names></name>; <name name-style="western"><surname>Binkley</surname><given-names>J. S.</given-names></name>; <name name-style="western"><surname>Gordon</surname><given-names>M. S.</given-names></name>; <name name-style="western"><surname>DeFrees</surname><given-names>D. J.</given-names></name>; <name name-style="western"><surname>Pople</surname><given-names>J. A.</given-names></name>
+<article-title>Self-consistent
+molecular orbital
+methods. XXIII. A polarization-type basis set for second-row elements</article-title>. <source>J. Chem. Phys.</source>
+<year>1982</year>, <volume>77</volume>, <fpage>3654</fpage>–<lpage>3665</lpage>. <pub-id pub-id-type="doi">10.1063/1.444267</pub-id>.</mixed-citation></ref><ref id="ref44"><mixed-citation publication-type="journal" id="cit44"><name name-style="western"><surname>Hehre</surname><given-names>W. J.</given-names></name>; <name name-style="western"><surname>Ditchfield</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Pople</surname><given-names>J. A.</given-names></name>
+<article-title>Self—consistent molecular
+orbital methods. XII. Further extensions of Gaussian—type basis
+sets for use in molecular orbital studies of organic molecules</article-title>. <source>J. Chem. Phys.</source>
+<year>1972</year>, <volume>56</volume>, <fpage>2257</fpage>–<lpage>2261</lpage>. <pub-id pub-id-type="doi">10.1063/1.1677527</pub-id>.</mixed-citation></ref><ref id="ref45"><mixed-citation publication-type="journal" id="cit45"><name name-style="western"><surname>Clark</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Chandrasekhar</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Spitznagel</surname><given-names>G. W.</given-names></name>; <name name-style="western"><surname>Schleyer</surname><given-names>P. V. R.</given-names></name>
+<article-title>Efficient diffuse
+function-augmented basis sets for anion calculations. III. The 3-21+
+G basis set for first-row elements, Li–F</article-title>. <source>J. Comput. Chem.</source>
+<year>1983</year>, <volume>4</volume>, <fpage>294</fpage>–<lpage>301</lpage>. <pub-id pub-id-type="doi">10.1002/jcc.540040303</pub-id>.</mixed-citation></ref><ref id="ref46"><mixed-citation publication-type="journal" id="cit46"><name name-style="western"><surname>Aidas</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Angeli</surname><given-names>C.</given-names></name>; <name name-style="western"><surname>Bak</surname><given-names>K. L.</given-names></name>; <name name-style="western"><surname>Bakken</surname><given-names>V.</given-names></name>; <name name-style="western"><surname>Bast</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Boman</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Christiansen</surname><given-names>O.</given-names></name>; <name name-style="western"><surname>Cimiraglia</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Coriani</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Dahle</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Dalskov</surname><given-names>E. K.</given-names></name>; <name name-style="western"><surname>Ekström</surname><given-names>U.</given-names></name>; <name name-style="western"><surname>Enevoldsen</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Eriksen</surname><given-names>J. J.</given-names></name>; <name name-style="western"><surname>Ettenhuber</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Fernández</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Ferrighi</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Fliegl</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Frediani</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Hald</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Halkier</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Hättig</surname><given-names>C.</given-names></name>; <name name-style="western"><surname>Heiberg</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Helgaker</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Hennum</surname><given-names>A. C.</given-names></name>; <name name-style="western"><surname>Hettema</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Hjertenæs</surname><given-names>E.</given-names></name>; <name name-style="western"><surname>Høst</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Høyvik</surname><given-names>I.-M.</given-names></name>; <name name-style="western"><surname>Iozzi</surname><given-names>M. F.</given-names></name>; <name name-style="western"><surname>Jansík</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Jensen</surname><given-names>H. J. Aa.</given-names></name>; <name name-style="western"><surname>Jonsson</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Jørgensen</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Kauczor</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Kirpekar</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Kjærgaard</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Klopper</surname><given-names>W.</given-names></name>; <name name-style="western"><surname>Knecht</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Kobayashi</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Koch</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Kongsted</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Krapp</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Kristensen</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Ligabue</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Lutnæs</surname><given-names>O. B.</given-names></name>; <name name-style="western"><surname>Melo</surname><given-names>J. I.</given-names></name>; <name name-style="western"><surname>Mikkelsen</surname><given-names>K. V.</given-names></name>; <name name-style="western"><surname>Myhre</surname><given-names>R. H.</given-names></name>; <name name-style="western"><surname>Neiss</surname><given-names>C.</given-names></name>; <name name-style="western"><surname>Nielsen</surname><given-names>C. B.</given-names></name>; <name name-style="western"><surname>Norman</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Olsen</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Olsen</surname><given-names>J. M. H.</given-names></name>; <name name-style="western"><surname>Osted</surname><given-names>A.</given-names></name>; <name name-style="western"><surname>Packer</surname><given-names>M. J.</given-names></name>; <name name-style="western"><surname>Pawlowski</surname><given-names>F.</given-names></name>; <name name-style="western"><surname>Pedersen</surname><given-names>T. B.</given-names></name>; <name name-style="western"><surname>Provasi</surname><given-names>P. F.</given-names></name>; <name name-style="western"><surname>Reine</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Rinkevicius</surname><given-names>Z.</given-names></name>; <name name-style="western"><surname>Ruden</surname><given-names>T. A.</given-names></name>; <name name-style="western"><surname>Ruud</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Rybkin</surname><given-names>V. V.</given-names></name>; <name name-style="western"><surname>Sałek</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Samson</surname><given-names>C. C. M.</given-names></name>; <name name-style="western"><surname>de Merás</surname><given-names>A. S.</given-names></name>; <name name-style="western"><surname>Saue</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Sauer</surname><given-names>S. P. A.</given-names></name>; <name name-style="western"><surname>Schimmelpfennig</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Sneskov</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Steindal</surname><given-names>A. H.</given-names></name>; <name name-style="western"><surname>Sylvester-Hvid</surname><given-names>K. O.</given-names></name>; <name name-style="western"><surname>Taylor</surname><given-names>P. R.</given-names></name>; <name name-style="western"><surname>Teale</surname><given-names>A. M.</given-names></name>; <name name-style="western"><surname>Tellgren</surname><given-names>E. I.</given-names></name>; <name name-style="western"><surname>Tew</surname><given-names>D. P.</given-names></name>; <name name-style="western"><surname>Thorvaldsen</surname><given-names>A. J.</given-names></name>; <name name-style="western"><surname>Thøgersen</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Vahtras</surname><given-names>O.</given-names></name>; <name name-style="western"><surname>Watson</surname><given-names>M. A.</given-names></name>; <name name-style="western"><surname>Wilson</surname><given-names>D. J. D.</given-names></name>; <name name-style="western"><surname>Ziolkowski</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Ågren</surname><given-names>H.</given-names></name>
+<article-title>The Dalton
+quantum chemistry program system</article-title>. <source>Wiley Interdiscip.
+Rev.: Comput. Mol. Sci.</source>
+<year>2014</year>, <volume>4</volume>, <fpage>269</fpage>–<lpage>284</lpage>. <pub-id pub-id-type="doi">10.1002/wcms.1172</pub-id>.<pub-id pub-id-type="pmid">25309629</pub-id>
+<pub-id pub-id-type="pmcid">PMC4171759</pub-id></mixed-citation></ref><ref id="ref47"><mixed-citation publication-type="computer-program" id="cit47"><source>DALTON, a Molecular
+Electronic Structure Program</source>. Release v2020.1. <year>2022</year>; <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://daltonprogram.org">http://daltonprogram.org</uri>.</mixed-citation></ref><ref id="ref48"><mixed-citation publication-type="journal" id="cit48"><name name-style="western"><surname>Wang</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Wolf</surname><given-names>R. M.</given-names></name>; <name name-style="western"><surname>Caldwell</surname><given-names>J. W.</given-names></name>; <name name-style="western"><surname>Kollman</surname><given-names>P. A.</given-names></name>; <name name-style="western"><surname>Case</surname><given-names>D. A.</given-names></name>
+<article-title>Development
+and testing of a general amber force field</article-title>. <source>J. Comput. Chem.</source>
+<year>2004</year>, <volume>25</volume>, <fpage>1157</fpage>–<lpage>1174</lpage>. <pub-id pub-id-type="doi">10.1002/jcc.20035</pub-id>.<pub-id pub-id-type="pmid">15116359</pub-id>
+</mixed-citation></ref><ref id="ref49"><mixed-citation publication-type="journal" id="cit49"><name name-style="western"><surname>Van
+der Spoel</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Ghahremanpour</surname><given-names>M. M.</given-names></name>; <name name-style="western"><surname>Lemkul</surname><given-names>J. A.</given-names></name>
+<article-title>Small molecule thermochemistry:
+a tool for empirical force field development</article-title>. <source>J. Phys. Chem. A</source>
+<year>2018</year>, <volume>122</volume>, <fpage>8982</fpage>–<lpage>8988</lpage>. <pub-id pub-id-type="doi">10.1021/acs.jpca.8b09867</pub-id>.<pub-id pub-id-type="pmid">30362355</pub-id>
+</mixed-citation></ref><ref id="ref50"><mixed-citation publication-type="journal" id="cit50"><name name-style="western"><surname>MacKerell</surname><given-names>A. D.</given-names></name>; <name name-style="western"><surname>Bashford</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Bellott</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Dunbrack</surname><given-names>R. L.</given-names></name>; <name name-style="western"><surname>Evanseck</surname><given-names>J. D.</given-names></name>; <name name-style="western"><surname>Field</surname><given-names>M. J.</given-names></name>; <name name-style="western"><surname>Fischer</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Gao</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Guo</surname><given-names>H.</given-names></name>; <name name-style="western"><surname>Ha</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Joseph-McCarthy</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Kuchnir</surname><given-names>L.</given-names></name>; <name name-style="western"><surname>Kuczera</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Lau</surname><given-names>F. T.</given-names></name>; <name name-style="western"><surname>Mattos</surname><given-names>C.</given-names></name>; <name name-style="western"><surname>Michnick</surname><given-names>S.</given-names></name>; <name name-style="western"><surname>Ngo</surname><given-names>T.</given-names></name>; <name name-style="western"><surname>Nguyen</surname><given-names>D. T.</given-names></name>; <name name-style="western"><surname>Prodhom</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Reiher</surname><given-names>W. E.</given-names></name>; <name name-style="western"><surname>Roux</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Schlenkrich</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Smith</surname><given-names>J. C.</given-names></name>; <name name-style="western"><surname>Stote</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Straub</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Watanabe</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Wiórkiewicz-Kuczera</surname><given-names>J.</given-names></name>; <name name-style="western"><surname>Yin</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Karplus</surname><given-names>M.</given-names></name>
+<article-title>All-atom empirical potential for molecular modeling
+and dynamics studies of proteins</article-title>. <source>J. Phys. Chem.
+B</source>
+<year>1998</year>, <volume>102</volume>, <fpage>3586</fpage>–<lpage>3616</lpage>. <pub-id pub-id-type="doi">10.1021/jp973084f</pub-id>.<pub-id pub-id-type="pmid">24889800</pub-id>
+</mixed-citation></ref><ref id="ref51"><mixed-citation publication-type="journal" id="cit51"><name name-style="western"><surname>Wang</surname><given-names>L.-P.</given-names></name>; <name name-style="western"><surname>Song</surname><given-names>C.</given-names></name>
+<article-title>Geometry optimization
+made simple with translation and rotation coordinates</article-title>. <source>J. Chem. Phys.</source>
+<year>2016</year>, <volume>144</volume>, <elocation-id>214108</elocation-id><pub-id pub-id-type="doi">10.1063/1.4952956</pub-id>.<pub-id pub-id-type="pmid">27276946</pub-id>
+</mixed-citation></ref><ref id="ref52"><mixed-citation publication-type="computer-program" id="cit52"><source>LSDalton, a Linear
+Scaling Molecular Electronic Structure
+Program</source>, Release v2020.0. <year>2020</year>; <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://daltonprogram.org">http://daltonprogram.org</uri>.</mixed-citation></ref><ref id="ref53"><mixed-citation publication-type="undeclared" id="cit53"><person-group person-group-type="allauthors"><name name-style="western"><surname>Olsen</surname><given-names>J. M. H.</given-names></name>; <name name-style="western"><surname>Dundas</surname><given-names>K. O. H. M.</given-names></name>; <name name-style="western"><surname>Ringholm</surname><given-names>M.</given-names></name></person-group><article-title>FraME: A Library
+for Fragment-based Multiscale Embedding</article-title>. <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://gitlab.com/FraME-projects/FraME">https://gitlab.com/FraME-projects/FraME</uri>, <year>2022</year>; Commit: 36da0fc6.</mixed-citation></ref><ref id="ref54"><mixed-citation publication-type="journal" id="cit54"><name name-style="western"><surname>Thorvaldsen</surname><given-names>A. J.</given-names></name>; <name name-style="western"><surname>Ruud</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Kristensen</surname><given-names>K.</given-names></name>; <name name-style="western"><surname>Jørgensen</surname><given-names>P.</given-names></name>; <name name-style="western"><surname>Coriani</surname><given-names>S.</given-names></name>
+<article-title>A density matrix-based quasienergy formulation of the
+Kohn-Sham density functional response theory using perturbation-and
+time-dependent basis sets</article-title>. <source>J. Chem. Phys.</source>
+<year>2008</year>, <volume>129</volume>, <elocation-id>214108</elocation-id><pub-id pub-id-type="doi">10.1063/1.2996351</pub-id>.<pub-id pub-id-type="pmid">19063545</pub-id>
+</mixed-citation></ref><ref id="ref55"><mixed-citation publication-type="journal" id="cit55"><name name-style="western"><surname>Ringholm</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Jonsson</surname><given-names>D.</given-names></name>; <name name-style="western"><surname>Ruud</surname><given-names>K.</given-names></name>
+<article-title>A general, recursive, and open-ended
+response code</article-title>. <source>J. Comput. Chem.</source>
+<year>2014</year>, <volume>35</volume>, <fpage>622</fpage>–<lpage>633</lpage>. <pub-id pub-id-type="doi">10.1002/jcc.23533</pub-id>.<pub-id pub-id-type="pmid">24500816</pub-id>
+</mixed-citation></ref><ref id="ref56"><mixed-citation publication-type="undeclared" id="cit56"><person-group person-group-type="allauthors"><name name-style="western"><surname>Bast</surname><given-names>R.</given-names></name>; <name name-style="western"><surname>Friese</surname><given-names>D. H.</given-names></name>; <name name-style="western"><surname>Gao</surname><given-names>B.</given-names></name>; <name name-style="western"><surname>Jonsson</surname><given-names>D. J.</given-names></name>; <name name-style="western"><surname>Ringholm</surname><given-names>M.</given-names></name>; <name name-style="western"><surname>Reine</surname><given-names>S.
+S.</given-names></name>; <name name-style="western"><surname>Ruud</surname><given-names>K.</given-names></name></person-group><article-title>OpenRSP: Open-Ended Response
+Theory</article-title>. <year>2020</year>; <uri xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://zenodo.org/record/1491927">https://zenodo.org/record/1491927</uri>.</mixed-citation></ref></ref-list></back></article>

@@ -39,7 +39,8 @@ def test_c1_initial_xyz_captured_before_the_optimization(small_struct):
 
     # 2026-05-27: _initial.xyz path routes through _mb_outfile() so it
     # lands next to the script regardless of cwd at run time.
-    save_pos = text.find('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz")')
+    save_pos = text.find(
+        '_save_structure(mol, _mb_outfile(JOB + "_initial.xyz")')
     assert save_pos != -1, "no _initial.xyz save call found"
 
     # The optimization comes after the SCF setup.
@@ -56,14 +57,15 @@ def test_c1_initial_xyz_captured_before_the_optimization(small_struct):
 
 
 def test_c1_initial_xyz_save_helper_defined_early(small_struct):
-    """Corollary: _save_xyz must be defined before _initial.xyz is
+    """Corollary: the pair writer must be defined before _initial.xyz is
     called, which means before the gto.M(mol = ...) line."""
     text = render_script(small_struct, PySCFConfig())
-    helper_pos = text.find("def _save_xyz(")
+    helper_pos = text.find("def _save_structure(")
     mol_pos    = text.find("mol = gto.M(")
     assert helper_pos != -1 and mol_pos != -1
     assert helper_pos < mol_pos, (
-        "_save_xyz is defined AFTER mol is built; it can't be called "
+        "_save_structure is defined AFTER mol is built; it can't be "
+        "called "
         "to snapshot the input geometry."
     )
 

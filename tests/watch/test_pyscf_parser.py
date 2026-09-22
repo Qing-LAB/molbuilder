@@ -20,6 +20,8 @@ import pytest
 # threshold drawn over it must share one.  This file composed the second
 # while `parse/engines/pyscf.py` imports the first, so the assertion was
 # measuring the gap between the two dialects rather than the conversion.
+# The gap is on the seventh significant figure: 257.11043095 against
+# 257.11033738 (measured 2026-09-21, which is how it surfaced).
 from molbuilder.constants import HARTREE_EV as _HARTREE_TO_EV
 from molbuilder.constants import (
     HARTREE_BOHR_EV_ANGSTROM_ASE as _HA_BOHR_TO_EV_ANG)

@@ -90,7 +90,7 @@ def test_default_render_compiles(h2o):
         # non-convergence policy dispatch below it stays readable.
         "def _mb_run_optimization(",
         "    return optimize(",
-        "_save_xyz(",
+        "_save_structure(",
     ):
         assert needle in text, f"missing {needle!r}"
 
@@ -224,13 +224,13 @@ def test_no_optimize_drops_geom_block(h2o):
     text = render_script(h2o, PySCFConfig(optimize=False, verbose_comments=False))
     assert "mol_eq = optimize(" not in text
     assert "e = mf.kernel()" in text
-    # The _save_xyz call that WRITES <JOB>_optimized.xyz must not
+    # The _save_structure call that WRITES <JOB>_optimized.xyz must not
     # appear -- there's no optimized geometry to save.  The
     # geometry-warm-restart hook at gto.M() time (task #539) still
     # references the file (auto-resume from a prior optimize=True
     # run with the same JOB), so don't assert ``_optimized.xyz``
     # is absent globally; assert only the WRITE site is gone.
-    assert "_save_xyz(mol_eq" not in text
+    assert "_save_structure(mol_eq" not in text
     assert 'JOB + "_optimized.xyz"), "Final optimized geometry"' not in text
 
 

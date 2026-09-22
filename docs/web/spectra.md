@@ -490,10 +490,26 @@ and the Hessian is built over the free atoms only. Which atoms to freeze is
 the user's own call: the tab never second-guesses the set, and nothing warns
 you off a choice you made on purpose. What the calculation DOES say, out
 loud, is what the freeze means for the numbers: the deck states the regime
-(partial Hessian, *vibrational-only* thermochemistry — an anchored molecule
-does not rotate), the preflight names the frozen count, and the Methods
-paragraph spells out that the reported frequencies are those of the free
-atoms moving in the field of the fixed ones.
+(partial Hessian, *vibrational-only* thermochemistry), the preflight names the
+frozen count, and the Methods paragraph spells out that the reported
+frequencies are those of the free atoms moving in the field of the fixed ones.
+
+**How many vibrations that leaves is not `3N−6`, and it is not free either.**
+Freezing removes the whole-body motions that would move a frozen atom — and
+leaves the ones that would not. Two frozen atoms still let the rest of the
+molecule turn about the line through them; one frozen atom leaves all three
+rotations about it; three non-collinear frozen atoms leave nothing. Those
+leftovers are not vibrations and must not reach a spectrum or a thermochemistry
+sum. **[`science/normal-modes.md`](?doc=science/normal-modes.md) owns that
+rule** — the count, why the leftovers are projected out before diagonalisation
+rather than spotted afterwards, and the acceptance test. Nothing here or in the
+emitters re-derives it.
+
+*(This paragraph used to end "— an anchored molecule does not rotate". A
+measured BDT run on 2026-09-21, both sulfurs frozen, reported a 36th mode that
+was exactly the ring turning about the S···S line: 100 % of that motion, at
+−0.93 cm⁻¹. An anchored molecule does not **translate**; whether it rotates
+depends on where its anchors are.)*
 
 **And the two lists must PARTITION the atoms — checked, not assumed.**
 `SpectraResults` refuses at construction unless `free_atom_idxs` and
