@@ -401,8 +401,12 @@ class Structure:
     # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Optional[Tuple[float, float, float]] = None
-    # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom), or None
-    # = (0,0,0) (structure-periodicity.md § 6).  Editing convenience: an op that
+    # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom).
+    # ``None`` does NOT mean "the corner is (0,0,0)" -- it means DERIVE the
+    # corner (structure-periodicity.md § 6 clause 2a), which answers "no
+    # shift" only when the box already at the origin holds every atom.  See
+    # ``resolve_cell_origin`` below for the three cases.  Editing convenience:
+    # an op that
     # builds a cell AROUND off-origin atoms (e.g. add_slab, whose slabs
     # straddle the origin) sets this to the structure's low corner so the cell WRAPS
     # the atoms WITHOUT moving them -- the molecule/selection stays pinned where the

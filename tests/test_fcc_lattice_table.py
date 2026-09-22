@@ -332,6 +332,36 @@ class TestTheSpacingsDoorAnswersTheSurface:
         assert r.status_code == 400
         assert "Xx" in r.get_json()["error"]
 
+    def test_a_metal_the_builder_cannot_make_is_refused(self, monkeypatch,
+                                                        tmp_path, web_client):
+        """The element list is CLOSED; the lattice table is user-overridable.
+        Two different questions, and only the plane was being asked.
+
+        `data/README.md` invites people to copy the JSON to
+        `$MOLBUILDER_DATA_DIR` and edit it. Adding an `Fe` entry with
+        `"system": "bcc"` made this door answer `d(110) = 2.0269` from the
+        bcc rule — genuinely correct crystallography — for a metal
+        `/api/modify/slab` refuses outright. A spacing for a slab that
+        cannot be built is a plausible number with nothing to use it on.
+        """
+        import molbuilder.modify as mod
+        good = json.loads(
+            (Path(__file__).resolve().parents[1]
+             / "molbuilder/data/fcc_lattice.json").read_text())
+        good["metals"]["Fe"] = {"name": "Iron", "system": "bcc",
+                                "a_experimental": 2.8665, "a_pbe": 2.83}
+        (tmp_path / "fcc_lattice.json").write_text(json.dumps(good, indent=2))
+        monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(mod, "_FCC_LATTICE_A_CACHE", None)
+
+        # The table carries it...
+        assert "Fe" in mod.load_fcc_lattice_full()
+        # ...and the door still refuses it, the way the builder does.
+        r = web_client.get("/api/modify/spacings?element=Fe&plane=110"
+                           "&reference=experimental")
+        assert r.status_code == 400, r.get_json()
+        assert "Fe" in r.get_json()["error"]
+
     def test_a_surface_the_builder_cannot_make_is_refused(self, web_client):
         """`interplanar_spacing` answers (999) correctly — it is general
         crystallography. This door serves a panel that offers three planes,
