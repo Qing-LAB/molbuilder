@@ -222,12 +222,22 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     # the hole the v3 frozen-atom loss went through: the guard was real, correct,
     # and downstream of the leak.  It is checked HERE now, where the payload is
     # still whole.
-    from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
+    from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                                      RETIRED_METADATA_FIELDS)
     # `info` (schema 9): the free-form NON-structural store -- known by
     # NAME here (the block is open by design, so its keys are not
     # enumerated; archive/2026-09-01-structure-info-plan.md).
+    #
+    # A RETIRED KEY COUNTS AS KNOWN.  It is one THIS project used to write
+    # and has stopped: the file is older, not wrong.  The comment above
+    # records this guard being MOVED here so the payload is checked while
+    # whole -- and moving it is what put three enforcement points on one
+    # rule (here, `apply_to_structure`, `apply_metadata_dict`).  When `pbc`
+    # was retired on 2026-09-22 only the last of the three was taught the
+    # difference, and the first two refused every pair written before that
+    # day: 46 of the 53 sidecars in `projects/`, measured.
     known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
-             | set(ENVELOPE_KEYS) | {"info"})
+             | set(ENVELOPE_KEYS) | set(RETIRED_METADATA_FIELDS) | {"info"})
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(

@@ -608,10 +608,19 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"indices no longer point at the right atoms; re-export "
             f"the sidecar from /modify after structural edits."
         )
-    from molbuilder.structure import IDENTITY_FIELDS, METADATA_FIELDS
+    from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                                      RETIRED_METADATA_FIELDS)
+    # A RETIRED KEY IS NOT A STRAY ONE, and this guard has to know the
+    # difference because it runs before `apply_metadata_dict`, which does.
+    # `pbc` was removed on 2026-09-22 and only that last guard was taught,
+    # so this one refused the payload before the forgiving one saw it --
+    # and every pair written before that day stopped opening.  Measured:
+    # 46 of the 53 sidecars in `projects/` carry `pbc`, and
+    # `StructureCodec().load` raised `MolstructJsonError` on all of them.
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
-             and k not in IDENTITY_FIELDS and k != "info"]
+             and k not in IDENTITY_FIELDS and k != "info"
+             and k not in RETIRED_METADATA_FIELDS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "

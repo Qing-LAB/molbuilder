@@ -131,6 +131,24 @@ FROZEN_LABEL = "frozen_atoms"
 METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
                    "vacuum", "annotations")
 
+#: Keys a sidecar ON DISK may carry that this version no longer stores.
+#: ACCEPTED AND IGNORED, never refused: the file is the user's and predates
+#: the change, and the no-shims rule is about renames in code, not formats
+#: people already have.  `pbc` went on 2026-09-22 -- it was the boolean view
+#: of `axis_kind` and could never disagree with it, so there is nothing in it
+#: to read back.
+#:
+#: MODULE SCOPE BECAUSE THREE GUARDS ENFORCE IT.  This was a local inside
+#: `apply_metadata_dict`, which is the LAST of the three places that check
+#: which keys a sidecar may carry -- `parse.sidecars.molstruct.load_text`
+#: runs first, then `sidecars.molstruct.apply_to_structure`, then this one.
+#: Only the last was taught the difference when `pbc` went, so the earlier
+#: two refused the payload before the forgiving one ever saw it.  Measured
+#: 2026-09-22: 46 of the 53 sidecars in `projects/` carry `pbc`, and
+#: `StructureCodec().load` raised on every one of them.  One list, three
+#: guards.
+RETIRED_METADATA_FIELDS = ("pbc",)
+
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
 #: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
@@ -887,8 +905,9 @@ class Structure:
         so saying nothing would be a silent loss -- it is named and refused.
         A retired key is one THIS project used to write and has since stopped:
         the file is not wrong, it is older, and refusing it would make a pair
-        that opened yesterday unopenable today for no gain.  ``_RETIRED``
-        below is that list, with the date and the reason on each entry.
+        that opened yesterday unopenable today for no gain.
+        ``RETIRED_METADATA_FIELDS`` (module scope, because the sidecar
+        reader has a second stray-key guard that must agree) is that list.
 
         Retiring a key is only safe when nothing is lost by ignoring it, and
         that has to be shown rather than assumed.  For ``pbc`` it is: the
@@ -898,15 +917,9 @@ class Structure:
         A key whose fact lives nowhere else cannot be retired this way -- it
         needs a schema bump and a reader that migrates it."""
         data = data or {}
-        #: Keys a sidecar on disk may carry that this version no longer
-        #: stores.  ACCEPTED AND IGNORED, never refused: the file is the
-        #: user's and predates the change, and the no-shims rule is about
-        #: renames in code, not formats people already have.  `pbc` went on
-        #: 2026-09-22 -- it was the boolean view of `axis_kind` and could
-        #: never disagree with it, so there is nothing in it to read back.
-        _RETIRED = ("pbc",)
         unknown = [k for k in data
-                   if k not in METADATA_FIELDS and k not in _RETIRED]
+                   if k not in METADATA_FIELDS
+                   and k not in RETIRED_METADATA_FIELDS]
         if unknown:
             raise ValueError(
                 f"Structure.apply_metadata_dict: unknown metadata "
