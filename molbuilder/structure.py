@@ -1015,13 +1015,17 @@ class Structure:
         )
         # Full-replace + revalidate the metadata block through the ONE codec.
         s.apply_metadata_dict(data.get("metadata"))
-        raw_info = data.get("info")
-        if raw_info is not None:
-            if not isinstance(raw_info, dict):
-                raise ValueError(
-                    f"Structure.from_dict: 'info' must be a dict of "
-                    f"key -> JSON value, got {type(raw_info).__name__}")
-            s.info = dict(raw_info)
+        # THROUGH THE SAME DOOR AS EVERY OTHER WRITER.  This checked only
+        # that the block was a dict and then assigned it, so `from_dict` was
+        # a WEAKER door than `set_info` / `apply_info_dict` -- which also
+        # refuse an empty cluster name and JSON-round-trip the value.  It is
+        # the one the browser reaches: `_shared.struct_from_body` builds
+        # every edited structure through here, so `info: {"": ...}` posted
+        # to any modify route came back at HTTP 200 and would have gone to
+        # disk in the sidecar (measured 2026-09-22).  One door, one set of
+        # rules, whichever direction the store arrives from.
+        if data.get("info") is not None:
+            s.apply_info_dict(data.get("info"))
         return s
 
     def to_wire(self) -> dict:

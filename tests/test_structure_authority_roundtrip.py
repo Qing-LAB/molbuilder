@@ -169,9 +169,13 @@ def test_to_wire_resolved_origin_none_for_world_origin_crystal():
     """Explicit cell, NO cell_origin (imported crystal, atoms already in
     [0,cell)) -> resolved origin is None (world origin, no shift)."""
     s = Structure(elements=["C"], positions=np.array([[0.5, 0.5, 0.5]]))
+    # A cell alone means periodic on every axis -- `__post_init__` derives
+    # `axis_kind` from its presence.  A `pbc` key stood here too and did
+    # nothing: it was the retired boolean view, accepted-and-ignored, so it
+    # said the same thing twice and would break this test if the retirement
+    # list were ever pruned, for a reason unrelated to what it checks.
     s.apply_metadata_dict({
         "cell": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]],
-        "pbc":  [True, True, True],
     })
     per = s.to_wire()["periodicity"]
     assert per["cell_origin"] is None
@@ -565,10 +569,37 @@ class TestInfoIsANamespaceOfClusters:
         s = self._recorded()
         with pytest.raises(ValueError, match="cluster-name"):
             s.apply_info_dict(["not", "a", "dict"])
+
+        # REPLACE, NOT MERGE -- and the fixture has TWO clusters so the two
+        # can be told apart.  Every production caller happens to start from
+        # an empty store (a sidecar load, a run record, a text import, a
+        # `.XV` compose all build the Structure a few lines earlier), so a
+        # shallow-merge bug would satisfy this test with only one cluster
+        # present and leak the other forward the day a caller stopped
+        # starting empty.
+        s.set_info("provenance", {"built_by": "the slab wizard"})
         s.apply_info_dict({"calculation": {"engine": "pyscf"}})
-        assert s.info == {"calculation": {"engine": "pyscf"}}
+        assert s.info == {"calculation": {"engine": "pyscf"}}, (
+            "the store was merged, not replaced -- `provenance` survived a "
+            "call that did not name it")
+
         s.apply_info_dict(None)
         assert s.info == {}, "None clears it -- 'this pair records nothing'"
+
+    def test_the_canonical_deserialiser_is_not_a_weaker_door(self):
+        """`from_dict` is `info`'s door on the way IN (§ 2.2a), and it used
+        to be a laxer one: it checked the block was a dict and assigned it,
+        where `set_info` / `apply_info_dict` also refuse an empty cluster
+        name and JSON-round-trip the value.
+
+        It is the door the BROWSER reaches -- `_shared.struct_from_body`
+        rebuilds every edited structure through it -- so measured
+        2026-09-22, `info: {"": ...}` POSTed to a modify route came back at
+        HTTP 200 and would have reached the sidecar.
+        """
+        with pytest.raises(ValueError, match="non-empty"):
+            Structure.from_dict({"elements": ["H"], "positions": [[0.0, 0, 0]],
+                                 "info": {"": {"smuggled": True}}})
 
     # NOT TESTED HERE: that the store survives a pair round trip.
     # `test_molstruct_json.py::test_info_rides_the_pair_whole` already

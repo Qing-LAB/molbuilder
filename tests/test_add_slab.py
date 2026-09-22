@@ -389,8 +389,8 @@ class TestTheBoxItCaptures:
         `c` is the atoms' extent, so atoms that are all at one z give
         nothing to capture and the op answers with no cell — by design.
         But the non-atom facts come from the source through one seam, and
-        that seam carries `pbc`: a periodic canvas therefore handed back
-        a structure claiming three periodic axes with no lattice at all,
+        that seam carries `axis_kind`: a periodic canvas therefore handed
+        back a structure claiming three periodic axes with no lattice at all,
         which `resolve_cell()` refuses outright. Either the captured box
         or no box; never half of one.
         """
