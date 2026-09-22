@@ -173,6 +173,45 @@ that still carry it load fine (`apply_metadata_dict` ignores unknown keys).
 Never leave a "read-but-never-write" half-migration — that is the drift this
 contract exists to prevent.
 
+### 2.2a `info` — metadata that travels
+
+**`info` IS metadata** *(user, 2026-09-21)*. It is what the MolView
+Metadata pane displays (`web/molview.md` § 8.4a), it is written into the
+sidecar from schema 9, and it rides every export. What it is **not** is
+part of the structure:
+
+- **Not structural.** No emitter reads it; it never enters the
+  frozen/region machinery. Nothing in a deck depends on it.
+- **Not in the hash.** `structure_hash` is computed without it, so
+  recording or removing a key never changes the identity of the
+  coordinates (`structure-molstruct.md`).
+- **Not gated.** § 9.4's one question — *"does this change the structure
+  the calculation ran on?"* — answers *no* for `info`, which is what
+  lets the read-only Results viewer attach a recorded contract before
+  export.
+
+Those three are why it sits **outside `METADATA_FIELDS`** (§ 2.2): that
+set is the strictly-enumerated STRUCTURAL block — hash input,
+gate-controlled, unknown keys refused. `info` is the open store beside
+it, with `to_dict` / `from_dict` as its door. Outside is a statement
+about the *hash and the gate*, never about whether it is metadata.
+
+**IT TRAVELS WITH THE STRUCTURE, AND A STRIP IS EXPLICIT — NEVER
+SILENT.** Every seam that derives one `Structure` from another carries
+`info` through: `_carry_nonatom()`, `replace()`, `copy()`, `concat()`,
+the geometry ops, `to_dict`/`from_dict`, the sidecar codec. A caller who
+wants it gone states that; a rebuild that simply did not list the field
+is a **defect**, not a default.
+
+Why the distinction is load-bearing rather than tidy: a structure whose
+recorded contract vanished cannot be told apart from one that never had
+one. The warning that says *"the mesh cutoff and transverse k-mesh below
+were converged for a cell that is no longer there"* reads
+`info.calculation`, so a silent drop does not degrade that warning — it
+deletes it, and the citation then looks clean. An edit is meant to
+OUTDATE the record (`structure_modified` / `labels_modified`), which is a
+MARK ON IT; a record that is gone cannot carry a mark.
+
 ### 2.3 Geometry I/O
 
 | Method | Format | Guarantees |

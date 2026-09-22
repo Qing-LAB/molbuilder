@@ -128,16 +128,24 @@ class ElectrodeModel:
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
-        s = Structure(elements=list(self.elements),
-                      positions=np.asarray(self.positions, dtype=float).copy(),
-                      title=f"bulk lead ({self.label})")
-        s.cell = cell
+        # STATED AT CONSTRUCTION, not assigned afterwards.  A field write
+        # skips `__post_init__`, so the cell was never checked and `pbc`
+        # was never reconciled: the lead carried `axis_kind` periodic
+        # beside `pbc` (False, False, False), and `_lattice_block` reads
+        # `pbc` -- so every electrode deck shipped "the transport axis has
+        # vacuum / is not periodic; the electrode .TSHS cannot attach
+        # seamlessly" about a lead this very function declares periodic.
+        #
         # A LEAD IS PERIODIC IN ALL THREE, and says so.  The device is open
         # along transport and the lead is not -- that difference is the
         # whole reason the lead is computed separately, so a structure that
         # claimed otherwise would misdescribe what makes it a lead.
-        s.axis_kind = ("periodic", "periodic", "periodic")
-        return s
+        return Structure(
+            elements=list(self.elements),
+            positions=np.asarray(self.positions, dtype=float).copy(),
+            title=f"bulk lead ({self.label})",
+            cell=cell,
+            axis_kind=("periodic", "periodic", "periodic"))
 
 
 # --------------------------------------------------------------------- #

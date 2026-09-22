@@ -336,6 +336,55 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         out = getattr(out, "structure", out)
         assert out.info["calculation"]["structure_modified"] is True
 
+    @pytest.mark.parametrize("op,mark", [
+        ("delete_atoms",  "structure_modified"),
+        ("add_atom",      "structure_modified"),
+        ("translate",     "structure_modified"),
+        ("rotate",        "structure_modified"),
+        ("calibrate",     "structure_modified"),
+    ])
+    def test_a_python_edit_marks_the_contract_outdated(self, op, mark):
+        """The backend marks what MolView marks.
+
+        `molview/model.js` sets this flag on every `applyOp`; Python set
+        it nowhere, so `molbuilder modify IN OUT --delete N` wrote an
+        edited pair still carrying the relaxation's mesh cutoff and
+        k-mesh with no staleness mark — and a transport citation of that
+        pair sealed to settings converged for a structure that no longer
+        exists, silently.  `compose.py` reads this flag to warn.
+        """
+        from molbuilder import modify as M
+        s = self._with_contract()
+        out = {
+            "delete_atoms": lambda: M.delete_atoms(s, [2]),
+            "add_atom":     lambda: M.add_atom(s, "H", 0, [1.0, 1.0, 1.0]),
+            "translate":    lambda: M.translate(s, [1.0, 0.0, 0.0]),
+            "rotate":       lambda: M.rotate_around_axis(s, "z", 30.0),
+            "calibrate":    lambda: M.calibrate_to_cell(s),
+        }[op]()
+        assert out.info["calculation"][mark] is True
+        assert out.info["calculation"]["contract"], "the record was erased, not marked"
+        assert "structure_modified" not in s.info["calculation"], \
+            "the edit marked its SOURCE too"
+
+    def test_a_reorder_is_not_an_edit(self):
+        """`categorical_sort` derives through the same door but changes
+        no geometry, so marking there would warn about every composed
+        junction."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.transport.sort import categorical_sort
+        s = Structure(
+            elements=["Au", "S", "S", "Au"],
+            positions=np.array([[0., 0, 0], [0, 0, 2.], [0, 0, 4.], [0, 0, 6.]]),
+            cell=np.diag([8., 8., 12.]),
+            regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]},
+            info={"calculation": {"engine": "siesta",
+                                  "contract": {"siesta_mesh_cutoff_ry": 300}}})
+        out = categorical_sort(s).structure
+        assert "structure_modified" not in out.info["calculation"]
+        assert out.info["calculation"]["contract"]
+
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --
         `concat` picks the lattice that way and `info` rode along, so a

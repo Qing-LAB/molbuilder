@@ -1579,8 +1579,9 @@ numbering, which crosses at exactly one point (§ 11.5).
 ### 8.4a The Metadata pane — display, never a mutator *(user, 2026-08-29)*
 
 The panel's third page, beside Selection and Cell.  It renders the
-structure's **`info` store** — free-form, NON-structural metadata, a
-JSON dict of key → value — as a read-only key/value listing, with an
+structure's **`info` store** — metadata that is not part of the
+structure and not in its hash (`model/structure.md` § 2.2a), a JSON
+dict of key → value — as a read-only key/value listing, with an
 honest empty state when nothing is recorded.
 
 **The pane displays; the API mutates.**  Which keys exist is the HOST
@@ -2004,9 +2005,10 @@ thing and one MolView does not offer.
 **The `info` doors** (§ 8.4a): ``data.info.set(key, value)`` /
 ``data.info.remove(key)`` / ``data.info.get()`` (a read-copy).  Values
 are JSON only; the store rides the structure through every install and
-export.  Ungated in read-only mode and badge-silent in editable mode —
-`info` describes the structure rather than being it, which is § 9.4's
-one question answered.
+export, and is only ever removed by an explicit `remove` — never
+silently (`model/structure.md` § 2.2a).  Ungated in read-only mode and
+badge-silent in editable mode — `info` describes the structure rather
+than being it, which is § 9.4's one question answered.
 
 ### 9.3a Handing the structure to the server
 

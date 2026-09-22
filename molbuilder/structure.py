@@ -421,14 +421,20 @@ class Structure:
     # which present regions + frozen + these together.  Empty default so
     # every existing call site is unchanged.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
-    #: Free-form, NON-structural metadata (user, 2026-08-29 --
-    #: `archive/2026-09-01-structure-info-plan.md`): a JSON dict of key -> value that
-    #: DESCRIBES the structure (a recorded electronic contract, a note)
-    #: without being part of it.  Deliberately outside METADATA_FIELDS:
-    #: that set is the strictly-enumerated STRUCTURAL block (unknown keys
-    #: refuse), while `info` is the open store.  Never enters
-    #: `structure_hash`; travels top-level in to_dict/from_dict beside
-    #: `metadata`, and in the sidecar since schema 9.
+    #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
+    #: pane shows -- that is NOT part of the structure: no emitter reads
+    #: it, it never enters `structure_hash`, and the read-only gate does
+    #: not apply to it.  Those three are why it sits outside
+    #: METADATA_FIELDS, which is the strictly-enumerated STRUCTURAL block
+    #: (hash input, gate-controlled, unknown keys refused); `info` is the
+    #: open store beside it, with to_dict/from_dict as its door, and it
+    #: is in the sidecar from schema 9.
+    #:
+    #: IT TRAVELS AND A STRIP IS EXPLICIT.  Every seam that derives one
+    #: Structure from another carries it -- `_carry_nonatom`, `replace`,
+    #: `copy`, `concat`, the ops, the codecs.  A rebuild that simply did
+    #: not list the field is a defect: a vanished contract cannot be told
+    #: apart from one that was never recorded.
     info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1119,15 +1125,36 @@ class Structure:
         does not** — the interpreter has no such hook — so on this interpreter
         ``dataclasses.replace(struct, regions=…)`` still carries the trap and
         this method is the only correct door.
+
+        IT IS ``copy()`` PLUS THE CHANGES, and that is the second reason to
+        use it.  ``dataclasses.replace`` re-passes the mutable fields BY
+        REFERENCE: the derived structure shared ``positions``, ``cell``,
+        ``cell_origin`` and the ``info`` dict with its source, so writing to
+        one wrote to the other — measured, including through
+        ``info.calculation``.  That is what every hand-listed rebuild in the
+        tree was working around with its own ``.copy()`` calls, and enumerating
+        fields to copy them is how ``cell_origin`` and ``info`` came to be
+        forgotten (§ 2.2a).  Deriving through here copies, so a caller states
+        only what CHANGES and nothing it did not name can alias or vanish.
+
+        ``frozen_atoms`` is never re-passed at all: a copied ``regions`` is the
+        whole label store and already carries the reserved label, so the trap
+        above is gone by construction rather than by a special case.
         """
-        import dataclasses as _dc
-        if "regions" in changes and "frozen_atoms" not in changes:
-            # Rebuild from the fields WITHOUT re-passing the derived read.
-            kw = {f.name: getattr(self, f.name)
-                  for f in _dc.fields(self) if f.name != "frozen_atoms"}
-            kw.update(changes)
-            return type(self)(**kw)
-        return _dc.replace(self, **changes)
+        kw = {
+            "elements":      list(self.elements),
+            "positions":     self.positions.copy(),
+            "atom_names":    list(self.atom_names),
+            "residue_ids":   list(self.residue_ids),
+            "residue_names": list(self.residue_names),
+            "chain_ids":     list(self.chain_ids),
+            "title":         self.title,
+            "regions":       {k: list(v) for k, v in self.regions.items()},
+            "annotations":   copy_annotations(self.annotations),
+            **self._carry_nonatom(),
+        }
+        kw.update(changes)
+        return type(self)(**kw)
 
     #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
     __replace__ = replace
@@ -1744,6 +1771,37 @@ class Structure:
             info        = _copy.deepcopy(self.info) if self.info else {},
         )
 
+    def mark_contract_outdated(self, what: str = "structure") -> None:
+        """An edit OUTDATES the recorded contract; it does not erase it.
+
+        The Python half of `molview/model.js`'s ``markContractOutdated``,
+        with the same three rules so the two languages cannot disagree
+        about one record (`model/structure.md` § 2.2a):
+
+        * **Never invented.** No ``info.calculation`` means nothing was
+          recorded, so there is nothing to outdate and no block is created.
+        * **Never cleared.** Un-editing is what a retract/restore is for;
+          both flags ride the pair like everything else in the store.
+        * **Two flags, because they void different things.**
+          ``labels_modified`` says the electrode/device partition was
+          renamed — the settings still stand, but what they were sorted on
+          may not.  ``structure_modified`` says the geometry or the cell
+          moved, so the mesh cutoff and transverse k-mesh were converged
+          for something that is no longer there.  `transport/compose.py`
+          reads both and warns in those words.
+
+        Called at the places that ARE edits, not inside `replace()`:
+        `transport.sort.categorical_sort` reorders atoms through the same
+        door and is not an edit, so marking there would warn about every
+        composed junction.
+        """
+        block = self.info.get("calculation") if self.info else None
+        if not isinstance(block, dict):
+            return
+        key = "labels_modified" if what == "labels" else "structure_modified"
+        if not block.get(key):
+            block[key] = True
+
     def copy(self) -> "Structure":
         """Return a deep-ish copy: all metadata lists are duplicated;
         ``positions`` is copied so the new Structure can be mutated
@@ -1751,19 +1809,12 @@ class Structure:
         return the input unchanged (e.g. ``add_slab`` with
         ``n_layers <= 0`` short-circuits to ``struct.copy()`` rather
         than open-coding the field-by-field rebuild three times).
+
+        ONE implementation, in :meth:`replace`: this is that door with
+        nothing changed.  Two copies of the field list is how a field comes
+        to be duplicated in one and missing from the other.
         """
-        return Structure(
-            elements      = list(self.elements),
-            positions     = self.positions.copy(),
-            atom_names    = list(self.atom_names),
-            residue_ids   = list(self.residue_ids),
-            residue_names = list(self.residue_names),
-            chain_ids     = list(self.chain_ids),
-            title         = self.title,
-            regions       = {k: list(v) for k, v in self.regions.items()},
-            annotations   = copy_annotations(self.annotations),
-            **self._carry_nonatom(),
-        )
+        return self.replace()
 
     def affine(self, linear: Sequence[Sequence[float]],
                translation: Sequence[float]) -> "Structure":
@@ -1792,7 +1843,7 @@ class Structure:
             per["cell"] = per["cell"] @ L.T
         if per.get("cell_origin") is not None:
             per["cell_origin"] = per["cell_origin"] @ L.T + t
-        return Structure(
+        out = Structure(
             elements      = list(self.elements),
             positions     = self.positions @ L.T + t,
             atom_names    = list(self.atom_names),
@@ -1804,6 +1855,11 @@ class Structure:
             annotations   = copy_annotations(self.annotations),
             **per,
         )
+        # A RIGID TRANSFORM IS AN EDIT (`molview/model.js` marks every
+        # `applyOp` the same way): the atoms the contract was converged on
+        # have moved, so the record is outdated -- not erased.
+        out.mark_contract_outdated()
+        return out
 
     def translated(self, vec: Sequence[float]) -> "Structure":
         # A rigid translation: linear part = identity (lattice vectors unchanged),

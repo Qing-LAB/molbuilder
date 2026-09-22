@@ -946,37 +946,16 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # honor" issues -- the contract carrier silently dropped between
     # the Build endpoint that loaded the sidecar and the validator that
     # was supposed to consume it.  Caught by the 2026-05-26 review.
-    validation_struct = Structure(
-        elements      = list(struct.elements),
-        positions     = positions,
-        atom_names    = list(struct.atom_names),
-        residue_ids   = list(struct.residue_ids),
-        residue_names = list(struct.residue_names),
-        chain_ids     = list(struct.chain_ids),
-        title         = struct.title,
-        # regions carries every label, reserved ones included -- so the frozen
-        # set rides along and cannot be dropped between the Build endpoint that
-        # loaded the sidecar and the validator meant to consume it.
-        # struct.regions is Dict[str, List[int]] per Structure's
-        # declaration; the previous list-comprehension assumed an
-        # iterable of lists and crashed at __post_init__ when the
-        # dict was non-empty (caught by task #303's Pattern-B test).
-        regions       = {
-            k: list(v)
-            for k, v in (getattr(struct, "regions", {}) or {}).items()
-        },
-        # Periodicity metadata rides into validation too -- without it a
-        # genuine crystal validated as isolated³/vacuum-0 and produced
-        # spurious "kgrid on an isolated axis" + image-distance warnings
-        # (review finding, 2026-07-29).
-        cell          = (struct.cell.copy()
-                         if struct.cell is not None else None),
-        cell_origin   = (struct.cell_origin.copy()
-                         if struct.cell_origin is not None else None),
-        axis_kind     = struct.axis_kind,
-        vacuum        = struct.vacuum,
-        pbc           = struct.pbc,
-    )
+    # ONE FIELD CHANGES -- the positions the deck will actually write --
+    # so one field is stated.  This was a thirteen-field hand-list whose
+    # own comments record two rounds of the same bug: the frozen/region
+    # carrier dropped (2026-05-26) and the periodicity dropped
+    # (2026-07-29), each found after a genuine crystal validated as
+    # isolated.  It still did not name `annotations` or `info`.  Deriving
+    # through the door carries every field nobody named, including the
+    # ones added after today (`model/structure.md` § 2.2a).
+    validation_struct = struct.replace(positions=positions)
+
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
     # to the subject this spec names -- the wrapped coordinates and the
     # resolved cell, which is what the deck actually expresses.  Running it

@@ -466,13 +466,27 @@ def labeled_citation_structure(cited: CitedDir):
         return StructureCodec().load(cited.xyz), cited.sidecar
 
     cell, xv_elements, xv_pos = read_xv(cited.xv)
-    struct = Structure(elements=list(xv_elements), positions=xv_pos.copy())
+    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT.  No cited file records
+    # `axis_kind`: the ATOM-METADATA block carries `regions` + `annotations`
+    # only, the `.XV` carries the cell, and SIESTA has no such concept.  It
+    # does not need recording -- `engines/transport.md` § 5 I8 settles it for
+    # every transport run: z is open (kz = 1, the leads enter as self-energies
+    # Σ, and the engine preflight refuses kz != 1) while x and y are the
+    # transverse periodic mesh.
+    #
+    # Assigning `.cell` afterwards instead skipped `__post_init__`, so the
+    # box arrived unvalidated and every axis stayed `isolated`: the emitted
+    # electrode deck then read `pbc` and printed "the transport axis (c) has
+    # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
+    # on a junction that is periodic in-plane and open along z by design.
     try:
-        struct.cell = cell
+        struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
+                           cell=cell,
+                           axis_kind=("periodic", "periodic", "transport"))
     except ValueError as exc:
-        # The setter refuses a degenerate box.  Reaching a caller as a
-        # bare ValueError is the wrong shape: `prep` catches only
-        # ComposeError/SortError, so it surfaces as a traceback.
+        # Live now that the cell goes through the constructor: `prep` catches
+        # only ComposeError/SortError, so a bare ValueError would surface as
+        # a traceback.
         raise ComposeError(
             f"{cited.xv.name} states a cell transport cannot use: {exc}")
     deck_text = cited.deck.read_text()
@@ -521,9 +535,24 @@ def labeled_citation_structure(cited: CitedDir):
         # already agree; if they do not, one file is not from this run.
         _cells_agree_or_refuse(sidecars[0].name, _side.get("cell"),
                                cited.xv.name, cell)
-        apply_to_structure(struct, _side)
-        if struct.cell is None:
-            struct.cell = cell
+        # COMPLETE THE BLOCK, DO NOT PATCH THE RESULT.  `apply_metadata_dict`
+        # is a full replace and `model/structure.md` § 2.2 says what an absent
+        # key means: absent `cell` -> non-periodic.  So a sidecar that records
+        # labels but no box was applied as "no box", `__post_init__` reconciled
+        # every axis to isolated, and setting `.cell` back afterwards restored
+        # the box but not the periodicity -- a junction emitted with an
+        # explicit cell and `pbc = (False, False, False)`.
+        #
+        # The relaxation's own box is the box, and z is transport
+        # (`engines/transport.md` § 5 I8), so both are stated here and the one
+        # authority applies them together.
+        apply_to_structure(struct, {
+            **_side,
+            "cell": _side.get("cell") or [[float(x) for x in row]
+                                          for row in cell],
+            "axis_kind": _side.get("axis_kind")
+                         or ["periodic", "periodic", "transport"],
+        })
         if struct.regions:
             return struct, sidecars[0]
     raise ComposeError(
@@ -871,23 +900,12 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # `src_pos` goes to the extraction, which asks whether these
         # atoms moved as part of deciding whether the block is a lead.
 
-    relaxed = Structure(
-        elements=list(struct.elements),
-        positions=xv_pos.copy(),
-        atom_names=struct.atom_names,
-        residue_ids=struct.residue_ids,
-        residue_names=struct.residue_names,
-        chain_ids=struct.chain_ids,
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=(None if struct.frozen_atoms is None
-                      else list(struct.frozen_atoms)),
-        cell=cell,
-        pbc=struct.pbc,
-        axis_kind=struct.axis_kind,
-        vacuum=struct.vacuum,
-        annotations=dict(struct.annotations),
-    )
+    # THE RELAXED COORDINATES AND THE BOX THEY CAME BACK IN, and nothing
+    # else stated by hand.  This was a fourteen-field list that did not
+    # name `cell_origin` or `info`, so the cited junction lost its stored
+    # corner and its recorded contract on the way in -- then lost them
+    # again in `categorical_sort` below (`model/structure.md` § 2.2a).
+    relaxed = struct.replace(positions=xv_pos.copy(), cell=cell)
 
     sorted_res = categorical_sort(relaxed)
     dev = sorted_res.structure

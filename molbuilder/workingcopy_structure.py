@@ -82,25 +82,37 @@ def _sha256_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+#: What a structure with nothing stated serialises to.  Built once from the
+#: authority itself rather than typed out, and n-independent (every value is
+#: a store-level default, none of them per-atom).
+_DEFAULT_METADATA: Optional[dict] = None
+
+
 def _metadata_is_default(meta: dict) -> bool:
-    """True when a metadata dict (``Structure.metadata_to_dict`` output) carries
-    nothing worth a sidecar -- a plain molecule (no cell / origin / pbc /
-    labels / annotations / vacuum / non-isolated axis).  `regions` covers the
-    reserved labels too; there is no second store to check.  Decides
-    whether the ``.molstruct.json`` half of the pair exists at all
-    (``no .json == empty metadata``)."""
-    if meta.get("cell") is not None or meta.get("cell_origin") is not None:
-        return False
-    if meta.get("regions") or meta.get("annotations"):
-        return False
-    if meta.get("pbc") and any(meta["pbc"]):
-        return False
-    if any(float(v) != 0.0 for v in (meta.get("vacuum") or ())):
-        return False
-    ak = meta.get("axis_kind")
-    if ak and any(k != "isolated" for k in ak):
-        return False
-    return True
+    """True when a metadata dict (``Structure.metadata_to_dict`` output)
+    carries nothing worth a sidecar.  Decides whether the
+    ``.molstruct.json`` half of the pair exists at all
+    (``no .json == empty metadata``).
+
+    ASKED OF THE AUTHORITY, not re-enumerated.  This used to walk the field
+    set by hand -- and drifted on the one field with three states: it tested
+    ``any(float(v) != 0.0 for v in vacuum)``, so a deliberate ``[0, 0, 0]``
+    and an unset ``null`` both read as "nothing stated".  No sidecar was
+    written, and the reload turned *no gap, deliberately* into *nobody chose*
+    -- which on an isolated axis is the 3 Å default, i.e. a different box in
+    the emitted deck than the one on screen.  ``structure-periodicity.md``
+    § 2 states the three states explicitly: *"``[0,0,0]`` means no gap,
+    deliberately, and is used verbatim"*.
+
+    Comparing against the authority's own empty output cannot drift, and a
+    field added to ``METADATA_FIELDS`` is covered without touching this.
+    """
+    global _DEFAULT_METADATA
+    if _DEFAULT_METADATA is None:
+        from .structure import Structure
+        _DEFAULT_METADATA = Structure(
+            elements=[], positions=[]).metadata_to_dict()
+    return meta == _DEFAULT_METADATA
 
 
 class StructureCodec:

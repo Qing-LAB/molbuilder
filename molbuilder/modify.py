@@ -53,8 +53,6 @@ Geometry conventions for the nanojunction workflow:
 
 from __future__ import annotations
 
-import copy as _copy
-
 import json as _json
 import os as _os
 from pathlib import Path as _Path
@@ -114,7 +112,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         return struct.copy()
     new_regions, new_annotations = _reindex_transport_metadata(
         struct, keep)
-    return Structure(
+    out = Structure(
         elements=     [struct.elements[i]      for i in keep],
         positions=    struct.positions[keep].copy(),
         atom_names=   [struct.atom_names[i]    for i in keep],
@@ -126,6 +124,11 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         annotations=new_annotations,
         **struct._carry_nonatom(),   # deleting atoms keeps the lattice
     )
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
+    return out
 
 
 def add_atom(
@@ -237,7 +240,7 @@ def add_atom(
     # by default + NOT a member of any region.  Existing frozen_atoms +
     # region indices carry through unchanged: their atom-index space
     # only grows at the high end, so no remap needed.
-    return Structure(
+    out = Structure(
         elements=struct.elements + [element],
         positions=np.vstack([struct.positions, new_pos[None, :]]),
         atom_names=struct.atom_names + [atom_name or element],
@@ -249,6 +252,11 @@ def add_atom(
         annotations=copy_annotations(struct.annotations),
         **struct._carry_nonatom(),   # appending an atom keeps the lattice
     )
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -315,6 +323,10 @@ def _moved_subset(struct: Structure, R, t, indices: Sequence[int]) -> Structure:
     if keep:
         pos = out.positions
         pos[keep] = pos[keep] @ np.asarray(R, dtype=float).T + np.asarray(t, dtype=float)
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
     return out
 
 
@@ -854,12 +866,18 @@ def _finish_slab(struct, metal_pos, element, full):
     # Existing frozen_atoms + region indices carry through unchanged; the
     # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
     # region label (callers who want either can post-process the result).
-    return Structure(
+    # THE NON-ATOM FACTS COME FROM THE ONE SEAM, and the three this op
+    # genuinely decides are stated after it.  Hand-listing them instead
+    # dropped `vacuum` -- the padding the person typed, which § 6.1
+    # clause 1 calls truth and which is what "Use default" restores --
+    # and would drop every field added to `Structure` after today.
+    out = Structure(
+        **{**struct._carry_nonatom(),
+           "cell": elc_cell,
+           "cell_origin": elc_cell_origin,
+           "axis_kind": elc_axis_kind},
         elements=list(struct.elements) + [element] * n_new,
         positions=np.vstack([struct.positions, metal_pos]),
-        cell=elc_cell,
-        cell_origin=elc_cell_origin,
-        axis_kind=elc_axis_kind,
         atom_names=list(struct.atom_names) + [element] * n_new,
         residue_ids=list(struct.residue_ids) + [new_residue_id] * n_new,
         residue_names=list(struct.residue_names) + ["ELC"] * n_new,
@@ -867,11 +885,12 @@ def _finish_slab(struct, metal_pos, element, full):
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
-        # NOT the lattice seam -- this site hand-lists.  `info` is a
-        # non-per-atom fact like the cell: an edit OUTDATES the
-        # recorded contract (a flag on it), it does not erase it.
-        info=_copy.deepcopy(struct.info) if struct.info else {},
     )
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
+    return out
 
 
 def add_slab(
@@ -1113,14 +1132,18 @@ def calibrate_to_cell(struct: Structure) -> Structure:
     origin = struct.resolve_cell_origin()
     shift = (-np.asarray(origin, dtype=float)
              if origin is not None else np.zeros(3, dtype=float))
-    return Structure(
+    # THE NON-ATOM FACTS COME FROM THE ONE SEAM.  This op materialises the
+    # resolved box and moves the atoms into it, so it states `cell` and
+    # `cell_origin` itself and takes the rest -- axis_kind, vacuum, info --
+    # from `_carry_nonatom`, which is what a field added to `Structure`
+    # tomorrow travels through.
+    out = Structure(
+        **{**struct._carry_nonatom(),
+           "cell": (resolved.copy() if resolved is not None else None),
+           # atoms now sit in [0, cell); the box is at the world origin
+           "cell_origin": None},
         elements=list(struct.elements),
         positions=struct.positions + shift,
-        cell=(resolved.copy() if resolved is not None else None),
-        cell_origin=None,                     # atoms now in [0, cell); cell at origin
-        axis_kind=struct.axis_kind,
-        vacuum=struct.vacuum,
-        pbc=struct.pbc,
         atom_names=list(struct.atom_names),
         residue_ids=list(struct.residue_ids),
         residue_names=list(struct.residue_names),
@@ -1128,11 +1151,12 @@ def calibrate_to_cell(struct: Structure) -> Structure:
         title=struct.title,
         regions={k: list(v) for k, v in struct.regions.items()},
         annotations=copy_annotations(struct.annotations),
-        # NOT the lattice seam -- this site hand-lists.  `info` is a
-        # non-per-atom fact like the cell: an edit OUTDATES the
-        # recorded contract (a flag on it), it does not erase it.
-        info=_copy.deepcopy(struct.info) if struct.info else {},
     )
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -1240,6 +1264,10 @@ def append_structure(
             "structure's cell is unchanged")
 
     out = Structure.concat([struct, incoming], title=struct.title or "")
+    # AN EDIT OUTDATES THE RECORD, it does not erase it
+    # (`model/structure.md` § 2.2a; the same mark
+    # `molview/model.js` sets on every `applyOp`).
+    out.mark_contract_outdated()
     return out, notes
 
 
