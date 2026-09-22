@@ -33,7 +33,6 @@ _META = {
                                            #    it comes back with a warning, and
                                            #    this fixture is about the pair, not
                                            #    about the warning - 6.1 rows 2/4)
-    "pbc":          [True, True, False],
     "axis_kind":    ["periodic", "periodic", "isolated"],
     "vacuum":       [0.0, 0.0, 2.0],
     # ONE label store: the reserved label is a member, not a field beside it.
@@ -46,7 +45,13 @@ _META = {
 # via metadata_to_dict so channel serialisation is included).
 # `regions` is the whole label store -- the reserved labels are in it, so there
 # is no `frozen_atoms` field to preserve separately (molview.md § 6.6).
-_METADATA_FIELDS = ("cell", "cell_origin", "pbc", "axis_kind",
+# `pbc` was here until 2026-09-22 and it made this loop BLIND.  It is a
+# method now, so `getattr(got, "pbc")` returned a bound method; two bound
+# methods off two instances are never equal, so the assertion failed on
+# every input -- and because it sat third, the loop stopped there and
+# `axis_kind`, `vacuum` and `regions` were no longer checked at all.  The
+# one test built to catch a field silently dropping could not have seen one.
+_METADATA_FIELDS = ("cell", "cell_origin", "axis_kind",
                     "vacuum", "regions")
 
 
@@ -164,9 +169,13 @@ def test_to_wire_resolved_origin_none_for_world_origin_crystal():
     """Explicit cell, NO cell_origin (imported crystal, atoms already in
     [0,cell)) -> resolved origin is None (world origin, no shift)."""
     s = Structure(elements=["C"], positions=np.array([[0.5, 0.5, 0.5]]))
+    # A cell alone means periodic on every axis -- `__post_init__` derives
+    # `axis_kind` from its presence.  A `pbc` key stood here too and did
+    # nothing: it was the retired boolean view, accepted-and-ignored, so it
+    # said the same thing twice and would break this test if the retirement
+    # list were ever pruned, for a reason unrelated to what it checks.
     s.apply_metadata_dict({
         "cell": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]],
-        "pbc":  [True, True, True],
     })
     per = s.to_wire()["periodicity"]
     assert per["cell_origin"] is None
@@ -501,3 +510,99 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         out = getattr(out[0] if isinstance(out, tuple) else out, "structure",
                       out[0] if isinstance(out, tuple) else out)
         assert out.info.get("calculation", {}).get("contract")
+
+
+class TestInfoIsANamespaceOfClusters:
+    """PINS: `model/structure.md` § 2.2a — `info` is a namespace, one
+    top-level key per subsystem, and nothing writes inside someone else's.
+
+    WHY IT NEEDED A DOOR *(user, 2026-09-22)*.  The shape was already
+    decided on the browser side — `molview.data.info` has offered
+    `set(key, value)` / `remove(key)` since it shipped — and Python had no
+    equivalent. So three callers assigned `struct.info` directly, which
+    replaces the WHOLE store: any subsystem recording its own metadata
+    would take the recorded calculation contract with it unless it thought
+    to copy that across too.
+    """
+
+    @staticmethod
+    def _recorded():
+        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]))
+        s.set_info("calculation", {"engine": "siesta",
+                                   "contract": {"mesh_cutoff_ry": 400}})
+        return s
+
+    def test_one_cluster_does_not_disturb_another(self):
+        """The whole point: this is what a bare `struct.info = {...}` got
+        wrong."""
+        s = self._recorded()
+        s.set_info("provenance", {"built_by": "the slab wizard"})
+        assert s.info["calculation"]["contract"] == {"mesh_cutoff_ry": 400}
+        assert s.info["provenance"] == {"built_by": "the slab wizard"}
+
+    def test_a_cluster_is_dropped_explicitly_and_alone(self):
+        """§ 2.2a: a strip is explicit. `drop_info` says it for one cluster,
+        `replace(info={})` for the whole store."""
+        s = self._recorded()
+        s.set_info("provenance", {"built_by": "x"})
+        assert s.drop_info("provenance") is True
+        assert sorted(s.info) == ["calculation"]
+        assert s.drop_info("provenance") is False, "already gone is not an error"
+
+    def test_a_cluster_must_survive_the_sidecar(self):
+        """`info` is written to `.molstruct.json`, so a value that cannot be
+        JSON is refused HERE — with the caller and the bad value both in
+        hand — rather than at the writer, several steps later, on a
+        structure that has since been edited."""
+        s = self._recorded()
+        with pytest.raises(ValueError, match="JSON"):
+            s.set_info("bad", {"fn": object()})
+        with pytest.raises(ValueError, match="non-empty"):
+            s.set_info("", {})
+        assert sorted(s.info) == ["calculation"], "a refusal changed nothing"
+
+    def test_the_whole_store_door_checks_the_shape(self):
+        """`apply_info_dict` is the in-place sibling of `replace(info=...)`
+        and the one the three whole-store writers needed — a sidecar load, a
+        caller-stated block, and the Results tab's run record each adopt an
+        entire store rather than one cluster."""
+        s = self._recorded()
+        with pytest.raises(ValueError, match="cluster-name"):
+            s.apply_info_dict(["not", "a", "dict"])
+
+        # REPLACE, NOT MERGE -- and the fixture has TWO clusters so the two
+        # can be told apart.  Every production caller happens to start from
+        # an empty store (a sidecar load, a run record, a text import, a
+        # `.XV` compose all build the Structure a few lines earlier), so a
+        # shallow-merge bug would satisfy this test with only one cluster
+        # present and leak the other forward the day a caller stopped
+        # starting empty.
+        s.set_info("provenance", {"built_by": "the slab wizard"})
+        s.apply_info_dict({"calculation": {"engine": "pyscf"}})
+        assert s.info == {"calculation": {"engine": "pyscf"}}, (
+            "the store was merged, not replaced -- `provenance` survived a "
+            "call that did not name it")
+
+        s.apply_info_dict(None)
+        assert s.info == {}, "None clears it -- 'this pair records nothing'"
+
+    def test_the_canonical_deserialiser_is_not_a_weaker_door(self):
+        """`from_dict` is `info`'s door on the way IN (§ 2.2a), and it used
+        to be a laxer one: it checked the block was a dict and assigned it,
+        where `set_info` / `apply_info_dict` also refuse an empty cluster
+        name and JSON-round-trip the value.
+
+        It is the door the BROWSER reaches -- `_shared.struct_from_body`
+        rebuilds every edited structure through it -- so measured
+        2026-09-22, `info: {"": ...}` POSTed to a modify route came back at
+        HTTP 200 and would have reached the sidecar.
+        """
+        with pytest.raises(ValueError, match="non-empty"):
+            Structure.from_dict({"elements": ["H"], "positions": [[0.0, 0, 0]],
+                                 "info": {"": {"smuggled": True}}})
+
+    # NOT TESTED HERE: that the store survives a pair round trip.
+    # `test_molstruct_json.py::test_info_rides_the_pair_whole` already
+    # asserts exactly that, through the same codec door, on a nested store.
+    # A second copy would be a test per call site, which earns no place
+    # (`process/testing.md`).

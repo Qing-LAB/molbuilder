@@ -308,7 +308,8 @@ def test_every_metadata_field_survives_the_whole_export_pipeline(tmp_path,
     })
     StructureCodec().write(struct, tmp_path / "slab.xyz")
     side_in = json.loads((tmp_path / "slab.molstruct.json").read_text())
-    assert side_in["pbc"] == [True, True, False], "precondition: mixed axes"
+    assert side_in["axis_kind"] == ["periodic", "periodic", "isolated"], (
+        "precondition: mixed axes")
 
     client = create_app(config={}).test_client()
     wire = client.post("/api/build/load",
@@ -352,7 +353,7 @@ def test_every_metadata_field_survives_the_whole_export_pipeline(tmp_path,
     assert diffs == {}, (
         f"metadata changed crossing the pipeline: {diffs}"
     )
-    assert side_out["pbc"] == [True, True, False]
+    assert side_out["axis_kind"] == ["periodic", "periodic", "isolated"]
 
 
 def test_channels_survive_the_pipeline_through_the_real_translators(

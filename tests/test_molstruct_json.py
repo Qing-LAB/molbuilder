@@ -869,73 +869,95 @@ class TestInfoBlock:
                         info={"bad": object()})
 
 
-class TestARetiredKeyIsNotAStrayOne:
-    """A sidecar written before a field was removed must still open.
+class TestARetiredKeyIsAcceptedNotRefused:
+    """PINS: a sidecar this project WROTE must keep opening after a field
+    is retired from the format.
 
-    `pbc` was removed as a stored field on 2026-09-22 and the read side was
-    told to accept-and-ignore it. Told in ONE of the three places that
-    enforce "which keys may a sidecar carry": `load_text` (parse-side, first),
-    `apply_to_structure` (sidecar-side), and `apply_metadata_dict` (structure-
-    side, last). Only the last was taught, so the first refused the payload
-    before the forgiving one ever saw it.
+    `pbc` left `METADATA_FIELDS` on 2026-09-22 -- it was the boolean view
+    of `axis_kind` and could never disagree with it. Every `.molstruct.json`
+    written before that carries the key, because `metadata_to_dict` emitted
+    it on every earlier build.
 
-    Measured the day it landed: 46 of the 53 sidecars under `projects/`
-    carry `pbc`, and `StructureCodec().load` raised on every one of them --
-    every structure in the tree unopenable, including the junction whose
-    `axis_kind` is the only record that its z axis is `transport`.
+    THREE gates refuse an unrecognised key, and they must agree:
+    `parse.sidecars.molstruct.load_text` (first, while the payload is
+    whole), `sidecars.molstruct.apply_to_structure`, and
+    `apply_metadata_dict` (last, onto the Structure). The retirement was
+    written into the last one only, so an old sidecar failed at the first
+    and never reached it. Both halves of the 2026-09-22 merge found this
+    independently and each saw a different part of its extent.
+
+    THE MUTATION THIS CATCHES: drop `pbc` from `RETIRED_METADATA_KEYS` and
+    nothing else in the suite notices, because every fixture writes a
+    current-format file. The damage lands only on files a user already has
+    -- which is exactly the failure a test suite built from fresh fixtures
+    is blind to.
     """
 
     @staticmethod
-    def _legacy_pair(tmp_path):
-        """A real pair, then `pbc` put back into the sidecar as an older
-        molbuilder would have written it."""
+    def _current():
+        import numpy as np
+        from molbuilder.structure import Structure
+        return Structure(elements=["C", "C"],
+                         positions=np.array([[0.0, 0.0, 0.0],
+                                             [0.0, 0.0, 1.2]]),
+                         cell=np.diag([9.0, 9.0, 14.0]),
+                         axis_kind=("periodic", "periodic", "transport"))
+
+    def test_a_sidecar_written_before_the_retirement_still_loads(self, tmp_path):
+        """The old shape: `pbc` beside `axis_kind`, as this project wrote it
+        for every pair up to schema 9."""
         import json
+        from molbuilder.workingcopy_structure import StructureCodec
+        xyz = tmp_path / "j.xyz"
+        StructureCodec().write(self._current(), xyz)
+        side = tmp_path / "j.molstruct.json"
+        payload = json.loads(side.read_text())
+        payload["pbc"] = [True, True, True]      # what the old writer emitted
+        side.write_text(json.dumps(payload))
+
+        back = StructureCodec().load(xyz)        # must not raise
+        assert back.axis_kind == ("periodic", "periodic", "transport"), (
+            "the retired key was read instead of ignored -- `transport` "
+            "cannot survive a boolean")
+        assert back.pbc() == (True, True, True)
+
+    def test_the_retired_key_is_no_longer_written(self, tmp_path):
+        """The other half: accepting it on read must not mean emitting it
+        again on write, or the duplicate comes back through the round trip."""
+        import json
+        from molbuilder.workingcopy_structure import StructureCodec
+        xyz = tmp_path / "j.xyz"
+        StructureCodec().write(self._current(), xyz)
+        payload = json.loads((tmp_path / "j.molstruct.json").read_text())
+        assert "pbc" not in payload
+        assert payload["axis_kind"] == ["periodic", "periodic", "transport"]
+
+    def test_a_key_that_was_never_ours_is_still_refused(self, tmp_path):
+        """RETIRED is not the same as UNKNOWN, and the difference is the
+        user's file. A key this project never wrote is a fact they believe
+        they stored and this build cannot honour -- named and refused, not
+        dropped.
+
+        Asserted at TWO gates in one test, because the property is that the
+        gates AGREE and a gate is not a call site: the door a user reaches
+        (`StructureCodec.load`, which answers at `load_text`) and the
+        structure-side authority underneath it.
+        """
+        import json
+        import numpy as np
+        from molbuilder.sidecars.molstruct import MolstructJsonError
         from molbuilder.structure import Structure
         from molbuilder.workingcopy_structure import StructureCodec
-        s = Structure(elements=["C", "H", "Au"],
-                      positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                                 [0.0, 2.0, 0.0]],
-                      cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]],
-                      axis_kind=("periodic", "periodic", "transport"),
-                      frozen_atoms=[2])
+
+        s = Structure(elements=["C"], positions=np.zeros((1, 3)))
+        with pytest.raises(ValueError, match="unknown metadata"):
+            s.apply_metadata_dict({"invented_by_nobody": [1, 2, 3]})
+
         xyz = tmp_path / "j.xyz"
-        StructureCodec().write(s, xyz)
+        StructureCodec().write(self._current(), xyz)
         side = tmp_path / "j.molstruct.json"
-        data = json.loads(side.read_text())
-        data["pbc"] = [True, True, True]          # what the old writer emitted
-        side.write_text(json.dumps(data, indent=2))
-        return xyz
-
-    def test_a_sidecar_carrying_pbc_still_loads(self, tmp_path):
-        from molbuilder.workingcopy_structure import StructureCodec
-        got = StructureCodec().load(self._legacy_pair(tmp_path))
-        # and everything it actually carries arrives, `transport` included --
-        # the fact the retired boolean could never have expressed.
-        assert got.axis_kind == ("periodic", "periodic", "transport")
-        assert got.frozen_atoms == [2]
-        assert got.cell[2][2] == 9.0
-
-    def test_and_it_is_not_written_back(self, tmp_path):
-        """Accepted and IGNORED: re-saving drops it, so the file heals."""
-        import json
-        from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._legacy_pair(tmp_path)
-        codec = StructureCodec()
-        codec.write(codec.load(xyz), xyz)
-        assert "pbc" not in json.loads(
-            (tmp_path / "j.molstruct.json").read_text())
-
-    def test_a_key_nobody_ever_wrote_is_still_refused(self, tmp_path):
-        """The forgiveness is a LIST, not a shrug: an unknown key is still a
-        fact the writer believes it saved, and is still named and refused."""
-        import json
-        import pytest
-        from molbuilder.sidecars.molstruct import MolstructJsonError
-        from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._legacy_pair(tmp_path)
-        side = tmp_path / "j.molstruct.json"
-        data = json.loads(side.read_text())
-        data["spin_texture"] = [0, 1, 2]
-        side.write_text(json.dumps(data, indent=2))
-        with pytest.raises(MolstructJsonError, match="spin_texture"):
+        payload = json.loads(side.read_text())
+        payload["invented_by_nobody"] = [1, 2, 3]
+        side.write_text(json.dumps(payload))
+        with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
             StructureCodec().load(xyz)

@@ -41,6 +41,7 @@ them through (see the methods + their tests).
 from __future__ import annotations
 
 import copy as _copy
+import json as _json
 
 from dataclasses import dataclass, field
 from io import StringIO
@@ -131,23 +132,41 @@ FROZEN_LABEL = "frozen_atoms"
 METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
                    "vacuum", "annotations")
 
-#: Keys a sidecar ON DISK may carry that this version no longer stores.
-#: ACCEPTED AND IGNORED, never refused: the file is the user's and predates
-#: the change, and the no-shims rule is about renames in code, not formats
-#: people already have.  `pbc` went on 2026-09-22 -- it was the boolean view
-#: of `axis_kind` and could never disagree with it, so there is nothing in it
-#: to read back.
+#: Keys a sidecar ON DISK may carry that this build no longer stores.
+#: ACCEPTED AND IGNORED wherever a stored payload is read -- never refused.
 #:
-#: MODULE SCOPE BECAUSE THREE GUARDS ENFORCE IT.  This was a local inside
-#: `apply_metadata_dict`, which is the LAST of the three places that check
-#: which keys a sidecar may carry -- `parse.sidecars.molstruct.load_text`
-#: runs first, then `sidecars.molstruct.apply_to_structure`, then this one.
-#: Only the last was taught the difference when `pbc` went, so the earlier
-#: two refused the payload before the forgiving one ever saw it.  Measured
-#: 2026-09-22: 46 of the 53 sidecars in `projects/` carry `pbc`, and
-#: `StructureCodec().load` raised on every one of them.  One list, three
-#: guards.
-RETIRED_METADATA_FIELDS = ("pbc",)
+#: An UNKNOWN key and a RETIRED one are different states, and the difference
+#: is the user's file.  Unknown is a fact they believe they stored and this
+#: build cannot honour, so it is named and refused.  Retired is a key THIS
+#: project used to write and has since stopped: the file is not wrong, it is
+#: older, and refusing it would make a pair that opened yesterday unopenable
+#: today for no gain.
+#:
+#: Retiring a key is only safe when nothing is lost by ignoring it, and that
+#: is shown rather than assumed.  For `pbc` (2026-09-22) it is: the boolean
+#: was always recomputed from `axis_kind`, every sidecar at a readable schema
+#: version carries a real `axis_kind`, and `Structure.pbc()` reproduces the
+#: value on demand.  A key whose fact lives nowhere else cannot be retired
+#: this way -- it needs a schema bump and a reader that migrates it.
+#:
+#: SHARED, because THREE gates ask this question, not two.  Both halves of
+#: this merge found the bug and each found a different part of its extent:
+#:
+#:   1. `parse.sidecars.molstruct.load_text` -- refuses stray keys while the
+#:      payload is still whole, deliberately upstream (the v3 frozen-atom
+#:      loss went through a guard that sat downstream of the leak);
+#:   2. `sidecars.molstruct.apply_to_structure` -- refuses them again before
+#:      applying;
+#:   3. `apply_metadata_dict` -- refuses them on the way onto a Structure.
+#:
+#: The retirement was written into (3) only, so an old sidecar failed at (1)
+#: and never reached it.  Derived from the writer, not from a file tree:
+#: `metadata_to_dict` emitted `pbc` on every build before 2026-09-22, so
+#: EVERY pair this project has ever written carries it.  Gate (2) is not
+#: reachable from `StructureCodec.load` -- (1) answers first -- but it takes
+#: a payload directly, so a caller that builds one in code hits it, and a
+#: guard that disagrees with its neighbours is the next version of this bug.
+RETIRED_METADATA_KEYS = ("pbc",)
 
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
@@ -464,6 +483,20 @@ class Structure:
     #: `copy`, `concat`, the ops, the codecs.  A rebuild that simply did
     #: not list the field is a defect: a vanished contract cannot be told
     #: apart from one that was never recorded.
+    #:
+    #: **IT IS A NAMESPACE OF CLUSTERS, ONE PER SUBSYSTEM** *(user,
+    #: 2026-09-22)*.  A top-level key is a cluster name and its value is
+    #: that subsystem's own metadata; nothing else writes inside someone
+    #: else's cluster.  `calculation` is the one this project ships -- the
+    #: recorded contract a finished run leaves on the pair -- and any
+    #: further non-structural metadata goes beside it under its own name
+    #: rather than being flattened in with it.
+    #:
+    #: That shape was already decided on the browser side, where
+    #: `molview.data.info` has offered `set(key, value)` / `remove(key)`
+    #: since it shipped.  Python had no equivalent, which is exactly why
+    #: three callers assigned the whole store by hand; :meth:`set_info`,
+    #: :meth:`drop_info` and :meth:`apply_info_dict` are that half.
     info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -906,8 +939,8 @@ class Structure:
         A retired key is one THIS project used to write and has since stopped:
         the file is not wrong, it is older, and refusing it would make a pair
         that opened yesterday unopenable today for no gain.
-        ``RETIRED_METADATA_FIELDS`` (module scope, because the sidecar
-        reader has a second stray-key guard that must agree) is that list.
+        ``RETIRED_METADATA_KEYS`` (module scope, because two more gates ask
+        the same question upstream of this one and must agree) is that list.
 
         Retiring a key is only safe when nothing is lost by ignoring it, and
         that has to be shown rather than assumed.  For ``pbc`` it is: the
@@ -919,7 +952,7 @@ class Structure:
         data = data or {}
         unknown = [k for k in data
                    if k not in METADATA_FIELDS
-                   and k not in RETIRED_METADATA_FIELDS]
+                   and k not in RETIRED_METADATA_KEYS]
         if unknown:
             raise ValueError(
                 f"Structure.apply_metadata_dict: unknown metadata "
@@ -994,13 +1027,17 @@ class Structure:
         )
         # Full-replace + revalidate the metadata block through the ONE codec.
         s.apply_metadata_dict(data.get("metadata"))
-        raw_info = data.get("info")
-        if raw_info is not None:
-            if not isinstance(raw_info, dict):
-                raise ValueError(
-                    f"Structure.from_dict: 'info' must be a dict of "
-                    f"key -> JSON value, got {type(raw_info).__name__}")
-            s.info = dict(raw_info)
+        # THROUGH THE SAME DOOR AS EVERY OTHER WRITER.  This checked only
+        # that the block was a dict and then assigned it, so `from_dict` was
+        # a WEAKER door than `set_info` / `apply_info_dict` -- which also
+        # refuse an empty cluster name and JSON-round-trip the value.  It is
+        # the one the browser reaches: `_shared.struct_from_body` builds
+        # every edited structure through here, so `info: {"": ...}` posted
+        # to any modify route came back at HTTP 200 and would have gone to
+        # disk in the sidecar (measured 2026-09-22).  One door, one set of
+        # rules, whichever direction the store arrives from.
+        if data.get("info") is not None:
+            s.apply_info_dict(data.get("info"))
         return s
 
     def to_wire(self) -> dict:
@@ -1207,11 +1244,15 @@ class Structure:
         frozen door is not re-passed. A caller who states ``frozen_atoms`` (with
         or without ``regions``) gets exactly what they asked for.
 
-        Also installed as ``__replace__``, so on Python 3.13+ plain
-        ``dataclasses.replace`` routes through this automatically. **On 3.12 it
-        does not** — the interpreter has no such hook — so on this interpreter
-        ``dataclasses.replace(struct, regions=…)`` still carries the trap and
-        this method is the only correct door.
+        **``dataclasses.replace`` NEVER routes here, on any version.**  This
+        said it did from 3.13; checked against the stdlib source 2026-09-22,
+        `dataclasses.replace` ends `return obj.__class__(**changes)` and the
+        word ``__replace__`` does not appear in the function at all.  What
+        3.13 added is `copy.replace`, a DIFFERENT helper, and that one does
+        dispatch through the hook -- which is the only reason the alias below
+        is worth keeping.  So `dataclasses.replace(struct, ...)` carries the
+        trap on every interpreter, and this method is the only correct door,
+        with no upgrade that changes it.
 
         IT IS ``copy()`` PLUS THE CHANGES, and that is the second reason to
         use it.  ``dataclasses.replace`` re-passes the mutable fields BY
@@ -1243,7 +1284,9 @@ class Structure:
         kw.update(changes)
         return type(self)(**kw)
 
-    #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
+    #: `copy.replace` (3.13+) dispatches here; `dataclasses.replace` does
+    #: NOT, on any version -- it calls `obj.__class__(**changes)` directly.
+    #: Inert on 3.12, which has no `copy.replace`.
     __replace__ = replace
 
     # ------------------------------------------------------------------ #
@@ -1871,6 +1914,89 @@ class Structure:
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
         )
+
+    # ------------------------------------------------------------------ #
+    #  The `info` namespace -- one cluster per subsystem (§ 2.2a)         #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _json_safe(value, where: str):
+        """A cluster must survive the sidecar, so it must be JSON.
+
+        Checked on the way IN, where the caller and the offending value are
+        both in hand -- not at save time, several steps away, on a structure
+        that has already been edited.  Mirrors the browser's own door, which
+        does the same round-trip before accepting a cluster.
+        """
+        try:
+            return _json.loads(_json.dumps(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{where}: the value must be JSON-serialisable, because "
+                f"`info` is written to the .molstruct.json sidecar -- "
+                f"{exc}") from exc
+
+    def set_info(self, key: str, value: Any) -> None:
+        """Write ONE cluster of :attr:`info`, in place, leaving the rest alone.
+
+        ``info`` is a namespace: a top-level key names a subsystem and owns
+        everything under it (§ 2.2a).  This writes one of them, which is the
+        difference that matters -- assigning ``struct.info`` replaces the
+        WHOLE store, so a caller recording its own metadata would take the
+        recorded calculation contract with it unless it happened to copy that
+        across too.
+
+        The browser has had this since MolView shipped
+        (``molview.data.info.set``); this is the Python half, which was
+        missing, which is why three callers assigned the attribute directly.
+        """
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "Structure.set_info: the cluster name must be a non-empty "
+                "string (it is a top-level key in `info`)")
+        safe = self._json_safe(value, f"Structure.set_info({key!r})")
+        self.info = dict(self.info or {})
+        self.info[key] = safe
+
+    def drop_info(self, key: str) -> bool:
+        """Remove ONE cluster.  ``True`` if it was there.
+
+        A STRIP IS EXPLICIT (§ 2.2a), and this is how one is said for a
+        single cluster -- as against `replace(info={})`, which says it for
+        the whole store.  Removing a cluster that is not there is not an
+        error: the caller asked for it to be gone and it is.
+        """
+        if not self.info or key not in self.info:
+            return False
+        self.info = {k: v for k, v in self.info.items() if k != key}
+        return True
+
+    def apply_info_dict(self, data: Optional[dict]) -> None:
+        """Replace the WHOLE ``info`` store, in place.
+
+        The in-place sibling of ``replace(info=...)``, and the door the three
+        whole-store writers needed: a sidecar load, a caller-stated block,
+        and the Results tab's run record each adopt an entire store rather
+        than one cluster.  They assigned ``struct.info`` directly for want of
+        this, so nothing checked the shape and a non-dict or an
+        unserialisable value travelled until it reached the sidecar writer.
+
+        ``None`` or ``{}`` clears it -- which is what "this pair records
+        nothing" means, and is why absence and emptiness are the same here.
+        """
+        if data is None:
+            self.info = {}
+            return
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Structure.apply_info_dict: `info` is an object of "
+                f"cluster-name -> value (§ 2.2a); got {type(data).__name__}")
+        bad = [k for k in data if not isinstance(k, str) or not k]
+        if bad:
+            raise ValueError(
+                f"Structure.apply_info_dict: cluster names must be non-empty "
+                f"strings; got {bad!r}")
+        self.info = self._json_safe(dict(data), "Structure.apply_info_dict")
 
     def mark_contract_outdated(self, what: str = "structure") -> None:
         """An edit OUTDATES the recorded contract; it does not erase it.

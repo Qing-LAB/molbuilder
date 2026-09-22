@@ -609,18 +609,20 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"the sidecar from /modify after structural edits."
         )
     from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
-                                      RETIRED_METADATA_FIELDS)
-    # A RETIRED KEY IS NOT A STRAY ONE, and this guard has to know the
-    # difference because it runs before `apply_metadata_dict`, which does.
-    # `pbc` was removed on 2026-09-22 and only that last guard was taught,
-    # so this one refused the payload before the forgiving one saw it --
-    # and every pair written before that day stopped opening.  Measured:
-    # 46 of the 53 sidecars in `projects/` carry `pbc`, and
-    # `StructureCodec().load` raised `MolstructJsonError` on all of them.
+                                      RETIRED_METADATA_KEYS)
+    # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
+    # question, and it has to give the same answer as the other two
+    # (`structure.RETIRED_METADATA_KEYS` says which and why).
+    #
+    # `StructureCodec.load` never reaches here with a stray key, because
+    # `parse.sidecars.molstruct.load_text` answers first.  This gate takes a
+    # payload DIRECTLY, so a caller that builds one in code does reach it --
+    # and a guard that disagrees with its neighbours about what is retired
+    # is how this bug happened in the first place.
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
              and k not in IDENTITY_FIELDS and k != "info"
-             and k not in RETIRED_METADATA_FIELDS]
+             and k not in RETIRED_METADATA_KEYS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
@@ -645,7 +647,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # absent means "nothing recorded", and a stale store must not survive
     # a pair that no longer carries one.
     raw_info = sidecar_data.get("info")
-    struct.info = dict(raw_info) if isinstance(raw_info, dict) else {}
+    # THROUGH THE DOOR.  A sidecar states the whole store, so this is the
+    # whole-store door -- and it is a door rather than an assignment so the
+    # shape is checked here, at the file that supplied it, instead of at
+    # the writer several steps later (§ 2.2a).
+    struct.apply_info_dict(raw_info if isinstance(raw_info, dict) else None)
     try:
         struct.apply_metadata_dict(
             {k: v for k, v in sidecar_data.items() if k in METADATA_FIELDS})
