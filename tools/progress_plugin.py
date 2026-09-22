@@ -18,6 +18,7 @@ reporting a number from whatever survived):
     {"event":"start",     "run":<id>, "pid":<int>, "time":<epoch>}
     {"event":"collected", "run":<id>, "n":<int>, "time":<epoch>}
     {"event":"test",  "run":<id>, "nodeid":<str>, "outcome":"passed|failed|skipped",
+                      # nodeid gains a " [teardown]" suffix for a teardown failure
                       "duration":<sec>, "reason":<short str>, "time":<epoch>}
     {"event":"done",  "run":<id>, "exitstatus":<int>, "time":<epoch>}
 
@@ -106,10 +107,22 @@ def pytest_collection_finish(session):
 
 def pytest_runtest_logreport(report):
     # Record the CALL phase for every test, PLUS setup-phase failures/skips
-    # (a test that errors or is skipped in setup never reaches "call").
+    # (a test that errors or is skipped in setup never reaches "call") PLUS
+    # teardown failures.
+    #
+    # TEARDOWN IS NOT AN AFTERTHOUGHT -- IT IS WHERE THE CANARIES LIVE.
+    # `tests/conftest.py` guards the developer's config directory, checkout
+    # and conda envs with session-scoped fixtures that RAISE AFTER the yield,
+    # so the one report that names them arrives with `when == "teardown"`
+    # (against whichever test happened to be last).  Skipping that phase made
+    # pytest exit 1 while this file recorded every test as passed, and
+    # `testrun.py status` printed `FAIL 0` -- a canary firing read as green.
+    # Observed 2026-09-22: the checkout canary caught a real edit-during-run
+    # and the summary said the suite was clean.
     is_call = report.when == "call"
     is_setup_terminal = report.when == "setup" and report.outcome in ("failed", "skipped")
-    if not (is_call or is_setup_terminal):
+    is_teardown_failure = report.when == "teardown" and report.outcome == "failed"
+    if not (is_call or is_setup_terminal or is_teardown_failure):
         return
     reason = ""
     if report.outcome == "failed":
@@ -118,7 +131,11 @@ def pytest_runtest_logreport(report):
         reason = lines[-1][:300] if lines else ""
     _write({
         "event": "test",
-        "nodeid": report.nodeid,
+        # The phase is part of the identity: a teardown failure shares its
+        # nodeid with the same test's passing CALL record, and without this
+        # the reader sees one test both passed and failed.
+        "nodeid": (report.nodeid if is_call or is_setup_terminal
+                   else f"{report.nodeid} [teardown]"),
         "outcome": report.outcome,
         "duration": round(getattr(report, "duration", 0.0), 2),
         "reason": reason,

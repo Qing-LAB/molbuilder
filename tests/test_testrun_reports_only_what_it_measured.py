@@ -137,6 +137,66 @@ def test_status_never_prints_a_result_line_for_a_file_that_has_none(
     assert rc == 1, "status must report a non-zero code for an untrusted file"
 
 
+def test_a_nonzero_exit_no_failure_explains_is_UNEXPLAINED_not_done(tmp_path):
+    """The 2026-09-22 shape: every test passed and pytest still exited 1.
+
+    A session-scoped fixture raising AFTER its yield -- which is what all
+    three `the_suite_leaves_your_*_alone` canaries in `tests/conftest.py` do
+    -- fails the run without producing a failed CALL report. `done (exit 1) |
+    pass 9513  FAIL 0` was printed and read as green while the checkout
+    canary was firing.  The exit code outranks the counts.
+    """
+    p = tmp_path / "b.jsonl"
+    _write(p, _run("r1", 9527, collected=9527, done=1))
+    s = testrun._summarise("b", str(p))
+    assert s["state"] == "unexplained", s
+    assert "exited 1" in s["why"] and "teardown" in s["why"]
+
+
+def test_a_teardown_failure_is_a_failure_and_not_a_second_test(tmp_path):
+    """It explains the exit code, so the run is `done` -- and it must not
+    inflate `ran`, which would make `ran`/`collected` meaningless."""
+    p = tmp_path / "b.jsonl"
+    recs = _run("r1", 10, collected=10, done=1)
+    recs.insert(-1, {"event": "test", "run": "r1",
+                     "nodeid": "t.py::t9 [teardown]", "outcome": "failed",
+                     "duration": 0.0, "reason": "AssertionError: canary",
+                     "time": 200.0})
+    _write(p, recs)
+    s = testrun._summarise("b", str(p))
+    assert s["state"] == "done", s
+    assert (s["ran"], s["collected"]) == (10, 10), \
+        "the teardown record was counted as an eleventh test"
+    assert s["failed"] == 1 and s["failed_ids"][0][0].endswith("[teardown]")
+
+
+def test_the_plugin_records_a_teardown_failure_at_all(tmp_path):
+    """The writer's half of the same defect: the report never reached the
+    file, so no reader could have shown it."""
+    written = []
+
+    class _Report:
+        when = "teardown"
+        outcome = "failed"
+        nodeid = "t.py::t0"
+        duration = 0.0
+        longreprtext = "conftest.py:498: AssertionError: THE CANARY FIRED"
+
+    progress_plugin._STATE["path"] = str(tmp_path / "b.jsonl")
+    progress_plugin._STATE["run"] = "r1"
+    try:
+        progress_plugin.pytest_runtest_logreport(_Report())
+        written = [json.loads(l) for l in
+                   (tmp_path / "b.jsonl").read_text().splitlines() if l]
+    finally:
+        progress_plugin._STATE["path"] = None
+    assert len(written) == 1, "the teardown failure was dropped"
+    assert written[0]["outcome"] == "failed"
+    assert written[0]["nodeid"] == "t.py::t0 [teardown]", (
+        "without the suffix it collides with the same test's passing CALL "
+        "record and the reader shows one test as both passed and failed")
+
+
 # --------------------------------------------------------------------------- #
 #  The writer's half: evidence is not destroyed                               #
 # --------------------------------------------------------------------------- #

@@ -181,7 +181,11 @@ def _summarise(batch, path):
     counts = {"passed": 0, "failed": 0, "skipped": 0}
     for e in tests:
         counts[e["outcome"]] = counts.get(e["outcome"], 0) + 1
-    ran = len(tests)
+    # A teardown failure is an extra record against a test that already has a
+    # CALL record, so it must not count toward `ran` -- otherwise `ran`
+    # overshoots `collected` and the ran/collected comparison stops meaning
+    # anything.  It still counts as a failure, because it is one.
+    ran = sum(1 for e in tests if not e["nodeid"].endswith(" [teardown]"))
 
     if strays:
         state = "interleaved"
@@ -195,6 +199,21 @@ def _summarise(batch, path):
         state = "partial"
         why = (f"the run stopped after {ran} of {collected} collected tests "
                f"(exit {done['exitstatus']}); this is NOT a suite result")
+    elif done and done["exitstatus"] != 0 and counts["failed"] == 0:
+        # THE EXIT CODE IS EVIDENCE TOO, AND IT OUTRANKS THE COUNTS.
+        # pytest exits non-zero for things that never become a test record:
+        # a session-scoped fixture raising in teardown (the conftest canaries
+        # that guard the config dir, the checkout and the conda envs), an
+        # internal error, a plugin error.  Printing `FAIL 0` there reported a
+        # fired canary as a clean suite on 2026-09-22.  `status` now refuses
+        # to call it done -- the discrepancy IS the finding.
+        state = "unexplained"
+        why = (f"pytest exited {done['exitstatus']} but no test was recorded "
+               f"as failed. Something outside a test's call failed -- most "
+               f"likely a session-scoped fixture raising in teardown (the "
+               f"`the_suite_leaves_your_*_alone` canaries in "
+               f"`tests/conftest.py`), an internal error, or a plugin error. "
+               f"This is NOT green: read the runner's own stdout.")
     elif done:
         state = "done"
         why = None
@@ -316,13 +335,14 @@ def cmd_status(args):
                     if reason:
                         print(f"         -> {reason}")
             continue
-        head = (f"[{b}] {s['state'].upper() if s['state'] == 'partial' else s['state']}"
+        loud = s["state"] in ("partial", "unexplained")
+        head = (f"[{b}] {s['state'].upper() if loud else s['state']}"
                 + (f" (exit {s['exitstatus']})" if s['exitstatus'] is not None else "")
                 + f" | {s['ran']}/{s['collected']} ran"
                 + f" | pass {s['passed']}  FAIL {s['failed']}  skip {s['skipped']}"
                 + f" | {s['elapsed']}s")
         print(head)
-        if s["state"] == "partial":
+        if loud:
             untrustworthy = True
             print(f"      {s['why']}")
         if args.fails and s["failed_ids"]:
