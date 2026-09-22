@@ -467,9 +467,13 @@ export function structureForServer(structure, positions) {
     if (channelsOut)  out.metadata.annotations = channelsOut;
     /* The `info` store (structure-info-plan.md): TOP-level, beside
      * `metadata`, exactly where Structure.from_dict reads it -- what
-     * the Metadata pane shows is what the pair will carry. */
+     * the Metadata pane shows is what the pair will carry.
+     *
+     * COPIED like everything else here: `readData()` backs `exportFile`, so
+     * a caller editing `data.structure.info` was writing into the live store
+     * -- past the `info.set` door and its `announceStructure()`. */
     if (structure.info && Object.keys(structure.info).length) {
-        out.info = structure.info;
+        out.info = clone(structure.info);
     }
     return out;
 }

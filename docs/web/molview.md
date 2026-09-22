@@ -1639,11 +1639,25 @@ the same way a load does), and with the store gone the
 `structure_modified` flag below had nothing left to mark.
 
 **An edit outdates a recorded contract** (user, 2026-08-29).  When the
-store carries `info.calculation` and an edit lands, the viewer records
-it beside the contract, at the same gated points the unsaved badge is
+store carries `info.calculation` and an edit lands, the flag is recorded
+beside the contract, at the same gated points the unsaved badge is
 raised — so a read-only viewer or a failed edit never flags.  Neither
 flag is ever cleared by the viewer (Retract is how an edit is un-done)
 and both ride the pair like everything in the store.
+
+**WHO DECIDES IT, IN ONE LANGUAGE** *(2026-09-21)*.  The edit itself
+decides, and every geometry and cell edit runs in **Python**:
+`Structure.mark_contract_outdated()` is called at each edit exit in
+`modify.py` and inside `periodicity_gate.apply_edit`, and the answer
+carries the marked `info` back — `/api/modify/<name>` inside
+`payload.structure`, `/api/structure/periodicity` beside its
+`periodicity` block.  The browser **adopts** that answer and never
+re-decides it; `structureFromServer` and `applyCell` are where it lands.
+The one exception is `writeLabel`, the only edit that makes no request
+at all — it rewrites `annotations` in place, so `labels_modified` is
+decided in the browser because there is nowhere else it could be.  Two
+languages setting one flag is how they came to disagree about what an
+edit had actually done.
 
 **TWO FLAGS, because they invalidate different things** *(user,
 2026-09-07)*.  One flag was set by geometry ops, cell ops **and label

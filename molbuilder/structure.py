@@ -1154,6 +1154,23 @@ class Structure:
             **self._carry_nonatom(),
         }
         kw.update(changes)
+        # `axis_kind` OUTRANKS `pbc` in ``__post_init__``, and this method seeds
+        # BOTH from the source -- so a caller who stated only `pbc` had it
+        # silently discarded by the carried kind.  That was the one field for
+        # which "state only what CHANGES" was false.  When the stated booleans
+        # CONTRADICT the carried kinds, those kinds describe a box the caller
+        # has just stopped asking for, so they step aside and the kinds are
+        # derived from what WAS asked.  When the two agree the carried kinds
+        # stay, because `transport` is a distinction no boolean can carry back.
+        if changes.get("pbc") is not None and "axis_kind" not in changes:
+            carried = kw.get("axis_kind")
+            try:
+                stated = tuple(bool(b) for b in changes["pbc"])
+            except TypeError:
+                stated = None                 # __post_init__ refuses it below
+            if (carried is not None and stated is not None
+                    and tuple(k != "isolated" for k in carried) != stated):
+                kw["axis_kind"] = None
         return type(self)(**kw)
 
     #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
@@ -1729,7 +1746,18 @@ class Structure:
                 "to_ase() needs the 'ase' package; install with "
                 "`pip install ase`"
             ) from exc
-        return Atoms(symbols=self.elements, positions=self.positions)
+        # WITH THE BOX, because `pbc` exists precisely as the ASE-interop view
+        # of `axis_kind` (§ 1) and this is the one ASE door.  Handing over
+        # atoms alone described a crystal as a gas-phase cluster: an `Atoms`
+        # with a zero cell and `pbc = [F,F,F]`, so anything the caller did
+        # with it -- a neighbour list, a symmetry search, a write -- answered
+        # the wrong question and said nothing.  `resolve_cell()` rather than
+        # the raw field, so a derived box travels too; `None` stays unset.
+        resolved = self.resolve_cell()
+        return Atoms(symbols=self.elements, positions=self.positions,
+                     cell=(None if resolved is None
+                           else np.asarray(resolved, dtype=float)),
+                     pbc=self.pbc)
 
     # ------------------------------------------------------------------ #
     #  Combine / translate / center -- handy small utilities              #
@@ -1946,14 +1974,32 @@ class Structure:
         # `_carry_nonatom` is the single list of the non-atom lattice
         # fields and every other op-helper already spreads it; `concat` was
         # written before that rule and never joined it.
+        #
+        # AND WHEN NOBODY STATES A BOX, THE FIRST STILL HAS FACTS.  `axis_kind`
+        # and `vacuum` live on a structure whose cell is DERIVED exactly as
+        # much as on one that states a lattice, so an empty dict here threw
+        # away the transport axis and the typed vacuum of every input -- the
+        # very loss the paragraph above says `_carry_nonatom` exists to stop.
+        #
+        # AND ONLY THE BOX COMES FROM `base`.  A cell and its corner are the
+        # one thing an incoming fragment can supply that the canvas lacks;
+        # `axis_kind`, `vacuum` and `info` are facts OF THE CANVAS, true of it
+        # whether or not it states a lattice.  Taking the whole non-atom block
+        # from whoever happened to carry a cell let a fragment overwrite them:
+        # appending a slab onto a molecule with a typed 8 A vacuum replaced
+        # that vacuum with the slab's (0,0,0) and turned two isolated axes
+        # crystalline, silently, because nothing was outside the box
+        # afterwards for `cell.check` to notice (§ 6.1 clause 1: `vacuum`
+        # keeps exactly what the user typed; § 2.2a: a strip is explicit).
         base = next((s for s in structures if s.cell is not None), None)
-        lattice = base._carry_nonatom() if base is not None else {}
-        # `info` IS NOT THE LATTICE'S.  The box comes from whichever
-        # structure HAS one; the recorded contract belongs to the one
-        # being appended TO, which is the first, cell or no cell.  Taking
-        # both from `base` loses it whenever only the incoming structure
-        # carries a box.
         first = structures[0]
+        lattice = first._carry_nonatom()
+        if base is not None and base is not first:
+            _box = base._carry_nonatom()
+            lattice["cell"] = _box["cell"]
+            lattice["cell_origin"] = _box["cell_origin"]
+        # `info` IS NOT THE LATTICE'S.  The recorded contract belongs to the
+        # one being appended TO, which is the first, cell or no cell.
         lattice["info"] = (_copy.deepcopy(first.info) if first.info else {})
         return cls(
             elements      = elements,

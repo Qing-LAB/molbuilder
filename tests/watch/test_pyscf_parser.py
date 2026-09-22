@@ -13,12 +13,16 @@ import math
 
 import pytest
 
-# Derived from the ONE home exactly as `parse/engines/pyscf.py` does --
-# this file retyped `27.211386245988 / 0.5291772108` six times, and the
-# Bohr half was already stale against `constants.py` (2026-09-09).
-from molbuilder.constants import (BOHR_ANGSTROM as _BOHR_ANGSTROM,
-                                  HARTREE_EV as _HARTREE_TO_EV)
-_HA_BOHR_TO_EV_ANG = _HARTREE_TO_EV / _BOHR_ANGSTROM
+# THE SAME DIALECT THE PARSER NAMES, not a second derivation of it.
+# `constants.py` keeps two spellings of Hartree/Bohr -> eV/A on purpose --
+# the ASE/NIST value and `HARTREE_EV / BOHR_ANGSTROM`, 0.36 ppm apart --
+# and says a call site NAMES the one it needs, because a force and the
+# threshold drawn over it must share one.  This file composed the second
+# while `parse/engines/pyscf.py` imports the first, so the assertion was
+# measuring the gap between the two dialects rather than the conversion.
+from molbuilder.constants import HARTREE_EV as _HARTREE_TO_EV
+from molbuilder.constants import (
+    HARTREE_BOHR_EV_ANGSTROM_ASE as _HA_BOHR_TO_EV_ANG)
 
 from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 from molbuilder.parse.engines.pyscf import PySCFParser

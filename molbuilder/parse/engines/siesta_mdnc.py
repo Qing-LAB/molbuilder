@@ -447,11 +447,14 @@ def upgrade_frames(frames: Sequence, out_path: Path, *,
         # element list.
         if (src_pos is not None and own_pos is not None
                 and src_pos.shape == own_pos.shape):
-            # `replace` re-runs Structure.__post_init__, so the swapped
-            # geometry gets the same validation any parsed one does; the
-            # annotations, elements and PDB metadata ride along untouched.
-            changes["structure"] = dataclasses.replace(
-                frame.structure, positions=src_pos)
+            # THE DOOR, not `dataclasses.replace`: the swapped geometry gets
+            # the same `__post_init__` validation any parsed one does, and the
+            # annotations, elements and PDB metadata ride along COPIED.
+            # `dataclasses.replace` re-passed them by reference, so this
+            # frame's structure shared its `cell` and `info` dict with the
+            # frame it was derived from -- one trajectory, two frames, one
+            # aliased record.
+            changes["structure"] = frame.structure.replace(positions=src_pos)
             n_coords += 1
         if src.energy is not None:
             changes["energy"] = src.energy

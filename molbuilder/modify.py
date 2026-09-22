@@ -871,11 +871,20 @@ def _finish_slab(struct, metal_pos, element, full):
     # dropped `vacuum` -- the padding the person typed, which § 6.1
     # clause 1 calls truth and which is what "Use default" restores --
     # and would drop every field added to `Structure` after today.
+    #
+    # THE BOX IS STATED AS A WHOLE, `pbc` INCLUDED.  When the layers come out
+    # coplanar there is no z extent to capture (above), so this op has no cell
+    # to give -- and a `pbc` carried from the source is then a periodic axis
+    # with no lattice, which `resolve_cell()` refuses outright.  Four fields,
+    # one decision: the captured box, or no box at all.
+    captured = ({"cell": elc_cell,
+                 "cell_origin": elc_cell_origin,
+                 "axis_kind": elc_axis_kind}
+                if elc_cell is not None else
+                {"cell": None, "cell_origin": None, "axis_kind": None,
+                 "pbc": (False, False, False)})
     out = Structure(
-        **{**struct._carry_nonatom(),
-           "cell": elc_cell,
-           "cell_origin": elc_cell_origin,
-           "axis_kind": elc_axis_kind},
+        **{**struct._carry_nonatom(), **captured},
         elements=list(struct.elements) + [element] * n_new,
         positions=np.vstack([struct.positions, metal_pos]),
         atom_names=list(struct.atom_names) + [element] * n_new,

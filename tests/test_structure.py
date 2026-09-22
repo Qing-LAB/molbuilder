@@ -59,6 +59,39 @@ def test_to_ase_optional_dep(water_structure):
     assert list(atoms.get_chemical_symbols()) == ["O", "H", "H"]
 
 
+def test_to_ase_hands_over_the_box_as_well_as_the_atoms():
+    """`pbc` exists as the ASE-interop view of `axis_kind`
+    (`structure-periodicity.md` § 1), and this is the one ASE door.
+
+    It handed over atoms alone, so a crystal arrived in ASE as a gas-phase
+    cluster -- zero cell, `pbc = [F,F,F]` -- and every neighbour list,
+    symmetry search or write done with it answered the wrong question
+    silently.
+    """
+    pytest.importorskip("ase")
+    s = Structure(elements=["Au", "Au"],
+                  positions=np.array([[0.0, 0.0, 0.0], [1.44, 1.44, 0.0]]),
+                  cell=np.array([[2.885, 0.0, 0.0],
+                                 [-1.4425, 2.4985, 0.0],
+                                 [0.0, 0.0, 20.0]]),
+                  axis_kind=("periodic", "periodic", "isolated"))
+    atoms = s.to_ase()
+    np.testing.assert_allclose(np.asarray(atoms.get_cell()),
+                               np.asarray(s.cell, dtype=float), atol=1e-9)
+    assert list(atoms.pbc) == [True, True, False]
+
+
+def test_to_ase_carries_a_derived_box_too(water_structure):
+    """`resolve_cell()`, not the raw field: a molecule states no lattice but
+    still HAS a box, and ASE should receive the one every other consumer
+    sees."""
+    pytest.importorskip("ase")
+    atoms = water_structure.to_ase()
+    np.testing.assert_allclose(np.asarray(atoms.get_cell()),
+                               np.asarray(water_structure.resolve_cell(),
+                                          dtype=float), atol=1e-9)
+
+
 def test_centered_centroid_at_origin(water_structure):
     s2 = water_structure.centered()
     np.testing.assert_allclose(s2.positions.mean(axis=0), 0.0, atol=1e-9)

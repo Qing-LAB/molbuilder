@@ -196,6 +196,55 @@ class TestHappyPath:
         assert out.provenance["form"] == "relaxation"
         assert "Relax.XV" in out.provenance["files"]
 
+    def test_the_authoring_corner_does_not_follow_the_xv_coordinates(
+            self, tree):
+        """The sidecar's `cell_origin` describes the AUTHORING frame.
+
+        Form A's coordinates come from the `.XV` — SIESTA's own frame,
+        cell at (0,0,0) — but its labels may come from the authoring
+        pair's `.molstruct.json`, and applying that sidecar is a full
+        replace of the metadata block. So the box corner the author's
+        viewer drew (`add_slab` sets one on every junction) landed on
+        coordinates it does not describe, and `render_fdf` then shifted
+        the atoms by `-cell_origin` a second time: the whole junction
+        came out translated, far-face atoms wrapping into the leads.
+
+        The cell is a SHAPE and survives the change of frame — it is
+        checked against the `.XV`'s and kept. The corner does not.
+        """
+        from molbuilder.script_emit import BLOCK_ATOM_METADATA, begin_marker
+        from molbuilder.workingcopy_structure import StructureCodec
+        root, src, relaxed_pos = tree
+        attempt = root / _CITE
+        deck = attempt / "Relax_01_coarse.fdf"
+
+        # A deck with NO in-body label block, so the labels must come
+        # from a sidecar -- the repair path compose's own refusal names.
+        text = deck.read_text()
+        head, sep, _ = text.partition(begin_marker(BLOCK_ATOM_METADATA))
+        assert sep, "the fixture's deck no longer carries a label block"
+        deck.write_text(head)
+
+        # The authoring pair, whose box was drawn around coordinates that
+        # straddled the origin: a corner well away from (0,0,0).
+        authored = src.replace(cell_origin=[-2.0, -2.0, -20.0])
+        StructureCodec().write(authored, attempt / "authored.xyz")
+        (attempt / "authored.xyz").unlink()
+
+        out = compose_junction(_CITE, tree_root=root)
+        dev = out.sorted.structure
+
+        assert dev.resolve_cell_origin() is None, (
+            "the authoring corner rode in on the .XV's coordinates")
+        # The emitted frame IS the .XV's. Compared as sets, because the
+        # composition sorts the atoms into electrode/device blocks.
+        shift = dev.resolve_cell_origin()
+        emitted = dev.positions - (0.0 if shift is None
+                                   else np.asarray(shift))
+        assert np.allclose(np.sort(emitted[:, 2]),
+                           np.sort(relaxed_pos[:, 2]), atol=1e-6), (
+            "the junction was emitted translated along transport")
+
     def test_the_record_is_the_whole_travelling_copy(self, tree, tmp_path):
         """§ 4.1: the cited structure is COPIED in with provenance --
         the SORTED PAIR (geometry AND the file carrying its region

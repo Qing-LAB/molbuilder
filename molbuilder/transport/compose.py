@@ -546,10 +546,23 @@ def labeled_citation_structure(cited: CitedDir):
         # The relaxation's own box is the box, and z is transport
         # (`engines/transport.md` § 5 I8), so both are stated here and the one
         # authority applies them together.
+        #
+        # AND THE CORNER IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
+        # coordinates came from the `.XV` -- SIESTA's own frame, cell at
+        # (0,0,0) (`structure-periodicity.md` § 6: `null` = `(0,0,0)`) --
+        # while the sidecar's `cell_origin` is the low corner of the box the
+        # author drew around DIFFERENT coordinates.  A full replace adopts it,
+        # and `render_fdf` then shifts these atoms by `-cell_origin` a second
+        # time: a junction saved from `add_slab` came out translated by its
+        # whole authoring corner, far-face atoms wrapping into the leads.
+        # The cell above is a SHAPE and survives the change of frame; the
+        # origin does not, so it is stripped here -- explicitly, which is what
+        # `model/structure.md` § 2.2a asks of a field that does not travel.
         apply_to_structure(struct, {
             **_side,
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
+            "cell_origin": None,
             "axis_kind": _side.get("axis_kind")
                          or ["periodic", "periodic", "transport"],
         })

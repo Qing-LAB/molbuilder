@@ -367,6 +367,55 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         assert "structure_modified" not in s.info["calculation"], \
             "the edit marked its SOURCE too"
 
+    @pytest.mark.parametrize("op, payload", [
+        ("vacuum",      [4.0, 4.0, 4.0]),
+        ("axis_kind",   ["periodic", "periodic", "isolated"]),
+        ("cell",        [[9., 0, 0], [0, 9., 0], [0, 0, 9.]]),
+        ("cell_origin", [1.0, 1.0, 1.0]),
+        ("block",       {"cell": [[9., 0, 0], [0, 9., 0], [0, 0, 9.]],
+                         "cell_origin": None,
+                         "axis_kind": ["periodic", "periodic", "periodic"],
+                         "vacuum": None}),
+    ])
+    def test_a_box_edit_marks_the_contract_outdated(self, op, payload):
+        """Every op of the periodicity door, not just the geometry ones.
+
+        Mesh cutoff is a grid density over the CELL and the transverse
+        k-mesh samples the reciprocal cell, so changing the box is
+        exactly what invalidates the inherited settings — as much as
+        moving an atom is.  This is the half the browser used to decide
+        for itself: `/api/structure/periodicity` returned only the
+        `periodicity` block, so `commitPeriodicityOp` marked the store
+        locally and Python marked nothing.  Now the door marks and the
+        answer carries it, which means the decision has to be pinned
+        HERE, in the language that makes it.
+        """
+        from molbuilder.periodicity_gate import apply_edit
+        s = self._with_contract()
+        out, _notices = apply_edit(s, op, payload)
+        assert out.info["calculation"]["structure_modified"] is True
+        assert out.info["calculation"]["contract"], \
+            "the record was erased, not marked"
+        assert out.info["calculation"].get("labels_modified") is None, \
+            "a box edit claimed the labels moved"
+        assert "structure_modified" not in s.info["calculation"], \
+            "the edit marked its SOURCE too"
+
+    def test_a_refused_box_edit_marks_nothing(self):
+        """The mark rides the returned copy, and a refusal returns none.
+
+        `apply_edit` marks immediately after `struct.copy()`, before the
+        per-op branches — which is only safe because every refusal
+        raises instead of answering. If one ever returned the copy on a
+        rejected edit, the pair would carry a staleness flag for an edit
+        that never happened.
+        """
+        from molbuilder.periodicity_gate import apply_edit
+        s = self._with_contract()
+        with pytest.raises(ValueError):
+            apply_edit(s, "axis_kind", ["periodic", "sideways", "isolated"])
+        assert "structure_modified" not in s.info["calculation"]
+
     def test_a_reorder_is_not_an_edit(self):
         """`categorical_sort` derives through the same door but changes
         no geometry, so marking there would warn about every composed
@@ -384,6 +433,58 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         out = categorical_sort(s).structure
         assert "structure_modified" not in out.info["calculation"]
         assert out.info["calculation"]["contract"]
+
+    def test_appending_to_a_derived_box_keeps_its_axes_and_its_vacuum(self):
+        """A cell nobody STATED still has facts on it.
+
+        `concat` takes the lattice from whichever input carries an
+        explicit cell; when none does it took nothing at all, so a canvas
+        in the derived-box regime lost its transport axis and the vacuum
+        the person typed the moment anything was appended to it — and
+        said nothing, because a dropped field raises no notice. § 2.2a
+        lists this seam among the ones that carry everything.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        base = Structure(elements=["C"], positions=np.array([[0., 0, 0]]),
+                         axis_kind=("isolated", "isolated", "transport"),
+                         vacuum=(5.0, 5.0, 0.0))
+        other = Structure(elements=["H"], positions=np.array([[3., 0, 0]]))
+        out = append_structure(base, other)
+        out = out[0] if isinstance(out, tuple) else out
+        assert out.axis_kind == ("isolated", "isolated", "transport"), \
+            "the transport axis was dropped"
+        assert out.vacuum == (5.0, 5.0, 0.0), "the typed vacuum was dropped"
+
+    def test_an_incoming_fragment_does_not_overwrite_the_canvas_facts(self):
+        """The other half, and the one that bit: when the ADDITION is the
+        one carrying a cell, its `axis_kind` and `vacuum` rode in with it.
+
+        Appending a slab onto a molecule the user had given 8 Å of vacuum
+        replaced that vacuum with the slab's deliberate zero and turned two
+        isolated axes crystalline — silently, because afterwards nothing was
+        outside the box for `cell.check` to notice. A cell is the one thing
+        a fragment can supply that the canvas lacks; the rest are facts OF
+        the canvas, exactly as `info` is.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        canvas = Structure(elements=["C", "O"],
+                           positions=np.array([[0., 0, 0], [1.13, 0, 0]]),
+                           vacuum=(8.0, 8.0, 8.0))
+        slab = Structure(elements=["Au", "Au"],
+                         positions=np.array([[0., 0, 5.], [1.44, 1.44, 5.]]),
+                         cell=np.diag([2.88, 2.88, 20.]),
+                         axis_kind=("periodic", "periodic", "isolated"),
+                         vacuum=(0.0, 0.0, 0.0))
+        out = append_structure(canvas, slab)
+        out = out[0] if isinstance(out, tuple) else out
+        assert out.vacuum == (8.0, 8.0, 8.0), \
+            "the fragment's vacuum replaced the one the user typed"
+        assert out.axis_kind == ("isolated", "isolated", "isolated"), \
+            "the fragment's axis kinds replaced the canvas's"
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --

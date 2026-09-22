@@ -2347,10 +2347,14 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
     the inherited settings.
 
     WHO DECIDES IT MOVED (2026-09-21).  `periodicity_gate.apply_edit` sets
-    the flag and the answer carries it; this pins the browser's half --
-    that the adopted answer is what the store ends up holding.  The
-    decision itself is pinned in Python
-    (`test_structure_authority_roundtrip.py`), mutation-checked both ways.
+    the flag and the answer carries it, so this test pins the BROWSER's
+    half only: that the adopted answer is what the store ends up holding.
+    The decision itself is pinned where it is made --
+    `test_structure_authority_roundtrip.py`
+    ::TestAnEditOutdatesTheContractWithoutErasingIt
+    ::test_a_box_edit_marks_the_contract_outdated, over all five ops of
+    the door.  Both halves are mutation-checked; neither alone is the
+    behaviour.
     """
     out = _run(_with_a_recorded_contract("""
         // The cell op round-trips too, so the stand-in must answer WITH a
