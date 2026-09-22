@@ -2166,7 +2166,11 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     # already holds and the whole thing goes through -- the same
     # "complete the block, do not patch the result" shape `transport/
     # compose.py` uses where it applies a sidecar over a `.XV`.
-    from molbuilder.structure import annotations_from_json
+    # `metadata_to_dict()` emits annotations in their JSON form and
+    # `apply_metadata_dict` parses them back, so the payload's raw JSON goes
+    # in AS-IS.  Converting here first handed the door `AtomChannel` objects
+    # to parse -- a double conversion, caught by
+    # `test_atom_annotations.py` on the full suite.
     block = dict(struct.metadata_to_dict())
     if regions:
         # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
@@ -2176,8 +2180,9 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
             for k, v in regions.items()
         }
     if annotations:
-        # Extensible channels, same round-trip as the sidecar (§ 3).
-        block["annotations"] = annotations_from_json(annotations)
+        # Extensible channels, same round-trip as the sidecar (§ 3) -- the
+        # block carries the JSON shape the door reads.
+        block["annotations"] = annotations
     struct.apply_metadata_dict(block)
     return True
 
