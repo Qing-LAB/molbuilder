@@ -736,6 +736,16 @@ def _parse_electrode_spec(spec):
                 f"the trailing field to be '+z=I,J,...' or '-z=I,J,...'; "
                 f"got {rest!r}"
             )
+        # ORDER IS PART OF THE GRAMMAR, so say so rather than letting the
+        # misplaced key arrive as a bad integer.  `registry=` is recognised
+        # only between `contact=` and the side; written after the side it
+        # lands inside the centre-index list, and the message was "entries
+        # must be integers; got '3:registry=B'" -- true, and no help at all.
+        if "registry=" in idx_str.lower():
+            raise click.BadParameter(
+                f"--electrode {spec!r}: 'registry=' comes BEFORE the side, "
+                f"as '@contact=NUM:registry=A:+z=I' -- written after it, it "
+                f"is read as part of the centre-index list")
         center_indices = _parse_ints_csv(idx_str, f"--electrode {spec!r}")
         return {
             "mode": "single",

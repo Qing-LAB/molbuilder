@@ -290,7 +290,9 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
 is why `--electrode` maps the side to the walk rather than passing a constant
-(`_CONTINUES_THE_CRYSTAL` in `cli.py`). It replaced `stacking` on 2026-09-07:
+(`_WALK_ALONG_GROWTH` in `cli.py` — renamed from `_CONTINUES_THE_CRYSTAL`
+2026-09-22, because the walk is not what continues the crystal; see § 3.1a).
+It replaced `stacking` on 2026-09-07:
 that argument named downward behaviour only and had no effect at all growing
 up, which left the mirrored *upward* slab unbuildable.
 

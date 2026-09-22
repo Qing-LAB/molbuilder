@@ -954,6 +954,45 @@ class TestFormB:
             "the refusal states the whole condition")
 
 
+    def test_a_form_B_pair_with_a_flat_box_is_refused_by_name(self, tmp_path):
+        """Form B asked only *"is the cell None?"*, and that was enough for
+        exactly as long as `Structure.__post_init__` refused a zero-volume
+        lattice outright.
+
+        That refusal was removed 2026-09-21 so a pair holding a bad box could
+        be OPENED and fixed on the Cell page (`structure-periodicity.md`
+        § 8.2, "reading does not judge") — and this guard had been relying on
+        it without saying so.
+
+        WHAT IT COSTS, stated correctly at the second attempt: not a crash.
+        `axis_vacuum` inverts the cell unguarded, but nothing reaches it with
+        a bad box — `render_deck` validates before the first block renders,
+        so the deck path already answers "[cell.no_volume] This box is flat".
+        The first write-up of this claimed the traceback, from probing that
+        function in isolation. What the guard buys is the refusal landing at
+        the CITATION door, naming the cited pair, the way form A has always
+        done — instead of surfacing later as a complaint about a box, several
+        steps from the file that holds it.
+        """
+        import json as _json
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "J"
+        d.mkdir(parents=True)
+        struct = _junction_struct()
+        StructureCodec().write(struct, d / "j.xyz")
+        side = _json.loads((d / "j.molstruct.json").read_text())
+        side["cell"] = [[8.0, 0, 0], [0, 8.0, 0], [0, 0, 0.0]]   # flat
+        (d / "j.molstruct.json").write_text(_json.dumps(side))
+
+        # It still OPENS -- that is the § 8.2 half, and it must not regress.
+        assert StructureCodec().load(d / "j.xyz").cell is not None
+
+        with pytest.raises(ComposeError) as e:
+            compose_junction("J", tree_root=root)
+        assert "no volume" in str(e.value), str(e.value)
+
+
 class TestTheRecordedContract:
     """`transport.md` § 3.1's form B, third shade: a pair whose
     sidecar carries `info.calculation` seals like a cited deck."""

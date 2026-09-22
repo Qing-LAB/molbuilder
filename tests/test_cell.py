@@ -136,6 +136,45 @@ class TestWhatIsChecked:
                        "cell.vacuum_ignored")
         assert found is not None and found.severity == "info"
 
+    def test_what_an_ignored_vacuum_still_does_is_stated_only_when_true(self):
+        """The sentence must not claim more than the code does.
+
+        It used to say a typed vacuum "is not being used", which is too
+        broad: under an explicit cell it stops setting the box LENGTH, but on
+        an isolated axis it still decides the derived corner — and therefore
+        where `render_fdf` puts the atoms. Someone who believed the old
+        sentence would not touch the control that was moving their molecule.
+
+        THE CLAIM IS ASSERTED, NOT THE WORDING: when the extra sentence
+        fires, changing the vacuum must actually move the corner; when it
+        does not fire, it must not.
+        """
+        import numpy as _np
+
+        def _say_and_corner(vac, origin=None):
+            s = Structure(elements=["H", "H"],
+                          positions=_np.array([[0., 0, -3.], [0, 0, 3.]]),
+                          cell=_np.diag([20., 20., 20.]), axis_kind=ISOLATED,
+                          vacuum=vac, cell_origin=origin)
+            return _by_id(s, "cell.vacuum_ignored"), s.resolve_cell_origin()
+
+        said, corner_a = _say_and_corner((2.0, 2.0, 2.0))
+        _, corner_b = _say_and_corner((8.0, 8.0, 8.0))
+        assert said is not None
+        assert "still sets where the structure sits" in said.message, (
+            "the corner IS vacuum-dependent here and the notice does not say so")
+        assert not _np.allclose(corner_a, corner_b), (
+            "the notice claims the vacuum positions the structure, but "
+            "changing it moved nothing")
+
+        # A STORED corner is the corner; vacuum cannot reach it, so the
+        # sentence must not be there.
+        pinned, corner_c = _say_and_corner((8.0, 8.0, 8.0), origin=[0., 0, 0])
+        assert pinned is not None, "the box-size half is still true"
+        assert "still sets where the structure sits" not in pinned.message, (
+            "claimed the vacuum positions a structure whose corner is stored")
+        assert _np.allclose(corner_c, [0., 0, 0])
+
     def test_no_vacuum_set_under_a_typed_cell_says_nothing_about_vacuum(self):
         """Nothing was chosen, so there is no expectation to correct."""
         got = _wheres(_mol(cell=np.eye(3) * 30, axis_kind=ISOLATED))
