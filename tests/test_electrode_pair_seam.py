@@ -69,11 +69,19 @@ def _junction(plane, layers, *, registry_plus=0, registry_minus=0):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "F9: `--electrode` passes `sequence` but leaves `start_registry` at 0 on "
-    "BOTH slabs and its spec grammar has no field for it, so every junction "
-    "the CLI builds meets itself on the same registry -- eclipsed on "
-    "(100)/(110), TWIN on (111). `junction-cell.md` 3.1 says all six of these "
-    "continue the crystal. Fix: drive start_registry from the side."))
+    "THE DEFAULT, and it is a decision now rather than a gap (2026-09-22). "
+    "`--electrode` leaves `start_registry` at 0 on both slabs unless told "
+    "otherwise, so a junction built without stating it meets itself on the "
+    "same registry -- eclipsed on (100)/(110), TWIN on (111), where "
+    "`junction-cell.md` 3.1 says all six of these continue the crystal. "
+    "What CHANGED: the reason used to add 'and its spec grammar has no "
+    "field for it', which was the actual defect and is fixed -- the spec "
+    "takes `registry=A|B|C` beside `contact=`, per flag because the two "
+    "sides need different values, and `test_cli.py::test_electrode_registry"
+    "_is_per_slab_and_reaches_the_builder` drives the real CLI to prove it "
+    "reaches the builder. Omitting it still means 0, so existing command "
+    "lines are unchanged (user ruling), which is what keeps this xfail "
+    "true. It is no longer a Fix: it is the documented default."))
 @pytest.mark.parametrize("plane,layers", _CONTINUES)
 def test_the_cli_electrode_pair_continues_the_crystal(plane, layers):
     """§ 3.1's table, as an assertion, at the CLI's own registry default."""
