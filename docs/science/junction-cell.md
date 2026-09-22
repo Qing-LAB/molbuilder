@@ -59,11 +59,67 @@ builds, and agree to six decimals. Note that ASE's surface builders return
 `cell[2][2] = 0` for a slab (`pbc = [True, True, False]`), so **there is no
 z-period to copy from ASE**; it has to be computed.
 
-`a` itself is not a constant to hard-code: it comes from
-`molbuilder/data/fcc_lattice.json`, which carries three references per metal
-(`a_experimental`, `a_pbe`, `a_pbe_siesta_psml`). The gap must use **the same
-`a` the slab was built with**, which is why the derivation reads the built slab
-rather than a table.
+### 2.1 The three rows are one rule *(2026-09-22)*
+
+They look like a table of special cases and they are not. The spacing is the
+cubic `a / √(h² + k² + l²)` evaluated at the **first *allowed* reflection**
+along that direction — because a centred lattice has planes between the ones
+the Miller indices name, and the real repeat is the closer one.
+
+**fcc allows `h, k, l` all of the same parity.** So:
+
+| plane | parity | first allowed | `d` |
+|---|---|---|---|
+| (111) | all odd → allowed as written | (111) | `a / √3` |
+| (100) | mixed → forbidden | (200) | `a / 2` |
+| (110) | mixed → forbidden | (220) | `a / (2√2)` |
+
+That is why (100) is `a/2` and not `a`, and (110) is `a/(2√2)` and not
+`a/√2`. **bcc allows `h + k + l` even**, which is why its close-packed plane
+is (110) where fcc's is (111) — the same rule, a different centring.
+
+**Where it lives.** `cell.interplanar_spacing(system, plane, a)` and
+`cell.nearest_neighbour_distance(system, a)`, beside `bulk_z_period` and
+`detect_layers` which *measure* the same quantity off atoms. Putting the
+prediction next to the measurement is what makes them comparable, and
+`test_cell.py` asserts predicted == measured on a real ASE slab for all three
+surfaces — a check neither half had while the arithmetic lived in two places.
+
+A crystal system with no rule here **refuses** rather than answering with the
+cubic formula: hexagonal needs `c/a` and Miller–Bravais indices, and a
+plausible wrong number is worse than no number.
+
+**It is the backend's, and only the backend's.** Until 2026-09-22 the live
+implementation of this table was three literals in
+`web/static/modify/slab-panel.js` — crystallography in the layer that must not
+know any — and it was **short the (110) row**, so a person building fcc(110)
+was shown two spacings, neither of them the one § 6.1 tells them to type into
+the Cell page. The browser now asks `GET /api/modify/spacings`.
+
+### 2.2 `a` is stated, never defaulted *(user, 2026-09-22)*
+
+`a` comes from `molbuilder/data/fcc_lattice.json` — `a_experimental` and
+`a_pbe` per metal, plus whatever the person types. (This paragraph named a
+third column, `a_pbe_siesta_psml`; schema v3 dropped it, because nothing in
+the codebase could ever write it. A constant measured in someone's own setup
+belongs to **one run**, and is read from there — `POST
+/api/modify/lattice-from-run`.)
+
+**Every door that returns a spacing requires the reference explicitly** — the
+word `experimental`, the word `pbe`, or a number. There is no default. The two
+references differ by ~2% for gold, which is enough to strain a junction, so a
+silently-chosen one produces an answer that cannot be checked without reading
+the source. The gap must use **the same `a` the slab was built with**, which
+is why the derivation reads the built slab rather than a table.
+
+**A data file the user placed is honoured or refused, never half-read.**
+`$MOLBUILDER_DATA_DIR/fcc_lattice.json` overrides the packaged table. If it is
+absent, the packaged table answers. If it is *present and unreadable* — a
+syntax error, a missing `metals` key — loading **refuses by name**. It used to
+fall through to the packaged numbers for two of the four malformations:
+measured 2026-09-22, an override with one trailing comma returned Au = 4.0782
+to someone who had typed 4.20, with no warning, and the panel then showed
+4.0782 under a radio labelled "Experimental".
 
 ---
 

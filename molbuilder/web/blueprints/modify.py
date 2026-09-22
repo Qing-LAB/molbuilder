@@ -137,13 +137,17 @@ def api_modify_meta():
     layer that drift from the Python tuples.  Adding a new metal in
     ``molbuilder.modify`` reaches the UI automatically.
     """
-    # Lattice table: per-element a_experimental + a_pbe + the nullable
-    # a_pbe_siesta_psml (populated by the user when they run a bulk-
-    # cell relax with their specific Au.psml/etc.).  UI renders a
-    # 3-way radio per element so the user can pick the value matching
-    # their XC + pseudopotential.  Failures here surface as a
-    # diagnostic + an empty table so the UI degrades to the prior
-    # behavior (always experimental, no radio).
+    # Lattice table: per-element `a_experimental` + `a_pbe`, so the panel can
+    # offer the two literature references without carrying the numbers.  The
+    # third column this comment used to name (`a_pbe_siesta_psml`) went with
+    # schema v3 -- nothing in the codebase could ever write it, so the "your
+    # bulk run" control it fed greyed itself out from the day it shipped; a
+    # constant measured in the user's own setup belongs to ONE run and is
+    # read from there instead (`POST /api/modify/lattice-from-run`).  The
+    # panel's third radio is "Custom", a typed number, not a table column.
+    #
+    # Failures here surface as a diagnostic + an empty table so the UI
+    # degrades rather than breaking.
     lattice_table: Dict[str, Any] = {}
     lattice_error: Optional[str] = None
     try:
@@ -167,6 +171,108 @@ def api_modify_meta():
         # carrying its own copy of the rule (science/junction-cell.md § 2b).
         "orthogonal_choices": {p: list(v)
                                for p, v in FCC_ORTHOGONAL_CHOICES.items()},
+    })
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/spacings                                                 #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/spacings", methods=["GET"])
+def api_modify_spacings():
+    """The layer spacing and bond length of one surface.
+
+    ``?element=Au&plane=111&reference=experimental`` ->
+    ``{ok, element, plane, system, reference, a, d_interlayer,
+    nearest_neighbour}``.
+
+    **The crystallography is the backend's.**  The Slab panel computed this
+    itself -- `a/sqrt(3)`, `a/2` and a nearest-neighbour line, three literals
+    in JavaScript -- and was short `d(110)` entirely, so a person building
+    fcc(110) was shown two spacings, neither of them the number the Cell page
+    asks them to type.  `cell.interplanar_spacing` derives all of them from
+    one rule (the first allowed reflection for the lattice's centring), and
+    this is the door it reaches the browser through.
+
+    **`reference` is required and explicit** *(user, 2026-09-22)*: the word
+    ``experimental`` or ``pbe``, or an actual number in Angstrom.  There is
+    no default, because which reference a constant came from moves it by
+    ~2% and a silent one makes the answer impossible to check without
+    reading the source.
+    """
+    from molbuilder.cell import interplanar_spacing, nearest_neighbour_distance
+    from molbuilder.modify import load_fcc_lattice_full
+
+    element = (request.args.get("element") or "").strip()
+    plane = (request.args.get("plane") or "").strip()
+    reference = (request.args.get("reference") or "").strip()
+    if not element or not plane or not reference:
+        return jsonify({
+            "ok": False,
+            "error": "element, plane and reference are all required; "
+                     "reference is 'experimental', 'pbe', or a number in "
+                     "Angstrom"}), 400
+
+    try:
+        table = load_fcc_lattice_full()
+    except Exception as exc:                       # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    # THE SAME SURFACES THE BUILDER OFFERS.  `interplanar_spacing` is general
+    # crystallography and will happily answer (999) -- correctly.  But this
+    # door serves the Slab panel, and `/api/modify/slab` refuses a plane the
+    # builder cannot make, so quoting a spacing for one would hand back a
+    # number with nothing to use it on.  One list, asked here too.
+    if plane not in SUPPORTED_FCC_PLANES:
+        return jsonify({
+            "ok": False,
+            "error": f"unsupported surface {plane!r}; this builder makes "
+                     f"{', '.join(SUPPORTED_FCC_PLANES)}"}), 400
+
+    entry = table.get(element)
+    if entry is None:
+        # The table IS the list of what we know, so a name it does not carry
+        # is answered here by name rather than as a KeyError two layers down.
+        return jsonify({
+            "ok": False,
+            "error": f"no lattice data for {element!r}; the table carries "
+                     f"{', '.join(sorted(table))}"}), 400
+
+    _NAMED = {"experimental": "a_experimental", "pbe": "a_pbe"}
+    key = _NAMED.get(reference.lower())
+    if key is not None:
+        a = entry.get(key)
+        if not isinstance(a, (int, float)):
+            return jsonify({
+                "ok": False,
+                "error": f"{element} carries no {reference} lattice "
+                         f"constant"}), 400
+    else:
+        try:
+            a = float(reference)
+        except ValueError:
+            return jsonify({
+                "ok": False,
+                "error": f"reference {reference!r} is neither "
+                         f"'experimental', 'pbe', nor a number"}), 400
+
+    system = entry.get("system", "fcc")
+    try:
+        d = interplanar_spacing(system, plane, a)
+        nn = nearest_neighbour_distance(system, a)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    return jsonify({
+        "ok": True,
+        "element": element,
+        "plane": plane,
+        "system": system,
+        "reference": reference,
+        "a": float(a),
+        "d_interlayer": float(d),
+        "nearest_neighbour": float(nn),
     })
 
 

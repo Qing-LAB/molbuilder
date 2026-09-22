@@ -593,24 +593,41 @@ def load_fcc_lattice_full() -> dict:
     a user's overriding data dir must not stop working because a column
     they never filled went away.  v1 ("a" only) still raises.
     """
-    last_error: Optional[Exception] = None
     for candidate_dir in _data_dir_candidates():
         path = candidate_dir / "fcc_lattice.json"
         if not path.is_file():
             continue
+        # A FILE THAT IS THERE AND UNREADABLE IS A REFUSAL, NEVER A FALLBACK.
+        #
+        # Only ABSENCE continues to the next candidate (above): the env dir
+        # not holding this file is a legitimate state, and the packaged table
+        # is the answer.  A file that EXISTS is a statement of intent -- the
+        # README tells people to copy the JSON to `$MOLBUILDER_DATA_DIR` and
+        # edit it -- so failing to read it and quietly using the packaged
+        # numbers answers a question they did not ask.
+        #
+        # Measured 2026-09-22: an override with one trailing comma returned
+        # Au = 4.0782 to a person who had typed 4.20, with no warning, and the
+        # panel then showed 4.0782 under a radio labelled "Experimental".
+        # Two of the four malformations already raised (a bad `_format`, a
+        # malformed entry); these two continued.  Four ways to be wrong, one
+        # answer.
         try:
-            with open(path) as fh:
+            with open(path, encoding="utf-8-sig") as fh:
                 data = _json.load(fh)
         except (_json.JSONDecodeError, OSError) as exc:
-            last_error = RuntimeError(
-                f"failed to read FCC lattice table at {path!s}: {exc}"
-            )
-            continue
+            raise RuntimeError(
+                f"failed to read FCC lattice table at {path!s}: {exc}.  "
+                f"This file was found and could not be used -- fix it or "
+                f"remove it; molbuilder will not fall back to the packaged "
+                f"table and use numbers you did not ask for."
+            ) from exc
         if not isinstance(data, dict) or "metals" not in data:
-            last_error = RuntimeError(
-                f"FCC lattice table at {path!s} missing required 'metals' key"
+            raise RuntimeError(
+                f"FCC lattice table at {path!s} missing required 'metals' "
+                f"key.  Fix it or remove it; molbuilder will not fall back "
+                f"to the packaged table and use numbers you did not ask for."
             )
-            continue
         fmt = data.get("_format", "")
         if not ("v2" in fmt or "v3" in fmt):
             raise RuntimeError(
@@ -638,10 +655,11 @@ def load_fcc_lattice_full() -> dict:
                 f"FCC lattice table at {path!s} contains zero entries"
             )
         return metals
+    # NOT FOUND ANYWHERE is the only way out of the loop now: every other
+    # failure raises where it happens, with the path that caused it.
     raise RuntimeError(
         f"could not locate fcc_lattice.json under any of: "
-        f"{[str(p) for p in _data_dir_candidates()]}.  "
-        f"Last error: {last_error}"
+        f"{[str(p) for p in _data_dir_candidates()]}"
     )
 
 

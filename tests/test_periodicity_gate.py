@@ -1908,6 +1908,13 @@ class TestEveryOpIsChecked:
         # spacings it implies, and notes).  It reads a file the user points
         # at and never touches the structure on the bench.
         "/api/modify/lattice-from-run",
+        # GET, and a pure lookup: element + surface + lattice constant ->
+        # the layer spacing and the bond length that follow from them.  No
+        # structure is sent, none comes back, and nothing on the bench is
+        # read -- it answers a question about a CRYSTAL, not about the
+        # thing being edited.  (It exists because the Slab panel used to
+        # compute those numbers in JavaScript and was missing d(110).)
+        "/api/modify/spacings",
     }
 
     def _stranded(self):
