@@ -26,7 +26,9 @@ CODEC = StructureCodec()
 def project(tmp_path):
     s = Structure(elements=["H", "C", "N", "O", "F"],
                   positions=np.array([[float(i), 0.0, 0.0] for i in range(5)]),
-                  cell=np.diag([40.0, 40.0, 40.0]), pbc=[True, True, True])
+                  # `pbc=` left with the field (43e88c9a) and is not needed:
+                  # a stated cell already means all three axes are periodic.
+                  cell=np.diag([40.0, 40.0, 40.0]))
     (tmp_path / "mol.xyz").write_text(s.to_xyz())
     return tmp_path
 
