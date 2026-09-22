@@ -705,20 +705,52 @@ def _seam_notices(struct, element: str, plane: str):
         if want and seam.period and seam.period != want:
             # Thin enough that it does not determine its own stacking: two
             # layers of (111) are A,B, which is fcc and hcp alike.
-            return [_seam_notice("warn", "too_thin", (
+            out = [_seam_notice("warn", "too_thin", (
                 f"the boundary continues the stacking, but as a "
                 f"{seam.period}-layer repeat -- fcc({plane}) has "
                 f"{want}.  This slab is too thin to be the crystal you "
                 f"asked for; add layers"))]
-        return [_seam_notice("info", "continues", (
-            f"the crystal continues across the periodic boundary: layers "
-            f"{seam.z_room:.3f} Å apart, nearest atoms {seam.gap:.3f} Å"))]
-
-    if seam.verdict == "vacuum":
+        else:
+            out = [_seam_notice("info", "continues", (
+                f"the crystal continues across the periodic boundary: layers "
+                f"{seam.z_room:.3f} Å apart, nearest atoms {seam.gap:.3f} Å"))]
+    elif seam.verdict == "vacuum":
         # Not a warning: an open face is what a slab calculation wants.
-        return [_seam_notice("info", "vacuum", seam.message)]
-    return [_seam_notice("warn", seam.verdict,
-                         f"{seam.verdict}: {seam.message}")]
+        out = [_seam_notice("info", "vacuum", seam.message)]
+    else:
+        out = [_seam_notice("warn", seam.verdict,
+                            f"{seam.verdict}: {seam.message}")]
+
+    # AND THE BOX HAS ITS OWN ANSWER, which is not the crystal's.
+    #
+    # `seam` above is measured on the METAL atoms alone, and has to be: the
+    # registry question is "which layer does the imaged one land on", and
+    # `detect_layers` would read a molecule's atoms as extra layers and make
+    # it meaningless.  But the CELL was sized around EVERY atom
+    # (`_finish_slab`: `c = all_pos z extent`), so on a junction -- a molecule
+    # with a slab grown onto it -- the metal can continue happily across a
+    # boundary where the molecule's own periodic image is already touching.
+    #
+    # That collision is the fact `junction-cell.md` § 6 leans on to make the
+    # un-set `c` visible in the tab you are already in, and it was invisible:
+    # measured on a 3x3x3 Au(111) slab at z=2.4 over a molecule spanning
+    # z=-1..1, this said "the crystal continues, layers 3.400 Å apart" for a
+    # boundary with 0.00 Å of room.  Two atom sets, two facts, both said.
+    #
+    # A NOTICE, NEVER A REFUSAL -- the box is the user's to set, and a
+    # collision is legitimate in a relaxation whose outer layers are frozen.
+    if len(metal) != len(struct.positions):
+        whole = _classify_seam(
+            np.asarray(struct.positions, dtype=float), cell)
+        if whole.verdict == "collision":
+            out.append(_seam_notice("warn", "box_collision", (
+                f"the box leaves {whole.z_room:.2f} Å at the periodic "
+                f"boundary once every atom is counted, not just the "
+                f"{element}: nearest atoms across it {whole.gap:.3f} Å.  "
+                f"The cell was measured around the whole structure, so "
+                f"this is the gap the calculation will actually see -- set "
+                f"c on the Cell tab if that is not what you want")))
+    return out
 
 
 # --------------------------------------------------------------------- #

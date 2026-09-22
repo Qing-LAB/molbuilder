@@ -217,10 +217,22 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
-The electrode builder records which lattice constant it used
-(`fcc_lattice.json` carries `a_experimental` / `a_pbe`, and a value measured
-off the user's own relaxed bulk run can be typed in beside them),
-so the captured cell matches the DFT setup.
+The electrode builder is *told* which lattice constant to use — `fcc_lattice.json`
+carries `a_experimental` / `a_pbe`, and a value measured off the user's own
+relaxed bulk run can be typed in beside them — and the captured cell is built
+from it.
+
+It does **not record** which one it used, and deliberately does not *(user,
+2026-09-21)*. This sentence used to claim it did, which is worth stating
+plainly because the claim invites a check nobody wants: a second slab can be
+built at a different reference, and enforcing agreement between them is not
+this tool's business. A bad contact shows up in the calculation as a bad
+contact. The author chooses; molbuilder builds what it is told.
+
+(Recording alone would also buy nothing: a structure has one `info`, so a
+second build overwrites the first, and knowing *which atoms* came from which
+build would take per-region provenance — a large mechanism producing a label
+no one is allowed to act on.)
 
 ---
 

@@ -470,20 +470,19 @@ class Structure:
                     f"floats (lattice vectors as rows, Angstrom); got "
                     f"shape {cell.shape}"
                 )
-            # Reject a singular/degenerate lattice (zero volume, or two
-            # parallel/duplicated vectors): it would blow up later in
-            # reciprocal-space / k-grid math (1/det, inv(cell)) with an
-            # opaque LinAlgError instead of a clear message here.
-            # THE shared threshold (cell.ZERO_VOLUME_TOL).  It was 1e-8 here
-            # and 1e-6 in the emitter until 2026-08-03 -- two numbers for one
-            # question.  Imported lazily: ``cell`` imports this module.
-            from .cell import ZERO_VOLUME_TOL
-            if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
-                raise ValueError(
-                    "Structure.cell is singular/degenerate (near-zero "
-                    "volume); the three lattice vectors must be linearly "
-                    "independent."
-                )
+            # READING DOES NOT JUDGE (§ 8.2).  A singular box used to be
+            # refused HERE, which made a pair whose sidecar held one
+            # impossible to open -- and the Cell page is the one place a box
+            # can be corrected, so the only ways out were to hand-edit the
+            # `.molstruct.json` outside molbuilder or delete it and lose the
+            # labels with it.  § 6.1a says `cell.no_volume` is a WARNING on
+            # load and an error only at generate, and both later doors
+            # enforce that already: `periodicity_gate._refuse_on_error`
+            # rejects the value you type, and `validation.report` refuses to
+            # emit.  A left-handed box has always loaded for the same reason;
+            # this one now does too.  Every reader that inverts the cell
+            # answers `None` rather than raising (`_frac_coords`,
+            # `cell._fractional`).
             self.cell = cell
         if self.pbc is None:
             self.pbc = ((True, True, True) if self.cell is not None
@@ -706,12 +705,21 @@ class Structure:
                 out[i] = lo[i]
         return out
 
-    def _frac_coords(self, origin) -> np.ndarray:
+    def _frac_coords(self, origin) -> Optional[np.ndarray]:
         """Fractional coordinates relative to ``(origin, cell)``.  Triclinic-
-        safe: solves ``cell.T @ frac = pos - origin``."""
+        safe: solves ``cell.T @ frac = pos - origin``.
+
+        ``None`` when the box is singular and nothing can be solved -- the
+        same answer, for the same reason, as ``cell._fractional`` (§ 8.2: a
+        structure may HOLD an unusable box so the Cell page can show it, so
+        every reader of one has to survive it)."""
         rel = (self.positions.astype(float)
                - np.asarray(origin, dtype=float).reshape(1, 3))
-        return np.linalg.solve(np.asarray(self.cell, dtype=float).T, rel.T).T
+        try:
+            return np.linalg.solve(
+                np.asarray(self.cell, dtype=float).T, rel.T).T
+        except np.linalg.LinAlgError:
+            return None
 
     def cell_contains_atoms(self, origin=None) -> bool:
         """True when every atom sits inside ``[origin, origin + cell)`` along
@@ -724,6 +732,11 @@ class Structure:
         o = (np.zeros(3) if origin is None
              else np.asarray(origin, dtype=float).reshape(3))
         frac = self._frac_coords(o)
+        if frac is None:
+            # A singular box encloses nothing that can be checked.  Saying
+            # "contained" would be a claim; saying "not contained" is the
+            # honest answer and the one that keeps the corner derivable.
+            return False
         for i, kind in enumerate(self.axis_kind):
             if kind == "periodic":
                 continue
@@ -743,6 +756,12 @@ class Structure:
         if self.cell_contains_atoms(corner):
             return corner
         frac = self._frac_coords(np.zeros(3))
+        if frac is None:
+            # Singular box: the centring below needs a fractional extent and
+            # there is none.  The wrapping corner still WRAPS, so answer with
+            # it rather than raising -- the box itself is what is wrong, and
+            # `cell.no_volume` is the finding that says so.
+            return corner
         lens = np.linalg.norm(np.asarray(self.cell, dtype=float), axis=1)
         lo = self.positions.min(axis=0).astype(float)
         for i, kind in enumerate(self.axis_kind):

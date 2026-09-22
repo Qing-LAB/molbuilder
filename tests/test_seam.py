@@ -193,6 +193,48 @@ class TestTheWarningReachesTheUser:
         assert "collision" in warns[0]["message"]
         assert "not padded" in warns[0]["message"]
 
+    def test_a_slab_grown_onto_a_molecule_reports_the_box_not_just_the_metal(
+            self, client):
+        """THE JUNCTION CASE, which read green until 2026-09-21.
+
+        The registry verdict is measured on the METAL alone and must be:
+        `detect_layers` would read a molecule's atoms as extra layers and the
+        "which layer does the imaged one land on" question would stop meaning
+        anything.  But `c` is the extent of EVERY atom, so the metal can
+        continue happily across a boundary where the molecule's own image is
+        already touching.
+
+        Measured before the fix: a 3x3x3 Au(111) slab at z=2.4 over a molecule
+        spanning z=-1..1 answered `info: the crystal continues, layers 3.400 Å
+        apart` -- and 3.400 Å is the molecule-to-slab standoff, not a layer
+        spacing -- for a boundary with 0.00 Å of room.  The one mechanism
+        § 6 relies on to make the unset `c` visible reported success.
+        """
+        from support.envelope import from_xyz
+        body = {"structure": from_xyz(
+                    "3\nm\nS 0 0 -1\nC 0 0 0\nS 0 0 1\n"),
+                "element": "Au", "plane": "111", "m": 3, "n": 3,
+                "layers": 3, "start_z": 2.4}
+        j = client.post("/api/modify/slab", json=body).get_json()
+        assert j["ok"] is True, "a warning, never a refusal (§ 4.1)"
+
+        wheres = [n["where"] for n in j["notices"]]
+        assert "slab.seam_box_collision" in wheres, (
+            "the box collided and only the metal's verdict was reported")
+        said = next(n for n in j["notices"]
+                    if n["where"] == "slab.seam_box_collision")
+        assert said["severity"] == "warn"
+        assert "0.00" in said["message"], said["message"]
+
+    def test_the_box_fact_is_not_repeated_when_there_is_only_metal(
+            self, client):
+        """One structure, one boundary: when every atom IS the metal the two
+        atom sets are the same set, and saying it twice would be two doors
+        onto one fact."""
+        j = self._slab(client, layers=4)
+        wheres = [n["where"] for n in j["notices"]]
+        assert "slab.seam_box_collision" not in wheres, wheres
+
     def test_it_says_the_same_thing_whatever_the_layer_count(self, client):
         """The layer-count question belongs to the seam, and there is no seam
         until `c` is set.  A good layer count does not buy a quiet build --

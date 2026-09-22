@@ -216,6 +216,20 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 > controls and returns the seam verdict at build time; the CLI does neither.
 > **This paragraph asserting the CLI was already correct is why the defect went
 > unnoticed** — fix the sentence and the CLI together.
+>
+> **CLI CLOSED, 2026-09-21.** `--electrode` takes an optional `registry=`
+> beside `contact=`, per flag because the two sides must differ:
+> `Au:111:3x3x3@contact=2.4:registry=B:+z=3`. It accepts `A`/`B`/`C` or an
+> index, and omitting it still means `0`, so existing command lines are
+> unchanged. `cli.py`'s `_CONTINUES_THE_CRYSTAL` was renamed
+> `_WALK_ALONG_GROWTH` in the same change: the `ABC`/`ACB` mapping is right
+> about the walk and was never what continues the crystal, and the old name
+> was exactly the claim this note measures false.
+>
+> Still open: the CLI returns **no seam verdict**. `_seam_notices` has one
+> caller, the web slab route, so a command-line build says nothing about what
+> its boundary came out as. Nothing is enforced either way — the verdict is a
+> report, and the box is the author's to set.
 
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
