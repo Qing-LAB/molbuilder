@@ -454,10 +454,11 @@ def spec_for(struct: Structure,
         out.append("    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)")
         out.append("")
 
-        # ---- _save_xyz helper, defined EARLY so _initial.xyz can be
+        # ---- _save_structure helper (the PAIR writer), defined EARLY
+        #      so the initial-geometry snapshot can be
         # captured *before* any optimization mutates `mol` ------------
         if cfg.save_initial_xyz or cfg.save_optimized_xyz:
-            out += emit_save_helper(v)
+            out += emit_save_helper(v, _sidecar_for(struct))
 
         # ------------------------------------------------------------- molecule
         if v:
@@ -585,7 +586,7 @@ def spec_for(struct: Structure,
         if cfg.save_initial_xyz:
             if v:
                 out.append("# Snapshot the input geometry before any optimization runs.")
-            out.append(f'_save_xyz(mol, _mb_outfile(JOB + "{ROLE_INITIAL}"), '
+            out.append(f'_save_structure(mol, _mb_outfile(JOB + "{ROLE_INITIAL}"), '
                        f'"Initial geometry (input)")')
         out.append("")
 
@@ -907,12 +908,12 @@ def spec_for(struct: Structure,
         # be drift by construction.
 
         # ------------------------------------------------------------- save
-        # _save_xyz is defined early in the script (before mol is built),
+        # _save_structure is defined early in the script (before mol is built),
         # and _initial.xyz was captured immediately after gto.M().  Here
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
-            out.append(f'_save_xyz(mol_eq, _mb_outfile(JOB + "{ROLE_OPTIMIZED}"), '
+            out.append(f'_save_structure(mol_eq, _mb_outfile(JOB + "{ROLE_OPTIMIZED}"), '
                        f'"Optimized geometry (PySCF)")')
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
@@ -1489,25 +1490,88 @@ def _emit_molwatch_callback_wire(mf_var: str) -> str:
     return f"{mf_var}.callback = _molwatch.scf_cycle_hook"
 
 
-def emit_save_helper(v: bool) -> List[str]:
-    """Inline XYZ writer that doesn't require ase / pyscf.tools."""
+def _sidecar_for(struct: Structure) -> dict:
+    """The sidecar payload for ``struct``, from the codec that owns it.
+
+    ONE call, so the pair a run writes and the pair `Save to project` writes
+    are made by the same code.  Imported inside the function because the codec
+    pulls in the parse stack and this module is imported by the deck composer
+    on every render.
+    """
+    from ..workingcopy_structure import StructureCodec
+    return StructureCodec().pair(struct).sidecar
+
+
+def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
+    """The PAIR writer -- ``.xyz`` AND its ``.molstruct.json`` companion.
+
+    **A bare ``.xyz`` is never written** (user ruling, 2026-09-22: *"All
+    structured data goes through the structure API, which never writes just
+    XYZ.  We should never write bare XYZ files.  Period."*).  SIESTA never
+    wrote one; this emitter did, from four call sites, and every geometry a
+    PySCF run produced therefore landed with no labels, no cell and no
+    identity beside it.
+
+    WHY THE WRITER IS SPLICED RATHER THAN IMPORTED.  The deck runs under
+    ``molbuilder-pySCF`` from a run directory, where **molbuilder is not
+    importable** (measured 2026-09-22: not installed in that env; the
+    source tree is only on ``sys.path`` when the cwd happens to be the
+    repo).  So the deck cannot call :class:`StructureCodec`, the same
+    constraint that makes ``mb_monitor.py`` ship as a stdlib-only copy.
+    Serialising a pair is ~15 lines, so it is spliced here beside the deck's
+    other travelling helpers rather than added to ``MONITOR_COMPANIONS`` --
+    that list is staged in two places, and the one time they diverged
+    *"every production run's monitor died at import"* (``runwrap.py``).  A
+    shipped module is the right answer the day the deck needs to **read** a
+    pair; writing one does not earn that risk.
+
+    THE SIDECAR IS NOT BUILT HERE.  ``sidecar`` is what
+    ``StructureCodec().pair(struct).sidecar`` produced at compose time -- the
+    one place either half of a pair is made -- so the labels, cell and
+    periodicity a run writes out are the ones it was given, not a second
+    derivation of them.  Only ``structure_hash`` is recomputed, because the
+    coordinates have moved: it is the SHA-256 of the document just written,
+    which is the same scheme (and the same bytes-of-the-file rule) the codec
+    itself uses.  ``keep_sidecar`` is deliberately ignored -- a companion is
+    optional for a structure nobody computes with, and this is not that.
+    """
     out: List[str] = []
     out.append("# ============================================================")
-    out.append("#  Helper: XYZ writer (defined early so initial-geom snapshot works)")
+    out.append("#  Helper: structure PAIR writer (.xyz + .molstruct.json)")
     out.append("# ============================================================")
     if v:
-        out.append("# Inline XYZ writer (Angstrom).  Avoids depending on ase or")
-        out.append("# pyscf.tools.molden, both of which add startup cost.")
-    out.append("def _save_xyz(mol_obj, path, comment='generated by molbuilder'):")
+        out.append("# Writes the pair, never a bare .xyz: the labels, cell and")
+        out.append("# periodicity travel with every geometry this run produces,")
+        out.append("# so the next calculation can read them back.  The payload")
+        out.append("# below came from molbuilder's own structure codec at")
+        out.append("# compose time; only the hash is recomputed here, over the")
+        out.append("# document actually written.")
+    out.append("import hashlib as _mb_hashlib")
+    out.append("import json as _mb_json")
+    out.append(f"_MB_SIDECAR = {sidecar!r}")
+    out.append("")
+    out.append("def _save_structure(mol_obj, path, comment='generated by molbuilder'):")
     out.append("    coords = mol_obj.atom_coords(unit='Ang')")
-    out.append("    with open(path, 'w') as fh:")
-    out.append('        fh.write(f"{mol_obj.natm}\\n{comment}\\n")')
-    out.append("        for i in range(mol_obj.natm):")
-    out.append("            sym = mol_obj.atom_symbol(i)")
-    out.append("            x, y, z = coords[i]")
-    out.append('            fh.write(f"{sym:<2s}  {x:14.8f}  '
-               '{y:14.8f}  {z:14.8f}\\n")')
-    out.append("    print(f'Wrote {path}')")
+    out.append("    _lines = [f'{mol_obj.natm}', f'{comment}']")
+    out.append("    for i in range(mol_obj.natm):")
+    out.append("        sym = mol_obj.atom_symbol(i)")
+    out.append("        x, y, z = coords[i]")
+    out.append("        _lines.append(f'{sym:<2s}  {x:14.8f}  "
+               "{y:14.8f}  {z:14.8f}')")
+    out.append("    _doc = '\\n'.join(_lines) + '\\n'")
+    out.append("    _p = str(path)")
+    out.append("    with open(_p, 'w') as fh:")
+    out.append("        fh.write(_doc)")
+    out.append("    # The companion, beside it under the same stem.")
+    out.append("    _side = dict(_MB_SIDECAR)")
+    out.append("    _side['structure_hash'] = _mb_hashlib.sha256(")
+    out.append("        _doc.encode('utf-8')).hexdigest()")
+    out.append("    _side['title'] = comment")
+    out.append("    _stem = _p[:-4] if _p.lower().endswith('.xyz') else _p")
+    out.append("    with open(_stem + '.molstruct.json', 'w') as fh:")
+    out.append("        _mb_json.dump(_side, fh, indent=2)")
+    out.append("        fh.write('\\n')")
+    out.append("    print(f'Wrote {_p} + its .molstruct.json')")
     out.append("")
     return out
 
