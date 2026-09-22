@@ -132,6 +132,31 @@ FROZEN_LABEL = "frozen_atoms"
 METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
                    "vacuum", "annotations")
 
+#: Keys a sidecar ON DISK may carry that this build no longer stores.
+#: ACCEPTED AND IGNORED wherever a stored payload is read -- never refused.
+#:
+#: An UNKNOWN key and a RETIRED one are different states, and the difference
+#: is the user's file.  Unknown is a fact they believe they stored and this
+#: build cannot honour, so it is named and refused.  Retired is a key THIS
+#: project used to write and has since stopped: the file is not wrong, it is
+#: older, and refusing it would make a pair that opened yesterday unopenable
+#: today for no gain.
+#:
+#: Retiring a key is only safe when nothing is lost by ignoring it, and that
+#: is shown rather than assumed.  For `pbc` (2026-09-22) it is: the boolean
+#: was always recomputed from `axis_kind`, every sidecar at a readable schema
+#: version carries a real `axis_kind`, and `Structure.pbc()` reproduces the
+#: value on demand.  A key whose fact lives nowhere else cannot be retired
+#: this way -- it needs a schema bump and a reader that migrates it.
+#:
+#: SHARED, because there are TWO gates: the sidecar loader refuses stray keys
+#: while the payload is still whole (`parse/sidecars/molstruct.py`), and
+#: `apply_metadata_dict` refuses them again on the way onto a Structure.  The
+#: retirement was written into the second one only, so an old sidecar still
+#: failed at the FIRST -- measured 2026-09-22, and the reason this is one
+#: list rather than two.
+RETIRED_METADATA_KEYS = ("pbc",)
+
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
 #: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
@@ -913,15 +938,9 @@ class Structure:
         A key whose fact lives nowhere else cannot be retired this way -- it
         needs a schema bump and a reader that migrates it."""
         data = data or {}
-        #: Keys a sidecar on disk may carry that this version no longer
-        #: stores.  ACCEPTED AND IGNORED, never refused: the file is the
-        #: user's and predates the change, and the no-shims rule is about
-        #: renames in code, not formats people already have.  `pbc` went on
-        #: 2026-09-22 -- it was the boolean view of `axis_kind` and could
-        #: never disagree with it, so there is nothing in it to read back.
-        _RETIRED = ("pbc",)
         unknown = [k for k in data
-                   if k not in METADATA_FIELDS and k not in _RETIRED]
+                   if k not in METADATA_FIELDS
+                   and k not in RETIRED_METADATA_KEYS]
         if unknown:
             raise ValueError(
                 f"Structure.apply_metadata_dict: unknown metadata "

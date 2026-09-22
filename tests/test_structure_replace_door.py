@@ -173,3 +173,52 @@ class TestTheDerivedCopyIsACopy:
     # TypeError rather than a case to handle -- pinned by
     # `test_structure_periodicity.py::TestAxisKindIsTheOnePeriodicityField`.
 
+
+
+def test_replace_carries_every_field_the_dataclass_declares():
+    """COMPLETE BY CONSTRUCTION, not by memory.
+
+    `replace()` names the fields it carries: nine in a literal dict plus
+    the five `_carry_nonatom()` supplies. That union is complete today —
+    and only because someone remembered. Add a sixteenth field, forget it
+    in both places, and every derived copy silently resets it to its
+    default: the exact failure `cell_origin` and `info` each had, in four
+    hand-written rebuilds, which is why this door exists at all.
+
+    So the check iterates the LIVE field list rather than a copy of it. A
+    field added tomorrow is covered the moment it is declared, and the
+    test cannot go stale the way a hand-listed set would.
+
+    `frozen_atoms` is the one exclusion and it is deliberate: it has no
+    storage of its own — it reads and writes `regions[FROZEN_LABEL]` — so
+    a copied `regions` already carries it (see the module docstring).
+    """
+    import dataclasses as _dc
+
+    s = Structure(
+        elements=["C", "O"],
+        positions=np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        atom_names=["C1", "O1"], residue_ids=[7, 7],
+        residue_names=["LIG", "LIG"], chain_ids=["B", "B"],
+        title="every field non-default",
+        cell=np.diag([11.0, 12.0, 13.0]), cell_origin=[0.5, 1.5, 2.5],
+        axis_kind=("periodic", "isolated", "transport"),
+        vacuum=(1.0, 2.0, 0.0),
+        regions={"lead": [0], FROZEN_LABEL: [1]},
+        info={"calculation": {"engine": "siesta"}},
+    )
+    out = s.replace(title="derived")          # one field stated, no more
+
+    for f in _dc.fields(Structure):
+        if f.name in ("frozen_atoms", "title"):
+            continue
+        got, want = getattr(out, f.name), getattr(s, f.name)
+        if isinstance(want, np.ndarray):
+            assert np.allclose(got, want), f"{f.name} did not survive replace()"
+        else:
+            assert got == want, (
+                f"{f.name} did not survive replace() -- it is declared on the "
+                f"dataclass but carried by neither the explicit list nor "
+                f"_carry_nonatom(), so every derived copy resets it")
+    # And the reserved label rode along inside `regions`, as designed.
+    assert out.frozen_atoms == [1]
