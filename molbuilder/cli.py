@@ -1079,26 +1079,34 @@ def cmd_modify(input_path, output_path,
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
 @click.option("--from-run", "from_run", is_flag=True, default=False,
-              help="Also read the frozen atoms this run declared, from the "
-                   "siblings of input.XV (.out echo, sidecar, then .fdf).")
+              help="Take the metadata from the run beside input.XV: the "
+                   "sidecar if one is there, else the frozen atoms the "
+                   ".out echo or the .fdf declares.")
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
     THE PAIR IS THE FILE (`model/structure.md` § 2.4).  This wrote a bare
     ``.xyz`` with the cell hand-packed into an ASE ``Lattice="..."`` comment,
-    justified by a round-trip through a module that does not exist; the reader
-    that actually reopens it goes through the codec, so the cell comes off the
-    sidecar. Now the codec writes both halves and the cell rides where every
-    other converter puts it.
+    justified by a round-trip through a module that does not exist; what
+    actually reopens it reads the pair.
 
-    A ``.XV`` is a SIESTA artifact, so its lattice is real and its axes are
-    periodic -- nothing here defaults a box the file already knows.
+    TWO MODES, and the difference is whether a metadata source is there.
 
-    What the file does NOT carry is which atoms were held: SIESTA writes the
-    final coordinates, not the constraints. ``--from-run`` goes and reads them
-    from the siblings. It is a FLAG, not a sniff: silently pulling a
-    frozen-atom set out of a directory because it looked like a run is hard to
-    notice when it is wrong.
+    A ``.XV`` states the geometry and the lattice and nothing else.  On its
+    own, everything it does not state is written at ITS DEFAULT -- and the
+    default is `Structure`'s, applied by `Structure`, not restated here.  A
+    stated lattice means periodic axes; no regions, no held atoms, no
+    isolation padding.
+
+    ``--from-run`` says a metadata source is available beside it.  A sidecar
+    is the whole of one, so it is applied whole through
+    ``molstruct.apply_to_structure`` -- the axis kinds, the region labels,
+    the held atoms, the padding, all of it.  With no sidecar, the run still
+    declares the held atoms in its ``.out`` echo or its ``.fdf``, and those
+    are read in SIESTA's own precedence.
+
+    A FLAG, NOT A SNIFF: picking metadata out of a directory because it
+    looked like a run is hard to notice when it is wrong.
     """
     from .parse.coords.siesta_xv import SiestaXVError, read_xv_with_cell
     from .workingcopy_structure import StructureCodec
@@ -1108,34 +1116,68 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     except SiestaXVError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    # THE AXIS KINDS ARE STATED, NOT LEFT TO DERIVE.  `Structure` reads a
-    # bare cell as fully periodic -- but only when `axis_kind` is unset, and
-    # `replace` carries the reader's `isolated` default forward, so attaching
-    # the cell alone produced a box with vacuum axes. `isolated` means
-    # "re-derive the box from atom extents plus padding", which discards the
-    # cell this verb exists to preserve.
-    #
-    # `periodic` is also what actually happened: SIESTA computes under
-    # periodic boundary conditions, molecule-in-a-box runs included, and the
-    # box in the `.XV` is the box that ran. Using it verbatim is faithful for
-    # a slab and for a molecule alike.
-    changes: dict = {"cell": cell, "axis_kind": ("periodic",) * 3}
-
-    frozen: list[int] = []
+    note = "defaults (a bare .XV states only the geometry and the lattice)"
     if from_run:
-        from .parse.engines._sidecar import read_frozen_atoms_for_siesta
-        frozen = sorted(read_frozen_atoms_for_siesta(str(xv_path)))
-        if frozen:
-            changes["frozen_atoms"] = frozen
-
-    struct = struct.replace(**changes)
+        note = _apply_run_metadata(struct, xv_path, cell)
 
     StructureCodec().write(struct, xyz_path)
-    held = (f", {len(frozen)} frozen" if frozen
-            else (", no frozen atoms found" if from_run else ""))
     click.echo(f"Wrote the pair at {xyz_path}: {struct.n_atoms} atoms, "
-               f"cell preserved{held}")
+               f"cell preserved")
+    click.echo(f"  metadata: {note}")
     return 0
+
+
+def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
+    """``--from-run``: put the run's own metadata onto ``struct`` in place,
+    and say in one line where it came from.
+
+    THE SIDECAR IS APPLIED WHOLE, through the one door.  Picking `axis_kind`
+    out of it and leaving the labels would be a second, narrower reader of a
+    file that already has one -- and the kinds are the half a `.XV` most
+    needs, since it cannot tell a bulk axis from a slab's vacuum from a
+    junction's leads.
+
+    THE `.XV`'s CELL IS KEPT.  `apply_metadata_dict` sets `cell` from the
+    payload unconditionally, so a sidecar carrying none would erase the very
+    lattice this verb exists to preserve -- and where both state one, the
+    `.XV` is the run's OUTPUT and the sidecar its input, so a variable-cell
+    relaxation makes the `.XV` the later word.  The sidecar supplies what the
+    `.XV` cannot say; it does not overrule what it does.
+    """
+    from .parse.engines._sidecar import read_frozen_atoms_for_siesta
+    from .sidecars import molstruct
+
+    sidecar_path = molstruct.sidecar_path_for(xv_path)
+    if sidecar_path.exists():
+        try:
+            data = molstruct.load(sidecar_path)
+            molstruct.apply_to_structure(struct, data)
+        except ValueError as exc:      # MolstructJsonError / PairingError
+            raise click.ClickException(
+                f"{sidecar_path.name} sits beside the .XV but could not be "
+                f"applied: {exc}") from exc
+        struct.cell = xv_cell
+        if data.get("axis_kind") is None:
+            # The kinds default OFF the cell, and the cell was absent while
+            # the payload was applied -- so a sidecar that states no kinds
+            # had them settled as `isolated` against a box that was not
+            # there yet.  Clearing them lets the restored lattice decide,
+            # which is the same default a bare `.XV` gets.
+            struct.axis_kind = None
+        struct.__post_init__()
+        return (f"from {sidecar_path.name} — axes "
+                f"{','.join(struct.axis_kind)}, "
+                f"{len(struct.frozen_atoms)} frozen, "
+                f"{len(struct.regions)} label(s) in the region store")
+
+    frozen = sorted(read_frozen_atoms_for_siesta(str(xv_path)))
+    if frozen:
+        struct.frozen_atoms = frozen
+        return (f"no sidecar beside it; {len(frozen)} frozen atoms from the "
+                f"run's own declaration, axes at their default "
+                f"({','.join(struct.axis_kind)})")
+    return (f"no sidecar and no constraints declared beside it; "
+            f"defaults ({','.join(struct.axis_kind)})")
 
 
 @cli.command("monitor",

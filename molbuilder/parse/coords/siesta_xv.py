@@ -145,11 +145,18 @@ def read_xv_with_cell(path: Union[str, Path]):
     called `read_xv` and then `read_xv_cell`, parsing the same file twice.
     Strict, like `read_xv`: a malformed file raises.
 
-    The cell comes back BESIDE the structure rather than on it, because the
-    FileParser puts it in `StructureResult.cell` and `read_xv_cell` wants the
-    matrix alone.  A caller writing the structure out has to attach it --
-    and state the axis kinds while doing so, since `replace` carries this
-    reader's `isolated` default forward (see the `xv2xyz` verb).
+    THE STRUCTURE CARRIES THE CELL, and the tuple's second element is the
+    same matrix for the two callers that want it bare (the FileParser fills
+    `StructureResult.cell`; `read_xv_cell` answers the matrix alone).
+
+    It did not, until 2026-09-22, and the omission was load-bearing in the
+    wrong direction.  A cell-less `Structure` gets `axis_kind = isolated` on
+    every axis, `replace` carries that forward, and attaching the cell
+    afterwards does NOT re-derive it -- so `xv2xyz` restated the axis kinds
+    by hand to undo a default that should never have applied.  A file that
+    states a lattice should produce a structure that has one, and then
+    `Structure.__post_init__` applies ITS default (a stated cell means
+    periodic on every axis) in the one place that owns that rule.
     """
     p = Path(path)
     lines = _nonblank_lines(p)
@@ -161,7 +168,7 @@ def read_xv_with_cell(path: Union[str, Path]):
     cell = _cell_from(lines, p.name)
     elements, positions_ang = _atoms_from(lines, p.name)
     return Structure(elements=elements, positions=positions_ang,
-                     title=p.stem), cell
+                     cell=cell, title=p.stem), cell
 
 
 def _read_xv(path: Union[str, Path]) -> Structure:
