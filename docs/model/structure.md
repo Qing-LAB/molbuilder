@@ -6,7 +6,8 @@
 sub-documents sharing the `structure-` filename prefix (so the hierarchy is
 visible in the name itself):
 - [`structure-periodicity.md`](?doc=model/structure-periodicity.md) — cell · cell_origin ·
-  axis_kind · derived pbc · vacuum (the per-axis box behaviour).
+  axis_kind · vacuum (the per-axis box behaviour; the boolean `pbc()` is an
+  accessor for ASE/extxyz, not a field — `structure-periodicity.md` § 2.0a).
 - [`structure-annotations.md`](?doc=model/structure-annotations.md) — per-atom channel
   model (`tag`/`flag`/`value`) + the region-label vocabulary.
 - [`structure-molstruct.md`](?doc=model/structure-molstruct.md) — the `.molstruct.json`
@@ -67,7 +68,7 @@ class Structure:
     chain_ids:     Optional[List[str]] = None # single char; default = all "A"
     title:         str = ""                   # XYZ comment / PDB TITLE
     # ── metadata (each detailed in a sub-doc; serialized as one block) ──
-    # cell, cell_origin, pbc, axis_kind, vacuum → structure-periodicity.md
+    # cell, cell_origin, axis_kind, vacuum → structure-periodicity.md
     #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
     #      sampling knob; see engines/siesta.md)
     # regions (THE label store), annotations    → structure-annotations.md
@@ -144,7 +145,7 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 ```
 
 - **Scope** = the dataclass's own metadata fields: `regions`, `cell`,
-  `cell_origin`, `pbc`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
+  `cell_origin`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
   whole label store; a reserved label such as `frozen_atoms` is in it, so there
   is no field of its own to serialise — `structure-annotations.md` § 2.)
 - **Strict JSON** — the dict is lists/dicts/bools/floats. `annotations` are
@@ -605,7 +606,7 @@ def _fully_populated_structure():
     s = Structure(elements=["C", "O"], positions=[[1.,2.,3.], [4.,5.,6.]])
     s.apply_metadata_dict({
         "cell": [[10,0,0],[0,10,0],[0,0,10]], "cell_origin": [1.5,2.5,3.5],
-        "pbc": [True,True,False], "axis_kind": ["periodic","periodic","isolated"],
+        "axis_kind": ["periodic","periodic","isolated"],
         "vacuum": [0.,0.,12.],
         # every label in one store, the reserved one included
         "regions": {"electrode":[0], "channel":[1], "frozen_atoms":[0]},
@@ -625,7 +626,7 @@ after load → serialise → restore — pinning the field through the JS mirror
 not just the Python codec.
 
 **Anti-patterns (rejected by reference to this doc):** hand-rolled structure
-repacks; raw-dict metadata access (`d["cell_origin"]`, `d.get("pbc")`) outside
+repacks; raw-dict metadata access (`d["cell_origin"]`, `d.get("axis_kind")`) outside
 the two codecs; a JS field whitelist for periodicity; a second file stack or a
 browser-authored sidecar. Named-key access lives in exactly one place per
 language.

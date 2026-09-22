@@ -24,7 +24,7 @@ def _distinct_struct():
     els = ["C", "C", "N", "C", "O"]
     pos = np.array([[float(i), float(2 * i), float(3 * i)] for i in range(5)])
     return Structure(elements=els, positions=pos,
-                     cell=np.diag([50.0, 50.0, 50.0]), pbc=[True, True, True])
+                     cell=np.diag([50.0, 50.0, 50.0]))
 
 
 # ---------------------------- SIESTA .fdf ---------------------------- #
@@ -140,7 +140,7 @@ def _repeated_element_struct():
     els = ["C", "C", "N", "C", "O"]
     pos = np.array([[float(i), 0.0, 0.0] for i in range(5)])
     return Structure(elements=els, positions=pos,
-                     cell=np.diag([50.0, 50.0, 50.0]), pbc=[True, True, True],
+                     cell=np.diag([50.0, 50.0, 50.0]),
                      regions={"lead": [0, 3], "device": [1, 2]})
 
 
@@ -185,7 +185,7 @@ def test_a_region_label_survives_the_sidecar_and_selects_the_same_atoms(tmp_path
     # path, where the geometry comes from the .xyz and the metadata from here.
     reloaded = Structure(elements=list(src.elements),
                          positions=np.array(src.positions),
-                         cell=np.diag([50.0, 50.0, 50.0]), pbc=[True, True, True])
+                         cell=np.diag([50.0, 50.0, 50.0]))
     assert not (reloaded.regions or {}), "the fresh structure is already labelled"
     msj.apply_to_structure(reloaded, msj.load(path))
 

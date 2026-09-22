@@ -39,7 +39,6 @@ plus the structure's **metadata fields** spread in alongside them.
   "regions": {"L-electrode": [0], "frozen_atoms": [1]},
   "cell": [[10,0,0],[0,10,0],[0,0,10]],
   "cell_origin": null,
-  "pbc": [true, true, false],
   "axis_kind": ["periodic", "periodic", "isolated"],
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
@@ -73,13 +72,13 @@ of them and its sidecar is a v7 sidecar plus a version stamp.
 **per-atom** — it rides the atom list, one entry per atom, and survives
 atom edits because every edit layer carries it with its atom (`regions`
 membership, the identity columns, each channel's atom-indexed half) — or it
-is **system** — stored separately, whole (`cell`, `cell_origin`, `pbc`,
+is **system** — stored separately, whole (`cell`, `cell_origin`,
 `axis_kind`, `vacuum`, `title`, each channel's kind/color/fdf).  Everything
 in this file is one or the other, and every layer (the codec, the wire, the
 viewer's two translation doors) folds and unfolds along exactly that line.
 
 The **metadata fields** (`regions`, `cell`, `cell_origin`,
-`pbc`, `axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
+`axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
 codec owns — they are **spread in, not re-listed** by the sidecar
 (`structure_fields_via_dataclass` round-trips them through a scratch `Structure`,
 so the sidecar can never carry a field the codec doesn't know; this is what

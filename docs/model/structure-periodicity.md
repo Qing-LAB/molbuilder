@@ -39,14 +39,50 @@ file.
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
 | `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = **derive the corner** (§ 6.1a), which is `(0,0,0)` only when the box at the world origin already holds every atom; **dropped unless `cell` is explicit** |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
-| `pbc` | 3 bools — **stored, kept in lockstep with `axis_kind`** | ASE-interop view: `periodic\|transport → True`, `isolated → False`; `__post_init__` reconciles the two so they never diverge | derived from `axis_kind` (the richer field: a boolean can't tell `transport` from `periodic`) |
+| ~~`pbc`~~ | — | **NOT A FIELD** since 2026-09-22. The boolean view is the accessor `Structure.pbc()`, computed from `axis_kind` on demand (§ 2.0a) | — |
 | `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
 
-`cell` and `axis_kind`, `vacuum`, `cell_origin` all live on `Structure`
+`cell`, `axis_kind`, `vacuum` and `cell_origin` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec
-(`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`). The
-boolean `pbc` is a **derived property** of `axis_kind`, so ASE interop
-(`normalise_cell_pbc`) is unchanged.
+(`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`).
+
+### 2.0a One periodicity field, and a boolean accessor *(user, 2026-09-22)*
+
+**`axis_kind` is the only periodicity state a `Structure` holds.** There was
+a second, `pbc`, storing the boolean view beside it — and it could not hold a
+fact `axis_kind` does not, because the mapping is onto, not one-to-one:
+`periodic` and `transport` both give `True`. `__post_init__` recomputed it
+from `axis_kind` on every construction, so the two could never legally
+disagree; what the second field bought was a duplicate to keep in step.
+
+It cost more than the redundancy. `Structure.replace()` carried both, and
+the kind won, so a caller who stated only the boolean had it silently
+discarded — patched by comparing the two inside `replace()`, which put one
+precedence rule in two places. And `transport/transiesta.py` branched on the
+boolean to label each axis in the deck it writes, so **every `transport` axis
+was written out as `periodic`**, and its "the transport axis has vacuum / is
+not periodic" warning could never fire on a transport axis at all. Both
+because a boolean cannot express the distinction it was branching on.
+
+**The boolean survives as `Structure.pbc()`** — a method, not a property, so
+the parens say it is computed and a stale reader fails on subscript rather
+than silently taking a truthy bound method. It exists for the two formats
+outside this project that require booleans and have nothing richer:
+
+  * ASE — `Atoms(pbc=…)` (`to_ase`);
+  * extended XYZ — the `pbc="T T F"` header (`to_extxyz`).
+
+**Nothing inside molbuilder calls it.** Code that needs to know how an axis
+is treated asks `axis_kind`, which says which of the three it is. Reading the
+boolean instead is how the transport mislabel above happened.
+
+**On disk:** `pbc` left `METADATA_FIELDS`, so a sidecar written from here
+carries `axis_kind` and not the duplicate, and the fingerprint no longer
+includes it. A `pbc` key in an older sidecar is **accepted and ignored**, not
+refused (`apply_metadata_dict`'s `_RETIRED`) — `apply_metadata_dict` rejects
+unknown keys, and these are files people already have. Nothing is lost by
+ignoring it: every sidecar at a readable schema version carries a real
+`axis_kind`, because `__post_init__` has always set one.
 
 ---
 
@@ -54,7 +90,7 @@ boolean `pbc` is a **derived property** of `axis_kind`, so ASE interop
 
 Every consumer branches on this one field.
 
-| kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | derived ASE `pbc[i]` | fdf |
+| kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | `pbc()[i]` (ASE/extxyz only) | fdf |
 |---|---|---|---|---|---|---|
 | **periodic** | commensurate lattice (construction / import) | 0 | **yes** (a `SiestaConfig` knob) | yes | `True` | k-sampled |
 | **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | no (Γ) | no | `False` | Γ box |
@@ -158,7 +194,7 @@ the box render and the fdf work on a blank molecule.
 |---|---|---|---|
 | `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `commitPeriodicityOp("cell", 3×3)` / import / capture → `struct.cell` wins verbatim |
 | `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `commitPeriodicityOp("vacuum", [x,y,z])` — used verbatim, however small. `null` clears it back to the default |
-| `axis_kind` (pbc) | `isolated` on every axis (a fresh molecule is a vacuum box) | `pbc[i] = axis_kind[i] != "isolated"` | `commitPeriodicityOp("axis_kind", [...])` |
+| `axis_kind` | `isolated` on every axis (a fresh molecule is a vacuum box) | the one periodicity field; `pbc()` derives the booleans for ASE/extxyz only | `commitPeriodicityOp("axis_kind", [...])` |
 | `block` | — (not a field: it sets all four) | — | `commitPeriodicityOp("block", {cell, cell_origin, axis_kind, vacuum})` — the whole cell, checked once |
 
 **One door, five ops.** This column named `setUnitCell` / `setVacuum` /
@@ -209,7 +245,7 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 
 | Concern | Home | Behavior |
 |---|---|---|
-| The fields + invariants | `structure.py` `__post_init__` | validate/reconcile `cell`/`axis_kind`/`vacuum`/`cell_origin`; derive `pbc` |
+| The fields + invariants | `structure.py` `__post_init__` | validate `cell`/`axis_kind`/`vacuum`/`cell_origin` (there is nothing to reconcile since `pbc` stopped being a second field — § 2.0a) |
 | `resolve_cell()` | `structure.py:427` | § 4 — explicit wins, else per-axis |
 | `resolve_cell_origin()` | `structure.py:467` | § 6 — the box's low corner |
 | **Capture at construction** | `modify.py` — `add_slab` through `_finish_slab`. That helper was extracted so **two** builders could share it; `add_electrode_slab` was the other and went on 2026-09-01, `add_symmetric_electrodes` before it | sets `Structure.cell` (in-plane lattice + the z length below) **and** `axis_kind=(periodic,periodic,transport)` (defined `:1043`, passed to the constructor `:1063`) — no more electrode discard |
@@ -652,7 +688,7 @@ strict split between showing and writing.
 switchable pages `[ Selection | Cell ]`. The Cell page is **display-only**: it
 shows vacuum, the unit cell as a 3×3 matrix (non-orthogonal-ready), the cell
 origin (`getUnitCellOriginInfo().value` = `resolved_cell_origin`), and
-`axis_kind`/`pbc` per axis. Each field is read through a `molview.data`
+`axis_kind` per axis. Each field is read through a `molview.data`
 accessor (`getUnitCellInfo`, `getUnitCellOriginInfo`, `getVacuumInfo`,
 `getAxisKindInfo`) returning `{ value, isDefault }`, so the page renders a
 "(default)" tag while still handing out a usable number. **MolView never
@@ -718,7 +754,7 @@ volume first.
 ## 8. Persistence + the data-flow loop
 
 `cell`, `cell_origin`, `axis_kind`, and `vacuum` persist in the
-`.molstruct.json` sidecar (`pbc` stays derived; the envelope + schema are in
+`.molstruct.json` sidecar (`pbc` is not written at all — § 2.0a; the envelope + schema are in
 `structure-molstruct.md`). **Schema v5 dropped the `kgrid` key** — periodicity
 carries no sampling parameter. Periodicity flows one way, read at each stage:
 

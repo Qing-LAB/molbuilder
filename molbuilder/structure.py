@@ -879,7 +879,24 @@ class Structure:
         (absent cell -> non-periodic; absent regions -> none), matching a v3
         back-read.  Raises ``ValueError`` on any invalid field (bad cell,
         out-of-range index, ...), sourced from the same invariants a freshly
-        constructed Structure enforces."""
+        constructed Structure enforces.
+
+        **An unknown key is REFUSED, a RETIRED one is ignored.**  Those are
+        different states and the difference is the user's file.  An unknown
+        key is a fact they believe they stored and this build cannot honour,
+        so saying nothing would be a silent loss -- it is named and refused.
+        A retired key is one THIS project used to write and has since stopped:
+        the file is not wrong, it is older, and refusing it would make a pair
+        that opened yesterday unopenable today for no gain.  ``_RETIRED``
+        below is that list, with the date and the reason on each entry.
+
+        Retiring a key is only safe when nothing is lost by ignoring it, and
+        that has to be shown rather than assumed.  For ``pbc`` it is: the
+        boolean was always recomputed from ``axis_kind``, every sidecar at a
+        readable schema version carries a real ``axis_kind`` (``__post_init__``
+        has always set one), and :meth:`pbc` reproduces the value on demand.
+        A key whose fact lives nowhere else cannot be retired this way -- it
+        needs a schema bump and a reader that migrates it."""
         data = data or {}
         #: Keys a sidecar on disk may carry that this version no longer
         #: stores.  ACCEPTED AND IGNORED, never refused: the file is the

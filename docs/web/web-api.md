@@ -153,7 +153,7 @@ whose inverse is `Structure.from_dict()`:
     "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]],
     "atom_names": [], "residue_ids": [], "residue_names": [], "chain_ids": [],
     "metadata": { "regions": {"L-electrode": [0], "frozen_atoms": [1]},
-                  "cell": null, "cell_origin": null, "pbc": [false,false,false],
+                  "cell": null, "cell_origin": null,
                   "axis_kind": ["isolated","isolated","isolated"],
                   "vacuum": [0.0, 0.0, 0.0], "annotations": {} }
   },
