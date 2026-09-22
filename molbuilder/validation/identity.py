@@ -233,8 +233,8 @@ def _cell_row(directory, run_id: str, engine: str, cell) -> List[Issue]:
     try:
         import numpy as np
 
-        from ..parse.coords.siesta_xv import _read_xv_cell
-        saved = _read_xv_cell(xv)
+        from ..parse.coords.siesta_xv import read_xv_cell
+        saved = read_xv_cell(xv)
         if saved is None:
             return []                       # unreadable is bundle.py's to say
         if np.allclose(np.asarray(cell, dtype=float), saved,

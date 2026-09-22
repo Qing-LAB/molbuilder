@@ -1028,11 +1028,11 @@ def _read_relaxed_result(path):
         # recorded here because this route is where it surfaced, as a test
         # comparing the two answers and failing by 1.6e-6 Å.
         from molbuilder.parse.coords.siesta_xv import (
-            SiestaXVError, read_xv, read_xv_cell,
+            SiestaXVError, read_xv_with_cell,
         )
         try:
-            struct = read_xv(path)
-            cell = read_xv_cell(path)
+            # ONE PASS for the two halves of one answer.
+            struct, cell = read_xv_with_cell(path)
         except SiestaXVError as exc:
             raise ValueError(str(exc)) from exc
         return list(struct.elements), struct.positions, cell

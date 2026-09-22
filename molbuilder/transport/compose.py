@@ -171,30 +171,31 @@ def _cells_agree_or_refuse(a_name: str, a, b_name: str, b) -> None:
 def read_xv(path) -> Tuple[np.ndarray, List[str], np.ndarray]:
     """SIESTA's ``.XV`` → ``(cell_ang (3,3), elements, positions_ang)``.
 
-    The format is SIESTA's own: three cell rows (vector + velocity, in
-    Bohr), an atom count, then one row per atom —
-    ``species_index  Z  x y z  vx vy vz`` (Bohr).  The atom ORDER is the
-    deck's order, which is the source structure's order — that identity
-    is why the overlay in :func:`compose_junction` is a plain
-    positional replacement.
+    THE PARSE MODULE'S READER, reshaped.  This used to be a second, complete
+    `.XV` parser -- same name, different return type, sitting beside
+    `parse/coords/siesta_xv.py`, whose own first paragraph says "this is the
+    only `.XV` reader".  `constants.py` records what the pair already cost:
+    the two carried different Bohr radii, so "the same file gave coordinates
+    4e-7 apart depending on which reader was asked".  Unifying the constant
+    fixed that number and left both parsers standing; this removes the
+    second one.
+
+    The TUPLE SHAPE stays, because `compose_junction`'s overlay wants the
+    three arrays positionally and the atom ORDER is the deck's order -- that
+    identity is why the overlay is a plain positional replacement.
     """
-    path = Path(path)
-    lines = [ln.split() for ln in path.read_text().split("\n") if ln.strip()]
-    if len(lines) < 4:
-        raise ComposeError(f"{path} is not a .XV file (too short)")
+    from ..parse.coords.siesta_xv import SiestaXVError, read_xv_with_cell
     try:
-        cell = np.array([[float(x) for x in lines[i][:3]]
-                         for i in range(3)]) * _BOHR_ANG
-        n = int(lines[3][0])
-        rows = lines[4:4 + n]
-        if len(rows) != n:
-            raise ValueError(f"declares {n} atoms, carries {len(rows)}")
-        elements = [symbol_for_z(int(r[1])) for r in rows]
-        pos = np.array([[float(x) for x in r[2:5]]
-                        for r in rows]) * _BOHR_ANG
-    except (ValueError, IndexError) as exc:
+        struct, cell = read_xv_with_cell(Path(path))
+    except SiestaXVError as exc:
         raise ComposeError(f"{path} does not parse as a .XV file: {exc}")
-    return cell, elements, pos
+    except OSError as exc:
+        raise ComposeError(f"{path} could not be read: {exc}")
+    if cell is None:                      # defensive: the strict door raises
+        raise ComposeError(f"{path} carries no cell")
+    return (np.asarray(cell, dtype=float),
+            list(struct.elements),
+            np.asarray(struct.positions, dtype=float))
 
 
 @dataclass(frozen=True)
