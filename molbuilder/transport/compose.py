@@ -96,10 +96,23 @@ def _unusable_cell(struct) -> Optional[str]:
     refusal was removed on 2026-09-21 so a pair holding a bad box could be
     OPENED and corrected on the Cell page (§ 8.2, *"reading does not judge"*)
     -- and form B had been relying on it without saying so.  Measured: a
-    form-B sidecar whose ``cell`` is a row of zeros loaded, passed the
-    ``is None`` guard, and died in ``transiesta.axis_vacuum`` as a raw
-    ``LinAlgError: Singular matrix`` -- a traceback where every other bad
-    citation gets a sentence.
+    form-B sidecar whose ``cell`` is a row of zeros loads and passes the
+    ``is None`` guard.
+
+    **It does not crash, and the first telling of this said it did.**
+    ``transiesta.axis_vacuum`` inverts the cell unguarded and does raise
+    ``LinAlgError`` when called directly -- but nothing reaches it with a
+    bad box: ``_emit_geometry`` is only ever a ``Block`` in a deck layout,
+    and ``script_emit.render_deck`` runs ``report(validate(...))`` before the
+    first block renders, so the deck path answers *"[cell.no_volume] This box
+    is flat (8 x 8 x 0 A)"*.  Both the original review and its cross-check
+    asserted the traceback from the function in isolation without tracing the
+    call, which is the § 1d step-0 mistake in miniature.
+
+    What this guard is actually worth is WHERE and IN WHOSE WORDS the refusal
+    lands: at the citation door, naming the cited pair, the way form A has
+    always done -- rather than surviving to the deck writer to be described
+    as a problem with a box, several steps from the file that holds it.
 
     A junction needs a real box (`science/junction-cell.md`): the transverse
     vectors set the k-mesh and the image separation, and the transport vector

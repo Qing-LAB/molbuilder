@@ -962,11 +962,17 @@ class TestFormB:
         That refusal was removed 2026-09-21 so a pair holding a bad box could
         be OPENED and fixed on the Cell page (`structure-periodicity.md`
         § 8.2, "reading does not judge") — and this guard had been relying on
-        it without saying so. Measured before the fix: the pair loaded, passed
-        `cell is None`, and died in `transiesta.axis_vacuum` as a raw
-        `LinAlgError: Singular matrix` — a traceback where every other bad
-        citation gets a sentence. Form A had always checked the determinant;
-        both now ask one question.
+        it without saying so.
+
+        WHAT IT COSTS, stated correctly at the second attempt: not a crash.
+        `axis_vacuum` inverts the cell unguarded, but nothing reaches it with
+        a bad box — `render_deck` validates before the first block renders,
+        so the deck path already answers "[cell.no_volume] This box is flat".
+        The first write-up of this claimed the traceback, from probing that
+        function in isolation. What the guard buys is the refusal landing at
+        the CITATION door, naming the cited pair, the way form A has always
+        done — instead of surfacing later as a complaint about a box, several
+        steps from the file that holds it.
         """
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
