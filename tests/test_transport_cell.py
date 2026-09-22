@@ -52,11 +52,24 @@ def test_structure_cell_validation():
                   cell=np.zeros((2, 3)))
 
 
-def test_structure_rejects_degenerate_cell():
-    # zero-volume (two parallel vectors) must fail loudly, not crash later
+def test_a_degenerate_cell_is_reported_rather_than_unopenable():
+    """Zero volume (two parallel vectors) must be said out loud -- but by the
+    checker, not by refusing to build the object.
+
+    This asserted that `Structure(...)` raised, until 2026-09-21.  § 8.2 says
+    reading does not judge: a model that cannot HOLD a bad box cannot show one
+    on the Cell page either, so a pair whose sidecar carried one could not be
+    opened and therefore could not be fixed.  The refusal lives at the two
+    doors that are about to act on the box -- the edit gate and the emitter --
+    and both still refuse.  What must never happen is the box travelling
+    QUIETLY, which is what this now pins.
+    """
+    from molbuilder.cell import resolve_and_check
     bad = np.array([[10.0, 0, 0], [10.0, 0, 0], [0, 0, 10.0]])
-    with pytest.raises(ValueError, match="singular|degenerate"):
-        Structure(elements=["C"], positions=np.zeros((1, 3)), cell=bad)
+    s = Structure(elements=["C"], positions=np.zeros((1, 3)), cell=bad)
+    assert s.cell is not None, "the box the user has to fix was dropped"
+    _rc, issues = resolve_and_check(s)
+    assert [i.where for i in issues] == ["cell.no_volume"]
 
 
 def test_copy_translated_preserve_cell_and_pbc():

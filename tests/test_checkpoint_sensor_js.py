@@ -303,6 +303,7 @@ def test_the_panel_and_its_importer_actually_parse(name):
 #  and assert on the requests it made and the DOM it wrote.          #
 # ================================================================== #
 
+import json                                                 # noqa: E402
 from _node_esm import run_node                              # noqa: E402
 
 #: A DOM small enough to read and real enough to drive the panel.  Only the
@@ -707,3 +708,126 @@ def test_wiring_the_panel_twice_does_not_double_every_click():
     """, globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
     assert out["inits"] == 1, (
         "one click produced more than one request; the panel was wired twice")
+
+
+# ================================================================== #
+#  The deep read is covered; the ordinary one is not                 #
+#                                                                    #
+#  `Repo.status(deep=False)` -- every directory-enter -- runs four    #
+#  git subprocesses and stats each file, reading no file's contents.  #
+#  `deep=True`, which only the Refresh button asks for, hashes every  #
+#  big file whose size still matches: `checkpoint.py` says a folder   #
+#  holding a 2 GB density matrix must not be read end-to-end, which   #
+#  is exactly what that path then does.  One is ui-contract § 10's    #
+#  heavy user-triggered operation; the other is a click nobody waits  #
+#  on, and covering it would flash the window for nothing.            #
+# ================================================================== #
+
+_STATE_REPLY = {"match": "/state", "body": {
+    "ok": True, "initialized": True, "clean": True,
+    "unsaved": [], "changed": [], "added": [], "deleted": [],
+    "standing_at": {"id": "abc1234", "short": "abc1234",
+                    "note": "set up", "parent": None, "tags": []}}}
+
+
+def _fence_walk(body: str) -> dict:
+    """Drive the real panel and sample the fence from inside `fetch`.
+
+    Sampled there rather than from a timer because the stub resolves in
+    a microtask: anything scheduled from outside runs after the read is
+    already over, and would pass against a panel that never claimed.
+    """
+    return run_node([_PANEL], r"""
+      globalThis.__replies = [%s];
+      const busy = (await import(new URL("../page-busy.js",
+                                 process.env.PANEL_URL).href)).pageBusy;
+      const seen = [];
+      const inner = globalThis.fetch;
+      globalThis.fetch = (url, opts = {}) => {
+        seen.push({deep: url.includes("deep=1"), held: busy.isClaimed()});
+        return inner(url, opts);
+      };
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      %s
+      console.log(JSON.stringify({seen, after: busy.isClaimed()}));
+    """ % (json.dumps(_STATE_REPLY), body),
+        globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+
+
+def test_entering_a_folder_does_not_cover_the_window():
+    """A directory-enter reads no file's contents, so it takes nothing."""
+    out = _fence_walk(r"""
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+    """)
+    assert out["seen"], "the panel made no request at all"
+    assert all(c["deep"] is False for c in out["seen"]), out["seen"]
+    assert all(c["held"] is False for c in out["seen"]), (
+        "entering a folder covered the window -- § 10 keeps the cover for "
+        "work the person waits on")
+    assert out["after"] is False
+
+
+def test_the_refresh_button_covers_the_window_while_it_hashes():
+    """Refresh asks for `deep=1`, which hashes every big file."""
+    out = _fence_walk(r"""
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+      __els["ps-checkpoint-refresh-btn"].click();
+      await new Promise(r => setTimeout(r, 30));
+    """)
+    deep = [c for c in out["seen"] if c["deep"]]
+    assert deep, (
+        f"Refresh did not ask for a deep read: {out['seen']}")
+    assert all(c["held"] for c in deep), (
+        "the deep read ran with the window uncovered -- it hashes "
+        "gigabytes and nothing was blocking the click behind it")
+    assert out["after"] is False, "the window stayed covered afterwards"
+
+
+def test_cancelling_a_deep_read_says_nothing_rather_than_HTTP_200():
+    """Cancel after the headers land but before the body is read.
+
+    `_fetchJSON` catches a failed `r.json()` because a reply may carry
+    no JSON at all.  That catch used to swallow the `AbortError` a
+    Cancel raises mid-body too, and the call then returned
+    `{http: 200, body: null}` -- which reads downstream as a server that
+    answered with nothing, so pressing Cancel painted "HTTP 200" as an
+    error.  Only the deep read carries a signal, so only it gets here.
+    """
+    out = run_node([_PANEL], r"""
+      globalThis.__replies = [%s];
+      const busy = (await import(new URL("../page-busy.js",
+                                 process.env.PANEL_URL).href)).pageBusy;
+      const inner = globalThis.fetch;
+      globalThis.fetch = async (url, opts = {}) => {
+        const r = await inner(url, opts);
+        if (!url.includes("deep=1")) return r;
+        // headers landed; the body never will, because Cancel fires
+        return { status: r.status, json: () => new Promise((_res, rej) => {
+          setTimeout(() => {
+            const e = new Error("aborted"); e.name = "AbortError"; rej(e);
+          }, 5);
+        }) };
+      };
+      const m = await import(process.env.PANEL_URL);
+      m.initCheckpointPanel();
+      await m.onDirectoryChange("/p/BDT-Au/optimization/relax");
+      await new Promise(r => setTimeout(r, 30));
+      const before = __els["ps-checkpoint-toggle"].dataset["attr_data-state"];
+      __els["ps-checkpoint-refresh-btn"].click();
+      await new Promise(r => setTimeout(r, 10));
+      busy._runCancelers();
+      await new Promise(r => setTimeout(r, 40));
+      console.log(JSON.stringify({
+        before,
+        pill: __els["ps-checkpoint-toggle"].dataset["attr_data-state"],
+        held: busy.isClaimed(),
+      }));
+    """ % json.dumps(_STATE_REPLY),
+        globals_js=_DOM + f'\nprocess.env.PANEL_URL = {_PANEL.resolve().as_uri()!r};')
+    assert out["before"] == "clean", out
+    assert out["pill"] != "error", (
+        f"Cancel painted a failure the user did not have: pill={out['pill']}")
+    assert out["held"] is False, "the window stayed covered after Cancel"

@@ -271,3 +271,233 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
     finally:
         set_capabilities(None)
+
+
+class TestAnEditOutdatesTheContractWithoutErasingIt:
+    """`molview.md` § 8.4a: an edit VOIDS a recorded calculation, and the
+    way it says so is a flag ON the record — `structure_modified` for a
+    geometry or cell op, `labels_modified` for a name.
+    `transport.compose.recorded_contract_of` reads the first back as
+    *"the mesh cutoff and transverse k-mesh below were converged for a
+    cell that is no longer there"*.
+
+    Rebuilding a Structure without `info` deletes the thing that warning
+    reads, so the flag has nothing to mark and a form-B citation quietly
+    inherits catalogue defaults instead. Voiding is a MARK on the record;
+    a record that is gone cannot carry one.
+    """
+
+    def _with_contract(self):
+        import numpy as np
+        from molbuilder.structure import Structure
+        s = Structure(elements=["H", "H", "O"],
+                      positions=np.array([[0., 0, 0], [1., 0, 0], [0, 1., 0]]))
+        s.cell = np.diag([8., 8., 8.])
+        s.info = {"calculation": {"engine": "siesta",
+                                  "contract": {"siesta_mesh_cutoff_ry": 300}}}
+        return s
+
+    @pytest.mark.parametrize("name", [
+        "copy", "delete_atoms", "add_atom", "translate", "translate_subset",
+        "rotate", "orient", "append", "calibrate",
+    ])
+    def test_every_atom_edit_carries_the_recorded_contract(self, name):
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder import modify as M
+        s = self._with_contract()
+        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
+        ops = {
+            "copy":             lambda x: x.copy(),
+            "delete_atoms":     lambda x: M.delete_atoms(x, [2]),
+            "add_atom":         lambda x: M.add_atom(x, "C", 0, [2., 2., 2.]),
+            "translate":        lambda x: M.translate(x, [1., 0, 0]),
+            "translate_subset": lambda x: M.translate(x, [1., 0, 0], indices=[0]),
+            "rotate":           lambda x: M.rotate_around_axis(x, "z", 90.0),
+            "orient":           lambda x: M.orient_along_axis(x, [0, 1], "z"),
+            "append":           lambda x: M.append_structure(x, other),
+            "calibrate":        lambda x: M.calibrate_to_cell(x),
+        }
+        out = ops[name](s)
+        if isinstance(out, tuple):
+            out = out[0]
+        out = getattr(out, "structure", out)
+        assert out.info.get("calculation", {}).get("contract"), (
+            f"{name} dropped info.calculation -- the flag that marks this "
+            f"edit as outdating the contract now has nothing to mark")
+
+    def test_the_contract_carries_its_OUTDATED_flag_through_an_edit(self):
+        """The flag is the point: it must survive the very edit that set
+        it, or the warning downstream can never fire."""
+        from molbuilder.modify import delete_atoms
+        s = self._with_contract()
+        s.info["calculation"]["structure_modified"] = True
+        out = delete_atoms(s, [2])
+        out = getattr(out, "structure", out)
+        assert out.info["calculation"]["structure_modified"] is True
+
+    @pytest.mark.parametrize("op,mark", [
+        ("delete_atoms",  "structure_modified"),
+        ("add_atom",      "structure_modified"),
+        ("translate",     "structure_modified"),
+        ("rotate",        "structure_modified"),
+        ("calibrate",     "structure_modified"),
+    ])
+    def test_a_python_edit_marks_the_contract_outdated(self, op, mark):
+        """The backend marks what MolView marks.
+
+        `molview/model.js` sets this flag on every `applyOp`; Python set
+        it nowhere, so `molbuilder modify IN OUT --delete N` wrote an
+        edited pair still carrying the relaxation's mesh cutoff and
+        k-mesh with no staleness mark — and a transport citation of that
+        pair sealed to settings converged for a structure that no longer
+        exists, silently.  `compose.py` reads this flag to warn.
+        """
+        from molbuilder import modify as M
+        s = self._with_contract()
+        out = {
+            "delete_atoms": lambda: M.delete_atoms(s, [2]),
+            "add_atom":     lambda: M.add_atom(s, "H", 0, [1.0, 1.0, 1.0]),
+            "translate":    lambda: M.translate(s, [1.0, 0.0, 0.0]),
+            "rotate":       lambda: M.rotate_around_axis(s, "z", 30.0),
+            "calibrate":    lambda: M.calibrate_to_cell(s),
+        }[op]()
+        assert out.info["calculation"][mark] is True
+        assert out.info["calculation"]["contract"], "the record was erased, not marked"
+        assert "structure_modified" not in s.info["calculation"], \
+            "the edit marked its SOURCE too"
+
+    @pytest.mark.parametrize("op, payload", [
+        ("vacuum",      [4.0, 4.0, 4.0]),
+        ("axis_kind",   ["periodic", "periodic", "isolated"]),
+        ("cell",        [[9., 0, 0], [0, 9., 0], [0, 0, 9.]]),
+        ("cell_origin", [1.0, 1.0, 1.0]),
+        ("block",       {"cell": [[9., 0, 0], [0, 9., 0], [0, 0, 9.]],
+                         "cell_origin": None,
+                         "axis_kind": ["periodic", "periodic", "periodic"],
+                         "vacuum": None}),
+    ])
+    def test_a_box_edit_marks_the_contract_outdated(self, op, payload):
+        """Every op of the periodicity door, not just the geometry ones.
+
+        Mesh cutoff is a grid density over the CELL and the transverse
+        k-mesh samples the reciprocal cell, so changing the box is
+        exactly what invalidates the inherited settings — as much as
+        moving an atom is.  This is the half the browser used to decide
+        for itself: `/api/structure/periodicity` returned only the
+        `periodicity` block, so `commitPeriodicityOp` marked the store
+        locally and Python marked nothing.  Now the door marks and the
+        answer carries it, which means the decision has to be pinned
+        HERE, in the language that makes it.
+        """
+        from molbuilder.periodicity_gate import apply_edit
+        s = self._with_contract()
+        out, _notices = apply_edit(s, op, payload)
+        assert out.info["calculation"]["structure_modified"] is True
+        assert out.info["calculation"]["contract"], \
+            "the record was erased, not marked"
+        assert out.info["calculation"].get("labels_modified") is None, \
+            "a box edit claimed the labels moved"
+        assert "structure_modified" not in s.info["calculation"], \
+            "the edit marked its SOURCE too"
+
+    def test_a_refused_box_edit_marks_nothing(self):
+        """The mark rides the returned copy, and a refusal returns none.
+
+        `apply_edit` marks immediately after `struct.copy()`, before the
+        per-op branches — which is only safe because every refusal
+        raises instead of answering. If one ever returned the copy on a
+        rejected edit, the pair would carry a staleness flag for an edit
+        that never happened.
+        """
+        from molbuilder.periodicity_gate import apply_edit
+        s = self._with_contract()
+        with pytest.raises(ValueError):
+            apply_edit(s, "axis_kind", ["periodic", "sideways", "isolated"])
+        assert "structure_modified" not in s.info["calculation"]
+
+    def test_a_reorder_is_not_an_edit(self):
+        """`categorical_sort` derives through the same door but changes
+        no geometry, so marking there would warn about every composed
+        junction."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.transport.sort import categorical_sort
+        s = Structure(
+            elements=["Au", "S", "S", "Au"],
+            positions=np.array([[0., 0, 0], [0, 0, 2.], [0, 0, 4.], [0, 0, 6.]]),
+            cell=np.diag([8., 8., 12.]),
+            regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]},
+            info={"calculation": {"engine": "siesta",
+                                  "contract": {"siesta_mesh_cutoff_ry": 300}}})
+        out = categorical_sort(s).structure
+        assert "structure_modified" not in out.info["calculation"]
+        assert out.info["calculation"]["contract"]
+
+    def test_appending_to_a_derived_box_keeps_its_axes_and_its_vacuum(self):
+        """A cell nobody STATED still has facts on it.
+
+        `concat` takes the lattice from whichever input carries an
+        explicit cell; when none does it took nothing at all, so a canvas
+        in the derived-box regime lost its transport axis and the vacuum
+        the person typed the moment anything was appended to it — and
+        said nothing, because a dropped field raises no notice. § 2.2a
+        lists this seam among the ones that carry everything.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        base = Structure(elements=["C"], positions=np.array([[0., 0, 0]]),
+                         axis_kind=("isolated", "isolated", "transport"),
+                         vacuum=(5.0, 5.0, 0.0))
+        other = Structure(elements=["H"], positions=np.array([[3., 0, 0]]))
+        out = append_structure(base, other)
+        out = out[0] if isinstance(out, tuple) else out
+        assert out.axis_kind == ("isolated", "isolated", "transport"), \
+            "the transport axis was dropped"
+        assert out.vacuum == (5.0, 5.0, 0.0), "the typed vacuum was dropped"
+
+    def test_an_incoming_fragment_does_not_overwrite_the_canvas_facts(self):
+        """The other half, and the one that bit: when the ADDITION is the
+        one carrying a cell, its `axis_kind` and `vacuum` rode in with it.
+
+        Appending a slab onto a molecule the user had given 8 Å of vacuum
+        replaced that vacuum with the slab's deliberate zero and turned two
+        isolated axes crystalline — silently, because afterwards nothing was
+        outside the box for `cell.check` to notice. A cell is the one thing
+        a fragment can supply that the canvas lacks; the rest are facts OF
+        the canvas, exactly as `info` is.
+        """
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        canvas = Structure(elements=["C", "O"],
+                           positions=np.array([[0., 0, 0], [1.13, 0, 0]]),
+                           vacuum=(8.0, 8.0, 8.0))
+        slab = Structure(elements=["Au", "Au"],
+                         positions=np.array([[0., 0, 5.], [1.44, 1.44, 5.]]),
+                         cell=np.diag([2.88, 2.88, 20.]),
+                         axis_kind=("periodic", "periodic", "isolated"),
+                         vacuum=(0.0, 0.0, 0.0))
+        out = append_structure(canvas, slab)
+        out = out[0] if isinstance(out, tuple) else out
+        assert out.vacuum == (8.0, 8.0, 8.0), \
+            "the fragment's vacuum replaced the one the user typed"
+        assert out.axis_kind == ("isolated", "isolated", "isolated"), \
+            "the fragment's axis kinds replaced the canvas's"
+
+    def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
+        """Not from whichever structure happens to carry the cell --
+        `concat` picks the lattice that way and `info` rode along, so a
+        base with no box lost its contract to the incoming one."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.modify import append_structure
+        base = self._with_contract()
+        base.cell = None
+        other = Structure(elements=["C"], positions=np.array([[4., 4, 4]]))
+        other.cell = np.diag([9., 9., 9.])
+        out = append_structure(base, other)
+        out = getattr(out[0] if isinstance(out, tuple) else out, "structure",
+                      out[0] if isinstance(out, tuple) else out)
+        assert out.info.get("calculation", {}).get("contract")

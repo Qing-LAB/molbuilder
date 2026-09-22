@@ -234,6 +234,13 @@ class TestOneThreshold:
         a grep for a NAME, which passed if the name merely survived in a
         comment beside a restored literal, and failed on a correct rename
         (`testing.md` § 3a: assert the end product, never the source).
+
+        THE TWO READERS CHANGED, THE PROPERTY DID NOT (2026-09-21).  The
+        third was `Structure.__post_init__`, which refused a singular cell
+        outright until § 8.2 was applied to it -- a structure must be able to
+        HOLD an unusable box, or the Cell page cannot show one to fix.  The
+        checker and the emitter are the two that still refuse, and they are
+        the two that must agree.
         """
         import numpy as np
         from molbuilder.structure import Structure
@@ -242,11 +249,13 @@ class TestOneThreshold:
 
         cell = np.diag([1e-1, 1e-1, 1e-1])          # det = 1e-3
         s = Structure(elements=["C"], positions=np.zeros((1, 3)), cell=cell)
-        spec_for(s, SiestaConfig())                  # both accept it today
+        assert cellmod.resolve(s).has_volume         # both accept it today
+        spec_for(s, SiestaConfig())
 
         monkeypatch.setattr(cellmod, "ZERO_VOLUME_TOL", 1e-2)
-        with pytest.raises(ValueError):
-            Structure(elements=["C"], positions=np.zeros((1, 3)), cell=cell)
+        assert not cellmod.resolve(s).has_volume
+        assert [i.where for i in cellmod.resolve_and_check(s)[1]] \
+            == ["cell.no_volume"]
         with pytest.raises(ValueError):
             spec_for(s, SiestaConfig())
 
@@ -278,6 +287,39 @@ class TestTwoVerdictsOneChecker:
         assert [n["where"] for n in notices] == ["cell.no_volume"]
         assert notices[0]["severity"] == "warn", (
             "a loading or modifying door reports; only a generating one refuses")
+
+    def test_a_pair_whose_sidecar_holds_an_unusable_box_still_opens(self,
+                                                                    tmp_path):
+        """The half § 8.2 describes and the model would not allow.
+
+        `__post_init__` refused a singular cell outright, so a
+        `.molstruct.json` holding one made its pair unopenable — and the
+        Cell page is the one place a box can be corrected, so the only ways
+        out were to hand-edit the sidecar outside molbuilder or delete it and
+        lose the labels with it.  A LEFT-HANDED box had always loaded; this
+        one is the same kind of wrong and now behaves the same way.
+        """
+        import json
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+
+        xyz = tmp_path / "t.xyz"
+        StructureCodec().write(
+            Structure(elements=["Au", "Au"],
+                      positions=np.array([[0., 0, 0], [1.4, 1.4, 0]]),
+                      cell=np.diag([10., 10., 10.])), xyz)
+        side = tmp_path / "t.molstruct.json"
+        payload = json.loads(side.read_text())
+        payload["cell"] = [[10., 0, 0], [0, 10., 0], [0, 0, 0.]]
+        side.write_text(json.dumps(payload))
+
+        out = StructureCodec().load(xyz)          # must not raise
+        assert out.cell is not None, "the box the user has to fix was dropped"
+
+        _rc, issues = cellmod.resolve_and_check(out)
+        assert [i.where for i in issues] == ["cell.no_volume"], (
+            "the box opened without the finding that explains it")
 
     def test_a_notices_subject_is_its_id_and_cannot_disagree_with_it(self):
         """SCIENCE of a sort: the browser FILTERS on `about`
@@ -448,3 +490,70 @@ def test_stacking_period_is_abc_on_111_and_abab_otherwise():
     /api/modify/meta), so a wrong number here misinforms the user about
     whether their layer count makes a natural boundary."""
     assert cellmod.STACKING_PERIOD == {"111": 3, "100": 2, "110": 2}
+
+
+class TestInterplanarSpacingIsDerivedNotTabulated:
+    """PINS: `science/junction-cell.md` § 2 — the layer spacing of a surface.
+
+    ONE RULE, NOT THREE LITERALS.  This lived in `modify/slab-panel.js` as
+    `a/sqrt(3)`, `a/2` and a nearest-neighbour line: crystallography in the
+    layer that should not know any, and short one row — `d(110)` was absent,
+    so a person building fcc(110) was shown two spacings, neither of them the
+    number the Cell page asks them to type.
+
+    The spacing is NOT the naive cubic `a/sqrt(h^2+k^2+l^2)`. A centred
+    lattice has planes between the ones the indices name, so the real repeat
+    is the FIRST ALLOWED reflection along that direction — fcc allows h,k,l
+    all the same parity, bcc allows h+k+l even. That is the whole rule, and
+    it is why fcc(100) is `a/2` rather than `a`.
+    """
+
+    A_AU = 4.0782
+
+    @pytest.mark.parametrize("plane", ("100", "110", "111"))
+    def test_it_agrees_with_a_real_ASE_slab(self, plane):
+        """THE check neither implementation had: predicted against measured.
+
+        `bulk_z_period` / `detect_layers` measure this quantity off atoms;
+        this predicts it from the constant. They are the same number, so a
+        disagreement is a real defect in one of them — and putting both in
+        one module is what makes the comparison possible at all.
+        """
+        import numpy as _np
+        from molbuilder.modify import FCC_ORTHOGONAL_CHOICES, _build_ase_slab
+        orth = FCC_ORTHOGONAL_CHOICES[plane][0]
+        ase = _build_ase_slab("Au", plane, (2, 2, 6), orth, self.A_AU)
+        z = _np.asarray(ase.get_positions())[:, 2]
+        measured = float(_np.diff(sorted(cellmod.detect_layers(z))).mean())
+        predicted = cellmod.interplanar_spacing("fcc", plane, self.A_AU)
+        assert predicted == pytest.approx(measured, abs=1e-6)
+
+    def test_the_centring_rule_generalises_beyond_fcc(self):
+        """bcc's close-packed plane is (110) where fcc's is (111) — the
+        allowed-reflection rule gives both, so a second system is a row in
+        one table rather than a second formula."""
+        assert cellmod.interplanar_spacing("bcc", "110", 1.0) == \
+            pytest.approx(2 ** -0.5)
+        assert cellmod.interplanar_spacing("bcc", "100", 1.0) == \
+            pytest.approx(0.5)
+        assert cellmod.interplanar_spacing("sc", "100", 1.0) == \
+            pytest.approx(1.0)
+
+    def test_a_system_with_no_rule_refuses_instead_of_guessing(self):
+        """hcp needs c/a and Miller-Bravais indices. Answering it with the
+        cubic formula would be a plausible wrong number, which is worse than
+        no number."""
+        with pytest.raises(ValueError, match="hcp"):
+            cellmod.interplanar_spacing("hcp", "001", self.A_AU)
+
+    def test_the_lattice_constant_is_never_defaulted(self):
+        """*(user, 2026-09-22: "we should always explicitly require an input.
+        We cannot allow none… It's going to be deceiving.")*  Which reference
+        a constant came from moves it ~2%, so a silent default makes the
+        answer impossible to validate without reading the source."""
+        import inspect
+        sig = inspect.signature(cellmod.interplanar_spacing)
+        assert sig.parameters["a"].default is inspect.Parameter.empty
+        for bad in (0.0, -1.0, float("nan")):
+            with pytest.raises(ValueError, match="positive length"):
+                cellmod.interplanar_spacing("fcc", "111", bad)

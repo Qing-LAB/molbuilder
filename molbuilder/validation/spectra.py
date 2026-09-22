@@ -110,18 +110,14 @@ def spectra_render_checks(struct: Structure,
     from ..chemistry import (check_spin_charge_parity,
                               detect_open_shell_metals,
                               explain_metal_spin)
-    try:
-        parity_err = check_spin_charge_parity(
-            struct, cfg.charge, cfg.spin,
-        )
-    except KeyError as e:
-        # Unknown element symbol (typo / bad PDB column fallback).
-        issues.append(Issue(
-            severity="error",
-            message=str(e),
-            where="structure",
-        ))
-        parity_err = None
+    # A LABEL NAMING NO ELEMENT DOES NOT ARRIVE HERE AS AN EXCEPTION.
+    # This used to catch `KeyError` and report the raw symbol itself;
+    # `check_spin_charge_parity` now stands down on an unresolvable label
+    # and returns None (`chemistry.every_label_resolves`), because the
+    # finding belongs to `check_species_labels`, which names the engine
+    # and says what to do.  Two reporters for one fact is what that move
+    # ended, so the catch went with it rather than sitting unreachable.
+    parity_err = check_spin_charge_parity(struct, cfg.charge, cfg.spin)
     if parity_err:
         # Severity is the explicit-vs-guessed rule, shared with the
         # engine validator (G-1d) and mirroring _validate_siesta's: a

@@ -89,9 +89,12 @@ def _ry(toks: List[str], *, what: str = "an energy",
         source: str = "the deck") -> Optional[float]:
     """A SIESTA energy scalar (``value [unit]``) in Ry.
 
-    The unit words are `units.ENERGY_EV`'s; the DEFAULT is fdf's own --
-    a bare energy in a ``.fdf`` is Rydberg.  An unrecognised word raises
-    `units.UnknownUnit` rather than passing the number through.
+    NO DEFAULT, because the engine has none.  Measured against the
+    shipped libfdf 5.4.2: a physical value with no unit aborts the run
+    -- ``fdf_physical: no unit specified for MeshCutoff`` -- so a deck
+    carrying one is a deck SIESTA would not have read, and inventing a
+    unit for it would put a number nobody wrote into a calculation.
+    The unit words are `units.ENERGY_EV`'s; anything else raises.
     """
     if not toks:
         return None
@@ -99,7 +102,7 @@ def _ry(toks: List[str], *, what: str = "an energy",
     if v is None:
         return None
     return energy_ry(v, toks[1] if len(toks) > 1 else None,
-                     what=what, source=source, default="ry")
+                     what=what, source=source)
 
 
 @dataclass
@@ -190,10 +193,14 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     if "latticeconstant" in sc and sc["latticeconstant"]:
         v = _to_float(sc["latticeconstant"][0])
         if v is not None:
+            # Same rule: bare aborts SIESTA, so there is no default to
+            # honour.  An ABSENT LatticeConstant is different and IS
+            # defaulted -- to 1 Ang, which is what `lat_const` already
+            # holds, measured against the binary.
             lat_const = length_ang(
                 v, (sc["latticeconstant"][1]
                     if len(sc["latticeconstant"]) > 1 else None),
-                what="LatticeConstant", source=source, default="ang")
+                what="LatticeConstant", source=source)
     if "latticevectors" in bl and len(bl["latticevectors"]) >= 3:
         try:
             vecs = [[lat_const * float(x) for x in row[:3]]
@@ -206,7 +213,13 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
     coords = bl.get("atomiccoordinatesandatomicspecies")
     if coords:
         p.n_atoms = len(coords)
-        fmt = (sc.get("atomiccoordinatesformat") or ["ang"])[0].lower()
+        # SIESTA's own default, measured: omit the keyword and it reports
+        # "Cartesian coordinates / (in Bohr units)".  This read `ang`, so a
+        # foreign deck relying on the default came back 1.89x out -- and
+        # `coords_ang` is the frozen gate's baseline, so a CORRECT junction
+        # was refused with "6 atoms MOVED".
+        fmt = (sc.get("atomiccoordinatesformat")
+               or ["notscaledcartesianbohr"])[0].lower()
         # Full positions in Ang (the frozen gate's baseline).  Three
         # convertible formats; fractional needs the cell.  A format this
         # cannot convert leaves coords_ang None — callers say so rather

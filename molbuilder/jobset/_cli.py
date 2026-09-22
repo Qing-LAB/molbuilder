@@ -605,7 +605,11 @@ def init_cmd(structure, bundle: str, shape: str,
             # The same channel the Modify -> Cell tab uses: the vacuum lives on
             # the STRUCTURE, not on the engine config, so every surface that
             # reads this structure sees the same isolation.
-            struct = _dc.replace(struct, vacuum=(vacuum, vacuum, vacuum))
+            # THROUGH THE DOOR.  `dataclasses.replace` does not dispatch to
+            # `Structure.replace` on this interpreter, so it re-passed every
+            # mutable field BY REFERENCE -- the derived structure shared its
+            # `cell` and its `info` dict with the loaded one.
+            struct = struct.replace(vacuum=(vacuum, vacuum, vacuum))
 
         # § 6.5 (2026-08-16): a job always has at least one stage.  Without
         # ``--stage-strategy`` the ladder is ONE stage carrying no overrides

@@ -196,6 +196,55 @@ class TestHappyPath:
         assert out.provenance["form"] == "relaxation"
         assert "Relax.XV" in out.provenance["files"]
 
+    def test_the_authoring_corner_does_not_follow_the_xv_coordinates(
+            self, tree):
+        """The sidecar's `cell_origin` describes the AUTHORING frame.
+
+        Form A's coordinates come from the `.XV` — SIESTA's own frame,
+        cell at (0,0,0) — but its labels may come from the authoring
+        pair's `.molstruct.json`, and applying that sidecar is a full
+        replace of the metadata block. So the box corner the author's
+        viewer drew (`add_slab` sets one on every junction) landed on
+        coordinates it does not describe, and `render_fdf` then shifted
+        the atoms by `-cell_origin` a second time: the whole junction
+        came out translated, far-face atoms wrapping into the leads.
+
+        The cell is a SHAPE and survives the change of frame — it is
+        checked against the `.XV`'s and kept. The corner does not.
+        """
+        from molbuilder.script_emit import BLOCK_ATOM_METADATA, begin_marker
+        from molbuilder.workingcopy_structure import StructureCodec
+        root, src, relaxed_pos = tree
+        attempt = root / _CITE
+        deck = attempt / "Relax_01_coarse.fdf"
+
+        # A deck with NO in-body label block, so the labels must come
+        # from a sidecar -- the repair path compose's own refusal names.
+        text = deck.read_text()
+        head, sep, _ = text.partition(begin_marker(BLOCK_ATOM_METADATA))
+        assert sep, "the fixture's deck no longer carries a label block"
+        deck.write_text(head)
+
+        # The authoring pair, whose box was drawn around coordinates that
+        # straddled the origin: a corner well away from (0,0,0).
+        authored = src.replace(cell_origin=[-2.0, -2.0, -20.0])
+        StructureCodec().write(authored, attempt / "authored.xyz")
+        (attempt / "authored.xyz").unlink()
+
+        out = compose_junction(_CITE, tree_root=root)
+        dev = out.sorted.structure
+
+        assert dev.resolve_cell_origin() is None, (
+            "the authoring corner rode in on the .XV's coordinates")
+        # The emitted frame IS the .XV's. Compared as sets, because the
+        # composition sorts the atoms into electrode/device blocks.
+        shift = dev.resolve_cell_origin()
+        emitted = dev.positions - (0.0 if shift is None
+                                   else np.asarray(shift))
+        assert np.allclose(np.sort(emitted[:, 2]),
+                           np.sort(relaxed_pos[:, 2]), atol=1e-6), (
+            "the junction was emitted translated along transport")
+
     def test_the_record_is_the_whole_travelling_copy(self, tree, tmp_path):
         """§ 4.1: the cited structure is COPIED in with provenance --
         the SORTED PAIR (geometry AND the file carrying its region
@@ -1102,3 +1151,129 @@ class TestTheRecordedContract:
         back = load_compose_record(dest, citation=cite)
         assert back is not None
         assert back.recorded_contract["contract"]["basis_size"] == "TZP"
+
+
+class TestTheCellIsStatedOnceOrNotAtAll:
+    """A junction's box is written down more than once, and the copies
+    must agree — user ruling, 2026-09-21: *"cell data should not
+    disagree. this should be validated during the transport task
+    configuration. for both paths"*.
+
+    A fixed-cell relaxation cannot move the box, so the deck's
+    ``LatticeVectors``, the ``.XV`` SIESTA wrote back, and a sidecar's
+    ``cell`` are three statements of one number. A disagreement is not a
+    value to choose between — one of the files is not from this run, and
+    the wrong box sets the transverse k-mesh and the image separation of
+    everything downstream.
+
+    Every fixture here is BUILT; none reads a directory that happens to
+    exist.
+    """
+
+    def test_the_deck_and_the_XV_must_state_the_same_cell(self, tmp_path):
+        """The shape a stray `.XV` from another run leaves behind."""
+        root = tmp_path / "projects"
+        _write_tree(root, _junction_struct())
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        deck = next(p for p in attempt.glob("*.fdf"))
+        # The fixture's deck states no lattice; give it one that
+        # DISAGREES with the .XV the same directory carries.
+        deck.write_text(deck.read_text()
+                        + "LatticeConstant 1.0 Ang\n"
+                        + "%block LatticeVectors\n"
+                        + "  9.0 0.0 0.0\n  0.0 8.0 0.0\n  0.0 0.0 40.0\n"
+                        + "%endblock LatticeVectors\n")
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        msg = str(e.value)
+        assert "disagree about the cell" in msg
+        assert "do not describe the same relaxation" in msg
+        assert "diagonal" in msg, f"the two boxes must be shown: {msg}"
+
+    def test_a_citation_whose_files_agree_still_composes(self, tmp_path):
+        """The half without which 'it refuses' would be satisfied by
+        refusing always."""
+        root = tmp_path / "projects"
+        _write_tree(root, _junction_struct())
+        out = compose_junction(_CITE, tree_root=root)
+        assert out.sorted.structure.cell is not None
+
+    def test_a_sidecars_cell_cannot_displace_the_relaxations(self, tmp_path):
+        """`apply_to_structure` is a full REPLACE, so before this the
+        sidecar's box silently won on the no-block lane."""
+        import json
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        d = root / "loose"
+        d.mkdir(parents=True)
+        s = _junction_struct()
+        StructureCodec().write(s, d / "junction.xyz")
+        side = d / "junction.molstruct.json"
+        doc = json.loads(side.read_text())
+        doc["cell"] = [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 40.0]]
+        side.write_text(json.dumps(doc))
+        # form B reads the pair as one document, so the mismatch shows as
+        # the pair's own cell -- what must NOT happen is a silent 8->9.
+        out_cell = None
+        try:
+            out_cell = compose_junction("loose", tree_root=root
+                                        ).sorted.structure.cell
+        except ComposeError:
+            return                      # refused: also an acceptable answer
+        assert out_cell[0][0] == pytest.approx(9.0), (
+            "form B has one cell document; if it composed, it must be the "
+            "one the pair states, not a silent blend of two")
+
+    def test_a_sidecar_beside_the_deck_cannot_displace_the_relaxations_cell(
+            self, tmp_path):
+        """THE LANE WHERE IT SILENTLY WON.  When the deck carries no
+        atom-metadata block, the labels come from a `.molstruct.json`
+        beside it -- and `apply_to_structure` is a full REPLACE, cell
+        included.  That is the lane the no-labels refusal tells a person
+        to create ("put the structure's .molstruct.json in the same
+        directory"), so it is the one that must not take a box the
+        relaxation never had.
+        """
+        import json
+        from molbuilder.sidecars.molstruct import sidecar_path_for
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        struct = _junction_struct()
+        _write_tree(root, struct)
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        deck = attempt / "Relax_01_coarse.fdf"
+
+        # strip the in-deck block so the sidecar lane is taken at all
+        text = deck.read_text()
+        head = text.split("# === molbuilder atom-metadata BEGIN ===")[0]
+        assert head != text, "the fixture no longer embeds the block"
+        deck.write_text(head)
+
+        # a sidecar carrying the labels AND a cell the .XV does not have
+        pair = attempt / "labels.xyz"
+        StructureCodec().write(struct, pair)
+        side = sidecar_path_for(pair)
+        doc = json.loads(side.read_text())
+        doc["cell"] = [[9.0, 0, 0], [0, 8.0, 0], [0, 0, 40.0]]
+        side.write_text(json.dumps(doc))
+        pair.unlink()                      # leave only the sidecar
+
+        with pytest.raises(ComposeError) as e:
+            compose_junction(_CITE, tree_root=root)
+        assert "disagree about the cell" in str(e.value), str(e.value)
+
+    def test_a_citation_that_states_no_cell_is_refused_not_crashed(
+            self, tmp_path):
+        """Form A had no guard where form B has one, so this reached
+        `Structure.cell` as a bare ValueError -- and `prep` catches only
+        ComposeError/SortError, so it surfaced as a traceback."""
+        root = tmp_path / "projects"
+        _write_tree(root, _junction_struct())
+        attempt = root / "J/optimization/Relax/01_coarse/run-0"
+        xv = next(p for p in attempt.glob("*.XV"))
+        lines = xv.read_text().splitlines()
+        for i in range(3):                      # a degenerate cell
+            lines[i] = "  0.0 0.0 0.0  0.0 0.0 0.0"
+        xv.write_text("\n".join(lines) + "\n")
+        with pytest.raises(ComposeError):
+            compose_junction(_CITE, tree_root=root)

@@ -217,3 +217,127 @@ def test_meta_endpoint_lattice_error_is_none_on_happy_path(web_client):
     r = web_client.get("/api/modify/meta")
     j = r.get_json()
     assert j.get("lattice_error") in (None, "")
+
+
+class TestAnOverrideIsHonouredOrRefused:
+    """PINS: a data file the user PUT there is a statement of intent.
+
+    `data/README.md` tells people to copy the JSON to
+    ``$MOLBUILDER_DATA_DIR`` and edit it — for a strained lattice, a
+    low-temperature value, a constant measured on their own bulk run. So the
+    only two honest answers to such a file are *use it* and *refuse by name*.
+
+    PREVENTS: the third answer, measured 2026-09-22. An override with one
+    trailing comma returned Au = 4.0782 to a person who had typed 4.20 — no
+    warning, no log — and the Modify panel then displayed 4.0782 under a radio
+    labelled "Experimental". Consistent-looking, and not the number they set.
+    Two of the four malformations already raised (a bad ``_format``, a
+    malformed metal entry); a JSON syntax error and a missing ``metals`` key
+    fell through to the packaged table instead.
+    """
+
+    @staticmethod
+    def _override(tmp_path, text: str) -> Path:
+        (tmp_path / "fcc_lattice.json").write_text(text)
+        return tmp_path
+
+    def _load_with(self, monkeypatch, data_dir):
+        import molbuilder.modify as mod
+        monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(data_dir))
+        monkeypatch.setattr(mod, "_FCC_LATTICE_A_CACHE", None)
+        return mod.load_fcc_lattice_full()
+
+    def test_a_valid_override_is_used(self, monkeypatch, tmp_path):
+        good = json.loads(
+            (Path(__file__).resolve().parents[1]
+             / "molbuilder/data/fcc_lattice.json").read_text())
+        good["metals"]["Au"]["a_experimental"] = 4.20
+        d = self._override(tmp_path, json.dumps(good, indent=2))
+        assert self._load_with(monkeypatch, d)["Au"]["a_experimental"] == 4.20
+
+    def test_a_syntax_error_refuses_instead_of_falling_back(
+            self, monkeypatch, tmp_path):
+        good = json.loads(
+            (Path(__file__).resolve().parents[1]
+             / "molbuilder/data/fcc_lattice.json").read_text())
+        good["metals"]["Au"]["a_experimental"] = 4.20
+        broken = json.dumps(good, indent=2).replace(
+            '"a_pbe": 4.158', '"a_pbe": 4.158,', 1)     # one trailing comma
+        d = self._override(tmp_path, broken)
+        with pytest.raises(RuntimeError, match="failed to read"):
+            self._load_with(monkeypatch, d)
+
+    def test_a_missing_metals_key_refuses_too(self, monkeypatch, tmp_path):
+        d = self._override(tmp_path, json.dumps(
+            {"_format": "molbuilder.data.fcc_lattice v3"}, indent=2))
+        with pytest.raises(RuntimeError, match="missing required 'metals'"):
+            self._load_with(monkeypatch, d)
+
+    def test_an_ABSENT_override_still_falls_back(self, monkeypatch, tmp_path):
+        """Absence is not malformation. A data dir that simply does not hold
+        this file is a legitimate state, and the packaged table is the
+        answer — that path must not become a refusal."""
+        table = self._load_with(monkeypatch, tmp_path / "not-there")
+        assert table["Au"]["a_experimental"] == pytest.approx(4.0782)
+
+
+class TestTheSpacingsDoorAnswersTheSurface:
+    """PINS: `/api/modify/spacings` — the crystallography is the backend's.
+
+    The Slab panel computed the layer spacing itself, as three literals in
+    JavaScript, and was missing `d(110)` entirely; both spacings it did show
+    were printed whatever surface was selected. So a person building fcc(110)
+    got two numbers, neither of them the one the Cell page asks them to type.
+    """
+
+    def test_it_answers_the_plane_that_was_asked_for(self, web_client):
+        got = {}
+        for plane in ("100", "110", "111"):
+            r = web_client.get(f"/api/modify/spacings?element=Au&plane={plane}"
+                               f"&reference=experimental")
+            assert r.status_code == 200, r.get_json()
+            j = r.get_json()
+            assert j["plane"] == plane
+            got[plane] = j["d_interlayer"]
+        # The row the browser never had, and the two it printed regardless.
+        assert got["111"] == pytest.approx(2.354550, abs=1e-6)
+        assert got["100"] == pytest.approx(2.039100, abs=1e-6)
+        assert got["110"] == pytest.approx(1.441861, abs=1e-6)
+
+    def test_the_reference_is_required_and_changes_the_answer(self, web_client):
+        """*(user, 2026-09-22)* — no implicit default. Experimental and PBE
+        differ by ~2% for gold, which is the whole reason it cannot be
+        guessed on the caller's behalf."""
+        bare = web_client.get("/api/modify/spacings?element=Au&plane=111")
+        assert bare.status_code == 400
+        assert "reference" in bare.get_json()["error"]
+
+        exp = web_client.get("/api/modify/spacings?element=Au&plane=111"
+                             "&reference=experimental").get_json()
+        pbe = web_client.get("/api/modify/spacings?element=Au&plane=111"
+                             "&reference=pbe").get_json()
+        num = web_client.get("/api/modify/spacings?element=Au&plane=111"
+                             "&reference=4.20").get_json()
+        assert exp["a"] == pytest.approx(4.0782)
+        assert pbe["a"] == pytest.approx(4.158)
+        assert num["a"] == pytest.approx(4.20)
+        assert exp["d_interlayer"] < pbe["d_interlayer"] < num["d_interlayer"]
+
+    def test_an_element_the_table_does_not_carry_is_named_not_crashed(
+            self, web_client):
+        """The table IS the list of what we know, so an unknown name is
+        answered here rather than as a `KeyError` two layers down."""
+        r = web_client.get("/api/modify/spacings?element=Xx&plane=111"
+                           "&reference=pbe")
+        assert r.status_code == 400
+        assert "Xx" in r.get_json()["error"]
+
+    def test_a_surface_the_builder_cannot_make_is_refused(self, web_client):
+        """`interplanar_spacing` answers (999) correctly — it is general
+        crystallography. This door serves a panel that offers three planes,
+        and `/api/modify/slab` refuses the rest, so quoting a spacing for one
+        would be a number with nothing to use it on."""
+        r = web_client.get("/api/modify/spacings?element=Au&plane=999"
+                           "&reference=experimental")
+        assert r.status_code == 400
+        assert "999" in r.get_json()["error"]

@@ -853,8 +853,13 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         from molbuilder.cell import ZERO_VOLUME_TOL
         if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
             _kinds = struct.axis_kind or ("isolated",) * 3
+            # THE AXIS LENGTH IS THE VECTOR'S NORM, not its diagonal entry:
+            # on a hexagonal or otherwise off-axis cell `cell[i, i]` is a
+            # component, so a perfectly good b-vector could be named as the
+            # thin one.  Every other length measurement in the tree
+            # (`cell._clearances`, `validation/*`) already uses the norm.
             _thin = [(i, _kinds[i]) for i in range(3)
-                     if abs(float(cell[i, i])) < ZERO_VOLUME_TOL]
+                     if float(np.linalg.norm(cell[i])) < ZERO_VOLUME_TOL]
             _detail = ", ".join(f"axis {i} (kind '{k}')" for i, k in _thin) \
                 or "no single axis -- the three vectors are not independent"
             raise ValueError(
@@ -875,7 +880,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # web panel and this stderr report alike.  It used to be a
         # warnings.warn here, which no web user could ever see (contract R5,
         # science/validation.md 4.1).
-        sizes = np.diag(cell)
+        # ROW NORMS, NOT THE DIAGONAL.  `np.diag` is the axis length only for
+        # an orthogonal cell; on the hexagonal Au(111) lattice this whole
+        # branch exists to preserve it reported b 13% short.
+        sizes = np.linalg.norm(cell, axis=1)
         # Report the EFFECTIVE vacuum: where the user set none, the § 6.1
         # default supplied one, and the provenance comment must describe the
         # box that was actually emitted -- printing the stored value (``None``)
@@ -885,14 +893,32 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # Named from the model rather than repeated as a literal here.
         from molbuilder.structure import _DEFAULT_ISOLATED_VACUUM as _GAP
         _DEFAULT_GAP_TEXT = f"{_GAP:g} A/side"
+        # SAY WHICH BOX THIS IS, AND WHAT WAS ACTUALLY DONE TO THE ATOMS.
+        # This sentence claimed three things that are false under an explicit
+        # cell -- that the box was derived, that the 3 A default supplied the
+        # vacuum, and that the atoms were "centred".  `cell.check` already
+        # guards the middle one (`if rc.defaulted_axes and not rc.is_manual`,
+        # "a molecule in a hand-typed 30 A box would be told the box came from
+        # a 3 A default"); the emitter had no such guard.  And the atoms are
+        # not centred -- they are translated by `-resolve_cell_origin()`
+        # (§ 6 clause 3), which on an imported crystal is no shift at all.
+        _manual = struct.cell is not None
+        _shift = ("atoms unmoved (the box already sits at the origin)"
+                  if origin is None else
+                  "atoms translated by "
+                  + str(tuple(round(-float(v), 2)
+                              for v in np.asarray(origin))))
         cell_note = (
-            f"# (vacuum cell derived from the structure: "
-            f"{sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A; "
-            f"vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
+            "# (" + ("cell stated on the structure"
+                     if _manual else "vacuum cell derived from the structure")
+            + f": {sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A"
+            + (f"; vacuum = {tuple(round(float(v), 2) for v in _eff)} A/side"
+               if not _manual else
+               "; vacuum is reference-only under a stated cell")
             + (f"; no vacuum was set, so the default {_DEFAULT_GAP_TEXT} "
                f"was used on isolated axes {_defaulted}"
-               if _defaulted else "")
-            + f"; atoms centred)"
+               if _defaulted and not _manual else "")
+            + f"; {_shift})"
         )
     else:
         cell = np.asarray(cell, dtype=float).reshape(3, 3)
@@ -946,37 +972,26 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # honor" issues -- the contract carrier silently dropped between
     # the Build endpoint that loaded the sidecar and the validator that
     # was supposed to consume it.  Caught by the 2026-05-26 review.
-    validation_struct = Structure(
-        elements      = list(struct.elements),
-        positions     = positions,
-        atom_names    = list(struct.atom_names),
-        residue_ids   = list(struct.residue_ids),
-        residue_names = list(struct.residue_names),
-        chain_ids     = list(struct.chain_ids),
-        title         = struct.title,
-        # regions carries every label, reserved ones included -- so the frozen
-        # set rides along and cannot be dropped between the Build endpoint that
-        # loaded the sidecar and the validator meant to consume it.
-        # struct.regions is Dict[str, List[int]] per Structure's
-        # declaration; the previous list-comprehension assumed an
-        # iterable of lists and crashed at __post_init__ when the
-        # dict was non-empty (caught by task #303's Pattern-B test).
-        regions       = {
-            k: list(v)
-            for k, v in (getattr(struct, "regions", {}) or {}).items()
-        },
-        # Periodicity metadata rides into validation too -- without it a
-        # genuine crystal validated as isolated³/vacuum-0 and produced
-        # spurious "kgrid on an isolated axis" + image-distance warnings
-        # (review finding, 2026-07-29).
-        cell          = (struct.cell.copy()
-                         if struct.cell is not None else None),
-        cell_origin   = (struct.cell_origin.copy()
-                         if struct.cell_origin is not None else None),
-        axis_kind     = struct.axis_kind,
-        vacuum        = struct.vacuum,
-        pbc           = struct.pbc,
-    )
+    # ONE FIELD CHANGES -- the positions the deck will actually write --
+    # so one field is stated.  This was a thirteen-field hand-list whose
+    # own comments record two rounds of the same bug: the frozen/region
+    # carrier dropped (2026-05-26) and the periodicity dropped
+    # (2026-07-29), each found after a genuine crystal validated as
+    # isolated.  It still did not name `annotations` or `info`.  Deriving
+    # through the door carries every field nobody named, including the
+    # ones added after today (`model/structure.md` § 2.2a).
+    #
+    # AND THE CORNER IS RESTATED, because the coordinates changed frame.
+    # `positions` was shifted by `-resolve_cell_origin()` above, so these
+    # atoms are in SIESTA's frame with the box at the world origin -- while
+    # `struct.cell_origin` still measures the frame they came FROM.  Carrying
+    # it put the validators a whole corner away from the atoms they judge:
+    # measured, a junction with a stored corner reported `atoms_outside` with
+    # a -19 A clearance along transport on a structure whose atoms sit
+    # perfectly inside their box.  An origin is a label on the coordinates
+    # beside it; reframe one and you restate the other in the same breath.
+    validation_struct = struct.replace(positions=positions, cell_origin=None)
+
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
     # to the subject this spec names -- the wrapped coordinates and the
     # resolved cell, which is what the deck actually expresses.  Running it

@@ -1579,8 +1579,9 @@ numbering, which crosses at exactly one point (§ 11.5).
 ### 8.4a The Metadata pane — display, never a mutator *(user, 2026-08-29)*
 
 The panel's third page, beside Selection and Cell.  It renders the
-structure's **`info` store** — free-form, NON-structural metadata, a
-JSON dict of key → value — as a read-only key/value listing, with an
+structure's **`info` store** — metadata that is not part of the
+structure and not in its hash (`model/structure.md` § 2.2a), a JSON
+dict of key → value — as a read-only key/value listing, with an
 honest empty state when nothing is recorded.
 
 **The pane displays; the API mutates.**  Which keys exist is the HOST
@@ -1638,11 +1639,25 @@ the same way a load does), and with the store gone the
 `structure_modified` flag below had nothing left to mark.
 
 **An edit outdates a recorded contract** (user, 2026-08-29).  When the
-store carries `info.calculation` and an edit lands, the viewer records
-it beside the contract, at the same gated points the unsaved badge is
+store carries `info.calculation` and an edit lands, the flag is recorded
+beside the contract, at the same gated points the unsaved badge is
 raised — so a read-only viewer or a failed edit never flags.  Neither
 flag is ever cleared by the viewer (Retract is how an edit is un-done)
 and both ride the pair like everything in the store.
+
+**WHO DECIDES IT, IN ONE LANGUAGE** *(2026-09-21)*.  The edit itself
+decides, and every geometry and cell edit runs in **Python**:
+`Structure.mark_contract_outdated()` is called at each edit exit in
+`modify.py` and inside `periodicity_gate.apply_edit`, and the answer
+carries the marked `info` back — `/api/modify/<name>` inside
+`payload.structure`, `/api/structure/periodicity` beside its
+`periodicity` block.  The browser **adopts** that answer and never
+re-decides it; `structureFromServer` and `applyCell` are where it lands.
+The one exception is `writeLabel`, the only edit that makes no request
+at all — it rewrites `annotations` in place, so `labels_modified` is
+decided in the browser because there is nowhere else it could be.  Two
+languages setting one flag is how they came to disagree about what an
+edit had actually done.
 
 **TWO FLAGS, because they invalidate different things** *(user,
 2026-09-07)*.  One flag was set by geometry ops, cell ops **and label
@@ -2004,9 +2019,10 @@ thing and one MolView does not offer.
 **The `info` doors** (§ 8.4a): ``data.info.set(key, value)`` /
 ``data.info.remove(key)`` / ``data.info.get()`` (a read-copy).  Values
 are JSON only; the store rides the structure through every install and
-export.  Ungated in read-only mode and badge-silent in editable mode —
-`info` describes the structure rather than being it, which is § 9.4's
-one question answered.
+export, and is only ever removed by an explicit `remove` — never
+silently (`model/structure.md` § 2.2a).  Ungated in read-only mode and
+badge-silent in editable mode — `info` describes the structure rather
+than being it, which is § 9.4's one question answered.
 
 ### 9.3a Handing the structure to the server
 

@@ -280,6 +280,47 @@ green, and the document still reads as current.
 **So when a step deletes a route, a verb, a module or a public symbol, the same
 step does three things. Not the next review — the same step.**
 
+### 0. Decide it is obsolete by READING, never by a reference scan *(user, 2026-09-22)*
+
+Before any of the three steps below, the decision itself has to be earned. A
+grep, an AST pass, a `git log -S` — these establish **reference facts**, and a
+reference fact cannot tell apart the only two things that matter:
+
+| what "no caller" can mean | what it is |
+|---|---|
+| something better replaced it | **residue** — delete it |
+| a caller was LOST, and the rule it carries silently stopped running | **a regression** — restore the call |
+
+Both read identically to every tool. Measured 2026-09-22: `stages.config_for`
+is ~90 lines implementing per-rung override bags with no production caller.
+That is equally consistent with *"per-rung overrides silently stopped applying"*.
+It was only settled as residue by reading `jobset/prep.py::_resolve_transport`
+end to end and finding it does strictly more — provenance, and a refusal for a
+shared value posing as a per-stage override — plus `d6f0218d`'s message saying
+the projection was deliberately retired.
+
+**So the bar, in these words:**
+
+1. Read the **owning module end to end**, not the function. This session's own
+   worst bug lived in the caller's context, not in the changed function.
+2. Read **what replaced it**, and confirm the replacement covers *every* rule
+   the old one carried. Name the rules; do not assume the overlap.
+3. Read the **history** for why the caller went — a deliberate retirement reads
+   differently from an accident.
+4. Read the **test that keeps it alive**, and say whether it pins a contract
+   that would lose coverage.
+
+A candidate list from a scan is a set of **leads**, and is recorded as leads.
+It is not a deletion plan, and a row written from one must say so — see
+`plans/plan.md` § 2 row **X1**, which is written that way on purpose.
+
+*Why this rule exists:* the same session produced a confident "nothing reads
+this, it looks like an offered control" about `TransportConfig.num_threads`,
+inferred from the presence of form metadata. The route that consumes that
+metadata (`web/blueprints/transport.py:543`) filters the field out by
+predicate, with a comment naming it. The claim was half wrong, and one file
+read would have caught it.
+
 ### 1. Name what the deletion makes UNREACHABLE one layer away
 
 Ask it in those words: ***what was this the last caller of?*** Deleting a

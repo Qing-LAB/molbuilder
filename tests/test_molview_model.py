@@ -2345,17 +2345,32 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
     Mesh cutoff is a grid density over the CELL and the transverse k-mesh
     samples the reciprocal cell, so a cell edit is exactly what invalidates
     the inherited settings.
+
+    WHO DECIDES IT MOVED (2026-09-21).  `periodicity_gate.apply_edit` sets
+    the flag and the answer carries it, so this test pins the BROWSER's
+    half only: that the adopted answer is what the store ends up holding.
+    The decision itself is pinned where it is made --
+    `test_structure_authority_roundtrip.py`
+    ::TestAnEditOutdatesTheContractWithoutErasingIt
+    ::test_a_box_edit_marks_the_contract_outdated, over all five ops of
+    the door.  Both halves are mutation-checked; neither alone is the
+    behaviour.
     """
     out = _run(_with_a_recorded_contract("""
         // The cell op round-trips too, so the stand-in must answer WITH a
         // cell -- in the server's own names (`cell`, `cell_origin`,
-        // `axis_kind`), not the module's.
+        // `axis_kind`), not the module's -- AND with the record, because
+        // `periodicity_gate.apply_edit` is what marks it outdated now and
+        // this answer is the only thing the browser adopts.
         globalThis.__nextPayload = {ok: true, periodicity: {
             cell: [[9,0,0],[0,9,0],[0,0,9]], cell_origin: [0,0,0],
-            axis_kind: ["periodic","periodic","periodic"]}};
+            axis_kind: ["periodic","periodic","periodic"]},
+            info: {calculation: {engine: "siesta", source: "Relax.fdf",
+                                 contract: {siesta_mesh_cutoff_ry: 275},
+                                 structure_modified: true}}};
         await m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]);
     """))
-    assert out["structure"] is True, "a cell edit did not outdate the settings"
+    assert out["structure"] is True, "the browser did not adopt the server's mark"
     assert out["labels"] is False, "a cell edit claimed the labels moved"
 
 

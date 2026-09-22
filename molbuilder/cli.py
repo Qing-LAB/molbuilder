@@ -591,7 +591,41 @@ def _parse_size3(size_str, flag):
 #: the contact" is the forward walk going up and the backward walk going down.
 #: Written once here because both electrodes of a junction want it and a
 #: mapping retyped per call site is a mapping that eventually disagrees.
-_CONTINUES_THE_CRYSTAL = {"+z": "ABC", "-z": "ACB"}
+#: The stacking walk, read ALONG the growth direction: growing `+z` the
+#: sequence runs forward, growing `-z` it runs backward, so both slabs are
+#: slices of the same crystal rather than one being reversed.
+#:
+#: IT IS THE WALK, NOT THE SEAM.  This was named `_CONTINUES_THE_CRYSTAL`,
+#: which claimed more than it does -- `junction-cell.md` § 3.1a records the
+#: measurement: `sequence` alone does not change the registry at the
+#: boundary, so with both slabs left on registry 0 every layer count the
+#: table calls *continues* comes out eclipsed on (100)/(110) and twinned on
+#: (111).  What decides the seam is `start_registry`, now a spec field.
+_WALK_ALONG_GROWTH = {"+z": "ABC", "-z": "ACB"}
+
+
+#: Registry spellings the spec accepts.  Letters are what the surface's own
+#: stacking is called (`junction-cell.md` § 2), indices are what `add_slab`
+#: takes; both reach the same parameter, and it is taken modulo the plane's
+#: period there, so `C` on a two-period surface is A rather than an error.
+_REGISTRY_LETTERS = {"a": 0, "b": 1, "c": 2}
+
+
+def _parse_registry(raw: str, spec: str) -> int:
+    """`A`/`B`/`C` or a non-negative index -> the `start_registry` int."""
+    got = _REGISTRY_LETTERS.get(raw.lower())
+    if got is not None:
+        return got
+    try:
+        val = int(raw)
+    except ValueError:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: registry {raw!r} must be A, B or C "
+            f"(the stacking layer this slab starts on), or an index 0, 1, 2")
+    if val < 0:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: registry index {val} must not be negative")
+    return val
 
 
 def _parse_electrode_spec(spec):
@@ -668,6 +702,30 @@ def _parse_electrode_spec(spec):
         )
 
     if key == "contact":
+        # OPTIONAL `registry=` BETWEEN THE STAND-OFF AND THE SIDE.
+        #
+        # Which stacking layer this slab starts on -- A, B or C on fcc(111),
+        # A or B on (100)/(110), taken modulo the surface's own period by
+        # `add_slab`.  It is the control that decides whether the seam
+        # continues the crystal (`junction-cell.md` § 3.1, and the
+        # MEASURED FALSE note at § 3.1a): the two sides of a junction want
+        # DIFFERENT registries, which is why this is per-flag and not one of
+        # the uniform `--electrode-*` options.
+        #
+        # The web slab card has had this control since it shipped; the CLI
+        # had no spec field for it, so every junction built from the command
+        # line had both slabs on registry 0 and no way to say otherwise.
+        # Omitted still means 0, so existing command lines are unchanged.
+        start_registry = 0
+        head, sep2, tail = rest.partition(":")
+        hkey, has_eq3, hval = head.partition("=")
+        if has_eq3 and hkey.strip().lower() == "registry":
+            if not sep2 or not tail.strip():
+                raise click.BadParameter(
+                    f"--electrode {spec!r}: '@...:registry=' must be "
+                    f"followed by the side, as ':+z=I,J' or ':-z=I,J'")
+            start_registry = _parse_registry(hval.strip(), spec)
+            rest = tail.strip()
         # Single mode: trailing field is "+z=I,J,..." or "-z=I,J,..."
         side, has_eq2, idx_str = rest.partition("=")
         side = side.strip()
@@ -684,6 +742,7 @@ def _parse_electrode_spec(spec):
             "element": element, "plane": plane, "size": size,
             "contact_distance": distance,
             "side": side, "center_indices": center_indices,
+            "start_registry": start_registry,
         }
     raise click.BadParameter(
         f"--electrode {spec!r}: unknown key {key!r}; expected 'contact'"
@@ -732,7 +791,11 @@ def _infer_output_format(path):
                    "their midpoint, N -> centroid).  "
                    "'Au:111:3x3x2@contact=2.4:+z=3' -- contact is the "
                    "centre-to-closest-layer distance for that side.  Repeat "
-                   "the flag for the other side, or for stepped contacts.")
+                   "the flag for the other side, or for stepped contacts.  "
+                   "Optional ':registry=A|B|C' after contact picks the "
+                   "stacking layer this slab starts on; the two sides of a "
+                   "junction need DIFFERENT registries for the seam to "
+                   "continue the crystal (default A on both, as before).")
 # Sub-options for --orient-axis
 @click.option("--axis", default="z", show_default=True,
               type=click.Choice(["x", "y", "z"]),
@@ -786,8 +849,13 @@ def cmd_modify(input_path, output_path,
         # input: relaxed BDT geometry with 4 atoms (S-C-C-S)
         molbuilder modify bdt.xyz - --orient-axis 0,3 --center midpoint |
           molbuilder modify - junction.xyz \\
-              --electrode Au:111:3x3x2@contact=2.4:+z=3 \\
-              --electrode Au:111:3x3x2@contact=2.4:-z=0
+              --electrode Au:111:3x3x2@contact=2.4:registry=B:+z=3 \\
+              --electrode Au:111:3x3x2@contact=2.4:registry=A:-z=0
+
+        # the two registries differ on purpose: with both slabs on the same
+        # one the boundary twins instead of continuing the crystal
+        # (junction-cell.md 3.1a).  Omit `registry=` and both stay on A,
+        # which is what this command did before the field existed.
 
     Stepped 3×3 + 4×4 contact on the same side:
 
@@ -931,7 +999,9 @@ def cmd_modify(input_path, output_path,
             # that is a different value per side -- read along the growth
             # direction, going up from a layer is the forward walk and going
             # down from one is the backward walk -- which is the mapping
-            # `_CONTINUES_THE_CRYSTAL` below writes down once.
+            # `_WALK_ALONG_GROWTH` above writes down once.  Which LAYER each
+            # slab starts that walk on is `registry=` in the spec, because
+            # the walk alone does not decide the seam (§ 3.1a).
             offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
             for spec_str in electrode:
                 spec = _parse_electrode_spec(spec_str)
@@ -956,7 +1026,8 @@ def cmd_modify(input_path, output_path,
                     start_z=float(anchor[2]
                                   + sign * spec["contact_distance"]),
                     grow=spec["side"],
-                    sequence=_CONTINUES_THE_CRYSTAL[spec["side"]],
+                    sequence=_WALK_ALONG_GROWTH[spec["side"]],
+                    start_registry=spec["start_registry"],
                     orthogonal=orthogonal,
                     offset=(float(anchor[0]) + offset_xy[0],
                             float(anchor[1]) + offset_xy[1]),
@@ -1644,10 +1715,13 @@ def cmd_runtime_info(input_path, out_path, pretty):
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
+            # INSIDE the try: `parse()` raises ParseError too -- a readable
+            # trajectory whose stem is not a legal run label is the shipped
+            # case -- and one line lower it escaped as a traceback.
+            traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
-        traj = parser.parse(resolved)
 
     # frozen_atoms is a Python set in-memory; convert to a sorted list
     # for JSON.  Any other non-JSON-native types should fail loudly so
@@ -3279,10 +3353,13 @@ def cmd_watch_parse(input_path, frames_only, pretty):
     with _resolve_input_path(input_path) as resolved:
         try:
             parser = detect_parser(resolved)
+            # INSIDE the try: `parse()` raises ParseError too -- a readable
+            # trajectory whose stem is not a legal run label is the shipped
+            # case -- and one line lower it escaped as a traceback.
+            traj = parser.parse(resolved)
         except ParseError as e:          # incl. AmbiguousFormatError
             click.echo(f"Error: {e}", err=True)
             sys.exit(2)
-        traj = parser.parse(resolved)
 
     payload = trajectory_to_legacy_dict(traj)
     if frames_only:

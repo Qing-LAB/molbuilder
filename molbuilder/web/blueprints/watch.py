@@ -253,10 +253,19 @@ def _run_periodicity_json(
 
                 from molbuilder.workingcopy_structure import StructureCodec
                 s = StructureCodec().read(_Path(pairs[0]))
+                # THE FRAME-FREE FACTS ONLY.  `axis_kind` and `vacuum` are
+                # true of the structure whatever frame its coordinates are
+                # written in, so they carry -- and the axis kinds are what
+                # this function was added to deliver.  `cell_origin` is NOT
+                # frame-free: it is the corner measured against the AUTHORING
+                # coordinates, and these frames are the run's, which stay in
+                # the engine frame (`structure-periodicity.md` § 6.1 clause
+                # 5).  Adopting it drew the Results box a whole corner off the
+                # atoms, and an export from that tab carried it into the next
+                # deck, where `render_fdf` shifted by it a SECOND time.
+                # Adopt-as-is is the legal re-entry, and it means no corner.
                 if s.axis_kind:
                     out["axis_kind"] = list(s.axis_kind)
-                if s.cell_origin is not None:
-                    out["cell_origin"] = [float(v) for v in s.cell_origin]
                 if s.vacuum is not None:
                     out["vacuum"] = [float(v) for v in s.vacuum]
                 if "cell" not in out and s.cell is not None:

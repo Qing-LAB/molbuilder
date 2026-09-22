@@ -88,7 +88,7 @@ class TestOpsPreservePeriodicity:
         """SCIENCE. Deleting an atom leaves the cell, axis kinds and vacuum untouched.
 
         Catches the 2026-07 regression this class exists for: a modify op returning
-        a Structure built without `_carry_periodicity`, so the periodic box quietly
+        a Structure built without `_carry_nonatom`, so the periodic box quietly
         became None. The emitted FDF then had no `LatticeVectors` block, SIESTA
         built a default cell, and the run converged on a different physical system
         with no warning anywhere. Atom-count edits are lattice-VECTOR-invariant --

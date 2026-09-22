@@ -490,14 +490,21 @@ export function init(viewer) {
         // The comment here read "vacuum ALWAYS has a value -- unset is not a state
         // it has", which was true until 2026-08-03, when `vacuum` became Optional
         // so that "I want no gap" and "I never chose one" could stop being the
-        // same value.  The all-zero test below still fires for pre-2026-08-03
-        // sidecars, which say [0,0,0] and are READ as unset (cell-plan.md § 5).
+        // same value.
+        //
+        // ONLY `null` IS UNSET.  This also tagged an all-zero triple, on the
+        // grounds that pre-2026-08-03 sidecars said [0,0,0] and were READ as
+        // unset -- but that reader went in the same change
+        // (`structure._vacuum_from_stored`: "There is no legacy branch here...
+        // Removed 2026-08-03"), so this was the last copy of a deleted rule.
+        // It labelled a deliberate "no gap" as "derived, not set on this
+        // structure", which is the opposite of what the user chose, and it
+        // disagreed with MolView's own Cell page (`molview/ui.js`) about the
+        // same structure.  [0,0,0] is a value somebody picked (§ 2).
         //
         // With an explicit cell it grows nothing, so the group says so instead of
         // silently doing nothing.
-        tag("pv-vac-tag", explicitCell
-            ? false
-            : !rawVacuum || rawVacuum.every(function (x) { return !x; }));
+        tag("pv-vac-tag", explicitCell ? false : !rawVacuum);
         // Vacuum edits are ALLOWED under an explicit cell -- they reset the box to
         // the derived regime (confirm-gated in wire()).  The note warns; the button
         // stays enabled.

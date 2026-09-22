@@ -48,6 +48,7 @@ WHAT IS NOT HERE, DELIBERATELY.
 """
 from __future__ import annotations
 
+import math as _math
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
@@ -385,12 +386,27 @@ def check(rc: ResolvedCell) -> List[Issue]:
     if (rc.is_manual and rc.stated_vacuum is not None
             and any(float(v) != 0.0 for v in rc.stated_vacuum)):
         typed = ", ".join(f"{v:g}" for v in rc.stated_vacuum)
+        # SAY WHAT IT STOPPED DOING, NOT THAT IT STOPPED MATTERING.  This read
+        # "is not being used", which is too broad: the typed cell takes over
+        # the box LENGTH, but on an isolated axis the vacuum still decides the
+        # derived corner (`Structure.expected_cell_corner`: `bbox_min -
+        # vacuum`), and therefore where the atoms are emitted.  Measured on a
+        # 20 A cubic cell with three isolated axes: vacuum unset put the
+        # corner at (-3,-3,-6), vacuum 8 put it at (-8,-8,-11).  Someone who
+        # believed the old sentence would not touch the control that was
+        # moving their molecule.
+        #
+        # Only said when the corner is actually derived -- a stored
+        # `cell_origin` is the corner, and vacuum does not reach it.
+        also = (" On an isolated axis it still sets where the structure sits "
+                "inside that box."
+                if rc.corner_was_derived and not rc.origin_is_user_owned
+                else "")
         out.append(Issue(
             "info",
-            f"Your vacuum ({typed} Å) is not being used, because you typed a "
-            f"cell and that cell is the box. Vacuum only applies when the box "
-            f"is worked out from the molecule. To use it again, clear the "
-            f"cell.",
+            f"Your vacuum ({typed} Å) is not setting the box size, because "
+            f"you typed a cell and that cell is the box.{also} To have it "
+            f"size the box again, clear the cell.",
             "cell.vacuum_ignored"))
 
     # ONLY IN THE DERIVED REGIME.  Under an explicit cell the vacuum is
@@ -506,13 +522,26 @@ def detect_layers(z, tol_ang: float = LAYER_TOL_ANG) -> List[float]:
 #: How far two adjacent-layer spacings in one block may differ before it
 #: is refused as a bulk lead.
 #:
-#: A frozen lead's spacings are equal by construction; this is the noise
-#: floor of the file round trip, not a per-atom budget.  A per-atom error
-#: `e` reaches `4e` here -- centroid `e`, gap `2e`, spread `4e` -- so it
-#: is not interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite
-#: the equal value.  A lead arrives only as a `.xyz` + sidecar pair, which
-#: the codec writes at six decimals: 1e-6 observed, against ~0.05 A for
-#: the smallest defect worth refusing (a relaxed surface layer).
+#: A frozen lead's spacings are equal by construction: `modify.add_slab`
+#: gives every atom in a layer the SAME z, and measuring an Au(111)
+#: 2x2x4 slab shows it -- within-layer spread 0.0, and the three
+#: spacings agreeing to 4e-16.  The builder contributes nothing.
+#: (`modify.py`'s `round(float(z), 6)` picks which layers to keep; the
+#: stored coordinates come from `all_pos` unrounded, so it is not a
+#: source of error here.  Reading it as one cost a wrong version of
+#: this comment on 2026-09-21.)
+#:
+#: So this is the noise floor of the FILE ROUND TRIP and nothing else,
+#: DERIVED FROM THE WRITER rather than from any file on disk: a lead
+#: arrives as a `.xyz` + sidecar pair, and `to_xyz` writes `%12.6f`.
+#: Per-atom rounding <= 5e-7 A, and a spread is a difference of
+#: differences of layer means, so <= 4x that = 2e-6 A.  1e-3 leaves
+#: ~500x headroom over that and sits ~50x below the smallest defect
+#: worth refusing, a surface layer relaxed by ~0.05 A (1-3% of
+#: Au(111)'s 2.35).
+#:
+#: NOT interchangeable with `transport.wizard.FROZEN_TOL_ANG` despite the
+#: equal value: that one is a budget PER ATOM, this one is on the spread.
 UNIFORM_SPACING_TOL_ANG = 1e-3
 
 
@@ -957,3 +986,101 @@ def classify_seam(positions, cell) -> SeamVerdict:
 #: the crystallography travels.  A plane absent from this table means "not
 #: known" -- the note then says nothing instead of asserting a verdict.
 STACKING_PERIOD = {"111": 3, "100": 2, "110": 2}
+
+
+#: WHICH REFLECTIONS A LATTICE CENTRING ALLOWS -- the one fact the spacing
+#: below is derived from, written once per crystal system.
+#:
+#: A plane's atomic spacing is NOT the naive cubic `a/sqrt(h^2+k^2+l^2)`:
+#: a centred lattice has extra planes between the ones the Miller indices
+#: name, and the real repeat is the FIRST ALLOWED reflection along that
+#: direction.  fcc allows h,k,l all the same parity; bcc allows h+k+l even.
+#: That single rule is why fcc(111) is `a/sqrt(3)` while fcc(100) is `a/2`
+#: and fcc(110) is `a/(2*sqrt(2))` rather than `a` and `a/sqrt(2)`.
+_CENTRING_ALLOWS = {
+    "fcc": lambda h, k, l: (h % 2) == (k % 2) == (l % 2),
+    "bcc": lambda h, k, l: (h + k + l) % 2 == 0,
+    "sc":  lambda h, k, l: True,
+}
+
+#: Nearest-neighbour distance as a multiple of the cubic lattice constant.
+#: fcc: the face diagonal halved; bcc: the body diagonal halved; sc: the edge.
+_NEAREST_NEIGHBOUR = {
+    "fcc": _math.sqrt(2.0) / 2.0,
+    "bcc": _math.sqrt(3.0) / 2.0,
+    "sc":  1.0,
+}
+
+
+def parse_miller(plane: str) -> Tuple[int, int, int]:
+    """``"111"`` -> ``(1, 1, 1)``.  Single-digit indices only, which is
+    every surface a slab builder offers; a two-digit index would need a
+    separator and nothing asks for one."""
+    text = str(plane).strip()
+    if len(text) != 3 or not text.isdigit():
+        raise ValueError(
+            f"surface {plane!r} must be three single-digit Miller indices, "
+            f"e.g. '111', '100', '110'")
+    return (int(text[0]), int(text[1]), int(text[2]))
+
+
+def interplanar_spacing(system: str, plane: str, a: float) -> float:
+    """Distance (Å) between adjacent ATOMIC layers of *plane*, for a cubic
+    crystal of type *system* with lattice constant *a*.
+
+    **One rule, not a table of surfaces.**  This lived as three literals in
+    `modify/slab-panel.js` -- `a/sqrt(3)`, `a/2`, and a nearest-neighbour
+    line -- which is the layer that should not know crystallography.  It was
+    also short one row: `d(110)` was missing, so a person building fcc(110)
+    was shown two spacings, neither of them the one the Cell page asks them
+    to type.
+
+    *a* is stated by the caller and never defaulted: which reference a
+    number came from (experimental, PBE, measured) changes it by ~2%, and a
+    silent default makes the result impossible to validate without reading
+    this file *(user, 2026-09-22)*.
+
+    Verified against ASE's own slabs at a = 4.0782 Å to 6 dp:
+    (100) 2.039100, (110) 1.441861, (111) 2.354550.
+    """
+    a = float(a)
+    if not (a > 0.0) or not _math.isfinite(a):
+        raise ValueError(
+            f"lattice constant must be a positive length in Angstrom; "
+            f"got {a!r}")
+    allows = _CENTRING_ALLOWS.get(str(system).lower())
+    if allows is None:
+        raise ValueError(
+            f"no interplanar-spacing rule is known for crystal system "
+            f"{system!r}; this answers cubic systems "
+            f"({', '.join(sorted(_CENTRING_ALLOWS))}).  A hexagonal system "
+            f"needs c/a and Miller-Bravais indices, which is a second rule "
+            f"rather than a row here.")
+    h, k, l = parse_miller(plane)
+    if (h, k, l) == (0, 0, 0):
+        raise ValueError("(000) is not a plane")
+    # THE FIRST ALLOWED REFLECTION along this direction.  Bounded because
+    # doubling once is enough for every centring above -- the guard is
+    # against a future centring whose rule never admits this direction.
+    for m in (1, 2, 3, 4):
+        if allows(m * h, m * k, m * l):
+            return a / _math.sqrt((m * h) ** 2 + (m * k) ** 2 + (m * l) ** 2)
+    raise ValueError(
+        f"no allowed reflection along ({h}{k}{l}) for a {system} lattice")
+
+
+def nearest_neighbour_distance(system: str, a: float) -> float:
+    """Closest atom-atom distance (Å) in a cubic crystal of type *system*.
+    The bond length a seam is compared against (`junction-cell.md` § 3.1)."""
+    a = float(a)
+    if not (a > 0.0) or not _math.isfinite(a):
+        raise ValueError(
+            f"lattice constant must be a positive length in Angstrom; "
+            f"got {a!r}")
+    factor = _NEAREST_NEIGHBOUR.get(str(system).lower())
+    if factor is None:
+        raise ValueError(
+            f"no nearest-neighbour rule is known for crystal system "
+            f"{system!r}; this answers cubic systems "
+            f"({', '.join(sorted(_NEAREST_NEIGHBOUR))}).")
+    return a * factor

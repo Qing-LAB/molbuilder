@@ -309,22 +309,26 @@ def categorical_sort(struct: Structure) -> SortResult:
     def _take(seq):
         return None if seq is None else [seq[i] for i in order]
 
-    sorted_struct = Structure(
+    # A REORDER STATES THE PER-ATOM FIELDS AND NOTHING ELSE.  This was a
+    # hand-list of fourteen, and the two it did not name were `cell_origin`
+    # and `info`: the junction's stored corner was lost, so `render_fdf`
+    # DERIVED one instead of reading it and wrote the atoms displaced along
+    # the transport axis, and the recorded contract the citation warnings
+    # read was deleted (`model/structure.md` § 2.2a -- a strip is explicit,
+    # never a field a rebuild forgot).
+    #
+    # `frozen_atoms` is not passed: `regions` is the whole label store and
+    # the remap above already carries the reserved label, which is the trap
+    # `replace` documents.
+    sorted_struct = struct.replace(
         elements=[struct.elements[i] for i in order],
         positions=pos[order].copy(),
         atom_names=_take(struct.atom_names),
         residue_ids=_take(struct.residue_ids),
         residue_names=_take(struct.residue_names),
         chain_ids=_take(struct.chain_ids),
-        title=struct.title,
         regions={label: sorted(old_to_new[i] for i in idx)
                  for label, idx in struct.regions.items()},
-        frozen_atoms=(None if struct.frozen_atoms is None else
-                      sorted(old_to_new[i] for i in struct.frozen_atoms)),
-        cell=None if struct.cell is None else struct.cell.copy(),
-        pbc=struct.pbc,
-        axis_kind=struct.axis_kind,
-        vacuum=struct.vacuum,
         annotations=remap_annotations(struct.annotations, old_to_new),
     )
     return SortResult(

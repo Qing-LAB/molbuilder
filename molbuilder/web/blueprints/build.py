@@ -500,12 +500,16 @@ def api_periodicity():
                                  f"'payload' (use null to clear/reset)"}), 400
     try:
         struct = _struct_from_body(body)
-        # The frame-contract gate every other structure door runs, so what the
-        # edit is applied to is what a load would have produced.  Its notices
-        # describe the state that ARRIVED and are deliberately dropped: this
-        # answer describes the state the edit PRODUCED, and a user who has just
-        # corrected a box must not be told it is still wrong (molview.md § 6.8).
-        struct, _incoming = validate_periodicity(struct)
+        # NOT GATED ON THE INCOMING STATE.  This is the page a bad box is
+        # repaired on -- the load door admits one for exactly that reason
+        # (`:867`) -- so refusing the edit because the box is still bad
+        # leaves it unfixable: setting a good cell, clearing it, and
+        # editing the block were all refused with the very sentence that
+        # asks the user to do them.  `validate_periodicity` corrects
+        # nothing ("the struct comes out as it went in"), so its only
+        # effect here was the raise, and its notices were already dropped
+        # on purpose.  The RESULT is gated below, which is what
+        # molview.md § 6.8 actually asks for.
         new_struct, receipts = apply_edit(struct, op, body.get("payload"))
         # The CONDITIONS are re-derived on the RESULT, so "the box does not
         # contain the structure" is answered about the box that now exists.
@@ -522,6 +526,12 @@ def api_periodicity():
     return jsonify({
         "ok": True,
         "periodicity": new_struct.to_wire()["periodicity"],
+        # THE RECORD RIDES WITH THE BLOCK.  `apply_edit` marks the recorded
+        # contract outdated (a box edit is an edit), and this is the only
+        # answer the caller adopts -- so without `info` here the mark would
+        # be decided in Python and then set a second time in the browser.
+        # One decider; `model-jobs.js` takes it from here.
+        "info": new_struct.info,
         "notices": notices,
     })
 

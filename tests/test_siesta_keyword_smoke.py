@@ -462,3 +462,156 @@ def test_the_kgrid_displacement_reaches_siesta_and_changes_the_sampling(
         f"Both displacements gave {counts['gamma']} irreducible k-points.  "
         f"SIESTA echoed the shift but sampled the same set, so the "
         f"parameter is decorative.")
+
+
+# ===================================================================== #
+#  SIESTA'S OWN UNIT RULES, asked of the binary                         #
+# ===================================================================== #
+#
+# `parse/fdf.py` has to decide what a keyword MEANS when the deck states
+# no unit.  Those decisions were invented once -- a bare energy "is Ry",
+# coordinates "are Ang" -- and both were wrong, the second badly enough
+# to refuse a correct junction.  An invented rule is a rule nothing can
+# check, so these ask the engine instead: whatever SIESTA does IS the
+# requirement, and if a future SIESTA changes it these go red.
+
+
+def _unit_probe_deck(tmp_path, *, extra_lines: str = "",
+                     coord_format: str = None) -> Path:
+    """A two-atom H deck, minimal enough that SIESTA reaches the reader."""
+    shutil.copy(_H_PSML_SOURCE, tmp_path / "H.psml")
+    fmt = f"AtomicCoordinatesFormat {coord_format}\n" if coord_format else ""
+    path = tmp_path / "probe.fdf"
+    path.write_text(
+        "SystemLabel probe\nNumberOfAtoms 2\nNumberOfSpecies 1\n"
+        "%block ChemicalSpeciesLabel\n 1 1 H\n%endblock ChemicalSpeciesLabel\n"
+        + fmt + extra_lines +
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        " 0.0 0.0 0.0 1\n 0.0 0.0 1.4 1\n"
+        "%endblock AtomicCoordinatesAndAtomicSpecies\n")
+    return path
+
+
+@pytest.mark.parametrize("keyword,bare,with_unit", [
+    ("MeshCutoff",           "MeshCutoff 250",          "MeshCutoff 250 Ry"),
+    ("PAO.EnergyShift",      "PAO.EnergyShift 0.01",    "PAO.EnergyShift 0.01 Ry"),
+    ("ElectronicTemperature", "ElectronicTemperature 300",
+     "ElectronicTemperature 300 K"),
+    ("LatticeConstant",      "LatticeConstant 10.0",    "LatticeConstant 10.0 Ang"),
+])
+def test_siesta_REFUSES_a_physical_value_with_no_unit(keyword, bare,
+                                                      with_unit, tmp_path):
+    """THE REQUIREMENT, from the engine: there is no default unit.
+
+    `parse/fdf.py` therefore passes no `default=` for any of these, and
+    a bare value is left unanswered rather than read as a guess.  A deck
+    carrying one is a deck SIESTA would not have run.
+    """
+    binary = _require_siesta_binary()
+    bad_dir = tmp_path / "bad"; bad_dir.mkdir(parents=True)
+    out = _run_siesta_on_fdf(
+        binary, _unit_probe_deck(bad_dir, extra_lines=bare + "\n"),
+        work_dir=bad_dir)
+    assert "no unit specified" in (out.stdout + out.stderr), (
+        f"SIESTA accepted a bare {keyword}; if it has gained a default "
+        f"unit, parse/fdf.py may adopt it -- but read it off THIS output, "
+        f"not off a manual:\n{out.stdout[-800:]}")
+
+    good_dir = tmp_path / "good"; good_dir.mkdir(parents=True)
+    ok = _run_siesta_on_fdf(
+        binary, _unit_probe_deck(good_dir, extra_lines=with_unit + "\n"),
+        work_dir=good_dir)
+    assert "no unit specified" not in (ok.stdout + ok.stderr), (
+        f"the control failed: {keyword} WITH a unit was also refused")
+
+    # AND OUR READER FOLLOWS IT.  Establishing the engine's rule is only
+    # half a gate; this is the half that fails when we drift from it.
+    from molbuilder.parse.fdf import parse_fdf_params
+    from molbuilder.units import UnknownUnit
+    probe = f"{bare}\n"
+    if keyword == "LatticeConstant":
+        probe += ("%block LatticeVectors\n 1 0 0\n 0 1 0\n 0 0 1\n"
+                  "%endblock LatticeVectors\n")
+    try:
+        got = parse_fdf_params(probe, source="probe.fdf")
+    except UnknownUnit:
+        return                      # refused, which is the engine's answer
+    field = {"MeshCutoff": "mesh_cutoff_ry",
+             "PAO.EnergyShift": "energy_shift_ry",
+             "ElectronicTemperature": "electronic_temperature_k",
+             "LatticeConstant": "cell_ang"}[keyword]
+    assert getattr(got, field) is None, (
+        f"SIESTA refuses a bare {keyword}, so parse/fdf.py must not "
+        f"answer one -- it returned {getattr(got, field)!r}")
+
+
+def test_siesta_defaults_omitted_coordinates_to_BOHR(tmp_path):
+    """The one keyword here that DOES have a default, and it is not Ang.
+
+    `AtomicCoordinatesFormat` is read with `fdf_string(key, default)`,
+    so omitting it is legal and means something.  `parse/fdf.py` read it
+    as Ang, which is 1.89x out -- and `coords_ang` is the frozen gate's
+    baseline, so a correct junction cited as a foreign deck was refused
+    for atoms that had not moved.
+    """
+    binary = _require_siesta_binary()
+    (tmp_path / "d").mkdir(parents=True, exist_ok=True)
+    deck = _unit_probe_deck(tmp_path / "d")
+    out = _run_siesta_on_fdf(binary, deck, work_dir=deck.parent)
+    text = out.stdout + out.stderr
+    assert "Bohr" in text and "coor:" in text, (
+        f"could not read the coordinate-format banner:\n{text[-800:]}")
+    assert "Angstrom" not in text.split("coor:")[1][:200], (
+        "SIESTA now defaults omitted coordinates to Angstrom; "
+        "parse/fdf.py's default must follow THIS, not a manual")
+
+    # AND OUR READER FOLLOWS IT: 1.4 with no keyword is 1.4 BOHR.
+    from molbuilder.constants import BOHR_ANGSTROM
+    from molbuilder.parse.fdf import parse_fdf_params
+    got = parse_fdf_params(deck.read_text(), source="probe.fdf")
+    assert got.coords_ang is not None
+    assert got.coords_ang[1][2] == pytest.approx(1.4 * BOHR_ANGSTROM), (
+        f"SIESTA read this deck in Bohr; parse/fdf.py read "
+        f"{got.coords_ang[1][2]} A, which is Angstrom")
+
+
+def test_siesta_scales_lattice_vectors_by_ONE_when_no_constant_is_given(
+        tmp_path):
+    """The OTHER omitted keyword, and the one we had only asserted.
+
+    A bare `LatticeConstant 10.0` is refused (above).  OMITTING it is a
+    different question and `parse/fdf.py` answers it with 1 Ang -- a
+    number that was written down from a manual rather than asked of the
+    engine, in the same change that removed two other invented defaults.
+    If SIESTA scales by anything else, every cell read from a deck
+    without the keyword is wrong by that factor, silently.
+    """
+    binary = _require_siesta_binary()
+    (tmp_path / "d").mkdir(parents=True, exist_ok=True)
+    deck = _unit_probe_deck(
+        tmp_path / "d", coord_format="Ang",
+        extra_lines=("%block LatticeVectors\n"
+                     " 4.0 0.0 0.0\n 0.0 4.0 0.0\n 0.0 0.0 4.0\n"
+                     "%endblock LatticeVectors\n"))
+    out = _run_siesta_on_fdf(binary, deck, work_dir=deck.parent)
+    text = out.stdout + out.stderr
+
+    # SIESTA echoes the cell it built, in Ang.  A 4.0 vector read with a
+    # unit lattice constant stays 4.0; any other constant scales it.
+    import re
+    m = re.search(r"outcell: Unit cell vectors \(Ang\):\s*\n\s*"
+                  r"([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", text)
+    if m is None:
+        m = re.search(r"outcell: Cell vector modules \(Ang\)\s*:\s*"
+                      r"([-\d.]+)", text)
+    assert m, (f"could not read the cell SIESTA built:\n{text[-1500:]}")
+    assert float(m.group(1)) == pytest.approx(4.0, abs=1e-3), (
+        f"SIESTA scaled a 4.0 lattice vector to {m.group(1)} with no "
+        f"LatticeConstant, so its default is not 1 Ang; parse/fdf.py's "
+        f"default must follow THIS, not a manual")
+
+    # AND OUR READER FOLLOWS IT.
+    from molbuilder.parse.fdf import parse_fdf_params
+    got = parse_fdf_params(deck.read_text(), source="probe.fdf")
+    assert got.cell_ang is not None
+    assert got.cell_ang[0][0] == pytest.approx(4.0)

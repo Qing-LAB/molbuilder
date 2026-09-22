@@ -175,6 +175,11 @@ export function init(viewer) {
         renderSequence();
         renderOrthogonalChoice();
         renderPeriodNote();
+        // AND THE SPACING IS THE SURFACE'S.  It used to print d(111) and
+        // d(100) side by side whatever was selected, so the plane did not
+        // change it; now the note answers for THIS surface and has to be
+        // re-asked when the surface changes.
+        onLatticeInputsChanged();
     }
 
     const surfacePeriod = () =>
@@ -265,29 +270,56 @@ export function init(viewer) {
      * reference.  The one mistake anyone makes is picking a SECOND-shell
      * pair, which reads a factor 1.414 high and lands ~41% out -- where this
      * line says so at once. */
+    /* THE CRYSTALLOGRAPHY IS THE SERVER'S, and this asks for it.
+     *
+     * These three numbers were computed here, as `a/sqrt(3)`, `a/2` and
+     * `a/sqrt(2)` -- the only live implementation anywhere of the § 2
+     * spacing table, in the layer that should not know it.  It was also
+     * short a row: `d(110) = a/(2*sqrt(2))` was missing, and both spacings
+     * were printed whatever surface was selected, so a person building
+     * fcc(110) was shown two numbers and not the 1.4419 Å the Cell page
+     * asks them to type.  `/api/modify/spacings` derives all of them from
+     * one rule and answers for THE SELECTED plane.
+     *
+     * The "% from reference" half went too: `blueprints/modify.py` computes
+     * exactly that subtraction for `/lattice-from-run`, and says in a
+     * comment that it lives there because "two homes for one subtraction is
+     * one home too many". This was the second home, printed beside the
+     * first on the same gesture.
+     *
+     * Stale answers cannot land: each request carries a ticket and only the
+     * newest one is allowed to write, so typing quickly cannot leave an
+     * earlier `a`'s numbers on screen. */
+    let latticeTicket = 0;
     function onLatticeInputsChanged() {
         const note = $("slab-a-derived");
         if (!note) return;
         const a = num("slab-a", NaN);
         const element = ($("slab-element") || {}).value;
-        const row = (meta.lattice_table || {})[element] || {};
-        if (!Number.isFinite(a) || a <= 0) { note.hidden = true; return; }
-        const parts = [
-            `d(111) ${(a / Math.sqrt(3)).toFixed(4)}`,
-            `d(100) ${(a / 2).toFixed(4)}`,
-            `nearest neighbour ${(a / Math.sqrt(2)).toFixed(4)} Å`,
-        ];
-        for (const [key, label] of [["a_experimental", "experimental"],
-                                    ["a_pbe", "PBE"]]) {
-            const ref = row[key];
-            if (typeof ref === "number" && ref > 0) {
-                const off = (a - ref) / ref * 100;
-                parts.push(`${off >= 0 ? "+" : ""}${off.toFixed(1)}% from `
-                           + `${label} (${ref.toFixed(4)})`);
-            }
+        const plane = picked("slab-plane", "111");
+        if (!Number.isFinite(a) || a <= 0 || !element || !plane) {
+            note.hidden = true;
+            return;
         }
-        note.textContent = parts.join(" · ");
-        note.hidden = false;
+        const mine = ++latticeTicket;
+        /* `reference` is the typed number, always -- the box holds whatever
+         * the radio put there, so one value is sent and one is displayed.
+         * The server requires it explicitly; there is no default to fall
+         * back to. */
+        const q = `element=${encodeURIComponent(element)}`
+                + `&plane=${encodeURIComponent(plane)}`
+                + `&reference=${encodeURIComponent(String(a))}`;
+        fetch(`/api/modify/spacings?${q}`)
+            .then((r) => r.json())
+            .then((j) => {
+                if (mine !== latticeTicket) return;      // superseded
+                if (!j || j.ok !== true) { note.hidden = true; return; }
+                note.textContent =
+                    `d(${j.plane}) ${j.d_interlayer.toFixed(4)} Å`
+                    + ` · nearest neighbour ${j.nearest_neighbour.toFixed(4)} Å`;
+                note.hidden = false;
+            })
+            .catch(() => { if (mine === latticeTicket) note.hidden = true; });
     }
 
     /* ── The lattice reference (§ 3.3) ───────────────────────────────────

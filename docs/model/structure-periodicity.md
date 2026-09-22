@@ -37,7 +37,7 @@ file.
 | Field | Shape | Meaning | Default |
 |---|---|---|---|
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
-| `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = `(0,0,0)`; **dropped unless `cell` is explicit** |
+| `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = **derive the corner** (§ 6.1a), which is `(0,0,0)` only when the box at the world origin already holds every atom; **dropped unless `cell` is explicit** |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | `pbc` | 3 bools — **stored, kept in lockstep with `axis_kind`** | ASE-interop view: `periodic\|transport → True`, `isolated → False`; `__post_init__` reconciles the two so they never diverge | derived from `axis_kind` (the richer field: a boolean can't tell `transport` from `periodic`) |
 | `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
@@ -217,10 +217,22 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
-The electrode builder records which lattice constant it used
-(`fcc_lattice.json` carries `a_experimental` / `a_pbe`, and a value measured
-off the user's own relaxed bulk run can be typed in beside them),
-so the captured cell matches the DFT setup.
+The electrode builder is *told* which lattice constant to use — `fcc_lattice.json`
+carries `a_experimental` / `a_pbe`, and a value measured off the user's own
+relaxed bulk run can be typed in beside them — and the captured cell is built
+from it.
+
+It does **not record** which one it used, and deliberately does not *(user,
+2026-09-21)*. This sentence used to claim it did, which is worth stating
+plainly because the claim invites a check nobody wants: a second slab can be
+built at a different reference, and enforcing agreement between them is not
+this tool's business. A bad contact shows up in the calculation as a bad
+contact. The author chooses; molbuilder builds what it is told.
+
+(Recording alone would also buy nothing: a structure has one `info`, so a
+second build overwrites the first, and knowing *which atoms* came from which
+build would take per-region provenance — a large mechanism producing a label
+no one is allowed to act on.)
 
 ---
 
@@ -238,7 +250,8 @@ convention. The box would sit at the origin with half the atoms outside it (the
 **The contract — separate editing convenience from SIESTA correctness:**
 
 1. **`cell_origin`: the world-space LOW CORNER an explicit cell emanates from**
-   (`null` = origin). An op that builds a cell *around* off-origin atoms sets
+   (`null` = **derive the corner**, not "the corner is zero" — see clause 2a).
+   An op that builds a cell *around* off-origin atoms sets
    `cell_origin` to the structure's low corner, so the cell wraps the atoms
    without moving them. It is *stored intent* (set by the op), never guessed
    from atom extents, so it never drifts; a genuine imported crystal (atoms
@@ -246,6 +259,31 @@ convention. The box would sit at the origin with half the atoms outside it (the
    unless `cell` is explicit** (`structure.py:414`).
 2. **`resolve_cell_origin()` returns `cell_origin` for an explicit cell**, so
    the viewer draws the box at its true corner, wrapping the structure.
+2a. **What `null` resolves to, exactly.** With an explicit cell and no stored
+   origin the corner is *derived*, never assumed to be the world origin: it is
+   `bbox_min − effective_vacuum` on an **isolated** axis, `bbox_min` on a
+   **transport** axis, `0` on a **periodic** one — and `None` (no shift at all)
+   only when the box already at `(0,0,0)` contains every atom along the
+   non-periodic axes, which is the imported-crystal and engine-frame case.
+   So `null` and `(0,0,0)` coincide in that case and **differ everywhere
+   else** — for three isolated axes with 8 Å of vacuum they are 8–11 Å apart.
+   Read `null` as "work the corner out", never as "the corner is zero".
+2b. **THE ORIGIN IS A LABEL ON THE COORDINATES BESIDE IT** *(user, 2026-09-21)*.
+   It is not metadata that travels on its own: it measures one specific set of
+   coordinates. **Any operation that reframes the coordinates restates the
+   origin in the same breath** — coordinates from frame X carrying an origin
+   measured in frame Y is always a defect, because the emitter then shifts by
+   `−cell_origin` and displaces the structure by the whole corner. The
+   reference implementation is `calibrate_to_cell`, which translates the atoms
+   and sets `cell_origin: None` together. Three sites got this wrong
+   independently before the rule was written down: the SIESTA deck's
+   `validation_struct` (shifted atoms, stored corner → a phantom
+   `atoms_outside` warning), the Results tab (a run's engine-frame frames given
+   the authoring pair's corner → an off-corner box, and an export that
+   double-shifted the next deck), and transport form A (`.XV` coordinates given
+   the authoring sidecar's corner → the junction emitted translated, far-face
+   atoms wrapping into the leads). A cell is a **shape** and survives a change
+   of frame; an origin is a **position** and does not.
 3. **SIESTA correctness is applied at generation, not while editing.**
    `render_fdf`'s default path (`cell=None`, the one the web build uses)
    translates atoms by `−resolve_cell_origin()`, so SIESTA always receives

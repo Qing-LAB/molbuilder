@@ -1750,9 +1750,35 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
     outright -- we refuse first, at whichever layer sees it, with a message that
     matches the actual cause.
 
-    FOUR independent layers stop one from ever being emitted; this pins each so
-    a future change cannot quietly remove the last of them.
+    THREE independent layers stop one from ever being emitted; this pins each
+    so a future change cannot quietly remove the last of them.
+
+    THERE WERE FOUR until 2026-09-21.  The first was `__post_init__` refusing
+    to construct one at all, and it was removed on purpose: § 8.2 says reading
+    does not judge, and a model that cannot HOLD a bad box cannot show one on
+    the Cell page either -- so a pair whose sidecar carried one could not be
+    opened, and the only ways out were to hand-edit the JSON outside
+    molbuilder or delete it and lose the labels with it.  What replaces it is
+    not silence: the box loads and the load REPORTS it, which is layer 0
+    below.  Refusing still happens, at the two doors that are actually about
+    to act on the box.
     """
+
+    def test_layer0_it_can_be_held_and_is_reported_rather_than_hidden(self):
+        """The layer that replaced "cannot even be constructed".
+
+        A degenerate lattice may exist in memory -- that is what lets the
+        Cell page show you the box you have to fix.  What must never happen
+        is it existing QUIETLY, so the same checker that refuses at the edit
+        and emit doors answers here too, as a finding.
+        """
+        from molbuilder.cell import resolve_and_check
+        s = self._flat()
+        s.cell = np.diag([8.0, 8.0, 0.0])
+        s.__post_init__()                      # must not raise
+        assert s.cell is not None, "the box the user has to fix was dropped"
+        _rc, issues = resolve_and_check(s)
+        assert [i.where for i in issues] == ["cell.no_volume"]
 
     @staticmethod
     def _flat():
@@ -1760,24 +1786,6 @@ class TestSiestaNeverReceivesAZeroVolumeCell:
                          positions=np.array([[0.0, 0.0, 0.0],
                                              [0.757, 0.586, 0.0],
                                              [-0.757, 0.586, 0.0]]))
-
-    def test_layer1_a_singular_explicit_cell_cannot_even_be_constructed(self):
-        """SCIENCE, layer 1 of 4. A cell with a zero determinant cannot be
-        CONSTRUCTED -- `__post_init__` refuses it.
-
-        Catches a degenerate lattice existing in memory at all. SIESTA builds
-        reciprocal vectors by inverting the cell, so a zero volume is not a
-        tolerance question: the inversion is undefined and the run dies (or worse,
-        a near-singular one converges on nonsense). Refusing at construction means
-        the three layers below it never see this case.
-
-        Contract: `model/structure-periodicity.md` § 6.1 + § 4 (`resolve_cell`);
-        layers 2-4 are the three tests below.
-        """
-        s = self._flat()
-        s.cell = np.diag([8.0, 8.0, 0.0])
-        with pytest.raises(ValueError, match="singular|degenerate"):
-            s.__post_init__()
 
     def test_layer2_the_gate_refuses_a_zero_volume_cell_edit(self):
         """Matched on "right-handed" until 2026-08-03, which was an accident of
@@ -1900,6 +1908,13 @@ class TestEveryOpIsChecked:
         # spacings it implies, and notes).  It reads a file the user points
         # at and never touches the structure on the bench.
         "/api/modify/lattice-from-run",
+        # GET, and a pure lookup: element + surface + lattice constant ->
+        # the layer spacing and the bond length that follow from them.  No
+        # structure is sent, none comes back, and nothing on the bench is
+        # read -- it answers a question about a CRYSTAL, not about the
+        # thing being edited.  (It exists because the Slab panel used to
+        # compute those numbers in JavaScript and was missing d(110).)
+        "/api/modify/spacings",
     }
 
     def _stranded(self):
@@ -2077,3 +2092,48 @@ class TestARefusedCellIsA400:
 
     # `test_the_transport_door_refuses` deleted 2026-09-17 with POST /api/transport/render.
 
+
+
+class TestTheCellPageCanRepairWhatItRefuses:
+    """A bad box is ADMITTED at the load door precisely so it can be fixed
+    here (`blueprints/build.py`: *"a load that refused would leave a
+    structure with a bad box unopenable, and so unfixable"*).
+
+    The edit door then gated on the INCOMING state, so every op was
+    refused with the very sentence that asks the user to perform it.
+    """
+
+    def _mirrored(self):
+        import numpy as np
+        from molbuilder.structure import Structure
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0., 0., 0.], [0., 0., 1.]]))
+        s.cell = np.array([[10., 0, 0], [0, 0, 10.], [0, 10., 0]])
+        return s
+
+    def test_a_mirrored_cell_is_admitted_so_it_can_be_corrected(self):
+        """`__post_init__` refuses only a near-zero determinant."""
+        assert self._mirrored().cell is not None
+
+    def test_setting_a_good_cell_over_a_mirrored_one_is_ACCEPTED(self):
+        """The fix the refusal asks for -- 'swap any two of the three
+        rows' -- was itself refused."""
+        import numpy as np
+        from molbuilder.periodicity_gate import apply_edit
+        out, _receipts = apply_edit(self._mirrored(), "cell",
+                                    [[10., 0, 0], [0, 10., 0], [0, 0, 10.]])
+        assert float(np.linalg.det(np.asarray(out.cell, float))) > 0
+
+    def test_clearing_a_mirrored_cell_is_ACCEPTED(self):
+        from molbuilder.periodicity_gate import apply_edit
+        out, _receipts = apply_edit(self._mirrored(), "cell", None)
+        assert out.cell is None
+
+    def test_an_edit_that_LEAVES_the_box_mirrored_is_still_refused(self):
+        """The result is what is gated, so a repair that does not repair
+        must still be refused -- otherwise this fix would open a hole."""
+        import pytest as _pytest
+        from molbuilder.periodicity_gate import apply_edit
+        with _pytest.raises(ValueError, match="mirrored"):
+            apply_edit(self._mirrored(), "cell",
+                       [[10., 0, 0], [0, 0, 10.], [0, 20., 0]])

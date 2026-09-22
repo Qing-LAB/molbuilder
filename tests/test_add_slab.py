@@ -383,6 +383,31 @@ class TestTheBoxItCaptures:
             f"{n_layers} layer(s): the builder added "
             f"{out.cell[2][2] - span:.4f} Å to c.  It does not decide that")
 
+    def test_no_captured_box_means_no_periodicity_either(self):
+        """When there is nothing to measure, the op states the WHOLE box.
+
+        `c` is the atoms' extent, so atoms that are all at one z give
+        nothing to capture and the op answers with no cell — by design.
+        But the non-atom facts come from the source through one seam, and
+        that seam carries `pbc`: a periodic canvas therefore handed back
+        a structure claiming three periodic axes with no lattice at all,
+        which `resolve_cell()` refuses outright. Either the captured box
+        or no box; never half of one.
+        """
+        from molbuilder.structure import Structure
+        canvas = Structure(elements=["Au", "Au"],
+                           positions=np.array([[0., 0, 0], [2., 0, 0]]),
+                           cell=np.diag([4., 4., 4.]), pbc=(True, True, True))
+        out = _slab(canvas, size=(2, 2, 1), start_z=0.0)
+
+        pos = np.asarray(out.positions, dtype=float)
+        assert pos[:, 2].max() - pos[:, 2].min() < 1e-6, (
+            "the fixture no longer goes degenerate")
+        assert out.cell is None, "there was no z extent to capture"
+        assert out.pbc == (False, False, False), (
+            "no cell was captured, yet the result still claims periodicity")
+        out.resolve_cell()          # must not raise
+
     def test_a_and_b_are_still_the_crystals_own_vectors(self):
         """What the builder DOES know it still sets: re-deriving the in-plane
         lattice by hand would be a second formula waiting to disagree with the

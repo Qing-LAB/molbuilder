@@ -40,6 +40,8 @@ them through (see the methods + their tests).
 
 from __future__ import annotations
 
+import copy as _copy
+
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
@@ -419,14 +421,20 @@ class Structure:
     # which present regions + frozen + these together.  Empty default so
     # every existing call site is unchanged.
     annotations:   Dict[str, AtomChannel] = field(default_factory=dict)
-    #: Free-form, NON-structural metadata (user, 2026-08-29 --
-    #: `archive/2026-09-01-structure-info-plan.md`): a JSON dict of key -> value that
-    #: DESCRIBES the structure (a recorded electronic contract, a note)
-    #: without being part of it.  Deliberately outside METADATA_FIELDS:
-    #: that set is the strictly-enumerated STRUCTURAL block (unknown keys
-    #: refuse), while `info` is the open store.  Never enters
-    #: `structure_hash`; travels top-level in to_dict/from_dict beside
-    #: `metadata`, and in the sidecar since schema 9.
+    #: METADATA (model/structure.md § 2.2a) -- what the MolView Metadata
+    #: pane shows -- that is NOT part of the structure: no emitter reads
+    #: it, it never enters `structure_hash`, and the read-only gate does
+    #: not apply to it.  Those three are why it sits outside
+    #: METADATA_FIELDS, which is the strictly-enumerated STRUCTURAL block
+    #: (hash input, gate-controlled, unknown keys refused); `info` is the
+    #: open store beside it, with to_dict/from_dict as its door, and it
+    #: is in the sidecar from schema 9.
+    #:
+    #: IT TRAVELS AND A STRIP IS EXPLICIT.  Every seam that derives one
+    #: Structure from another carries it -- `_carry_nonatom`, `replace`,
+    #: `copy`, `concat`, the ops, the codecs.  A rebuild that simply did
+    #: not list the field is a defect: a vanished contract cannot be told
+    #: apart from one that was never recorded.
     info:          Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -462,20 +470,19 @@ class Structure:
                     f"floats (lattice vectors as rows, Angstrom); got "
                     f"shape {cell.shape}"
                 )
-            # Reject a singular/degenerate lattice (zero volume, or two
-            # parallel/duplicated vectors): it would blow up later in
-            # reciprocal-space / k-grid math (1/det, inv(cell)) with an
-            # opaque LinAlgError instead of a clear message here.
-            # THE shared threshold (cell.ZERO_VOLUME_TOL).  It was 1e-8 here
-            # and 1e-6 in the emitter until 2026-08-03 -- two numbers for one
-            # question.  Imported lazily: ``cell`` imports this module.
-            from .cell import ZERO_VOLUME_TOL
-            if abs(float(np.linalg.det(cell))) < ZERO_VOLUME_TOL:
-                raise ValueError(
-                    "Structure.cell is singular/degenerate (near-zero "
-                    "volume); the three lattice vectors must be linearly "
-                    "independent."
-                )
+            # READING DOES NOT JUDGE (§ 8.2).  A singular box used to be
+            # refused HERE, which made a pair whose sidecar held one
+            # impossible to open -- and the Cell page is the one place a box
+            # can be corrected, so the only ways out were to hand-edit the
+            # `.molstruct.json` outside molbuilder or delete it and lose the
+            # labels with it.  § 6.1a says `cell.no_volume` is a WARNING on
+            # load and an error only at generate, and both later doors
+            # enforce that already: `periodicity_gate._refuse_on_error`
+            # rejects the value you type, and `validation.report` refuses to
+            # emit.  A left-handed box has always loaded for the same reason;
+            # this one now does too.  Every reader that inverts the cell
+            # answers `None` rather than raising (`_frac_coords`,
+            # `cell._fractional`).
             self.cell = cell
         if self.pbc is None:
             self.pbc = ((True, True, True) if self.cell is not None
@@ -698,12 +705,21 @@ class Structure:
                 out[i] = lo[i]
         return out
 
-    def _frac_coords(self, origin) -> np.ndarray:
+    def _frac_coords(self, origin) -> Optional[np.ndarray]:
         """Fractional coordinates relative to ``(origin, cell)``.  Triclinic-
-        safe: solves ``cell.T @ frac = pos - origin``."""
+        safe: solves ``cell.T @ frac = pos - origin``.
+
+        ``None`` when the box is singular and nothing can be solved -- the
+        same answer, for the same reason, as ``cell._fractional`` (§ 8.2: a
+        structure may HOLD an unusable box so the Cell page can show it, so
+        every reader of one has to survive it)."""
         rel = (self.positions.astype(float)
                - np.asarray(origin, dtype=float).reshape(1, 3))
-        return np.linalg.solve(np.asarray(self.cell, dtype=float).T, rel.T).T
+        try:
+            return np.linalg.solve(
+                np.asarray(self.cell, dtype=float).T, rel.T).T
+        except np.linalg.LinAlgError:
+            return None
 
     def cell_contains_atoms(self, origin=None) -> bool:
         """True when every atom sits inside ``[origin, origin + cell)`` along
@@ -716,6 +732,11 @@ class Structure:
         o = (np.zeros(3) if origin is None
              else np.asarray(origin, dtype=float).reshape(3))
         frac = self._frac_coords(o)
+        if frac is None:
+            # A singular box encloses nothing that can be checked.  Saying
+            # "contained" would be a claim; saying "not contained" is the
+            # honest answer and the one that keeps the corner derivable.
+            return False
         for i, kind in enumerate(self.axis_kind):
             if kind == "periodic":
                 continue
@@ -735,6 +756,12 @@ class Structure:
         if self.cell_contains_atoms(corner):
             return corner
         frac = self._frac_coords(np.zeros(3))
+        if frac is None:
+            # Singular box: the centring below needs a fractional extent and
+            # there is none.  The wrapping corner still WRAPS, so answer with
+            # it rather than raising -- the box itself is what is wrong, and
+            # `cell.no_volume` is the finding that says so.
+            return corner
         lens = np.linalg.norm(np.asarray(self.cell, dtype=float), axis=1)
         lo = self.positions.min(axis=0).astype(float)
         for i, kind in enumerate(self.axis_kind):
@@ -1117,15 +1144,53 @@ class Structure:
         does not** — the interpreter has no such hook — so on this interpreter
         ``dataclasses.replace(struct, regions=…)`` still carries the trap and
         this method is the only correct door.
+
+        IT IS ``copy()`` PLUS THE CHANGES, and that is the second reason to
+        use it.  ``dataclasses.replace`` re-passes the mutable fields BY
+        REFERENCE: the derived structure shared ``positions``, ``cell``,
+        ``cell_origin`` and the ``info`` dict with its source, so writing to
+        one wrote to the other — measured, including through
+        ``info.calculation``.  That is what every hand-listed rebuild in the
+        tree was working around with its own ``.copy()`` calls, and enumerating
+        fields to copy them is how ``cell_origin`` and ``info`` came to be
+        forgotten (§ 2.2a).  Deriving through here copies, so a caller states
+        only what CHANGES and nothing it did not name can alias or vanish.
+
+        ``frozen_atoms`` is never re-passed at all: a copied ``regions`` is the
+        whole label store and already carries the reserved label, so the trap
+        above is gone by construction rather than by a special case.
         """
-        import dataclasses as _dc
-        if "regions" in changes and "frozen_atoms" not in changes:
-            # Rebuild from the fields WITHOUT re-passing the derived read.
-            kw = {f.name: getattr(self, f.name)
-                  for f in _dc.fields(self) if f.name != "frozen_atoms"}
-            kw.update(changes)
-            return type(self)(**kw)
-        return _dc.replace(self, **changes)
+        kw = {
+            "elements":      list(self.elements),
+            "positions":     self.positions.copy(),
+            "atom_names":    list(self.atom_names),
+            "residue_ids":   list(self.residue_ids),
+            "residue_names": list(self.residue_names),
+            "chain_ids":     list(self.chain_ids),
+            "title":         self.title,
+            "regions":       {k: list(v) for k, v in self.regions.items()},
+            "annotations":   copy_annotations(self.annotations),
+            **self._carry_nonatom(),
+        }
+        kw.update(changes)
+        # `axis_kind` OUTRANKS `pbc` in ``__post_init__``, and this method seeds
+        # BOTH from the source -- so a caller who stated only `pbc` had it
+        # silently discarded by the carried kind.  That was the one field for
+        # which "state only what CHANGES" was false.  When the stated booleans
+        # CONTRADICT the carried kinds, those kinds describe a box the caller
+        # has just stopped asking for, so they step aside and the kinds are
+        # derived from what WAS asked.  When the two agree the carried kinds
+        # stay, because `transport` is a distinction no boolean can carry back.
+        if changes.get("pbc") is not None and "axis_kind" not in changes:
+            carried = kw.get("axis_kind")
+            try:
+                stated = tuple(bool(b) for b in changes["pbc"])
+            except TypeError:
+                stated = None                 # __post_init__ refuses it below
+            if (carried is not None and stated is not None
+                    and tuple(k != "isolated" for k in carried) != stated):
+                kw["axis_kind"] = None
+        return type(self)(**kw)
 
     #: Python 3.13+ dispatches ``dataclasses.replace`` here.  Harmless on 3.12.
     __replace__ = replace
@@ -1700,15 +1765,26 @@ class Structure:
                 "to_ase() needs the 'ase' package; install with "
                 "`pip install ase`"
             ) from exc
-        return Atoms(symbols=self.elements, positions=self.positions)
+        # WITH THE BOX, because `pbc` exists precisely as the ASE-interop view
+        # of `axis_kind` (§ 1) and this is the one ASE door.  Handing over
+        # atoms alone described a crystal as a gas-phase cluster: an `Atoms`
+        # with a zero cell and `pbc = [F,F,F]`, so anything the caller did
+        # with it -- a neighbour list, a symmetry search, a write -- answered
+        # the wrong question and said nothing.  `resolve_cell()` rather than
+        # the raw field, so a derived box travels too; `None` stays unset.
+        resolved = self.resolve_cell()
+        return Atoms(symbols=self.elements, positions=self.positions,
+                     cell=(None if resolved is None
+                           else np.asarray(resolved, dtype=float)),
+                     pbc=self.pbc)
 
     # ------------------------------------------------------------------ #
     #  Combine / translate / center -- handy small utilities              #
     # ------------------------------------------------------------------ #
 
-    def _carry_periodicity(self) -> dict:
-        """Periodicity fields (cell / pbc / axis_kind / vacuum) for
-        reconstructing a Structure that EDITS ATOMS but keeps the lattice.
+    def _carry_nonatom(self) -> dict:
+        """The NON-PER-ATOM facts an atom edit carries: the lattice, and
+        the free store.
 
         None of these are per-atom, so an add / delete / rigid transform
         carries them verbatim.  Dropping any of them silently reverts a
@@ -1716,7 +1792,21 @@ class Structure:
         from pbc, vacuum -> 0) -- e.g. deleting a stray atom would wipe a
         transport cell, and the emitted SIESTA FDF would omit
         ``LatticeVectors``.  Every op-helper that rebuilds a Structure spreads
-        this so the lattice survives the edit.
+        this so those facts survive the edit.
+
+        ``info`` RIDES HERE TOO, and the reason is the opposite of what
+        dropping it looks like.  An edit is meant to OUTDATE the recorded
+        contract, not erase it: `molview.md` § 8.4a splits
+        ``structure_modified`` from ``labels_modified`` so a later reader
+        is told WHICH kind of edit happened, and
+        `transport.compose.recorded_contract_of` turns the first into
+        "the mesh cutoff and transverse k-mesh below were converged for a
+        cell that is no longer there".  Rebuilding without ``info``
+        deletes the thing that warning reads -- so the flag has nothing
+        to mark, the warning cannot fire, and a form-B citation quietly
+        inherits catalogue defaults instead of the relaxation's own
+        settings.  Voiding a calculation is a MARK on the record, and a
+        record that is gone cannot carry one.
         """
         return dict(
             cell        = (self.cell.copy() if self.cell is not None else None),
@@ -1725,7 +1815,39 @@ class Structure:
             pbc         = self.pbc,
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
+            info        = _copy.deepcopy(self.info) if self.info else {},
         )
+
+    def mark_contract_outdated(self, what: str = "structure") -> None:
+        """An edit OUTDATES the recorded contract; it does not erase it.
+
+        The Python half of `molview/model.js`'s ``markContractOutdated``,
+        with the same three rules so the two languages cannot disagree
+        about one record (`model/structure.md` § 2.2a):
+
+        * **Never invented.** No ``info.calculation`` means nothing was
+          recorded, so there is nothing to outdate and no block is created.
+        * **Never cleared.** Un-editing is what a retract/restore is for;
+          both flags ride the pair like everything else in the store.
+        * **Two flags, because they void different things.**
+          ``labels_modified`` says the electrode/device partition was
+          renamed — the settings still stand, but what they were sorted on
+          may not.  ``structure_modified`` says the geometry or the cell
+          moved, so the mesh cutoff and transverse k-mesh were converged
+          for something that is no longer there.  `transport/compose.py`
+          reads both and warns in those words.
+
+        Called at the places that ARE edits, not inside `replace()`:
+        `transport.sort.categorical_sort` reorders atoms through the same
+        door and is not an edit, so marking there would warn about every
+        composed junction.
+        """
+        block = self.info.get("calculation") if self.info else None
+        if not isinstance(block, dict):
+            return
+        key = "labels_modified" if what == "labels" else "structure_modified"
+        if not block.get(key):
+            block[key] = True
 
     def copy(self) -> "Structure":
         """Return a deep-ish copy: all metadata lists are duplicated;
@@ -1734,19 +1856,12 @@ class Structure:
         return the input unchanged (e.g. ``add_slab`` with
         ``n_layers <= 0`` short-circuits to ``struct.copy()`` rather
         than open-coding the field-by-field rebuild three times).
+
+        ONE implementation, in :meth:`replace`: this is that door with
+        nothing changed.  Two copies of the field list is how a field comes
+        to be duplicated in one and missing from the other.
         """
-        return Structure(
-            elements      = list(self.elements),
-            positions     = self.positions.copy(),
-            atom_names    = list(self.atom_names),
-            residue_ids   = list(self.residue_ids),
-            residue_names = list(self.residue_names),
-            chain_ids     = list(self.chain_ids),
-            title         = self.title,
-            regions       = {k: list(v) for k, v in self.regions.items()},
-            annotations   = copy_annotations(self.annotations),
-            **self._carry_periodicity(),
-        )
+        return self.replace()
 
     def affine(self, linear: Sequence[Sequence[float]],
                translation: Sequence[float]) -> "Structure":
@@ -1770,12 +1885,12 @@ class Structure:
         (det +1), so the cell stays non-singular."""
         L = np.asarray(linear, dtype=float).reshape(3, 3)
         t = np.asarray(translation, dtype=float).reshape(3)
-        per = self._carry_periodicity()
+        per = self._carry_nonatom()
         if per.get("cell") is not None:
             per["cell"] = per["cell"] @ L.T
         if per.get("cell_origin") is not None:
             per["cell_origin"] = per["cell_origin"] @ L.T + t
-        return Structure(
+        out = Structure(
             elements      = list(self.elements),
             positions     = self.positions @ L.T + t,
             atom_names    = list(self.atom_names),
@@ -1787,6 +1902,11 @@ class Structure:
             annotations   = copy_annotations(self.annotations),
             **per,
         )
+        # A RIGID TRANSFORM IS AN EDIT (`molview/model.js` marks every
+        # `applyOp` the same way): the atoms the contract was converged on
+        # have moved, so the record is outdated -- not erased.
+        out.mark_contract_outdated()
+        return out
 
     def translated(self, vec: Sequence[float]) -> "Structure":
         # A rigid translation: linear part = identity (lattice vectors unchanged),
@@ -1870,11 +1990,36 @@ class Structure:
         # `pbc` out by hand and dropped the other three, so appending to a
         # slab turned its TRANSPORT axis back into an ordinary periodic one,
         # forgot the stored cell corner and the vacuum, and reported nothing.
-        # `_carry_periodicity` is the single list of the non-atom lattice
+        # `_carry_nonatom` is the single list of the non-atom lattice
         # fields and every other op-helper already spreads it; `concat` was
         # written before that rule and never joined it.
+        #
+        # AND WHEN NOBODY STATES A BOX, THE FIRST STILL HAS FACTS.  `axis_kind`
+        # and `vacuum` live on a structure whose cell is DERIVED exactly as
+        # much as on one that states a lattice, so an empty dict here threw
+        # away the transport axis and the typed vacuum of every input -- the
+        # very loss the paragraph above says `_carry_nonatom` exists to stop.
+        #
+        # AND ONLY THE BOX COMES FROM `base`.  A cell and its corner are the
+        # one thing an incoming fragment can supply that the canvas lacks;
+        # `axis_kind`, `vacuum` and `info` are facts OF THE CANVAS, true of it
+        # whether or not it states a lattice.  Taking the whole non-atom block
+        # from whoever happened to carry a cell let a fragment overwrite them:
+        # appending a slab onto a molecule with a typed 8 A vacuum replaced
+        # that vacuum with the slab's (0,0,0) and turned two isolated axes
+        # crystalline, silently, because nothing was outside the box
+        # afterwards for `cell.check` to notice (§ 6.1 clause 1: `vacuum`
+        # keeps exactly what the user typed; § 2.2a: a strip is explicit).
         base = next((s for s in structures if s.cell is not None), None)
-        lattice = base._carry_periodicity() if base is not None else {}
+        first = structures[0]
+        lattice = first._carry_nonatom()
+        if base is not None and base is not first:
+            _box = base._carry_nonatom()
+            lattice["cell"] = _box["cell"]
+            lattice["cell_origin"] = _box["cell_origin"]
+        # `info` IS NOT THE LATTICE'S.  The recorded contract belongs to the
+        # one being appended TO, which is the first, cell or no cell.
+        lattice["info"] = (_copy.deepcopy(first.info) if first.info else {})
         return cls(
             elements      = elements,
             positions     = np.vstack(positions),

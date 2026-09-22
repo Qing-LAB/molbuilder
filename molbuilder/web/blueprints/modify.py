@@ -137,13 +137,17 @@ def api_modify_meta():
     layer that drift from the Python tuples.  Adding a new metal in
     ``molbuilder.modify`` reaches the UI automatically.
     """
-    # Lattice table: per-element a_experimental + a_pbe + the nullable
-    # a_pbe_siesta_psml (populated by the user when they run a bulk-
-    # cell relax with their specific Au.psml/etc.).  UI renders a
-    # 3-way radio per element so the user can pick the value matching
-    # their XC + pseudopotential.  Failures here surface as a
-    # diagnostic + an empty table so the UI degrades to the prior
-    # behavior (always experimental, no radio).
+    # Lattice table: per-element `a_experimental` + `a_pbe`, so the panel can
+    # offer the two literature references without carrying the numbers.  The
+    # third column this comment used to name (`a_pbe_siesta_psml`) went with
+    # schema v3 -- nothing in the codebase could ever write it, so the "your
+    # bulk run" control it fed greyed itself out from the day it shipped; a
+    # constant measured in the user's own setup belongs to ONE run and is
+    # read from there instead (`POST /api/modify/lattice-from-run`).  The
+    # panel's third radio is "Custom", a typed number, not a table column.
+    #
+    # Failures here surface as a diagnostic + an empty table so the UI
+    # degrades rather than breaking.
     lattice_table: Dict[str, Any] = {}
     lattice_error: Optional[str] = None
     try:
@@ -167,6 +171,108 @@ def api_modify_meta():
         # carrying its own copy of the rule (science/junction-cell.md § 2b).
         "orthogonal_choices": {p: list(v)
                                for p, v in FCC_ORTHOGONAL_CHOICES.items()},
+    })
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/spacings                                                 #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/spacings", methods=["GET"])
+def api_modify_spacings():
+    """The layer spacing and bond length of one surface.
+
+    ``?element=Au&plane=111&reference=experimental`` ->
+    ``{ok, element, plane, system, reference, a, d_interlayer,
+    nearest_neighbour}``.
+
+    **The crystallography is the backend's.**  The Slab panel computed this
+    itself -- `a/sqrt(3)`, `a/2` and a nearest-neighbour line, three literals
+    in JavaScript -- and was short `d(110)` entirely, so a person building
+    fcc(110) was shown two spacings, neither of them the number the Cell page
+    asks them to type.  `cell.interplanar_spacing` derives all of them from
+    one rule (the first allowed reflection for the lattice's centring), and
+    this is the door it reaches the browser through.
+
+    **`reference` is required and explicit** *(user, 2026-09-22)*: the word
+    ``experimental`` or ``pbe``, or an actual number in Angstrom.  There is
+    no default, because which reference a constant came from moves it by
+    ~2% and a silent one makes the answer impossible to check without
+    reading the source.
+    """
+    from molbuilder.cell import interplanar_spacing, nearest_neighbour_distance
+    from molbuilder.modify import load_fcc_lattice_full
+
+    element = (request.args.get("element") or "").strip()
+    plane = (request.args.get("plane") or "").strip()
+    reference = (request.args.get("reference") or "").strip()
+    if not element or not plane or not reference:
+        return jsonify({
+            "ok": False,
+            "error": "element, plane and reference are all required; "
+                     "reference is 'experimental', 'pbe', or a number in "
+                     "Angstrom"}), 400
+
+    try:
+        table = load_fcc_lattice_full()
+    except Exception as exc:                       # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    # THE SAME SURFACES THE BUILDER OFFERS.  `interplanar_spacing` is general
+    # crystallography and will happily answer (999) -- correctly.  But this
+    # door serves the Slab panel, and `/api/modify/slab` refuses a plane the
+    # builder cannot make, so quoting a spacing for one would hand back a
+    # number with nothing to use it on.  One list, asked here too.
+    if plane not in SUPPORTED_FCC_PLANES:
+        return jsonify({
+            "ok": False,
+            "error": f"unsupported surface {plane!r}; this builder makes "
+                     f"{', '.join(SUPPORTED_FCC_PLANES)}"}), 400
+
+    entry = table.get(element)
+    if entry is None:
+        # The table IS the list of what we know, so a name it does not carry
+        # is answered here by name rather than as a KeyError two layers down.
+        return jsonify({
+            "ok": False,
+            "error": f"no lattice data for {element!r}; the table carries "
+                     f"{', '.join(sorted(table))}"}), 400
+
+    _NAMED = {"experimental": "a_experimental", "pbe": "a_pbe"}
+    key = _NAMED.get(reference.lower())
+    if key is not None:
+        a = entry.get(key)
+        if not isinstance(a, (int, float)):
+            return jsonify({
+                "ok": False,
+                "error": f"{element} carries no {reference} lattice "
+                         f"constant"}), 400
+    else:
+        try:
+            a = float(reference)
+        except ValueError:
+            return jsonify({
+                "ok": False,
+                "error": f"reference {reference!r} is neither "
+                         f"'experimental', 'pbe', nor a number"}), 400
+
+    system = entry.get("system", "fcc")
+    try:
+        d = interplanar_spacing(system, plane, a)
+        nn = nearest_neighbour_distance(system, a)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    return jsonify({
+        "ok": True,
+        "element": element,
+        "plane": plane,
+        "system": system,
+        "reference": reference,
+        "a": float(a),
+        "d_interlayer": float(d),
+        "nearest_neighbour": float(nn),
     })
 
 
@@ -705,20 +811,52 @@ def _seam_notices(struct, element: str, plane: str):
         if want and seam.period and seam.period != want:
             # Thin enough that it does not determine its own stacking: two
             # layers of (111) are A,B, which is fcc and hcp alike.
-            return [_seam_notice("warn", "too_thin", (
+            out = [_seam_notice("warn", "too_thin", (
                 f"the boundary continues the stacking, but as a "
                 f"{seam.period}-layer repeat -- fcc({plane}) has "
                 f"{want}.  This slab is too thin to be the crystal you "
                 f"asked for; add layers"))]
-        return [_seam_notice("info", "continues", (
-            f"the crystal continues across the periodic boundary: layers "
-            f"{seam.z_room:.3f} Å apart, nearest atoms {seam.gap:.3f} Å"))]
-
-    if seam.verdict == "vacuum":
+        else:
+            out = [_seam_notice("info", "continues", (
+                f"the crystal continues across the periodic boundary: layers "
+                f"{seam.z_room:.3f} Å apart, nearest atoms {seam.gap:.3f} Å"))]
+    elif seam.verdict == "vacuum":
         # Not a warning: an open face is what a slab calculation wants.
-        return [_seam_notice("info", "vacuum", seam.message)]
-    return [_seam_notice("warn", seam.verdict,
-                         f"{seam.verdict}: {seam.message}")]
+        out = [_seam_notice("info", "vacuum", seam.message)]
+    else:
+        out = [_seam_notice("warn", seam.verdict,
+                            f"{seam.verdict}: {seam.message}")]
+
+    # AND THE BOX HAS ITS OWN ANSWER, which is not the crystal's.
+    #
+    # `seam` above is measured on the METAL atoms alone, and has to be: the
+    # registry question is "which layer does the imaged one land on", and
+    # `detect_layers` would read a molecule's atoms as extra layers and make
+    # it meaningless.  But the CELL was sized around EVERY atom
+    # (`_finish_slab`: `c = all_pos z extent`), so on a junction -- a molecule
+    # with a slab grown onto it -- the metal can continue happily across a
+    # boundary where the molecule's own periodic image is already touching.
+    #
+    # That collision is the fact `junction-cell.md` § 6 leans on to make the
+    # un-set `c` visible in the tab you are already in, and it was invisible:
+    # measured on a 3x3x3 Au(111) slab at z=2.4 over a molecule spanning
+    # z=-1..1, this said "the crystal continues, layers 3.400 Å apart" for a
+    # boundary with 0.00 Å of room.  Two atom sets, two facts, both said.
+    #
+    # A NOTICE, NEVER A REFUSAL -- the box is the user's to set, and a
+    # collision is legitimate in a relaxation whose outer layers are frozen.
+    if len(metal) != len(struct.positions):
+        whole = _classify_seam(
+            np.asarray(struct.positions, dtype=float), cell)
+        if whole.verdict == "collision":
+            out.append(_seam_notice("warn", "box_collision", (
+                f"the box leaves {whole.z_room:.2f} Å at the periodic "
+                f"boundary once every atom is counted, not just the "
+                f"{element}: nearest atoms across it {whole.gap:.3f} Å.  "
+                f"The cell was measured around the whole structure, so "
+                f"this is the gap the calculation will actually see -- set "
+                f"c on the Cell tab if that is not what you want")))
+    return out
 
 
 # --------------------------------------------------------------------- #

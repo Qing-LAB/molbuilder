@@ -128,16 +128,24 @@ class ElectrodeModel:
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
-        s = Structure(elements=list(self.elements),
-                      positions=np.asarray(self.positions, dtype=float).copy(),
-                      title=f"bulk lead ({self.label})")
-        s.cell = cell
+        # STATED AT CONSTRUCTION, not assigned afterwards.  A field write
+        # skips `__post_init__`, so the cell was never checked and `pbc`
+        # was never reconciled: the lead carried `axis_kind` periodic
+        # beside `pbc` (False, False, False), and `_lattice_block` reads
+        # `pbc` -- so every electrode deck shipped "the transport axis has
+        # vacuum / is not periodic; the electrode .TSHS cannot attach
+        # seamlessly" about a lead this very function declares periodic.
+        #
         # A LEAD IS PERIODIC IN ALL THREE, and says so.  The device is open
         # along transport and the lead is not -- that difference is the
         # whole reason the lead is computed separately, so a structure that
         # claimed otherwise would misdescribe what makes it a lead.
-        s.axis_kind = ("periodic", "periodic", "periodic")
-        return s
+        return Structure(
+            elements=list(self.elements),
+            positions=np.asarray(self.positions, dtype=float).copy(),
+            title=f"bulk lead ({self.label})",
+            cell=cell,
+            axis_kind=("periodic", "periodic", "periodic"))
 
 
 # --------------------------------------------------------------------- #
@@ -195,6 +203,24 @@ def _seam_note(pos, lat_a, lat_b, zper: float) -> str:
     except Exception as exc:                       # noqa: BLE001
         return (f"the periodic seam could not be classified ({exc}); "
                 f"the lead's tiling is UNCHECKED")
+    n_layers = len(detect_layers(pos[:, 2], LAYER_TOL_ANG))
+    if n_layers < 3:
+        # TWO LAYERS CANNOT SAY.  A,B is fcc and hcp alike -- the block
+        # carries only two registries, so ABAB and ABC agree on every
+        # layer it has and the tiling picks one without the block having
+        # chosen.  `classify_seam` answers `continues, period 2` here for
+        # any plane, which is right for (100)/(110) and wrong for (111),
+        # and nothing on the lead path knows which plane it is.  So the
+        # limit is stated rather than a verdict asserted.
+        plural = "layer" if n_layers == 1 else "layers"
+        return (f"the periodic seam is UNDETERMINED: a block of "
+                f"{n_layers} {plural} carries fewer stacking registries "
+                f"than one period, so it cannot say which crystal it "
+                f"tiles into -- ABAB and ABC agree on everything it "
+                f"contains, which on fcc(111) is the difference between "
+                f"gold and hcp.  A lead that states its own stacking is "
+                f"at least one whole period thick (3 layers for (111); "
+                f"junction-cell.md § 3.1).")
     if v.verdict == "continues":
         per = f" (stacking period {v.period} layers)" if v.period else ""
         return (f"the periodic seam CONTINUES the crystal{per}: the layer "

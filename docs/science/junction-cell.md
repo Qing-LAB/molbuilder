@@ -59,11 +59,67 @@ builds, and agree to six decimals. Note that ASE's surface builders return
 `cell[2][2] = 0` for a slab (`pbc = [True, True, False]`), so **there is no
 z-period to copy from ASE**; it has to be computed.
 
-`a` itself is not a constant to hard-code: it comes from
-`molbuilder/data/fcc_lattice.json`, which carries three references per metal
-(`a_experimental`, `a_pbe`, `a_pbe_siesta_psml`). The gap must use **the same
-`a` the slab was built with**, which is why the derivation reads the built slab
-rather than a table.
+### 2.1 The three rows are one rule *(2026-09-22)*
+
+They look like a table of special cases and they are not. The spacing is the
+cubic `a / √(h² + k² + l²)` evaluated at the **first *allowed* reflection**
+along that direction — because a centred lattice has planes between the ones
+the Miller indices name, and the real repeat is the closer one.
+
+**fcc allows `h, k, l` all of the same parity.** So:
+
+| plane | parity | first allowed | `d` |
+|---|---|---|---|
+| (111) | all odd → allowed as written | (111) | `a / √3` |
+| (100) | mixed → forbidden | (200) | `a / 2` |
+| (110) | mixed → forbidden | (220) | `a / (2√2)` |
+
+That is why (100) is `a/2` and not `a`, and (110) is `a/(2√2)` and not
+`a/√2`. **bcc allows `h + k + l` even**, which is why its close-packed plane
+is (110) where fcc's is (111) — the same rule, a different centring.
+
+**Where it lives.** `cell.interplanar_spacing(system, plane, a)` and
+`cell.nearest_neighbour_distance(system, a)`, beside `bulk_z_period` and
+`detect_layers` which *measure* the same quantity off atoms. Putting the
+prediction next to the measurement is what makes them comparable, and
+`test_cell.py` asserts predicted == measured on a real ASE slab for all three
+surfaces — a check neither half had while the arithmetic lived in two places.
+
+A crystal system with no rule here **refuses** rather than answering with the
+cubic formula: hexagonal needs `c/a` and Miller–Bravais indices, and a
+plausible wrong number is worse than no number.
+
+**It is the backend's, and only the backend's.** Until 2026-09-22 the live
+implementation of this table was three literals in
+`web/static/modify/slab-panel.js` — crystallography in the layer that must not
+know any — and it was **short the (110) row**, so a person building fcc(110)
+was shown two spacings, neither of them the one § 6.1 tells them to type into
+the Cell page. The browser now asks `GET /api/modify/spacings`.
+
+### 2.2 `a` is stated, never defaulted *(user, 2026-09-22)*
+
+`a` comes from `molbuilder/data/fcc_lattice.json` — `a_experimental` and
+`a_pbe` per metal, plus whatever the person types. (This paragraph named a
+third column, `a_pbe_siesta_psml`; schema v3 dropped it, because nothing in
+the codebase could ever write it. A constant measured in someone's own setup
+belongs to **one run**, and is read from there — `POST
+/api/modify/lattice-from-run`.)
+
+**Every door that returns a spacing requires the reference explicitly** — the
+word `experimental`, the word `pbe`, or a number. There is no default. The two
+references differ by ~2% for gold, which is enough to strain a junction, so a
+silently-chosen one produces an answer that cannot be checked without reading
+the source. The gap must use **the same `a` the slab was built with**, which
+is why the derivation reads the built slab rather than a table.
+
+**A data file the user placed is honoured or refused, never half-read.**
+`$MOLBUILDER_DATA_DIR/fcc_lattice.json` overrides the packaged table. If it is
+absent, the packaged table answers. If it is *present and unreadable* — a
+syntax error, a missing `metals` key — loading **refuses by name**. It used to
+fall through to the packaged numbers for two of the four malformations:
+measured 2026-09-22, an override with one trailing comma returned Au = 4.0782
+to someone who had typed 4.20, with no warning, and the panel then showed
+4.0782 under a radio labelled "Experimental".
 
 ---
 
@@ -216,6 +272,20 @@ to ask for anything else; `sequence="ACB"` is the alternative, and it is what
 > controls and returns the seam verdict at build time; the CLI does neither.
 > **This paragraph asserting the CLI was already correct is why the defect went
 > unnoticed** — fix the sentence and the CLI together.
+>
+> **CLI CLOSED, 2026-09-21.** `--electrode` takes an optional `registry=`
+> beside `contact=`, per flag because the two sides must differ:
+> `Au:111:3x3x3@contact=2.4:registry=B:+z=3`. It accepts `A`/`B`/`C` or an
+> index, and omitting it still means `0`, so existing command lines are
+> unchanged. `cli.py`'s `_CONTINUES_THE_CRYSTAL` was renamed
+> `_WALK_ALONG_GROWTH` in the same change: the `ABC`/`ACB` mapping is right
+> about the walk and was never what continues the crystal, and the old name
+> was exactly the claim this note measures false.
+>
+> Still open: the CLI returns **no seam verdict**. `_seam_notices` has one
+> caller, the web slab route, so a command-line build says nothing about what
+> its boundary came out as. Nothing is enforced either way — the verdict is a
+> report, and the box is the author's to set.
 
 **`sequence` is read along the growth direction**, so "the crystal carries on"
 is the *forward* walk growing `+z` and the *backward* walk growing `−z` — which
@@ -377,16 +447,16 @@ what the self-energy has to tile.
 > with two spacings it *is* the mean, so `[0, 2.35, 5.35]` gave `d = 2.675` and
 > a seam 0.33 Å too wide, silently.
 >
-> The tolerance is 1e-3 Å, and it exists only for the file round trip. A
-> frozen lead built by the slab API has its spacing EXACTLY: `add_slab` gives
-> layer z-values that are copies of one number, spread 8.9e-16 Å. The lead then
-> reaches here through one door — a `.xyz` + `.molstruct.json` pair
-> (`classify_citation` globs `*.xyz`; the recompose path reads `junction.xyz`)
-> — and the codec writes `12.6f`, so the widest spread across all eighteen real
-> labelled junctions under `projects/` is **1e-6 Å**. A real constrained
-> relaxation is tighter still: the frozen layers of `claude-junction`'s `.XV`
-> come back at **5.3e-10 Å**. So the threshold sits ~500× above the worst noise
-> that can occur and ~50× below the smallest thing worth refusing.
+> The tolerance is 1e-3 Å, and it exists only for the file round trip. A frozen
+> lead built by `add_slab` has its spacing exactly — the layer z-values are
+> copies of one number. The lead then reaches here through one door, a `.xyz` +
+> `.molstruct.json` pair, and `to_xyz` writes six decimals: per-atom rounding
+> ≤ 5e-7 Å, and a spread is a difference of differences of layer means, so
+> ≤ 4× that = **2e-6 Å**. The threshold sits ~500× above that and ~50× below
+> the smallest thing worth refusing, a surface layer relaxed by ~0.05 Å.
+>
+> The bound comes from the WRITER's format, not from any file on disk — a
+> number read off found data is a guess about what data will exist.
 >
 > *(It was briefly widened to 5e-3 on two arguments that do not survive contact
 > with the code — a 3-decimal PDB round trip, when a `.pdb` is not a citable

@@ -812,6 +812,53 @@ def test_electrode_still_builds_one_slab_per_flag():
     assert spec["contact_distance"] == 2.4
 
 
+def test_electrode_registry_is_per_slab_and_reaches_the_builder(tmp_path):
+    """The two sides of a junction need DIFFERENT stacking registries.
+
+    `junction-cell.md` § 3.1a, measured 2026-09-15: `sequence` alone does
+    not change the registry at the seam, so with both slabs left on 0 every
+    layer count the § 3.1 table calls *continues* comes out eclipsed on
+    (100)/(110) and twinned on (111).  `start_registry` is the control that
+    does change it — the web slab card has always exposed it and the CLI had
+    no spec field at all, so a junction built from the command line could
+    not be asked for the right seam.
+
+    Per-slab, not a uniform `--electrode-*` sub-option, precisely because
+    the two sides must differ.
+    """
+    import numpy as np
+    from molbuilder import cli
+    from click.testing import CliRunner
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    assert cli._parse_electrode_spec(
+        "Au:111:3x3x2@contact=2.4:+z=3")["start_registry"] == 0, \
+        "omitting it must keep what every existing command line does"
+    for spelling, want in (("A", 0), ("b", 1), ("C", 2), ("1", 1)):
+        got = cli._parse_electrode_spec(
+            f"Au:111:3x3x2@contact=2.4:registry={spelling}:+z=3")
+        assert got["start_registry"] == want, spelling
+        assert got["side"] == "+z", "the side survived the extra key"
+
+    src = tmp_path / "in.xyz"
+    src.write_text("2\nm\nS 0 0 -1.0\nS 0 0 1.0\n")
+    made = {}
+    for tag, reg in (("a", ""), ("b", ":registry=B")):
+        out = tmp_path / f"{tag}.xyz"
+        res = CliRunner().invoke(cli.cli, [
+            "modify", str(src), str(out),
+            "--electrode", f"Au:111:3x3x3@contact=2.4{reg}:+z=1"])
+        assert res.exit_code == 0, res.output
+        p = np.asarray(StructureCodec().load(out).positions, dtype=float)
+        up = p[p[:, 2] > 1.5]
+        made[tag] = up[np.isclose(up[:, 2], up[:, 2].min())][:, :2].mean(axis=0)
+
+    step = float(np.linalg.norm(made["a"] - made["b"]))
+    assert step > 1.0, (
+        f"the registry never reached the builder: the starting layer moved "
+        f"{step:.4f} Å")
+
+
 # --------------------------------------------------------------------- #
 #  The trajectory verbs refuse what is not a trajectory                 #
 # --------------------------------------------------------------------- #

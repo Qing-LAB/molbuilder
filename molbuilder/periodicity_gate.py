@@ -449,6 +449,18 @@ def apply_edit(struct: Structure, op: str,
         raise ValueError(
             "no atoms loaded — load a structure before editing its box")
     s = struct.copy()
+    # THE BOX MOVED, SO THE RECORD IS OUTDATED -- the same mark every
+    # geometry op sets (`model/structure.md` § 2.2a).  Set on the COPY and
+    # before the branches: `s` is what every arm returns (`_apply_block`
+    # included) and an op that refuses raises instead of returning, so a
+    # failed edit never carries it -- which is the rule `molview/model.js`
+    # states by marking inside its gate.
+    #
+    # This is why the browser needs no mark of its own here:
+    # `commitPeriodicityOp` POSTs to `/api/structure/periodicity` and adopts
+    # the answer, so the flag it used to set client-side now arrives from
+    # the one place that decides it.
+    s.mark_contract_outdated()
     notices: List[dict] = []
     kinds = s.axis_kind or ("isolated",) * 3
 

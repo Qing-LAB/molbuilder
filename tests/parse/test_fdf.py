@@ -210,19 +210,21 @@ class TestTheCoordinateFormatsAreConverted:
 
 
 class TestTheUnitPolicyIsThisFormatS:
-    """`molbuilder.units` owns the WORDS; this format owns the DEFAULT.
+    """`molbuilder.units` owns the WORDS; the ENGINE owns the default.
 
-    fdf's rule is that a bare energy is Rydberg and a bare length is
-    Ångström — facts about the file format, not about the quantity, which
-    is why the reader states them rather than the units module. Nothing
-    pinned them, so the reader could adopt another format's default and
-    every unitless deck would shift by 13.6x with no test objecting.
+    These were invented once -- "a bare energy is Ry", "a bare length is
+    Ang" -- and pinned here as though the format said so. It does not:
+    libfdf refuses a physical value with no unit. The rule now comes
+    from the binary, in `tests/test_siesta_keyword_smoke.py`, which
+    measures SIESTA's answer AND asserts this reader follows it. What
+    stays here is the behaviour given a unit that IS stated.
     """
 
-    def test_a_bare_energy_is_RYDBERG(self):
-        p = parse_fdf_params("MeshCutoff 250\n")
-        assert p.mesh_cutoff_ry == pytest.approx(250.0), (
-            "a unitless fdf energy is Ry, so it passes through unchanged")
+    def test_a_bare_energy_is_REFUSED_because_SIESTA_refuses_it(self):
+        """No default to honour -- see `test_siesta_keyword_smoke.py`."""
+        from molbuilder.units import UnknownUnit
+        with pytest.raises(UnknownUnit, match="states no unit"):
+            parse_fdf_params("MeshCutoff 250\n")
 
     def test_an_energy_in_eV_is_converted(self):
         """The 13.6x defect, at the door a cited deck comes through."""
@@ -252,14 +254,30 @@ class TestTheUnitPolicyIsThisFormatS:
             assert p.electronic_temperature_k == pytest.approx(300.0, abs=0.5), \
                 spelling
 
-    def test_a_bare_lattice_constant_is_ANGSTROM(self):
+    def test_a_lattice_constant_needs_its_unit_too(self):
         from molbuilder.constants import BOHR_ANGSTROM
+        from molbuilder.units import UnknownUnit
         text = ("LatticeConstant {}\n%block LatticeVectors\n"
                 " 1 0 0\n 0 1 0\n 0 0 1\n%endblock LatticeVectors\n")
-        assert parse_fdf_params(text.format("4.0")).cell_ang[0][0] == \
+        with pytest.raises(UnknownUnit, match="states no unit"):
+            parse_fdf_params(text.format("4.0"))
+        assert parse_fdf_params(text.format("4.0 Ang")).cell_ang[0][0] == \
             pytest.approx(4.0)
         assert parse_fdf_params(text.format("4.0 Bohr")).cell_ang[0][0] == \
             pytest.approx(4.0 * BOHR_ANGSTROM)
+
+    def test_an_ABSENT_lattice_constant_is_one_angstrom(self):
+        """Different from a bare one: omitting the keyword is legal, and
+        this reader scales by 1 Ang, so the vectors are read as written.
+
+        THAT NUMBER IS PINNED TO THE ENGINE, not to this file:
+        `test_siesta_keyword_smoke.py` builds a deck with no
+        `LatticeConstant` and checks the cell SIESTA actually reports.
+        This test is the reader's half of that pair and proves nothing
+        about SIESTA on its own."""
+        assert parse_fdf_params(
+            "%block LatticeVectors\n 4 0 0\n 0 4 0\n 0 0 4\n"
+            "%endblock LatticeVectors\n").cell_ang[0][0] == pytest.approx(4.0)
 
     def test_a_unit_this_build_cannot_convert_is_REFUSED(self):
         """Not passed through: the whole point of the shared vocabulary."""

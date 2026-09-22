@@ -50,6 +50,15 @@ JUNCTION_DECK = "junction.cited.fdf"        # the attempt's own deck, verbatim
 PROVENANCE_FILE = "slot-provenance.json"
 PERMUTATION_FILE = "atom-permutation.json"
 
+#: How far two statements of the SAME cell may differ before the citation
+#: is refused.  The cell travels deck -> SIESTA -> ``.XV``: this project
+#: writes ``LatticeVectors`` at twelve decimals in Angstrom, SIESTA works
+#: in Bohr and writes the ``.XV`` in Bohr, and the two Bohr constants
+#: differ in their last digits -- a relative error around 1e-11, so under
+#: 1e-9 A on any cell a junction has.  1e-6 A is three orders above that
+#: floor and far below any difference that means a different box.
+CELL_AGREEMENT_TOL_ANG = 1e-6
+
 
 def record_files(form: str = "relaxation") -> Tuple[str, ...]:
     """WHAT THE TRAVELLED RECORD CONSISTS OF — one answer, read by the
@@ -76,6 +85,42 @@ def record_files(form: str = "relaxation") -> Tuple[str, ...]:
     # A form-A record travels with the deck (the contract IS the file);
     # a form-B citation never had one.
     return always + ((JUNCTION_DECK,) if form == "relaxation" else ())
+
+
+def _cells_agree_or_refuse(a_name: str, a, b_name: str, b) -> None:
+    """Two statements of one cell must be the same cell.
+
+    A junction's box is stated more than once -- the deck's
+    ``LatticeVectors``, the ``.XV`` SIESTA wrote back, and a sidecar's
+    ``cell`` when the labels come from one.  They describe the SAME
+    relaxation, so a disagreement is not a value to choose between: one
+    of the files is not from this calculation, and silently taking
+    either would put a box the person never set into the transport deck,
+    where it sets the transverse k-mesh and the image separation.
+
+    ``None`` on either side is not a disagreement -- it means that file
+    states no cell, which the caller handles.
+    """
+    if a is None or b is None:
+        return
+    aa = np.asarray(a, dtype=float)
+    bb = np.asarray(b, dtype=float)
+    if aa.shape != bb.shape:
+        raise ComposeError(
+            f"{a_name} and {b_name} state cells of different shape "
+            f"({aa.shape} vs {bb.shape}) -- they do not describe the same "
+            f"relaxation.")
+    worst = float(np.abs(aa - bb).max())
+    if worst > CELL_AGREEMENT_TOL_ANG:
+        raise ComposeError(
+            f"{a_name} and {b_name} disagree about the cell by "
+            f"{worst:.4g} A -- they do not describe the same relaxation. "
+            f"The cell sets the transverse k-mesh and the image "
+            f"separation, so transport will not guess which one you "
+            f"meant.  Cite a directory whose files belong to one run, or "
+            f"remove the file that does not.\n"
+            f"  {a_name}: {np.diag(aa).round(6).tolist()} (diagonal)\n"
+            f"  {b_name}: {np.diag(bb).round(6).tolist()} (diagonal)")
 
 
 def read_xv(path) -> Tuple[np.ndarray, List[str], np.ndarray]:
@@ -421,9 +466,44 @@ def labeled_citation_structure(cited: CitedDir):
         return StructureCodec().load(cited.xyz), cited.sidecar
 
     cell, xv_elements, xv_pos = read_xv(cited.xv)
-    struct = Structure(elements=list(xv_elements), positions=xv_pos.copy())
-    struct.cell = cell
+    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT.  No cited file records
+    # `axis_kind`: the ATOM-METADATA block carries `regions` + `annotations`
+    # only, the `.XV` carries the cell, and SIESTA has no such concept.  It
+    # does not need recording -- `engines/transport.md` § 5 I8 settles it for
+    # every transport run: z is open (kz = 1, the leads enter as self-energies
+    # Σ, and the engine preflight refuses kz != 1) while x and y are the
+    # transverse periodic mesh.
+    #
+    # Assigning `.cell` afterwards instead skipped `__post_init__`, so the
+    # box arrived unvalidated and every axis stayed `isolated`: the emitted
+    # electrode deck then read `pbc` and printed "the transport axis (c) has
+    # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
+    # on a junction that is periodic in-plane and open along z by design.
+    try:
+        struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
+                           cell=cell,
+                           axis_kind=("periodic", "periodic", "transport"))
+    except ValueError as exc:
+        # Live now that the cell goes through the constructor: `prep` catches
+        # only ComposeError/SortError, so a bare ValueError would surface as
+        # a traceback.
+        raise ComposeError(
+            f"{cited.xv.name} states a cell transport cannot use: {exc}")
     deck_text = cited.deck.read_text()
+
+    # THE DECK SET THE BOX AND THE .XV CAME BACK WITH IT.  A fixed-cell
+    # relaxation cannot move it, so a disagreement means these two files
+    # are not from one run -- the case a stray `.XV` left in the
+    # directory produces.  Checked before the labels, because a label
+    # applied to the wrong geometry is the worse failure.
+    from ..parse.fdf import parse_fdf_params as _parse_params
+    from ..units import UnknownUnit as _UnknownUnit
+    try:
+        _deck_cell = _parse_params(deck_text, source=cited.deck.name).cell_ang
+    except _UnknownUnit:
+        _deck_cell = None      # the unit refusal is compose_junction's to raise
+    _cells_agree_or_refuse(f"the deck {cited.deck.name}", _deck_cell,
+                           cited.xv.name, cell)
     block = _extract_atom_metadata_dict(deck_text)
     try:
         if block is not None and apply_atom_metadata(struct, block):
@@ -448,7 +528,44 @@ def labeled_citation_structure(cited: CitedDir):
             f".molstruct.json files -- ambiguous; keep the one "
             f"that labels this relaxation.")
     if len(sidecars) == 1:
-        apply_to_structure(struct, load_sidecar(sidecars[0]))
+        _side = load_sidecar(sidecars[0])
+        # `apply_to_structure` is a full REPLACE of the metadata block --
+        # cell included -- so the sidecar's box would silently displace
+        # the relaxation's.  It is the same junction, so the two must
+        # already agree; if they do not, one file is not from this run.
+        _cells_agree_or_refuse(sidecars[0].name, _side.get("cell"),
+                               cited.xv.name, cell)
+        # COMPLETE THE BLOCK, DO NOT PATCH THE RESULT.  `apply_metadata_dict`
+        # is a full replace and `model/structure.md` § 2.2 says what an absent
+        # key means: absent `cell` -> non-periodic.  So a sidecar that records
+        # labels but no box was applied as "no box", `__post_init__` reconciled
+        # every axis to isolated, and setting `.cell` back afterwards restored
+        # the box but not the periodicity -- a junction emitted with an
+        # explicit cell and `pbc = (False, False, False)`.
+        #
+        # The relaxation's own box is the box, and z is transport
+        # (`engines/transport.md` § 5 I8), so both are stated here and the one
+        # authority applies them together.
+        #
+        # AND THE CORNER IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
+        # coordinates came from the `.XV` -- SIESTA's own frame, cell at
+        # (0,0,0) (`structure-periodicity.md` § 6: `null` = `(0,0,0)`) --
+        # while the sidecar's `cell_origin` is the low corner of the box the
+        # author drew around DIFFERENT coordinates.  A full replace adopts it,
+        # and `render_fdf` then shifts these atoms by `-cell_origin` a second
+        # time: a junction saved from `add_slab` came out translated by its
+        # whole authoring corner, far-face atoms wrapping into the leads.
+        # The cell above is a SHAPE and survives the change of frame; the
+        # origin does not, so it is stripped here -- explicitly, which is what
+        # `model/structure.md` § 2.2a asks of a field that does not travel.
+        apply_to_structure(struct, {
+            **_side,
+            "cell": _side.get("cell") or [[float(x) for x in row]
+                                          for row in cell],
+            "cell_origin": None,
+            "axis_kind": _side.get("axis_kind")
+                         or ["periodic", "periodic", "transport"],
+        })
         if struct.regions:
             return struct, sidecars[0]
     raise ComposeError(
@@ -743,6 +860,28 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # was belongs in the provenance: it is a file this junction was
         # composed from, and the one the rename endpoint rewrites.
         struct, label_source = labeled_citation_structure(cited)
+        # THE GUARD FORM B HAS HAD ALL ALONG.  `Structure.cell`'s setter
+        # is permissive, so an unusable box travels to the construction
+        # below and raises a bare ValueError there -- and `prep` catches
+        # only ComposeError/SortError, so it reaches the person as a
+        # traceback instead of a sentence.
+        _bad = None
+        if struct.cell is None:
+            _bad = "states no cell"
+        else:
+            _c = np.asarray(struct.cell, dtype=float)
+            if _c.shape != (3, 3) or not np.all(np.isfinite(_c)):
+                _bad = "states a cell that is not three finite vectors"
+            elif abs(float(np.linalg.det(_c))) < 1e-8:
+                _bad = "states a cell with no volume (its vectors are "\
+                       "not linearly independent)"
+        if _bad:
+            raise ComposeError(
+                f"the cited relaxation in {cited.path} {_bad} -- a junction "
+                f"needs its lattice (science/junction-cell.md).  The deck's "
+                f"%block LatticeVectors and the .XV both carry one; if the "
+                f"labels come from a .molstruct.json, its `cell` must not "
+                f"be null.")
         cell = np.asarray(struct.cell, dtype=float)
         xv_elements = list(struct.elements)
         xv_pos = np.asarray(struct.positions, dtype=float)
@@ -774,23 +913,12 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # `src_pos` goes to the extraction, which asks whether these
         # atoms moved as part of deciding whether the block is a lead.
 
-    relaxed = Structure(
-        elements=list(struct.elements),
-        positions=xv_pos.copy(),
-        atom_names=struct.atom_names,
-        residue_ids=struct.residue_ids,
-        residue_names=struct.residue_names,
-        chain_ids=struct.chain_ids,
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        frozen_atoms=(None if struct.frozen_atoms is None
-                      else list(struct.frozen_atoms)),
-        cell=cell,
-        pbc=struct.pbc,
-        axis_kind=struct.axis_kind,
-        vacuum=struct.vacuum,
-        annotations=dict(struct.annotations),
-    )
+    # THE RELAXED COORDINATES AND THE BOX THEY CAME BACK IN, and nothing
+    # else stated by hand.  This was a fourteen-field list that did not
+    # name `cell_origin` or `info`, so the cited junction lost its stored
+    # corner and its recorded contract on the way in -- then lost them
+    # again in `categorical_sort` below (`model/structure.md` § 2.2a).
+    relaxed = struct.replace(positions=xv_pos.copy(), cell=cell)
 
     sorted_res = categorical_sort(relaxed)
     dev = sorted_res.structure

@@ -30,6 +30,59 @@ def _thin_box_molecule() -> Structure:
                      vacuum=(2.5, 2.5, 2.5))
 
 
+class TestTheSubjectAndItsCoordinatesShareOneFrame:
+    """PINS: `model/structure-periodicity.md` § 6 clause 2b — an origin is a
+    label on the coordinates beside it, so an op that reframes the
+    coordinates restates the origin in the same breath.
+
+    INVARIANT: the structure the SIESTA deck hands the validator carries the
+    coordinates the deck will actually write — already translated by
+    ``-resolve_cell_origin()`` into SIESTA's frame — so the corner it states
+    must be that frame's, not the one the atoms came from.
+
+    PREVENTS: the validator judging atoms against a box a whole corner away.
+    Measured before the fix on a junction with a stored corner:
+    ``contains_atoms = False`` and a clearance of -19 Å along transport, i.e.
+    a ``cell.atoms_outside`` warning naming numbers from neither frame, on a
+    structure whose atoms sit perfectly inside their box.  The emitted
+    coordinates were right throughout, which is why it survived: a false
+    warning, never a refusal.
+    """
+
+    def _junction_with_a_stored_corner(self) -> Structure:
+        # A cell built AROUND atoms that straddle the origin -- what
+        # `add_slab` produces for every junction.
+        z = np.linspace(-9.0, 9.0, 7)
+        pos = np.array([[1.0, 1.0, float(v)] for v in z])
+        return Structure(
+            elements=["Au"] * len(z), positions=pos,
+            cell=np.diag([8.0, 8.0, 18.0]),
+            cell_origin=[-2.0, -2.0, -9.0],
+            axis_kind=("periodic", "periodic", "transport"))
+
+    def test_the_deck_validates_the_frame_it_emits(self):
+        from molbuilder.siesta.input import spec_for
+        s = self._junction_with_a_stored_corner()
+        cfg = SiestaConfig()
+        subject, kw = spec_for(s, cfg).validate_subject(s, cfg)
+
+        wheres = {i.where for i in validate(subject, cfg, **kw)}
+        assert "cell.atoms_outside" not in wheres, (
+            "the validator judged the deck's coordinates against the corner "
+            "they were translated away from")
+
+    def test_the_structure_itself_is_untouched(self):
+        """The subject is a derived copy; the corner the user set stays on
+        the structure they own (§ 6.1 clause 1 — a resolved value is never
+        written back)."""
+        from molbuilder.siesta.input import spec_for
+        s = self._junction_with_a_stored_corner()
+        cfg = SiestaConfig()
+        spec_for(s, cfg).validate_subject(s, cfg)
+        assert s.cell_origin is not None
+        assert list(np.asarray(s.cell_origin, dtype=float)) == [-2.0, -2.0, -9.0]
+
+
 class TestF4GateDerivesWhatChecksNeed:
     """PINS: docs/science/validation.md § 4.1 clause F4 — derived facts are
     derived server-side, from the facts.
@@ -72,6 +125,48 @@ class TestF4GateDerivesWhatChecksNeed:
         issues = validate(s, SiestaConfig())
         assert any(i.where == "cell.unresolved" and i.severity == "info"
                    for i in issues), [i.where for i in issues]
+
+    @pytest.mark.parametrize("engine,kind", [
+        ("siesta", "optimization"),
+        ("siesta", "vibration"),
+        ("pyscf",  "optimization"),
+        ("pyscf",  "vibration"),
+    ])
+    def test_an_unresolvable_species_label_is_reported_not_a_crash(
+            self, engine, kind):
+        """The same rule one level down: a label naming no element is a
+        finding, and the checks that cannot be answered without it stand
+        down rather than taking the request with them.
+
+        THE STRUCTURE IS A NOBLE-METAL CLUSTER ON PURPOSE.  An electron
+        count is reached from three places in `chemistry.py`, and two of
+        them are behind a metal: `detect_open_shell_metals` returns early
+        unless it finds one, and returns early AGAIN on an open-d metal
+        without counting -- so Au, not Fe, and not a bare molecule.  An
+        earlier version of this test used `["Xx", "H"]`, passed, and left
+        `validate()` still raising `KeyError` out to the preflight as an
+        HTTP 500 with no findings at all.  The kinds are here for the
+        same reason: the vibration route reaches the count through
+        `validation/spectra.py`, which the optimization route does not.
+        """
+        if engine == "pyscf":
+            from molbuilder.config.pyscf import PySCFConfig
+            cfg = PySCFConfig()
+        else:
+            cfg = SiestaConfig(system_label="probe",
+                               spin_treatment="polarized")
+        s = Structure(
+            elements=["Au", "Au", "Au", "Au", "Xx"],
+            positions=np.array([[0.0, 0.0, 0.0], [2.9, 0.0, 0.0],
+                                [0.0, 2.9, 0.0], [2.9, 2.9, 0.0],
+                                [0.0, 0.0, 3.5]]),
+            vacuum=(12.0, 12.0, 12.0))
+        issues = validate(s, cfg, calculation=kind)      # must not raise
+        named = [i for i in issues
+                 if i.where == "chemistry.species_label"
+                 and i.severity == "error"]
+        assert named, [f"{i.where}/{i.severity}" for i in issues]
+        assert "Xx" in named[0].message
 
 
 class TestR5FindingsAreNeverWarnings:

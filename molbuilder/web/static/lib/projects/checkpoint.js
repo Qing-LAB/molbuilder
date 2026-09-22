@@ -39,6 +39,8 @@
  * Invariants: docs/execution/checkpointing.md.
  */
 
+import { pageBusy } from "../page-busy.js";
+
 const _state = {
     /** Currently selected directory path (relative to projects root,
      *  resolved to absolute by the API).  null when no dir selected. */
@@ -541,22 +543,76 @@ function _renderListRows(states) {
 
 /* ---------- Network calls ---------- */
 
-async function _fetchJSON(method, url, body) {
+async function _fetchJSON(method, url, body, signal) {
     const opts = { method, headers: { "Content-Type": "application/json" } };
     if (body !== undefined) opts.body = JSON.stringify(body);
+    if (signal) opts.signal = signal;
     const r = await fetch(url, opts);
     let payload = null;
-    try { payload = await r.json(); } catch (_) { /* empty body */ }
+    try {
+        payload = await r.json();
+    } catch (e) {
+        /* AN ABORT IS NOT AN EMPTY BODY.  This catch is here for a
+         * reply that carries no JSON, and it used to swallow anything --
+         * including the `AbortError` a Cancel raises when the headers
+         * have landed and the body has not.  The call then returned
+         * `{http: 200, body: null}`, which reads downstream as a server
+         * that answered with nothing, and Cancel painted "HTTP 200" as
+         * an error.  Only the deep read passes a signal, so only it can
+         * reach this. */
+        if (e && e.name === "AbortError") throw e;
+    }
     return { http: r.status, body: payload };
 }
 
+/** Re-read the open folder and repaint the pill, the list and the graph.
+ *
+ * THE DEEP READ IS COVERED; the ordinary one is not, and the difference
+ * is what the server does.  `Repo.status(deep=False)` -- every
+ * directory-enter -- runs four git subprocesses and stats each file, and
+ * reads no file's contents: tens of milliseconds.  `deep=True`, which is
+ * only ever this panel's Refresh button, calls `sha256_of` on every big
+ * file whose size still matches the standing state, and `checkpoint.py`
+ * says why that exists: *"a folder holding a 2 GB density matrix must
+ * not be read end-to-end"*.  That is the heavy user-triggered operation
+ * ui-contract § 10 is for; a directory-enter is not one, and covering it
+ * would flash the window for a click nobody waited on.
+ *
+ * `dir` is read ONCE and re-checked after each await, which is not a
+ * guard against anything exotic -- the two requests must simply be about
+ * the same folder as each other and as the panel they paint into.
+ */
 async function _refresh(opts = {}) {
-    if (!_state.currentDir) return;
+    const dir = _state.currentDir;
+    if (!dir) return;
     _hideAdvisory();
+    if (!opts.deep) return _readInto(dir, undefined, opts);
+    /* NOT OURS TO TAKE IF SOMEONE ELSE HAS IT.  `claim()` throws while
+     * claimed, and the cover does not make this button unreachable: it
+     * blocks the mouse but sets no `inert`, so Tab + Enter still fires
+     * the handler during a SMILES build or a task.json save.  Passing
+     * through on the outer cover is what `task-setup/viewer.js` does at
+     * its own writer, and it is the same answer here -- the window is
+     * already held, so there is nothing this claim would add. */
+    if (pageBusy.isClaimed()) return _readInto(dir, undefined, opts);
+    // The three layers of § 10's recovery contract, spelled out: the
+    // canceler aborts, Cancel runs it, and the `finally` uncovers
+    // whatever happens.
+    const ctl = new AbortController();
+    pageBusy.claim("Checking this folder's files\u2026", [() => ctl.abort()]);
+    try {
+        return await _readInto(dir, ctl.signal, opts);
+    } finally {
+        pageBusy.release();
+    }
+}
+
+async function _readInto(dir, sig, opts) {
     try {
         const stRes = await _fetchJSON("GET",
-            `/api/checkpoint/state?path=${encodeURIComponent(_state.currentDir)}`
-            + (opts.deep ? "&deep=1" : ""));
+            `/api/checkpoint/state?path=${encodeURIComponent(dir)}`
+            + (opts.deep ? "&deep=1" : ""), undefined, sig);
+        if (dir !== _state.currentDir) return;
         if (stRes.http >= 500 || !stRes.body) {
             _renderError(stRes.body?.error || "HTTP " + stRes.http);
             return;
@@ -589,7 +645,9 @@ async function _refresh(opts = {}) {
             // closed view needs the STATE (the button's color), never the
             // fifty rows nobody is looking at.
             const lsRes = await _fetchJSON("GET",
-                `/api/checkpoint/list?path=${encodeURIComponent(_state.currentDir)}&limit=50`);
+                `/api/checkpoint/list?path=${encodeURIComponent(dir)}&limit=50`,
+                undefined, sig);
+            if (dir !== _state.currentDir) return;
             if (lsRes.body && lsRes.body.ok && lsRes.body.states) {
                 _renderStates(lsRes.body.states);
             }
@@ -598,7 +656,10 @@ async function _refresh(opts = {}) {
             if (elGraph) elGraph.hidden = true;
         }
     } catch (e) {
-        _renderError(String(e && e.message || e));
+        // An abort is the Cancel button doing its job, not a failure.
+        if (!(e && e.name === "AbortError")) {
+            _renderError(String(e && e.message || e));
+        }
     }
 }
 

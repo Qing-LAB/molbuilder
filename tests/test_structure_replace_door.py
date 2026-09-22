@@ -91,3 +91,73 @@ class TestTheInterpreterHook:
         braces."""
         got = dataclasses.replace(held, regions={"electrode_L": [1]})
         assert got.regions == {"electrode_L": [1], FROZEN_LABEL: [0]}
+
+
+class TestTheDerivedCopyIsACopy:
+    """The door is `copy()` plus the changes, so nothing it carried can be
+    written through.
+
+    ``dataclasses.replace`` re-passes the mutable fields BY REFERENCE, so
+    the structure it returned shared ``positions``, ``cell``,
+    ``cell_origin`` and the ``info`` dict with its source — writing to one
+    wrote to the other.  That is what every hand-listed rebuild in the tree
+    was working around with its own ``.copy()`` calls, and enumerating
+    fields in order to copy them is how ``cell_origin`` and ``info`` came
+    to be left out of four of those lists (`model/structure.md` § 2.2a).
+    """
+
+    @pytest.fixture
+    def carrying(self):
+        return Structure(
+            elements=["C", "H"], positions=np.array([[0.0, 0.0, 0.0],
+                                                     [0.0, 0.0, 1.1]]),
+            cell=np.diag([8.0, 8.0, 8.0]),
+            cell_origin=np.array([-1.0, -1.0, -1.0]),
+            info={"calculation": {"contract": {"mesh_cutoff_ry": 400}}})
+
+    def test_writing_to_the_derived_copy_does_not_reach_the_source(
+            self, carrying):
+        out = carrying.replace(title="derived")
+        out.positions[0, 0] = 7.0
+        out.cell[0, 0] = 99.0
+        out.cell_origin[0] = 5.0
+        out.info["calculation"]["contract"]["mesh_cutoff_ry"] = 1
+        assert carrying.positions[0, 0] == 0.0
+        assert carrying.cell[0, 0] == 8.0
+        assert carrying.cell_origin[0] == -1.0
+        assert (carrying.info["calculation"]["contract"]["mesh_cutoff_ry"]
+                == 400), "the nested info dict was shared, not copied"
+
+    def test_info_travels_through_a_change_nobody_named_it_in(self, carrying):
+        """§ 2.2a: it travels; a strip is explicit, never a field a
+        rebuild forgot."""
+        out = carrying.replace(positions=carrying.positions + 1.0)
+        assert out.info["calculation"]["contract"]["mesh_cutoff_ry"] == 400
+        assert out.cell_origin is not None, "the corner went with it"
+
+    def test_a_strip_is_something_a_caller_says(self, carrying):
+        assert carrying.replace(info={}).info == {}
+        assert carrying.info, "stripping the copy emptied the source"
+
+    def test_a_stated_pbc_is_not_overruled_by_the_carried_kinds(self):
+        """The one field for which "state only what CHANGES" was false.
+
+        ``axis_kind`` outranks ``pbc`` in ``__post_init__``, and this door
+        seeds BOTH from the source — so a caller who stated only ``pbc``
+        had it silently discarded by kinds describing the box they had
+        just stopped asking for.
+        """
+        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
+                      cell=np.diag([4.0, 4.0, 4.0]),
+                      axis_kind=("periodic", "periodic", "periodic"))
+        assert s.replace(pbc=(False, False, False)).pbc == (False, False, False)
+
+    def test_kinds_that_agree_with_the_stated_pbc_are_kept(self):
+        """`transport` is a distinction no boolean can carry back, so the
+        carried kinds only step aside when they CONTRADICT what was
+        stated — never when they merely say more."""
+        s = Structure(elements=["H"], positions=np.array([[0.0, 0.0, 0.0]]),
+                      cell=np.diag([4.0, 4.0, 4.0]),
+                      axis_kind=("periodic", "periodic", "transport"))
+        out = s.replace(pbc=(True, True, True))
+        assert out.axis_kind == ("periodic", "periodic", "transport")
