@@ -33,7 +33,6 @@ _META = {
                                            #    it comes back with a warning, and
                                            #    this fixture is about the pair, not
                                            #    about the warning - 6.1 rows 2/4)
-    "pbc":          [True, True, False],
     "axis_kind":    ["periodic", "periodic", "isolated"],
     "vacuum":       [0.0, 0.0, 2.0],
     # ONE label store: the reserved label is a member, not a field beside it.
@@ -46,7 +45,13 @@ _META = {
 # via metadata_to_dict so channel serialisation is included).
 # `regions` is the whole label store -- the reserved labels are in it, so there
 # is no `frozen_atoms` field to preserve separately (molview.md § 6.6).
-_METADATA_FIELDS = ("cell", "cell_origin", "pbc", "axis_kind",
+# `pbc` was here until 2026-09-22 and it made this loop BLIND.  It is a
+# method now, so `getattr(got, "pbc")` returned a bound method; two bound
+# methods off two instances are never equal, so the assertion failed on
+# every input -- and because it sat third, the loop stopped there and
+# `axis_kind`, `vacuum` and `regions` were no longer checked at all.  The
+# one test built to catch a field silently dropping could not have seen one.
+_METADATA_FIELDS = ("cell", "cell_origin", "axis_kind",
                     "vacuum", "regions")
 
 

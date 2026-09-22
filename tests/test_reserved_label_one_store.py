@@ -371,7 +371,12 @@ def test_the_metadata_dict_has_exactly_these_members():
         f"the writer and the declared field set disagree: "
         f"written={sorted(written)} declared={sorted(METADATA_FIELDS)}"
     )
-    assert set(METADATA_FIELDS) == {"regions", "cell", "cell_origin", "pbc",
+    # STATED, not just compared to itself.  The assertion above checks the
+    # writer against the constant; this one pins what the constant IS, so
+    # adding a field to both at once still forces a conscious edit here.
+    # `pbc` left the set 2026-09-22 -- it was the boolean view of `axis_kind`
+    # and is now the `pbc()` accessor (`structure-periodicity.md` § 2.0a).
+    assert set(METADATA_FIELDS) == {"regions", "cell", "cell_origin",
                                     "axis_kind", "vacuum", "annotations"}
     assert "frozen_atoms" not in METADATA_FIELDS, (
         "the reserved label is a member of `regions`, not a field beside it"
@@ -453,3 +458,39 @@ def test_an_atom_on_the_wire_has_exactly_these_members(served):
     body = client.post("/api/build/load", json={"path": path}).get_json()
     assert "atom_names" in body and "residue_names" in body, sorted(body)
     assert rows[1]["regions"] == [FROZEN_LABEL]
+
+
+def test_a_deck_label_block_is_validated_like_a_sidecar_one():
+    """`apply_atom_metadata` reads the ATOM-METADATA block out of a generated
+    deck. It used to assign `regions` / `annotations` straight onto the
+    structure, skipping `_validate_regions` -- so a block naming an atom the
+    structure does not have was ACCEPTED, and surfaced later on the next
+    `copy()`, far from the file that caused it.
+
+    Measured 2026-09-22 on a 2-atom structure with a region naming atom 99:
+    the deck reader took it, `apply_metadata_dict` refused it by name.
+
+    It could not simply call that door, because `apply_metadata_dict` is a
+    FULL REPLACE and a deck block is a PARTIAL -- labels only. So the block
+    is COMPLETED from what the structure already holds, which is why the
+    second half of this test matters as much as the first.
+    """
+    import numpy as _np
+    from molbuilder.script_emit import apply_atom_metadata
+    from molbuilder.structure import Structure as _S
+
+    bad = _S(elements=["H", "H"], positions=_np.array([[0., 0, 0], [1., 0, 0]]))
+    with pytest.raises(ValueError, match="out of range"):
+        apply_atom_metadata(bad, {"n_atoms_total": 2,
+                                  "regions": {"lead": [0, 99]}})
+
+    # AND THE REST OF THE METADATA SURVIVES.  A full replace with a
+    # labels-only block would have reset these to their defaults.
+    keeps = _S(elements=["H", "H"], positions=_np.array([[0., 0, 0], [1., 0, 0]]),
+               cell=_np.diag([9., 9, 9]), vacuum=(4.0, 4.0, 4.0),
+               axis_kind=("periodic", "periodic", "transport"))
+    apply_atom_metadata(keeps, {"n_atoms_total": 2, "regions": {"lead": [0]}})
+    assert keeps.regions == {"lead": [0]}
+    assert keeps.cell is not None
+    assert keeps.vacuum == (4.0, 4.0, 4.0)
+    assert keeps.axis_kind == ("periodic", "periodic", "transport")

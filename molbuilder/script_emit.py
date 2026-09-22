@@ -2151,18 +2151,34 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     annotations = payload.get("annotations") or {}
     if not regions and not annotations:
         return False
+    # THROUGH THE DOOR, AND THE BLOCK IS COMPLETED FIRST.
+    #
+    # These two fields were assigned straight onto the structure, which
+    # skipped `_validate_regions` / `_validate_annotations`: measured
+    # 2026-09-22, a block naming atom 99 of a 2-atom structure was ACCEPTED
+    # here and refused by `apply_metadata_dict`, then surfaced on the next
+    # `copy()` -- far from the file that caused it.
+    #
+    # It could not simply call that door, because `apply_metadata_dict` is a
+    # FULL REPLACE and this block is a PARTIAL: it carries labels only, so
+    # handing it over as-is would reset `cell`, `vacuum` and `axis_kind` to
+    # their defaults.  So the block is completed from what the structure
+    # already holds and the whole thing goes through -- the same
+    # "complete the block, do not patch the result" shape `transport/
+    # compose.py` uses where it applies a sidecar over a `.XV`.
+    from molbuilder.structure import annotations_from_json
+    block = dict(struct.metadata_to_dict())
     if regions:
         # Normalise: sort + dedupe per label; coerce to int.  Reserved labels
         # are in here with the rest -- there is no second key to read.
-        struct.regions = {
+        block["regions"] = {
             str(k): sorted({int(i) for i in v})
             for k, v in regions.items()
         }
     if annotations:
-        # Extensible channels -> struct.annotations, same round-trip as the
-        # sidecar (§ 3 data-model persistence).
-        from molbuilder.structure import annotations_from_json
-        struct.annotations = annotations_from_json(annotations)
+        # Extensible channels, same round-trip as the sidecar (§ 3).
+        block["annotations"] = annotations_from_json(annotations)
+    struct.apply_metadata_dict(block)
     return True
 
 
