@@ -1157,13 +1157,28 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
                 f"{sidecar_path.name} sits beside the .XV but could not be "
                 f"applied: {exc}") from exc
         struct.cell = xv_cell
-        if data.get("axis_kind") is None:
-            # The kinds default OFF the cell, and the cell was absent while
-            # the payload was applied -- so a sidecar that states no kinds
-            # had them settled as `isolated` against a box that was not
-            # there yet.  Clearing them lets the restored lattice decide,
-            # which is the same default a bare `.XV` gets.
-            struct.axis_kind = None
+        # AND THE CORNER DOES NOT TRAVEL.  `transport/compose.py` strips it
+        # for eighteen commented lines' worth of reason, and this function
+        # performs the SAME operation -- apply an authoring sidecar over
+        # coordinates read from a `.XV`.  A `cell_origin` is a label on the
+        # coordinates it was measured against (`structure-periodicity.md`
+        # § 6 clause 2b); these coordinates are SIESTA's own frame, which
+        # anchors the box at the origin.  Keeping it made `render_fdf` shift
+        # the atoms by `-cell_origin` a second time: measured 2026-09-22, an
+        # authoring corner of (49, 49, 49) over a `.XV` whose atoms sit at
+        # (1, 1, 1) emitted every atom at -48 Å, far outside a 10x10x20 box.
+        #
+        # STRIPPED, NOT ZEROED -- `null` means DERIVE the corner (clause 2a),
+        # and for a `.XV`, whose atoms are already inside [0, cell), the
+        # derivation answers "no shift".
+        struct.cell_origin = None
+        # The `axis_kind` guard that stood here was DEAD.  It read
+        # `if data.get("axis_kind") is None`, but `molstruct.load`
+        # normalises the payload through a scratch `Structure`, and
+        # `__post_init__` always fills the kinds -- so a sidecar that states
+        # none arrives as `["isolated"] * 3` and the branch could not fire.
+        # The same dead pattern was found in `compose.py` on the same day,
+        # where it was not harmless.
         struct.__post_init__()
         return (f"from {sidecar_path.name} — axes "
                 f"{','.join(struct.axis_kind)}, "

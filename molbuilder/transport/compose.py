@@ -27,11 +27,10 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..chemistry import symbol_for_z
 from ..config.transport import (REGION_LEFT_ELECTRODE,
                                 REGION_RIGHT_ELECTRODE)
 from ..structure import Structure
-from ..parse.fdf import _BOHR_ANG, parse_fdf_params
+from ..parse.fdf import parse_fdf_params
 from .sort import SortResult, categorical_sort
 from ..units import UnknownUnit
 from .wizard import ElectrodeModel, extract_electrode_model
@@ -622,8 +621,26 @@ def labeled_citation_structure(cited: CitedDir):
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
             "cell_origin": None,
-            "axis_kind": _side.get("axis_kind")
-                         or ["periodic", "periodic", "transport"],
+            # STATED, NOT DEFAULTED.  This read `_side.get("axis_kind") or
+            # [...]`, and the `or` could never fire: `load_sidecar`
+            # normalises the payload through a scratch `Structure`, whose
+            # `__post_init__` always fills the kinds -- so a sidecar that
+            # states none arrives as `["isolated"] * 3`, which is truthy.
+            # The sidecar's kinds therefore won every time, and an authoring
+            # pair saved before a box was committed carries `isolated`.
+            #
+            # Measured 2026-09-22: the emitted deck then read
+            # `c (transport)  isolated` and shipped "the transport axis (c)
+            # has vacuum / is not periodic; the electrode .TSHS cannot attach
+            # seamlessly" about a junction that is periodic in-plane and open
+            # along z BY CONSTRUCTION -- the regression the comment above
+            # says was fixed, live again through the sidecar branch.
+            #
+            # A cited relaxation being composed into a junction has exactly
+            # one answer here (`engines/transport.md` § 5 I8: the device has
+            # open boundary along transport), so it is stated outright rather
+            # than offered as a fallback the loader makes unreachable.
+            "axis_kind": ["periodic", "periodic", "transport"],
         })
         if struct.regions:
             return struct, sidecars[0]

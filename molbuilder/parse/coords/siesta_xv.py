@@ -80,6 +80,19 @@ def _cell_from(lines: List[str], name: str) -> np.ndarray:
             raise SiestaXVError(
                 f"{name}: cell row {i+1} has a non-numeric component."
             ) from exc
+        # `float("nan")` and `float("inf")` PARSE, so the try above does not
+        # catch them -- and since 2026-09-22 this matrix goes onto a
+        # `Structure`, whose `__post_init__` refuses a non-finite cell with a
+        # bare `ValueError`.  Every caller here catches `SiestaXVError` only,
+        # so that one escaped: the CLI printed a traceback, and the compose
+        # route, which catches `ComposeError`, answered HTTP 500.  The file is
+        # what is wrong, so the file's own reader says so.
+        if not np.all(np.isfinite(cell_bohr[i])):
+            raise SiestaXVError(
+                f"{name}: cell row {i+1} has a non-finite component "
+                f"({' '.join(toks[:3])}); a lattice vector must be a finite "
+                f"length."
+            )
     return cell_bohr * _ANGSTROM_PER_BOHR
 
 
