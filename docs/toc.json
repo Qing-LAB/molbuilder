@@ -37,6 +37,11 @@
           "path": "plans/2026-09-22-vibration-audit.md"
         },
         {
+          "path": "plans/2026-09-22-unification-audit.md",
+          "label": "Unification audit \u2014 findings + cleanup order, 2026-09-22",
+          "subtitle": "Unification audit \u2014 findings + cleanup order, 2026-09-22"
+        },
+        {
           "path": "plans/2026-09-22-handover.md",
           "label": "Handover — cell/origin/lattice, 2026-09-22"
         }
