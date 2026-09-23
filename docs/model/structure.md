@@ -223,18 +223,40 @@ one is TAKEN FROM A STATED OWNER:
 |---|---|---|
 | `cell`, `cell_origin` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
 | `axis_kind`, `vacuum`, `info` | **the first input**, cell or no cell | these are facts OF THE CANVAS — what the person set in the Cell tab and the contract they recorded. They are equally true of a structure that states no lattice, so a fragment arriving with a box must not restate them |
-| everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat` |
+| everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
+| `title` | **neither input** — the caller's `title=` argument | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
 
-Both halves are load-bearing and they point opposite ways on purpose.
+The first two rows are load-bearing and they point opposite ways on purpose.
 Taking the whole block from whoever carried a cell let a fragment replace a
 typed 8 Å vacuum with `(0,0,0)` and turn two isolated axes crystalline,
 silently. Taking nothing from it threw away the only lattice in play.
 
-**The merged box is not made to fit.** `concat` cannot infer a lattice, so
-when the canvas's atoms fall outside the adopted cell that is left standing
-and `cell.check` reports `cell.unfittable` — the correct outcome, not a
-silent loss: the box is stated, the atoms are stated, and the disagreement
-between them is the user's to resolve.
+**The merged box is not made to fit.** `concat` cannot infer a lattice, so a
+disagreement between the adopted cell and the merged atoms is reported rather
+than papered over. `cell.check` splits it in two, and they are not the same
+finding *(measured 2026-09-23)*:
+
+| what is wrong | finding | severity |
+|---|---|---|
+| the atom span **exceeds** the box on a non-periodic axis — no corner can help | `cell.unfittable` | **error** |
+| the box is big enough but the atoms sit outside it | `cell.atoms_outside` | warn |
+
+`cell.py`'s gate gives the second only when the first does not apply
+(`not rc.contains_atoms and rc.has_volume and not rc.unfittable_axes`) — one
+cause, one finding.
+
+**And `cell.unfittable` does not merely stand.** It is severity `error`, and
+`validation.report()` raises `ValidationError` on any error unless the caller
+passes `raise_on_error=False`, so **generation refuses**. The merge itself
+succeeds and says nothing; the refusal comes at the door that would act on
+the result. That is `structure-periodicity.md` § 8.2's division — reading
+does not judge, the doors that act do — not an outcome left for the user to
+notice.
+
+**Why row 2 is load-bearing for this.** If `axis_kind` rode in from the
+cell-carrier, the axes would be `periodic` and both `_unfittable` and
+`_contains` skip periodic axes — so the same geometry reports **nothing at
+all**. The silence the row prevents is the safety net for row 1.
 
 ### 2.3 Geometry I/O
 

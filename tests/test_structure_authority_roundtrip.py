@@ -497,6 +497,15 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "the fragment's vacuum replaced the one the user typed"
         assert out.axis_kind == ("isolated", "isolated", "isolated"), \
             "the fragment's axis kinds replaced the canvas's"
+        # AND THE HALF THE DOCSTRING ASSERTED IN PROSE ONLY.  § 2.2b row 1 is
+        # the reason the section exists -- the slab's box IS adopted onto a
+        # canvas that states none -- and deleting the whole adoption block
+        # left 482 tests green (measured 2026-09-23).  The two asserts above
+        # pin what must NOT ride in; this pins what must.
+        assert out.cell is not None, \
+            "the only lattice in play was not adopted at all"
+        assert np.allclose(out.cell, np.diag([2.88, 2.88, 20.])), \
+            f"the adopted lattice is not the slab's: {out.cell}"
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --
