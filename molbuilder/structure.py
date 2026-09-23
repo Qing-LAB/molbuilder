@@ -16,25 +16,19 @@ Transport-relevant attributes (see the three-stage contract in
 docs/design.md):
 
   frozen_atoms : List[int]
-      0-based indices of atoms whose coordinates the geometry
-      optimiser must NOT move.  NOT a field of its own -- a
-      designated read of ``regions[FROZEN_LABEL]`` (see that
-      constant); consumed by Spectra (cfg.frozen_indices) and
-      EMITTED, not merely warned about: SIESTA's ``%block
-      Geometry.Constraints`` (``siesta/input.py``) and PySCF's
-      ``$freeze`` (``pyscf/input.py``).  This said "warn-only
-      today pending the design.md rollout" until 2026-09-23, long
-      after both emitters landed -- a reader would have concluded
-      that held atoms do not actually hold.
+      0-based indices of atoms the geometry optimiser must NOT
+      move.  Not a field of its own: a designated read of
+      ``regions[FROZEN_LABEL]``, so there is one store and one
+      spelling.  Consumed by Spectra (``cfg.frozen_indices``) and
+      EMITTED as a real constraint -- SIESTA's ``%block
+      Geometry.Constraints``, PySCF's ``$freeze``.
 
   regions : Dict[str, List[int]]
       Named groups of atom indices for transport-style partition
       (keys are user-facing labels like ``"L-electrode"`` /
       ``"R-electrode"`` / ``"bridge"``; values are 0-based atom
-      indices).  Validated as pairwise-disjoint at __post_init__.
-      (Docstring used to say List[List[int]]; corrected 2026-06-09
-      after siesta/input.py rebuilt regions as a list comprehension,
-      crashed on any non-empty dict — fixed in commit 7d9cd54.)
+      indices).  A DICT, not a list of lists.  Validated as
+      pairwise-disjoint at ``__post_init__``.
 
 These two attributes are the load-bearing carriers for the
 boundary-conditions axis of the three-stage contract.  Any emitter
@@ -122,11 +116,11 @@ _CHANNEL_KINDS = ("tag", "flag", "value")
 #: the SIESTA ``%block Geometry.Constraints`` emitter, the PySCF freeze list --
 #: and for that there is exactly one designated read, :attr:`Structure.frozen_atoms`.
 #:
-#: One constant because the name is the whole cost of a reserved meaning.  It is
-#: the name the label has ALWAYS had on the wire, on disk and in the browser;
-#: what a second storage bought was a SECOND spelling for the same fact -- the
-#: ``frozen`` flag channel this module used to synthesise beside the label --
-#: and an alias between them at every boundary that touched both.
+#: One constant because the name is the whole cost of a reserved meaning.  It
+#: is the name the label carries on the wire, on disk and in the browser.  A
+#: second storage -- a synthesised ``frozen`` flag channel beside the label --
+#: would be a SECOND spelling for one fact, and would need an alias at every
+#: boundary that touches both.
 FROZEN_LABEL = "frozen_atoms"
 
 #: THE metadata field set -- what :meth:`Structure.metadata_to_dict` writes and
@@ -143,44 +137,43 @@ METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
 #:
 #: An UNKNOWN key and a RETIRED one are different states, and the difference
 #: is the user's file.  Unknown is a fact they believe they stored and this
-#: build cannot honour, so it is named and refused.  Retired is a key THIS
-#: project used to write and has since stopped: the file is not wrong, it is
-#: older, and refusing it would make a pair that opened yesterday unopenable
-#: today for no gain.
+#: build cannot honour, so it is named and refused.  Retired is a key this
+#: project wrote and has stopped writing: the file is not wrong, it is older,
+#: and refusing it would make a pair that opened before unopenable now for no
+#: gain.
 #:
-#: Retiring a key is only safe when nothing is lost by ignoring it, and that
-#: is shown rather than assumed.  For `pbc` (2026-09-22) it is: the boolean
-#: was always recomputed from `axis_kind`, every sidecar at a readable schema
-#: version carries a real `axis_kind`, and `Structure.pbc()` reproduces the
-#: value on demand.  A key whose fact lives nowhere else cannot be retired
-#: this way -- it needs a schema bump and a reader that migrates it.
+#: RETIREMENT IS ONLY SAFE WHEN NOTHING IS LOST BY IGNORING THE KEY, and that
+#: is shown, not assumed.  `pbc` qualifies: the boolean was always recomputed
+#: from `axis_kind`, every sidecar at a readable schema version carries a real
+#: `axis_kind`, and `Structure.pbc()` reproduces it on demand.  A key whose
+#: fact lives nowhere else cannot be retired this way -- it needs a schema
+#: bump and a reader that migrates it.
 #:
-#: SHARED, because THREE gates ask this question, not two.  Both halves of
-#: this merge found the bug and each found a different part of its extent:
+#: SHARED, because THREE gates ask this question and they must give one
+#: answer:
 #:
 #:   1. `parse.sidecars.molstruct.load_text` -- refuses stray keys while the
-#:      payload is still whole, deliberately upstream (the v3 frozen-atom
-#:      loss went through a guard that sat downstream of the leak);
+#:      payload is still whole, deliberately upstream of anything that
+#:      applies it;
 #:   2. `sidecars.molstruct.apply_to_structure` -- refuses them again before
 #:      applying;
 #:   3. `apply_metadata_dict` -- refuses them on the way onto a Structure.
 #:
-#: The retirement was written into (3) only, so an old sidecar failed at (1)
-#: and never reached it.  Derived from the writer, not from a file tree:
-#: `metadata_to_dict` emitted `pbc` on every build before 2026-09-22, so
-#: EVERY pair this project has ever written carries it.  Gate (2) is not
-#: reachable from `StructureCodec.load` -- (1) answers first -- but it takes
-#: a payload directly, so a caller that builds one in code hits it, and a
-#: guard that disagrees with its neighbours is the next version of this bug.
+#: Gate 2 is not reachable from `StructureCodec.load`, because gate 1 answers
+#: first -- but it takes a payload DIRECTLY, so a caller that builds one in
+#: code reaches it.  A retirement written into some gates and not others
+#: leaves the file readable by one door and refused by another, which is the
+#: failure this shared constant exists to make impossible.
 RETIRED_METADATA_KEYS = ("pbc",)
 
-#: Identity keys older sidecars carry that this build no longer WRITES.  Same
-#: three-gate treatment as ``RETIRED_METADATA_KEYS``: tolerated on read so a
-#: file the user already has still opens, never applied, and dropped on
-#: rewrite.  ``title`` retired 2026-09-23 (user: *"title belongs to the
-#: geometry file"*) -- `model/structure.md` § 2.2c.  It is still a
-#: ``Structure`` FIELD and still rides ``to_dict`` / ``to_wire`` /
-#: ``replace``; what it stopped being is a column of the SIDECAR.
+#: Identity keys a sidecar ON DISK may carry that this build no longer writes.
+#: Same three gates as ``RETIRED_METADATA_KEYS``, for the same reason.
+#:
+#: ``title`` qualifies under the rule above because its fact lives in the
+#: PAIRED GEOMETRY FILE -- it is the `.xyz` comment line and the PDB TITLE
+#: record (``model/structure.md`` § 2.2c).  It remains a ``Structure`` field
+#: and still rides ``to_dict`` / ``to_wire`` / ``replace``; what it is not is
+#: a column of the sidecar.
 RETIRED_IDENTITY_KEYS = ("title",)
 
 #: The structural keys an extended-XYZ comment line carries.  The title is the
@@ -189,33 +182,30 @@ _EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
 
 #: The per-atom IDENTITY columns -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
-#: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
-#: "extra for the package where it is needed" -- additive, never conflicting),
-#: and only when a column is REAL (see ``identity_to_dict``): an xyz-born
-#: structure's synthesized placeholders stay out of the file.
+#: ``metadata``).  Persisted by the sidecar, and only when a column is REAL
+#: (see ``identity_to_dict``): an xyz-born structure's synthesized
+#: placeholders stay out of the file.
 #:
-#: ``title`` was a fifth member until 2026-09-23 and is now in
-#: ``RETIRED_IDENTITY_KEYS`` -- the geometry file owns it
-#: (``model/structure.md`` § 2.2c).  This comment still said "+ the title"
-#: after the tuple stopped carrying it.
+#: ``title`` is NOT one of these.  The geometry file owns it
+#: (``model/structure.md`` § 2.2c); it is in ``RETIRED_IDENTITY_KEYS``.
 IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
-#: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
+#: Containment tolerance in FRACTIONAL units
+#: (``model/structure-periodicity.md`` § 6.1): loose enough to forgive a
 #: round-tripped float, tight enough that "half the molecule outside the box"
 #: can never pass.  Shared with periodicity_gate, which delegates containment
 #: to :meth:`Structure.cell_contains_atoms`.
 _CONTAIN_EPS = 1e-6
 
 #: The per-side gap a DERIVED box uses on an isolated axis when the user set no
-#: vacuum at all (``model/structure-periodicity.md`` § 6.1; the rule was rewritten
-#: 2026-08-03 — ``docs/archive/2026-08-20-cell-plan.md`` § 3b).
+#: vacuum at all (``model/structure-periodicity.md`` § 6.1).
 #:
 #: IT IS A DEFAULT GAP, NOT A MINIMUM BOX LENGTH.  3 Å of empty space is 3 Å
 #: whether the molecule is 2 Å across or 200, so every isolated axis gets it
-#: when nothing was said.  The previous rule raised the vacuum only when the
-#: resulting BOX came out under 3 Å, which meant a large molecule got no gap at
-#: all and a typed 1.0 Å got overridden to 3.0.
+#: when nothing was said.  Keying it off the resulting BOX length instead is
+#: wrong twice over: a large molecule then gets no gap at all, and a typed
+#: 1.0 Å gets overridden.
 #:
 #: It keeps a cell well-formed; it is NOT a claim of physical adequacy.  A
 #: converged isolated-molecule run wants far more, and the validator says so
@@ -227,11 +217,9 @@ def _vacuum_from_stored(raw) -> Optional[Tuple[float, float, float]]:
     """Read a stored vacuum.  ``None`` means nobody chose one; ``[0,0,0]``
     means somebody chose no gap.  Those are different, and both are honoured.
 
-    There is no legacy branch here.  One briefly existed -- an all-zero triple
-    read as UNSET, so that sidecars written before vacuum gained its third state
-    kept behaving as they had.  It cost the ability to express a deliberate zero
-    at all, and it bought compatibility with files that are residue.  Removed
-    2026-08-03: the code looks forward.
+    THERE IS NO LEGACY BRANCH, deliberately.  Reading an all-zero triple as
+    UNSET would cost the ability to express a deliberate zero at all -- the
+    third state this function exists to preserve.
     """
     if raw is None:
         return None
@@ -382,7 +370,7 @@ class Structure:
     they only matter for PDB (which uses them) and the various viewers
     / loaders that consume PDB.
 
-    Two transport-oriented attributes (added 2026-05-20) carry
+    Two transport-oriented attributes carry
     information about which atoms are which in a molecular junction:
 
         regions       atom-index lists keyed by region label
@@ -421,17 +409,12 @@ class Structure:
     residue_names: Optional[List[str]] = None
     chain_ids:     Optional[List[str]] = None
     title:         str = ""
-    # Transport-oriented metadata (2026-05-20).  Defaults keep every
-    # existing call site working without change.
-    # THE label store -- every label, including the reserved ones (FROZEN_LABEL).
-    # There is no second store: a reserved meaning costs a NAME and one
-    # designated read (`frozen_atoms` below), and nothing else.  `frozen_atoms`
-    # was a field here until 2026-07-31, which bought two of everything --
+    # THE label store -- every label, including the reserved ones
+    # (FROZEN_LABEL).  There is no second store: a reserved meaning costs a
+    # NAME and one designated read (`frozen_atoms` below), and nothing else.
+    # Giving a reserved label its own field instead buys two of everything --
     # two validators, two remaps on every atom-count change, two keys in the
-    # saved file, two spellings on the wire -- and a live inconsistency: the
-    # selection panel saw frozen as a label on `/api/selection/eval` and as a
-    # flag on `/api/selection/atoms`, so it double-rendered until a route-
-    # conditional patch hid it.
+    # saved file, two spellings on the wire -- and lets the two disagree.
     regions:       Dict[str, List[int]] = field(default_factory=dict)
     # NOT A FIELD -- a constructor door onto the reserved label, replaced below
     # the class by the `frozen_atoms` property.  Declared here so `Structure(...,
@@ -442,18 +425,17 @@ class Structure:
     # Default None means "say nothing about it" -- a caller passing only
     # `regions` (with the label already in it) must not have it cleared.
     frozen_atoms:  Optional[List[int]] = None
-    # Periodic lattice (2026-06-27).  ``cell`` is the (3, 3) matrix whose
-    # ROWS are the lattice vectors in Angstrom (ASE convention), or None
-    # for a non-periodic molecule.  Per-axis periodicity is ``axis_kind``
-    # below; the boolean view is :meth:`pbc`, computed on demand, and this
-    # comment described it as a field beside ``cell`` until 2026-09-22.
-    # The cell here is the SOURCE OF TRUTH for the box — the
-    # transport/SIESTA emitters preserve it verbatim instead of
-    # fabricating an orthorhombic vacuum box from atom extents.  Both
-    # default to "no lattice" so every existing call site is unchanged.
+    # ``cell`` is the (3, 3) matrix whose ROWS are the lattice vectors in
+    # Angstrom (ASE convention), or None for a non-periodic molecule.
+    # Per-axis periodicity is ``axis_kind`` below; the boolean view is
+    # :meth:`pbc`, computed on demand and stored nowhere.
+    #
+    # THE SOURCE OF TRUTH FOR THE BOX: the transport/SIESTA emitters preserve
+    # it verbatim rather than fabricating an orthorhombic vacuum box from atom
+    # extents, which would put the atoms and the box in different frames.
     cell:          Optional[np.ndarray]            = None
-    # Per-axis periodicity KIND (structure-periodicity.md) -- THE periodicity
-    # field, and since 2026-09-22 the only one.  Values: "periodic" (k-sampled
+    # Per-axis periodicity KIND (``model/structure-periodicity.md``) -- THE
+    # periodicity field, and the only one.  Values: "periodic" (k-sampled
     # / tileable lattice), "isolated" (vacuum box), "transport"
     # (electrode-matched, semi-infinite).  None -> "periodic" on every axis
     # when a cell is stated, "isolated" otherwise; `transport` is never
@@ -510,8 +492,7 @@ class Structure:
     #: not list the field is a defect: a vanished contract cannot be told
     #: apart from one that was never recorded.
     #:
-    #: **IT IS A NAMESPACE OF CLUSTERS, ONE PER SUBSYSTEM** *(user,
-    #: 2026-09-22)*.  A top-level key is a cluster name and its value is
+    #: **IT IS A NAMESPACE OF CLUSTERS, ONE PER SUBSYSTEM.**  A top-level key is a cluster name and its value is
     #: that subsystem's own metadata; nothing else writes inside someone
     #: else's cluster.  `calculation` is the one this project ships -- the
     #: recorded contract a finished run leaves on the pair -- and any
@@ -558,24 +539,22 @@ class Structure:
                     f"floats (lattice vectors as rows, Angstrom); got "
                     f"shape {cell.shape}"
                 )
-            # READING DOES NOT JUDGE (§ 8.2).  A singular box used to be
-            # refused HERE, which made a pair whose sidecar held one
-            # impossible to open -- and the Cell page is the one place a box
-            # can be corrected, so the only ways out were to hand-edit the
-            # `.molstruct.json` outside molbuilder or delete it and lose the
-            # labels with it.  § 6.1a says `cell.no_volume` is a WARNING on
-            # load and an error only at generate, and both later doors
-            # enforce that already: `periodicity_gate._refuse_on_error`
-            # rejects the value you type, and `validation.report` refuses to
-            # emit.  A left-handed box has always loaded for the same reason;
-            # this one now does too.  Every reader that inverts the cell
-            # answers `None` rather than raising (`_frac_coords`,
-            # `cell._fractional`).
+            # READING DOES NOT JUDGE (``model/structure-periodicity.md``
+            # § 8.2).  A singular or left-handed box LOADS.  Refusing it here
+            # would make a pair whose sidecar holds one impossible to open,
+            # and the Cell page is the one place a box can be corrected -- so
+            # the only ways out would be hand-editing the `.molstruct.json`
+            # outside molbuilder, or deleting it and losing the labels with
+            # it.  § 6.1a puts `cell.no_volume` at WARNING on load and error
+            # only at generate, and the doors that ACT enforce that already:
+            # `periodicity_gate._refuse_on_error` rejects the value you type
+            # and `validation.report` refuses to emit.  Every reader that
+            # inverts the cell answers `None` rather than raising
+            # (`_frac_coords`, `cell._fractional`).
             self.cell = cell
-        # ONE PERIODICITY FIELD (2026-09-22).  ``axis_kind`` is it.  There used
-        # to be a second, ``pbc``, and this block reconciled them every time --
-        # deriving one from the other and settling which won.  It could not be
-        # anything but redundant: ``pbc`` is ``axis_kind`` with `transport` and
+        # ONE PERIODICITY FIELD.  ``axis_kind`` is it, and there is nothing to
+        # reconcile: a second boolean field would be redundant by construction,
+        # because ``pbc`` is ``axis_kind`` with `transport` and
         # `periodic` both flattened to True, so it never held a fact
         # ``axis_kind`` did not, and could never legally disagree.  Storing it
         # bought a duplicate to keep in step, and the declaration carried two
@@ -613,9 +592,9 @@ class Structure:
         # NOTHING -- the same "unset" its three siblings (cell, cell_origin,
         # axis_kind) have always had, and the state the whole regime model
         # needs in order to tell "I want no gap" from "I never said" (see
-        # docs/archive/2026-08-20-cell-plan.md § 3a).  Until 2026-08-03 this field defaulted
-        # to (0, 0, 0) and those two were one value, so no rule could branch on
-        # the difference.
+        # ``model/structure-periodicity.md`` § 6.1).  Defaulting this field to
+        # (0, 0, 0) collapses the two states into one value, and no rule can
+        # then branch on the difference.
         if self.vacuum is not None:
             self.vacuum = tuple(float(v) for v in self.vacuum)
             if len(self.vacuum) != 3:
@@ -647,8 +626,8 @@ class Structure:
           * ASE — ``Atoms(pbc=…)`` (:meth:`to_ase`);
           * extended XYZ — the ``pbc="T T F"`` header (:meth:`to_extxyz`).
 
-        It was a stored field until 2026-09-22 (user: *"why the fuck need pbc
-        when axis_kind fully contains this information and more"*).
+        Not a stored field: ``axis_kind`` contains this and more, so storing
+        the boolean view as well would be two spellings of one fact.
         """
         return tuple(k != "isolated" for k in
                      (self.axis_kind or ("isolated",) * 3))
@@ -710,7 +689,8 @@ class Structure:
             built AROUND off-origin atoms) -> ``cell_origin``.  The box wraps the
             atoms where they are; generation shifts them into the cell.
           * EXPLICIT cell, NO ``cell_origin`` -> the corner is **derived**, never
-            assumed to be the world origin (decided 2026-07-29, § 6.1): ``None``
+            assumed to be the world origin
+            (``model/structure-periodicity.md`` § 6.1): ``None``
             (= world origin, no shift) only when the box AT the world origin
             already contains every atom along the non-periodic axes (an imported
             crystal), otherwise the wrapping corner so the box encloses the
@@ -739,8 +719,7 @@ class Structure:
     def effective_vacuum(self) -> Tuple[float, float, float]:
         """The per-side vacuum the DERIVED box actually uses (§ 6.1).
 
-        TWO STATES, AND ONLY TWO (decided 2026-08-03 —
-        ``docs/archive/2026-08-20-cell-plan.md`` § 3b).
+        TWO STATES, AND ONLY TWO.
 
           * **The user set a vacuum** → it is used, verbatim, on every axis.
             However small.  They dictate what they want; a thin gap is warned
@@ -767,10 +746,10 @@ class Structure:
         (``cell.check`` → ``cell.vacuum_defaulted``) so the box is never
         silently different from the number on screen.
 
-        UNTIL 2026-08-03 THIS WAS A FLOOR ON THE BOX, ``extent + 2·vacuum <
-        3``, which asked about the box rather than about what the user wanted.
-        It raised a typed 1.0 Å to 3.0 — overriding a stated value — and it
-        left a large molecule with NO gap at all, because its box was already
+        IT IS NOT A FLOOR ON THE BOX.  A rule of the form ``extent + 2·vacuum
+        < 3`` asks about the box rather than about what the user wanted: it
+        raises a typed 1.0 Å to 3.0 — overriding a stated value — and it
+        leaves a large molecule with NO gap at all, because its box is already
         over 3 Å.  Both are the same confusion: a minimum box length is not a
         vacuum."""
         if self.vacuum is not None:
@@ -791,9 +770,8 @@ class Structure:
         every axis — and empty for periodic / transport axes, which get no
         default because vacuum does not apply to them.
 
-        Named ``vacuum_floor_axes`` until 2026-08-03, when the rule stopped
-        being a floor.  Nothing is raised any more: there was no stored value
-        to raise, only an absent one to fill in."""
+        Nothing is raised here: there is no stored value to raise, only an
+        absent one to fill in."""
         if self.vacuum is not None:
             return []
         eff = self.effective_vacuum()
@@ -935,11 +913,11 @@ class Structure:
         n = len(self.elements)
         out: dict = {}
         # NO ``title`` HERE.  It belongs to the geometry file -- it IS the
-        # `.xyz` comment line and the PDB TITLE record (§ 2.2c, user
-        # 2026-09-23).  Persisting it here gave one fact two homes with no
-        # authority between them: a hand-edited comment line was silently
-        # overridden by this copy, and a non-empty title alone was enough to
-        # make ``keep_sidecar`` true, so a `.molstruct.json` came into being
+        # `.xyz` comment line and the PDB TITLE record
+        # (``model/structure.md`` § 2.2c).  Persisting it here gives one fact
+        # two homes with no authority between them: a hand-edited comment line
+        # is then silently overridden by this copy, and a non-empty title
+        # alone makes ``keep_sidecar`` true, so a `.molstruct.json` exists
         # to hold one string already in the file beside it.
         if self.atom_names is not None \
                 and list(self.atom_names) != list(self.elements):
@@ -1005,9 +983,8 @@ class Structure:
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
         # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
-        # ``axis_kind`` default and value check (there is no reconciliation
-        # step any more -- the second periodicity field it reconciled against
-        # went on 2026-09-22), cell_origin only-with-a-cell, and
+        # ``axis_kind`` default and value check (nothing to reconcile: there
+        # is one periodicity field), cell_origin only-with-a-cell, and
         # region/frozen/annotation indices in range.
         self.__post_init__()
 
@@ -1069,8 +1046,8 @@ class Structure:
         # refuse an empty cluster name and JSON-round-trip the value.  It is
         # the one the browser reaches: `_shared.struct_from_body` builds
         # every edited structure through here, so `info: {"": ...}` posted
-        # to any modify route came back at HTTP 200 and would have gone to
-        # disk in the sidecar (measured 2026-09-22).  One door, one set of
+        # to any modify route comes back at HTTP 200 and reaches the sidecar
+        # on disk if this door does not refuse it.  One door, one set of
         # rules, whichever direction the store arrives from.
         if data.get("info") is not None:
             s.apply_info_dict(data.get("info"))
@@ -1132,7 +1109,7 @@ class Structure:
                 # structure-periodicity.md.)
             },
             "annotations":   annotations_to_json(self.annotations),
-            # The `info` store (archive/2026-09-01-structure-info-plan.md): sent whole
+            # The `info` store (``model/structure.md`` § 2.2a): sent whole
             # so the viewer's Metadata pane shows exactly what the pair
             # will carry.
             "info":          dict(self.info),
@@ -1280,8 +1257,7 @@ class Structure:
         frozen door is not re-passed. A caller who states ``frozen_atoms`` (with
         or without ``regions``) gets exactly what they asked for.
 
-        **``dataclasses.replace`` NEVER routes here, on any version.**  This
-        said it did from 3.13; checked against the stdlib source 2026-09-22,
+        **``dataclasses.replace`` NEVER routes here, on any version.**
         `dataclasses.replace` ends `return obj.__class__(**changes)` and the
         word ``__replace__`` does not appear in the function at all.  What
         3.13 added is `copy.replace`, a DIFFERENT helper, and that one does
@@ -1388,9 +1364,8 @@ class Structure:
 
         Sorted alphabetically rather than by Hill convention: this is compared
         for equality and normalised into an identifier, never read as chemistry.
-        One property, so the description and ``summary()`` cannot disagree about
-        what this structure is — ``summary()`` spelled it inline until
-        2026-08-10, which made it the only definition and an unreachable one.
+        One property, so the description and ``summary()`` cannot disagree
+        about what this structure is.
         """
         from collections import Counter
         return "".join(f"{el}{n}" if n > 1 else el
@@ -1459,10 +1434,10 @@ class Structure:
         # comment is `<free text> Lattice="..." Properties=... pbc="..."`, and
         # taking it whole made the title of every ASE/VMD file the header
         # itself -- persisted into the sidecar as the structure's IDENTITY,
-        # beside a correctly parsed 3x3 `cell`.  Masked in normal use because
-        # the sidecar's own copy was applied over it; visible the moment the
-        # pair was separated (`model/structure.md` § 2.2c, measured
-        # 2026-09-23).
+        # beside a correctly parsed 3x3 `cell` (``model/structure.md``
+        # § 2.2c).  A sidecar carrying its own copy masks this, so it shows
+        # up only once the pair is separated -- or once another tool reads
+        # the `.xyz`, which is what that format is kept for.
         #
         # Only the three STRUCTURAL keys are cut, and only from the first one
         # on.  A sentence is what the paragraph above exists to protect, so
@@ -1638,12 +1613,12 @@ class Structure:
             # symbol case here is reading the field, exactly as reading the
             # element out of cols 13-14 below is.
             #
-            # This is the boundary rule (user ruling, 2026-09-09): a FILE is
+            # This is the boundary rule: a FILE is
             # authoritative and we decode what it says; a label a PERSON
             # types is gated at create/add/modify and never case-corrected
             # (``chemistry.resolve_element``, which does no folding at all).
-            # Caught 2026-05-25 against hemeC-dithiol, when an undecoded
-            # ``FE`` reached the SIESTA emitter.
+            # Without the fold, an undecoded ``FE`` reaches the SIESTA
+            # emitter as a species that is not iron.
             element = line[76:78].strip().capitalize()
             if not element:
                 # Element column 77-78 empty -- fall back to PDB-format
@@ -1731,7 +1706,7 @@ class Structure:
         ``%block AtomicCoordinatesAndAtomicSpecies`` once you map symbols
         to species indices, or into any other code that reads .xyz.
 
-        WHY THE ``path`` ARGUMENT IS GONE (2026-09-22).  The read side was
+        WHY THERE IS NO ``path`` ARGUMENT.  The read side is
         closed deliberately -- ``from_xyz`` refuses a path and points at the
         codec, because the one door for a STORED structure reads the
         ``.molstruct.json`` beside it.  The write side was left open, and it
@@ -1944,9 +1919,8 @@ class Structure:
         ``vacuum`` to 0.  Deleting a stray atom would then wipe a transport
         cell, and the emitted SIESTA FDF would omit ``LatticeVectors``.
 
-        (This read "axis_kind -> derived from pbc" until 2026-09-22.  The
-        derivation runs the other way now, and `pbc` is not carried at all:
-        it is :meth:`pbc`, computed from ``axis_kind`` on demand.)
+        ``pbc`` is not carried: it is :meth:`pbc`, computed from
+        ``axis_kind`` on demand.
 
         Every op-helper that rebuilds a Structure spreads this so those facts
         survive the edit.

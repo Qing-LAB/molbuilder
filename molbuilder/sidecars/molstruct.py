@@ -408,9 +408,9 @@ def to_dict(
             )
         except (ValueError, TypeError) as exc:
             raise MolstructJsonError(str(exc)) from exc
-        # `title` is NOT rebuilt here -- it left the identity block on
-        # 2026-09-23 (§ 2.2c).  An older file's copy is dropped on this
-        # rewrite, which is the third gate retired keys get.
+        # `title` is NOT rebuilt here -- the geometry file owns it
+        # (``model/structure.md`` § 2.2c).  An older file's copy is dropped
+        # on this rewrite, which is the third gate a retired key gets.
         identity = {k: v for k, v in {
             "atom_names":    list(scratch.atom_names),
             "residue_ids":   [int(v) for v in scratch.residue_ids],
@@ -648,11 +648,11 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # molbuilder" the user never stated into the next sidecar.  Plain
     # attribute sets, so the apply_metadata_dict call below re-runs
     # __post_init__ over them -- one validator, one message.
-    # `title` IS NOT IN THIS LOOP any more (§ 2.2c, 2026-09-23).  It used to
-    # be, and the `else` branch below reset it to "" -- so a pair whose
-    # sidecar stated no title had the .xyz comment line ERASED on load, and a
-    # pair whose sidecar stated one silently overrode a comment the user had
-    # edited by hand.  The geometry file owns it; this door leaves it alone.
+    # `title` IS NOT IN THIS LOOP.  The geometry file owns it
+    # (``model/structure.md`` § 2.2c), so this door leaves it alone.  Were it
+    # here, the `else` branch would reset it to "" -- erasing the .xyz comment
+    # line of any pair whose sidecar states no title -- and the `if` branch
+    # would silently override a comment line the user had edited by hand.
     for k in IDENTITY_FIELDS:
         if k in sidecar_data:
             setattr(struct, k, sidecar_data[k])

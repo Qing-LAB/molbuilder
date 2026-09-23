@@ -500,8 +500,8 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         # AND THE HALF THE DOCSTRING ASSERTED IN PROSE ONLY.  § 2.2b row 1 is
         # the reason the section exists -- the slab's box IS adopted onto a
         # canvas that states none -- and deleting the whole adoption block
-        # left 482 tests green (measured 2026-09-23).  The two asserts above
-        # pin what must NOT ride in; this pins what must.
+        # is assertable and was asserted nowhere: the two asserts above pin
+        # what must NOT ride in, and this pins what must.
         assert out.cell is not None, \
             "the only lattice in play was not adopted at all"
         assert np.allclose(out.cell, np.diag([2.88, 2.88, 20.])), \
@@ -624,9 +624,9 @@ class TestTitleBelongsToTheGeometryFile:
     """`model/structure.md` § 2.2c — ONE rule, four things it decides.
 
     `title` is not a sidecar column.  It IS the `.xyz` comment line and the
-    PDB TITLE record, and the geometry file is its only home *(user,
-    2026-09-23)*.  Before that ruling it lived in both halves with no
-    authority between them, and all four assertions below were false.
+    PDB TITLE record, and the geometry file is its only home.  Held in both
+    halves instead, with no authority between them, all four assertions
+    below are false.
 
     One test, not four: they are one rule's observable consequences, and
     splitting them would pin the same fact four times (`process/testing.md`

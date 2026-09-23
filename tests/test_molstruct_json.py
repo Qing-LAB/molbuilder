@@ -967,13 +967,11 @@ class TestARetiredKeyPassesEveryGate:
     """A key we stopped WRITING must still pass every gate a file meets.
 
     `structure.py`'s retirement rule is three gates: tolerated on read,
-    never applied, dropped on rewrite.  There are three separate stray-key
-    checks that can refuse one, in two modules, and **the retirement has now
-    reached only some of them twice**: `pbc` (fixed at 62cc76d0, "the
-    retirement reached one gate of two, so old pairs stopped loading") and
-    `title` (2026-09-23, which missed `apply_to_structure`'s check -- four
-    lines under a comment saying "a guard that disagrees with its neighbours
-    about what is retired is how this bug happened in the first place").
+    never applied, dropped on rewrite.  Three separate stray-key checks, in
+    two modules, can each refuse one -- and a retirement written into some of
+    them and not others leaves a file readable by one door and refused by
+    another.  Both keys retired so far reached only part of the set, which is
+    why this iterates instead of naming them.
 
     So this iterates the RETIRED_* tuples rather than naming keys.  A key
     retired tomorrow is covered the moment it is declared, and a key with no
@@ -981,8 +979,7 @@ class TestARetiredKeyPassesEveryGate:
     `test_replace_carries_every_field_the_dataclass_declares` has, where the
     names come from the dataclass but the values come from a fixture.
 
-    Mutation-checked per gate, 2026-09-23.  Gate 1 and gate 2 each go red
-    alone.  **Gate 3 needs BOTH writer defences reverted**, because there
+    Mutation-checked per gate.  Gate 1 and gate 2 each go red alone.  **Gate 3 needs BOTH writer defences reverted**, because there
     are two and either suffices: `identity_to_dict` does not emit a retired
     key, and `to_dict`'s identity normalisation does not rebuild one.  That
     is worth knowing before anyone "simplifies" one of them -- on its own,

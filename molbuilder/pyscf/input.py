@@ -1566,12 +1566,10 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
     out.append("    _side = dict(_MB_SIDECAR)")
     out.append("    _side['structure_hash'] = _mb_hashlib.sha256(")
     out.append("        _doc.encode('utf-8')).hexdigest()")
-    # NO `_side['title']`.  `comment` is already the .xyz comment line
-    # two blocks up, and that IS the title's home (model/structure.md
-    # § 2.2c, 2026-09-23).  Writing it here too put a RETIRED key into
-    # every sidecar a run emits -- tolerated at all three gates and
-    # silently dropped on read, so nothing broke, but it is the retired
-    # behaviour still shipping, from the third pair-writer § 1.1a flags.
+    # NO `_side['title']`.  `comment` is already the .xyz comment line two
+    # blocks up, and the geometry file is the title's home
+    # (``model/structure.md`` § 2.2c).  Writing it here too would put a
+    # RETIRED key into every sidecar a run emits.
     out.append("    _stem = _p[:-4] if _p.lower().endswith('.xyz') else _p")
     out.append("    with open(_stem + '.molstruct.json', 'w') as fh:")
     out.append("        _mb_json.dump(_side, fh, indent=2)")
