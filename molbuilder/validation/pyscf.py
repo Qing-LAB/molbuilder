@@ -246,7 +246,8 @@ def _validate_pyscf(struct: Structure, cfg,
     # view (with the same frozen-label exclusion), so this defers there.
     if not vibration:
         from .sidecar import check_unconsumed_region_labels
-        issues += check_unconsumed_region_labels(struct, engine="PySCF")
+        issues += check_unconsumed_region_labels(
+            struct, engine="PySCF", calculation=calculation)
         # ...and the FIRST validation of a junction, beside it because it is
         # the same question one step further: the labels say which atoms are
         # leads, and a lead must come through the relaxation unmoved.  Asked

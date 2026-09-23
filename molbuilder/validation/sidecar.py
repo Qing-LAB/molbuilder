@@ -122,10 +122,10 @@ def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
     )]
 
 
-def check_unconsumed_region_labels(struct: Structure, *,
-                                   engine: str) -> List[Issue]:
+def check_unconsumed_region_labels(struct: Structure, *, engine: str,
+                                   calculation: str = "") -> List[Issue]:
     """Pattern B, re-homed (validation.md § 5; C-shared 2026-08-21): every
-    region label the current engine does NOT consume is named explicitly.
+    region label this calculation does NOT consume is named explicitly.
 
     The /modify selection panel writes ``regions`` for transport workflows
     (L-electrode, bridge, ...); an optimization deck reads none of them,
@@ -135,17 +135,48 @@ def check_unconsumed_region_labels(struct: Structure, *,
     about it would be the same false alarm E-M7.1 fixed on the vibration
     route.  This ran in two web endpoints until they were deleted; living
     HERE puts it on every deck route through the one settings gate.
+
+    **WHAT IS CONSUMED DEPENDS ON THE KIND, and asking only the ENGINE got
+    it exactly backwards for transport.**  This took ``engine`` alone, so
+    every transport deck's ``.validation.txt`` said its
+    ``L-electrode``/``bridge``/``R-electrode`` labels *"do NOT consume ...
+    do not shape this calculation"* -- about the partition the entire
+    five-rung ladder is built from (`engines/transport.md` § 4).  The
+    warning that exists to stop a person believing their labels mattered
+    was telling them the opposite of the truth.  `engines/transport.md`
+    § 3.6a recorded it as a known wrong warning on 2026-09-16; the kind was
+    already being passed to every validator (`validation/__init__` sets
+    ``engine_kw["calculation"]``) and this function simply never asked.
+
+    For transport the consumed set is `sort.PARTITION_LABELS` -- asked of
+    the module that owns the partition, never re-listed here -- plus any
+    ``*-electrode`` name, since the suffix convention is what makes
+    ``tip-electrode`` a lead without a code change (§ 4).  Anything else is
+    genuinely unread and is still named, which is § 4's own rule: *"a label
+    this engine does not consume is WARNED about, never dropped in
+    silence."*
     """
     from ..structure import FROZEN_LABEL
     regions = getattr(struct, "regions", None) or {}
-    inert = sorted(name for name, idxs in regions.items()
-                   if idxs and name != FROZEN_LABEL)
+    consumed = {FROZEN_LABEL}
+    if calculation == "transport":
+        from ..config.transport import is_electrode_label
+        from ..transport.sort import PARTITION_LABELS
+        consumed |= set(PARTITION_LABELS)
+        inert = sorted(name for name, idxs in regions.items()
+                       if idxs and name not in consumed
+                       and not is_electrode_label(name))
+        what = "transport ladder"
+    else:
+        inert = sorted(name for name, idxs in regions.items()
+                       if idxs and name not in consumed)
+        what = f"{engine} run"
     if not inert:
         return []
     return [Issue(
         "warn",
         (f"this structure carries region label(s) {inert}, which the "
-         f"{engine} run does NOT consume -- they stay in the sidecar "
+         f"{what} does NOT consume -- they stay in the sidecar "
          f"for /transport but do not shape this calculation. "
          f"If you meant those atoms to be held fixed, assign them to "
          f"\"frozen_atoms\" in /modify."),
