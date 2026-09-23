@@ -509,8 +509,14 @@ from the leads, which is the one thing that must be impossible.
 
 ### 2a.7 The rulings
 
-*All made 2026-09-16. Together they are what turns § 2a from an argument into a
-contract; none of them is implemented.*
+*All made 2026-09-16. Together they are what turns § 2a from an argument into
+a contract.*  ⚠️ *This ended "none of them is implemented", which the banner
+200 lines above already contradicted.  Corrected 2026-09-23: ruling 1 (the
+relaxation DEFAULTS rather than seals) is built and is what
+`citation_defaults.py` does; the T(E) window, the two lead stages and the
+bias treatment are built; **Class C's per-stage defaults are NOT** — § 3.6a
+measures every rung taking `SiestaConfig()`'s own values, and § 2a.14's
+"what did NOT land" does not list it.*
 
 | | |
 |---|---|
@@ -1449,7 +1455,7 @@ the parameters this way is what makes the rest of the design fall out.
 | answerer | what | how the template says it |
 |---|---|---|
 | **the person** | the transmission window and grid, the TBtrans outputs, broadening, the NEGF contour, the leads | an ordinary item with a `value` |
-| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | a **declared, valueless** item (§ 6.4) carrying a source marker; `prep` fills it from the cited deck |
+| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | ⚠️ **SUPERSEDED by § 3.8.0** — this says *declared, valueless, filled at `prep`*, which is the SEALED reading § 2a.7 reversed. The values are filled ONCE at `jobset init` into this calculation's template, carry a value there, and the person may change them |
 | **the description** | job label, the bias list | the label is an ordinary item; the bias is `task.json`'s own `bias` block, because it is the sweep axis (§ 4.3) |
 | **the machine** | memory ceiling, thread count, ranks | `allocation` items — valueless on floor 2, filled at `prep` (G1) |
 | **the geometry** | which atoms are electrode / bridge / buffer, which are frozen | **not an item at all** — § 7's structure exclusion; it travels in the `.molstruct.json` sidecar and the deck's ATOM-METADATA block |
@@ -1626,9 +1632,13 @@ cannot be done first.** Each line is falsifiable.
    rung resolves a `SiestaConfig`, and TR4 deleted the general projection when
    the template made it unnecessary. One projection survives, at the boundary
    of the lifted NEGF block, and goes with it.
-7. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
-   form is `GET /api/build/schema/siesta?calculation=transport`, with the
-   citation-answered fields shown locked rather than editable.
+7. `dataclass_to_form_schema` **has no production caller** and is to be
+   deleted; the transport form is generated from the catalogue.
+   ⚠️ **Two corrections (2026-09-23).** *"and is deleted"* — it is not;
+   it still has test callers, and § 3.7's row saying it is LIVE was true
+   until the swap that removed its last production caller was reverted
+   (§ 3.8.6). *"shown locked"* — withdrawn by § 2a.7, which unsealed those
+   values; where they are edited is § 3.8.2.
 8. `varies` on a transport description is **empty** — *superseded in part by
    § 2a.* Its premise was that the five stages share one config by ruling Q5.
    § 2a.3 rules that only Class A is shared; Class C is per stage by design, so
@@ -1747,31 +1757,35 @@ X1 audit. The state column says where each one actually stands.
 
 ---
 
-### 3.8 The describe surface — what you set, where, and how you check it
+### 3.8 The parameter surface — ONE statement, and what it supersedes
 
-*Written 2026-09-23 at the user's direction, contract before code. It states
-what the Transport tab must be; § 2a.6 says why (the interface follows the
-parameter map, not the subject matter), and the shape here is the framework's
-own rather than a second design.*
+*Consolidated 2026-09-23 at the user's direction. The rules for this surface
+were written in six places that disagreed on three questions, and a seventh
+was added before the other six had been read. **This section is now the
+single statement. Where an older paragraph disagrees with it, that paragraph
+is superseded and says so at its own site.***
 
-The surface has **three jobs, in the order a person does them**:
-
-1. **choose what you start from**, and see what that brought;
-2. **set the parameters**, all of them, each saying where its value came from;
-3. **check what was produced** — read the decks that will actually run.
-
-Today it does the first, does half of the second, and does not do the third.
+What it supersedes, and each is marked there: § 3.4.1 and § 3.4.3's *"filled
+at `prep`"*, § 3.5's chain diagram putting the fill inside `prep`, § 3.6
+item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
+`web/form-schema.md`'s description of where a form comes from.
 
 ---
 
-#### 3.8.1 Choosing — say which of the three, and what it brought
+#### 3.8.0 The three questions the documents disagreed on, answered once
 
-§ 3.1's three cases are what a person picks between, and the surface names
-them in those words. Never "form A" / "form B": those describe which files
-are in a folder.
+| question | the answer, and it is the code's |
+|---|---|
+| **When do the cited run's values arrive, and may the person change them?** | **Once, at `jobset init`**, into this calculation's own template, by `transport/citation_defaults.py` — *"the whole of the filling"* (`template.md` § 6.4). After that the template is the answer and `prep` reads the file, never the citation. The person **may change any of them**; a change applies to all five rungs at once because there is one template (§ 2a.7 ruling 1). The older reading — declared valueless, filled at prep, sealed — is withdrawn |
+| **Where are the shared values edited?** | In **one panel that writes the template** (§ 3.8.4). **Not** on the per-rung form, because that form's payload is a rung's override bag and a shared value given to one rung is refused at `prep`. They are not hidden; they are elsewhere |
+| **What generates the form?** | The **catalogue**, narrowed by kind — never a dataclass's field list. Not yet true of the code: the swap that did it was reverted (§ 3.8.6), and the reason is the open decision below |
 
-At the moment of choosing, the line under the picker says **which case this
-is** and **what came with it**:
+---
+
+#### 3.8.1 Choosing — name which of the three, and what it brought
+
+§ 3.1's three cases, in those words. Never "form A" / "form B", which name
+which files are in a folder and tell a reader nothing.
 
 ```
 finished run · settings from JunctionRelax.fdf
@@ -1779,72 +1793,69 @@ saved structure · settings recorded from JunctionRelax.fdf when you exported it
 saved structure · no settings recorded — you choose them below
 ```
 
-and, where a structure was edited after its settings were recorded, what that
-invalidated — the two flags of § 4.1b, which say different things: a geometry
-edit leaves the mesh cutoff and k-mesh converged for a cell that is gone; a
-label edit leaves the settings standing but moves the electrode/device
+Where a structure was edited after its settings were recorded, say what that
+invalidated: a geometry edit leaves the mesh cutoff and k-mesh converged for
+a cell that is gone; a label edit leaves the settings standing but moves the
 partition the sort reads.
 
 > **The line must not claim an inheritance that did not happen.** It said
-> *"contract RECORDED"* for eleven months of a case whose values nothing
-> applied (§ 3.1's history note). A display of provenance is a claim about
-> what will run, and is wrong if the two disagree.
+> *"contract RECORDED"* for a case whose values nothing applied (§ 3.1's
+> history note). A display of provenance is a claim about what will run.
 
 ---
 
-#### 3.8.2 Setting — every parameter, from the catalogue, organised by the framework
+#### 3.8.2 The surface is TWO surfaces, and that is the whole design
 
-**The schema is the catalogue's, narrowed by kind.** The Transport tab asks
-`catalogue_to_form_schema("siesta", …, calculation="transport")` — the same
-call the Build tab makes for an optimization. It is not built from a
-dataclass's field list.
+This is the distinction every contradiction above came from. A person meets
+two panels and they are not the same kind of thing:
 
-That is not tidiness; it is what makes the shared clusters *visibly* shared.
-Transport is the SIESTA base minus the relaxation driver plus the NEGF and
-TBtrans surface (§ 3.3), so the same six inner sections appear for both kinds
-and a person who knows the optimization tab already knows most of this one.
-
-**The organisation is the two axes** (`web/form-schema.md` § 1.3), and neither
-is chosen here:
-
-| axis | answers | drawn as |
+| | **the shared panel** | **the per-rung form** |
 |---|---|---|
-| `group` | *when do I set this?* | the outer card, in the declared order |
-| `category` | *what question about the calculation is this?* | the legend inside the card |
+| what it edits | the **template** | a rung's **override bag** |
+| what belongs on it | every value binding all five rungs — Class A (§ 2a.3) | Class C, the values a rung owns alone |
+| how many | **one**, for the calculation | one per rung |
+| the warning it carries | *changing this rebuilds all five stages* | none needed |
+| what it must never show | a rung-local value | **a shared value** — offering one is a control `prep` refuses |
 
-**Which parameters appear, and where, is the catalogue's own answer.** No
-hand-maintained list of names decides it, and the four markers already say
-everything needed:
+§ 2a.6 stated this as *"one editing surface, many read-only echoes"* and it
+is the rule that was lost: every attempt to build ONE form has produced
+either a form that hides the shared values with nowhere to put them, or a
+form that offers them and is refused downstream.
 
-| marker | who answers it | the surface |
-|---|---|---|
-| `calculations` | — | absent from the list ⇒ not a parameter of this kind, so it is not drawn |
-| `allocation` | the scheduler, at prep | not a form field |
-| `role` | the stage's own role | not a form field, not a stage column — offering it would be a choice with one correct answer |
-| `citation` | a cited run, at `init` | **drawn, with its value and where the value came from**, and editable — § 2a.7 unsealed these |
-| `stages` | — | routes the value to the rung that owns it; a value with no `stages` belongs to the calculation |
+**Both surfaces are generated from the catalogue**, narrowed by kind, by the
+same call the Build tab makes. Which fields land on which is answered by the
+markers the catalogue carries, never by a list a blueprint keeps:
 
-> **The three frozensets are deleted by this.** `SEALED_ALWAYS`,
-> `CONTRACT_FIELDS` and `UNRESOLVED_FIELDS` are hand-maintained restatements
-> of `role`, `citation` and "has no catalogue row"; `_dataclass_to_form_schema`
-> goes with them (§ 3.6 item 7 and § 3.7 already said so). A list of names
-> kept by hand is what let the web offer three controls every prep then
-> refused.
+| marker | means | shared panel | per-rung form |
+|---|---|---|---|
+| `calculations` | not a parameter of this kind | — | — |
+| `allocation` | the scheduler answers at prep | no | no |
+| `role` | the rung's own identity; a choice with one correct answer | no | no |
+| **shared** *(see § 3.8.6 — no marker exists yet)* | binds every rung | **yes** | **no** |
+| `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
+| `stages` | only these rungs may own it | — | routed to those rungs |
+
+**`citation` is not the same as shared, and treating it as one is the defect
+of 2026-09-23.** `citation` says *who supplies the default*; shared says
+*who it binds*. Every `citation` row is shared, and Class A contains more:
+`species_order`, `spin_treatment`, `spin_total` and the pseudopotentials are
+shared and answered by nobody's run.
+
+The organisation of each panel is `web/form-schema.md` § 1.3's two axes and
+is not chosen here: `group` is the outer card, `category` the legend inside.
+
+---
 
 #### 3.8.3 A value nobody chose is shown as not chosen
 
-**An unanswered parameter is empty, never a default wearing an answer's
-clothes.** § 6.4 of [`template.md`](?doc=engines/template.md) already has the
-state — *no `value`* means *declared, unresolved; a surface asks for it* — and
-says a valueless item still carries its `choices`, `range`, `unit` and `help`
-so the surface can offer the right options before any value exists.
+`template.md` § 6.4 already has the state — *no `value`* means *declared,
+unresolved; a surface asks for it* — and a valueless item still carries its
+`choices`, `range`, `unit` and `help`.
 
-This matters most for the third citation case. A hand-built structure answers
-none of the shared values, and writing catalogue defaults into those slots
-claims a run said something no run said — after which no surface can tell the
-person's 300 Ry from nobody's.
-
-So the panel shows, per parameter, one of:
+This bites hardest on the third citation case. A hand-built structure
+answers none of the shared values, and writing catalogue defaults into those
+slots claims a run said something no run said — after which no surface can
+tell the person's 300 Ry from nobody's.
 
 ```
 400 Ry   from the run you cited
@@ -1853,54 +1864,81 @@ So the panel shows, per parameter, one of:
 (empty)  not chosen — SIESTA's own default applies
 ```
 
-#### 3.8.4 The shared values are edited in ONE place
-
-§ 2a.6: *one panel for Class A, edited once, carrying the all-stages warning;
-one panel per stage for its own Class C and Class E; **one editing surface,
-many read-only echoes**.*
-
-The shared panel is the only place the six shared values may be edited, and it
-carries the consequence in words: **changing any of these rebuilds all five
-stages**, because the leads and the device must not be able to disagree about
-the footing the self-energies were built on.
-
-A stage's own panel shows what it inherits **read-only**, and offers only what
-that rung owns. Editing a shared value inside a stage would imply the device
-could differ from its leads, which is the one thing that must be impossible.
-
-> Until this panel exists there is nowhere in the UI to state the electronic
-> description at all: the form hides those six and nothing writes a template.
-> `/api/task-setup/template-values` can READ one. That is the gap this section
-> closes, and it is why the panel is not optional polish.
-
 ---
 
-#### 3.8.5 Checking — the decks that will actually run
+#### 3.8.4 Checking — the decks that will actually run
 
-**After a prep, a person can read what was generated, and choose which.** A
-transport calculation writes several: one per rung, and one per bias point on
-the two rungs that vary over bias. They are not interchangeable, and *"what
-did my settings actually do"* is not answerable from the form.
+A transport calculation writes several decks: one per rung, and one per bias
+point on the two rungs that vary over bias. *"What did my settings actually
+do"* is not answerable from a form.
 
 | the viewer shows | |
 |---|---|
-| which decks exist | by rung, and by bias point and attempt where those levels exist — the tree § 2a.11 describes, because the layout already says which results are shared |
-| the deck itself | verbatim, as written |
-| its report | the `.validation.txt` written beside it at the same moment, which answers *is this deck sound* |
+| which decks exist | by rung, and by bias point and attempt where those levels exist — § 2a.11's tree |
+| the deck | verbatim, as written |
+| its report | the `.validation.txt` written beside it at the same moment |
 
-It **reads and never writes**. A deck is generated by `prep` from the
-description; a surface that let a person edit one would create a second source
-of truth for what ran, which is what the read-back check exists to prevent.
+It **reads and never writes**: a deck is generated by `prep` from the
+description, and an editable one would be a second source of truth for what
+ran.
 
-The files are already reachable: `parse/dirs/job._enumerate_files` buckets a
-run directory's own `.fdf`s, and `/api/files/read` serves text inside the tree
-fence. What is new is the LIST — which decks this calculation prepared — and
-the panel that shows one at a time.
+> **This is the same view `plan.md` § 5c.3 (a)–(f) is building for the
+> Results tab, from the other side.** That section gives the calculation-root
+> reader its public home (`_is_bundle_root`) and warns that a second copy in
+> `parse/dirs` *"would be instance 14"* of a known duplication. **The deck
+> viewer consumes that reader; it does not write its own.** An earlier draft
+> of this section designed a parallel enumerator, which is the mistake
+> § 5c.3 names in advance.
 
-> **Why this is early rather than last.** It is the only surface that answers
-> *what did the machine actually write*. Every other change in this section
-> alters a deck, and without it the person — and the next review — is taking
-> that on trust. It depends on nothing else here.
+---
+
+#### 3.8.5 What is true of the code today
+
+Stated so a reader can tell the contract from the state, which is what the
+six scattered versions could not do.
+
+| | state |
+|---|---|
+| the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
+| the per-rung form is generated from the catalogue | ❌ **reverted** — see § 3.8.6 |
+| the shared panel exists | ❌ **not built.** So there is nowhere in the UI to state the electronic description at all: the form hides those values and nothing writes a template. `/api/task-setup/template-values` can READ one |
+| a value nobody chose is shown as not chosen | ❌ not built; `init` writes catalogue defaults into unanswered `citation` rows |
+| the deck viewer | ❌ not built |
+| `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
+
+---
+
+#### 3.8.6 The one open decision — there is no marker for SHARED
+
+**This is the keystone, and nothing above it can be built until it is
+settled.**
+
+On 2026-09-23 the per-rung form was swapped to the catalogue and **reverted
+the same day**. The swap filtered shared values using the `citation` marker,
+which does not cover Class A — so the form offered `system_label`,
+`species_order`, `spin_treatment` and `spin_total` as per-rung overrides,
+all routed to the device rung. Measured consequences: a `system_label`
+override survives into three rungs' decks and breaks the `.TS.HSX` handover
+while being silently inert on the other two; a `species_order` override
+gives the device one orbital ordering and the leads another, which
+`model/chemistry.md` § 3a exists to make impossible.
+
+**`prep` has the same hole**, and it predates the swap: its shared-value
+refusal also gates on `citation=True`, so a stage override of
+`species_order` has never been refused. The swap did not create the hole; it
+made it reachable from the UI.
+
+So one declaration has to answer *"binds every rung"*, and it fixes both
+doors at once. Two shapes, and the choice is the user's:
+
+| | |
+|---|---|
+| **a sibling marker**, `shared = ["transport"]`, beside `citation` | keeps `citation` meaning exactly *who supplies the default*, which is what it is for. Costs one new axis in the catalogue |
+| **widen `citation`** to mean *shared, and here is who defaults it* | no new axis; but then a row shared with no default source has to carry a marker named after citations, which is the confusion that caused this |
+
+Either way the rule is the same and belongs in one place: **the catalogue
+declares what binds every rung; the form, the describe door and `prep` all
+read that one declaration.**
 
 ---
 
@@ -2701,7 +2739,9 @@ single-point, or a relaxation if those layers are not frozen.
   init --calculation transport`; no hand-over, because nothing is
   awaiting).  Transport-only knobs changed in the form ride as
   device-stage overrides; the electronic-contract fields are sealed at
-  both doors (the citation's to say).  **The parameters card is one panel
+  both doors (the citation's to say).  ⚠️ **SUPERSEDED by § 2a.7 and
+  § 3.8.2**: the cited run DEFAULTS them and the person may change them.
+  What is still true is that they are never a PER-RUNG override.  **The parameters card is one panel
   per ENGINE** since 2026-09-15 — § 3.2, and the follow-up below is where
   its second panel comes from.  Task setup reads the saved
   description as the run surface (machine, queue, prep).  **The tab's live

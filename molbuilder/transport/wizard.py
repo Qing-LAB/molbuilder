@@ -184,9 +184,17 @@ class ElectrodeModel:
         # `periodic` there was wrong for a real case.  A slab electrode tiles
         # the plane; a NANOWIRE OR CHAIN lead is vacuum-surrounded, so a
         # device of `isolated, isolated, transport` yields a lead of
-        # `isolated, isolated, periodic`.  Declaring those vacuum directions
-        # periodic would have the shared transverse k-mesh sample vacuum
-        # (user, 2026-09-23).
+        # `isolated, isolated, periodic` (user, 2026-09-23).
+        #
+        # WHAT IT ACTUALLY CHANGES, measured -- an earlier draft of this note
+        # claimed the transverse k-mesh would sample vacuum, and it would
+        # not: NOTHING derives a k-mesh from `axis_kind`.  Both
+        # `deck.py::_emit_kgrid_block` and `_emit_electrode_kgrid_block`
+        # read `cfg.kgrid` unconditionally.  What it changes is that the
+        # deck stops printing "transverse axis a declared periodic but
+        # leaves N A empty" about a lead that is correctly vacuum-
+        # surrounded, and that the lead's metadata stops asserting a
+        # periodicity the device never claimed.
         #
         # It said `("periodic",) * 3` with the note "A LEAD IS PERIODIC IN
         # ALL THREE" -- true of the transport axis, and an assertion about
@@ -458,8 +466,14 @@ def extract_electrode_model(
     # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
     # cross-section, so it is periodic across the wire exactly when the
     # device is (`engines/transport.md` § 5, I6).
+    # `("isolated",) * 3` LIKE ITS ELEVEN NEIGHBOURS.  Unreachable --
+    # `__post_init__` always fills `axis_kind` -- but the commit that wrote
+    # this fallback had just argued, thirty lines away, that every such
+    # fallback in the tree answers `isolated` and that the one which must
+    # not disagree is the one whose waking would relabel an emitted deck.
+    # This was the twelfth, and it disagreed.
     dev_kind = tuple(getattr(device, "axis_kind", None)
-                     or ("periodic", "periodic", "transport"))
+                     or ("isolated",) * 3)
     return ElectrodeModel(
         label=label, block_name=block_name, elements=elems, positions=pos,
         lat_a=lat_a, lat_b=lat_b,

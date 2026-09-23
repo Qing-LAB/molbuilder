@@ -330,8 +330,10 @@ def _lattice_block(struct: Structure,
         a, b, c = _compute_cell_from_extents(struct)
         lines += [
             "# WARNING: no lattice on the structure — an orthorhombic",
-            "# VACUUM BOX was fabricated from atom extents (a,b = extent",
-            "# + 30 Å padding; c = extent + 2 Å).  This models an",
+            "# VACUUM BOX was derived from the atom extents: each ISOLATED",
+            "# axis gets the structure's own vacuum on both sides (15 Å per",
+            "# side where none is set), and a transport axis gets the atom",
+            "# span with no padding at all.  This models an",
             "# ISOLATED CLUSTER, NOT a periodic surface electrode.  For a",
             "# real Au(111) lead, supply the structure's hexagonal cell",
             "# (set Structure.cell / the molstruct sidecar's 'cell').",
@@ -381,6 +383,20 @@ def _emit_geometry(struct: Structure,
         struct.elements,
         getattr(cfg, "species_order", None) if cfg is not None else None)
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
+    # AN OVERRIDE THAT OMITS A SPECIES REFUSES HERE, and it used to crash.
+    # `species_order` is honoured verbatim, so a list missing an element the
+    # structure contains left `species_idx[el]` to raise a bare
+    # `KeyError('Au')` while writing the coordinate block.  The SIESTA
+    # emitter has always refused this in words; transport could not reach it
+    # at all until `cfg` began arriving here on 2026-09-23, so the exposure
+    # is as new as the control.
+    missing = sorted(set(struct.elements) - set(species_idx))
+    if missing:
+        raise ValueError(
+            f"species_order does not list {', '.join(missing)}, which this "
+            f"structure contains.  The order is honoured verbatim, so every "
+            f"species has to appear in it -- or leave it unset and the "
+            f"default rule orders them (model/chemistry.md 3a)")
 
     resolved_cell = cell if cell is not None else struct.cell
     origin = (struct.resolve_cell_origin()

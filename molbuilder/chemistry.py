@@ -367,11 +367,15 @@ def species_order(elements: "Iterable[str]",
 
     *override* is the person's own answer -- the ``species_order`` catalogue
     row.  Non-empty, it is honoured VERBATIM and the rule below does not
-    run; an override that omits an element the structure uses is caught at
-    the deck gate (`siesta/layout.py`, *"the coordinate block uses species X,
-    which ChemicalSpeciesLabel does not declare"*).  Resolving the override
-    here rather than at each call site is the point: it was spelled in two
-    emitters and honoured by one.
+    run; an override that omits an element the structure uses is refused BY
+    THE EMITTER, before a deck exists -- `siesta/input.py` and, since
+    2026-09-23, `transport/transiesta.py`, each naming the missing species.
+    *(This said the deck GATE catches it.  It does not: `siesta/layout.py`
+    compares indices in an ALREADY-RENDERED deck, so the emitter dies first
+    -- and on the transport path it died with a bare `KeyError` until the
+    refusal was added.)*  Resolving the override here rather than at each
+    call site is the point: it was spelled in two emitters and honoured by
+    one.
 
     THE DEFAULT, when nobody has said otherwise.
 

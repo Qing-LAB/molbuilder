@@ -534,7 +534,7 @@ def api_transport_schema() -> Any:
     # sends it is not a 400; it selects nothing.
     # ⚠ THIS FILTER IS MEASURED DEAD IN SEVEN OF ITS TEN BRANCHES, and the
     # swap that replaced it was REVERTED because it opened a worse hole.
-    # Both halves are recorded in `plans/plan.md` W28; do not re-attempt
+    # Both halves are recorded in `plans/plan.md` W30; do not re-attempt
     # either without reading it.
     #
     # DEAD: `SEALED_ALWAYS`'s three names and four of `CONTRACT_FIELDS`'
