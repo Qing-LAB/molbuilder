@@ -1746,6 +1746,163 @@ X1 audit. The state column says where each one actually stands.
 
 ---
 
+### 3.8 The describe surface — what you set, where, and how you check it
+
+*Written 2026-09-23 at the user's direction, contract before code. It states
+what the Transport tab must be; § 2a.6 says why (the interface follows the
+parameter map, not the subject matter), and the shape here is the framework's
+own rather than a second design.*
+
+The surface has **three jobs, in the order a person does them**:
+
+1. **choose what you start from**, and see what that brought;
+2. **set the parameters**, all of them, each saying where its value came from;
+3. **check what was produced** — read the decks that will actually run.
+
+Today it does the first, does half of the second, and does not do the third.
+
+---
+
+#### 3.8.1 Choosing — say which of the three, and what it brought
+
+§ 3.1's three cases are what a person picks between, and the surface names
+them in those words. Never "form A" / "form B": those describe which files
+are in a folder.
+
+At the moment of choosing, the line under the picker says **which case this
+is** and **what came with it**:
+
+```
+finished run · settings from JunctionRelax.fdf
+saved structure · settings recorded from JunctionRelax.fdf when you exported it
+saved structure · no settings recorded — you choose them below
+```
+
+and, where a structure was edited after its settings were recorded, what that
+invalidated — the two flags of § 4.1b, which say different things: a geometry
+edit leaves the mesh cutoff and k-mesh converged for a cell that is gone; a
+label edit leaves the settings standing but moves the electrode/device
+partition the sort reads.
+
+> **The line must not claim an inheritance that did not happen.** It said
+> *"contract RECORDED"* for eleven months of a case whose values nothing
+> applied (§ 3.1's history note). A display of provenance is a claim about
+> what will run, and is wrong if the two disagree.
+
+---
+
+#### 3.8.2 Setting — every parameter, from the catalogue, organised by the framework
+
+**The schema is the catalogue's, narrowed by kind.** The Transport tab asks
+`catalogue_to_form_schema("siesta", …, calculation="transport")` — the same
+call the Build tab makes for an optimization. It is not built from a
+dataclass's field list.
+
+That is not tidiness; it is what makes the shared clusters *visibly* shared.
+Transport is the SIESTA base minus the relaxation driver plus the NEGF and
+TBtrans surface (§ 3.3), so the same six inner sections appear for both kinds
+and a person who knows the optimization tab already knows most of this one.
+
+**The organisation is the two axes** (`web/form-schema.md` § 1.3), and neither
+is chosen here:
+
+| axis | answers | drawn as |
+|---|---|---|
+| `group` | *when do I set this?* | the outer card, in the declared order |
+| `category` | *what question about the calculation is this?* | the legend inside the card |
+
+**Which parameters appear, and where, is the catalogue's own answer.** No
+hand-maintained list of names decides it, and the four markers already say
+everything needed:
+
+| marker | who answers it | the surface |
+|---|---|---|
+| `calculations` | — | absent from the list ⇒ not a parameter of this kind, so it is not drawn |
+| `allocation` | the scheduler, at prep | not a form field |
+| `role` | the stage's own role | not a form field, not a stage column — offering it would be a choice with one correct answer |
+| `citation` | a cited run, at `init` | **drawn, with its value and where the value came from**, and editable — § 2a.7 unsealed these |
+| `stages` | — | routes the value to the rung that owns it; a value with no `stages` belongs to the calculation |
+
+> **The three frozensets are deleted by this.** `SEALED_ALWAYS`,
+> `CONTRACT_FIELDS` and `UNRESOLVED_FIELDS` are hand-maintained restatements
+> of `role`, `citation` and "has no catalogue row"; `_dataclass_to_form_schema`
+> goes with them (§ 3.6 item 7 and § 3.7 already said so). A list of names
+> kept by hand is what let the web offer three controls every prep then
+> refused.
+
+#### 3.8.3 A value nobody chose is shown as not chosen
+
+**An unanswered parameter is empty, never a default wearing an answer's
+clothes.** § 6.4 of [`template.md`](?doc=engines/template.md) already has the
+state — *no `value`* means *declared, unresolved; a surface asks for it* — and
+says a valueless item still carries its `choices`, `range`, `unit` and `help`
+so the surface can offer the right options before any value exists.
+
+This matters most for the third citation case. A hand-built structure answers
+none of the shared values, and writing catalogue defaults into those slots
+claims a run said something no run said — after which no surface can tell the
+person's 300 Ry from nobody's.
+
+So the panel shows, per parameter, one of:
+
+```
+400 Ry   from the run you cited
+400 Ry   from the record saved with your structure
+400 Ry   you set this
+(empty)  not chosen — SIESTA's own default applies
+```
+
+#### 3.8.4 The shared values are edited in ONE place
+
+§ 2a.6: *one panel for Class A, edited once, carrying the all-stages warning;
+one panel per stage for its own Class C and Class E; **one editing surface,
+many read-only echoes**.*
+
+The shared panel is the only place the six shared values may be edited, and it
+carries the consequence in words: **changing any of these rebuilds all five
+stages**, because the leads and the device must not be able to disagree about
+the footing the self-energies were built on.
+
+A stage's own panel shows what it inherits **read-only**, and offers only what
+that rung owns. Editing a shared value inside a stage would imply the device
+could differ from its leads, which is the one thing that must be impossible.
+
+> Until this panel exists there is nowhere in the UI to state the electronic
+> description at all: the form hides those six and nothing writes a template.
+> `/api/task-setup/template-values` can READ one. That is the gap this section
+> closes, and it is why the panel is not optional polish.
+
+---
+
+#### 3.8.5 Checking — the decks that will actually run
+
+**After a prep, a person can read what was generated, and choose which.** A
+transport calculation writes several: one per rung, and one per bias point on
+the two rungs that vary over bias. They are not interchangeable, and *"what
+did my settings actually do"* is not answerable from the form.
+
+| the viewer shows | |
+|---|---|
+| which decks exist | by rung, and by bias point and attempt where those levels exist — the tree § 2a.11 describes, because the layout already says which results are shared |
+| the deck itself | verbatim, as written |
+| its report | the `.validation.txt` written beside it at the same moment, which answers *is this deck sound* |
+
+It **reads and never writes**. A deck is generated by `prep` from the
+description; a surface that let a person edit one would create a second source
+of truth for what ran, which is what the read-back check exists to prevent.
+
+The files are already reachable: `parse/dirs/job._enumerate_files` buckets a
+run directory's own `.fdf`s, and `/api/files/read` serves text inside the tree
+fence. What is new is the LIST — which decks this calculation prepared — and
+the panel that shows one at a time.
+
+> **Why this is early rather than last.** It is the only surface that answers
+> *what did the machine actually write*. Every other change in this section
+> alters a deck, and without it the person — and the next review — is taking
+> that on trust. It depends on nothing else here.
+
+---
+
 ## 4. Region labels drive everything
 
 The three runs are all derived from **per-atom region labels** on the input
