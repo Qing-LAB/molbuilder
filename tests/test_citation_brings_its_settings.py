@@ -97,3 +97,38 @@ def test_the_transport_axis_is_forced_to_one_whichever_source_answered(
     cfg = _cite(tmp_path, _junction(engine="siesta", source="x.fdf",
                                     contract=rec))
     assert cfg.kgrid == (3, 5, 1), "the third component is not the deck's"
+
+
+# ------------------------------------------------------------------ #
+#  "No record" has three causes, and they are not the same news      #
+# ------------------------------------------------------------------ #
+
+def _why(tmp_path, provenance=None):
+    import json
+    from molbuilder.transport.compose import (PROVENANCE_FILE,
+                                              load_compose_record)
+    if provenance is not None:
+        (tmp_path / PROVENANCE_FILE).write_text(json.dumps(provenance))
+    why: list = []
+    assert load_compose_record(tmp_path, citation="new/attempt",
+                               why=why) is None
+    return why[0]
+
+
+def test_nothing_composed_here_says_so(tmp_path):
+    assert "no slot-provenance.json" in _why(tmp_path)
+
+
+def test_a_record_for_a_DIFFERENT_citation_says_which(tmp_path):
+    """The likeliest cause on a travelled folder, and the one that read as
+    "the record is not beside task.json" -- sending a person looking for a
+    file they are standing on.  Re-point a slot after re-relaxing, prep on
+    a cluster, and the record IS there; it is just the previous attempt's.
+    """
+    msg = _why(tmp_path, {"citation": "old/attempt", "form": "relaxation"})
+    assert "old/attempt" in msg and "new/attempt" in msg
+
+
+def test_an_incomplete_record_names_the_missing_files(tmp_path):
+    msg = _why(tmp_path, {"citation": "new/attempt", "form": "relaxation"})
+    assert "incomplete" in msg and "junction.xyz" in msg

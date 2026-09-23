@@ -1542,15 +1542,23 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # out of its tree), that half degrades to UNVERIFIED honestly.
         from ..projects import find_projects_root
         root = find_projects_root(base)
+        why: list = []
         composed = load_compose_record(base, citation=citation,
-                                       tree_root=root)
+                                       tree_root=root, why=why)
         if composed is None:
             if root is None:
+                # NAME WHICH OF THE THREE.  This asserted the first --
+                # "the record is not beside task.json" -- for all of them,
+                # and the likeliest here is the second: a slot re-pointed
+                # after a re-relaxation, prepped on a machine outside the
+                # tree, with the record sitting right there composed from
+                # the previous attempt.
                 raise PrepError(
-                    f"the composed junction record is not beside "
-                    f"{TASK_FILENAME} and {base} is not inside a projects "
-                    f"tree, so the citation {citation!r} cannot be "
-                    f"resolved.  Prep once inside the tree that holds the "
+                    f"this transport calculation cannot be composed here: "
+                    f"{why[0] if why else 'there is no usable record'}.  "
+                    f"And {base} is not inside a projects tree, so the "
+                    f"citation {citation!r} cannot be resolved to compose "
+                    f"afresh.  Prep once inside the tree that holds the "
                     f"cited junction -- the record then travels with the "
                     f"folder (transport-design.md 4.1).")
             composed = compose_junction(citation, tree_root=root)
