@@ -504,7 +504,8 @@ def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
 
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray],
-                     *, dest_dir=None, **_) -> List[Issue]:
+                     *, dest_dir=None, calculation: str = "",
+                     **_) -> List[Issue]:
     """SIESTA-specific checks.
 
     Registered with the engine-validator dispatch at module bottom
@@ -523,7 +524,8 @@ def _validate_siesta(struct: Structure, cfg,
     # the frozen label is excluded (SIESTA consumes it as
     # Geometry.Constraints).
     from .sidecar import check_unconsumed_region_labels
-    issues += check_unconsumed_region_labels(struct, engine="SIESTA")
+    issues += check_unconsumed_region_labels(
+        struct, engine="SIESTA", calculation=calculation)
     # ...and the FIRST validation of a junction, beside it because it is
     # the same question one step further: the labels say which atoms are
     # leads, and a lead must come through the relaxation unmoved.  Asked

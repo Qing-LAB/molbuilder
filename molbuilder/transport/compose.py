@@ -1109,10 +1109,23 @@ def _params_or_none(deck_text):
         return None
 
 
-def load_compose_record(base_dir, *, citation: str, tree_root=None
+def load_compose_record(base_dir, *, citation: str, tree_root=None,
+                        why: "Optional[list]" = None
                         ) -> Optional[ComposedJunction]:
     """The travelled copy, loaded back — or ``None`` when there is no
     complete record for THIS citation (prep then composes fresh).
+
+    **`None` HAS THREE CAUSES AND THEY ARE NOT THE SAME NEWS.**  Pass a
+    list as *why* and the reason is appended to it, in words for a person.
+    The `frames_out` pattern (`workingcopy_structure.StructureCodec.load`):
+    the happy path is unchanged and the caller that needs more asks for it.
+
+    Without it, all three read as *"there is no record"* and prep's refusal
+    said exactly that — while the likeliest cause, on a folder that has
+    travelled somewhere the citation cannot be re-resolved, is that the
+    record is sitting right there and was composed from a DIFFERENT
+    attempt.  Re-point a slot after re-relaxing, prep on a cluster, and you
+    are sent looking for a file you are standing on.
 
     The record answers for the citation it was made from: a
     ``task.json`` re-pointed at a different attempt must NOT keep
@@ -1138,14 +1151,26 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None
     # in the provenance -- so read that first, then ask `record_files`
     # for the set.  Incomplete in any of them = NO RECORD, which is the
     # answer that makes prep compose fresh instead of failing.
-    if not prov_path.is_file():
+    def _no(reason: str):
+        if why is not None:
+            why.append(reason)
         return None
+
+    if not prov_path.is_file():
+        return _no(f"there is no {PROVENANCE_FILE} beside it, so nothing "
+                   f"here has been composed yet")
     provenance = json.loads(prov_path.read_text())
     if provenance.get("citation") != citation:
-        return None
+        return _no(f"the record beside it was composed from "
+                   f"{provenance.get('citation')!r}, and this task now "
+                   f"cites {citation!r}")
     form = provenance.get("form", "relaxation")
-    if any(not (base_dir / n).is_file() for n in record_files(form)):
-        return None
+    missing = [n for n in record_files(form)
+               if not (base_dir / n).is_file()]
+    if missing:
+        return _no(f"the record beside it is incomplete -- "
+                   f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} "
+                   f"missing")
     deck_path = base_dir / JUNCTION_DECK
     perm = json.loads((base_dir / PERMUTATION_FILE).read_text())
     from ..workingcopy_structure import StructureCodec

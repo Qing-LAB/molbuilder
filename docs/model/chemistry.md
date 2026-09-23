@@ -140,6 +140,88 @@ Emission is gated on `validate`, so the readable message comes first:
 **error** (blocking) and a resolvable non-canonical one as **info** — said once,
 not warned about on every run of a deliberate setup.
 
+### 3a. The species ORDER — one rule, every engine *(decided 2026-09-23)*
+
+A deck lists its species in some order, and that order fixes which **index**
+each element gets in `%block ChemicalSpeciesLabel` — which in turn fixes the
+orbital ordering inside SIESTA's `.DM` and `.TSHS`. Two runs that order
+species differently write files the next stage cannot read correctly
+(`engines/transport.md` § 2a.13 classes it a SHARED, binding value).
+
+**There was no single rule until now.** `siesta/input.py::_detect_species`
+sorted by atomic number and `transport/transiesta.py` sorted alphabetically,
+so the same structure got `H, C, S, Au` from one emitter and `Au, C, H, S`
+from the other.
+
+**THE RULE.** Start from atomic number, then place hydrogen the way a chemist
+writes it. Three cases, in this order:
+
+1. **Carbon present** → carbon first, then hydrogen, then the rest by Z. The
+   organic convention, and it **wins outright**: methanol is CH₄O and acetic
+   acid C₂H₄O₂, never HC…
+2. **No carbon, but a group VI or VII element present** (O, S, Se, Te · F, Cl,
+   Br, I) → **hydrogen first**, where its atomic number already puts it.
+   H₂O, HF, HCl, H₂S, HNO₃ — hydrogen is the electropositive partner here and
+   is written first.
+3. **Neither** → hydrogen goes **last of the light elements**, immediately
+   after its anchor: nitrogen if present, else the lowest-Z species that is
+   not hydrogen. NH₃, B₂H₆, SiH₄.
+
+Ties inside the atomic-number sort keep first-seen order, so `Au1` and `Au2`
+stay distinct and stay as the file listed them. Matching is on the ELEMENT a
+label names, never the label text, so `H1`/`H2` are both hydrogen and move
+together — landing after the **last** anchor label, because hydrogen belongs
+after the carbons as a group rather than between `C1` and `C2`.
+
+| | which case | the order |
+|---|---|---|
+| Au–BDT–Au `{Au,C,H,S}` | 1 — carbon wins over the sulfur | **C, H, S, Au** |
+| methanol `{C,H,O}` | 1 — carbon wins over the oxygen | **C, H, O** |
+| water `{H,O}` · HF · HCl · H₂S | 2 — group VI/VII | **H, O** · **H, F** · … |
+| nitric acid `{H,N,O}` | 2 — the oxygen decides, not the nitrogen | **H, N, O** |
+| ammonia `{H,N}` | 3 — anchor N | **N, H** |
+| diborane `{B,H}` · silane `{Si,H}` | 3 — anchor is the lightest non-H | **B, H** · **Si, H** |
+| a gold lead `{Au}` | no hydrogen | **Au** |
+
+**Why it is shaped this way.** It is the electronegativity ordering chemical
+formulae have always used: hydrogen leads when it is the electropositive
+partner (against a chalcogen or halogen) and trails when it is not (against
+boron, carbon, nitrogen, silicon, a metal). Carbon overrides because organic
+formulae are written Hill-style and a reader expects `C` first in anything
+with a carbon skeleton *(user, 2026-09-23)*.
+
+**WHERE THIS APPLIES — and where it deliberately does not.** Scanned
+2026-09-23; the rule governs every place a species list is **declared for an
+engine or listed for a reader**, and nothing else.
+
+| site | uses the rule? | |
+|---|---|---|
+| `siesta/input.py` | ✅ | the SIESTA deck's `ChemicalSpeciesLabel`. Its own `_detect_species` is **deleted** — a wrapper is a second name for one answer, and a second name is how a third rule appeared |
+| `transport/transiesta.py::_emit_geometry` | ✅ | every transport rung, **override included**. It sorted alphabetically until 2026-09-23 and could not see `cfg.species_order` at all, because the lifted block took no config — which the call site already had and dropped |
+| `describe.pseudo_species`, `prep`'s pseudopotential copy | ✅ | so the pseudos a description names are listed in deck order |
+| PySCF's emitters | — | they write atoms in the structure's own order and declare no species table. Nothing to order |
+| **`Structure.formula`** | ❌ **never** | it is an **identifier**, not chemistry: compared for equality, normalised into a run id (`run-identity.md` § 2.0a) and recorded in `task.json` as a witness. Its own docstring says so. Re-ordering it would change every run id, and the alphabetical order is what makes it a stable key |
+| `chemistry.analyze_structure` | ❌ | its sort exists to make a **pick** deterministic — `open_d[0]`'s spin hint is reported, and a frozenset's hash order varies per process. Reordering would change which metal is reported first, for no gain |
+| `compose.py`'s `.ion` lookup | ❌ | builds a dict; the order never surfaces |
+
+**The test that distinguishes them:** is this list *shown* — to an engine as a
+declaration, or to a person as a list of elements? Then it is species order.
+Is it an identifier, a lookup key, or an iteration whose order only needs to
+be stable? Then it is not, and forcing the rule on it would be churn.
+
+**The person may override it.** `species_order` is a catalogue row
+(`engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"`); set, it
+is honoured verbatim, and the rule above is the default beneath it. The
+override is resolved **inside the one entry**, not at each call site — it was
+spelled in two emitters and honoured by one, which is exactly the shape that
+let transport drift.
+
+An override that omits an element the structure uses is caught at the deck
+gate: *"the coordinate block uses species X, which ChemicalSpeciesLabel does
+not declare"* (`siesta/layout.py`).
+
+`chemistry.species_order(elements, override=None)` is **the one entry** — the default rule and the person's override resolved in one place. Nothing else derives a species list.
+
 ### Not this namespace
 
 `CA` is an alpha carbon as a **PDB atom name** and calcium as an **element

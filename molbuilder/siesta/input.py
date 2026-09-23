@@ -286,20 +286,10 @@ def _block_size_bounds(n_atoms: int,
     return (lo, hi)
 
 
-def _detect_species(elements: Iterable[str]) -> List[str]:
-    """Unique species, sorted by atomic number, preserving first-seen order
-    only as a tiebreaker.
-
-    Sorted by the ELEMENT the label names, so ``Au1`` and ``Au2`` sort
-    together at Z=79 and stay two distinct species -- which is the
-    reason a user writes them (``chemistry.resolve_element``).
-    """
-    seen: List[str] = []
-    for s in elements:
-        if s not in seen:
-            seen.append(s)
-    from ..chemistry import atomic_number
-    return sorted(seen, key=atomic_number)
+# `_detect_species` DELETED 2026-09-23 -- it was this module's own species
+# rule, and then a one-line wrapper over `chemistry.species_order`.  A
+# wrapper is a second name for one answer, and the second name is how the
+# transport emitter came to have a third.  Callers ask `chemistry` directly.
 
 
 def _wrap_into_cell(positions: np.ndarray, cell: np.ndarray
@@ -784,8 +774,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # from were rendered inside a block where the framework could not see
     # them (`script-preparation.md` § 4.1).
     cfg = config or SiestaConfig()
-    species = (list(cfg.species_order) if cfg.species_order
-               else _detect_species(struct.elements))
+    # THE ONE ENTRY, override included (`model/chemistry.md` § 3a).  This
+    # spelled the override resolution itself, and `transport/transiesta.py`
+    # spelled it differently -- so one deck honoured `species_order` and the
+    # other could not see it.
+    from ..chemistry import species_order as _species_order
+    species = _species_order(struct.elements, cfg.species_order)
     species_index = {s: i + 1 for i, s in enumerate(species)}
 
     # ---------- net charge: explicit override or auto-detect ----------

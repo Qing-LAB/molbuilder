@@ -806,13 +806,26 @@ class TestTheLadderPreps:
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
         assert "SolutionMethod         transiesta" in text
         assert "%block TS.Elecs" in text
-        # sorted: the first six coordinate rows are Au (species 1 --
-        # alphabetical Au/C/S), the next four the bridge (S C C S)
+        # Sorted: the first six coordinate rows are the lower Au electrode,
+        # the next four the bridge (S C C S).
+        #
+        # THE SPECIES INDEX IS ASKED, NEVER SPELLED.  What this test is about
+        # is the ORDER OF THE ATOMS -- that the sort put a contiguous lead
+        # first -- and the species column is how that is read off the deck.
+        # The column's numbering is a different contract
+        # (`model/chemistry.md` § 3a) with its own test, so spelling `1` here
+        # pinned that rule as a side effect: it said Au=1 from the
+        # alphabetical order this emitter used until 2026-09-23, and went red
+        # when carbon moved to the front for a reason this test has no
+        # opinion about.
+        from molbuilder.chemistry import species_order
+        idx = {el: str(i + 1) for i, el
+               in enumerate(species_order(["Au", "C", "S"]))}
         block = text.split("%block AtomicCoordinatesAndAtomicSpecies")[1]
         rows = [ln.split() for ln in block.splitlines()
                 if ln.strip() and not ln.startswith("%")]
-        assert [r[3] for r in rows[:6]] == ["1"] * 6
-        assert [r[3] for r in rows[6:10]] == ["3", "2", "2", "3"]
+        assert [r[3] for r in rows[:6]] == [idx["Au"]] * 6
+        assert [r[3] for r in rows[6:10]] == [idx[e] for e in "SCCS"]
 
     def test_the_transmission_deck_carries_the_tbt_window(self, calc):
         """SCIENCE. The transmission deck carries the tbtrans energy window

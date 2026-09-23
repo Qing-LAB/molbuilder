@@ -260,3 +260,40 @@ def test_the_faulted_seam_note_names_the_LAYER_COUNT_as_the_cause():
     m = extract_electrode_model(_au111_lead(4), "L-electrode")
     note = next(n for n in m.notes if "periodic seam" in n)
     assert "LAYER COUNT" in note and "4 layers" in note and "3-layer" in note, note
+
+
+def test_the_lead_states_the_DEVICE_s_transverse_periodicity():
+    """A lead changes ONE axis: transport.  Across the wire it is whatever
+    the device is.
+
+    `as_structure` asserted `("periodic",) * 3` with the note "A LEAD IS
+    PERIODIC IN ALL THREE" -- true of the transport axis, and an assertion
+    about the other two the structure already knew the answer to.  It is
+    wrong for a real electrode: a nanowire or chain lead is
+    vacuum-surrounded across the wire, and declaring those directions
+    periodic has the shared transverse k-mesh sample vacuum (user,
+    2026-09-23).
+    """
+    def _lead_of(cell, kinds):
+        """Both devices stated outright rather than taken from the module
+        fixture, whose cell-less default is one of the two answers -- so a
+        test reading only the other would pass on an accident."""
+        dev = _au_device()
+        dev.cell = cell
+        dev.axis_kind = kinds
+        return extract_electrode_model(dev, "L-electrode").as_structure()
+
+    slab = _lead_of(np.array([[17.30, 0.0, 0.0],      # hexagonal Au(111)
+                              [8.65, 14.98, 0.0],
+                              [0.0, 0.0, 40.0]]),
+                    ("periodic", "periodic", "transport"))
+    assert slab.axis_kind == ("periodic", "periodic", "periodic")
+    assert slab.cell[1][1] == pytest.approx(14.98), (
+        "and the 60 degree vector is still carried verbatim -- I6")
+
+    wire = _lead_of(np.diag([30.0, 30.0, 40.0]),
+                    ("isolated", "isolated", "transport"))
+    assert wire.axis_kind == ("isolated", "isolated", "periodic"), (
+        "the lead is periodic along transport -- that is what makes it a "
+        "lead -- and isolated across, because the device is")
+

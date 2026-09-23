@@ -509,8 +509,14 @@ from the leads, which is the one thing that must be impossible.
 
 ### 2a.7 The rulings
 
-*All made 2026-09-16. Together they are what turns § 2a from an argument into a
-contract; none of them is implemented.*
+*All made 2026-09-16. Together they are what turns § 2a from an argument into
+a contract.*  ⚠️ *This ended "none of them is implemented", which the banner
+200 lines above already contradicted.  Corrected 2026-09-23: ruling 1 (the
+relaxation DEFAULTS rather than seals) is built and is what
+`citation_defaults.py` does; the T(E) window, the two lead stages and the
+bias treatment are built; **Class C's per-stage defaults are NOT** — § 3.6a
+measures every rung taking `SiestaConfig()`'s own values, and § 2a.14's
+"what did NOT land" does not list it.*
 
 | | |
 |---|---|
@@ -1000,7 +1006,7 @@ nearly free — so these *should* differ across stages.
 
 #### What this map says is missing
 
-Classifying every parameter shows up three the map needs and the catalogue does
+Classifying every parameter shows up four the map needs and the catalogue does
 not have. Recorded here because a map that quietly omits them would be the same
 failure it exists to prevent:
 
@@ -1009,6 +1015,7 @@ failure it exists to prevent:
 | **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
 | **the equilibrium pole COUNT** | `TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword, and too few makes the device abort |
 | **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
+| **`TBT.Verbosity`** | *(added 2026-09-23.)* Class C at the transmission, an output preference like `write_forces`. **Every transport deck already writes it** — from `TransportConfig.log_level`, which no catalogue row declares and no description can set, so the map above says "every parameter a transport deck can carry" while the deck carries one more. Not a wrong answer today: the value it writes, 5, IS tbtrans's own default, so the line states the default and moves nothing. It is the *shape* that is the defect — a keyword entering a deck from outside the catalogue — and it is now the only one: of the 19 fields the lifted NEGF block reads, the other 18 are reachable from a description (measured 2026-09-23) |
 
 
 ### 2a.14 What landed — the map, as built *(2026-09-16)*
@@ -1225,33 +1232,76 @@ every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
 
-### 3.1 What makes a directory citable — files, not layout
+### 3.1 What you can cite, and what each one brings
 
-**The condition is what the directory HOLDS, never where it sits or what it
-is called.** A citation is checked against two forms, and a directory that
-satisfies neither is refused by name — told what it holds and what the
-condition wants, rather than "not citable".
+*Rewritten 2026-09-23. This listed two cases called "form A" and "form B" —
+names that describe which files are in a folder and tell a reader nothing
+about what they get. There are **three**, and what separates them is one
+question: **does the thing you cite bring its settings with it?***
 
-| form | the directory holds | what it is |
-|---|---|---|
-| **A — a relaxation** | exactly one `.fdf` **and** exactly one `.XV` | the deck that ran, and the geometry it ended at |
-| **B — a structure** | exactly one `.xyz` **with** its `.molstruct.json` beside it | a structure and its labels, with no run behind it |
+A transport calculation starts by pointing at something you already have.
+Three things qualify:
 
-**Form A wins when both are present**: the deck carries the contract, and more
-information never loses to less. **Two of anything inside one form is
-ambiguous and refused** — a citation names a directory, so the directory must
-answer unambiguously; keep one, or cite one that holds one.
+| what you point at | the folder holds | you get | the settings come from |
+|---|---|---|---|
+| **a finished run** | one `.fdf` and one `.XV` | geometry · labels · **settings** | the deck that actually ran |
+| **a saved structure that remembers its run** | one `.xyz` with its `.molstruct.json`, and that sidecar carries the settings of the run it came out of | geometry · labels · **settings** | the record written when you exported it |
+| **a saved structure** | one `.xyz` with its `.molstruct.json` | geometry · labels | nobody yet — **you choose them** |
 
-**Evidence is FILES, never a marker spelling of ours.** SIESTA writes
-`0_NORMAL_EXIT` as its last act on a clean exit, so a run carrying it ran to
-its own end *whatever wrapper — or no wrapper — launched it*. molbuilder's own
-record answers first only because it also carries the exit code.
+**Settings** here means the six numbers every stage of the calculation must
+agree on: the basis, the exchange–correlation functional and its authors, the
+mesh cutoff, the orbital energy shift, the transverse k-grid and the electronic
+temperature. § 2a.3 calls them shared, and § 5 is why they cannot differ
+between the leads and the device.
+
+**How the third one comes to remember.** You finish a relaxation, open it in
+the Results tab, and save the structure. The tab writes that run's own settings
+into the sidecar as it saves. Cite that pair later and the settings come back
+with it — which is the whole point of saving it rather than re-citing the run
+folder. A structure you built by hand has nothing to remember and is the third
+row.
+
+**A finished run wins.** When a folder satisfies more than one, the run is
+taken: the deck it ran is a stronger statement than a copy of it, and more
+information never loses to less.
+
+**Two of anything is refused.** A citation names a folder, so the folder must
+answer without a guess — two `.fdf`s, or two `.xyz`s, and it is refused by
+name, telling you what it holds and what the condition wants.
+
+**Where it sits and what it is called never matter.** The condition is what
+the folder HOLDS. There is no naming convention to obey and no directory
+layout to reproduce.
+
+> **The settings are DEFAULTED, never sealed** (§ 2a.7). Whichever of the
+> three you cite, the values land in this calculation's own template and you
+> may change any of them afterwards — a change applying to all five stages at
+> once, because there is one template. Relaxing with a cheap basis and then
+> transporting with an accurate one is ordinary practice and is what that
+> ruling exists for.
+
+**Evidence is FILES, never a marker of ours.** SIESTA writes `0_NORMAL_EXIT`
+as its last act on a clean exit, so a run carrying it ran to its own end
+*whatever launched it*. molbuilder's own record answers first only because it
+also carries the exit code.
 
 **Classifying is not composing.** A relaxation still running has record files
 that do not conclude; classification RECORDS that, because describing a
 transport calculation ahead of a finishing relax is legal. Composing from it
 refuses — you may plan against a run in flight, but you may not build a deck
 from a geometry that is still moving.
+
+> **History, because the middle row was lost once.** It was ruled on
+> 2026-08-29 (`archive/2026-09-01-transport-design.md` § 4.1b, *"the condition
+> has three shades"*) and this section was written with two. When the
+> parameter path was rebuilt around the template on 2026-09-16, the code that
+> acted on the middle row had nothing in the live contract to preserve it
+> against, and was dropped — while every path that READS and DISPLAYS it
+> survived. The tab went on saying *"contract RECORDED"* about settings
+> nothing applied any more. Measured 2026-09-23: a pair recording 400 Ry, TZP
+> and a 4×4 mesh produced a template of 300 Ry, DZP and Γ-only. **The three
+> rows above are the contract; a reader who finds only two has found a
+> regression.**
 
 ---
 
@@ -1405,7 +1455,7 @@ the parameters this way is what makes the rest of the design fall out.
 | answerer | what | how the template says it |
 |---|---|---|
 | **the person** | the transmission window and grid, the TBtrans outputs, broadening, the NEGF contour, the leads | an ordinary item with a `value` |
-| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | a **declared, valueless** item (§ 6.4) carrying a source marker; `prep` fills it from the cited deck |
+| **the citation** | basis, energy shift, XC functional + authors, mesh cutoff, transverse k, electronic temperature — the **electronic contract** | ⚠️ **SUPERSEDED by § 3.8.0** — this says *declared, valueless, filled at `prep`*, which is the SEALED reading § 2a.7 reversed. The values are filled ONCE at `jobset init` into this calculation's template, carry a value there, and the person may change them |
 | **the description** | job label, the bias list | the label is an ordinary item; the bias is `task.json`'s own `bias` block, because it is the sweep axis (§ 4.3) |
 | **the machine** | memory ceiling, thread count, ranks | `allocation` items — valueless on floor 2, filled at `prep` (G1) |
 | **the geometry** | which atoms are electrode / bridge / buffer, which are frozen | **not an item at all** — § 7's structure exclusion; it travels in the `.molstruct.json` sidecar and the deck's ATOM-METADATA block |
@@ -1582,9 +1632,13 @@ cannot be done first.** Each line is falsifiable.
    rung resolves a `SiestaConfig`, and TR4 deleted the general projection when
    the template made it unnecessary. One projection survives, at the boundary
    of the lifted NEGF block, and goes with it.
-7. `dataclass_to_form_schema` **has no callers** and is deleted; the transport
-   form is `GET /api/build/schema/siesta?calculation=transport`, with the
-   citation-answered fields shown locked rather than editable.
+7. `dataclass_to_form_schema` **has no production caller** and is to be
+   deleted; the transport form is generated from the catalogue.
+   ⚠️ **Two corrections (2026-09-23).** *"and is deleted"* — it is not;
+   it still has test callers, and § 3.7's row saying it is LIVE was true
+   until the swap that removed its last production caller was reverted
+   (§ 3.8.6). *"shown locked"* — withdrawn by § 2a.7, which unsealed those
+   values; where they are edited is § 3.8.2.
 8. `varies` on a transport description is **empty** — *superseded in part by
    § 2a.* Its premise was that the five stages share one config by ruling Q5.
    § 2a.3 rules that only Class A is shared; Class C is per stage by design, so
@@ -1667,7 +1721,7 @@ fixed.**
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1e-05`, `DM.EnergyTolerance 1e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
-| two settings-gate warnings are now visible and both are **wrong for transport** | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warns SIESTA "will refuse to start". (b) `structure.regions`: it says the region labels "do NOT consume / do not shape this calculation" — for transport the region partition is what the entire ladder is built on. Both checks take `(struct, cfg)` and cannot see the kind. The deck now states the pseudopotential provenance itself as a stopgap; making the gate kind-aware is its own piece of work |
+| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warns SIESTA "will refuse to start" — **still open**; the deck states the pseudopotential provenance itself as a stopgap. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and open-shell runs from the siesta validator against the run's REAL spin treatment instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | `_emit_geometry` writes positions shifted by `-resolve_cell_origin()`; the gate validates the world-frame structure. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
@@ -1686,16 +1740,205 @@ them physics.  It retires with `TransportConfig`.
 
 ### 3.7 What this replaces
 
-Rectification, not accretion — the following stop existing:
+Rectification, not accretion. **This is a PLAN, in the present tense, and the
+"deleted" column is what each row is FOR — not a record that it happened.**
+Measured 2026-09-23: four of the six rows are still live, and reading the table
+as a record is what made three of them look like settled decisions during the
+X1 audit. The state column says where each one actually stands.
 
-| deleted | why |
+| to stop existing | why | state, measured 2026-09-23 |
+|---|---|---|
+| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired | **LIVE.** `config/transport.py` exists; § 2a.14 records why — it feeds the lifted NEGF block and goes when that block is tabled |
+| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them | **LIVE**, both read in production (`stages.py`, `blueprints/transport.py`) |
+| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose | not re-measured |
+| the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape | **DONE** — `_emit_header` deleted 2026-09-17 |
+| `dataclass_to_form_schema` | its last caller goes with the form route | **LIVE**, called from `blueprints/transport.py` |
+| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row | **the row exists and reaches the deck** (§ 2a.14 measured `0 0 40`); the module constant also still exists, unread |
+
+---
+
+### 3.8 The parameter surface — ONE statement, and what it supersedes
+
+*Consolidated 2026-09-23 at the user's direction. The rules for this surface
+were written in six places that disagreed on three questions, and a seventh
+was added before the other six had been read. **This section is now the
+single statement. Where an older paragraph disagrees with it, that paragraph
+is superseded and says so at its own site.***
+
+What it supersedes, and each is marked there: § 3.4.1 and § 3.4.3's *"filled
+at `prep`"*, § 3.5's chain diagram putting the fill inside `prep`, § 3.6
+item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
+`web/form-schema.md`'s description of where a form comes from.
+
+---
+
+#### 3.8.0 The three questions the documents disagreed on, answered once
+
+| question | the answer, and it is the code's |
 |---|---|
-| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired |
-| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them |
-| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose |
-| the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape |
-| `dataclass_to_form_schema` | its last caller goes with the form route |
-| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row |
+| **When do the cited run's values arrive, and may the person change them?** | **Once, at `jobset init`**, into this calculation's own template, by `transport/citation_defaults.py` — *"the whole of the filling"* (`template.md` § 6.4). After that the template is the answer and `prep` reads the file, never the citation. The person **may change any of them**; a change applies to all five rungs at once because there is one template (§ 2a.7 ruling 1). The older reading — declared valueless, filled at prep, sealed — is withdrawn |
+| **Where are the shared values edited?** | In **one panel that writes the template** (§ 3.8.4). **Not** on the per-rung form, because that form's payload is a rung's override bag and a shared value given to one rung is refused at `prep`. They are not hidden; they are elsewhere |
+| **What generates the form?** | The **catalogue**, narrowed by kind — never a dataclass's field list. Not yet true of the code: the swap that did it was reverted (§ 3.8.6), and the reason is the open decision below |
+
+---
+
+#### 3.8.1 Choosing — name which of the three, and what it brought
+
+§ 3.1's three cases, in those words. Never "form A" / "form B", which name
+which files are in a folder and tell a reader nothing.
+
+```
+finished run · settings from JunctionRelax.fdf
+saved structure · settings recorded from JunctionRelax.fdf when you exported it
+saved structure · no settings recorded — you choose them below
+```
+
+Where a structure was edited after its settings were recorded, say what that
+invalidated: a geometry edit leaves the mesh cutoff and k-mesh converged for
+a cell that is gone; a label edit leaves the settings standing but moves the
+partition the sort reads.
+
+> **The line must not claim an inheritance that did not happen.** It said
+> *"contract RECORDED"* for a case whose values nothing applied (§ 3.1's
+> history note). A display of provenance is a claim about what will run.
+
+---
+
+#### 3.8.2 The surface is TWO surfaces, and that is the whole design
+
+This is the distinction every contradiction above came from. A person meets
+two panels and they are not the same kind of thing:
+
+| | **the shared panel** | **the per-rung form** |
+|---|---|---|
+| what it edits | the **template** | a rung's **override bag** |
+| what belongs on it | every value binding all five rungs — Class A (§ 2a.3) | Class C, the values a rung owns alone |
+| how many | **one**, for the calculation | one per rung |
+| the warning it carries | *changing this rebuilds all five stages* | none needed |
+| what it must never show | a rung-local value | **a shared value** — offering one is a control `prep` refuses |
+
+§ 2a.6 stated this as *"one editing surface, many read-only echoes"* and it
+is the rule that was lost: every attempt to build ONE form has produced
+either a form that hides the shared values with nowhere to put them, or a
+form that offers them and is refused downstream.
+
+**Both surfaces are generated from the catalogue**, narrowed by kind, by the
+same call the Build tab makes. Which fields land on which is answered by the
+markers the catalogue carries, never by a list a blueprint keeps:
+
+| marker | means | shared panel | per-rung form |
+|---|---|---|---|
+| `calculations` | not a parameter of this kind | — | — |
+| `allocation` | the scheduler answers at prep | no | no |
+| `role` | the rung's own identity; a choice with one correct answer | no | no |
+| **shared** *(see § 3.8.6 — no marker exists yet)* | binds every rung | **yes** | **no** |
+| `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
+| `stages` | only these rungs may own it | — | routed to those rungs |
+
+**`citation` is not the same as shared, and treating it as one is the defect
+of 2026-09-23.** `citation` says *who supplies the default*; shared says
+*who it binds*. Every `citation` row is shared, and Class A contains more:
+`species_order`, `spin_treatment`, `spin_total` and the pseudopotentials are
+shared and answered by nobody's run.
+
+The organisation of each panel is `web/form-schema.md` § 1.3's two axes and
+is not chosen here: `group` is the outer card, `category` the legend inside.
+
+---
+
+#### 3.8.3 A value nobody chose is shown as not chosen
+
+`template.md` § 6.4 already has the state — *no `value`* means *declared,
+unresolved; a surface asks for it* — and a valueless item still carries its
+`choices`, `range`, `unit` and `help`.
+
+This bites hardest on the third citation case. A hand-built structure
+answers none of the shared values, and writing catalogue defaults into those
+slots claims a run said something no run said — after which no surface can
+tell the person's 300 Ry from nobody's.
+
+```
+400 Ry   from the run you cited
+400 Ry   from the record saved with your structure
+400 Ry   you set this
+(empty)  not chosen — SIESTA's own default applies
+```
+
+---
+
+#### 3.8.4 Checking — the decks that will actually run
+
+A transport calculation writes several decks: one per rung, and one per bias
+point on the two rungs that vary over bias. *"What did my settings actually
+do"* is not answerable from a form.
+
+| the viewer shows | |
+|---|---|
+| which decks exist | by rung, and by bias point and attempt where those levels exist — § 2a.11's tree |
+| the deck | verbatim, as written |
+| its report | the `.validation.txt` written beside it at the same moment |
+
+It **reads and never writes**: a deck is generated by `prep` from the
+description, and an editable one would be a second source of truth for what
+ran.
+
+> **This is the same view `plan.md` § 5c.3 (a)–(f) is building for the
+> Results tab, from the other side.** That section gives the calculation-root
+> reader its public home (`_is_bundle_root`) and warns that a second copy in
+> `parse/dirs` *"would be instance 14"* of a known duplication. **The deck
+> viewer consumes that reader; it does not write its own.** An earlier draft
+> of this section designed a parallel enumerator, which is the mistake
+> § 5c.3 names in advance.
+
+---
+
+#### 3.8.5 What is true of the code today
+
+Stated so a reader can tell the contract from the state, which is what the
+six scattered versions could not do.
+
+| | state |
+|---|---|
+| the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
+| the per-rung form is generated from the catalogue | ❌ **reverted** — see § 3.8.6 |
+| the shared panel exists | ❌ **not built.** So there is nowhere in the UI to state the electronic description at all: the form hides those values and nothing writes a template. `/api/task-setup/template-values` can READ one |
+| a value nobody chose is shown as not chosen | ❌ not built; `init` writes catalogue defaults into unanswered `citation` rows |
+| the deck viewer | ❌ not built |
+| `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
+
+---
+
+#### 3.8.6 The one open decision — there is no marker for SHARED
+
+**This is the keystone, and nothing above it can be built until it is
+settled.**
+
+On 2026-09-23 the per-rung form was swapped to the catalogue and **reverted
+the same day**. The swap filtered shared values using the `citation` marker,
+which does not cover Class A — so the form offered `system_label`,
+`species_order`, `spin_treatment` and `spin_total` as per-rung overrides,
+all routed to the device rung. Measured consequences: a `system_label`
+override survives into three rungs' decks and breaks the `.TS.HSX` handover
+while being silently inert on the other two; a `species_order` override
+gives the device one orbital ordering and the leads another, which
+`model/chemistry.md` § 3a exists to make impossible.
+
+**`prep` has the same hole**, and it predates the swap: its shared-value
+refusal also gates on `citation=True`, so a stage override of
+`species_order` has never been refused. The swap did not create the hole; it
+made it reachable from the UI.
+
+So one declaration has to answer *"binds every rung"*, and it fixes both
+doors at once. Two shapes, and the choice is the user's:
+
+| | |
+|---|---|
+| **a sibling marker**, `shared = ["transport"]`, beside `citation` | keeps `citation` meaning exactly *who supplies the default*, which is what it is for. Costs one new axis in the catalogue |
+| **widen `citation`** to mean *shared, and here is who defaults it* | no new axis; but then a row shared with no default source has to carry a marker named after citations, which is the confusion that caused this |
+
+Either way the rule is the same and belongs in one place: **the catalogue
+declares what binds every rung; the form, the describe door and `prep` all
+read that one declaration.**
 
 ---
 
@@ -2205,9 +2448,119 @@ keywords in § 3.2 that cannot reach any transport deck — `MaxSCFIterations` a
 rung.  They need floor 3's `spec_for` arm (§ 3.6 items 1–4).  No per-stage
 mechanism would have delivered one of them.
 
-*(`electrode_kz` remains a separate open defect: it is a function parameter with
-a module default that `render_stage_deck` never passes, so the catalogue row is
-a control that does nothing.)*
+*(**Stale — corrected 2026-09-23.** This said `electrode_kz` "remains a separate
+open defect ... a control that does nothing", citing `render_stage_deck`, which
+was deleted 2026-09-17. § 2a.14 measured the lead deck rendering `0 0 40` and
+§ 5 I9 names `_validate_transport_kind` as its holder. The row reaches the deck.
+What does still exist is the unread module constant `wizard.DEFAULT_ELECTRODE_KZ`
+— § 3.7's last row, and X1 ②.)*
+
+---
+
+### 6.2 What happens to the STRUCTURE — citation to deck, hop by hop
+
+*Written 2026-09-23. § 6's diagram follows the files and § 6.1 follows the
+scripts; neither follows the **structure**, and that gap has now produced two
+separate reviews reaching opposite wrong conclusions about the same twenty
+lines. This section is the third view.*
+
+**The one sentence.** A transport calculation never builds a structure — it
+takes one that already exists, states the three facts SIESTA could not record,
+reorders it, and hands two views of it to the renderer.
+
+```mermaid
+flowchart TB
+    XV["<b>1 · the citation</b><br/>.XV: cell + positions + elements<br/>the deck: contract, start coords, labels"]
+    LOAD["<b>2 · labeled_citation_structure</b><br/>cell from the .XV · labels from the deck block<br/>or one sidecar · axis_kind STATED · origin stripped"]
+    GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
+    OVER["<b>4 · replace(positions, cell)</b><br/>the relaxed overlay"]
+    SORT["<b>5 · categorical_sort</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
+    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json + cited.fdf<br/>+ provenance + permutation"]
+    EX["<b>7 · extract_electrode_model → as_structure</b><br/>a SUBSET: the lead<br/>device's lat_a/lat_b verbatim + derived z-period"]
+    EM["<b>8 · _emit_geometry</b><br/>cell verbatim · atoms shifted by −origin<br/>species re-derived"]
+
+    XV --> LOAD --> GATE --> OVER --> SORT --> REC
+    REC -->|"the JUNCTION<br/>seed · device · transmission"| EM
+    REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
+```
+
+**Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
+later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,
+and hop 7 only for the two electrode rungs.
+
+#### What each hop does to the BOX
+
+| hop | the cell | why |
+|---|---|---|
+| 1 | SIESTA wrote it into the `.XV` | a fixed-cell relaxation ends in the box it started in |
+| 2 | read from the `.XV`, **never from the atoms** | § 7: the box is not recoverable from atom extents. If a sidecar carries the labels, its `cell` is *completed* from the `.XV` rather than allowed to replace it |
+| 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks |
+| 4–5 | carried through `replace()` | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
+| 6 | written to the sidecar, read back verbatim | |
+| 7 | **lateral taken verbatim, transport DERIVED** | the two halves differ on purpose — see below |
+| 8 | emitted verbatim | |
+
+#### Hop 7 is the one that confuses people
+
+The lead's box is built from two different kinds of number, and calling both of
+them "derived" is what has gone wrong twice:
+
+| | where it comes from | may it be computed? |
+|---|---|---|
+| **lateral `a`, `b`** | the device's own lattice vectors, **copied** | **no.** This is invariant I6. A computed transverse box severs the crystal — a rectangle cannot tile a 60° hexagonal Au(111) lattice, so the lead would be a different metal from the device it came out of |
+| **transport `c`** | `z_span + d_interlayer`, **computed** (`cell.bulk_z_period`) | **yes, and it must be.** A finite slab does not state its own bulk repeat. § 7.1: this is the one number the person is asked to verify, and the lead's card reports whether the resulting seam `CONTINUES`, is `ECLIPSED` or is a `TWIN` |
+
+So *"derived"* is not the thing to be suspicious of. **"Fabricated from atom
+extents"** is.
+
+#### A worked example
+
+An illustrative Au(111) junction — six lead layers a side, a molecule between:
+
+```
+the junction, from the citation
+    cell   a = (17.30, 0.00, 0)      <- 60 degrees, hexagonal
+           b = ( 8.65, 14.98, 0)
+           c = ( 0,     0,    46.2)  <- the device length
+    axis_kind  periodic, periodic, transport
+
+the lead, extracted from the L-electrode region
+    cell   a = (17.30, 0.00, 0)      <- COPIED, character and all
+           b = ( 8.65, 14.98, 0)     <- COPIED
+           c = ( 0,     0,    14.4)  <- COMPUTED: 12.0 span + 2.40 spacing
+    axis_kind  periodic, periodic, periodic   <- a lead is bulk in all three
+```
+
+The lead's `b` keeps its `14.98` y-component. That single number is what I6
+buys: drop it and you have a rectangle, and the gold no longer joins up
+sideways.
+
+#### What each hop does to the rest of the METADATA
+
+| | carried | notes |
+|---|---|---|
+| regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
+| regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
+| `axis_kind` | **stated at hop 2, never read from a file** | no cited file records it: the `.XV` carries the cell, the metadata block carries regions and annotations, and SIESTA has no such concept. I8 settles it — z is open, x and y are the transverse mesh. It is a fact of *being a transport calculation*, not something inherited from the relaxation |
+| `cell_origin` | **stripped at hop 2** | the `.XV` is SIESTA's own frame, anchored at the origin. A sidecar's `cell_origin` is the corner of a box drawn around *different* coordinates, and adopting it shifted junctions by their whole authoring corner |
+
+#### Which door reads the box, and why they differ
+
+`_emit_geometry` reads the two halves of the frame through **different doors**,
+which looks inconsistent and is not:
+
+```python
+resolved_cell = cell if cell is not None else struct.cell   # RAW
+origin = struct.resolve_cell_origin()                        # RESOLVED
+```
+
+The **origin** goes through `resolve_*` because `null` there is meaningful: it
+means *derive the corner* (`structure-periodicity.md` § 6 clause 2a), and for a
+`.XV` — whose atoms already sit inside the box — the derivation answers *no
+shift*. The **cell** is read raw because on this path it is always stated: hop 3
+refuses a citation without one, and hop 7 always states one. There is nothing
+for `resolve_cell()` to derive, and if it ever did derive one the answer would
+be a padded box, which is the thing § 7 forbids.
 
 ---
 
@@ -2263,7 +2616,11 @@ Three corrections that catch real mistakes:
 - **The cell is hexagonal, and you may relax at a coarser k than transport.**
   Au(111) tiles the transverse plane (lateral vectors ≈ 17.3 Å at 60°) — the box is
   **not** recoverable from atom extents (padding fabricates an orthorhombic box that
-  severs the periodic gold), so `--cell-fdf` preserves the real lattice. Forces are
+  severs the periodic gold), so the real lattice is carried through rather than
+  recomputed — the `.XV` states it and the extraction copies it (§ 6.2).
+  *(This said `--cell-fdf` preserves it. There is no such flag and there never
+  was one in this codebase — zero occurrences in `molbuilder/`. Corrected
+  2026-09-23.)* Forces are
   k-robust while the sharp `T(E_F)` Fermi-surface integral is not, so it is sound to
   **relax at a coarser transverse k (e.g. 2×2×1) and run transport dense (e.g.
   4×4×1)** [Soler 2002; Papior 2017]. **But note:** the composite reads the transverse k FROM the cited relaxation's
@@ -2382,7 +2739,9 @@ single-point, or a relaxation if those layers are not frozen.
   init --calculation transport`; no hand-over, because nothing is
   awaiting).  Transport-only knobs changed in the form ride as
   device-stage overrides; the electronic-contract fields are sealed at
-  both doors (the citation's to say).  **The parameters card is one panel
+  both doors (the citation's to say).  ⚠️ **SUPERSEDED by § 2a.7 and
+  § 3.8.2**: the cited run DEFAULTS them and the person may change them.
+  What is still true is that they are never a PER-RUNG override.  **The parameters card is one panel
   per ENGINE** since 2026-09-15 — § 3.2, and the follow-up below is where
   its second panel comes from.  Task setup reads the saved
   description as the run surface (machine, queue, prep).  **The tab's live

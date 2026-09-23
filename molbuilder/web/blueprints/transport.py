@@ -532,6 +532,31 @@ def api_transport_schema() -> Any:
     # refuse -- precisely the trap this docstring says the filter exists
     # to prevent.  The argument is kept only so an older page that still
     # sends it is not a 400; it selects nothing.
+    # ⚠ THIS FILTER IS MEASURED DEAD IN SEVEN OF ITS TEN BRANCHES, and the
+    # swap that replaced it was REVERTED because it opened a worse hole.
+    # Both halves are recorded in `plans/plan.md` W30; do not re-attempt
+    # either without reading it.
+    #
+    # DEAD: `SEALED_ALWAYS`'s three names and four of `CONTRACT_FIELDS`'
+    # seven are `TransportConfig` spellings, and `resolvable_override_names`
+    # one line below rejects them first -- so those branches cannot fire.
+    # LIVE HOLE, the same coin: the catalogue's own spellings for four of
+    # those values (`mesh_cutoff`, `kgrid`, `pao_energy_shift`,
+    # `electronic_temperature`) pass BOTH guards here and are refused by
+    # `prep`, which is the "Described succeeded, every later prep failed"
+    # trap this docstring says the filter exists to prevent.
+    #
+    # WHY THE CATALOGUE SWAP WAS REVERTED (2026-09-23): the catalogue's
+    # narrowing offers `system_label`, `species_order`, `spin_treatment`
+    # and `spin_total`, none of which carries the `citation` marker, so a
+    # `skip_shared` filter built on that marker let them through as
+    # PER-RUNG overrides.  `route_overrides` sends them to the device,
+    # where a `system_label` breaks the ladder's file handover and a
+    # `species_order` gives the device one orbital ordering and the leads
+    # another -- the disagreement `model/chemistry.md` § 3a exists to make
+    # impossible.  The root is that there is NO MARKER FOR "SHARED":
+    # `citation` means "a cited run answers this" and Class A (§ 2a.13) is
+    # larger than that.  W28 is where that is decided.
     hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS | set(CONTRACT_FIELDS)
     # AND EVERY CONTROL PREP CANNOT RESOLVE.  The three sets above are the
     # SEALED question -- what a person may not change.  This is the different

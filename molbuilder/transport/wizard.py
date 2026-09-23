@@ -16,9 +16,21 @@ Guaranteed-by-construction invariants
 
 * **I2 (pseudos) / I10 (geometry):** the electrode atoms are the device
   electrode-region coordinates + species, copied verbatim.
-* **I6 (lateral cell):** the electrode ``a, b`` are the *device's* lateral
-  cell (``_compute_cell_from_extents`` on the device), so the lead tiles
-  the device cross-section exactly.
+* **I6 (lateral cell):** the electrode ``a, b`` are the device's own lattice
+  vectors, **copied verbatim** -- character and all, so a hexagonal Au(111)
+  surface stays hexagonal and the lead tiles the device cross-section.
+
+  *Read this line, not the one it replaced.* It named
+  ``_compute_cell_from_extents`` as the mechanism, which is the FALLBACK taken
+  only when the device states no cell -- and that fallback pads the atom
+  extents into a rectangle, which `engines/transport.md` § 7 calls wrong
+  rather than approximate ("padding fabricates an orthorhombic box that severs
+  the periodic gold").  The line described the code as it stood before
+  ``4c9ee506`` *"preserve hex Au(111) lattice, don't fabricate vacuum box"* and
+  was never swept.  On 2026-09-22 two separate reviews read it and reached
+  OPPOSITE wrong conclusions -- one that the fallback was the sanctioned path,
+  one that it was harmless dead code.  § 5 is the statement of record: I6 is
+  held by taking ``lat_a``/``lat_b`` verbatim.
 * **I7 (transverse k):** the electrode ``(kx, ky)`` are the device's
   ``k_mesh_transverse``.
 * **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** the lead and the
@@ -52,7 +64,7 @@ writes ``<label>.TSHS`` for the device's ``TS.Elec.<name>`` reference.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -100,6 +112,13 @@ class ElectrodeModel:
     n_layers: int
     d_interlayer: float              # THE layer spacing (Å) -- checked equal
     n_atoms: int
+    #: The DEVICE's transverse axis kinds, carried so the lead can state its
+    #: own periodicity honestly.  A slab electrode tiles the plane and is
+    #: `periodic, periodic`; a nanowire or chain lead is vacuum-surrounded
+    #: and is `isolated, isolated` -- and `as_structure` must not assert the
+    #: first about the second (user, 2026-09-23).  Defaulted so an older
+    #: caller constructing a model by hand still gets the common case.
+    transverse_kind: Tuple[str, str] = ("periodic", "periodic")
     notes: List[str] = field(default_factory=list)
 
     def as_structure(self) -> Structure:
@@ -121,10 +140,29 @@ class ElectrodeModel:
         argument for a composite kind, and four other callers would carry a
         parameter they never use.
 
-        The cell is the lead's own: the device's lateral vectors verbatim, so
-        the lead tiles the device's cross-section, and the bulk repeat along
-        transport. That third vector is the one number a person is asked to
-        verify (§ 7.1), and it is the same one this model already pins.
+        The cell is the lead's own, and its two halves come from different
+        places ON PURPOSE (`engines/transport.md` § 6.2):
+
+        * ``lat_a``/``lat_b`` are the device's lattice vectors **copied** --
+          I6, and a computed transverse box would sever the crystal;
+        * the third vector is the bulk repeat **computed** from the layer
+          spacing, because a finite slab cannot state its own period.  It is
+          the one number a person is asked to verify (§ 7.1).
+
+        So "derived" is not the suspicious word here; *fabricated from atom
+        extents* is.
+
+        WHAT THIS DELIBERATELY DOES NOT CARRY.  Only elements, positions,
+        title, cell and ``axis_kind`` are stated, so a lead reaches the
+        renderer with no ``regions``, no ``annotations``, no ``info`` and no
+        identity columns.  The partition is right to drop -- a bulk lead has
+        no lead/bridge/buffer division to state, and the electrode deck emits
+        no ``%block TS.Elec``.  **The other three are an open question, not a
+        decision**: `model/structure.md` § 2.2a says a strip must be explicit
+        and names a silent one a defect, and the recorded contract in ``info``
+        is exactly what the citation warnings read.  Recorded here rather than
+        quietly fixed, because whether a lead inherits the junction's recorded
+        contract is a contract question (`plans/plan.md`, 2026-09-23).
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
@@ -137,16 +175,37 @@ class ElectrodeModel:
         # vacuum / is not periodic; the electrode .TSHS cannot attach
         # seamlessly" about a lead this very function declares periodic.
         #
-        # A LEAD IS PERIODIC IN ALL THREE, and says so.  The device is open
-        # along transport and the lead is not -- that difference is the
-        # whole reason the lead is computed separately, so a structure that
-        # claimed otherwise would misdescribe what makes it a lead.
+        # THE TRANSPORT AXIS IS THE ONE A LEAD CHANGES.  The device is OPEN
+        # along transport -- the leads enter as self-energies -- and the lead
+        # is not: it is genuinely periodic there, and that difference is the
+        # whole reason the lead is computed separately.
+        #
+        # ACROSS the wire it is whatever the device is, and asserting
+        # `periodic` there was wrong for a real case.  A slab electrode tiles
+        # the plane; a NANOWIRE OR CHAIN lead is vacuum-surrounded, so a
+        # device of `isolated, isolated, transport` yields a lead of
+        # `isolated, isolated, periodic` (user, 2026-09-23).
+        #
+        # WHAT IT ACTUALLY CHANGES, measured -- an earlier draft of this note
+        # claimed the transverse k-mesh would sample vacuum, and it would
+        # not: NOTHING derives a k-mesh from `axis_kind`.  Both
+        # `deck.py::_emit_kgrid_block` and `_emit_electrode_kgrid_block`
+        # read `cfg.kgrid` unconditionally.  What it changes is that the
+        # deck stops printing "transverse axis a declared periodic but
+        # leaves N A empty" about a lead that is correctly vacuum-
+        # surrounded, and that the lead's metadata stops asserting a
+        # periodicity the device never claimed.
+        #
+        # It said `("periodic",) * 3` with the note "A LEAD IS PERIODIC IN
+        # ALL THREE" -- true of the transport axis, and an assertion about
+        # the other two that the structure already knew the answer to.
         return Structure(
             elements=list(self.elements),
             positions=np.asarray(self.positions, dtype=float).copy(),
             title=f"bulk lead ({self.label})",
             cell=cell,
-            axis_kind=("periodic", "periodic", "periodic"))
+            axis_kind=(self.transverse_kind[0], self.transverse_kind[1],
+                       "periodic"))
 
 
 # --------------------------------------------------------------------- #
@@ -404,9 +463,21 @@ def extract_electrode_model(
             f"basis's orbital ranges when .ion files sit beside the "
             f"citation; consider more lead layers if it refuses.")
 
+    # THE DEVICE'S OWN ANSWER, not a guess: the lead tiles the same
+    # cross-section, so it is periodic across the wire exactly when the
+    # device is (`engines/transport.md` § 5, I6).
+    # `("isolated",) * 3` LIKE ITS ELEVEN NEIGHBOURS.  Unreachable --
+    # `__post_init__` always fills `axis_kind` -- but the commit that wrote
+    # this fallback had just argued, thirty lines away, that every such
+    # fallback in the tree answers `isolated` and that the one which must
+    # not disagree is the one whose waking would relabel an emitted deck.
+    # This was the twelfth, and it disagreed.
+    dev_kind = tuple(getattr(device, "axis_kind", None)
+                     or ("isolated",) * 3)
     return ElectrodeModel(
         label=label, block_name=block_name, elements=elems, positions=pos,
         lat_a=lat_a, lat_b=lat_b,
+        transverse_kind=(dev_kind[0], dev_kind[1]),
         cell_a=float(np.linalg.norm(lat_a)), cell_b=float(np.linalg.norm(lat_b)),
         z_period=zper, z_span=z_span, n_layers=n_layers,
         d_interlayer=d_inter, n_atoms=len(elems), notes=notes)

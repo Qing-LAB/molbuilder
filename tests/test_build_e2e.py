@@ -360,11 +360,27 @@ class TestSidebarStructureFlow:
             "(ctx) => window.molbuilder.projects.publishCommit(ctx.dir, ctx.file)",
             {"dir": str(Path(p).parent), "file": p},
         )
-        # The full fused card + 3Dmol canvas mount into the host.
+        # The full fused card + 3Dmol canvas mount into the host -- AND the
+        # count line has been filled.
+        #
+        # WAITING FOR THE CARD IS NOT ENOUGH, and that is what made this test
+        # flaky.  A viewer MOUNTS BEFORE IT HAS A STRUCTURE (molview.md § 8;
+        # `structure-optimization/viewer.js` says so at the call), and the
+        # count element is created during card construction
+        # (`lib/molview/ui.js`) while its text is written only by `drawList`
+        # when atoms arrive.  So `.molviewer-card` + `canvas` can all exist
+        # with the count still the EMPTY STRING, and the read below then did
+        # `"".split(" of ")[1]` -> `undefined` -> `IndexError`.
+        #
+        # The structure's own arrival is the thing to wait for, so wait for
+        # the line that reports it.  Test-only: nothing about the product
+        # changes, and the mount-before-load order is deliberate.
         page.wait_for_function(
             "() => { const h = document.getElementById('viewer-host');"
-            "  return !!h && !!h.querySelector('.molviewer-card')"
-            "         && !!h.querySelector('canvas'); }",
+            "  if (!h || !h.querySelector('.molviewer-card')"
+            "         || !h.querySelector('canvas')) return false;"
+            "  const c = h.querySelector('.molviewer-selection-count');"
+            "  return !!c && c.textContent.includes(' of '); }",
             timeout=15_000,
         )
         # The viewer holds the committed structure, and the panel's own count
