@@ -960,7 +960,6 @@ def _control_for(item) -> str:
 
 def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                              calculation: str = "optimization",
-                             *, skip_shared: bool = False,
                              ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
 
@@ -1010,19 +1009,6 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # on the latter would take a legitimate control off the Build form.
     items = [it for it in items
              if not getattr(it, "role", None) or calculation not in it.role]
-    # A SHARED VALUE IS NOT A PER-STAGE CONTROL.  `skip_shared` is for a
-    # surface whose payload is a rung's override bag: an item the catalogue
-    # marks `citation` for this kind belongs to the whole calculation, and
-    # `prep` refuses it as an override, so offering it there is the
-    # accept-then-fail trap.  The surface that edits them is the shared
-    # panel (`engines/transport.md` § 3.8.4), which writes the template.
-    # Per kind, like every other marker: these same rows are ordinary
-    # controls on a Build form, where nobody else answers them.
-    if skip_shared:
-        items = [it for it in items
-                 if not getattr(it, "citation", None)
-                 or calculation not in it.citation]
-
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"

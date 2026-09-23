@@ -79,33 +79,34 @@ class TestTransportSchemaEndpoint:
             assert not (offered & SEALED_ALWAYS)
 
     def test_schema_serves_only_the_override_lane(self, web):
-        """The tab's form is the OVERRIDE lane, and since 2026-09-23 it is
-        the CATALOGUE's schema narrowed by kind -- the same call the Build
-        tab makes (`engines/transport.md` § 3.8.2).
+        """The tab's form is the OVERRIDE lane: the electronic contract
+        is the citation's to say, and a field the describe door refuses
+        BY NAME must not be offered as an input (found rendered
+        2026-08-29 — ten sealed fields as editable inputs, the bias
+        asked twice).  The filter empties System and Electrodes whole,
+        so the served sections are the ones that carry transport-only
+        knobs, still in ``_form_section_order`` order.
 
-        **The sections are the six SHARED categories**, not a per-engine
-        list.  That is the point: transport is the SIESTA base minus the
-        relaxation driver plus the NEGF/TBtrans surface (§ 3.3), so the
-        clusters it shares with an optimization show the same headings and
-        a person who knows that tab knows most of this one.  This asserted
-        seven hand-ordered names out of `TransportConfig._form_section_order`
-        -- the dataclass the form was built from, which § 3.6 item 6 has
-        wanted gone since 2026-09-16.
-
-        What must still never be offered is anything the door refuses, and
-        the markers answer it now rather than three frozensets: `role` (the
-        rung's own business), `citation` (shared by all five rungs, so a
-        per-stage override of one is refused) and `calculations`.
-        """
-        from molbuilder import template as _T
+        **The list grew on 2026-09-15** and the order is now a scientific
+        one (`engines/transport.md` § 3.3): what is computed, how sharply,
+        what is written, then the machinery.  "NEGF" is gone as a heading --
+        it had collected both the density contour AND the five electronic-
+        contract fields, which are not NEGF parameters at all."""
+        from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
         body = web.get("/api/transport/schema").get_json()
         sections = body["schema"]["sections"]
-        names = [s["name"] for s in sections]
-        assert names == [c for c in _T.CATEGORIES if c in names], (
-            "the shared categories, in the catalogue's declared reading "
-            "order -- not alphabetical and not the file's order")
-        assert len(names) > 1 and "procedure" in names
-
+        assert [s["name"] for s in sections] == [
+            "Transmission", "Transmission k-sampling", "Spin channel",
+            "Broadening", "Outputs", "NEGF density contour", "Leads",
+        ], (
+            "the override lane's sections, in the order a person decides "
+            "in.  System and Electrodes are emptied by the seal filter, "
+            "and 'Electronic contract' appears in NO lane: § 2a.7 makes "
+            "those the template's to answer, never a per-stage override.  "
+            "Runtime and Logging went on 2026-09-16: they held only "
+            "`max_memory_mb`, `num_threads` and `log_level`, which `prep` "
+            "cannot resolve -- three controls whose use guaranteed that "
+            "every later prep refused the whole calculation")
         offered = {f["name"] for s in sections for f in s["fields"]}
         from molbuilder.transport.stages import resolvable_override_names
         unresolvable = offered - resolvable_override_names()
@@ -113,17 +114,12 @@ class TestTransportSchemaEndpoint:
             f"the form offers {sorted(unresolvable)}, which `prep` refuses "
             f"by name -- a control the door is guaranteed to reject is not "
             f"a control")
-
-        items = {i.name: i for i in _T.select(_T.catalogue(), engine="siesta")}
-        for name in sorted(offered):
-            it = items[name]
-            assert "transport" not in (getattr(it, "role", None) or ()), (
-                f"{name} is the RUNG's own business for transport "
-                f"(template.md 6.4) and must not be a form field")
-            assert "transport" not in (getattr(it, "citation", None) or ()), (
-                f"{name} is SHARED by all five rungs, so a per-stage "
-                f"override of it is refused at prep -- it belongs on the "
-                f"shared panel (transport.md 3.8.4), not here")
+        leaked = offered & SEALED_TRANSPORT_FIELDS
+        assert not leaked, (
+            f"sealed fields served as form inputs: {sorted(leaked)} — "
+            f"the describe door refuses these by name, so offering "
+            f"them is a guaranteed 400"
+        )
 
     # `test_engine_choices_are_registered_engines` deleted 2026-09-17 with the engine registry.
 

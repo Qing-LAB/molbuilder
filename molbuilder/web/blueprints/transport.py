@@ -37,7 +37,7 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
-    catalogue_to_form_schema as _catalogue_to_form_schema,
+    dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
 )
 
@@ -495,60 +495,93 @@ def api_transport_describe() -> Any:
 
 @bp.route("/api/transport/schema", methods=["GET"])
 def api_transport_schema() -> Any:
-    """The transport tab's form schema — **the catalogue's, narrowed by kind.**
+    """Return the transport TAB's form schema: the transport-only knobs.
 
-    THE SAME CALL THE BUILD TAB MAKES (`engines/transport.md` § 3.8.2), with
-    ``calculation="transport"``.  That is not tidiness: transport is the
-    SIESTA base minus the relaxation driver plus the NEGF and TBtrans
-    surface (§ 3.3), so the six shared `category` sections come out the same
-    for both kinds and a person who knows the optimization tab already knows
-    most of this one.  The two grouping axes are `web/form-schema.md`
-    § 1.3's and neither is chosen here.
+    The electronic contract (engine, basis, XC, mesh, temperature, the
+    transverse k, the bias, the label) is the CITATION's to say — it
+    arrives from the cited junction's own deck at prep, and the
+    describe door refuses those fields BY NAME.  A form field the door
+    is guaranteed to refuse is a trap, not a control (found rendered
+    2026-08-29: ten sealed fields sat as editable inputs, and the bias
+    was asked twice), so the sealed set is filtered HERE, from the same
+    one constant the two refusing doors read.  What remains IS the
+    override lane: Transmission / NEGF / Runtime knobs that ride the
+    device stage's bag (stages.md § 6.2).  The bias is card 4's own
+    input — a describe-level fact beside the citation, not a config
+    override.
 
-    **It was built from ``TransportConfig``'s field list, with three
-    hand-kept frozensets filtering it** — and by 2026-09-23 those sets were
-    in a vocabulary the surrounding code had left behind.  Measured:
-
-      * SEALED_ALWAYS -- ``engine``, ``job_name``, ``bias_voltages_v`` --
-        none is a `SiestaConfig` field, so all three were refused one line
-        earlier by ``resolvable_override_names()`` and the branch could
-        never fire;
-      * of CONTRACT_FIELDS' seven, four were the `TransportConfig`
-        spellings (``siesta_mesh_cutoff_ry``, ``energy_shift_ry``,
-        ``k_mesh_transverse``, ``electronic_temperature_k``) and equally
-        dead.  **Seven of ten branches unreachable** -- and the live hole
-        was the other side of the same coin: the catalogue's own spellings
-        (``mesh_cutoff``, ``kgrid``, ``pao_energy_shift``,
-        ``electronic_temperature``) passed BOTH guards and were refused at
-        prep, which is the "Described succeeded, every later prep failed"
-        trap the old docstring said the filter existed to prevent.
-
-    The markers the catalogue already carries answer all of it, per kind and
-    without a list this file keeps: ``calculations`` (not a parameter of
-    this kind), ``role`` (the rung's own business -- filtered in
-    ``catalogue_to_form_schema``), ``allocation`` (the scheduler's), and
-    ``citation``, which is DRAWN because § 2a.7 unsealed those values: they
-    are defaulted from the cited run and the person may change them.
-
-    THE SHARED VALUES ARE NOT ON THIS SURFACE, and the reason is what this
-    payload IS.  Every field here rides a rung's override bag, and a value
-    the catalogue marks ``citation`` is shared by all five rungs -- giving
-    one rung its own would let the device disagree with its own leads about
-    the footing the self-energies were built on, so `prep` refuses it.
-    Offering it here would be the same trap pointed the other way: the form
-    accepts, the run fails later.
-
-    They are not hidden, they are ELSEWHERE: § 3.8.4's shared panel, which
-    edits the template once with the all-stages warning -- "one editing
-    surface, many read-only echoes" (§ 2a.6).  Filtered by the marker, per
-    kind, not by a list this file keeps: the same rows are ordinary
-    person-answered controls on the Build tab, where nothing else answers
-    them.
+    Section order still follows ``TransportConfig._form_section_order``;
+    sections the filter empties (System, Electrodes) are dropped whole.
     """
-    schema = _catalogue_to_form_schema("siesta", "t",
-                                       calculation="transport",
-                                       skip_shared=True)
-    return jsonify({"ok": True, "schema": schema})
+    from molbuilder.transport.stages import (CONTRACT_FIELDS,
+                                             SEALED_ALWAYS,
+                                             UNRESOLVED_FIELDS,
+                                             resolvable_override_names)
+    # HIDDEN IN BOTH LANES, and the `?contract=` argument no longer
+    # changes anything here.
+    #
+    # It used to: `cited` hid the contract fields and `open` offered them,
+    # because a form-B citation (a labeled pair, no deck) had nowhere else
+    # to state a basis.  On 2026-09-16 the describe door stopped making
+    # that distinction -- `engines/transport.md` § 2a.7 ruled the cited run
+    # DEFAULTS these values into the calculation's TEMPLATE, which every
+    # form now gets, so they are never a per-stage override for anyone.
+    #
+    # The filter was not updated with the door, and for a few hours the
+    # `open` lane rendered seven controls the door was guaranteed to
+    # refuse -- precisely the trap this docstring says the filter exists
+    # to prevent.  The argument is kept only so an older page that still
+    # sends it is not a 400; it selects nothing.
+    # ⚠ THIS FILTER IS MEASURED DEAD IN SEVEN OF ITS TEN BRANCHES, and the
+    # swap that replaced it was REVERTED because it opened a worse hole.
+    # Both halves are recorded in `plans/plan.md` W28; do not re-attempt
+    # either without reading it.
+    #
+    # DEAD: `SEALED_ALWAYS`'s three names and four of `CONTRACT_FIELDS`'
+    # seven are `TransportConfig` spellings, and `resolvable_override_names`
+    # one line below rejects them first -- so those branches cannot fire.
+    # LIVE HOLE, the same coin: the catalogue's own spellings for four of
+    # those values (`mesh_cutoff`, `kgrid`, `pao_energy_shift`,
+    # `electronic_temperature`) pass BOTH guards here and are refused by
+    # `prep`, which is the "Described succeeded, every later prep failed"
+    # trap this docstring says the filter exists to prevent.
+    #
+    # WHY THE CATALOGUE SWAP WAS REVERTED (2026-09-23): the catalogue's
+    # narrowing offers `system_label`, `species_order`, `spin_treatment`
+    # and `spin_total`, none of which carries the `citation` marker, so a
+    # `skip_shared` filter built on that marker let them through as
+    # PER-RUNG overrides.  `route_overrides` sends them to the device,
+    # where a `system_label` breaks the ladder's file handover and a
+    # `species_order` gives the device one orbital ordering and the leads
+    # another -- the disagreement `model/chemistry.md` § 3a exists to make
+    # impossible.  The root is that there is NO MARKER FOR "SHARED":
+    # `citation` means "a cited run answers this" and Class A (§ 2a.13) is
+    # larger than that.  W28 is where that is decided.
+    hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS | set(CONTRACT_FIELDS)
+    # AND EVERY CONTROL PREP CANNOT RESOLVE.  The three sets above are the
+    # SEALED question -- what a person may not change.  This is the different
+    # one: what the description is able to CARRY.  `num_threads`, `log_level`
+    # and `max_memory_mb` are `TransportConfig` fields the schema has no row
+    # for, so the door accepted them and every later prep refused the whole
+    # calculation.  A control the door is guaranteed to reject is not a
+    # control, and it is the same trap this filter already exists to close.
+    import dataclasses as _dcs
+    _resolvable = resolvable_override_names()
+    hidden |= {f.name for f in _dcs.fields(TransportConfig)
+               if f.name not in _resolvable}
+    schema = _dataclass_to_form_schema(TransportConfig, "t")
+    kept = []
+    for sec in schema.get("sections", []):
+        fields_left = [f for f in sec.get("fields", [])
+                       if f.get("name") not in hidden]
+        if fields_left:
+            sec = dict(sec)
+            sec["fields"] = fields_left
+            kept.append(sec)
+    schema = dict(schema)
+    schema["sections"] = kept
+    response: Dict[str, Any] = {"ok": True, "schema": schema}
+    return jsonify(response)
 
 
 # `POST /api/transport/render` DELETED 2026-09-17, and with it
