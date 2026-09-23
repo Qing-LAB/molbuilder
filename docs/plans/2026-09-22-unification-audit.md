@@ -116,6 +116,43 @@ fail-open registry. Those are ordinary bugs.
 
 ---
 
+## 0b. ON HOLD — `transport/` and `web/` are being worked on another machine
+
+**Another machine is actively changing the transport module and the web UI**
+*(user, 2026-09-23)*. Findings whose FIX lands in `molbuilder/transport/` or
+`molbuilder/web/` are **KNOWN GAPS, not work items**, until that lands. They
+stay recorded here; nobody fixes them from this side.
+
+This is not caution for its own sake — a push from this session was rejected
+on 2026-09-23 because that machine had already moved `main` six commits.
+Fixing into those two trees is how the same collision becomes a merge
+conflict in code instead of in git.
+
+| § | the fix lands in | status |
+|---|---|---|
+| **1.3** | `transport/compose.py` — the dropped form-B recorded contract | **HOLD** |
+| **1.5 / 1.5a** | `web/blueprints/build.py` — analyze onto the codec | **HOLD** (§ 1.5a's `structure.md` § 2.4 doc fix is NOT held — see below) |
+| **1.12d** | `transport/transiesta.py` — the fabricated box, `_compute_cell_from_extents` | **HOLD**, and its reachability was never established anyway |
+| **1.6** | split: the OWNER is `validation/__init__.py` clause F4; the INSTANCE is `validation/siesta.py`, reached from `web/blueprints/build.py:1088` | **owner fixable now**, web-side behaviour to be re-checked after |
+| **1.8a** | `web/blueprints/files.py` + `selection.py` — rename structure vs rename file | **HOLD** |
+| **1.12b** | ten of the eleven `axis_kind` fallbacks are outside those trees; **`transiesta.py:235` is inside** | **do the ten, leave that one** |
+
+**What is NOT held, and can proceed:** § 1.1 / 1.1a (the codec generator and
+the PySCF deck writer), § 1.2 (the CLI + `validate`), § 1.4, § 1.7, § 1.8b–d
+(the codec's delete rule, the hex gate, `to_xyz`'s title), § 1.11 (the
+validation registry), § 1.12a and § 1.12c, § 1.13, § 1.15 (the builders), and
+**every document fix** — including § 1.5a's correction to `structure.md`
+§ 2.4, which is a contract error that would otherwise instruct a regression
+whoever reads it.
+
+**A note on § 1.8's shape.** Its resolution splits *rename file* (generic,
+web) from *rename structure* (owns the pairing rule). The **rule's home** —
+one predicate for "is this a structure path", replacing the three spellings —
+is in the codec and is NOT held. Landing that first makes the web-side change
+smaller and is the half that stops the rule drifting again.
+
+---
+
 ## 1. Correctness holes that reach a user's data or science
 
 Ordered by what they cost.
@@ -1583,11 +1620,12 @@ contracts were not among the eight documents checked.
    leaving them to be fixed a second time at the third writer.
 3. **§ 1.2, § 1.7** — the rest of the data-loss and uncaught-exception
    set. Independent of each other, each small, each user-visible.
-4. **§ 1.8** — one home for the structure-path rule, then rename structure vs
-   rename file, the no-delete rule, the hex check, and § 1.8d. Group them:
+4. **§ 1.8** — one home for the structure-path rule (**not held**), then
+   rename structure vs rename file (**ON HOLD, § 0b — `web/blueprints/`**), the no-delete rule, the hex check, and § 1.8d. Group them:
    they are one missing door and four things that grew where it should be.
-5. **§ 1.5 + § 1.5a** — the analyze route onto the codec, and § 2.4's
-   second wrong statement. Do § 1.10a's doc fix in the SAME commit as
+5. **§ 1.5a's DOC fix only** — § 2.4's second wrong statement. **§ 1.5's
+   code fix is ON HOLD (§ 0b): it lands in `web/blueprints/`.** The doc
+   error is not held; it instructs a regression whoever reads it. Do § 1.10a's doc fix in the SAME commit as
    § 1.1a's: both are in § 2.4's four-clause block, and a half-corrected
    contract is what produced them.
 6. **§ 1.11** — the registry seam. Small, and it belongs beside § 1.2: all
