@@ -366,6 +366,19 @@ forgets.
   applied, and dropped on rewrite. A stale contaminated title therefore
   self-heals the next time the pair is written.
 
+  **The third gate was missed on the first attempt** (2026-09-23, fixed the
+  same day). `apply_to_structure`'s stray-key check did not know about
+  `RETIRED_IDENTITY_KEYS`, so a payload built in code — as
+  `transport/compose.py` and `web/blueprints/watch.py` do, rather than
+  loaded from a file — was **refused** with *"sidecar carries ['title']"*.
+  Exactly the shape `62cc76d0` fixed for `pbc` (*"the retirement reached one
+  gate of two"*), and the function's own comment four lines above the bug
+  says *"a guard that disagrees with its neighbours about what is retired is
+  how this bug happened in the first place"*. Now pinned for EVERY retired
+  key, present and future, by
+  `tests/test_molstruct_json.py::TestARetiredKeyPassesEveryGate`, which
+  iterates the `RETIRED_*` tuples rather than naming keys.
+
 All six defects close. **Pinned by**
 `tests/…::TestTitleBelongsToTheGeometryFile` — one test for one rule, and
 both halves were mutation-checked: before it, reverting the keyword strip

@@ -961,3 +961,94 @@ class TestARetiredKeyIsAcceptedNotRefused:
         side.write_text(json.dumps(payload))
         with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
             StructureCodec().load(xyz)
+
+
+class TestARetiredKeyPassesEveryGate:
+    """A key we stopped WRITING must still pass every gate a file meets.
+
+    `structure.py`'s retirement rule is three gates: tolerated on read,
+    never applied, dropped on rewrite.  There are three separate stray-key
+    checks that can refuse one, in two modules, and **the retirement has now
+    reached only some of them twice**: `pbc` (fixed at 62cc76d0, "the
+    retirement reached one gate of two, so old pairs stopped loading") and
+    `title` (2026-09-23, which missed `apply_to_structure`'s check -- four
+    lines under a comment saying "a guard that disagrees with its neighbours
+    about what is retired is how this bug happened in the first place").
+
+    So this iterates the RETIRED_* tuples rather than naming keys.  A key
+    retired tomorrow is covered the moment it is declared, and a key with no
+    sample value below fails loudly instead of being skipped -- the hole
+    `test_replace_carries_every_field_the_dataclass_declares` has, where the
+    names come from the dataclass but the values come from a fixture.
+
+    Mutation-checked per gate, 2026-09-23.  Gate 1 and gate 2 each go red
+    alone.  **Gate 3 needs BOTH writer defences reverted**, because there
+    are two and either suffices: `identity_to_dict` does not emit a retired
+    key, and `to_dict`'s identity normalisation does not rebuild one.  That
+    is worth knowing before anyone "simplifies" one of them -- on its own,
+    removing either looks harmless and this test stays green.
+    """
+
+    #: A type-appropriate value per retired key.  A retirement that forgets
+    #: to add one is a FAILURE, not a silent pass -- see the assert below.
+    SAMPLES = {"pbc": [True, True, False], "title": "a name only the sidecar knows"}
+
+    def _payload(self, key, n=2):
+        return {"schema_version": 9, "n_atoms_total": n,
+                "structure_hash": "0" * 64, "regions": {"L": [0]},
+                key: self.SAMPLES[key]}
+
+    def test_every_retired_key_passes_all_three_gates(self, tmp_path):
+        import numpy as np
+        from molbuilder.structure import (Structure, RETIRED_METADATA_KEYS,
+                                          RETIRED_IDENTITY_KEYS)
+        from molbuilder.sidecars import molstruct
+        from molbuilder.parse.sidecars import molstruct as parse_molstruct
+        import json
+
+        retired = tuple(RETIRED_METADATA_KEYS) + tuple(RETIRED_IDENTITY_KEYS)
+        assert retired, "no retired keys -- this test has nothing to guard"
+        missing = [k for k in retired if k not in self.SAMPLES]
+        assert not missing, (
+            f"{missing} was retired without a sample value here, so its "
+            f"three gates are unguarded. Add one.")
+
+        for key in retired:
+            payload = self._payload(key)
+
+            # GATE 1 -- the file reader tolerates it rather than refusing.
+            loaded = parse_molstruct.load_text(json.dumps(payload),
+                                               source=f"<{key}>")
+            assert key not in loaded, \
+                f"gate 1 kept {key!r}; a retired key must not survive the read"
+
+            # GATE 2 -- the payload door, reached by callers that BUILD a
+            # payload in code rather than loading a file.
+            s = Structure(elements=["C", "O"],
+                          positions=np.array([[0., 0, 0], [1., 0, 0]]))
+            molstruct.apply_to_structure(s, payload)   # must not raise
+            assert s.regions == {"L": [0]}, \
+                f"gate 2 took {key!r} but dropped the rest of the sidecar"
+
+            # GATE 3 -- THE REAL REWRITE PATH, through the codec.  An
+            # earlier draft asserted on a hand-built `to_dict` call, which
+            # nothing could have made fail: `identity_to_dict` never produces
+            # a retired key, so the filter dropped it whatever the gate did.
+            # What the contract actually claims (§ 2.2c: "a stale value
+            # self-heals the next time the pair is written") is this round
+            # trip, so this is the one that has to hold.
+            from molbuilder.workingcopy_structure import StructureCodec
+            stem = tmp_path / f"{key}-pair.xyz"
+            stem.write_text("2\nkept by the geometry file\n"
+                            "C 0.0 0.0 0.0\nO 1.0 0.0 0.0\n")
+            (tmp_path / f"{key}-pair.molstruct.json").write_text(
+                json.dumps(payload))
+            codec = StructureCodec()
+            reopened = codec.load(stem)        # tolerated, not refused
+            codec.write(reopened, stem)        # and rewritten without it
+            rewritten = json.loads(
+                (tmp_path / f"{key}-pair.molstruct.json").read_text())
+            assert key not in rewritten, \
+                f"gate 3 persisted {key!r} again; a retired key does not survive"
+            assert rewritten.get("regions") == {"L": [0]}, \
+                f"the rewrite dropped the rest of the sidecar with {key!r}"

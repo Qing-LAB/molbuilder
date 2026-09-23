@@ -617,6 +617,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
             f"the sidecar from /modify after structural edits."
         )
     from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
+                                      RETIRED_IDENTITY_KEYS,
                                       RETIRED_METADATA_KEYS)
     # A RETIRED KEY IS NOT A STRAY ONE -- the THIRD gate asking that
     # question, and it has to give the same answer as the other two
@@ -630,7 +631,8 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     stray = [k for k in sidecar_data
              if k not in METADATA_FIELDS and k not in ENVELOPE_KEYS
              and k not in IDENTITY_FIELDS and k != "info"
-             and k not in RETIRED_METADATA_KEYS]
+             and k not in RETIRED_METADATA_KEYS
+             and k not in RETIRED_IDENTITY_KEYS]
     if stray:
         raise MolstructJsonError(
             f"sidecar carries {sorted(stray)!r}, which is neither a structure "
