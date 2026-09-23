@@ -618,3 +618,72 @@ class TestInfoIsANamespaceOfClusters:
     # asserts exactly that, through the same codec door, on a nested store.
     # A second copy would be a test per call site, which earns no place
     # (`process/testing.md`).
+
+
+class TestTitleBelongsToTheGeometryFile:
+    """`model/structure.md` § 2.2c — ONE rule, four things it decides.
+
+    `title` is not a sidecar column.  It IS the `.xyz` comment line and the
+    PDB TITLE record, and the geometry file is its only home *(user,
+    2026-09-23)*.  Before that ruling it lived in both halves with no
+    authority between them, and all four assertions below were false.
+
+    One test, not four: they are one rule's observable consequences, and
+    splitting them would pin the same fact four times (`process/testing.md`
+    -- unifying must REDUCE the count).  Both halves of the fix were
+    mutation-checked and BOTH were green beforehand -- reverting the
+    keyword strip broke nothing across 116 tests, and putting `title` back
+    into the identity block broke nothing across 131.
+    """
+
+    def _pair(self, tmp_path, name, comment):
+        (tmp_path / name).write_text(
+            f"2\n{comment}\nC  0.000000  0.000000  0.000000\n"
+            f"O  1.130000  0.000000  0.000000\n")
+        return tmp_path / name
+
+    def test_the_geometry_file_owns_the_title(self, tmp_path):
+        from molbuilder.workingcopy_structure import StructureCodec
+        from molbuilder.sidecars import molstruct
+        codec = StructureCodec()
+
+        # 1. THE MACHINE HALF OF AN EXTENDED-XYZ COMMENT IS NOT A NAME.
+        # An ASE/VMD file gave a "title" of the header itself, which was then
+        # persisted as the structure's IDENTITY beside a correct 3x3 cell.
+        p = self._pair(tmp_path, "ase.xyz",
+                       'Lattice="10.0 0.0 0.0 0.0 10.0 0.0 0.0 0.0 10.0" '
+                       'Properties=species:S:1:pos:R:3 pbc="T T T"')
+        s = codec.load(p)
+        assert s.title == "", f"the extxyz header became a name: {s.title!r}"
+        assert s.cell is not None, "stripping the name lost the cell with it"
+
+        # 2. ...AND A SENTENCE IS NOT A HEADER.  Only Lattice/Properties/pbc
+        # are cut, so a human comment keeps its own `=`.
+        p = self._pair(tmp_path, "human.xyz", "anneal at T=300K, run 3")
+        assert codec.load(p).title == "anneal at T=300K, run 3"
+
+        # 3. A COMMENT LINE DOES NOT CONJURE A SIDECAR.  A non-empty title
+        # used to make `identity_to_dict` non-empty, hence `keep_sidecar`,
+        # so a `.molstruct.json` came into being to hold one string that was
+        # already in the file beside it.
+        p = self._pair(tmp_path, "named.xyz", "water dimer")
+        codec.write(codec.load(p), p)
+        assert not molstruct.sidecar_path_for(p).exists(), \
+            "a comment line alone wrote a sidecar"
+
+        # 4. AND AN EDIT TO THAT LINE IS HONOURED.  The sidecar's copy used
+        # to win silently -- on the one line of a structure file a person
+        # can obviously edit.  Written here THROUGH the codec so a sidecar
+        # exists to be overridden.
+        s = codec.load(self._pair(tmp_path, "src.xyz", "before"))
+        s.regions = {"L": [0]}                    # forces a real sidecar
+        codec.write(s, tmp_path / "edited.xyz")
+        assert molstruct.sidecar_path_for(tmp_path / "edited.xyz").exists()
+        lines = (tmp_path / "edited.xyz").read_text().split("\n")
+        lines[1] = "EDITED BY HAND"
+        (tmp_path / "edited.xyz").write_text("\n".join(lines))
+        back = codec.load(tmp_path / "edited.xyz")
+        assert back.title == "EDITED BY HAND", \
+            f"the sidecar overrode the comment line: {back.title!r}"
+        assert back.regions == {"L": [0]}, \
+            "the sidecar stopped being applied at all"

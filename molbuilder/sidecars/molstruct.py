@@ -385,8 +385,14 @@ def to_dict(
     # (Structure.identity_to_dict already skipped the synthesized defaults).
     identity = dict(identity or {})
     if identity:
-        from molbuilder.structure import IDENTITY_FIELDS, Structure
-        stray_id = [k for k in identity if k not in IDENTITY_FIELDS]
+        from molbuilder.structure import (IDENTITY_FIELDS,
+                                          RETIRED_IDENTITY_KEYS, Structure)
+        # A retired key is not stray: an older sidecar carrying `title` still
+        # OPENS (structure.RETIRED_IDENTITY_KEYS says why), it is simply not
+        # applied and does not survive the rewrite below.
+        stray_id = [k for k in identity
+                    if k not in IDENTITY_FIELDS
+                    and k not in RETIRED_IDENTITY_KEYS]
         if stray_id:
             raise MolstructJsonError(
                 f"identity carries {sorted(stray_id)!r}; the identity "
@@ -395,7 +401,6 @@ def to_dict(
             scratch = Structure(
                 elements=["X"] * n_atoms_total,
                 positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
-                title=identity.get("title", ""),
                 atom_names=identity.get("atom_names"),
                 residue_ids=identity.get("residue_ids"),
                 residue_names=identity.get("residue_names"),
@@ -403,13 +408,15 @@ def to_dict(
             )
         except (ValueError, TypeError) as exc:
             raise MolstructJsonError(str(exc)) from exc
+        # `title` is NOT rebuilt here -- it left the identity block on
+        # 2026-09-23 (§ 2.2c).  An older file's copy is dropped on this
+        # rewrite, which is the third gate retired keys get.
         identity = {k: v for k, v in {
-            "title":         scratch.title or "",
             "atom_names":    list(scratch.atom_names),
             "residue_ids":   [int(v) for v in scratch.residue_ids],
             "residue_names": list(scratch.residue_names),
             "chain_ids":     list(scratch.chain_ids),
-        }.items() if k in identity and (k != "title" or v)}
+        }.items() if k in identity}
     # selection_rules -- a sidecar-only pass-through (not a Structure field),
     # validated against the normalised region set (one shared validator).
     normed_rules = normalise_selection_rules(
@@ -639,11 +646,16 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # molbuilder" the user never stated into the next sidecar.  Plain
     # attribute sets, so the apply_metadata_dict call below re-runs
     # __post_init__ over them -- one validator, one message.
+    # `title` IS NOT IN THIS LOOP any more (§ 2.2c, 2026-09-23).  It used to
+    # be, and the `else` branch below reset it to "" -- so a pair whose
+    # sidecar stated no title had the .xyz comment line ERASED on load, and a
+    # pair whose sidecar stated one silently overrode a comment the user had
+    # edited by hand.  The geometry file owns it; this door leaves it alone.
     for k in IDENTITY_FIELDS:
         if k in sidecar_data:
             setattr(struct, k, sidecar_data[k])
         else:
-            setattr(struct, k, "" if k == "title" else None)
+            setattr(struct, k, None)
     # The info block (schema 9), FULL-REPLACE like everything else here:
     # absent means "nothing recorded", and a stale store must not survive
     # a pair that no longer carries one.

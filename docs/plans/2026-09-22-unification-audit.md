@@ -721,10 +721,11 @@ aside → `'my junction Lattice="10.000000 …'`. So it is invisible in normal
 use and shows up only when the pair is separated, or when another tool reads
 the `.xyz`.
 
-**Full investigation and the five other defects: `model/structure.md`
-§ 2.2c.** `title` has five sources, four writers, ten hand-written carries
-and no owner. Do not fix this line alone — § 2.2c's ownership decision is
-open and governs the shape of the fix.
+**FIXED 2026-09-23** — `model/structure.md` § 2.2c. The owner is settled
+(the geometry file), `from_xyz` now cuts the structural keys, the sidecar
+stopped carrying `title`, and older files still open via
+`RETIRED_IDENTITY_KEYS`. All six defects close, pinned by
+`TestTitleBelongsToTheGeometryFile`.
 
 ### 1.9 Withdrawn: `/api/files/write` is not a finding
 

@@ -260,10 +260,12 @@ all**. The silence the row prevents is the safety net for row 1.
 
 ### 2.2c `title` — five sources, four writers, and no owner
 
-**STATUS: the facts below are measured and pinned. The OWNER is an open
-decision** — see "The decision" at the end. Written 2026-09-23 because
-§ 2.2b needed a `title` row and the field turned out to have no rule
-anywhere.
+**STATUS: SETTLED 2026-09-23 — `title` belongs to the GEOMETRY FILE**
+*(user)*. It is the `.xyz` comment line and the PDB `TITLE` record, and that
+is its only home. It remains a `Structure` FIELD and still rides `to_dict`,
+`to_wire` and `replace`; what it stopped being is a column of the **sidecar**.
+Written because § 2.2b needed a `title` row and the field turned out to have
+no rule anywhere.
 
 `title` is neither metadata nor lattice nor atom-indexed. It sits in
 `IDENTITY_FIELDS` (`structure.py:177`) beside `atom_names` / `residue_ids` /
@@ -342,26 +344,33 @@ forgets.
   (`test_it_writes_utf8_regardless_of_the_platform_locale` round-trips a
   non-ASCII title through the codec).
 
-#### The decision — OPEN
+#### THE RULE
 
-**(a) `title` belongs to the GEOMETRY FILE.** It *is* the comment line; drop
-it from the identity block. A hand-edit then works, a comment stops creating
-a sidecar, and defect 1 (strip the keywords on read) becomes the only fix.
-**Recommended** — it is where every other tool in the field puts it, it is
-the copy the user can see, and `identity_to_dict`'s own docstring says that
-block exists so no sidecar "claim[s] an identity nobody stated".
+**The geometry file owns `title`. The sidecar does not carry it.**
 
-**(b) `title` belongs to the SIDECAR.** The comment line becomes derived
-output, and a hand-edit must be honoured on read or explicitly refused —
-never silently dropped.
+* **`from_xyz` cuts the structural keys.** The title is the free text BEFORE
+  the first `Lattice=` / `Properties=` / `pbc=` (`_EXTXYZ_KEY`). Only those
+  three, so a sentence keeps its own `=`: *"anneal at T=300K, run 3"*
+  survives whole. That protects what the verbatim read was FOR — ASE's reader
+  shreds a human comment into `{'water': True, 'molecule': True}` — while
+  refusing to call a header a name.
+* **`identity_to_dict` does not emit it**, so a comment line no longer makes
+  `keep_sidecar` true, and a `.xyz` with a comment gets no `.molstruct.json`.
+* **`apply_to_structure` does not touch it** — neither applying a stored copy
+  over the comment line nor, as it used to, **resetting it to `""`** when the
+  sidecar named none. That reset silently erased the comment line of every
+  pair whose sidecar had no title.
+* **Older files still open.** `title` joined `RETIRED_IDENTITY_KEYS`, which
+  gets the same three gates as `RETIRED_METADATA_KEYS` (`pbc`): tolerated on
+  read so a file the user already has is not refused as a stray key, never
+  applied, and dropped on rewrite. A stale contaminated title therefore
+  self-heals the next time the pair is written.
 
-**(c) They are two different facts** — the file's label and the structure's
-name — and need two names in the API. One word for two facts is what
-produced all six defects.
-
-**Independent of the choice, defect 1 is a bug:** `from_xyz` must not store
-`Lattice=…`/`Properties=…`/`pbc=…` as a name. And defect 2 means it cannot
-be found by using molbuilder normally — only by separating the pair.
+All six defects close. **Pinned by**
+`tests/…::TestTitleBelongsToTheGeometryFile` — one test for one rule, and
+both halves were mutation-checked: before it, reverting the keyword strip
+broke nothing across 116 tests and restoring the identity column broke
+nothing across 131.
 
 ### 2.3 Geometry I/O
 

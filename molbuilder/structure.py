@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import copy as _copy
 import json as _json
+import re as _re
 
 from dataclasses import dataclass, field
 from io import StringIO
@@ -168,13 +169,26 @@ METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
 #: guard that disagrees with its neighbours is the next version of this bug.
 RETIRED_METADATA_KEYS = ("pbc",)
 
+#: Identity keys older sidecars carry that this build no longer WRITES.  Same
+#: three-gate treatment as ``RETIRED_METADATA_KEYS``: tolerated on read so a
+#: file the user already has still opens, never applied, and dropped on
+#: rewrite.  ``title`` retired 2026-09-23 (user: *"title belongs to the
+#: geometry file"*) -- `model/structure.md` § 2.2c.  It is still a
+#: ``Structure`` FIELD and still rides ``to_dict`` / ``to_wire`` /
+#: ``replace``; what it stopped being is a column of the SIDECAR.
+RETIRED_IDENTITY_KEYS = ("title",)
+
+#: The structural keys an extended-XYZ comment line carries.  The title is the
+#: free text BEFORE the first of them (:meth:`Structure.from_xyz`).
+_EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
+
 #: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
 #: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
 #: "extra for the package where it is needed" -- additive, never conflicting),
 #: and only when a column is REAL (see ``identity_to_dict``): an xyz-born
 #: structure's synthesized placeholders stay out of the file.
-IDENTITY_FIELDS = ("title", "atom_names", "residue_ids", "residue_names",
+IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
 #: Containment tolerance in FRACTIONAL units (§ 6.1): loose enough to forgive a
@@ -906,8 +920,13 @@ class Structure:
         that names residues but not chains persists exactly what it said."""
         n = len(self.elements)
         out: dict = {}
-        if self.title:
-            out["title"] = self.title
+        # NO ``title`` HERE.  It belongs to the geometry file -- it IS the
+        # `.xyz` comment line and the PDB TITLE record (§ 2.2c, user
+        # 2026-09-23).  Persisting it here gave one fact two homes with no
+        # authority between them: a hand-edited comment line was silently
+        # overridden by this copy, and a non-empty title alone was enough to
+        # make ``keep_sidecar`` true, so a `.molstruct.json` came into being
+        # to hold one string already in the file beside it.
         if self.atom_names is not None \
                 and list(self.atom_names) != list(self.elements):
             out["atom_names"] = list(self.atom_names)
@@ -1422,6 +1441,23 @@ class Structure:
         # metadata this class owns, not part of reading the structure.
         lines = text.splitlines()
         comment = lines[1].strip() if len(lines) >= 2 else ""
+        # ...BUT THE MACHINE HALF OF THAT LINE IS NOT A NAME.  An extended-XYZ
+        # comment is `<free text> Lattice="..." Properties=... pbc="..."`, and
+        # taking it whole made the title of every ASE/VMD file the header
+        # itself -- persisted into the sidecar as the structure's IDENTITY,
+        # beside a correctly parsed 3x3 `cell`.  Masked in normal use because
+        # the sidecar's own copy was applied over it; visible the moment the
+        # pair was separated (`model/structure.md` § 2.2c, measured
+        # 2026-09-23).
+        #
+        # Only the three STRUCTURAL keys are cut, and only from the first one
+        # on.  A sentence is what the paragraph above exists to protect, so
+        # "anneal at T=300K" keeps its `=`; `Lattice`/`Properties`/`pbc` are
+        # what `to_extxyz` writes and what ASE emits, and nothing else is
+        # guessed at.
+        _mk = _EXTXYZ_KEY.search(comment)
+        if _mk is not None:
+            comment = comment[:_mk.start()].strip()
 
         from ase.io import read as _ase_read
         try:

@@ -111,7 +111,6 @@ def _normalised_dict(
             _scratch = _Structure(
                 elements=["X"] * n_atoms_total,
                 positions=[[0.0, 0.0, 0.0]] * n_atoms_total,
-                title=identity.get("title", ""),
                 atom_names=identity.get("atom_names"),
                 residue_ids=identity.get("residue_ids"),
                 residue_names=identity.get("residue_names"),
@@ -223,7 +222,8 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     # and downstream of the leak.  It is checked HERE now, where the payload is
     # still whole.
     from molbuilder.structure import (IDENTITY_FIELDS, METADATA_FIELDS,
-                                      RETIRED_METADATA_KEYS)
+                                      RETIRED_METADATA_KEYS,
+                                      RETIRED_IDENTITY_KEYS)
     # `info` (schema 9): the free-form NON-structural store -- known by
     # NAME here (the block is open by design, so its keys are not
     # enumerated; archive/2026-09-01-structure-info-plan.md).
@@ -231,7 +231,8 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
     # refused -- a key this project used to write is not a key nobody reads,
     # and the files carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
     known = (set(METADATA_FIELDS) | set(IDENTITY_FIELDS)
-             | set(ENVELOPE_KEYS) | {"info"} | set(RETIRED_METADATA_KEYS))
+             | set(ENVELOPE_KEYS) | {"info"} | set(RETIRED_METADATA_KEYS)
+             | set(RETIRED_IDENTITY_KEYS))
     stray = sorted(k for k in data if k not in known)
     if stray:
         raise MolstructJsonError(
