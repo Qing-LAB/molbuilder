@@ -182,6 +182,14 @@ def test_the_plugin_records_a_teardown_failure_at_all(tmp_path):
         duration = 0.0
         longreprtext = "conftest.py:498: AssertionError: THE CANARY FIRED"
 
+    # RESTORE WHAT WAS THERE, never `None`.  `_write` returns early on a
+    # falsy path, so parking `None` here does not "disable the plugin for
+    # this test" -- it disables it for the REST OF THE SESSION, silently.
+    # This test did exactly that on 2026-09-22: the live `none2e` file
+    # stopped at 7812 of 9530 records with no `done`, pytest exited 0 having
+    # passed everything, and `status` called a complete run ABANDONED.  The
+    # neighbour below carries the same warning for the same reason.
+    saved = dict(progress_plugin._STATE)
     progress_plugin._STATE["path"] = str(tmp_path / "b.jsonl")
     progress_plugin._STATE["run"] = "r1"
     try:
@@ -189,7 +197,7 @@ def test_the_plugin_records_a_teardown_failure_at_all(tmp_path):
         written = [json.loads(l) for l in
                    (tmp_path / "b.jsonl").read_text().splitlines() if l]
     finally:
-        progress_plugin._STATE["path"] = None
+        progress_plugin._STATE.update(saved)
     assert len(written) == 1, "the teardown failure was dropped"
     assert written[0]["outcome"] == "failed"
     assert written[0]["nodeid"] == "t.py::t0 [teardown]", (
