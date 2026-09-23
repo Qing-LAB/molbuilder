@@ -113,26 +113,49 @@ def _read_events(path):
     return out
 
 
-def _writer_is_alive(start_rec):
-    """Is the process that wrote this `start` record still running?
+#: A run that has not written a record in this long is not running.  The
+#: plugin writes one per test and flushes it, so silence is the signal.
+#: Generous by a wide margin -- the slowest single test here is well under a
+#: minute -- because calling a live run dead is the worse error.
+_SILENCE_MEANS_DEAD = 30 * 60
+
+
+def _writer_is_alive(start_rec, path=None):
+    """Is the run that wrote this `start` record still going?
 
     Without this a file whose run was killed reads as ``running`` for ever --
-    `.test-progress/all.jsonl` sat that way for a day.  Unknown (a file from
-    before `pid` was recorded) counts as alive, because claiming a live run is
-    dead is the worse error.
+    `.test-progress/all.jsonl` sat that way for a day.
+
+    **THE PID ALONE CANNOT ANSWER IT.**  It is absent from any file written
+    before the plugin recorded one, and "unknown counts as alive" then means
+    a dead run is reported as in flight indefinitely: `all.jsonl` was still
+    claiming ``running`` on 2026-09-22 off a record written on 2026-09-11.
+    A live pid does not settle it either, because the number comes back round
+    to another process eventually.  Neither is cosmetic -- the standing rule
+    is not to edit the tree while a run is going, so a phantom run suppresses
+    real work, and a phantom silence invites an edit into a live one.
+
+    So the file's own clock decides, and the pid only rules a run OUT.  The
+    plugin writes and flushes a record per test, so a progress file that has
+    not changed in :data:`_SILENCE_MEANS_DEAD` belongs to a run that is not
+    writing any more, whatever the pid says.  With no path to stat, the old
+    benefit of the doubt stands.
     """
     pid = start_rec.get("pid")
-    if not isinstance(pid, int):
+    if isinstance(pid, int):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False         # settled: that process is gone
+        except (PermissionError, OSError):
+            pass                 # tells us nothing -- fall through to the clock
+    if path is None:
         return True
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # alive, owned by someone else
+        quiet_for = time.time() - os.path.getmtime(path)
     except OSError:
         return True
-    return True
+    return quiet_for < _SILENCE_MEANS_DEAD
 
 
 def _summarise(batch, path):
@@ -217,7 +240,7 @@ def _summarise(batch, path):
     elif done:
         state = "done"
         why = None
-    elif _writer_is_alive(gen[0]):
+    elif _writer_is_alive(gen[0], path):
         state = "running"
         why = None
     else:

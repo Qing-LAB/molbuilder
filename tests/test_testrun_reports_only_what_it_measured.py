@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import pytest
 
@@ -113,6 +114,26 @@ def test_a_live_run_with_no_done_record_is_still_running(tmp_path):
     p = tmp_path / "b.jsonl"
     _write(p, _run("r1", 12, collected=500, pid=os.getpid()))
     assert testrun._summarise("b", str(p))["state"] == "running"
+
+
+def test_a_file_that_has_gone_quiet_is_not_running_whatever_the_pid(tmp_path):
+    """`all.jsonl` claimed `running` on 2026-09-22 off a `start` written on
+    2026-09-11 -- eleven days after its pytest died.
+
+    The record predates the plugin writing a `pid`, and the rule was
+    "unknown counts as alive", so no amount of time could retire it.  That
+    is not cosmetic: the standing rule is not to edit the working tree while
+    a run is in flight, so a phantom run suppresses real work.  The plugin
+    writes and flushes a record per test, so silence is the signal.
+    """
+    p = tmp_path / "b.jsonl"
+    _write(p, _run("r1", 3255, collected=9197))      # no pid, no done
+    assert testrun._summarise("b", str(p))["state"] == "running", \
+        "a file written just now is live -- the clock must not be too tight"
+    old = time.time() - testrun._SILENCE_MEANS_DEAD - 1
+    os.utime(p, (old, old))
+    assert testrun._summarise("b", str(p))["state"] == "abandoned", \
+        "a progress file nothing has written to in half an hour is not a run"
 
 
 @pytest.mark.parametrize("records,banned", [
