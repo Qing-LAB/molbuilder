@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import pytest
 
@@ -115,6 +116,26 @@ def test_a_live_run_with_no_done_record_is_still_running(tmp_path):
     assert testrun._summarise("b", str(p))["state"] == "running"
 
 
+def test_a_file_that_has_gone_quiet_is_not_running_whatever_the_pid(tmp_path):
+    """`all.jsonl` claimed `running` on 2026-09-22 off a `start` written on
+    2026-09-11 -- eleven days after its pytest died.
+
+    The record predates the plugin writing a `pid`, and the rule was
+    "unknown counts as alive", so no amount of time could retire it.  That
+    is not cosmetic: the standing rule is not to edit the working tree while
+    a run is in flight, so a phantom run suppresses real work.  The plugin
+    writes and flushes a record per test, so silence is the signal.
+    """
+    p = tmp_path / "b.jsonl"
+    _write(p, _run("r1", 3255, collected=9197))      # no pid, no done
+    assert testrun._summarise("b", str(p))["state"] == "running", \
+        "a file written just now is live -- the clock must not be too tight"
+    old = time.time() - testrun._SILENCE_MEANS_DEAD - 1
+    os.utime(p, (old, old))
+    assert testrun._summarise("b", str(p))["state"] == "abandoned", \
+        "a progress file nothing has written to in half an hour is not a run"
+
+
 @pytest.mark.parametrize("records,banned", [
     ([r for r in _run("r1", 40, collected=900, done=1)
       if r["event"] not in ("start", "collected")], "pass "),
@@ -135,6 +156,74 @@ def test_status_never_prints_a_result_line_for_a_file_that_has_none(
     out = capsys.readouterr().out
     assert banned not in out, f"{banned!r} appeared in:\n{out}"
     assert rc == 1, "status must report a non-zero code for an untrusted file"
+
+
+def test_a_nonzero_exit_no_failure_explains_is_UNEXPLAINED_not_done(tmp_path):
+    """The 2026-09-22 shape: every test passed and pytest still exited 1.
+
+    A session-scoped fixture raising AFTER its yield -- which is what all
+    three `the_suite_leaves_your_*_alone` canaries in `tests/conftest.py` do
+    -- fails the run without producing a failed CALL report. `done (exit 1) |
+    pass 9513  FAIL 0` was printed and read as green while the checkout
+    canary was firing.  The exit code outranks the counts.
+    """
+    p = tmp_path / "b.jsonl"
+    _write(p, _run("r1", 9527, collected=9527, done=1))
+    s = testrun._summarise("b", str(p))
+    assert s["state"] == "unexplained", s
+    assert "exited 1" in s["why"] and "teardown" in s["why"]
+
+
+def test_a_teardown_failure_is_a_failure_and_not_a_second_test(tmp_path):
+    """It explains the exit code, so the run is `done` -- and it must not
+    inflate `ran`, which would make `ran`/`collected` meaningless."""
+    p = tmp_path / "b.jsonl"
+    recs = _run("r1", 10, collected=10, done=1)
+    recs.insert(-1, {"event": "test", "run": "r1",
+                     "nodeid": "t.py::t9 [teardown]", "outcome": "failed",
+                     "duration": 0.0, "reason": "AssertionError: canary",
+                     "time": 200.0})
+    _write(p, recs)
+    s = testrun._summarise("b", str(p))
+    assert s["state"] == "done", s
+    assert (s["ran"], s["collected"]) == (10, 10), \
+        "the teardown record was counted as an eleventh test"
+    assert s["failed"] == 1 and s["failed_ids"][0][0].endswith("[teardown]")
+
+
+def test_the_plugin_records_a_teardown_failure_at_all(tmp_path):
+    """The writer's half of the same defect: the report never reached the
+    file, so no reader could have shown it."""
+    written = []
+
+    class _Report:
+        when = "teardown"
+        outcome = "failed"
+        nodeid = "t.py::t0"
+        duration = 0.0
+        longreprtext = "conftest.py:498: AssertionError: THE CANARY FIRED"
+
+    # RESTORE WHAT WAS THERE, never `None`.  `_write` returns early on a
+    # falsy path, so parking `None` here does not "disable the plugin for
+    # this test" -- it disables it for the REST OF THE SESSION, silently.
+    # This test did exactly that on 2026-09-22: the live `none2e` file
+    # stopped at 7812 of 9530 records with no `done`, pytest exited 0 having
+    # passed everything, and `status` called a complete run ABANDONED.  The
+    # neighbour below carries the same warning for the same reason.
+    saved = dict(progress_plugin._STATE)
+    progress_plugin._STATE["path"] = str(tmp_path / "b.jsonl")
+    progress_plugin._STATE["run"] = "r1"
+    try:
+        progress_plugin.pytest_runtest_logreport(_Report())
+        written = [json.loads(l) for l in
+                   (tmp_path / "b.jsonl").read_text().splitlines() if l]
+    finally:
+        progress_plugin._STATE.update(saved)
+    assert len(written) == 1, "the teardown failure was dropped"
+    assert written[0]["outcome"] == "failed"
+    assert written[0]["nodeid"] == "t.py::t0 [teardown]", (
+        "without the suffix it collides with the same test's passing CALL "
+        "record and the reader shows one test as both passed and failed")
 
 
 # --------------------------------------------------------------------------- #

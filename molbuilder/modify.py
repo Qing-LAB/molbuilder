@@ -1249,10 +1249,14 @@ def append_structure(
     designated read).  Numbering it to ``frozen_atoms2`` would leave the
     incoming atoms carrying a label nothing recognises -- silently unfrozen.
 
-    **The cell** -- the open structure's is kept.  The canvas being built in
-    owns its box; an incoming fragment contributes atoms.  When the addition
-    carried a cell of its own, that is said rather than passed over, because a
-    dropped lattice is otherwise invisible.
+    **The cell and the rest of the non-atom block** --
+    `model/structure.md` § 2.2b, applied by `Structure.concat`.  The canvas
+    keeps its box when it HAS one, and when it does not the fragment's is
+    adopted: a lattice is the one thing a fragment can supply that a
+    cell-less canvas genuinely lacks.  `axis_kind`, `vacuum` and `info` come
+    from the canvas either way.  When both state a cell the addition's is
+    dropped, and that is said rather than passed over, because a dropped
+    lattice is otherwise invisible.
     """
     notes: List[str] = []
     if addition.n_atoms == 0:

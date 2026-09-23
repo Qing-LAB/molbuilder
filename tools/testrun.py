@@ -113,26 +113,49 @@ def _read_events(path):
     return out
 
 
-def _writer_is_alive(start_rec):
-    """Is the process that wrote this `start` record still running?
+#: A run that has not written a record in this long is not running.  The
+#: plugin writes one per test and flushes it, so silence is the signal.
+#: Generous by a wide margin -- the slowest single test here is well under a
+#: minute -- because calling a live run dead is the worse error.
+_SILENCE_MEANS_DEAD = 30 * 60
+
+
+def _writer_is_alive(start_rec, path=None):
+    """Is the run that wrote this `start` record still going?
 
     Without this a file whose run was killed reads as ``running`` for ever --
-    `.test-progress/all.jsonl` sat that way for a day.  Unknown (a file from
-    before `pid` was recorded) counts as alive, because claiming a live run is
-    dead is the worse error.
+    `.test-progress/all.jsonl` sat that way for a day.
+
+    **THE PID ALONE CANNOT ANSWER IT.**  It is absent from any file written
+    before the plugin recorded one, and "unknown counts as alive" then means
+    a dead run is reported as in flight indefinitely: `all.jsonl` was still
+    claiming ``running`` on 2026-09-22 off a record written on 2026-09-11.
+    A live pid does not settle it either, because the number comes back round
+    to another process eventually.  Neither is cosmetic -- the standing rule
+    is not to edit the tree while a run is going, so a phantom run suppresses
+    real work, and a phantom silence invites an edit into a live one.
+
+    So the file's own clock decides, and the pid only rules a run OUT.  The
+    plugin writes and flushes a record per test, so a progress file that has
+    not changed in :data:`_SILENCE_MEANS_DEAD` belongs to a run that is not
+    writing any more, whatever the pid says.  With no path to stat, the old
+    benefit of the doubt stands.
     """
     pid = start_rec.get("pid")
-    if not isinstance(pid, int):
+    if isinstance(pid, int):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False         # settled: that process is gone
+        except (PermissionError, OSError):
+            pass                 # tells us nothing -- fall through to the clock
+    if path is None:
         return True
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # alive, owned by someone else
+        quiet_for = time.time() - os.path.getmtime(path)
     except OSError:
         return True
-    return True
+    return quiet_for < _SILENCE_MEANS_DEAD
 
 
 def _summarise(batch, path):
@@ -181,7 +204,11 @@ def _summarise(batch, path):
     counts = {"passed": 0, "failed": 0, "skipped": 0}
     for e in tests:
         counts[e["outcome"]] = counts.get(e["outcome"], 0) + 1
-    ran = len(tests)
+    # A teardown failure is an extra record against a test that already has a
+    # CALL record, so it must not count toward `ran` -- otherwise `ran`
+    # overshoots `collected` and the ran/collected comparison stops meaning
+    # anything.  It still counts as a failure, because it is one.
+    ran = sum(1 for e in tests if not e["nodeid"].endswith(" [teardown]"))
 
     if strays:
         state = "interleaved"
@@ -195,10 +222,25 @@ def _summarise(batch, path):
         state = "partial"
         why = (f"the run stopped after {ran} of {collected} collected tests "
                f"(exit {done['exitstatus']}); this is NOT a suite result")
+    elif done and done["exitstatus"] != 0 and counts["failed"] == 0:
+        # THE EXIT CODE IS EVIDENCE TOO, AND IT OUTRANKS THE COUNTS.
+        # pytest exits non-zero for things that never become a test record:
+        # a session-scoped fixture raising in teardown (the conftest canaries
+        # that guard the config dir, the checkout and the conda envs), an
+        # internal error, a plugin error.  Printing `FAIL 0` there reported a
+        # fired canary as a clean suite on 2026-09-22.  `status` now refuses
+        # to call it done -- the discrepancy IS the finding.
+        state = "unexplained"
+        why = (f"pytest exited {done['exitstatus']} but no test was recorded "
+               f"as failed. Something outside a test's call failed -- most "
+               f"likely a session-scoped fixture raising in teardown (the "
+               f"`the_suite_leaves_your_*_alone` canaries in "
+               f"`tests/conftest.py`), an internal error, or a plugin error. "
+               f"This is NOT green: read the runner's own stdout.")
     elif done:
         state = "done"
         why = None
-    elif _writer_is_alive(gen[0]):
+    elif _writer_is_alive(gen[0], path):
         state = "running"
         why = None
     else:
@@ -316,13 +358,14 @@ def cmd_status(args):
                     if reason:
                         print(f"         -> {reason}")
             continue
-        head = (f"[{b}] {s['state'].upper() if s['state'] == 'partial' else s['state']}"
+        loud = s["state"] in ("partial", "unexplained")
+        head = (f"[{b}] {s['state'].upper() if loud else s['state']}"
                 + (f" (exit {s['exitstatus']})" if s['exitstatus'] is not None else "")
                 + f" | {s['ran']}/{s['collected']} ran"
                 + f" | pass {s['passed']}  FAIL {s['failed']}  skip {s['skipped']}"
                 + f" | {s['elapsed']}s")
         print(head)
-        if s["state"] == "partial":
+        if loud:
             untrustworthy = True
             print(f"      {s['why']}")
         if args.fails and s["failed_ids"]:

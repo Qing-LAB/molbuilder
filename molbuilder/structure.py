@@ -2170,35 +2170,21 @@ class Structure:
                 annotations = merge_annotations(
                     annotations, remap_annotations(s.annotations, off))
             atom_offset += s.n_atoms
-        # Carry the FIRST input's lattice (the conventional base when
-        # concatenating, e.g. add_slab builds onto a base
-        # structure).  The caller owns making the cell big enough for
-        # the merged atoms — concat can't infer a new lattice.
+        # WHO SUPPLIES EACH NON-ATOM FIELD -- `model/structure.md` § 2.2b.
+        # The cell and its corner come from whoever STATES a cell, because a
+        # lattice is the one thing a fragment can supply that a cell-less
+        # canvas lacks.  `axis_kind`, `vacuum` and `info` come from the first
+        # input either way: they are facts OF the canvas, equally true of a
+        # structure that states no lattice, so a fragment arriving with a box
+        # must not restate them.  Both halves matter and they point opposite
+        # ways -- taking the whole block from the cell-carrier replaced a
+        # typed 8 A vacuum with (0,0,0) and turned isolated axes crystalline;
+        # taking none of it threw away the only lattice in play.
         #
-        # THE WHOLE LATTICE, THROUGH THE ONE DOOR.  This picked `cell` and
-        # `pbc` out by hand and dropped the other three, so appending to a
-        # slab turned its TRANSPORT axis back into an ordinary periodic one,
-        # forgot the stored cell corner and the vacuum, and reported nothing.
-        # `_carry_nonatom` is the single list of the non-atom lattice
-        # fields and every other op-helper already spreads it; `concat` was
-        # written before that rule and never joined it.
-        #
-        # AND WHEN NOBODY STATES A BOX, THE FIRST STILL HAS FACTS.  `axis_kind`
-        # and `vacuum` live on a structure whose cell is DERIVED exactly as
-        # much as on one that states a lattice, so an empty dict here threw
-        # away the transport axis and the typed vacuum of every input -- the
-        # very loss the paragraph above says `_carry_nonatom` exists to stop.
-        #
-        # AND ONLY THE BOX COMES FROM `base`.  A cell and its corner are the
-        # one thing an incoming fragment can supply that the canvas lacks;
-        # `axis_kind`, `vacuum` and `info` are facts OF THE CANVAS, true of it
-        # whether or not it states a lattice.  Taking the whole non-atom block
-        # from whoever happened to carry a cell let a fragment overwrite them:
-        # appending a slab onto a molecule with a typed 8 A vacuum replaced
-        # that vacuum with the slab's (0,0,0) and turned two isolated axes
-        # crystalline, silently, because nothing was outside the box
-        # afterwards for `cell.check` to notice (§ 6.1 clause 1: `vacuum`
-        # keeps exactly what the user typed; § 2.2a: a strip is explicit).
+        # The merged box is not made to fit: `concat` cannot infer a lattice,
+        # so atoms outside the adopted cell are left for `cell.check` to
+        # report as `cell.unfittable`.  That is the stated outcome (§ 2.2b),
+        # not a loss to paper over.
         base = next((s for s in structures if s.cell is not None), None)
         first = structures[0]
         lattice = first._carry_nonatom()
