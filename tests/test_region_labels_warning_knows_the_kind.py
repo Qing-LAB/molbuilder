@@ -59,8 +59,11 @@ def test_transport_still_names_a_label_it_genuinely_cannot_read():
     s.regions["my-notes"] = [2]
     msg = _named(s, "transport")
     assert msg is not None and "my-notes" in msg
+    # The NAMED list is what matters, not the whole sentence: the advice
+    # that follows it legitimately spells out the partition it does read.
+    named = msg.split("region label(s)")[1].split("which the")[0]
     for consumed in ("L-electrode", "bridge", "R-electrode"):
-        assert consumed not in msg
+        assert consumed not in named
 
 
 def test_a_named_electrode_is_consumed_by_the_suffix_convention():

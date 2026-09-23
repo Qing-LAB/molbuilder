@@ -124,13 +124,26 @@ def test_emitter_preserves_hex_cell_verbatim():
     assert np.allclose(p.cell_ang[1], [8.65, 14.98, 0.0])   # NOT squared off
 
 
-def test_emitter_fallback_warns_isolated_cluster():
-    # No cell -> orthorhombic vacuum box, flagged loudly.
+def test_a_PERIODIC_axis_with_no_cell_is_refused_not_fabricated():
+    """The Au(111) case, and § 7 is unambiguous about it: "the box is NOT
+    recoverable from atom extents (padding fabricates an orthorhombic box
+    that severs the periodic gold)".  A rectangle cannot tile a 60 degree
+    lattice, so the lead would be a different crystal from the device.
+
+    This asserted the opposite until 2026-09-23 -- that a fabricated box is
+    produced and flagged.  Flagging was not enough: `as_structure` wrapped
+    such a box in an explicit `cell=` and the deck then printed "Explicit
+    lattice preserved from the structure (NOT recomputed from atom
+    extents)" over one that had been.  `Structure.resolve_cell` has always
+    refused this; the emitter now agrees with it.
+
+    What is NOT refused is an ISOLATED axis -- see the nanowire tests
+    below.  That is a real electrode and its box IS derived.
+    """
     dev = _hex_device()
     dev.cell = None
-    fdf = "\n".join(_emit_geometry(dev))
-    assert "ISOLATED CLUSTER" in fdf
-    assert "hexagonal cell" in fdf
+    with pytest.raises(ValueError, match="periodic.*states no cell"):
+        _emit_geometry(dev)
 
 
 def test_axis_vacuum_flags_transport_axis_gap():
@@ -198,3 +211,22 @@ def test_a_stated_vacuum_is_obeyed_verbatim(vac, expect):
     from molbuilder.transport.transiesta import _compute_cell_from_extents
     a, b, _c = _compute_cell_from_extents(Structure(**_wire(), vacuum=vac))
     assert (a, b) == pytest.approx(expect)
+
+
+def test_the_transport_axis_is_never_padded_with_vacuum():
+    """`resolve_cell`'s rule, and transport follows it: vacuum is meaningless
+    on a transport axis because the device length is MATCHED, not padded
+    (§ 6.2).  The box there is the atom span and nothing else.
+
+    This answered `int(bbox_z + 2) + 1` until 2026-09-23 -- a rounding that
+    honoured neither the vacuum nor the kind and had no source.
+    """
+    from molbuilder.transport.transiesta import _compute_cell_from_extents
+    s = Structure(**_wire(), vacuum=(8.0, 8.0, 8.0),
+                  axis_kind=("isolated", "isolated", "transport"))
+    a, b, c = _compute_cell_from_extents(s)
+    assert (a, b) == pytest.approx((16.0 + 0.0, 16.0)), "2 x 8 A across"
+    assert c == pytest.approx(2.4), (
+        "the atom span, with no padding: an 8 A vacuum on the transport "
+        "axis must not lengthen the device")
+

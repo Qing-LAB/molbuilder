@@ -4,10 +4,12 @@ Contract: [`engines/transport.md` § 2a.7](?doc=engines/transport.md), ruling 1
 (*"the relaxation DEFAULTS the Class A values; it does not seal them"*), and
 [`engines/template.md` § 6.4](?doc=engines/template.md), the `citation` marker.
 
-**One function, called once, at `jobset init`.** It reads the cited run's own
-deck and returns the :class:`~molbuilder.config.siesta.SiestaConfig` that
-`init` writes the template from. After that the template is the answer and
-this module has no further part: `prep` reads the file, not the citation.
+**One function, called once, at `jobset init`.** It reads what the citation
+answers with — a finished run's own deck, or the settings a saved structure
+recorded from the run it came out of (§ 3.1's three cases) — and returns the
+:class:`~molbuilder.config.siesta.SiestaConfig` that `init` writes the
+template from. After that the template is the answer and this module has no
+further part: `prep` reads the file, not the citation.
 
 **Why this is `init`'s job and not `prep`'s.** Until 2026-09-16 the citation
 was read at *prep*, every time, and the items it answered were written
@@ -37,9 +39,10 @@ if TYPE_CHECKING:                                    # pragma: no cover
 #:
 #: The left side is :class:`~molbuilder.parse.fdf.FdfParams`, which
 #: reads an `.fdf`; the right is :class:`SiestaConfig`, which is the
-#: catalogue's vocabulary. The pairs are the seven rows tagged
-#: ``citation = ["transport"]`` — *this* is the list that marker names, and
-#: keeping the mapping beside the reader is what stops it drifting from the
+#: catalogue's vocabulary. SIX pairs here and the k-grid below them, which
+#: is the seventh row tagged ``citation = ["transport"]`` and is separate
+#: because it is the one value not copied verbatim (:func:`_apply_kgrid`).
+#: Keeping the mapping beside the reader is what stops it drifting from the
 #: declaration.
 _FROM_DECK = {
     "basis_size":               "basis_size",
@@ -50,14 +53,15 @@ _FROM_DECK = {
     "xc_authors":               "xc_authors",
 }
 
-#: The same seven values, arriving from a RECORD instead of a deck -> the
-#: catalogue's spelling.
+#: The same six, arriving from a RECORD instead of a deck -> the catalogue's
+#: spelling.  The k-grid is the seventh and goes through the same
+#: :func:`_apply_kgrid` as the deck's.
 #:
 #: `parse/contract.py::_siesta_contract` reads the very same `FdfParams` this
 #: module does and writes the block in ``TransportConfig``'s field names, so
-#: this table is `_FROM_DECK` with its left column respelled -- two of the
-#: seven actually differ (`mesh_cutoff_ry` -> `siesta_mesh_cutoff_ry`,
-#: `kgrid` -> `k_mesh_transverse`).  It is written out rather than derived
+#: this table is `_FROM_DECK` with its left column respelled -- of the seven
+#: values only two are actually spelled differently (`mesh_cutoff_ry` ->
+#: `siesta_mesh_cutoff_ry`, `kgrid` -> `k_mesh_transverse`).  It is written out rather than derived
 #: because the two vocabularies are a fact about a class that is being
 #: retired (§ 2a.14: `TransportConfig` goes when the NEGF block is tabled),
 #: and a clever derivation would outlive the thing it derives from.
@@ -136,7 +140,12 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
             # a number wrong by a fixed ratio.
             p = None
     if p is None:
-        # NO DECK, BUT THE PAIR MAY REMEMBER ONE -- § 3.1's middle case.
+        # NO DECK TO READ -- either there is none, or the one there states a
+        # unit this build cannot convert (above) -- BUT THE PAIR MAY REMEMBER
+        # ONE.  § 3.1's middle case.  A form-A citation reaches here only by
+        # the second road, and `recorded_contract_of` answers None for it, so
+        # an unreadable deck still fills nothing rather than falling back to
+        # some other run's numbers.
         # A structure exported from the Results tab after a run carries that
         # run's own settings in its sidecar (`info.calculation`), and they
         # answer here exactly as a deck's do: the reading transferred to the

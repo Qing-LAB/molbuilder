@@ -167,18 +167,28 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
                        if idxs and name not in consumed
                        and not is_electrode_label(name))
         what = "transport ladder"
+        # AND THE ADVICE IS THE KIND'S TOO.  Telling a transport calculation
+        # its labels "stay in the sidecar for /transport" is nonsense -- this
+        # IS /transport -- and offering `frozen_atoms` is the wrong remedy
+        # for a stray label on a junction.  Fixing WHICH labels are named and
+        # leaving this sentence would have been half the defect.
+        advice = ("The partition it reads is "
+                  "L-electrode / R-electrode / bridge / buffer, plus any "
+                  "*-electrode name; anything else rides along untouched. "
+                  "Rename it to one of those if it was meant to be part of "
+                  "the junction.")
     else:
         inert = sorted(name for name, idxs in regions.items()
                        if idxs and name not in consumed)
         what = f"{engine} run"
+        advice = ("They stay in the sidecar for /transport but do not shape "
+                  "this calculation. If you meant those atoms to be held "
+                  "fixed, assign them to \"frozen_atoms\" in /modify.")
     if not inert:
         return []
     return [Issue(
         "warn",
         (f"this structure carries region label(s) {inert}, which the "
-         f"{what} does NOT consume -- they stay in the sidecar "
-         f"for /transport but do not shape this calculation. "
-         f"If you meant those atoms to be held fixed, assign them to "
-         f"\"frozen_atoms\" in /modify."),
+         f"{what} does NOT consume. {advice}"),
         "structure.regions",
     )]

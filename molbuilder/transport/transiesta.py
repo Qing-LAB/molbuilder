@@ -149,35 +149,52 @@ def _find_electrode_regions(
 
 
 def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
-    """Default cell (a, b, c) in Å from the atom extents.
+    """The box for a structure that states none — PER AXIS, by its kind.
 
-    Transverse (a, b): atom-extent + twice the per-side vacuum — the
-    structure's own when it states one, else
-    :data:`_ISOLATED_ELECTRODE_VACUUM_ANG`.
-    Transport (c): atom-extent of the z-coordinates ROUNDED UP to
-    the nearest Å.  The user is expected to OVERRIDE c so it matches
-    their electrode z-periodicity (the comment in the .fdf says so);
-    auto-computing it is a starting point, not a defensible final
-    value.  For a 2-Å-buffer device, the rounding adds a few Å of
-    slack so the auto-default doesn't accidentally clip atoms at
-    the boundary.
+    `Structure.resolve_cell`'s rule, with transport's own vacuum default:
+
+      * ``isolated``  -> ``bbox + 2 * vacuum``.  A nanowire or chain lead is
+        vacuum-surrounded across the wire and this is its cross-section;
+      * ``transport`` -> ``bbox``.  The device length is matched, not padded
+        (§ 6.2), and vacuum is meaningless there;
+      * ``periodic``  -> **refused.**  § 7: *"the box is NOT recoverable from
+        atom extents (padding fabricates an orthorhombic box that severs the
+        periodic gold)"* — a rectangle cannot tile Au(111), so there is no
+        honest number and none is invented.
+
+    THE VACUUM IS THE PERSON'S, and it was ignored until 2026-09-23.  Three
+    states (`structure-periodicity.md` § 2): a number used verbatim,
+    ``[0,0,0]`` meaning no gap DELIBERATELY and also used, and unset -- the
+    only one :data:`_ISOLATED_ELECTRODE_VACUUM_ANG` answers.  Someone who
+    typed 8 A on the Cell page got 15 A in the deck and nothing said so.
+
+    **Why not just call `resolve_cell`?**  Because its default where nobody
+    chose is 3 A -- right for a molecule in a box and five times too thin
+    for a lead, which is the object the self-energy is built from and whose
+    images must be electrostatically isolated.  The RULE is shared; only the
+    default differs, the way the electrode's dense transport-axis k is a
+    transport default rather than something to discover (§ 2a.7).
+
+    *(This padded 15 A onto both transverse axes whatever their kind and
+    answered the third with ``int(bbox_z + 2) + 1`` -- a rounding that
+    honoured nothing and had no source.)*
     """
     pos = struct.positions
-    extent_x = float(pos[:, 0].max() - pos[:, 0].min())
-    extent_y = float(pos[:, 1].max() - pos[:, 1].min())
-    extent_z = float(pos[:, 2].max() - pos[:, 2].min())
-    # THE PERSON'S VACUUM WINS, and it was ignored until 2026-09-23.
-    # `vacuum` has three states (`structure-periodicity.md` § 2): a number,
-    # used verbatim; `[0,0,0]`, meaning no gap DELIBERATELY, also verbatim;
-    # and unset, which is the only one this default answers.  Someone who
-    # typed 8 Å on the Cell page got 15 Å in the deck and nothing said so.
+    extent = pos.max(axis=0) - pos.min(axis=0)
     stated = struct.vacuum
-    pad_x, pad_y = ((float(stated[0]), float(stated[1])) if stated is not None
-                    else (_ISOLATED_ELECTRODE_VACUUM_ANG,) * 2)
-    a = extent_x + 2.0 * pad_x
-    b = extent_y + 2.0 * pad_y
-    c = float(int(extent_z + 2.0) + 1)  # round up + 2 Å buffer
-    return (a, b, c)
+    out = []
+    for i, kind in enumerate(struct.axis_kind):
+        if kind == "periodic":
+            raise ValueError(
+                f"axis {i} is 'periodic' but this structure states no cell; "
+                f"a periodic axis needs a commensurate lattice from "
+                f"construction or import, never a bounding box "
+                f"(engines/transport.md 7)")
+        per_side = (float(stated[i]) if stated is not None
+                    else _ISOLATED_ELECTRODE_VACUUM_ANG)
+        pad = 2.0 * per_side if kind == "isolated" else 0.0
+        out.append(float(extent[i]) + pad)
+    return (out[0], out[1], out[2])
 
 
 # --------------------------------------------------------------------- #
