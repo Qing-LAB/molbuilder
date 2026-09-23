@@ -152,3 +152,49 @@ def test_axis_vacuum_flags_transport_axis_gap():
 # (2026-09-17).  `_emit_geometry` above is the LIVE emitter -- `deck.py`
 # reuses it for every rung -- so the hexagonal-cell checks still guard the
 # deck a person actually gets.
+
+
+# ------------------------------------------------------------------ #
+#  An ISOLATED electrode — a nanowire/chain lead in vacuum           #
+# ------------------------------------------------------------------ #
+
+def _wire():
+    """A two-atom lead with no transverse lattice: vacuum across, periodic
+    along transport.  A real shape -- a nanowire or chain electrode."""
+    return dict(elements=["Au", "Au"],
+                positions=np.array([[0., 0, 0], [0., 0, 2.4]]))
+
+
+def test_an_isolated_electrode_gets_the_TRANSPORT_vacuum_by_default():
+    """15 Å per side, not the framework's 3 Å.
+
+    A lead is what the self-energy is built FROM, so its periodic images
+    must be electrostatically isolated or Sigma describes a wire coupled to
+    its own copies.  `Structure.effective_vacuum` answers 3 Å where nobody
+    chose -- right for a molecule in a box, five times too thin here -- so
+    transport answers with its own default, the way the electrode's dense
+    transport-axis k is a default rather than something to discover
+    (`engines/transport.md` § 2a.7).
+    """
+    from molbuilder.transport.transiesta import _compute_cell_from_extents
+    a, b, _c = _compute_cell_from_extents(Structure(**_wire()))
+    assert (a, b) == pytest.approx((30.0, 30.0)), "2 x 15 A per side"
+
+
+@pytest.mark.parametrize("vac,expect", [
+    ((8.0, 8.0, 0.0), (16.0, 16.0)),
+    ((0.0, 0.0, 0.0), (0.0, 0.0)),
+])
+def test_a_stated_vacuum_is_obeyed_verbatim(vac, expect):
+    """The three states (`structure-periodicity.md` § 2): a number is used,
+    `[0,0,0]` means no gap DELIBERATELY and is also used, and only UNSET
+    reaches the default above.
+
+    This emitter ignored the field entirely until 2026-09-23: someone who
+    typed 8 Å on the Cell page got 15 Å in the deck, silently -- the
+    'control that appears to do something and does not' shape § 3.2 keeps
+    finding.
+    """
+    from molbuilder.transport.transiesta import _compute_cell_from_extents
+    a, b, _c = _compute_cell_from_extents(Structure(**_wire(), vacuum=vac))
+    assert (a, b) == pytest.approx(expect)

@@ -16,9 +16,21 @@ Guaranteed-by-construction invariants
 
 * **I2 (pseudos) / I10 (geometry):** the electrode atoms are the device
   electrode-region coordinates + species, copied verbatim.
-* **I6 (lateral cell):** the electrode ``a, b`` are the *device's* lateral
-  cell (``_compute_cell_from_extents`` on the device), so the lead tiles
-  the device cross-section exactly.
+* **I6 (lateral cell):** the electrode ``a, b`` are the device's own lattice
+  vectors, **copied verbatim** -- character and all, so a hexagonal Au(111)
+  surface stays hexagonal and the lead tiles the device cross-section.
+
+  *Read this line, not the one it replaced.* It named
+  ``_compute_cell_from_extents`` as the mechanism, which is the FALLBACK taken
+  only when the device states no cell -- and that fallback pads the atom
+  extents into a rectangle, which `engines/transport.md` § 7 calls wrong
+  rather than approximate ("padding fabricates an orthorhombic box that severs
+  the periodic gold").  The line described the code as it stood before
+  ``4c9ee506`` *"preserve hex Au(111) lattice, don't fabricate vacuum box"* and
+  was never swept.  On 2026-09-22 two separate reviews read it and reached
+  OPPOSITE wrong conclusions -- one that the fallback was the sanctioned path,
+  one that it was harmless dead code.  § 5 is the statement of record: I6 is
+  held by taking ``lat_a``/``lat_b`` verbatim.
 * **I7 (transverse k):** the electrode ``(kx, ky)`` are the device's
   ``k_mesh_transverse``.
 * **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** the lead and the
@@ -121,10 +133,29 @@ class ElectrodeModel:
         argument for a composite kind, and four other callers would carry a
         parameter they never use.
 
-        The cell is the lead's own: the device's lateral vectors verbatim, so
-        the lead tiles the device's cross-section, and the bulk repeat along
-        transport. That third vector is the one number a person is asked to
-        verify (§ 7.1), and it is the same one this model already pins.
+        The cell is the lead's own, and its two halves come from different
+        places ON PURPOSE (`engines/transport.md` § 6.2):
+
+        * ``lat_a``/``lat_b`` are the device's lattice vectors **copied** --
+          I6, and a computed transverse box would sever the crystal;
+        * the third vector is the bulk repeat **computed** from the layer
+          spacing, because a finite slab cannot state its own period.  It is
+          the one number a person is asked to verify (§ 7.1).
+
+        So "derived" is not the suspicious word here; *fabricated from atom
+        extents* is.
+
+        WHAT THIS DELIBERATELY DOES NOT CARRY.  Only elements, positions,
+        title, cell and ``axis_kind`` are stated, so a lead reaches the
+        renderer with no ``regions``, no ``annotations``, no ``info`` and no
+        identity columns.  The partition is right to drop -- a bulk lead has
+        no lead/bridge/buffer division to state, and the electrode deck emits
+        no ``%block TS.Elec``.  **The other three are an open question, not a
+        decision**: `model/structure.md` § 2.2a says a strip must be explicit
+        and names a silent one a defect, and the recorded contract in ``info``
+        is exactly what the citation warnings read.  Recorded here rather than
+        quietly fixed, because whether a lead inherits the junction's recorded
+        contract is a contract question (`plans/plan.md`, 2026-09-23).
         """
         cell = np.array([self.lat_a, self.lat_b,
                          [0.0, 0.0, float(self.z_period)]], dtype=float)
