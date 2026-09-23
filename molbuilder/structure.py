@@ -17,10 +17,15 @@ docs/design.md):
 
   frozen_atoms : List[int]
       0-based indices of atoms whose coordinates the geometry
-      optimiser must NOT move.  Loaded from a structure sidecar
-      JSON by /modify; consumed by Spectra (cfg.frozen_indices)
-      and by the Build SIESTA / PySCF emitters (warn-only today
-      pending the design.md "fully respected" rollout).
+      optimiser must NOT move.  NOT a field of its own -- a
+      designated read of ``regions[FROZEN_LABEL]`` (see that
+      constant); consumed by Spectra (cfg.frozen_indices) and
+      EMITTED, not merely warned about: SIESTA's ``%block
+      Geometry.Constraints`` (``siesta/input.py``) and PySCF's
+      ``$freeze`` (``pyscf/input.py``).  This said "warn-only
+      today pending the design.md rollout" until 2026-09-23, long
+      after both emitters landed -- a reader would have concluded
+      that held atoms do not actually hold.
 
   regions : Dict[str, List[int]]
       Named groups of atom indices for transport-style partition
@@ -182,12 +187,17 @@ RETIRED_IDENTITY_KEYS = ("title",)
 #: free text BEFORE the first of them (:meth:`Structure.from_xyz`).
 _EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
 
-#: The per-atom IDENTITY columns + the title -- the canonical-dict spellings
+#: The per-atom IDENTITY columns -- the canonical-dict spellings
 #: (``to_dict`` / ``from_dict`` carry them at the TOP level, beside
 #: ``metadata``).  Persisted by the sidecar since schema 8 (2026-08-20, user:
 #: "extra for the package where it is needed" -- additive, never conflicting),
 #: and only when a column is REAL (see ``identity_to_dict``): an xyz-born
 #: structure's synthesized placeholders stay out of the file.
+#:
+#: ``title`` was a fifth member until 2026-09-23 and is now in
+#: ``RETIRED_IDENTITY_KEYS`` -- the geometry file owns it
+#: (``model/structure.md`` § 2.2c).  This comment still said "+ the title"
+#: after the tuple stopped carrying it.
 IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
@@ -198,7 +208,8 @@ IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
 _CONTAIN_EPS = 1e-6
 
 #: The per-side gap a DERIVED box uses on an isolated axis when the user set no
-#: vacuum at all (§ 6.1; the rule was rewritten 2026-08-03 — cell-plan.md § 3b).
+#: vacuum at all (``model/structure-periodicity.md`` § 6.1; the rule was rewritten
+#: 2026-08-03 — ``docs/archive/2026-08-20-cell-plan.md`` § 3b).
 #:
 #: IT IS A DEFAULT GAP, NOT A MINIMUM BOX LENGTH.  3 Å of empty space is 3 Å
 #: whether the molecule is 2 Å across or 200, so every isolated axis gets it
@@ -587,7 +598,8 @@ class Structure:
                     f"got {self.axis_kind!r}"
                 )
             self.axis_kind = ak
-        # cell_origin: the low corner an EXPLICIT cell emanates from (§ 3c).  Only
+        # cell_origin: the low corner an EXPLICIT cell emanates from
+        # (``model/structure-periodicity.md`` § 6).  Only
         # meaningful WITH an explicit cell -- a derived cell computes its origin from
         # atom extents (resolve_cell_origin), so a stray cell_origin without a cell is
         # dropped to keep the field a faithful "explicit-cell offset from (0,0,0)".
@@ -686,7 +698,8 @@ class Structure:
         return out
 
     def resolve_cell_origin(self) -> Optional[np.ndarray]:
-        """The low corner (Angstrom) the resolved cell emanates from (§ 3c).
+        """The low corner (Angstrom) the resolved cell emanates from
+        (``model/structure-periodicity.md`` § 6, clause 2a).
 
         The consumer contract: the viewer draws the cell wireframe FROM this corner
         (so the box wraps the structure), and ``render_fdf`` translates atoms by
@@ -726,7 +739,8 @@ class Structure:
     def effective_vacuum(self) -> Tuple[float, float, float]:
         """The per-side vacuum the DERIVED box actually uses (§ 6.1).
 
-        TWO STATES, AND ONLY TWO (decided 2026-08-03 — cell-plan.md § 3b).
+        TWO STATES, AND ONLY TWO (decided 2026-08-03 —
+        ``docs/archive/2026-08-20-cell-plan.md`` § 3b).
 
           * **The user set a vacuum** → it is used, verbatim, on every axis.
             However small.  They dictate what they want; a thin gap is warned
@@ -2092,7 +2106,8 @@ class Structure:
                translation: Sequence[float]) -> "Structure":
         """Apply one rigid/affine map ``x -> x @ linearᵀ + translation`` to the
         WHOLE structure -- atoms AND the unit-cell box -- so an explicit box keeps
-        wrapping the atoms after a rigid transform (§ 3c).  THE single transform
+        wrapping the atoms after a rigid transform
+        (``model/structure-periodicity.md`` § 6 clause 2b).  THE single transform
         primitive ``translated`` / ``rotate_around_axis`` route through.
 
         * atoms:        ``positions @ linearᵀ + translation``
@@ -2135,7 +2150,8 @@ class Structure:
 
     def translated(self, vec: Sequence[float]) -> "Structure":
         # A rigid translation: linear part = identity (lattice vectors unchanged),
-        # the cell's world-space corner moves WITH the atoms (§ 3c).  Routed through
+        # the cell's world-space corner moves WITH the atoms
+        # (``model/structure-periodicity.md`` § 6 clause 2b).  Routed through
         # the ONE affine primitive so atoms + box stay consistent.
         return self.affine(np.eye(3), np.asarray(vec, dtype=float).reshape(3))
 

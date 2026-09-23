@@ -1235,6 +1235,107 @@ parallel mask, or an explicit raise — `resolve_element` already raises, which
 is why § 1.12a's fix is to route through it) rather than to pick a different
 magic number.
 
+### 1.16 `structure.py` read whole — what a file-level read found that section reads did not
+
+*(2026-09-23, at the user's request. Three of this session's own errors came
+from reading fragments of this file. All five below are invisible from any
+one section.)*
+
+#### 1.16a The module header DENIES a guard that exists
+
+The header said `frozen_atoms` is *"consumed by … the Build SIESTA / PySCF
+emitters (**warn-only today** pending the design.md 'fully respected'
+rollout)"*. Both emitters now emit real constraints — `%block
+Geometry.Constraints` (`siesta/input.py:1317`) and `$freeze`
+(`pyscf/input.py:861`). **A reader would conclude that held atoms do not
+hold.** Also stale: it described `frozen_atoms` as loaded from a sidecar,
+when it has been a designated read of `regions[FROZEN_LABEL]` since the
+reserved-label unification. **FIXED.**
+
+This is the inverse of § 1.5a, where a document claimed a guard that had
+been removed. Both are the same failure — a contract describing the code of
+a different date — and they point opposite ways, so neither would be caught
+by a sweep looking only for "missing" guards.
+
+#### 1.16b A constant's comment named a member it no longer has
+
+`IDENTITY_FIELDS`'s docstring opened *"The per-atom IDENTITY columns **+ the
+title**"* after `title` left the tuple. **FIXED**, with the retirement named
+in place.
+
+#### 1.16c FOUR live citations pointed into `docs/archive/`
+
+`§ 3c` was cited four times — at `cell_origin`'s field comment,
+`resolve_cell_origin`'s docstring, `affine` and `translated`, i.e. **every
+site that decides the corner**, the cluster this audit spent the most effort
+on. It is a heading in **no live document**: only
+`docs/archive/old_docs/protocols/structure-periodicity.md:192`.
+
+The live rule is `structure-periodicity.md` **§ 6 / § 6.1a**, a different
+number, and it reads the opposite way on the decisive point — *"`null` =
+**derive the corner**, not 'the corner is zero'"*. A reader following the
+citation lands in the archive on the pre-correction text and gets exactly
+the reading `handover.md` § 2.1 records as the origin-rule bug. **FIXED** to
+§ 6 / clause 2a / clause 2b per site.
+
+**Not a defect, checked:** the three `cell-plan.md § 3a/3b` references are
+deliberate provenance to an archived PLAN, which is legitimate. Two of them
+omitted the `docs/archive/` prefix, so a reader would hunt for a live file;
+path-qualified.
+
+#### 1.16d Thirty-three of fifty-eight section references name no document
+
+58 `§` references; **25 name a document on the same line**. The file's
+sections span at least five (`structure.md`, `structure-periodicity.md`,
+`structure-molstruct.md`, `structure-annotations.md`, `molview.md`).
+
+And the ambiguity is real, not theoretical: **`§ 6.1` is a heading in three
+documents** (`structure-periodicity.md`, `spectrumchart.md`, `results.md`)
+and is cited seven times here, bare.
+
+**This is the mechanism behind two of this session's own errors** — a bare
+`§ 8.2` written into `structure.md` that read as *that* document's § 8.2,
+and § 1.16c above. Not proposed as a sweep: 33 edits with no test is how a
+different error gets introduced. Proposed instead as a **review question** in
+`code-audit.md` — *does this reference name its document?* — and fixed at
+whatever site is being touched for another reason. (`residue is review, not
+tests`.)
+
+#### 1.16e The header's load-bearing contract rests on the broken guard
+
+The header states the strongest rule in the file: *"Any emitter that drops
+them silently (rather than warning) violates the contract. `Structure.copy()`
+/ `.translated()` MUST carry them through."*
+
+Both do — correctly, and by construction: `copy()` is `return self.replace()`
+with a docstring saying *"Two copies of the field list is how a field comes
+to be duplicated in one and missing from the other"*, and `translated()`
+routes through the one `affine` primitive.
+
+**So the whole claim reduces to `replace()` being complete — and
+`replace()`'s completeness guard is the one measured broken today** (§ 1.14:
+field NAMES from `dataclasses.fields()`, field VALUES from a hand-built
+fixture, so dropping the already-declared `annotations` left it green). The
+file's top-level contract and its weakest test are the same fact.
+
+#### The placeholder condition, at its source
+
+`__post_init__:525-528` is where § 1.15's third condition is born:
+
+```python
+if self.atom_names    is None: self.atom_names    = list(self.elements)
+if self.residue_ids   is None: self.residue_ids   = [1] * n
+if self.residue_names is None: self.residue_names = ["MOL"] * n
+if self.chain_ids     is None: self.chain_ids     = ["A"] * n
+```
+
+Four synthesized values, every one of them also a legal user value — and
+`atom_names`'s placeholder is *relative* (equal to `elements`) where the
+other three are absolute constants. Nothing downstream can distinguish
+"synthesized" from "stated" except by re-running the comparison, which is
+what makes `identity_to_dict`'s all-or-none test the best available answer
+and why a MIXED structure (§ 1.15b) defeats it.
+
 ## 2. Documentation: one policy, not forty-four edits
 
 **6 of 39 `file.py:NNN` references in the contract documents resolve — 15%.**
