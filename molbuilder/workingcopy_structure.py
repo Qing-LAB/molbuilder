@@ -10,7 +10,8 @@ nothing else in the system may hold a second copy of:
   3. the SIDECAR ENVELOPE -- ``schema_version``, the ``structure_hash`` pinning
      it to its geometry, and the one serialisation (``molstruct.dumps``);
   4. the INVARIANTS -- ``no .json == empty metadata`` in both directions,
-     both-or-neither atomicity on write, the periodicity gate on read.
+     both-or-neither atomicity on write.  NOT a periodicity gate on read:
+     reading does not judge (structure-periodicity.md § 8.2, 2026-08-03).
 
 SHAPE: one generator, and one adapter per destination.  :meth:`StructureCodec.pair`
 is the generator; :meth:`~StructureCodec.write` puts it on disk,

@@ -493,7 +493,9 @@ copy of any of them:
 3. **the sidecar envelope** — `schema_version`, the `structure_hash` pinning it
    to its geometry, and the one serialisation (`molstruct.dumps`);
 4. **the invariants** — `no .json == empty metadata` in both directions,
-   both-or-neither atomicity on write, and the periodicity gate on read.
+   both-or-neither atomicity on write, and `no .json == empty metadata`
+   on read. **Not** a periodicity gate: reading does not judge
+   (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
 **How it is shaped: one generator, and an adapter per destination.**
 
@@ -514,18 +516,32 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         """TO DISK. The pair as one unit: geometry to `target`, and (when there
         is non-default metadata) the sidecar to sidecar_path_for(target).
         Atomic: each half staged to a temp sibling + os.replace'd; geometry
-        swapped FIRST, then sidecar, so a reader never sees new geometry with
-        a stale sidecar's atom indices. No-metadata + stale sidecar => sidecar
-        removed. Owns both-or-neither."""
+        swapped FIRST, then sidecar, so the only visible interleaving is
+        OLD-sidecar + NEW-geometry for a tiny window -- never a torn file.
+        Owns both-or-neither."""
 
     def read(self, source_path, *, frames_out=None) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
         paired sidecar, applying metadata via molstruct.apply_to_structure.
-        Missing sidecar = empty metadata (NOT an error). Runs the periodicity
-        gate to REFUSE a cell nothing can be done with; it reports nothing,
-        because what is true of the structure is said by whoever hands it
-        over. `load` is the same call under its read-side name."""
+        Missing sidecar = empty metadata (NOT an error). READING DOES NOT
+        JUDGE: a box nothing can be done with LOADS, and is refused at the
+        doors that ACT on it (`structure-periodicity.md` § 8.2, decided
+        2026-08-03 -- raising here made such a file unopenable and therefore
+        unfixable, since the Cell page cannot be reached without the
+        structure on screen). `load` is the same call under its read-side
+        name."""
 ```
+
+> **Two sentences in the block above were wrong until 2026-09-23.** `write`
+> was said to swap geometry first *"so a reader never sees new geometry with
+> a stale sidecar"* -- which is exactly what geometry-first produces, and
+> what the code's own docstring names. And `read` was said to run a
+> periodicity gate that **was deliberately removed on 2026-08-03**; a reader
+> comparing this contract against the code would have concluded the guard was
+> missing and restored it, re-creating the unopenable-and-unfixable file that
+> removal was for. Both now describe what the code does. *(The write ORDER
+> itself is scheduled to change -- see `plans/2026-09-22-unification-audit.md`
+> § 1.1a: both halves rendered and staged before either rename.)*
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes
 > translation goes through the codec, and every adapter has exactly one door.*
