@@ -97,9 +97,22 @@ breaks today only because all eleven are unreachable.
    names it as the right tool. Either the fix gives it its caller, or it is
    residue. It cannot stay both.
 
-**The genuinely separate items** — not instances of this condition — are
-§ 1.1's half-written pair (an ordering and atomicity question), § 1.11's
-fail-open registry, and the builder defects. Those are ordinary bugs.
+**Two more conditions, smaller, named where they were found:**
+
+* **§ 1.13 — STATED STATE OVERWRITTEN BY DERIVED STATE.** `load()` returning
+  `SCHEMA_VERSION` instead of the version the file states; `write()` deleting
+  a sidecar nobody asked it to delete. The code substitutes its own answer
+  for a fact the file or the user stated.
+* **§ 1.15 — A PLACEHOLDER SPELLED AS A LEGAL VALUE.** rdkit's per-atom
+  fallback to residue `1` / `"MOL"` / `"A"`, which are also perfectly
+  ordinary values, so nothing downstream can tell "unknown" from "residue 1"
+  — and `_DEFAULT_EN = 2.20`, which is **hydrogen's exact Pauling value**, so
+  an unrecognised species label is silently treated as hydrogen. A sentinel
+  must not be a value the data can legitimately hold.
+
+**The genuinely separate items** — instances of none of the three — are
+§ 1.1's half-written pair (an ordering and atomicity question) and § 1.11's
+fail-open registry. Those are ordinary bugs.
 
 ---
 
@@ -935,6 +948,113 @@ it. A moved lead goes unremarked until the compose-time gate, *"which runs
 after the relaxation is paid for"* — the code's own words for why this check
 is asked early.
 
+### 1.15 The two builder defects — and a THIRD condition
+
+*(Read 2026-09-23, the last two unscreened findings. One is an instance of
+§ 0a; the other names a third condition.)*
+
+#### 1.15a A duplex with `5P` is refused, and the blame is pointed at the user's X3DNA
+
+`build_dna("ds,ATGC", terminal="5P")` raises. Measured: a connectivity
+failure at **16.74 Å**, with the message appending `($X3DNA={found.root})` —
+telling the user to look at their X3DNA installation.
+
+**It is not X3DNA. It is our own checker, and it does not know chains exist.**
+`builders/backends/_common.py:96-127`:
+
+```python
+for i in range(struct.n_atoms):
+    rid = struct.residue_ids[i]          # chain_ids is NEVER read
+    if   n == "P":    P_pos[rid]  = struct.positions[i]
+    elif n == "O3'":  O3_pos[rid] = struct.positions[i]
+for r in sorted(P_pos):
+    if r - 1 in O3_pos:                  # "the previous residue" = rid − 1
+        d = norm(P_pos[r] - O3_pos[r - 1])
+```
+
+Backbone adjacency is pure `rid − 1` arithmetic. On a **duplex** that reaches
+across the strand boundary and measures from the end of one strand to the
+start of the other — a real distance, and nothing to do with a broken
+backbone.
+
+**Why `OH` and `3P` work and `5P` does not:** `_threedna.py:639` strips the
+5′ phosphate for those two terminals, so the spurious pair has no `P` to
+measure to. `5P` keeps it, and the check fires. The terminal state is a
+red herring; the duplex is the condition.
+
+**`select_chain` sits FOUR LINES BELOW in the same file** and reads
+`chain_ids`. The file knows.
+
+**Instance of § 0a's condition:** the rule *"which residues are consecutive
+in a backbone"* is owned by the chain, and the checker re-derives it from
+residue-number arithmetic alone.
+
+**Two fixes, both needed.** Key adjacency on `(chain_id, residue_id)`. And
+stop appending `$X3DNA` to a failure of our own self-check — the variable is
+right for a *fiber/rebuild* failure and wrong for a connectivity verdict
+computed here.
+
+#### 1.15b rdkit files added hydrogens under residue 1 / `MOL`, and the sidecar records it as fact
+
+`builders/backends/_common.py:33-44` converts RDKit atom-by-atom:
+
+```python
+info = atom.GetPDBResidueInfo()
+if info is not None:
+    residue_ids.append(info.GetResidueNumber() or 1)
+    residue_names.append(info.GetResidueName().strip() or "MOL")
+    chain_ids.append(info.GetChainId().strip() or "A")
+else:
+    residue_ids.append(1); residue_names.append("MOL"); chain_ids.append("A")
+```
+
+**Per-atom**, so a molecule where RDKit populated residue info for only some
+atoms — added hydrogens carry none — comes out **MIXED**: real residues on
+the heavy atoms, placeholder `1` / `MOL` / `A` on the rest. Measured: 50 of
+129 atoms.
+
+**And the sidecar then records the placeholders as real identity.**
+`structure.py:914-921` decides whether identity is worth persisting by an
+**all-or-none** comparison:
+
+```python
+if self.residue_ids is not None and list(self.residue_ids) != [1] * n:
+    out["residue_ids"] = [int(v) for v in self.residue_ids]
+```
+
+A mixed list is not all-`1`s, so the test says *"this is real identity"* and
+writes the whole list — placeholders included. Your ligand's hydrogens are
+persisted as belonging to residue 1 of chain A. Any selection by residue
+picks them up; PDB output puts them in the wrong residue.
+`selection.py:89` already records the symptom: *"named `"MOL"` and this rule
+degenerates to all-or-none."*
+
+#### THE THIRD CONDITION: a placeholder spelled as a legal value
+
+`1`, `"MOL"` and `"A"` mean *both* "no information" and a perfectly ordinary
+residue, name and chain. Nothing downstream can tell which it is, so the
+all-or-none test is the best anyone can do — and a mixed structure defeats
+it.
+
+**The same condition explains § 1.12a's zero dipole.** `chemistry.py:1860`:
+
+```python
+_PAULING_EN = { "H": 2.20, "Li": 0.98, ... }
+_DEFAULT_EN = 2.20
+```
+
+**`_DEFAULT_EN` is hydrogen's exact value.** So an unrecognised species label
+is not merely defaulted — it is silently treated as *hydrogen*. That is why
+`O1 H2 H3` returns `0.0 D` rather than raising: every atom becomes hydrogen,
+every electronegativity difference is zero, and the answer looks like a
+verdict instead of a failure.
+
+**The rule:** a sentinel must not be a value the data can legitimately hold.
+Where it already is, the fix is to carry "unknown" separately (`None`, a
+parallel mask, or an explicit raise — `resolve_element` already raises, which
+is why § 1.12a's fix is to route through it) rather than to pick a different
+magic number.
+
 ## 2. Documentation: one policy, not forty-four edits
 
 **6 of 39 `file.py:NNN` references in the contract documents resolve — 15%.**
@@ -1115,7 +1235,7 @@ largest: **16 tests carry the single fact "the default isolated vacuum gap is
 three files. *(The 16 is measured over this audit's file set and is a FLOOR,
 not a total: a re-measurement over a wider shortlist put it at 17, and a test
 asserting a derived consequence with no `3.0`/`6.0` literal is invisible to
-either shortlist. Re-derive with the mutant over the full suite before step 15
+either shortlist. Re-derive with the mutant over the full suite before step 16
 acts on a number. Two triples are byte-identical; the third is the same triple
 through `cell.resolve()` with renamed accessors.)* Three of the sixteen are
 thin-wrapper tests on `cell.resolve()`,
@@ -1478,27 +1598,32 @@ contracts were not among the eight documents checked.
    § 1.12c onto their doors, settling `image_distance`'s zero callers in the
    same pass. § 1.12d needs a reachability answer first. Three document
    sentences ride with § 1.12c.
-8. **§ 1.6 + the `wrap_into_cell` knob** — a further origin-rule site the sweep missed. Do it
+8. **§ 1.13 + § 1.15** — the second and third conditions. § 1.13 is two
+   one-liners. § 1.15a is a chain-aware adjacency key plus dropping a
+   misdirected `$X3DNA` from a self-check failure; § 1.15b needs the
+   placeholder carried separately from the data, which is a shape decision
+   before it is a fix.
+9. **§ 1.6 + the `wrap_into_cell` knob** — a further origin-rule site the sweep missed. Do it
    with the rule in front of you, from `handover.md` § 2.1.
-9. **§ 1.3 + § 5 lead ④ together.** The lost caller and the residue are one
+10. **§ 1.3 + § 5 lead ④ together.** The lost caller and the residue are one
    decision: either revive the recorded-contract read on the live road, or
    delete the branch and stop three surfaces claiming it works.
-10. **§ 1.4** — the CLI stdout destination. Needs § 6 decision 1 first, because
+11. **§ 1.4** — the CLI stdout destination. Needs § 6 decision 1 first, because
    what a single stream *can* carry is the same question.
-11. **§ 2's line-number policy** — one pass over four documents, mechanical.
+12. **§ 2's line-number policy** — one pass over four documents, mechanical.
    Then § 2's behavioural list, which is the part that needs reading.
-12. **§ 3 and § 4** — fix each at its owner, never at the instance. Start with
+13. **§ 3 and § 4** — fix each at its owner, never at the instance. Start with
    the `replace()` guard, because it is what makes the rest safe to touch.
-13. **§ 5a's three unpinned rules** — write them before §§ 3/4 touch the code
+14. **§ 5a's three unpinned rules** — write them before §§ 3/4 touch the code
    they guard. The `.pdb` one first: it is a regression with numbers already
    written down.
-14. **§ 5a's 6 blind/shape-asserting tests across 4 sites** — retire or rewrite. They are worse than
+15. **§ 5a's 6 blind/shape-asserting tests across 4 sites** — retire or rewrite. They are worse than
    absent, because they read as coverage.
-15. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
+16. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
     cluster's mutant re-run afterwards to confirm the keeper still goes red.
-16. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
+17. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
 
-**Before step 16, and after step 3:** § 7b's gap pass. Residue cannot be
+**Before step 17, and after step 3:** § 7b's gap pass. Residue cannot be
 deleted from a surface where eighteen modules were never opened by this
 audit — the
 builders in particular, since they are where a `Structure` is created.
