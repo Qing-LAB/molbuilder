@@ -29,12 +29,32 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     — `species_order`, `write_forces`, `write_coor_step`, `write_molwatch_log`,
     `copy_psml`, `kgrid_displacement` — none of which had a `section`.
 
-    **The one exclusion is declared by the item, not listed here** (2026-08-15):
-    ``group = "staging"`` says *this parameter is answered by the staging
-    surface*. The stage token is the only one today — it is derived from which
-    stage is running, so it is not something a person types into the physics
-    form at all. Filtering on the declaration rather than on a name means a
-    second such parameter needs no edit to this test.
+    **The exclusions are declared by the ITEM, never listed here**, and there
+    are two.
+
+    ``group = "staging"`` (2026-08-15) says *this parameter is answered by the
+    staging surface*. The stage token is the only one today — derived from
+    which stage is running, so not something a person types into a physics
+    form.
+
+    ``role`` (2026-09-16, `template.md` § 6.4) says *the stage's own role
+    answers it*: **"a `role` item is not offered as a form field, is not
+    offered as a stage-table column, and carries no value in a template of
+    that kind"**. Offering one presents a choice with exactly one correct
+    answer — a transport device solves with NEGF and a bulk lead does not —
+    and a person who changed it would not be tuning the run, they would be
+    stopping it being the run it is.
+
+    **AND `role` IS PER KIND, which is why it is a membership test and not a
+    boolean.** `solution_method` is the rung's business for *transport* and an
+    ordinary person-answered choice for an *optimization*, where nothing else
+    decides it. Excluding every item that has a role at all would take a
+    legitimate control off the Build form.
+
+    *(The `role` marker landed 2026-09-16 and this test was not updated with
+    it, so `solution_method`, `wrap_into_cell` and `ts_hs_save` were offered
+    on a transport form for a week and this test pinned that. Found 2026-09-23
+    when the filter was added — the test failed, which is the test working.)*
     """
     items = [i for i in T.select(T.read_template(T.load_catalogue()),
                                  engine=engine) if i.group != "staging"]
@@ -47,7 +67,8 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     kinds = {"optimization"} | {k for i in items for k in i.calculations}
     for kind in sorted(kinds):
         expect = {i.name for i in items
-                  if not i.calculations or kind in i.calculations}
+                  if (not i.calculations or kind in i.calculations)
+                  and kind not in (getattr(i, "role", None) or ())}
         got = {f["name"]
                for sec in catalogue_to_form_schema(
                    engine, calculation=kind)["sections"]
@@ -59,8 +80,10 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
     default_fields = {f["name"]
                       for sec in catalogue_to_form_schema(engine)["sections"]
                       for f in sec["fields"]}
-    assert default_fields == {i.name for i in items if not i.calculations
-                              or "optimization" in i.calculations}
+    assert default_fields == {
+        i.name for i in items
+        if (not i.calculations or "optimization" in i.calculations)
+        and "optimization" not in (getattr(i, "role", None) or ())}
 
 
 def test_the_displacement_gets_a_control_that_can_carry_its_value():
