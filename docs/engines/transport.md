@@ -1225,33 +1225,76 @@ every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
 
-### 3.1 What makes a directory citable — files, not layout
+### 3.1 What you can cite, and what each one brings
 
-**The condition is what the directory HOLDS, never where it sits or what it
-is called.** A citation is checked against two forms, and a directory that
-satisfies neither is refused by name — told what it holds and what the
-condition wants, rather than "not citable".
+*Rewritten 2026-09-23. This listed two cases called "form A" and "form B" —
+names that describe which files are in a folder and tell a reader nothing
+about what they get. There are **three**, and what separates them is one
+question: **does the thing you cite bring its settings with it?***
 
-| form | the directory holds | what it is |
-|---|---|---|
-| **A — a relaxation** | exactly one `.fdf` **and** exactly one `.XV` | the deck that ran, and the geometry it ended at |
-| **B — a structure** | exactly one `.xyz` **with** its `.molstruct.json` beside it | a structure and its labels, with no run behind it |
+A transport calculation starts by pointing at something you already have.
+Three things qualify:
 
-**Form A wins when both are present**: the deck carries the contract, and more
-information never loses to less. **Two of anything inside one form is
-ambiguous and refused** — a citation names a directory, so the directory must
-answer unambiguously; keep one, or cite one that holds one.
+| what you point at | the folder holds | you get | the settings come from |
+|---|---|---|---|
+| **a finished run** | one `.fdf` and one `.XV` | geometry · labels · **settings** | the deck that actually ran |
+| **a saved structure that remembers its run** | one `.xyz` with its `.molstruct.json`, and that sidecar carries the settings of the run it came out of | geometry · labels · **settings** | the record written when you exported it |
+| **a saved structure** | one `.xyz` with its `.molstruct.json` | geometry · labels | nobody yet — **you choose them** |
 
-**Evidence is FILES, never a marker spelling of ours.** SIESTA writes
-`0_NORMAL_EXIT` as its last act on a clean exit, so a run carrying it ran to
-its own end *whatever wrapper — or no wrapper — launched it*. molbuilder's own
-record answers first only because it also carries the exit code.
+**Settings** here means the six numbers every stage of the calculation must
+agree on: the basis, the exchange–correlation functional and its authors, the
+mesh cutoff, the orbital energy shift, the transverse k-grid and the electronic
+temperature. § 2a.3 calls them shared, and § 5 is why they cannot differ
+between the leads and the device.
+
+**How the third one comes to remember.** You finish a relaxation, open it in
+the Results tab, and save the structure. The tab writes that run's own settings
+into the sidecar as it saves. Cite that pair later and the settings come back
+with it — which is the whole point of saving it rather than re-citing the run
+folder. A structure you built by hand has nothing to remember and is the third
+row.
+
+**A finished run wins.** When a folder satisfies more than one, the run is
+taken: the deck it ran is a stronger statement than a copy of it, and more
+information never loses to less.
+
+**Two of anything is refused.** A citation names a folder, so the folder must
+answer without a guess — two `.fdf`s, or two `.xyz`s, and it is refused by
+name, telling you what it holds and what the condition wants.
+
+**Where it sits and what it is called never matter.** The condition is what
+the folder HOLDS. There is no naming convention to obey and no directory
+layout to reproduce.
+
+> **The settings are DEFAULTED, never sealed** (§ 2a.7). Whichever of the
+> three you cite, the values land in this calculation's own template and you
+> may change any of them afterwards — a change applying to all five stages at
+> once, because there is one template. Relaxing with a cheap basis and then
+> transporting with an accurate one is ordinary practice and is what that
+> ruling exists for.
+
+**Evidence is FILES, never a marker of ours.** SIESTA writes `0_NORMAL_EXIT`
+as its last act on a clean exit, so a run carrying it ran to its own end
+*whatever launched it*. molbuilder's own record answers first only because it
+also carries the exit code.
 
 **Classifying is not composing.** A relaxation still running has record files
 that do not conclude; classification RECORDS that, because describing a
 transport calculation ahead of a finishing relax is legal. Composing from it
 refuses — you may plan against a run in flight, but you may not build a deck
 from a geometry that is still moving.
+
+> **History, because the middle row was lost once.** It was ruled on
+> 2026-08-29 (`archive/2026-09-01-transport-design.md` § 4.1b, *"the condition
+> has three shades"*) and this section was written with two. When the
+> parameter path was rebuilt around the template on 2026-09-16, the code that
+> acted on the middle row had nothing in the live contract to preserve it
+> against, and was dropped — while every path that READS and DISPLAYS it
+> survived. The tab went on saying *"contract RECORDED"* about settings
+> nothing applied any more. Measured 2026-09-23: a pair recording 400 Ry, TZP
+> and a 4×4 mesh produced a template of 300 Ry, DZP and Γ-only. **The three
+> rows above are the contract; a reader who finds only two has found a
+> regression.**
 
 ---
 
@@ -1686,16 +1729,20 @@ them physics.  It retires with `TransportConfig`.
 
 ### 3.7 What this replaces
 
-Rectification, not accretion — the following stop existing:
+Rectification, not accretion. **This is a PLAN, in the present tense, and the
+"deleted" column is what each row is FOR — not a record that it happened.**
+Measured 2026-09-23: four of the six rows are still live, and reading the table
+as a record is what made three of them look like settled decisions during the
+X1 audit. The state column says where each one actually stands.
 
-| deleted | why |
-|---|---|
-| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired |
-| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them |
-| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose |
-| the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape |
-| `dataclass_to_form_schema` | its last caller goes with the form route |
-| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row |
+| to stop existing | why | state, measured 2026-09-23 |
+|---|---|---|
+| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired | **LIVE.** `config/transport.py` exists; § 2a.14 records why — it feeds the lifted NEGF block and goes when that block is tabled |
+| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them | **LIVE**, both read in production (`stages.py`, `blueprints/transport.py`) |
+| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose | not re-measured |
+| the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape | **DONE** — `_emit_header` deleted 2026-09-17 |
+| `dataclass_to_form_schema` | its last caller goes with the form route | **LIVE**, called from `blueprints/transport.py` |
+| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row | **the row exists and reaches the deck** (§ 2a.14 measured `0 0 40`); the module constant also still exists, unread |
 
 ---
 
@@ -2205,9 +2252,119 @@ keywords in § 3.2 that cannot reach any transport deck — `MaxSCFIterations` a
 rung.  They need floor 3's `spec_for` arm (§ 3.6 items 1–4).  No per-stage
 mechanism would have delivered one of them.
 
-*(`electrode_kz` remains a separate open defect: it is a function parameter with
-a module default that `render_stage_deck` never passes, so the catalogue row is
-a control that does nothing.)*
+*(**Stale — corrected 2026-09-23.** This said `electrode_kz` "remains a separate
+open defect ... a control that does nothing", citing `render_stage_deck`, which
+was deleted 2026-09-17. § 2a.14 measured the lead deck rendering `0 0 40` and
+§ 5 I9 names `_validate_transport_kind` as its holder. The row reaches the deck.
+What does still exist is the unread module constant `wizard.DEFAULT_ELECTRODE_KZ`
+— § 3.7's last row, and X1 ②.)*
+
+---
+
+### 6.2 What happens to the STRUCTURE — citation to deck, hop by hop
+
+*Written 2026-09-23. § 6's diagram follows the files and § 6.1 follows the
+scripts; neither follows the **structure**, and that gap has now produced two
+separate reviews reaching opposite wrong conclusions about the same twenty
+lines. This section is the third view.*
+
+**The one sentence.** A transport calculation never builds a structure — it
+takes one that already exists, states the three facts SIESTA could not record,
+reorders it, and hands two views of it to the renderer.
+
+```mermaid
+flowchart TB
+    XV["<b>1 · the citation</b><br/>.XV: cell + positions + elements<br/>the deck: contract, start coords, labels"]
+    LOAD["<b>2 · labeled_citation_structure</b><br/>cell from the .XV · labels from the deck block<br/>or one sidecar · axis_kind STATED · origin stripped"]
+    GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
+    OVER["<b>4 · replace(positions, cell)</b><br/>the relaxed overlay"]
+    SORT["<b>5 · categorical_sort</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
+    REC["<b>6 · write_compose_record</b><br/>junction.xyz + .molstruct.json + cited.fdf<br/>+ provenance + permutation"]
+    EX["<b>7 · extract_electrode_model → as_structure</b><br/>a SUBSET: the lead<br/>device's lat_a/lat_b verbatim + derived z-period"]
+    EM["<b>8 · _emit_geometry</b><br/>cell verbatim · atoms shifted by −origin<br/>species re-derived"]
+
+    XV --> LOAD --> GATE --> OVER --> SORT --> REC
+    REC -->|"the JUNCTION<br/>seed · device · transmission"| EM
+    REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
+```
+
+**Hops 1–6 happen once**, at the first prep; hop 6 writes the record and every
+later prep re-enters at hop 6 by reading it back. **Hops 7–8 happen per rung**,
+and hop 7 only for the two electrode rungs.
+
+#### What each hop does to the BOX
+
+| hop | the cell | why |
+|---|---|---|
+| 1 | SIESTA wrote it into the `.XV` | a fixed-cell relaxation ends in the box it started in |
+| 2 | read from the `.XV`, **never from the atoms** | § 7: the box is not recoverable from atom extents. If a sidecar carries the labels, its `cell` is *completed* from the `.XV` rather than allowed to replace it |
+| 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks |
+| 4–5 | carried through `replace()` | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
+| 6 | written to the sidecar, read back verbatim | |
+| 7 | **lateral taken verbatim, transport DERIVED** | the two halves differ on purpose — see below |
+| 8 | emitted verbatim | |
+
+#### Hop 7 is the one that confuses people
+
+The lead's box is built from two different kinds of number, and calling both of
+them "derived" is what has gone wrong twice:
+
+| | where it comes from | may it be computed? |
+|---|---|---|
+| **lateral `a`, `b`** | the device's own lattice vectors, **copied** | **no.** This is invariant I6. A computed transverse box severs the crystal — a rectangle cannot tile a 60° hexagonal Au(111) lattice, so the lead would be a different metal from the device it came out of |
+| **transport `c`** | `z_span + d_interlayer`, **computed** (`cell.bulk_z_period`) | **yes, and it must be.** A finite slab does not state its own bulk repeat. § 7.1: this is the one number the person is asked to verify, and the lead's card reports whether the resulting seam `CONTINUES`, is `ECLIPSED` or is a `TWIN` |
+
+So *"derived"* is not the thing to be suspicious of. **"Fabricated from atom
+extents"** is.
+
+#### A worked example
+
+An illustrative Au(111) junction — six lead layers a side, a molecule between:
+
+```
+the junction, from the citation
+    cell   a = (17.30, 0.00, 0)      <- 60 degrees, hexagonal
+           b = ( 8.65, 14.98, 0)
+           c = ( 0,     0,    46.2)  <- the device length
+    axis_kind  periodic, periodic, transport
+
+the lead, extracted from the L-electrode region
+    cell   a = (17.30, 0.00, 0)      <- COPIED, character and all
+           b = ( 8.65, 14.98, 0)     <- COPIED
+           c = ( 0,     0,    14.4)  <- COMPUTED: 12.0 span + 2.40 spacing
+    axis_kind  periodic, periodic, periodic   <- a lead is bulk in all three
+```
+
+The lead's `b` keeps its `14.98` y-component. That single number is what I6
+buys: drop it and you have a rectangle, and the gold no longer joins up
+sideways.
+
+#### What each hop does to the rest of the METADATA
+
+| | carried | notes |
+|---|---|---|
+| regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
+| regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
+| `axis_kind` | **stated at hop 2, never read from a file** | no cited file records it: the `.XV` carries the cell, the metadata block carries regions and annotations, and SIESTA has no such concept. I8 settles it — z is open, x and y are the transverse mesh. It is a fact of *being a transport calculation*, not something inherited from the relaxation |
+| `cell_origin` | **stripped at hop 2** | the `.XV` is SIESTA's own frame, anchored at the origin. A sidecar's `cell_origin` is the corner of a box drawn around *different* coordinates, and adopting it shifted junctions by their whole authoring corner |
+
+#### Which door reads the box, and why they differ
+
+`_emit_geometry` reads the two halves of the frame through **different doors**,
+which looks inconsistent and is not:
+
+```python
+resolved_cell = cell if cell is not None else struct.cell   # RAW
+origin = struct.resolve_cell_origin()                        # RESOLVED
+```
+
+The **origin** goes through `resolve_*` because `null` there is meaningful: it
+means *derive the corner* (`structure-periodicity.md` § 6 clause 2a), and for a
+`.XV` — whose atoms already sit inside the box — the derivation answers *no
+shift*. The **cell** is read raw because on this path it is always stated: hop 3
+refuses a citation without one, and hop 7 always states one. There is nothing
+for `resolve_cell()` to derive, and if it ever did derive one the answer would
+be a padded box, which is the thing § 7 forbids.
 
 ---
 
@@ -2263,7 +2420,11 @@ Three corrections that catch real mistakes:
 - **The cell is hexagonal, and you may relax at a coarser k than transport.**
   Au(111) tiles the transverse plane (lateral vectors ≈ 17.3 Å at 60°) — the box is
   **not** recoverable from atom extents (padding fabricates an orthorhombic box that
-  severs the periodic gold), so `--cell-fdf` preserves the real lattice. Forces are
+  severs the periodic gold), so the real lattice is carried through rather than
+  recomputed — the `.XV` states it and the extraction copies it (§ 6.2).
+  *(This said `--cell-fdf` preserves it. There is no such flag and there never
+  was one in this codebase — zero occurrences in `molbuilder/`. Corrected
+  2026-09-23.)* Forces are
   k-robust while the sharp `T(E_F)` Fermi-surface integral is not, so it is sound to
   **relax at a coarser transverse k (e.g. 2×2×1) and run transport dense (e.g.
   4×4×1)** [Soler 2002; Papior 2017]. **But note:** the composite reads the transverse k FROM the cited relaxation's
