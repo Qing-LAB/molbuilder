@@ -169,10 +169,15 @@ breaks today only because all eleven are unreachable.
    § 1.12c nearly gained a hand-written `|a·(b×c)| / |b×c|` — a sixth copy —
    while `_min_image_distance` already answers that question exactly and is
    already imported two files away.
-4. **A door with zero callers is a finding either way.**
-   `cell.image_distance` has none, while a comment 330 lines from the hint
-   names it as the right tool. Either the fix gives it its caller, or it is
-   residue. It cannot stay both.
+4. **CHECK THAT A SYMBOL EXISTS BEFORE BUILDING ON IT.** An earlier draft
+   of this bullet said *"`cell.image_distance` has zero callers — either the
+   fix gives it one, or it is residue"*. **There is no such function**
+   (`git log -S "def image_distance" --all` is empty; `cell.py` has 17
+   `def`s and that is not one). It is an Issue `where` **id**, emitted by
+   `_min_image_distance` at `validation/geometry.py:164` — and `cell.py:38`
+   says so in the same breath it is quoted from. A whole dilemma was built
+   on a phantom, from reading a `where` id as a call. This belongs with § 2's
+   never-existed symbol names, not here.
 
 **Two more conditions, smaller, named where they were found:**
 
@@ -534,7 +539,10 @@ assuming they are sound.
 > `validation/siesta.py:798-810` is `inv = np.linalg.inv(cell); frac =
 > struct.positions @ inv` — geometry on a RAW cell with **no origin
 > term** — while `Structure.cell_contains_atoms(resolve_cell_origin())`
-> is the door for exactly that question and has only **2 callers**. Fix
+> is the door for exactly that question and has **no external callers at
+> all** — its two call sites are both inside `structure.py`, in
+> `_derived_corner_under_explicit_cell`. That makes this finding stronger
+> than "2 callers" suggested. Fix
 > it by calling the door, not by adding an origin subtraction: under
 > clause 2a a derived corner contains the atoms by construction, so
 > bare arithmetic makes the check nearly unfirable. Read with § 1.12
@@ -685,7 +693,12 @@ if not isinstance(structure_hash, str) or len(structure_hash) < 16:
     raise ...(f"structure_hash must be a hex string (got {structure_hash!r})")
 ```
 
-Two sites (`sidecars/molstruct.py:371`, `parse/sidecars/molstruct.py:79`).
+**Three** sites, not the two an earlier draft named:
+`sidecars/molstruct.py:371` (`to_dict`), `parse/sidecars/molstruct.py:79`
+(`_normalised_dict`) and `parse/sidecars/molstruct.py:210` (`load_text`,
+which words it differently — *"hex string of >= 16 chars"*). § 3's own table
+had the right count (*"3 spellings, 2 different messages"*) and this section
+under-reported it.
 Measured: a sidecar whose hash is `"not a hash at all!!!"` **loads**. So does
 `"/etc/passwd\n\n\n\n\n\n"`. `structure-molstruct.md:67` documents the field
 as *"hex, ≥16 chars"*, so **adding the hex check needs no document change** —
@@ -817,7 +830,9 @@ and the systematic read gives a materially different answer.)*
 
 ```
 resolve_cell 15 · resolve_cell_origin 18 · effective_vacuum 8
-cell_contains_atoms 2 · resolve_element 10 · _min_image_distance 1 · image_distance 0
+cell_contains_atoms 2 · resolve_element 10 · _min_image_distance 1
+(`image_distance` was counted here as a door with 0 callers. It is not a
+function at all — see § 1.12c's correction.)
 ```
 
 **Most bare reads are correct** and must stay: asking *"is the cell
@@ -871,8 +886,11 @@ Every call site hardcodes `isolated×3` **unconditionally** —
 `cell.py:168`, `structure.py:628` and `:750` (**the owning file, twice**),
 `periodicity_gate.py:296` and `:465`, `validation/siesta.py:388`,
 `validation/pyscf.py:151`, `validation/geometry.py:151`,
-`siesta/input.py:855`, `transiesta.py:235`, plus a twelfth spelling at
-`validation/__init__.py:144` (`or ()`).
+`siesta/input.py:855`, `transiesta.py:235` — that is **ten** `isolated×3`
+spellings — plus `validation/__init__.py:144` (`or ()`), for **eleven in
+total**. An earlier draft called the last one "a twelfth", which made the
+heading and the list disagree; the list was right. *(Line numbers drift: the
+two in `structure.py` are now `:642` and `:764`.)*
 
 So they are **dead** (`__post_init__` always fills the field, so `or` never
 fires) **and wrong if they ever fired**: they would call a structure with an
@@ -944,11 +962,14 @@ asks the hint's question verbatim and is already imported at
 An earlier draft proposed writing `|a·(b×c)| / |b×c|` inline. That would have
 been a **sixth** hand-rolled copy — the same mistake this section is about.
 
-**And `cell.image_distance` has ZERO callers**, while
-`validation/siesta.py:394` names it as the right tool: *"what matters on a
-typed box is the gap actually ACHIEVED, and `cell.image_distance` measures
-that directly."* Either this fix gives it its caller, or it is residue. It
-cannot be both — settle that with the fix.
+**Correction, 2026-09-23.** An earlier draft added *"and
+`cell.image_distance` has ZERO callers — either this fix gives it its caller
+or it is residue"*. **That function does not exist and never has.**
+`validation/siesta.py:394` names `cell.image_distance` as *"the right tool"*
+for a typed box, and that string is an Issue **`where` id**, not a symbol —
+`_min_image_distance` emits it at `validation/geometry.py:164`. So the tool
+the comment points at IS `_min_image_distance`, which is this fix. There is
+no second door and no residue question.
 
 **The word must change too.** The code comment (`:716`) and the
 `validation.md` table call the gap *"the real vacuum, whether or not the
@@ -985,16 +1006,50 @@ docstring: *"Emitting the cell at zero with world-frame coordinates
 mistranslated a junction by its origin."* The branch warns loudly that the box
 is **fabricated**; it says nothing about the atoms not being **in** it.
 
-Likely inert (transport structures carry explicit cells) — **not verified**.
-Confirm reachability before fixing; if unreachable, it is residue and the
-branch goes.
+**REACHABILITY ESTABLISHED 2026-09-23, and the earlier guess was wrong in
+both directions.**
+
+An earlier draft said *"likely inert (transport structures carry explicit
+cells) — if unreachable, it is residue and the branch goes, and
+`_compute_cell_from_extents` with it."* Both halves are wrong.
+
+**It is unreachable through the production ladder** — `compose_junction`
+refuses a cell-less structure on both citation forms (`compose.py:904`,
+`:959`, via `_unusable_cell`), electrode rungs get
+`ElectrodeModel.as_structure()` which always states a cell, and
+`build.py:1193` refuses `calculation="transport"` outright.
+
+**But it IS reachable through the engine seam.** `siesta/input.py:759-770`
+routes `calculation == "transport"` to `transport.deck.transport_spec`,
+which has **no cell gate of its own** (verified by reading its head). With
+`axis_kind` at `isolated×3` — what `__post_init__` gives any structure
+stating no cell — `resolve_cell()` SUCCEEDS on the bounding box, validation
+passes, and the deck renders with `_compute_cell_from_extents`'s fabricated
+box anchored at (0,0,0) while the atoms go out unshifted. For atoms at
+x ∈ [50, 56] that is every atom outside the emitted box: the exact
+2026-07-29 class quoted in the function's own docstring. *(With
+`("periodic","periodic","transport")` instead, `resolve_cell()` raises and
+`render_deck` does refuse — so the dangerous case is the DEFAULT one.)*
+
+**And the deletion advice would have broken a live caller.**
+`_compute_cell_from_extents` has a second one at
+`transport/wizard.py:365`, inside `extract_electrode_model`'s
+`device.cell is None` branch. The helper survives either way.
+
+**So the fix is a cell gate in `transport_spec`** — or routing
+`_emit_geometry` through `resolve_cell` / `resolve_cell_origin` so the box
+and the coordinates come from one frame — **not a deletion.**
+
+*(Verified here: the route exists, `transport_spec` has no cell gate at its
+head, and the second caller is real. The end-to-end deck render with atoms
+outside the box is the review's measurement, not independently reproduced.)*
 
 #### The systematic fix, in place of four local patches
 
 1. **Delete the eleven `axis_kind` fallbacks** (§ 1.12b). Pure deletion.
 2. **Route § 1.12a through `resolve_element`** and § 1.12c through
-   `_min_image_distance` — and settle `image_distance`'s zero callers in the
-   same pass.
+   `_min_image_distance`. *(No `image_distance` door to settle — that was a
+   phantom; see the correction in § 1.12c.)*
 3. **Decide § 1.12d's branch**: reachable → resolve the cell and the origin
    together through the doors; unreachable → delete it and
    `_compute_cell_from_extents` with it.
@@ -1721,8 +1776,7 @@ contracts were not among the eight documents checked.
    § 1.11b is design § 18 step 0a — do it there, not twice.
 7. **§ 1.12 — the systematic item.** Start with § 1.12b's eleven deletions:
    it is pure removal and it makes the rest safe to read. Then § 1.12a and
-   § 1.12c onto their doors, settling `image_distance`'s zero callers in the
-   same pass. § 1.12d needs a reachability answer first. Three document
+   § 1.12c onto their doors. § 1.12d needs a reachability answer first. Three document
    sentences ride with § 1.12c.
 8. **§ 1.13 + § 1.15** — the second and third conditions. § 1.13 is two
    one-liners. § 1.15a is a chain-aware adjacency key plus dropping a

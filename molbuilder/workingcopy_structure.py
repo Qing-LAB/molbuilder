@@ -45,7 +45,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-from typing import List, NamedTuple, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 from .structure import Structure
 from .sidecars import molstruct
