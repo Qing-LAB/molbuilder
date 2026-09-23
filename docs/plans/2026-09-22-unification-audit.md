@@ -212,12 +212,16 @@ conflict in code instead of in git.
 
 | § | the fix lands in | status |
 |---|---|---|
-| **1.3** | `transport/compose.py` — the dropped form-B recorded contract | **HOLD** |
+| **1.3** | `transport/citation_defaults.py` — the dropped form-B recorded contract | **done on the other machine** (`764addd3`) |
 | **1.5 / 1.5a** | `web/blueprints/build.py` — analyze onto the codec | **HOLD** (§ 1.5a's `structure.md` § 2.4 doc fix is NOT held — see below) |
-| **1.12d** | `transport/transiesta.py` — the fabricated box, `_compute_cell_from_extents` | **HOLD**, and its reachability was never established anyway |
+| **1.12d** | `transport/transiesta.py` — the fabricated box, `_compute_cell_from_extents` | **HOLD**; the fabricator was rewritten there, the origin skip remains, and reachability is a definition question settled in § 1.12d item 3 → § 6 item 2 |
 | **1.6** | split: the OWNER is `validation/__init__.py` clause F4; the INSTANCE is `validation/siesta.py`, reached from `web/blueprints/build.py:1088` | **owner fixable now**, web-side behaviour to be re-checked after |
 | **1.8a** | `web/blueprints/files.py` + `selection.py` — rename structure vs rename file | **HOLD** |
 | **1.12b** | ten of the eleven `axis_kind` fallbacks are outside those trees; **`transiesta.py:235` is inside** | **do the ten, leave that one** |
+
+**The hold worked.** The merge of 2026-09-23 brought 29 files from that
+machine against 22 changed here with zero overlap; every disagreement it left
+is semantic and is recorded in § 1.17.
 
 **What is NOT held, and can proceed:** § 1.1 / 1.1a (the codec generator and
 the PySCF deck writer), § 1.2 (the CLI + `validate`), § 1.4, § 1.7, § 1.8b–d
@@ -331,9 +335,14 @@ damage, undo it) needs the process to survive; pre-rendering means the damage
 never happens. *Sidecar-first* ordering does not remove the window, it moves
 it, and yields stale coordinates with nothing announcing them. A
 *`structure_hash` check on read* would refuse a hand-edited `.xyz` whose
-labels are still perfectly valid, which `structure.md` § 8.2 protects (*"the
-geometry is the author's to set"*); if that guard is ever built it belongs at
-the doors that ACT, not at `read`.
+labels are still perfectly valid, which `structure-periodicity.md` § 8.2
+protects (*reading does not judge*: the file opens, the doors that ACT
+refuse, and the report has to arrive). If that guard is ever built it belongs
+at the doors that ACT, not at `read`. *(An earlier draft cited a
+`structure.md` § 8.2 that does not exist, quoting a sentence found nowhere;
+the consolidation pass of 2026-09-23 caught it. The nearest real words are
+`science/junction-cell.md`'s "the box is the author's to set", which is about
+the box.)*
 
 **This one change also closes** the design document's § 15.6 items: the deck's
 escaped non-ASCII region labels, its `NameError` on a non-finite value, and its
@@ -373,7 +382,7 @@ misses the cell checks twice over — it never reaches F4, and it may be handed
 `validate` (`validation/__init__.py:248` — `issues += validate_geometry(...)`),
 and the web's `_shared.py:408` uses it to build the structure DESCRIPTION
 payload with `cfg=None` passed deliberately. That is a description surface,
-and § 8.2 says descriptions do not judge. *(Its docstring's claim that it is
+and `structure-periodicity.md` § 8.2 says descriptions do not judge. *(Its docstring's claim that it is
 for "the web Build page … before they even pick SIESTA vs PySCF" is stale —
 that is not what the live caller is.)* The defect is the CLI reaching for it
 as a GATE.
@@ -424,6 +433,14 @@ Cause: the recorded contract's vocabulary is `TransportConfig`'s; TR4 moved the
 road to `SiestaConfig`; the only reader that could translate is `config_for`,
 which lost its production caller on 2026-09-16 — **18 days after the branch was
 built.** See § 5 lead ④.
+
+**Fixed on the other machine, 2026-09-23** (`764addd3`): `citation_defaults.py`
+reads a saved structure's recorded contract through `_FROM_RECORD` beside
+`_FROM_DECK`, both through one `_apply_kgrid`; `tests/test_citation_brings_its_settings.py`
+pins it. Their measurement of the consequence is the one to keep: a pair
+recording 400 Ry / TZP / 4×4 produced a template of 300 Ry / DZP / Γ-only,
+which gives a poorly defined E_F and puts every transmission feature at the
+wrong energy. The cause above stands as the record of *why* it was lost.
 
 ### 1.4 The documented CLI pipe destroys the pair and asserts the loss
 
@@ -693,7 +710,7 @@ if not isinstance(structure_hash, str) or len(structure_hash) < 16:
     raise ...(f"structure_hash must be a hex string (got {structure_hash!r})")
 ```
 
-**Three** sites, not the two an earlier draft named:
+**Three** spellings, not the two an earlier draft named:
 `sidecars/molstruct.py:371` (`to_dict`), `parse/sidecars/molstruct.py:79`
 (`_normalised_dict`) and `parse/sidecars/molstruct.py:210` (`load_text`,
 which words it differently — *"hex string of >= 16 chars"*). § 3's own table
@@ -704,9 +721,65 @@ Measured: a sidecar whose hash is `"not a hash at all!!!"` **loads**. So does
 as *"hex, ≥16 chars"*, so **adding the hex check needs no document change** —
 it makes the code do what its own error message and the contract already say.
 
-Tightening to exactly 64 characters is a **separate contract decision**: 13
-existing fixtures conform to "≥16 hex" as written, so `structure-molstruct.md:67`
-would have to be edited first. Not proposed.
+**But only ONE of the three can fire on real data** (consolidation pass,
+2026-09-23). `_normalised_dict` has exactly one caller, `load_text:251`,
+which already ran the same test at `:209` — a dead gate behind a live one.
+`to_dict` has exactly one production caller, `StructureCodec.pair`
+(`workingcopy_structure.py:270`), which always passes a real digest; its gate
+fires only for hand-built callers. So *"add the hex check at three sites"*
+would triplicate a check that fires at one. **Fix shape: one predicate, two
+doors** — the write door (`to_dict`) and the read door (`load_text`) call it;
+the copy inside `_normalised_dict` goes.
+
+Tightening to exactly 64 characters is a **separate contract decision** and
+is not proposed. *(A count is a hypothesis: this section said 13 fixtures
+conform to "≥16 hex"; the consolidation pass re-derived 22 failures + 1 error
+across 18 files under a 64-hex gate. Different file sets — re-derive before
+acting on either.)*
+
+**Consolidated with the other machine's handover § 5.1** (2026-09-23), which
+is the same field and a *different* finding: the value is **compared
+nowhere** — every read of `structure_hash` in `molbuilder/` is a writer, a
+shape gate or prose, and the only comparison in the tree is a fixture pin in
+one test. Proved orthogonal by mutation: with a hex check at every gate, a
+valid-but-stale digest still loads with its labels applied; a comparator
+would not make `"z"*16` refuse at build time. Verified beside it:
+
+* *"refused, never mis-applied"* occurs once in the tree —
+  `structure-molstruct.md` § 1's envelope row for `n_atoms_total`. § 3,
+  which owns the hash, says the caller compares it *"to detect"*. The
+  `MolstructPairingError` docstring (`sidecars/molstruct.py:156`) cites the
+  phrase as § 2's and extends it to the hash — comment-vs-contract, and the
+  comment is the wrong one. So their *"detect, never refuse"* and § 3 already
+  agree, and agree with `structure-periodicity.md` § 8.2 and with § 1.1a's
+  *"not at `read`"* above. The two guards are not equivalent: a count
+  mismatch is binary evidence of misaligned indices; a hash mismatch is
+  weaker (a tool that reformats identical coordinates changes it) **and** the
+  only detector for a row swap, which keeps the count equal and re-labels
+  different atoms.
+* Their premise *"the pair is written atomically, so molbuilder cannot leave
+  the halves out of step"* is **false at HEAD** — that is § 1.1, re-measured.
+  So § 1.1a's generator fix lands **before** any attestation door, or the door
+  asks a person to attest to damage molbuilder did.
+* *Attest by re-saving* is not an option: `to_xyz` writes six decimals, so a
+  hand-written `1.2345678901` comes back `1.234568` — re-saving truncates a
+  relaxed geometry. An attestation door writes the **sidecar only**
+  (`molstruct.save` under `with_lock` exists for it).
+* `spectra/results.py:523` carries the same *"so the parser can refuse"*
+  sentence for the spectra hash, and nothing refuses there either.
+* `Structure.mark_contract_outdated` rules *"never cleared"* while a re-stamp
+  would clear the hash; both hold only if the document says why —
+  `structure_modified` is a statement about **history**, the hash about
+  **identity**.
+* Their own `plan.md` X4 ⑤ says *"the likely answer is DELETE"*; their later
+  handover § 5.1 says detect + attest, *"the shape the user specified"*. Their
+  two documents disagree; the handover is the later one.
+
+**The decision is the user's** (§ 6): delete the field, or build detect-in-
+`StructureCodec.load`-as-a-notice plus a sidecar-only attestation door. If the
+latter: the RULE goes into `structure-molstruct.md` § 3 first (name the door,
+the channel, and that a hash mismatch *reports* while a count mismatch
+*refuses*, with the reason), then the two comments above follow it.
 
 #### 1.8d `title` absorbs the extended-XYZ header, and `to_xyz` writes it back
 
@@ -979,7 +1052,7 @@ only on an `isolated` axis"*, and this hint fires on **periodic** axes. Say
 
 #### 1.12d The transport no-lattice branch fabricates a box and skips the origin
 
-`transiesta.py:308`:
+`transiesta.py:401`:
 
 ```python
 resolved_cell = cell if cell is not None else struct.cell     # never calls resolve_cell()
@@ -988,18 +1061,22 @@ positions = struct.positions - origin if origin is not None else struct.position
 ```
 
 A variable named *resolved* that resolves nothing. When `struct.cell` is None
-the origin shift is **skipped**, and `_lattice_block` then fabricates a box:
+the origin shift is **skipped**, and `_lattice_block` then fabricates a box
+with `_compute_cell_from_extents`.
 
-```python
-a, b, c = _compute_cell_from_extents(struct)      # a SIXTH derivation
-#   "a,b = extent + 30 Å padding; c = extent + 2 Å"
-```
-
-Its own padding constants, unrelated to `vacuum` or `resolve_cell()`. The box
-is emitted **diagonal and anchored at (0,0,0)** while the atoms go out
-**unshifted in the world frame**. Because it uses *extents* (max − min), a
-structure sitting at x ∈ [50, 60] gets a 40 Å box spanning [0, 40] with every
-atom outside it.
+**The fabricator changed shape in the merge of 2026-09-23**
+(`transiesta.py:151-197`, other machine): it is now per axis by `axis_kind`,
+honours a stated `vacuum`, and refuses a `periodic` axis. It is
+`resolve_cell`'s rule re-spelled, and its docstring says why it does not call
+the owner: *"its default where nobody chose is 3 Å — right for a molecule in
+a box and five times too thin for a lead."* That is § 0a's condition exactly:
+one rule, one owner, a copy that differs only in a default — and the fix
+shape it implies is a vacuum-default parameter on the owner, not a copy
+beside it. **What did not change:** the box is still emitted **diagonal and
+anchored at (0,0,0)** while the atoms go out **unshifted in the world
+frame**, because the origin line above never runs when `struct.cell` is None.
+A structure sitting at x ∈ [50, 56] still gets every atom outside its box
+(re-measured on the merged tree by the consolidation pass).
 
 This is the class the 2026-07-29 finding named, quoted in this function's own
 docstring: *"Emitting the cell at zero with world-frame coordinates
@@ -1033,8 +1110,11 @@ x ∈ [50, 56] that is every atom outside the emitted box: the exact
 
 **And the deletion advice would have broken a live caller.**
 `_compute_cell_from_extents` has a second one at
-`transport/wizard.py:365`, inside `extract_electrode_model`'s
-`device.cell is None` branch. The helper survives either way.
+`transport/wizard.py:424`, inside `extract_electrode_model`'s
+`device.cell is None` branch — and `as_structure()` then wraps that box in an
+explicit `cell=`, so the lead's deck says *"Explicit lattice preserved from
+the structure (NOT recomputed from atom extents)"* about a recomputed one.
+The helper survives either way.
 
 **So the fix is a cell gate in `transport_spec`** — or routing
 `_emit_geometry` through `resolve_cell` / `resolve_cell_origin` so the box
@@ -1050,9 +1130,20 @@ outside the box is the review's measurement, not independently reproduced.)*
 2. **Route § 1.12a through `resolve_element`** and § 1.12c through
    `_min_image_distance`. *(No `image_distance` door to settle — that was a
    phantom; see the correction in § 1.12c.)*
-3. **Decide § 1.12d's branch**: reachable → resolve the cell and the origin
-   together through the doors; unreachable → delete it and
-   `_compute_cell_from_extents` with it.
+3. **Decide § 1.12d's branch — and the decision is whether a cell-less lead
+   is a supported input.** The other machine's handover § 4 puts it plainly:
+   `compose` refuses a cell-less citation on both forms, so if the branch is
+   unreachable, *"the isolated-electrode path the user asked to keep cannot
+   currently be used — a gap rather than a reason to delete."* Supported →
+   the branch resolves cell and origin together through the owner, with the
+   lead's vacuum default as a parameter of `resolve_cell`; not supported →
+   delete the branch and the fabricator with it. **The two machines do not
+   disagree about the code**: both say the production ladder cannot reach
+   it. They disagree on whether a route that bypasses `compose` — the engine
+   seam, or `load_compose_record` without `_unusable_cell` — counts as
+   reachable, which is a definition neither document states. Their `plan.md`
+   X1 ① and X4 ③ each say this audit's verdict was *"measured wrong"*; it was
+   measured on a different definition.
 4. **Three document sentences** ride with § 1.12c: `validation.md:410`'s
    *"both err on the quiet side"*, its k-sampling table row calling the gap
    *"the real vacuum"*, and `validation/siesta.py:716`'s comment repeating it.
@@ -1336,6 +1427,88 @@ other three are absolute constants. Nothing downstream can distinguish
 what makes `identity_to_dict`'s all-or-none test the best available answer
 and why a MIXED structure (§ 1.15b) defeats it.
 
+### 1.17 Consolidation with the other machine — merge `145f4001`, 2026-09-23
+
+Sixteen commits from the other machine against fourteen here since base
+`3ee27d9c`. **The two changed-file sets are disjoint**, which is why the merge
+was textually clean and why everything below is semantic. Both sides' targeted
+tests pass together on the merged tree: 263 passed (exit 0). Every claim here
+was re-checked against the merged code, not taken from either side's record.
+
+**Their work closed or moved items of this audit:** § 1.3 with § 5 lead ④
+(`764addd3`); § 2 item 7's table row (the prose line remains); § 1.12b's
+count (eleven → twelve, by a fallback they added); § 1.12d's fabricator (now
+per axis; the origin skip and the false "preserved" claim remain); § 5 lead ①
+(same code, two definitions of reachable — see § 1.12d item 3).
+
+**This audit's own errors, found by the pass:** § 1.1 cited a `structure.md`
+§ 8.2 that does not exist; § 1.8c proposed a check at three sites of which one
+can fire. Both corrected in place.
+
+**Their documents' errors, verified here:**
+
+* Handover § 3 and `plan.md` W21 say `spectra.json` carries no activity
+  classification and the viewer shows only Raman. Built 2026-09-11:
+  `spectra/activity.py` is the one home, every serialisation stamps
+  `activity_class`, the mirror plot / rug / display-floor slider / IR column
+  landed in `b337f91c`, `tests/spectra/test_activity.py` pins the CO2 case.
+  W21's *"designed, not started"* is twelve days stale. What remains of D-2:
+  the per-mode ES probe still selects by Raman brightness
+  (`spectra/selection.py`, `config/pyscf.py:818` *"Raman-activity
+  threshold"*), and no document states the classification rule.
+* Handover § 5.2 asks the next person to *"fix the comment in
+  `wizard.as_structure()` that now states"* the info-strip rule. No comment
+  states it; the rule's text exists only in the handover, and the docstring
+  records the question as open. `plan.md` X4 ② calls the same strip a
+  *defect*; the code calls it an open question.
+* Handover § 5.1: *"the pair is written atomically"* is false at HEAD
+  (§ 1.1); and the quoted *"NOT verified here (the caller compares it)"* is
+  `apply_to_structure`'s docstring (`sidecars/molstruct.py:605`), not `load`'s.
+* Handover § 4 *"the bias is asked twice"*: `bias_voltage_v` is a catalogue
+  row (`catalogue.template.toml:2449`, `stages = ["device"]`) beside
+  `TransportConfig.bias_voltages_v`; plausible, unverified in the browser
+  (held).
+* `plan.md` X4 ⑤ (*"the likely answer is DELETE"*) and handover § 5.1
+  (detect + attest, *"the shape the user specified"*) disagree about the
+  hash; the handover is the later document.
+* `transport/wizard.py:476` is the twelfth `axis_kind` fallback, written by
+  the very reasoning § 1.12b quotes — reconciled against *"its eleven
+  neighbours"*, never against the owner.
+
+**Same finding, two records — keep one:** § 0a and handover § 6 (*"changing
+what a value is called means opening every reader"*), found independently on
+two machines within a day, which is the strongest evidence either document
+has that the condition is real · § 1.12b and the `wizard.py:469` comment ·
+§ 5 lead ⑤ and handover § 4 `TBT.Verbosity` (theirs names the owner, § 5o.5
+step 3) · § 1.16d / § 2's stale line pins and W19 / W20 / D5 (this audit owns
+the policy, theirs the re-measured instances) · § 5a's blind tests and
+handover § 4's weak assertions (disjoint sites, one list) · § 1.2 / § 1.11
+and handover § 4's describe-door vocabulary (one family: a guard whose
+vocabulary moved while the guard did not).
+
+**Not the same — keep two:** § 1.14 (the electrode-frozen check is skipped on
+vibration decks) vs X4 ④ (the unconsumed-label warning's kind, fixed
+`ddfcb8bd`); § 1.12a (`partial_charges`' element lookup) vs X4 ① (species
+*order*, fixed — the owner gained callers; this site still is not one).
+
+**Gaps nobody owns, because each side assumed the other had them:** § 1.5
+`/api/structure/analyze` (held here, untouched there); § 1.8a rename; § 1.6's
+web half; `structure.md` § 2.2a's missing test for when a strip is correct
+(their § 5.2 derived one and asked *"the next person"* to write it into a
+document on this side); **D-1** — `jobset/prep.py:1381` builds its shared set
+from `select(citation=True)`, so a stage override of `species_order` has never
+been refused, and `jobset/` was never in this audit's scope;
+`validation/sidecar.py` grew from 153 to 194 lines after § 7b sized it, so
+G2's scope statement is stale.
+
+**The comment rule meets their practice.** Their handover points the next
+person at dated, narrative comments as the durable record
+(`blueprints/transport.py:535-559`, `transiesta.py:283-295`,
+`wizard.py:169-215`, `compose.py:583-620`). Under the rule as stated —
+transform, never delete — the reasoning in those comments survives and the
+dates and *"was reverted"* narrative go, so the pointer still lands. Those
+files are held; the pass over them waits for the hold to lift.
+
 ## 2. Documentation: one policy, not forty-four edits
 
 **6 of 39 `file.py:NNN` references in the contract documents resolve — 15%.**
@@ -1395,9 +1568,12 @@ that is not true. Highest cost first:
    count from a document.
 7. `docs/engines/transport.md`'s *"deleted | why"* table — header says
    **deleted** (past), the sentence above says *"stop existing"* (future);
-   four of six rows name live code; `:1585` asserts
-   `dataclass_to_form_schema` *"has no callers"* and it is called at
-   `web/blueprints/transport.py:547`.
+   four of six rows name live code. **Half closed on the other machine
+   (2026-09-23):** the table row (`:1755`) now says **LIVE**, called from
+   `blueprints/transport.py`. The prose above it (`:1635`) still opens
+   *"has no production caller and is to be deleted"*, with a correction
+   bolted underneath — a reader scanning for the claim still finds it stated
+   as fact.
 
 ### 2a. Vocabulary that actively misleads
 
@@ -1477,10 +1653,10 @@ lead ① was wrong**, which is the warning in § 0 coming true.
 
 | lead | verdict |
 |---|---|
-| ① `_compute_cell_from_extents` | **NOT RESIDUE — LIVE, and the reachability claim is false.** `load_compose_record` has no `_unusable_cell` call, and `as_structure()` wraps a *fabricated* box in an explicit `cell=`, so `_lattice_block` prints *"Explicit lattice preserved from the structure (NOT recomputed from atom extents)"* about a recomputed one. Measured: `resolve_cell()` says `[7.44, 6.00, 17.22]`, the deck writes `[31.44, 30.00, 20.00]` — the transverse pair off by 4×. Two tests pin the fabricated box **as the contract**, so this is a contract decision, not a cleanup. |
+| ① `_compute_cell_from_extents` | **NOT RESIDUE — LIVE; reached only by routes that bypass `compose`.** `load_compose_record` has no `_unusable_cell` call and the engine seam has no cell gate (§ 1.12d), while the production ladder refuses a cell-less citation at `compose` — so their *"unreachable"* (X1 ①, X4 ③) and this *"live"* describe the same code under two definitions of reachable. `as_structure()` wraps a *fabricated* box in an explicit `cell=`, so `_lattice_block` prints *"Explicit lattice preserved from the structure (NOT recomputed from atom extents)"* about a recomputed one. Measured before the merge: `resolve_cell()` said `[7.44, 6.00, 17.22]`, the deck wrote `[31.44, 30.00, 20.00]` — the transverse pair off by 4×. *(The fabricator's padding changed in the merge; the false "preserved" claim did not, re-measured on a fresh fixture.)* Two tests pin the fabricated box **as the contract**, so this is a contract decision, not a cleanup. |
 | ② `DEFAULT_ELECTRODE_KZ` | **RESIDUE.** The commit that deleted its last two readers edited `__all__` to keep it. Deletion orphans nothing. |
 | ③ `SEALED_TRANSPORT_FIELDS` | **RESIDUE.** Production builds a *different* union inline (three members, not two). Its only reader is a test weaker than the code it guards. |
-| ④ `config_for` | **PART RESIDUE, PART LOST CALLER.** One rule inside it — filling the config from a form-B pair's recorded contract — stopped running on 2026-09-16 and nothing took it over. That is § 1.3. |
+| ④ `config_for` | **PART RESIDUE, PART LOST CALLER.** One rule inside it — filling the config from a form-B pair's recorded contract — stopped running on 2026-09-16 and nothing took it over. That is § 1.3 — **and it was taken over on the other machine** (`764addd3`, in `citation_defaults.py`, not by reviving this function). What remains here is the residue half. |
 | ⑤ `num_threads` | **NOT A DEFECT** — a dead field behind a working structural guard. **But `log_level` is the same shape and *does* reach the deck**: `TBT.Verbosity 5` in every transport deck, unconditionally, from a field no description can set. |
 
 Other residue, each with the step-0 read done: five `_enumerate_files` buckets
@@ -1662,20 +1838,66 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    `transport`, because the extxyz `pbc=` header is boolean. Either molbuilder
    writes its own `axis_kind` key into the comment line, or the loss stands and
    the pair remains the only faithful carrier.
-2. **Lead ①** — deleting `_compute_cell_from_extents` changes a contract two
-   tests pin. Delete the fabrication and refuse instead, or keep it and fix
-   the false *"Explicit lattice preserved"* claim?
+2. **Lead ① / § 1.12d — is a cell-less lead a supported input?** The
+   production ladder refuses one at `compose`; the other machine's handover
+   § 4 says that makes the isolated-electrode path *"the user asked to keep"*
+   unusable today. Supported → the branch resolves cell and origin through
+   the owner, with the lead's 15 Å vacuum default as a **parameter of
+   `resolve_cell`** (a design change: § 0a's *parameter* rung, replacing the
+   copy their rewrite left beside the owner); not supported → delete the
+   branch and `_compute_cell_from_extents`, and retire the two tests that pin
+   the fabricated box as the contract.
 3. **`TBT.Contour` energies** — absolute or E_F-relative? `record.py:326`
    writes `"energies_relative_to_ef": True` unconditionally and
    `conductance_g0` reads T at E = 0; `config/transport.py:202` says the
    question is *"unresolved against SIESTA 5.4.2"*. Settled by reading one
    real `AVTRANS` beside its device `.fdf` — not derivable from source.
 4. **Does a CLI edit owe the user a notice?** The web's eight ops all report;
-   `cmd_modify` reports nothing. § 8.2 assigns the CLI only the *generation*
+   `cmd_modify` reports nothing. `structure-periodicity.md` § 8.2 assigns the CLI only the *generation*
    guard. (The CLI *seam verdict* was already raised and dropped on a ruling —
    do not re-propose that one.)
 5. **`set_info` / `drop_info`** have no Python caller — deliberate parity with
    `molview.data.info`. Keep as a declared extension point, or delete?
+6. **D-1 (their handover, W30 ①) — what declares that a value binds every
+   rung?** The catalogue's `citation` marker means *who supplies the
+   default*; the shared class is larger (`species_order`, `spin_treatment`,
+   `spin_total`), and both doors that refuse a per-rung override of a shared
+   value filter on `citation` (`jobset/prep.py:1381`, the transport form).
+   **A:** a sibling marker `shared = ["transport"]` — one new axis on `Item`,
+   `select()`, the TOML rows, and both doors read it. **B:** widen `citation`
+   — three TOML rows and no code, but the marker's name then lies on rows
+   with no run to cite, and the shared panel's provenance line (*"from the
+   run you cited"*) would need a second distinction anyway. Recommended: A.
+   `system_label` needs `role = ["transport"]` either way.
+7. **D-2 (their handover, W21) — two parts, and the first is already
+   built.** (a) The activity classifier (`spectra/activity.py`, 2026-09-11:
+   widest log-gap ≥ 2 decades and ≤ 1e-3 of the peak, else 1e-6 of the peak;
+   an absolute presence floor per channel; "partial" when a channel was not
+   computed) — endorse as the rule, then give it a document home; no
+   document states it today. (b) The per-mode ES probe's `top_n` and
+   `threshold` selectors rank by Raman activity, which in a centrosymmetric
+   molecule keeps one symmetry class and drops every IR-active mode. Retire
+   both and keep `skip` / `all` / `explicit` plus the frequency window
+   (recommended; the plan row's own suggestion), or re-key them on the
+   activity class, or rank by measured gap change after computing.
+8. **`structure_hash` — delete, or detect-and-attest?** § 1.8c has the
+   consolidated facts. Detect: compare in `StructureCodec.load` and report
+   as a notice, never refuse; attest: a separate door that re-stamps the
+   **sidecar only**; § 1.1a's generator lands first. Or delete the field, as
+   their `plan.md` X4 ⑤ leans. If detect: the rule goes into
+   `structure-molstruct.md` § 3 before any code.
+9. **`structure.md` § 2.2a needs the test it lacks — when is a strip of
+   `info` correct?** Their § 5.2 derived a rule from one case (*"`info`
+   travels with a structure that may LEAVE this calculation"*); the
+   consolidation pass tested it on a second (the in-script atom-metadata
+   block, which carries no `info` and whose return path re-derives the
+   contract from the deck) and found the decidable form: **`info` travels
+   when the derived structure becomes a `.xyz` + `.molstruct.json` pair on
+   disk; where the artifact states the settings itself, the artifact is the
+   record.** Merges are § 2.2b's, not this rule's (`concat` keeps the first
+   input's `info`, measured). Adopt into § 2.2a, then the restatements
+   (`structure.py`'s `info` comment, `wizard.as_structure`, `script_emit.py:448`,
+   `parse/dirs/atom_metadata.py:47`) cite it.
 
 ---
 
@@ -1886,9 +2108,10 @@ contracts were not among the eight documents checked.
    before it is a fix.
 9. **§ 1.6 + the `wrap_into_cell` knob** — a further origin-rule site the sweep missed. Do it
    with the rule in front of you, from `handover.md` § 2.1.
-10. **§ 1.3 + § 5 lead ④ together.** The lost caller and the residue are one
-   decision: either revive the recorded-contract read on the live road, or
-   delete the branch and stop three surfaces claiming it works.
+10. **§ 1.3 + § 5 lead ④** — **done on the other machine** (`764addd3`): the
+   recorded-contract read is alive on the live road, in `citation_defaults.py`.
+   Only the residue half of `config_for` remains, and that is § 5's ordinary
+   step-0 pass.
 11. **§ 1.4** — the CLI stdout destination. Needs § 6 decision 1 first, because
    what a single stream *can* carry is the same question.
 12. **§ 2's line-number policy** — one pass over four documents, mechanical.
