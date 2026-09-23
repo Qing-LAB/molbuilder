@@ -440,7 +440,11 @@ def _emit_geometry_block(struct, cfg) -> str:
     # stops at the first END marker -- so the in-body copy won and the
     # framework's richer one was dead text.  Two on-disk sources of truth
     # for the region partition the whole ladder is built on.
-    return "\n".join(_emit_geometry(struct))
+    # `cfg` THROUGH, because the species order is a value a person may set
+    # and this block writes `ChemicalSpeciesLabel`.  It was received and
+    # dropped here, which is the whole of why `species_order` reached every
+    # SIESTA deck and no transport deck (`model/chemistry.md` § 3a).
+    return "\n".join(_emit_geometry(struct, cfg=cfg))
 
 
 def _emit_restart_group(struct, cfg) -> str:

@@ -45,12 +45,27 @@ from ..config.transport import (
 from ..structure import Structure
 
 
-# Transverse vacuum padding per side (Å) when computing the device
-# cell from atom extents.  15 Å is the SIESTA-canonical floor for
-# isolated-molecule transverse padding (electronic tails fall off
-# by ~5–8 Å in vacuum).  Lower → exchange-correlation tails leak;
-# higher → unnecessary basis cost.
-_TRANSVERSE_PAD_ANG = 15.0
+#: Transverse vacuum per side (Å) for an ISOLATED electrode — a nanowire or
+#: chain lead, periodic along transport and genuinely vacuum-surrounded
+#: across it — when the structure states no vacuum of its own.
+#:
+#: 15 Å is the SIESTA-canonical floor for isolated transverse padding
+#: (electronic tails fall off by ~5–8 Å in vacuum).  Lower → exchange-
+#: correlation tails leak; higher → unnecessary basis cost.  **A transport
+#: lead needs more than an ordinary molecule does**: it is the object the
+#: self-energy is built from, so its images must be electrostatically
+#: isolated or Σ describes a wire coupled to its own copies.
+#:
+#: A TRANSPORT DEFAULT, NOT AN OVERRIDE.  `Structure.effective_vacuum`
+#: supplies 3 Å where nobody has chosen — right for a molecule in a box and
+#: five times too thin for a lead — so transport answers the same question
+#: with its own default, the way the electrode's dense transport-axis k is a
+#: default rather than something a person must discover
+#: (`engines/transport.md` § 2a.7).  What it is NOT is a second home for the
+#: value: a structure that STATES a vacuum is obeyed verbatim, because
+#: `vacuum` is already the person's control (Modify → Cell, carried in the
+#: sidecar) and this emitter ignored it until 2026-09-23.
+_ISOLATED_ELECTRODE_VACUUM_ANG = 15.0
 
 
 def _sanitize_electrode_block_name(label: str) -> str:
@@ -136,7 +151,9 @@ def _find_electrode_regions(
 def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
     """Default cell (a, b, c) in Å from the atom extents.
 
-    Transverse (a, b): atom-extent + ``2 × _TRANSVERSE_PAD_ANG``.
+    Transverse (a, b): atom-extent + twice the per-side vacuum — the
+    structure's own when it states one, else
+    :data:`_ISOLATED_ELECTRODE_VACUUM_ANG`.
     Transport (c): atom-extent of the z-coordinates ROUNDED UP to
     the nearest Å.  The user is expected to OVERRIDE c so it matches
     their electrode z-periodicity (the comment in the .fdf says so);
@@ -149,8 +166,16 @@ def _compute_cell_from_extents(struct: Structure) -> Tuple[float, float, float]:
     extent_x = float(pos[:, 0].max() - pos[:, 0].min())
     extent_y = float(pos[:, 1].max() - pos[:, 1].min())
     extent_z = float(pos[:, 2].max() - pos[:, 2].min())
-    a = extent_x + 2.0 * _TRANSVERSE_PAD_ANG
-    b = extent_y + 2.0 * _TRANSVERSE_PAD_ANG
+    # THE PERSON'S VACUUM WINS, and it was ignored until 2026-09-23.
+    # `vacuum` has three states (`structure-periodicity.md` § 2): a number,
+    # used verbatim; `[0,0,0]`, meaning no gap DELIBERATELY, also verbatim;
+    # and unset, which is the only one this default answers.  Someone who
+    # typed 8 Å on the Cell page got 15 Å in the deck and nothing said so.
+    stated = struct.vacuum
+    pad_x, pad_y = ((float(stated[0]), float(stated[1])) if stated is not None
+                    else (_ISOLATED_ELECTRODE_VACUUM_ANG,) * 2)
+    a = extent_x + 2.0 * pad_x
+    b = extent_y + 2.0 * pad_y
     c = float(int(extent_z + 2.0) + 1)  # round up + 2 Å buffer
     return (a, b, c)
 
@@ -214,6 +239,24 @@ def _lattice_block(struct: Structure,
     orthorhombic vacuum box is fabricated from atom extents — a model
     of an ISOLATED cluster, flagged loudly because it is wrong for a
     periodic surface electrode (the hex Au(111) case).
+
+    **THIS ARM IS FOR AN ISOLATED ELECTRODE, AND IT IS A REAL CASE**
+    (user, 2026-09-23).  A nanowire or chain lead is periodic along
+    transport and genuinely vacuum-surrounded across it, so a derived
+    transverse box IS the model -- and it needs MORE vacuum than an
+    ordinary molecule, because the lead is what the self-energy is built
+    from and its images must be electrostatically isolated.
+
+    It is NOT for a periodic surface electrode.  `engines/transport.md`
+    § 7 is about that case: *"the box is NOT recoverable from atom extents
+    (padding fabricates an orthorhombic box that severs the periodic
+    gold)"* -- a rectangle cannot tile Au(111).  That case never reaches
+    here: the citation door refuses a junction stating no cell, and I6 is
+    held by copying the device's lateral vectors (§ 5).
+
+    *(Two 2026-09-22 reviews read the § 7 sentence as a verdict on this
+    function and concluded it was residue -- one attempted a deletion,
+    which was reverted.  The sentence is about the OTHER case.)*
     """
     lines = ["LatticeConstant        1.0 Ang"]
     if cell is not None:
@@ -285,7 +328,8 @@ def _lattice_block(struct: Structure,
 
 
 def _emit_geometry(struct: Structure,
-                   cell: Optional[np.ndarray] = None) -> List[str]:
+                   cell: Optional[np.ndarray] = None,
+                   cfg=None) -> List[str]:
     """Lattice + AtomicCoordinates blocks.
 
     The lattice comes from ``cell`` (or ``struct.cell``) when present —
@@ -302,7 +346,23 @@ def _emit_geometry(struct: Structure,
     2026-07-29: far-face atoms wrapped into the leads).
     """
     from ..chemistry import atomic_number
-    species = sorted(set(struct.elements), key=lambda e: e.capitalize())
+    # ONE SPECIES RULE, AND ONE OVERRIDE, SHARED WITH THE SIESTA EMITTER
+    # (`model/chemistry.md` § 3a, decided 2026-09-23 -- GLOBALLY, which
+    # includes transport).  The index this fixes is the orbital ordering
+    # inside `.DM` and `.TSHS`, a value § 2a.13 binds to every stage, so a
+    # second rule here is not a variation -- it is the defect.
+    #
+    # This sorted ALPHABETICALLY until 2026-09-23 while `siesta/input.py`
+    # sorted by atomic number, so one structure was declared `Au, C, H, S`
+    # here and `H, C, S, Au` there.  And `cfg.species_order` -- a catalogue
+    # row a person can fill in -- was honoured there and unreachable here,
+    # because this block took no `cfg`.  **The config was already in scope
+    # at the call site and simply not passed** (`deck.py`), so the "seam
+    # change" that gap looked like was one argument.
+    from ..chemistry import species_order as _species_order
+    species = _species_order(
+        struct.elements,
+        getattr(cfg, "species_order", None) if cfg is not None else None)
     species_idx = {sp: i + 1 for i, sp in enumerate(species)}
 
     resolved_cell = cell if cell is not None else struct.cell

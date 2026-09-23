@@ -569,7 +569,7 @@ def init_cmd(structure, bundle: str, shape: str,
     from ..config.siesta import SIESTA_STAGE_NAMES, SiestaConfig
     from ..describe import DescribeError, build_description, write_description
     from ..identity import normalise_id
-    from ..siesta.input import _detect_species
+    from ..chemistry import species_order
     from ..pyscf.stages import default_pyscf_stages
     from ..siesta.stages import default_siesta_stages
     from ..task import Stage
@@ -662,7 +662,7 @@ def init_cmd(structure, bundle: str, shape: str,
             struct, cfg, stages,
             engine=engine, shape=shape, name=run_name,
             source=str(structure), calculation=calculation,
-            pseudo_species=_detect_species(struct.elements),
+            pseudo_species=species_order(struct.elements),
         )
         # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
         # and a raw copy of the source dropped that choice on the floor

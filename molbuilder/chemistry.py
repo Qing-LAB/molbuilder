@@ -346,6 +346,105 @@ def atomic_number(label: str) -> int:
     return int(_Z[resolve_element(label)])
 
 
+#: Group VI (chalcogens) and group VII (halogens).  Hydrogen is written
+#: BEFORE these and after everything else -- H2O, HF, HCl, H2S against
+#: B2H6, SiH4, NH3 -- which is the electronegativity ordering chemical
+#: formulae have always used.  `model/chemistry.md` § 3a.
+_H_GOES_FIRST_WITH = frozenset(("O", "S", "Se", "Te", "Po",      # VI
+                                "F", "Cl", "Br", "I", "At"))     # VII
+
+
+def species_order(elements: "Iterable[str]",
+                  override: "Optional[Iterable[str]]" = None) -> List[str]:
+    """**THE ONE ENTRY** for "which species, in what order".
+
+    Every emitter, every pseudopotential copy, every list of a structure's
+    species asks THIS.  Nothing re-derives it: the order fixes each
+    element's index in ``%block ChemicalSpeciesLabel``, that index fixes the
+    orbital ordering inside ``.DM`` and ``.TSHS``, and two answers to one
+    question is how files stop being readable by the next stage
+    (`engines/transport.md` § 2a.13).
+
+    *override* is the person's own answer -- the ``species_order`` catalogue
+    row.  Non-empty, it is honoured VERBATIM and the rule below does not
+    run; an override that omits an element the structure uses is caught at
+    the deck gate (`siesta/layout.py`, *"the coordinate block uses species X,
+    which ChemicalSpeciesLabel does not declare"*).  Resolving the override
+    here rather than at each call site is the point: it was spelled in two
+    emitters and honoured by one.
+
+    THE DEFAULT, when nobody has said otherwise.
+
+    THE ONE RULE, every engine (`model/chemistry.md` § 3a, decided
+    2026-09-23).  The order fixes each element's index in
+    ``%block ChemicalSpeciesLabel``, and that index fixes the orbital
+    ordering inside SIESTA's ``.DM`` and ``.TSHS`` -- two runs that order
+    species differently write files the next stage cannot read correctly
+    (`engines/transport.md` § 2a.13).
+
+    There were TWO rules until this existed: `siesta/input.py` sorted by
+    atomic number and `transport/transiesta.py` sorted alphabetically, so one
+    structure got ``H, C, S, Au`` from one emitter and ``Au, C, H, S`` from
+    the other.
+
+    Start from atomic number, then place hydrogen the way a chemist writes
+    it.  Three cases, in this order:
+
+    1. **Carbon present** -> carbon first, then hydrogen, then the rest.
+       This is the organic convention and it WINS outright: methanol is
+       CH4O and acetic acid C2H4O2, never HC...
+    2. **No carbon, but a group VI or VII element present** -> hydrogen
+       FIRST, where its atomic number already puts it.  H2O, HF, HCl, H2S,
+       and HNO3 -- hydrogen is the electropositive partner and is written
+       first.
+    3. **Neither** -> hydrogen goes LAST of the light elements, immediately
+       after its anchor: nitrogen if present, else the lowest-Z species that
+       is not hydrogen.  NH3, B2H6, SiH4.
+
+    Ties inside the atomic-number sort keep first-seen order, so ``Au1`` and
+    ``Au2`` stay distinct and stay as the file listed them.  Matching is on
+    the ELEMENT a label names, never the label text, so ``H1``/``H2`` are
+    both hydrogen and move together -- and they land after the LAST anchor
+    label, because hydrogen belongs after the carbons as a group rather than
+    between ``C1`` and ``C2``.
+
+        {Au,C,H,S} -> C, H, S, Au        {H,O}   -> H, O
+        {C,H,N,O}  -> C, H, N, O         {H,N,O} -> H, N, O
+        {H,N}      -> N, H               {B,H}   -> B, H
+
+    A person's ``species_order`` overrides this entirely; this is the
+    default beneath it.
+    """
+    if override:
+        return list(override)
+    seen: List[str] = []
+    for s in elements:
+        if s not in seen:
+            seen.append(s)
+    ordered = sorted(seen, key=atomic_number)
+
+    hydrogens = [s for s in ordered if resolve_element(s) == "H"]
+    if not hydrogens:
+        return ordered
+    symbols = {resolve_element(s) for s in ordered}
+
+    if "C" in symbols:
+        anchor = "C"                       # case 1 -- organic, and it wins
+    elif symbols & _H_GOES_FIRST_WITH:
+        return ordered                     # case 2 -- H already first by Z
+    elif "N" in symbols:
+        anchor = "N"                       # case 3 -- NH3
+    else:
+        rest = [s for s in ordered if s not in hydrogens]
+        if not rest:
+            return ordered                 # hydrogen alone
+        anchor = resolve_element(rest[0])  # case 3 -- B2H6, SiH4
+
+    rest = [s for s in ordered if s not in hydrogens]
+    last = max(i for i, s in enumerate(rest) if resolve_element(s) == anchor)
+    return rest[:last + 1] + hydrogens + rest[last + 1:]
+
+
 def total_electrons(struct: Structure, charge: int = 0) -> int:
     """Sum of atomic numbers minus charge.  Used by parity checks
     (closed-shell spin=0 requires an even count; an odd total means

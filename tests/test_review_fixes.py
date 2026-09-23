@@ -34,14 +34,19 @@ from molbuilder.chemistry import (
 def test_s1_t1_element_strip_propagates_to_species():
     """If a Structure ever lands in the FDF generator with an element
     like ' C', species detection must NOT see two distinct species."""
-    from molbuilder.siesta.input import _detect_species
-    species = _detect_species(["C", "C", "H", "O"])
-    import ase.data
-    assert species == sorted(species, key=lambda s: ase.data.atomic_numbers[s])
+    from molbuilder.chemistry import species_order
+    species = species_order(["C", "C", "H", "O"])
+    # ONE entry per element, whatever the order.  This asserted pure
+    # atomic-number order as a side effect, which stopped being the rule on
+    # 2026-09-23 (`model/chemistry.md` § 3a: carbon leads, hydrogen follows
+    # it) -- and the order was never what this test is about.  Duplicates
+    # are: a `" C"` that did not get stripped becomes a second carbon.
+    assert species == ["C", "H", "O"]
+    assert len(species) == len(set(species))
     # If a downstream caller forgets to strip, the FDF generator should
     # crash visibly rather than silently produce a malformed input.
     try:
-        sp = _detect_species(["C", " C", "H"])
+        sp = species_order(["C", " C", "H"])
     except KeyError:
         return   # acceptable: the unknown ' C' raises
     counts = {s: sp.count(s) for s in set(sp)}

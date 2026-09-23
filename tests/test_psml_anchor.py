@@ -194,7 +194,12 @@ class TestPrepRefusesWithTheRealPlace:
                 calc)
         msg = str(e.value)
         assert str(tmp_path / "projects" / "pseudopotential") in msg
-        assert "H, C, S, Au" in msg
+        # ASKED, NEVER SPELLED.  This test is about the PATH the message
+        # names; the element list is incidental, and spelling it pinned the
+        # species order -- a separate contract (`model/chemistry.md` § 3a)
+        # with its own test -- which went red when that rule changed.
+        from molbuilder.chemistry import species_order
+        assert ", ".join(species_order(["H", "C", "S", "Au"])) in msg
         assert str(calc / "projects") not in msg
 
     def test_it_finds_the_library_that_is_really_there(

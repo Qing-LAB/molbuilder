@@ -561,9 +561,10 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     constant.
     """
     from ..pseudos import resolve_psml_lib
-    from ..siesta.input import _detect_species, copy_pseudopotentials
+    from ..siesta.input import copy_pseudopotentials
+    from ..chemistry import species_order
 
-    species = _detect_species(struct.elements)
+    species = species_order(struct.elements)
     if not species:
         return
     pdir = _pseudo_dir(base)
@@ -1302,9 +1303,10 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     actually here, same protocol, same blocking statuses.
     """
     from ..projects import find_projects_root
-    from ..siesta.input import _detect_species, copy_pseudopotentials
+    from ..siesta.input import copy_pseudopotentials
+    from ..chemistry import species_order
 
-    species = _detect_species(struct.elements)
+    species = species_order(struct.elements)
     if not species:
         return
     pdir = _pseudo_dir(base)
