@@ -685,14 +685,17 @@ Verified against the SIESTA binary in our own environment:
 | what | keyword | note |
 |---|---|---|
 | ask for a force-constant run | `MD.TypeOfRun FC` | `PHONON` is retired — the binary says so |
-| first / last atom to nudge | `FC.First` / `FC.Last` | `MD.FCFirst` / `MD.FCLast` also accepted |
+| first / last atom to nudge | **`FC.First`** / **`FC.Last`** | *(this row said `MD.FCFirst` / `MD.FCLast` are "also accepted". They are **deprecated** in 5.4.2 and the same two gates refuse them — see § 14.1.)* |
 | how far to nudge | **`FC.Displacement`** | *(this row said `FC.Displ`, with `MD.FCDispl` "also accepted". Both halves were wrong — see the correction below.)* |
 | result | `SystemLabel.FC` | |
 | turn it into modes | the `vibra` utility | **already installed** in `molbuilder-siesta/bin/` |
 | save ∂H/∂R and ∂S/∂R | `FC.Save.dHS` | **present in our binary** — see § 9 |
 
 *(Correction on the record: an earlier note in this session said `FC.First` was
-wrong and only `MD.FCFirst` existed. The binary carries both.)*
+wrong and only `MD.FCFirst` existed. `FC.First` is the current spelling and
+`MD.FCFirst` its deprecated alias — from the manual-derived table in
+`tests/validation/test_siesta.py`, **not** from `strings` on the binary,
+which § 14.1 shows cannot settle a keyword question.)*
 
 ### 8.2 The one hard constraint: **`FC.First`/`FC.Last` is a contiguous range**
 
@@ -722,7 +725,7 @@ Three ways out:
 | **reorder** | write the `.fdf` with atoms permuted so the free ones are consecutive, and map results back | invisible to the user; needs the permutation to be a first-class fact, not a local trick |
 | **over-nudge** | nudge the smallest range covering every free atom and discard the extra | simple, and wastes exactly the compute the feature exists to save |
 
-**Reorder is the right answer, and it has a designated home already — but not the one this section named.** *(Corrected 2026-09-22; the paragraph below said `engine_atom_index.py`. See the correction under § 8.2a.)*
+**Reorder is the right answer, and it has a designated home already — but not the one this section named.** *(Corrected 2026-09-22; the paragraph below said `engine_atom_index.py`. See § 14.2.)*
 `engine_atom_index.py` exists precisely for this and says so: *"the single,
 explicit point where a 0-based identity becomes an engine's atom number …
 Nothing else in the codebase may apply a bare `i + 1` OR `n − 1` to an atom
@@ -937,10 +940,13 @@ substring match "confirms" any prefix. `FC.Displ` matches inside
 `FC.Displacement` four times. The reliable sources are the manual-derived
 table in `tests/validation/test_siesta.py` and `parse/fdf.py::_norm`.
 
-Two FC keywords Part I never named, both attested: `FC.dHdR.Tolerance`
-(Ry/Bohr) and `FC.dSdR.Tolerance` (1/Bohr), part of the `FC.Save.dHS` route.
+*(Part I also named two further keywords, `FC.dHdR.Tolerance` and
+`FC.dSdR.Tolerance`, as "attested". **Withdrawn**: the only source was
+`strings` on the binary, which the paragraph above shows cannot settle a
+keyword question, and they appear nowhere else in this repo. Settled by the
+5.4.2 manual source, the same place `SIESTA_542_DEPRECATED` came from.)*
 
-### 14.2 The permutation's home is `transport/sort.py`, not `engine_atom_index.py` *(§ 8.2a)*
+### 14.2 The permutation's home is `transport/sort.py`, not `engine_atom_index.py` *(corrects § 8.2)*
 
 § 8.2 called reordering *"the single largest piece of work in the SIESTA
 half"* and pointed it at `engine_atom_index.py`. That module is an **affine
@@ -1085,12 +1091,35 @@ warns against, arriving because the box was dropped.
 
 `emit_save_helper` takes its payload from the codec — correct — and then
 serialises it with `open(..., 'w')` and `_mb_json.dump(_side, fh, indent=2)`:
-no `encoding`, no `ensure_ascii=False`, no `allow_nan=False`. Measured, same
-payload through both writers: the codec keeps `α-helix` literal and **refuses**
-a NaN; the spliced copy escapes the label and **writes bare `NaN`**, which
-`json.loads` tolerates and `JSON.parse` — the web reader — rejects. The
-sibling `_atomic_write_json` in the same file carries all four invariants, so
-this is an omission, not a house style.
+no `encoding`, no `ensure_ascii=False`, no `allow_nan=False`.
+
+**Three corrections to this section, 2026-09-23.** It was written from a
+reference scan and overstated on all three counts.
+
+1. **Only `ensure_ascii=False` is live.** Measured: the codec keeps `α-helix`
+   literal, the spliced copy escapes it.
+2. **"writes bare `NaN`" is FALSE.** The payload is spliced as
+   `f"_MB_SIDECAR = {sidecar!r}"` — a **Python-literal** channel, not JSON.
+   `repr({'a': float('nan')})` is `{'a': nan}`, and `nan` is not a Python
+   name, so the deck dies at **import** with `NameError` and `_mb_json.dump`
+   is never reached. A different failure, and a loud one.
+3. **`encoding=` is not reachable at production call sites** — all four pass
+   fixed ASCII comments, and with `ensure_ascii` defaulting True the JSON is
+   pure ASCII. It goes live the moment (1) is fixed, so the two must move
+   together.
+4. **The sibling writer is in another module.** `_emit_atomic_writer` is in
+   `pyscf/vibration_emitters.py`, called from `vibration_deck.py`;
+   `pyscf/input.py` holds no atomic writer. "Same file" was wrong.
+
+**SUPERSEDED as a separate fix — see `plans/2026-09-22-unification-audit.md`
+§ 1.1a.** All of the above is one symptom of a single cause: `StructurePair`
+returns `document: str` (rendered) beside `sidecar: dict` (not rendered), so
+every consumer finishes the serialisation itself and this is the third
+consumer doing it differently. The resolution (user, 2026-09-23) is to render
+both halves in `pair()` and hand the deck the codec's own JSON text, splicing
+`molstruct.dumps` for the re-emit. Fixing the settings here instead would
+leave a third serialiser in place, which `model/structure.md` § 2.4 forbids.
+**Do not fix this section's items independently.**
 
 ### 15.7 The Methods prose states the method two ways, and the rule four times
 

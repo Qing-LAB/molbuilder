@@ -49,6 +49,60 @@ navigating by it** — generalises: §§ 1 and 2 below come before § 5.
 
 ---
 
+## 0a. Most of § 1 is ONE condition, not twelve findings
+
+*(Added 2026-09-23, after a systematic read replaced a piecemeal one. The
+first five items were walked individually and each produced a local fix.
+Read together they are instances of a single condition, and the local fixes
+were in several cases the wrong fix.)*
+
+**THE CONDITION: a rule has an owner, and the call site re-derives it.**
+
+| § | the rule | its owner | what the call site does instead |
+|---|---|---|---|
+| **1.1a** | how a sidecar becomes bytes | `StructureCodec.pair()` | returns `sidecar: dict` (unrendered) beside `document: str` (rendered), so three consumers finish the job at three different moments — one of them after the `.xyz` is already on disk |
+| **1.5** | reading a stored structure from a path | `StructureCodec.load` | `/api/structure/analyze` reads and parses the file itself: no `encoding=`, its own suffix dispatch, and the sidecar never read |
+| **1.6** | is the cell around the atoms | `cell_contains_atoms(resolve_cell_origin())` — **2 callers** | `inv(cell); positions @ inv` with no origin term |
+| **1.8** | what a structure path is, and where its companion lives | the codec | three spellings (`files.py:257`, `selection.py:99`, an inline error string), and rename gates the source end only |
+| **1.12** | four rules at once — element from a label, the `axis_kind` default, image distance, cell derivation | `resolve_element`, `Structure.__post_init__`, `_min_image_distance`, `resolve_cell` | **eleven** hand-written `axis_kind` fallbacks plus three hand-rolled geometries |
+
+**Why it keeps happening, in the words of one of the sites.** `transiesta.py:235`
+carries a careful comment explaining why its `axis_kind` fallback was changed:
+
+> *"The fallback AGREES WITH ITS TEN NEIGHBOURS. It arrived as the literal
+> swap … and said `("periodic",) * 3`, while every other `axis_kind or …` in
+> the tree … answers `("isolated",) * 3`."*
+
+The author compared the copy against **ten other copies** and never against
+the owner. `__post_init__` resolves a missing `axis_kind` to `periodic×3`
+**when a cell is present** — and this site sits inside `if cell is not None:`.
+The original value was right for its branch and was changed to the wrong one
+to match the neighbours. **Careful work, wrong reference point.** Nothing
+breaks today only because all eleven are unreachable.
+
+**What follows for the fixes.**
+
+1. **Fix the owner, then delete the copies.** Never fix the instance — that
+   is how a code-vs-contract finding gets closed by creating a
+   code-vs-contract disagreement. (The documentary form of this rule is
+   already standing practice; this is its code form.)
+2. **Prefer deletion.** § 1.12b's eleven fallbacks cannot fire; removing them
+   is the whole fix. *delete > one home > parameter > abstraction.*
+3. **Before writing any arithmetic, ask whether the rule has a door.**
+   § 1.12c nearly gained a hand-written `|a·(b×c)| / |b×c|` — a sixth copy —
+   while `_min_image_distance` already answers that question exactly and is
+   already imported two files away.
+4. **A door with zero callers is a finding either way.**
+   `cell.image_distance` has none, while a comment 330 lines from the hint
+   names it as the right tool. Either the fix gives it its caller, or it is
+   residue. It cannot stay both.
+
+**The genuinely separate items** — not instances of this condition — are
+§ 1.1's half-written pair (an ordering and atomicity question), § 1.11's
+fail-open registry, and the builder defects. Those are ordinary bugs.
+
+---
+
 ## 1. Correctness holes that reach a user's data or science
 
 Ordered by what they cost.
@@ -70,8 +124,89 @@ No error on reopen — a label-free pair is legitimate. Two stated invariants
 break at once: `workingcopy_structure.py:12` promises *"both-or-neither
 atomicity on write"*, and `load` reads *"no .json == empty metadata"*.
 
-**Fix:** one `allow_nan=False` at every `info` door, and a rollback (or
-sidecar-first ordering) in `write`.
+**The OVERWRITE case is worse, and was missed on the first pass.** Re-measured
+2026-09-23 on an existing pair (atom moved, one region deleted, a NaN in
+`info`):
+
+```
+v1 regions: {'L': [0], 'R': [1]}
+v2 write:   RAISED ValueError: Out of range float values are not JSON compliant
+reopened positions[0]: [5. 5. 5.]             <- the move STUCK
+reopened regions:      {'L': [0], 'R': [1]}   <- the DELETED region is back
+sidecar hash 463e2ab1…  vs  actual xyz b231ba5…   MATCH? False
+```
+
+Half the edit survived. The save was loud; the reopen was silent.
+
+**Why the second guard does not fire.** `structure-molstruct.md` § 3 specifies
+**two** guards, "deliberately kept separate": the atom count, and
+`structure_hash`. Measured — `count changed → REFUSED MolstructPairingError`,
+`atoms moved → ACCEPTED`. The count guard is wired; the hash guard is assigned
+to "the caller" by `sidecars/molstruct.py:598` and **no caller exists**. A
+responsibility named, delegated, never picked up.
+
+### 1.1a The root cause is the GENERATOR, not the write door
+
+`StructurePair` promises *"what a Structure looks like OUTSIDE MEMORY … ONE
+shape for every consumer"* and then declares `document: str` (rendered) beside
+`sidecar: dict` (**not** rendered). A dict is not an outside-memory form, so
+every consumer finishes the rendering itself, at a different moment:
+
+| consumer | renders the sidecar | outcome |
+|---|---|---|
+| `files()` | immediately, before returning | correct |
+| `write()` | inside `molstruct.save`, **after** the `.xyz` is swapped | the half-write above |
+| spliced deck writer (`pyscf/input.py:1551`) | at runtime, with its own settings | see below |
+
+**The error handling is not uniform because the PRODUCT is not uniform.**
+
+The deck writer is a third implementation of the pair write, which § 2.4's
+*"every structure↔bytes translation goes through the codec"* forbids. It omits
+`ensure_ascii=False`, `allow_nan=False` and `encoding=`; it has no
+temp-and-rename; and it carries JSON through a **Python-literal** channel
+(`f"_MB_SIDECAR = {sidecar!r}"`). Verified: `repr({'a': float('nan')})` is
+`{'a': nan}`, and `nan` is not a Python name — so a non-finite value kills the
+deck at **import**, with `NameError`, before any SCF.
+
+**RESOLUTION (user, 2026-09-23) — one change at the generator:**
+
+1. **`pair()` renders BOTH halves.** `StructurePair.sidecar` becomes the
+   rendered text. Every serialisation failure then happens once, inside the
+   generator, before any consumer can touch the disk. This is the uniform
+   error handling, and it arrives by construction rather than as a check added
+   at each door.
+2. **`write()` stages both temps, then does both renames.** No pre-check
+   needed — both halves arrive final. Disk-full and permission errors land at
+   the temp write, before either rename. The residual window is a crash
+   between two adjacent `os.replace` syscalls, which POSIX cannot close
+   without renaming a directory and is not worth the machinery.
+3. **Delete the `atomic=False` branch.** Zero callers in `molbuilder/` or
+   `tests/` — and it is the branch that would keep the defect.
+4. **The deck writer takes the codec's own JSON text**, and `molstruct.dumps`
+   is spliced for the re-emit it needs after patching `structure_hash` and
+   `title` — the `homo_index` / `dipole_derivatives` pattern, and what
+   `dumps`'s own docstring demands: *"Two serialisers is two answers to 'what
+   does this sidecar look like'."*
+5. **Correct `structure.md` § 2.4's sentence** in the same commit. It states
+   the order exists *"so a reader never sees new geometry with a stale
+   sidecar's atom indices"* — which is exactly what geometry-first produces.
+   The code's own docstring is honest (*"the only visible interleaving is
+   OLD-sidecar + NEW-geometry"*). Nothing pins the order: reversed, 95
+   targeted tests stayed green, so add the test with the fix.
+
+**Rejected, and why.** A *rollback* after a failed sidecar write (do the
+damage, undo it) needs the process to survive; pre-rendering means the damage
+never happens. *Sidecar-first* ordering does not remove the window, it moves
+it, and yields stale coordinates with nothing announcing them. A
+*`structure_hash` check on read* would refuse a hand-edited `.xyz` whose
+labels are still perfectly valid, which `structure.md` § 8.2 protects (*"the
+geometry is the author's to set"*); if that guard is ever built it belongs at
+the doors that ACT, not at `read`.
+
+**This one change also closes** the design document's § 15.6 items: the deck's
+escaped non-ASCII region labels, its `NameError` on a non-finite value, and its
+missing `encoding=`. They are not separate fixes — they are the same
+half-rendered product, finished wrongly by a third consumer.
 
 ### 1.2 `molbuilder validate` with no `--engine` runs no cell check at all
 
@@ -86,6 +221,56 @@ geometrically impossible box passes to job submission. Two independent causes:
 the seam passes `cell=struct.cell` (the raw field, not `resolve_cell()`), and
 the geometry-only branch never enters `validate()`, where `cell.check` lives.
 `cmd_validate`'s own docstring advertises *"image distance, cell volume"*.
+
+**The mechanism, read 2026-09-23.** The CLI picks between two different
+functions on whether `--engine` was given:
+
+```python
+if engine == "siesta":   validate(struct, SiestaConfig(), cell=_cell)
+elif engine == "pyscf":  validate(struct, PySCFConfig())
+else:                    validate_geometry(struct, cell=_cell)   # <- a DIFFERENT function
+```
+
+`validate_geometry`'s own docstring: *"Cell-dependent checks (volume / image
+distance / determinant) are **skipped when `cell is None`**."* `validate()`
+would have derived the cell itself under clause F4. So the no-engine branch
+misses the cell checks twice over — it never reaches F4, and it may be handed
+`None`.
+
+**`validate_geometry` is not the problem and stays.** It is a COMPONENT of
+`validate` (`validation/__init__.py:248` — `issues += validate_geometry(...)`),
+and the web's `_shared.py:408` uses it to build the structure DESCRIPTION
+payload with `cfg=None` passed deliberately. That is a description surface,
+and § 8.2 says descriptions do not judge. *(Its docstring's claim that it is
+for "the web Build page … before they even pick SIESTA vs PySCF" is stale —
+that is not what the live caller is.)* The defect is the CLI reaching for it
+as a GATE.
+
+**RESOLUTION (user, 2026-09-23) — the fallback is fine; the SILENCE is the
+defect.** `science/validation.md` clause F4 already states the rule: *"A check
+that cannot run says so as `info`; **silence is never the answer**."*
+
+1. `--engine` is the normal input; the documented pre-submit pipeline always
+   has one.
+2. Without it the command still runs, and runs **everything
+   engine-independent** — including the cell checks, because F4's
+   `resolve_cell()` derivation needs no engine.
+3. It emits an `info`: *"no engine given — engine-specific configuration
+   checks (pseudopotentials, basis, k-grid) did not run."* A green exit can
+   then not be mistaken for a full pass.
+
+**The `info` is emitted INSIDE `validate()`, on the `cfg is None` path** (user,
+2026-09-23), not at the CLI seam — F4's words are *"never an argument a caller
+can forget"*, so every caller that omits a config gets the same treatment.
+Note this reaches `_shared.py:408`'s wire payload, pinned by
+`tests/test_workflow_group_wire_contract.py::test_cfg_none_path_correctly_omits_workflow_group`
+— the test named for exactly this path. The line is true there too, and a
+caller that does not want it filters `info`; see § 5b.
+
+**Rejected:** requiring `--engine` (blocks a legitimate "is this geometry
+sane" run on a file whose engine is undecided), and a bare
+`validate(struct, None)` with no `info` (keeps the silence, which is the
+actual defect).
 
 ### 1.3 A form-B citation's recorded electronic contract is silently dropped
 
@@ -120,15 +305,113 @@ writes `to_xyz()` — bare XYZ — in the same two functions whose *file* branch
 were fixed to use the codec. The loss is then **materialised as a positive
 claim**: the second stage writes a sidecar saying the junction is a vacuum box.
 
-### 1.5 `/api/structure/analyze` 500s on a file that is not UTF-8
+### 1.5 `/api/structure/analyze` 500s on a file it should describe
 
-`build.py:236` reads the file one line *above* the `try`, so
-`UnicodeDecodeError` escapes to Flask. A `REMARK angle 90°` PDB written
-latin-1 — what external tools emit — gives an HTML 500 where
-`/api/build/load` gives a clean 400 JSON. Live from the browser via
-`auto-detect.js:163`.
+**What the user does.** Picks a structure in the browser. molbuilder
+auto-detects what it is — the detection badge (`lib/detection-chip.js`) and
+the **pre-filled calculation form** (`lib/form-schema.js`, reading
+`suggested.<engine>`) both come from this one reply (`lib/auto-detect.js`).
+
+**What happens.** A PDB saved in latin-1 (a degree sign in a REMARK is enough)
+returns **HTTP 500 with an HTML body** where the page expects JSON. The
+sibling door `/api/build/load`, given the same bytes, returns a clean JSON
+400 naming the problem. `web-api.md` § 1 is explicit — *"400 | bad body /
+validation / parse failure"* — so the route disagrees with the contract AND
+with its neighbour.
+
+**The immediate cause**, `build.py:236`:
+
+```python
+    text_in = p.read_text()          # OUTSIDE the try
+    ...
+    try:
+        struct = Structure.from_pdb(text_in) / from_xyz(text_in)
+    except (ValueError, IndexError) as exc:
+        return ... 400
+```
+
+`UnicodeDecodeError` ⊂ `UnicodeError` ⊂ `ValueError`. **The route's own
+handler would have caught it.** The read is one line too high. The read was
+never inside the `try` — `18ad15ad`, 2026-05-23, the route's first commit.
+Original placement, not a refactor artifact.
+
+**The real cause is § 1.8's missing door, a third time.** The route holds a
+PATH and parses it itself, so it re-derives three things the codec owns and
+gets each slightly wrong:
+
+1. reads with **no `encoding=`**, where `StructureCodec.load` uses
+   `utf-8-sig`. Measured: a BOM'd UTF-8 `.xyz` gives a confusing
+   *"invalid literal for int() … '﻿3'"* here and opens fine there.
+2. dispatches `.pdb`-vs-else — a **fourth** spelling of § 1.8's
+   structure-suffix rule.
+3. **never reads the `.molstruct.json`** — so the answer that pre-fills your
+   form is computed while ignoring the electrode regions and the cell in the
+   file beside it.
+
+It is the only route in the web layer that takes a path and parses it itself
+(`build.py:825` takes upload TEXT, which is correct — `from_xyz` refuses a
+path by design). One site, not a pattern.
+
+**RESOLUTION (user, 2026-09-23): route it through the codec.**
+
+```python
+    try:
+        struct = StructureCodec().load(p)
+    except (ValueError, IndexError) as exc:
+        return jsonify({"ok": False, "error": f"could not load structure: {exc}"}), 400
+```
+
+One line replacing four, and the existing handler is already the right one:
+`MolstructJsonError(ValueError)` and `MolstructPairingError(MolstructJsonError)`
+are both `ValueError` subclasses, so a bad sidecar becomes a 400 rather than a
+second 500.
+
+**This costs nothing** — see § 1.5a. An earlier draft of this section warned
+that routing through the codec would make `analyze` inherit a periodicity
+refusal. That refusal does not exist.
+
+### 1.5a Three places claim `load` refuses a bad cell. It has not since 2026-08-03
+
+`StructureCodec.load` contains **no periodicity gate**. The two mentions in
+the module are the header claiming one, and the comment recording its removal:
+
+> *"READING DOES NOT JUDGE (`structure-periodicity.md` § 8.2, decided
+> 2026-08-03). … It used to raise here, and that made such a file unopenable
+> and therefore UNFIXABLE: the Cell page is the one place the box can be
+> corrected, and it cannot be reached without the structure on screen. …
+> NOTHING IS LEFT UNGUARDED BY THIS … the box is stopped at every door that
+> would ACT on it, and at none that would merely show it."*
+
+Three statements are stale:
+
+| where | what it claims |
+|---|---|
+| `workingcopy_structure.py:13` | *"…both-or-neither atomicity on write, **the periodicity gate on read**"* |
+| the `read` docstring | *"Runs the periodicity gate to **REFUSE** a cell nothing can be done with"* |
+| **`docs/model/structure.md` § 2.4** | quotes that docstring verbatim |
+
+**Why this one matters more than an ordinary stale comment.** It describes a
+guard as present when it was removed *on purpose*, with the trap it caused
+written down. A reader comparing § 2.4 against the code concludes the gate is
+MISSING and restores it — re-creating an unopenable, unfixable file. The
+contract is actively instructing a regression.
+
+**This is the SECOND wrong statement in § 2.4**, after § 1.1a's write-order
+sentence. Both are in the four-clause "what it owns" block. When § 2.4 is
+edited for § 1.1a, fix both, and re-read the other two clauses rather than
+assuming they are sound.
 
 ### 1.6 A false containment warning, on a knob that changes nothing
+
+> **This is a fifth instance of § 1.12's shape** (noted 2026-09-23).
+> `validation/siesta.py:798-810` is `inv = np.linalg.inv(cell); frac =
+> struct.positions @ inv` — geometry on a RAW cell with **no origin
+> term** — while `Structure.cell_contains_atoms(resolve_cell_origin())`
+> is the door for exactly that question and has only **2 callers**. Fix
+> it by calling the door, not by adding an origin subtraction: under
+> clause 2a a derived corner contains the atoms by construction, so
+> bare arithmetic makes the check nearly unfirable. Read with § 1.12
+> and fix in the same pass.
 
 `validation/siesta.py:798` combines `struct.positions` with a cell anchored at
 `(0,0,0)`, ignoring `resolve_cell_origin()` and `axis_kind`. Measured: the
@@ -139,8 +422,15 @@ production caller passes `cell=` to `spec_for`, so the decks for
 `wrap_into_cell` True and False are bit-identical. A browser checkbox that
 produces a warning contradicting the deck and no change to the deck.
 
-**This is the origin rule's sixth independent site.** Five were found and
-fixed; `handover.md` § 2.1 is the record.
+**This is a further site of the origin rule that the 2026-09-21 sweep did not
+reach.** `handover.md` § 2.1 — the record — tabulates **three** fixed defects
+(`transport/compose.py` form A, the `siesta/input.py` deck writer, the Results
+tab), and this session added a fourth in `cli.py::_apply_run_metadata`. An
+earlier draft of this section said "the sixth site; five were found" — a count
+that does not reconcile with the record it cites, and is withdrawn rather than
+replaced by a second guess. Why the sweep missed it: every swept site *applies*
+a `cell_origin`, so a reference scan finds them; this site **omits** it, and the
+line contains no such token.
 
 ### 1.7 A malformed annotations channel escapes as a bare `KeyError`
 
@@ -152,23 +442,538 @@ deck format makes the opposite mistake and drops the channel silently.
 
 ---
 
+### 1.8 The pair's OTHER doors — one rule, reinvented three times
+
+Same shape as § 1.1a. There the codec handed out a half-rendered product and
+three consumers finished it differently. Here the codec never exposes
+**"which files are structure files, and where is a structure's companion"**,
+so everyone who needs it writes their own copy:
+
+| where | what it spells |
+|---|---|
+| `web/blueprints/files.py:257` | `_STRUCTURE_SUFFIXES = (".xyz", ".pdb")` |
+| `web/blueprints/selection.py:99` | `_SUPPORTED_STRUCTURE_SUFFIXES = (".xyz", ".pdb")` |
+| `workingcopy_structure.py` `load` | `"expected .xyz or .pdb"`, inline in an error string |
+
+`_paired_sidecar_path`'s docstring caught half of this on 2026-09-18 and fixed
+the duplicated **constant** (`.molstruct.json`), delegating to
+`sidecar_path_for`. The **policy** stayed in the blueprint. § 1.8a is what
+that costs.
+
+#### 1.8a Rename strands the labels — the destination is not gated
+
+`/api/files/rename` already pairs the sidecar, with rollback, and its comment
+states the purpose: *"Otherwise renaming `water.xyz` to `bridge.xyz` orphans
+`water.molstruct.json` — next load can't find the sidecar from the new stem;
+the user's labels silently"* [disappear]. Measured:
+
+```
+structure suffixes the SOURCE is gated on: ('.xyz', '.pdb')
+  rename -> notes.txt   sidecar would go to: notes.molstruct.json
+source .xyz has a paired sidecar?                True
+after rename to .txt, is it still pair-tracked?  False
+```
+
+`_existing_paired_sidecar(src)` gates on `_STRUCTURE_SUFFIXES`;
+`_paired_sidecar_path(dst)` does not. Rename `water.xyz` → `notes.txt` and the
+sidecar is moved to `notes.molstruct.json`, where **nothing will ever read
+it** — the same outcome the feature exists to prevent, by a route the fix did
+not cover.
+
+**RESOLUTION (user, 2026-09-23) — two menu items, two layers.**
+
+* **Rename file** stays generic. It renames one file and knows nothing about
+  structures. *"It is not a xyz/json serving tool, it is a file writing
+  tool."* Teaching it the pairing rule would be a second implementation of
+  that rule, which `model/structure.md` § 2.4 forbids by name.
+* **Rename structure** owns the pairing rule: **load through the codec, write
+  the pair at the new name, remove the old.** Both ends gated by the ONE
+  structure-path predicate the codec now exposes. Validation comes free — the
+  read path already refuses out-of-range regions and empty labels (measured).
+
+**Why load-and-write and NOT "stamp a default sidecar when none exists."** A
+default sidecar is not a blank file; it is six statements, including
+`"cell": null` and `"axis_kind": ["isolated","isolated","isolated"]`. Measured
+against an extended XYZ carrying its own `Lattice=`:
+
+```
+no sidecar:            cell = set    axis_kind = ('periodic','periodic','periodic')
+with default sidecar:  cell = None   axis_kind = ('isolated','isolated','isolated')
+```
+
+A "default" sidecar **destroys the box** the geometry file declared. Loading
+and re-writing does the right thing on both inputs: the periodic file gets a
+real pair with its cell recorded, and a plain molecule with nothing to say
+gets the `.xyz` alone.
+
+#### 1.8b `write` deletes a sidecar the user never asked it to delete
+
+```python
+keep_sidecar=(not _metadata_is_default(meta) or bool(identity) or bool(struct.info))
+...
+if made.keep_sidecar:        molstruct.save(sidecar_path, made.sidecar)
+elif sidecar_path.exists():  sidecar_path.unlink()          # <- removes a user file
+```
+
+The stated reason (`write`'s docstring) is *"so the pair can't disagree"*: if
+you clear every label and save, skipping the write would leave the old sidecar
+to re-apply them.
+
+**That reason justifies REWRITING the sidecar, not deleting it.** A sidecar
+saying `{"regions": {}, …}` records "no labels" equally well and destroys
+nothing. The only thing deletion adds is canonical form — and the rule it
+serves has two halves, of which only one is forced:
+
+* **"absent means empty"** — FORCED. A plain `.xyz` from ASE or VMD has no
+  sidecar, so absence must mean something, and empty is the only sane reading.
+* **"empty must be written as absent"** — NOT forced. A tidiness preference,
+  and the half that deletes a file.
+
+**The hazard is not theoretical.** The branch fires on what the in-memory
+Structure holds, and the codec cannot distinguish *"the user cleared the
+labels"* from *"this code path loaded the `.xyz` without its sidecar, or
+dropped the metadata in transit"*. Same branch, opposite meanings — and this
+audit is largely a catalogue of metadata lost in transit between layers.
+
+**RESOLUTION (user, 2026-09-23): NEVER DELETE AN EXISTING SIDECAR.** Two
+clauses, and an earlier draft of this section stated only the first, which
+contradicted § 1.8a:
+
+* **A sidecar that exists is rewritten, never removed** — with its current
+  content, empty if that is what the metadata now is. The pair then still
+  cannot disagree (both halves say "no metadata"), which is the invariant the
+  deletion was defending; it is met by rewriting instead of by unlinking.
+* **A sidecar that does not exist is not created for a structure with nothing
+  to say.** Absence correctly means "empty" — foreign `.xyz` files from ASE or
+  VMD depend on that reading, and § 1.8a's load-then-write rename relies on it
+  (`plain input -> ['plain2.xyz']`, measured).
+
+So the codec stops **removing** a file the user did not mention, without
+starting to **litter** one beside every bare `.xyz`.
+
+#### 1.8c The hash gate claims hex and checks length
+
+```python
+if not isinstance(structure_hash, str) or len(structure_hash) < 16:
+    raise ...(f"structure_hash must be a hex string (got {structure_hash!r})")
+```
+
+Two sites (`sidecars/molstruct.py:371`, `parse/sidecars/molstruct.py:79`).
+Measured: a sidecar whose hash is `"not a hash at all!!!"` **loads**. So does
+`"/etc/passwd\n\n\n\n\n\n"`. `structure-molstruct.md:67` documents the field
+as *"hex, ≥16 chars"*, so **adding the hex check needs no document change** —
+it makes the code do what its own error message and the contract already say.
+
+Tightening to exactly 64 characters is a **separate contract decision**: 13
+existing fixtures conform to "≥16 hex" as written, so `structure-molstruct.md:67`
+would have to be edited first. Not proposed.
+
+#### 1.8d `title` absorbs the extended-XYZ header, and `to_xyz` writes it back
+
+`to_xyz` emits `self.title` as the comment line:
+
+```python
+buf.write((comment or self.title or "Built by molbuilder").strip() + "\n")
+```
+
+`pair()` calls `struct.to_xyz()` with no comment, and loading an extended XYZ
+leaves the whole header — `Lattice="…" Properties=… pbc="T T T"` — in `title`.
+So the codec can write a `.xyz` whose comment line advertises a 10 Å periodic
+lattice **beside a sidecar it wrote in the same call saying `"cell": null`**.
+
+molbuilder reads it correctly (the sidecar wins). ASE, VMD and every other
+tool read the header and see a periodic box. One file, two answers — and the
+whole reason for keeping `.xyz` as the geometry format is that other tools
+read it.
+
+Owner: `Structure.to_xyz` / whatever puts the header text into `title` on
+read. Not yet traced to the reader; do that before fixing.
+
+### 1.9 Withdrawn: `/api/files/write` is not a finding
+
+An earlier list had this as *"the browser can author a sidecar, bypassing every
+gate."* Both halves are wrong.
+
+* It is a **file writing tool**. A generic text-write endpoint that special-cased
+  `.xyz`/`.molstruct.json` would be the second implementation of the pairing
+  rule that § 2.4 exists to prevent.
+* And the gates are not bypassed. Measured, hand-authoring a sidecar through
+  it and loading the result: *region index out of range* → **REFUSED**, *empty
+  label* → **REFUSED**, *nonsense hash* → LOADED (which is § 1.8c, not this).
+  The read path re-validates independently of who wrote the file.
+
+Recorded so it is not re-raised.
+
+### 1.11 Two more checks that silently do not run — the registry seam
+
+Same family as § 1.2, different mechanism. `science/validation.md` § 7 owns
+the rule: *"A registry keyed on a class is only as live as the callers that
+construct that class — which is the difference between `_ENGINE_VALIDATORS`
+and `_KIND_VALIDATORS`."*
+
+#### 1.11a `_register_default_engines` fails open
+
+```python
+try:
+    from ..siesta import SiestaConfig
+    _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
+except ImportError:
+    pass                       # <- the row is silently not registered
+```
+
+Both rows. If the import fails, `validate()` finds no engine validator and
+runs only the generic checks — **every engine-specific check gone, nothing
+said.**
+
+**This is not an optional-dependency guard.** The function's own docstring
+says it is *"Late binding to avoid an **import cycle**"*, and neither import
+reaches an optional package: `molbuilder/pyscf/__init__.py` imports its own
+`.input`, and `..siesta` is always present. The handler can therefore only
+fire when something is genuinely broken, and it responds by hiding it.
+
+The same failure SHAPE is recorded twice in the comments beside it —
+`SpectraConfig` retired 2026-08-22 (*"a class nothing in production ever
+constructed"*), `TransportConfig` retired 2026-09-17 (*"it dispatched for
+nothing"*). Three routes to one outcome; two were closed.
+
+**RESOLUTION (user, 2026-09-23): register a STUB**, not a raise and not a
+`pass`. The stub returns one error Issue — *"the SIESTA validator could not be
+loaded"* — so a broken import surfaces at the door that refuses, and the seam
+stays visible in the framework for further development rather than being
+erased by an exception.
+
+#### 1.11b `_validate_vibration_kind` puts class-keyed dispatch back inside the kind registry
+
+```python
+from ..config.pyscf import PySCFConfig
+if not isinstance(cfg, PySCFConfig):
+    return []          # the seam refuses non-PySCF vibration by name
+```
+
+`_KIND_VALIDATORS` exists **because** class-keyed science silently skips — the
+comment directly above this registration retires the `SpectraConfig` row for
+exactly that. The kind validator's first line reinstates it.
+
+**Inert today** (nothing constructs a non-`PySCFConfig` reaching vibration;
+`science_view` is a `PySCFConfig` adapter) and **already scheduled**: design
+§ 18 **step 0a** — make the guard `raise`. Recorded here only so the three
+members of this family are in one place; do not fix it twice. `validation.md`
+§ 7 gains one sentence with it: a kind validator does not gate on a config
+class.
+
+**Provenance note.** `validation/spectra.py:20-27` records this gate *"silently
+skipping between P1 and P3"* for the adapter reason — so this failure mode has
+already been paid for **in this very gate**, not merely in the two retired
+rows.
+
+### 1.12 ONE SHAPE: a rule with an owner, re-derived at the call site
+
+*(Rewritten 2026-09-23 as a systematic item. It began as two local findings;
+the user stopped the piecemeal pass — "read full code for a holistic
+systematic fix rather than local patching without knowing what's going on" —
+and the systematic read gives a materially different answer.)*
+
+**What was read.** All 41 sites that touch `cell` / `cell_origin` / `vacuum` /
+`axis_kind` outside their owning modules (`structure.py`, `cell.py`), across
+12 files, plus the caller counts of the seven resolution doors:
+
+```
+resolve_cell 15 · resolve_cell_origin 18 · effective_vacuum 8
+cell_contains_atoms 2 · resolve_element 10 · _min_image_distance 1 · image_distance 0
+```
+
+**Most bare reads are correct** and must stay: asking *"is the cell
+explicit?"* (the manual-regime test, `validation/siesta.py:396`), serialising
+`axis_kind`/`vacuum` to the wire (`watch.py:267-270`), reporting the user's
+own lattice lengths in a message (`validation/pyscf.py:157`),
+`_structure_declares_a_box`. Those ask about **stated** state, which is the
+raw field's job.
+
+Four sites do **geometry** with raw fields, or re-derive a rule that has an
+owner. They are one shape.
+
+#### 1.12a `partial_charges` ignores `resolve_element` — a labelled structure reports 0.0 D
+
+`chemistry.py::partial_charges` looks the element up by its RAW string:
+
+```python
+en_i = _PAULING_EN.get(ei, _DEFAULT_EN)      # _DEFAULT_EN = 2.20
+```
+
+`O H H` → 1.80 D and the polar-in-vacuum warning. `O1 H2 H3` → every atom
+misses the table, all get 2.20, every `delta_en` is 0,
+`ionic = 1 − exp(0) = 0`, every charge **exactly 0.0**, dipole **0.0 D**,
+warning never fires. Label-blind twice in the same loop: `if "H" in (ei, ej)`
+does not recognise `H2`, so a labelled hydrogen gets the heavy-atom cutoff.
+
+**The owner is 1600 lines above in the same file**, with ten other callers:
+
+> `resolve_element` — *"**A species label is the user's; the element is ours
+> to derive.** … `Au1` / `Au2` — two gold species carrying different basis or
+> pseudopotential — is **ordinary input, not a typo.**"*
+
+`0.0 D` does not read as *"could not compute"*. It reads as *"not polar"* —
+suppressing the warning about a real dipole–image artifact.
+
+**FIX: route through `resolve_element`**, and derive the hydrogen test from
+the resolved element.
+
+#### 1.12b The `axis_kind` default is re-spelled ELEVEN times, and all eleven contradict the owner
+
+`Structure.__post_init__` owns it, and the rule is **cell-dependent**:
+
+```python
+if self.axis_kind is None:
+    # A stated cell means a lattice; no cell means a vacuum box.
+    self.axis_kind = (("periodic",) * 3 if self.cell is not None
+                      else ("isolated",) * 3)
+```
+
+Every call site hardcodes `isolated×3` **unconditionally** —
+`cell.py:168`, `structure.py:628` and `:750` (**the owning file, twice**),
+`periodicity_gate.py:296` and `:465`, `validation/siesta.py:388`,
+`validation/pyscf.py:151`, `validation/geometry.py:151`,
+`siesta/input.py:855`, `transiesta.py:235`, plus a twelfth spelling at
+`validation/__init__.py:144` (`or ()`).
+
+So they are **dead** (`__post_init__` always fills the field, so `or` never
+fires) **and wrong if they ever fired**: they would call a structure with an
+explicit lattice *isolated* — a periodic calculation silently becoming
+gas-phase.
+
+**The failure mode is documented at one of the sites, in the reasoning that
+produced it.** `transiesta.py:235`:
+
+> *"The fallback AGREES WITH ITS TEN NEIGHBOURS. It arrived as the literal
+> swap for the old `struct.pbc or (True,)*3` field read and said
+> `("periodic",) * 3`, while every other `axis_kind or …` in the tree …
+> answers `("isolated",) * 3`. All eleven are unreachable (`__post_init__`
+> always fills the kinds), but this is the one whose waking would relabel
+> every axis in an emitted deck and silence the warning below, so it is the
+> one that must not disagree."*
+
+That reasoning checks the **copies** and never the **owner**. And the site
+sits inside `if cell is not None:` — precisely the branch where
+`__post_init__` says `periodic×3`. **The original value was right for its
+branch, and it was changed to the wrong one to match the neighbours.** This is
+what re-derivation costs even when everyone is being careful.
+
+**FIX: delete all eleven.** They cannot fire; if one can, that is a bug to
+find, not to paper over. A deletion, which is the top of the preference order
+(*delete > one home > parameter > abstraction*).
+
+#### 1.12c The k-sampling hint measures the gap in two frames at once
+
+`validation/siesta.py:726-748`. On a `periodic` axis with `k > 1` it fires:
+*"periodic images sit ~{gap} Å apart … if a weak image interaction is
+deliberate, **carry on**."*
+
+```python
+diag_lengths = [float(np.linalg.norm(cell[i])) for i in range(3)]          # LATTICE norms
+atom_extent  = struct.positions.max(axis=0) - struct.positions.min(axis=0) # CARTESIAN spans
+gap = max(0.0, length - float(atom_extent[axis]))
+```
+
+**Two independent frame errors:** (1) `norm(cell[i])` exceeds the
+perpendicular interplanar distance on a non-orthogonal cell; (2)
+`atom_extent[axis]` is a **Cartesian** x/y/z span indexed by a **lattice**
+axis — it subtracts the x-span from `|a|`. The variable name `diag_lengths`
+records the assumption; nothing enforces it. Measured: a reported **5.9 Å**
+gap where the true perpendicular gap is **0.61 Å** — a reassurance about
+images that are practically touching.
+
+**The contract licenses error 1 and does not mention error 2**
+(`science/validation.md:410`): *"a skewed cell's axis norm **overstates** the
+perpendicular image distance … **Both err on the quiet side**."* Overstating
+makes the hint fire MORE, and firing means reassuring — the loud side, and a
+false all-clear rather than noise.
+
+**The geometry is the contract's own canonical case.**
+`structure-periodicity.md` § 4: *"a periodic sub-block (**e.g. a hexagonal
+in-plane pair**) orthogonal to the non-periodic axis."* Two periodic axes at
+120° is exactly what breaks it.
+
+**FIX: use the existing door.** `validation.geometry._min_image_distance`
+asks the hint's question verbatim and is already imported at
+`validation/__init__.py:76`:
+
+> `cell.py:644-655` — *"Distances are taken under the **minimum image
+> convention** … checked against the 27 surrounding translations, which is
+> **exact rather than merely usually right on a skewed cell**. … it asks
+> **"how close does this molecule sit to its periodic copies"** — an artefact
+> question."*
+
+An earlier draft proposed writing `|a·(b×c)| / |b×c|` inline. That would have
+been a **sixth** hand-rolled copy — the same mistake this section is about.
+
+**And `cell.image_distance` has ZERO callers**, while
+`validation/siesta.py:394` names it as the right tool: *"what matters on a
+typed box is the gap actually ACHIEVED, and `cell.image_distance` measures
+that directly."* Either this fix gives it its caller, or it is residue. It
+cannot be both — settle that with the fix.
+
+**The word must change too.** The code comment (`:716`) and the
+`validation.md` table call the gap *"the real vacuum, whether or not the
+vacuum field was ever set."* `vacuum` is defined (§ 2 line 43) as *"meaningful
+only on an `isolated` axis"*, and this hint fires on **periodic** axes. Say
+**image separation**.
+
+#### 1.12d The transport no-lattice branch fabricates a box and skips the origin
+
+`transiesta.py:308`:
+
+```python
+resolved_cell = cell if cell is not None else struct.cell     # never calls resolve_cell()
+origin = (struct.resolve_cell_origin() if resolved_cell is not None else None)
+positions = struct.positions - origin if origin is not None else struct.positions
+```
+
+A variable named *resolved* that resolves nothing. When `struct.cell` is None
+the origin shift is **skipped**, and `_lattice_block` then fabricates a box:
+
+```python
+a, b, c = _compute_cell_from_extents(struct)      # a SIXTH derivation
+#   "a,b = extent + 30 Å padding; c = extent + 2 Å"
+```
+
+Its own padding constants, unrelated to `vacuum` or `resolve_cell()`. The box
+is emitted **diagonal and anchored at (0,0,0)** while the atoms go out
+**unshifted in the world frame**. Because it uses *extents* (max − min), a
+structure sitting at x ∈ [50, 60] gets a 40 Å box spanning [0, 40] with every
+atom outside it.
+
+This is the class the 2026-07-29 finding named, quoted in this function's own
+docstring: *"Emitting the cell at zero with world-frame coordinates
+mistranslated a junction by its origin."* The branch warns loudly that the box
+is **fabricated**; it says nothing about the atoms not being **in** it.
+
+Likely inert (transport structures carry explicit cells) — **not verified**.
+Confirm reachability before fixing; if unreachable, it is residue and the
+branch goes.
+
+#### The systematic fix, in place of four local patches
+
+1. **Delete the eleven `axis_kind` fallbacks** (§ 1.12b). Pure deletion.
+2. **Route § 1.12a through `resolve_element`** and § 1.12c through
+   `_min_image_distance` — and settle `image_distance`'s zero callers in the
+   same pass.
+3. **Decide § 1.12d's branch**: reachable → resolve the cell and the origin
+   together through the doors; unreachable → delete it and
+   `_compute_cell_from_extents` with it.
+4. **Three document sentences** ride with § 1.12c: `validation.md:410`'s
+   *"both err on the quiet side"*, its k-sampling table row calling the gap
+   *"the real vacuum"*, and `validation/siesta.py:716`'s comment repeating it.
+
+**The `vacuum` field's meaning does not change.** §§ 4 / 6.2a resolve the
+three fields **together, keyed on `axis_kind`** — and § 4's block-orthogonal
+scope guarantees an isolated axis is orthogonal to the periodic block, so for
+a vacuum axis "extension along the axis" and "perpendicular separation
+between images" are already the same number. These fixes give the quantities
+the **same** meaning computed correctly in both places, not different ones.
+
+| `axis_kind[i]` | cell extent | origin | `vacuum[i]` |
+|---|---|---|---|
+| **isolated** | `bbox[i] + 2·vacuum[i]` | `bbox_min[i] − vacuum[i]` | the only kind it applies to |
+| **periodic** | commensurate lattice vector (**never** bbox-derived — raises) | `0` | **N/A** |
+| **transport** | captured device length + one interlayer spacing | `bbox_min[i]` | `0` |
+
+### 1.13 A SECOND condition: stated state overwritten by derived state
+
+§ 0a names one condition (*a rule with an owner, re-derived at the call
+site*). The shape-check of the remaining findings (2026-09-23) turned up a
+second, smaller one, with two instances already in this plan: **the code
+substitutes its own answer for a fact the file or the user stated.**
+
+* **`parse/sidecars/molstruct.py:124`** — `load` reads the file's
+  `schema_version` into `sv` (`:174`), validates it, and then returns
+  `"schema_version": SCHEMA_VERSION` — **the module constant, not the file's
+  value**. A v7 sidecar is reported as v9. The fact the file stated is
+  discarded and replaced by the reader's own.
+* **§ 1.8b** — `write` removing a sidecar the user never asked to remove, on
+  the reader's judgement that its content is not worth keeping.
+
+Both are defensible one line at a time and wrong as a rule: a reader reports
+what it read, and a writer does not delete what it was not asked to. Fix
+§ 1.13's restamp by returning `sv`; § 1.8b is already resolved above.
+
+### 1.14 The shape-check of the remaining findings
+
+*(2026-09-23, at the user's instruction: shape-check before walking each item
+individually. Four of six collapse into conditions already named.)*
+
+| finding | verdict | home |
+|---|---|---|
+| **the `replace()` completeness guard over-claims** | **instance of § 0a's condition**, test-side | § 1.12, and § 5b |
+| **`load()` restamps `schema_version`** | **instance of § 1.13** | § 1.13 |
+| **the electrode check is skipped on vibration decks** | **instance of § 1.11** (a check that silently does not run) | § 1.11 |
+| **`n_atoms_total` unbounded → `MemoryError` → HTTP 500** | neither condition; its OUTCOME is § 1.5's family (the `web-api.md` four-bucket contract) | with § 1.5 |
+| **no test for the `.pdb` write round trip** | not a code condition — a missing pin | § 5b |
+| **the two builder defects** | **not yet read** | — |
+
+**The `replace()` guard, in detail — partial delegation is the trap.** The
+test's docstring claims *"COMPLETE BY CONSTRUCTION, not by memory … the check
+iterates the LIVE field list rather than a copy of it. A field added tomorrow
+is covered the moment it is declared."* It does iterate
+`dataclasses.fields()` — the **names** come from the owner. But the fixture is
+a hand-written constructor call, so the **values** come from memory. A field
+the fixture leaves at its default passes whether `replace()` carries it or
+not. Measured: dropping the already-declared `annotations` field from
+`replace()` leaves this test **green**, and a different test in another file
+catches it. It looks complete-by-construction because one half is.
+
+**The electrode check, in detail — a check behind a gate written for its
+neighbour.** `validation/pyscf.py:248-256` puts both
+`check_unconsumed_region_labels` and `check_electrode_labels_are_frozen`
+inside `if not vibration:`. The comment justifies the gate for the **first**:
+*"The vibration kind runs its own copy over the deck's view … so this defers
+there."* True for that one — `validation/spectra.py:415` calls it. The second
+was placed *"beside it because it is the same question one step further"* and
+inherited the gate — but `check_electrode_labels_are_frozen` has exactly two
+callers, `validation/siesta.py:533` and this one, and **neither is in the
+vibration path**. So on a vibration deck it does not run, and nothing defers
+it. A moved lead goes unremarked until the compose-time gate, *"which runs
+after the relaxation is paid for"* — the code's own words for why this check
+is asked early.
+
 ## 2. Documentation: one policy, not forty-four edits
 
-**4 of 44 `file.py:NNN` references in the contract documents resolve — a 9%
-hit rate.** Exhaustive, not sampled. `structure.md` 0/16,
-`structure-periodicity.md` 0/10. Plus seven symbol names that have never
-existed, and five retired concepts written as current.
+**6 of 39 `file.py:NNN` references in the contract documents resolve — 15%.**
+*(Corrected 2026-09-22. This section first said 4 of 44 / 9%; both numbers
+were wrong. Re-derived exhaustively over both reference forms — `path.py:NNN`
+and the bare `` `:NNN` `` — the total is 39, and `parse.md`'s 4 and
+`code-audit.md`'s count match the first pass exactly, so the error was
+entirely in the four model documents. Direction and magnitude stand; the
+figures did not.)* Plus seven symbol names that have never existed, and five
+retired concepts written as current.
 
-The fix is already written down in this repo, by this repo —
-`docs/model/parse.md:355`:
+The rule is written down in this repo — `docs/model/parse.md:355`:
 
 > *"A line number is a pin: it measures where a thing sits rather than what it
 > does, and it rots on the next edit of a file this document does not own. The
 > function name is the anchor and it is greppable."*
 
-`parse.md` acted on it and scores 2/4. The four model documents did not and
-score **2/38**. So this is **one policy to propagate**, not 44 corrections:
-strip the line numbers, keep the symbol names.
+**But "one policy to propagate" was the wrong read, and that matters more than
+the count.** Three things the provenance pass established:
+
+1. **The pre-policy pins are a DECLINED sweep, not a missed one.** The day the
+   rule was written, a second commit fixed three pins and said so in writing:
+   *"Measured tree-wide first: 100 such pins live outside `docs/archive/` …
+   these were the ones this work actually touched — **the rest are unverified,
+   not endorsed.**"* That is a measured, scoped, declared non-sweep. The
+   remedy is a decision about whether the debt is paid, not a sweep.
+2. **The rule has three homes and no owner** — `parse.md:355`,
+   `plans/plan.md:1103` § 5h, and `execution/project-layout.md:2285`, the last
+   citing `plan.md` rather than `parse.md`. This is the repo's own rule
+   inverted: *fix the RULE in the document that owns the concept* has no
+   answer when no document owns it.
+3. **The consequence is observable.** The rule's own author added three fresh
+   pins to `parse.md` itself thirteen days later, and one to `code-audit.md`
+   on 2026-09-22.
+
+**So the first move is giving the rule one home, not sweeping 33 references.**
+And no sweep cadence can fix it anyway: the pins in `plan.md`'s X1 row were
+stale **68 minutes** after they were written, by the same author on the same
+file.
 
 Separately, and not covered by that policy — documents asserting **behaviour**
 that is not true. Highest cost first:
@@ -297,19 +1102,28 @@ change to production and the listed tests go red **together**. All mutations
 ran in an isolated `git worktree`; the eight taken before that was arranged
 were re-run there and all eight reproduced.)*
 
-**~28 of 441 in-scope tests are removable** — 24 duplicates and 4 that cannot
-fail or assert a shape. `docs/process/testing.md` already says unifying an API
-must REDUCE the count; it has been going up.
+**~30 of 441 in-scope tests are removable** — 24 duplicates, plus **6 test
+functions across 4 sites** that are blind in one direction or assert a shape.
+(An earlier draft said "~28 … and 4", conflating the 4 *sites* with their 6
+*functions*; 24 + 6 = 30. And "cannot fail" is too strong for two of the four —
+each bullet below carries the correction.) `docs/process/testing.md` already
+says unifying an API must REDUCE the count; it has been going up.
 
 Twelve clusters, each with the bit it carries and the one test to keep. The
 largest: **16 tests carry the single fact "the default isolated vacuum gap is
 3 Å"** (mutant: `3.0 → 5.0`), three of them byte-identical assertion triples in
-three files. Three of the sixteen are thin-wrapper tests on `cell.resolve()`,
+three files. *(The 16 is measured over this audit's file set and is a FLOOR,
+not a total: a re-measurement over a wider shortlist put it at 17, and a test
+asserting a derived consequence with no `3.0`/`6.0` literal is invisible to
+either shortlist. Re-derive with the mutant over the full suite before step 15
+acts on a number. Two triples are byte-identical; the third is the same triple
+through `cell.resolve()` with renamed accessors.)* Three of the sixteen are
+thin-wrapper tests on `cell.resolve()`,
 which just forwards to `Structure` and decides nothing — `testing.md` puts
 those on the `Structure` side. Next largest: **9 tests assert the same literal
 corner `[7.5, 7.5, 7.5]` on the same fixture**; keep three, one per layer.
 
-### Three cannot-fail tests, each measured
+### Three of the four sites, each measured
 
 - **`test_periodicity_gate.py:1126`** is the *inverted* test `testing.md` § 3a
   names. Its assertion is
@@ -360,6 +1174,86 @@ their subject. Same shape as the sixteen sidecar fixtures already fixed, one
 layer down.
 
 ---
+
+## 5b. The test screen for § 1's fixes — what each one retires, breaks, or unpins
+
+*(Added 2026-09-23 at the user's instruction: "tests need to be screened to
+see which are related to these and retire correctly as needed.")*
+
+Screened per decided fix. **Net effect: 1 rewrite, 5 mechanical updates, 0
+retirements, 2 added cases** — and one fix with zero test impact at all.
+Nothing here grows the function count; the two additions are cases on
+existing tests, per `testing.md`'s REDUCE rule.
+
+### Pins the OLD behaviour — rewrite, do not retire
+
+**`test_structure_pair_one_generator.py::test_a_stale_sidecar_is_removed_rather_than_left_disagreeing`**
+— § 1.8b changes what it asserts. Its docstring states the concern:
+
+> *"A structure that loses its metadata must lose its sidecar, or the pair on
+> disk says two different things about the same atoms."*
+
+**That concern is correct and survives.** Only the mechanism changes: the
+sidecar is **rewritten empty** rather than unlinked, so the pair still cannot
+disagree — both halves say "no metadata". Rewrite the assertion to
+*"the sidecar still exists AND carries no regions"*. Retiring it would lose a
+real invariant.
+
+### Breaks MECHANICALLY under § 1.1a (`pair().sidecar` becomes text, not a dict)
+
+This is a cost of § 1.1a that the item did not track. **Five call sites**, one
+of them production:
+
+| site | what it does |
+|---|---|
+| `tests/test_structure_pair_one_generator.py:167` | `made.sidecar["schema_version"]` — indexes it as a dict |
+| `tests/test_periodicity_gate.py:930` | `_json.dumps(made.sidecar)` — would double-encode |
+| `tests/test_periodicity_gate.py:1259` | same |
+| `tests/test_siesta_constraints_from_out.py:368` | `molstruct.save(d/name, pair(struct).sidecar)` — `save` takes a dict |
+| **`molbuilder/pyscf/input.py:1502`** | **production** — `return StructureCodec().pair(struct).sidecar`, the deck splice's payload |
+
+The production one is § 1.1a's own subject (the deck writer), so it is in
+scope either way. The four tests are one-line changes. **Decide the shape
+before doing any of them**: `sidecar` as text with a `sidecar_dict` beside it,
+or text only with callers parsing. Four test sites and one caller is small
+enough that text-only is viable.
+
+### Left UNPINNED — the fix cannot be verified without adding a case
+
+**§ 1.12c (the k-sampling hint) has NO test.** Searched
+`tests/validation/test_siesta.py` for the hint's message and its condition:
+nothing. So the two frame errors were never pinned, and the fix would be
+unverifiable. **Add one case**: a skewed cell (hexagonal in-plane pair, the
+contract's own example) where `norm(a)` says ≥ 5 Å and the true perpendicular
+separation is < 5 Å. The current code fires the hint; the fixed code must not.
+
+**§ 1.12a (label-blind `partial_charges`)** — three dipole tests exist
+(`tests/validation/test_geometry.py:271, 288, 300`) and **none uses a labelled
+species**. Add the labelled spelling as a **case on the existing polar test**,
+not as a new function: `O1 H2 H3` must give the same verdict as `O H H`.
+
+### Touched, needs re-reading rather than changing
+
+**`tests/test_workflow_group_wire_contract.py::test_cfg_none_path_correctly_omits_workflow_group`**
+— § 1.2 puts an `info` on `validate()`'s `cfg is None` path, and this test is
+named for exactly that path. It asserts the `workflow_group` **enrichment** is
+omitted, which stays true; whether it also asserts the issue LIST is empty
+decides if it changes. Read it before editing.
+
+### Zero test impact
+
+**§ 1.12b (delete the eleven `axis_kind` fallbacks).** Searched `tests/` for
+`axis_kind=None` / `axis_kind = None`: **no matches.** The fallbacks are
+unreachable in production *and* untested. Clean deletion — and **do not add a
+test**: it would assert an unreachable branch, which `testing.md` § 3a
+forbids. If a test for it seems necessary, that is evidence the branch IS
+reachable, and the reachability is the finding.
+
+### Not yet screened
+
+§ 1.5 (analyze onto the codec), § 1.8a (rename structure), § 1.8c (the hex
+check), § 1.11 (the registry stub). Screen these before their steps, the same
+way — the § 1.1a result shows the screen finds costs the item itself missed.
 
 ## 6. Needs a ruling, not a fix
 
@@ -563,29 +1457,48 @@ contracts were not among the eight documents checked.
 1. **§ 0's three misleading comments.** One commit. Nothing else is safe until
    the map is right — that is `handover.md` § 5's D5-before-X1 rule, and lead
    ① is what happens when it is skipped.
-2. **§ 1.1, § 1.2, § 1.5, § 1.7** — the data-loss and uncaught-exception set.
-   Independent of each other, each small, each user-visible.
-3. **§ 1.6 + the `wrap_into_cell` knob** — the origin rule's sixth site. Do it
+2. **§ 1.1 + § 1.1a** — the generator renders both halves. Do this one FIRST
+   of the set: it is the only structural change here, and it closes the
+   design document's § 15.6 deck-writer items in the same commit rather than
+   leaving them to be fixed a second time at the third writer.
+3. **§ 1.2, § 1.7** — the rest of the data-loss and uncaught-exception
+   set. Independent of each other, each small, each user-visible.
+4. **§ 1.8** — one home for the structure-path rule, then rename structure vs
+   rename file, the no-delete rule, the hex check, and § 1.8d. Group them:
+   they are one missing door and four things that grew where it should be.
+5. **§ 1.5 + § 1.5a** — the analyze route onto the codec, and § 2.4's
+   second wrong statement. Do § 1.10a's doc fix in the SAME commit as
+   § 1.1a's: both are in § 2.4's four-clause block, and a half-corrected
+   contract is what produced them.
+6. **§ 1.11** — the registry seam. Small, and it belongs beside § 1.2: all
+   three are "a check that does not happen, and the absence is invisible".
+   § 1.11b is design § 18 step 0a — do it there, not twice.
+7. **§ 1.12 — the systematic item.** Start with § 1.12b's eleven deletions:
+   it is pure removal and it makes the rest safe to read. Then § 1.12a and
+   § 1.12c onto their doors, settling `image_distance`'s zero callers in the
+   same pass. § 1.12d needs a reachability answer first. Three document
+   sentences ride with § 1.12c.
+8. **§ 1.6 + the `wrap_into_cell` knob** — a further origin-rule site the sweep missed. Do it
    with the rule in front of you, from `handover.md` § 2.1.
-4. **§ 1.3 + § 5 lead ④ together.** The lost caller and the residue are one
+9. **§ 1.3 + § 5 lead ④ together.** The lost caller and the residue are one
    decision: either revive the recorded-contract read on the live road, or
    delete the branch and stop three surfaces claiming it works.
-5. **§ 1.4** — the CLI stdout destination. Needs § 6 decision 1 first, because
+10. **§ 1.4** — the CLI stdout destination. Needs § 6 decision 1 first, because
    what a single stream *can* carry is the same question.
-6. **§ 2's line-number policy** — one pass over four documents, mechanical.
+11. **§ 2's line-number policy** — one pass over four documents, mechanical.
    Then § 2's behavioural list, which is the part that needs reading.
-7. **§ 3 and § 4** — fix each at its owner, never at the instance. Start with
+12. **§ 3 and § 4** — fix each at its owner, never at the instance. Start with
    the `replace()` guard, because it is what makes the rest safe to touch.
-8. **§ 5a's three unpinned rules** — write them before §§ 3/4 touch the code
+13. **§ 5a's three unpinned rules** — write them before §§ 3/4 touch the code
    they guard. The `.pdb` one first: it is a regression with numbers already
    written down.
-9. **§ 5a's four cannot-fail tests** — retire or rewrite. They are worse than
+14. **§ 5a's 6 blind/shape-asserting tests across 4 sites** — retire or rewrite. They are worse than
    absent, because they read as coverage.
-10. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
+15. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
     cluster's mutant re-run afterwards to confirm the keeper still goes red.
-11. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
+16. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
 
-**Before step 11, and after step 2:** § 7b's gap pass. Residue cannot be
+**Before step 16, and after step 3:** § 7b's gap pass. Residue cannot be
 deleted from a surface where eighteen modules were never opened by this
 audit — the
 builders in particular, since they are where a `Structure` is created.
