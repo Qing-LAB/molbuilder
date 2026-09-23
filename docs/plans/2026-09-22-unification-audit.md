@@ -713,8 +713,18 @@ tool read the header and see a periodic box. One file, two answers — and the
 whole reason for keeping `.xyz` as the geometry format is that other tools
 read it.
 
-Owner: `Structure.to_xyz` / whatever puts the header text into `title` on
-read. Not yet traced to the reader; do that before fixing.
+**Traced 2026-09-23, and it is bigger than this section.** The reader is
+`from_xyz:1424` (`comment = lines[1].strip()`) feeding `:1459`
+(`title=comment`) — the whole comment line, no keyword stripping. And the
+sidecar MASKS it: same file, sidecar present → `'my junction'`, sidecar moved
+aside → `'my junction Lattice="10.000000 …'`. So it is invisible in normal
+use and shows up only when the pair is separated, or when another tool reads
+the `.xyz`.
+
+**Full investigation and the five other defects: `model/structure.md`
+§ 2.2c.** `title` has five sources, four writers, ten hand-written carries
+and no owner. Do not fix this line alone — § 2.2c's ownership decision is
+open and governs the shape of the fix.
 
 ### 1.9 Withdrawn: `/api/files/write` is not a finding
 

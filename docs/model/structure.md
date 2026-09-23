@@ -224,7 +224,7 @@ one is TAKEN FROM A STATED OWNER:
 | `cell`, `cell_origin` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
 | `axis_kind`, `vacuum`, `info` | **the first input**, cell or no cell | these are facts OF THE CANVAS — what the person set in the Cell tab and the contract they recorded. They are equally true of a structure that states no lattice, so a fragment arriving with a box must not restate them |
 | everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
-| `title` | **neither input** — the caller's `title=` argument | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
+| `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
 
 The first two rows are load-bearing and they point opposite ways on purpose.
 Taking the whole block from whoever carried a cell let a fragment replace a
@@ -257,6 +257,111 @@ notice.
 cell-carrier, the axes would be `periodic` and both `_unfittable` and
 `_contains` skip periodic axes — so the same geometry reports **nothing at
 all**. The silence the row prevents is the safety net for row 1.
+
+### 2.2c `title` — five sources, four writers, and no owner
+
+**STATUS: the facts below are measured and pinned. The OWNER is an open
+decision** — see "The decision" at the end. Written 2026-09-23 because
+§ 2.2b needed a `title` row and the field turned out to have no rule
+anywhere.
+
+`title` is neither metadata nor lattice nor atom-indexed. It sits in
+`IDENTITY_FIELDS` (`structure.py:177`) beside `atom_names` / `residue_ids` /
+`residue_names` / `chain_ids`, but unlike those it is **also a field of the
+geometry file**. That is the whole problem.
+
+#### Where it comes from — five sources
+
+| source | where |
+|---|---|
+| the `.xyz` **comment line**, verbatim | `from_xyz:1424` `comment = lines[1].strip()`, `:1459` `title=comment` |
+| the PDB `TITLE` record | `from_pdb` |
+| the **sidecar's identity block** | `sidecars/molstruct.py:398` |
+| the **upload filename** | `web/blueprints/build.py:825,827` — `from_xyz(text, title=filename or None)` |
+| the **file stem** | `parse/coords/pyscf_geom.py:41-42` — *"mirror the file stem onto Structure.title"* |
+
+#### Where it goes — four writers
+
+| writer | form |
+|---|---|
+| `to_xyz:1698` | the comment line — `(comment or self.title or "Built by molbuilder")` |
+| `to_extxyz:1777,1785` | **prepended to the header** — `f"{title} {head}"` |
+| `to_pdb:1800` | `TITLE     {self.title:<70s}` — **truncated at 70 characters** |
+| `identity_to_dict:910` | the sidecar, whenever the title is non-empty |
+
+#### It is not carried by the door that carries the others
+
+`title` is **not** in `_carry_nonatom()`. Every op-helper that rebuilds a
+Structure therefore spells `title=struct.title` by hand — **ten sites**:
+`modify.py` ×5 (`:122`, `:250`, `:911`, `:1177`, `:1296`) and `chemistry.py`
+×5 (`:1493`, `:1638`, `:1667`, `:1734`, `:1842`). That is § 0a's condition:
+one fact, ten hand-written carries, and nothing that fails if the eleventh
+forgets.
+
+#### Six measured defects
+
+1. **`from_xyz` puts the ENTIRE comment line into `title`** — no keyword
+   stripping. Reading an extended XYZ gives
+   `title == 'Lattice="10.0 …" Properties=species:S:1:pos:R:3 pbc="T T T"'`,
+   while the cell is *also* parsed correctly into `cell`. The same fact, twice,
+   one copy mislabelled as a name.
+2. **The sidecar MASKS it.** Measured on one file: sidecar present →
+   `'my junction'`; sidecar moved aside → `'my junction Lattice="10.000000 …'`.
+   The bug is invisible in normal use and appears the moment the pair is
+   separated — or when any other tool reads the `.xyz`, which is the entire
+   reason for keeping that format.
+3. **The contaminated string is then persisted AS IDENTITY.** The sidecar's
+   identity block records the header text as the structure's name, beside a
+   correct 3×3 `cell`.
+4. **A comment line creates a sidecar file.** Non-empty title ⇒ non-empty
+   identity ⇒ `keep_sidecar` True. Measured: `a.xyz` with a comment →
+   `['a.molstruct.json', 'a.xyz']`; with an empty comment → `['b.xyz']`.
+   A `.molstruct.json` exists to hold one string already in the file beside it.
+5. **The sidecar silently overrides a hand-edited comment line.** Edit the
+   `.xyz` in an editor, reload, and the old title comes back with no word
+   said. This is § 1.13's condition — stated state overwritten by stored
+   state — on the one line of a structure file a person can obviously edit.
+6. **`to_pdb` truncates at 70 characters.** A contaminated title (90+ chars)
+   is silently cut.
+
+#### Everything that would be affected by a change
+
+* **Python consumers:** `modify.py` ×5, `chemistry.py` ×5 (carries);
+  `web/blueprints/build.py` ×5, `_shared.py`, `pyscf/input.py`,
+  `sidecars/molstruct.py`, `peptide.py`, the three `builders/backends/`.
+  *(`script_emit.py`'s `section.title` / `member.title` is a TEMPLATE
+  section's title and is unrelated — do not sweep it.)*
+* **The web layer already assumes it is unreliable** — `build.py` falls back
+  four different ways: `struct.title or kind`, `or _resolved.name`,
+  `or "restored structure"`, `or (filename or fmt)`.
+* **JS:** `lib/molview/ui.js` (11), `lib/projects/dialogs.js`,
+  `lib/projects/checkpoint.js`, `modify/viewer.js`, `lib/projects/list.js`.
+* **Tests:** 11 assertions across 8 files, incl.
+  `test_structure_pair_one_generator.py`, `test_structure_envelope_protocol.py`,
+  `test_parsers_pyscf_struct.py`, `test_workingcopy_structure.py`
+  (`test_it_writes_utf8_regardless_of_the_platform_locale` round-trips a
+  non-ASCII title through the codec).
+
+#### The decision — OPEN
+
+**(a) `title` belongs to the GEOMETRY FILE.** It *is* the comment line; drop
+it from the identity block. A hand-edit then works, a comment stops creating
+a sidecar, and defect 1 (strip the keywords on read) becomes the only fix.
+**Recommended** — it is where every other tool in the field puts it, it is
+the copy the user can see, and `identity_to_dict`'s own docstring says that
+block exists so no sidecar "claim[s] an identity nobody stated".
+
+**(b) `title` belongs to the SIDECAR.** The comment line becomes derived
+output, and a hand-edit must be honoured on read or explicitly refused —
+never silently dropped.
+
+**(c) They are two different facts** — the file's label and the structure's
+name — and need two names in the API. One word for two facts is what
+produced all six defects.
+
+**Independent of the choice, defect 1 is a bug:** `from_xyz` must not store
+`Lattice=…`/`Properties=…`/`pbc=…` as a name. And defect 2 means it cannot
+be found by using molbuilder normally — only by separating the pair.
 
 ### 2.3 Geometry I/O
 
