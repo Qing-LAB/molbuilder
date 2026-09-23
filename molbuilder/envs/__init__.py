@@ -2,9 +2,9 @@
 
 The package exposes three things:
 
-  * ``run_in_env`` / ``run_tool`` -- the historical subprocess-dispatch
-    helpers (moved from ``molbuilder/envs.py`` to ``_dispatch.py`` when
-    the package landed; back-compat re-exports here).
+  * ``run_in_env`` / ``run_tool`` -- dispatch a command into a named env,
+    or to the env the tool is routed to -- see
+    :mod:`molbuilder.envs._dispatch`.
   * ``Recipe`` + the registry of recipes for each declared env --
     see :mod:`molbuilder.envs.recipes`.
   * The doctor / install helpers that drive the CLI subcommands --

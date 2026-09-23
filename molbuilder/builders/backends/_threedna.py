@@ -303,7 +303,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     # than /dev/null) this can stall reading from stdin for the full
     # 60 s subprocess timeout before the user sees an error.  Reject
     # upfront with an actionable message so the user gets the constraint
-    # without a one-minute hang.  Bug #2 fix (2026-06-07).
+    # without a one-minute hang.
     if kind == "dna" and form == "Z" and not _is_alternating_gc(seq):
         raise ValueError(
             f"Z-DNA via 3DNA's fiber requires an alternating poly-d(GC) "
@@ -372,8 +372,7 @@ def build(kind: str, sequence: str, form: str, terminal: str,
                 # interactive prompt (e.g. an invalid flag combination
                 # that drops into the "Number of repeats" loop) fails
                 # FAST instead of stalling for the full timeout reading
-                # from the parent's inherited stdin.  Bug #2 hardening
-                # (2026-06-07).
+                # from the parent's inherited stdin.
                 stdin=subprocess.DEVNULL,
                 timeout=60,
             )
@@ -498,8 +497,8 @@ def _copy_standard_bases(root: str, workdir: str, dataset: str = "BDNA") -> None
     """Put X3DNA's standard base templates in *workdir*, the way `rebuild` wants
     them.
 
-    THIS REPLACES `x3dna_utils cp_std <dataset>` (2026-09-09), AND THAT MATTERS
-    FOR ONE REASON: `x3dna_utils` is the ONLY ruby script in X3DNA -- `fiber`,
+    THIS IS `x3dna_utils cp_std <dataset>` DONE IN PYTHON, AND THAT MATTERS FOR
+    ONE REASON: `x3dna_utils` is the ONLY ruby script in X3DNA -- `fiber`,
     `rebuild` and `analyze` are compiled binaries -- and its `cp_std`
     sub-command is a pure file copy.  Read it (`lib/miscs.rb:373`) and it clears
     `Atomic[._]?.pdb` from the working directory, copies
@@ -507,11 +506,11 @@ def _copy_standard_bases(root: str, workdir: str, dataset: str = "BDNA") -> None
     `config/Atomic.p.pdb`.  No computation, nothing version-specific, nothing
     that needs a language runtime.
 
-    So shelling out cost a whole interpreter dependency for four `shutil.copy`
-    calls, and on a machine without ruby the arbitrary/mismatched duplex path
-    died with `exit 127` -- while the CANONICAL duplex path kept working,
-    because it goes through `fiber`.  That asymmetry is why it went unnoticed:
-    the web UI's ordinary DNA build never touches this branch.  (#80.)
+    Shelling out instead would cost a whole interpreter dependency for four
+    `shutil.copy` calls, and on a machine without ruby it exits 127.  Only the
+    arbitrary/mismatched duplex path reaches here -- the CANONICAL duplex path
+    goes through `fiber` -- so such a failure never shows up in the web UI's
+    ordinary DNA build and stays invisible until someone builds a mismatch.
 
     The lowercase alias is X3DNA's convention for a MODIFIED base and `rebuild`
     looks for both spellings, so both are written -- dropping one would fail

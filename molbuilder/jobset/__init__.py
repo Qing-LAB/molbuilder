@@ -2,13 +2,13 @@
 jobs that share a package, with engine-agnostic materialize / submit /
 plan / status / summarize engines (docs/execution/job-system.md).
 
-**Floor 3 is DERIVED, not built by producers** (R8, 2026-08-12: this
-header still said "producers (bench sweep, SIESTA stage ladder) build a
-JobSet" — both producers died in the 2026-08-12 fold): ``prep`` derives
-the JobSet from a described calculation on the machine that will run it,
-and the engines below consume it.  Import-light by design (model is pure
-stdlib) so it runs on a compute target alongside the other on-target
-tools.
+**Floor 3 is DERIVED, not built by producers**: nothing constructs a
+JobSet ahead of time and hands it down.  ``prep`` derives it from a
+described calculation on the machine that will run it — so the ranks,
+resources and paths in it are the ones that machine actually has, which a
+JobSet built elsewhere could only guess at — and the engines below consume
+it.  Import-light by design (model is pure stdlib) so it runs on a
+compute target alongside the other on-target tools.
 """
 from .agreement import (DeckLaunchMismatch, LaunchAgreement,
                         check_launch_matches_deck, launch_agreement)

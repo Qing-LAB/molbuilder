@@ -151,8 +151,8 @@ def calling(hook: str, *, engine: str = "", where: str = "", log=None):
     engine supplied, so a mistake in one arrives as
     ``TypeError: __init__() got an unexpected keyword argument`` from a
     traceback twelve frames deep -- and the first question, *which engine,
-    which hook, which item?*, costs a debugging session.  It cost two on
-    2026-08-19.
+    which hook, which item?*, costs a debugging session every time it is
+    asked.
 
     **The exception is ANNOTATED, never replaced.**  Its type and message are
     what every ``except`` clause and every test already match on, and a

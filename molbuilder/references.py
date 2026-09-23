@@ -1,6 +1,6 @@
 """The bibliography door -- one reader over ``docs/science/references.bib``.
 
-THE ONE HOME for citations (user, 2026-08-21): every scientific argument
+THE ONE HOME for citations (user ruling): every scientific argument
 in the validation design starts from a confirmed reference, and this
 module is how code reaches it.  Catalogue items name keys
 (``Item.refs``); the form resolves them here so the help expander shows

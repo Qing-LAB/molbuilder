@@ -428,14 +428,14 @@ def to_json(rule: Rule) -> Dict[str, Any]:
 #: :data:`_SUBRULE_LIST_FIELDS`, and for their reason: the annotation on a
 #: frozen dataclass is documentation, and nothing was checking it.
 #:
-#: WHY THIS EXISTS (2026-09-09).  ``from_json`` accepted any JSON value for a
-#: leaf and the wrong type then raised a bare ``TypeError`` -- from
-#: ``tuple(from_json(r) for r in raw)`` when a sub-rule LIST was a scalar, and
+#: WHY THIS EXISTS.  Without it ``from_json`` accepts any JSON value for a
+#: leaf, and the wrong type raises a bare :class:`TypeError` -- from
+#: ``tuple(from_json(r) for r in raw)`` when a sub-rule LIST is a scalar, and
 #: from ``set(rule.elements)`` / ``rule.n < 0`` deep inside :func:`evaluate`.
 #: ``web/blueprints/selection.py`` catches :class:`SelectionError` and only
-#: that, so all three escaped as Flask's HTML 500 page WITH A STACK TRACE where
-#: `web-api.md` § 1 requires a JSON 400 -- on a route the filter panel calls on
-#: every keystroke.  A malformed rule is a bad REQUEST, and it is refused here,
+#: that, so each of those escapes as Flask's HTML 500 page WITH A STACK TRACE
+#: where `web-api.md` § 1 requires a JSON 400 -- on a route the filter panel
+#: calls on every keystroke.  A malformed rule is a bad REQUEST, and it is refused here,
 #: at the boundary where untrusted JSON becomes a rule.
 _LEAF_KINDS: Dict[str, str] = {
     "elements":   "str-seq",

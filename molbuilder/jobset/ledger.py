@@ -1,7 +1,7 @@
 """The bundle's DECISION LEDGER — ``jobset-decisions.log``, one JSON line
 per decision.
 
-**Why a file when every verb already prints** (user rule, 2026-08-12): a
+**Why a file when every verb already prints** (user rule): a
 decision that only reached the terminal is gone by the time a job
 misbehaves on a cluster hours later.  What is still there is the bundle —
 so the bundle carries the record: which config file supplied each setting,
@@ -62,13 +62,12 @@ def prepped(base, *, kind: str, stage, dirs):
     **What a prep line consists of lives here, not in each surface.**  The
     module rule above puts the append at the surface, and that is right:
     policy stays at the verb.  What it cannot do by itself is keep two
-    surfaces spelling the same four facts the same way — and it did not.
-    `prep` from the CLI wrote this line; `prep` from the browser wrote
-    nothing at all, while the Task Setup bundle card went on listing
-    ``jobset-decisions.log`` as *"every decision prep made, one line each"*
-    (measured 2026-09-19: `grep -rn ledger molbuilder/web/` returns one
-    line, the import of the NAME).  A person who preps in the browser opens
-    the card, reads that promise, and finds no file.
+    surfaces spelling the same four facts the same way.  A surface that
+    hand-builds the line is free to spell it differently, or to omit it
+    altogether — and then the Task Setup bundle card's promise that
+    ``jobset-decisions.log`` holds *"every decision prep made, one line
+    each"* is false for whoever prepped through that surface: they open the
+    card, read the promise, and find no file.
 
     So the recipe has one home and the surfaces have one call.  Adding a
     third surface is that call, not four lines free to disagree with these.
@@ -91,10 +90,10 @@ def rel_to(base, d) -> str:
 
     The ledger records job directories this way and `prep` PRINTS them this
     way, and the two must agree: with the attempt layer every trial's
-    directory ends in ``run-<n>``, so a list reading "run-0, run-0" names
-    nobody (user, 2026-08-28).  One function, because a second spelling is
-    how the printed list and the recorded one come to disagree about the
-    same directories.
+    directory ends in ``run-<n>``, so a bare basename list reads "run-0,
+    run-0" and names nobody (user).  One function, because a second
+    spelling is how the printed list and the recorded one come to disagree
+    about the same directories.
     """
     try:
         return str(Path(d).resolve().relative_to(Path(base).resolve()))

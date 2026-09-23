@@ -51,7 +51,7 @@ from .persist import read_json, write_json
 
 #: The record's filename.  VISIBLE, not dotted: it sits beside `task.json`,
 #: `job-set.json`, `run.json` and `environment.json`, and a person listing a
-#: directory should see the thing that explains it (user, 2026-09-19 —
+#: directory should see the thing that explains it (user ruling:
 #: *"explicit information is better than implicit, so people can see the
 #: JSON"*).
 FILENAME = "calcdir.json"

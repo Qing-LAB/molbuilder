@@ -1,9 +1,8 @@
 """AmberTools backend (uses ``tleap``).
 
-Originally this drove ``amber``'s ``bdna()`` builder, but NAB was retired
-in AmberTools 23+ and its standalone binary is no longer shipped.
-``nabc`` (the C library that succeeded it) doesn't expose a
-sequence-to-polymer command-line helper.
+AmberTools 23+ does not ship NAB's standalone binary, so ``bdna()`` is
+not reachable from a command line; ``nabc``, the C library that succeeded
+it, exposes no sequence-to-polymer command-line helper either.
 
 The closest remaining alternative inside AmberTools is ``tleap``'s
 ``sequence { ... }`` macro, which builds a chemically valid polymer
@@ -12,9 +11,8 @@ in **extended** conformation -- not B-form / A-form helix.  For DFT
 that's fine: the bond lengths are right, the optimiser doesn't care
 that the chain isn't pre-coiled.
 
-If you actually need canonical B-form / A-form geometry, install 3DNA
-and the ``fiber`` command becomes available; we don't have a backend
-for that yet but it's a 30-line shellout.
+If you actually need canonical B-form / A-form geometry, use the
+``threedna`` backend, which shells out to 3DNA's ``fiber``.
 
 This backend is registered as ``"amber"`` for backwards compatibility
 with code/UI that already says ``backend="amber"``.
@@ -139,8 +137,9 @@ quit
         title=title or f"{kind} {seq} (tleap, extended chain)",
     )
 
-    # tleap emits a single chain; this is a no-op when there's only one,
-    # but keeps the API symmetric with the old amber path.
+    # A backend returns ONE chain.  tleap emits a single chain, so this is
+    # normally a no-op; it is kept because the guarantee is the backend's,
+    # not tleap's, and a multi-chain emission must not leak downstream.
     chains = sorted(set(struct.chain_ids))
     if len(chains) > 1:
         struct = select_chain(struct, chains[0])

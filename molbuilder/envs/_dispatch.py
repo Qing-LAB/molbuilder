@@ -44,10 +44,10 @@ def run_in_env(env_name: str,
     `builds.dispatch_into_env`: the manager's own ``run``, re-addressed at
     the env's directory (M2), with the once-per-process measurement of a
     broken ``run`` stub and the activation fallback -- the route every
-    installer step and build phase takes.  Until 2026-09-13 this function
-    kept a second copy of that: its own stub detection, its own wrapper,
-    addressed by NAME, and reaching up into `install` for the prefix when
-    the copy needed one (J1, Y5).
+    installer step and build phase takes.  A private second copy of that
+    -- its own stub detection, its own wrapper, addressed by NAME -- is
+    wrong twice over: it drifts from the door it duplicates, and to get a
+    prefix it has to reach up into `install`, inverting the layering.
 
     What differs from a build phase is only the STYLE of the answer.  A
     tool call wants a `CompletedProcess` with captured output rather than
@@ -99,8 +99,9 @@ def run_tool(tool: str,
          naming every candidate that was tried.
 
     Output is captured as text either way; ``cwd`` and ``timeout`` are the
-    two things a caller has to say.  (It took ``**popen_kwargs`` until
-    2026-09-13, when the env branch stopped being a `subprocess.run`.)
+    two things a caller has to say.  ``**popen_kwargs`` cannot be offered:
+    the env branch is not a `subprocess.run`, so every other Popen knob
+    would be accepted on one route and silently dropped on the other.
     """
     routed = route(tool, env=env)
     if routed is None:
@@ -116,11 +117,11 @@ def route(tool: str, *, env: Optional[str] = None) -> Optional[str]:
     Raises :class:`FileNotFoundError` when neither is possible, naming every
     candidate that was tried.
 
-    Split out of :func:`run_tool` on 2026-09-13.  The policy -- routed env
-    beats host PATH, an explicit env beats both -- is the thing worth being
-    sure of, and while it was tangled with the dispatch the only way to ask
-    was to run something: the tests built a fake manager, fake tools, a PATH
-    and a log file to read back one decision.  Now they ask.
+    The policy -- routed env beats host PATH, an explicit env beats both --
+    is the thing worth being sure of, so it is separated from the dispatch
+    and can be ASKED.  Tangled with the dispatch it is only observable by
+    executing it: a fake manager, fake tools, a PATH and a log file read
+    back afterwards, to recover one decision.
     """
     caps = get_capabilities()
 

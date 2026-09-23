@@ -2,10 +2,9 @@
 
 A symmetry-forbidden mode has an intensity of exactly zero.  What
 reaches ``.spectra.json`` is not zero -- it is floating-point residue
-from a finite-difference derivative or a CPHF solve.  Measured on CO2
-(2026-09-11, the run W21 was designed against): the silent entries came
-back as ``4.8e-09``, ``1.0e-08``, ``7.5e-08`` and ``3.6e-09`` beside
-bands of ``32.85`` and ``613.04`` km/mol.
+from a finite-difference derivative or a CPHF solve.  Measured on CO2:
+the silent entries came back as ``4.8e-09``, ``1.0e-08``, ``7.5e-08``
+and ``3.6e-09`` beside bands of ``32.85`` and ``613.04`` km/mol.
 
 So "is this IR-active" is a DECISION, not a read, and this module is
 where it is made.  The rule must not be re-invented as an epsilon in the
@@ -52,13 +51,13 @@ from typing import Dict, List, Optional, Sequence
 
 #: THE FALLBACK cut, used only when the data will not separate itself.
 #:
-#: It was the primary rule until 2026-09-11, and a real run showed why a
-#: constant cannot be: on ethylene built through the UI -- an RDKit
-#: geometry relaxed to a finite gradient tolerance, so not exactly
-#: D2h -- symmetry-breaking leakage reached 1.5e-6 and 3.3e-6 of the
-#: Raman peak, crossing a 1e-6 line and labelling two honestly IR-only
-#: C-H stretches as active in both channels.  The SAME molecule on an
-#: exactly symmetric geometry leaked at 1e-7 and classified correctly.
+#: A CONSTANT CANNOT BE THE PRIMARY RULE, and a real run shows why: on
+#: ethylene built through the UI -- an RDKit geometry relaxed to a finite
+#: gradient tolerance, so not exactly D2h -- symmetry-breaking leakage
+#: reaches 1.5e-6 and 3.3e-6 of the Raman peak, crossing a 1e-6 line and
+#: labelling two honestly IR-only C-H stretches as active in both
+#: channels.  The SAME molecule on an exactly symmetric geometry leaks at
+#: 1e-7 and classifies correctly.
 #: One ruler cannot serve both, because where the residue sits depends
 #: on the geometry, the basis, the grid and the convergence tolerance --
 #: properties of the calculation, not of the chemistry.

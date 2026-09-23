@@ -26,10 +26,9 @@ and returns a :class:`~molbuilder.structure.Structure`.
     conformer is whatever ETKDG decides -- not a helix.  Fine for
     short oligos that DFT will fully optimise; bad for 10+ mers.
 
-(There used to be an in-house "fiber" chain-grow backend; it has been
-removed because it produced incorrect 5'-end chemistry and could not
-enforce the tetrahedral phosphate-bridge geometry.  Use ``threedna``,
-``amber``, or ``rdkit`` instead.)
+Every backend delegates to an external builder, and none grows the
+chain residue-by-residue in-house: doing that gets the 5'-end chemistry
+wrong and cannot enforce the tetrahedral phosphate-bridge geometry.
 
 ``BackendUnavailable`` is raised when the user picks a backend whose
 external dependency isn't installed (e.g. ``amber`` without ``tleap``,

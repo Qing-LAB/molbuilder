@@ -53,11 +53,10 @@ class PackageAuditIssue:
     for a pip package with a recorded source that is the direct
     reference, not the bare name, so ``repair`` fetches from where the
     recipe says rather than from whatever the default index offers.
-    It does NOT carry the install instruction.  It used to -- an
-    ``install_flags`` copied off the record -- back when ``repair`` built
-    its own command line.  Repair maps the issue to its ``PipPackage``
-    by :attr:`name` now and reads the record, so a second copy of the
-    instruction could only drift from the first.
+    It does NOT carry the install instruction.  Repair maps the issue to
+    its ``PipPackage`` by :attr:`name` and reads the record; an
+    ``install_flags`` flattened onto the issue is a second copy of that
+    instruction, and a copy can only drift from the record it came from.
     """
     kind: str
     spec: str        # what to hand an installer to fix this
@@ -70,9 +69,10 @@ class PackageAuditIssue:
     name: str = ""
     reason: Optional[str] = None   # why the source is unusual, if it is
     #: The recipe calls the env usable without this package.  A FIELD, so a
-    #: reader asks it; three surfaces parsed the ``-optional`` suffix off
-    #: ``kind`` until 2026-09-14 (review B-R1).  The suffix stays on ``kind``
-    #: for the eye.
+    #: reader ASKS it.  ``kind`` is a display spelling; re-deriving the
+    #: boolean by parsing its ``-optional`` suffix back off puts the same
+    #: decision in every surface that does so, each free to disagree.  The
+    #: suffix stays on ``kind`` for the eye.
     optional: bool = False
 
 
@@ -370,14 +370,13 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         )
     # --- conda packages ---
     #
-    # ITERATE THE RECORDS, like the pip loop below.  This used to walk
-    # `conda_specs` -- strings -- which forced a pre-pass building a
-    # name-SET of the optional ones, parsed every optional spec twice, and
-    # left `name` and `reason` empty on every conda issue.  Empty `name` is
-    # what stopped `repair` from mapping a conda issue back to its record,
-    # and empty `reason` is why `CondaPackage.reason` could never reach a
-    # user.  A name-set matched by name is also the exact mechanism § 2.2
-    # of the contract abolished for being able to miss silently.
+    # ITERATE THE RECORDS, like the pip loop below.  Walking `conda_specs`
+    # -- strings -- costs a pre-pass that builds a name-SET of the optional
+    # ones, parses every optional spec twice, and leaves `name` and `reason`
+    # empty on every conda issue: with `name` empty `repair` cannot map an
+    # issue back to its record, and with `reason` empty `CondaPackage.reason`
+    # can never reach a user.  A name-set matched by name is also the exact
+    # mechanism § 2.2 of the contract abolishes, for missing silently.
     installed_conda = _read_conda_meta(env_prefix)
     # Read BEFORE the conda loop, which needs it: a conda-declared package
     # that pip installed is absent from `conda-meta` and present in the env.
@@ -395,9 +394,9 @@ def audit_packages(env_prefix: Path, recipe: Recipe) -> PackageAudit:
         suffix = "-optional" if pkg.optional else ""
         if name not in installed_conda:
             # SAY WHERE IT DID TURN UP.  `(not found)` is true about
-            # `conda-meta` and overstated about the env: measured 2026-09-17,
-            # the host env's `psutil>=5.9` is declared conda and installed by
-            # pip, so `import psutil` works while the audit read as though
+            # `conda-meta` and overstated about the env: a package declared
+            # conda but satisfied by pip -- the host env's `psutil>=5.9` is
+            # one -- imports perfectly well while the audit reads as though
             # nothing were there.  Still REQUIRED missing, and deliberately --
             # a conda-declared package satisfied by pip is outside the solve,
             # so the next `conda install` into this env may replace or shadow
@@ -601,10 +600,10 @@ def report_all(
             ))
             continue
         # Resolve env prefix ONCE and hand it down -- shared between the
-        # verify dispatch and the package audit.  It used to be resolved
-        # again inside `_run_verify` while this comment claimed otherwise,
-        # paying `_env_prefix` twice per present env; that is the call the
-        # installer budgets for (3-5 `env list` / `info --json` per recipe).
+        # verify dispatch and the package audit.  Resolving it again inside
+        # `_run_verify` pays `_env_prefix` twice per present env, and that is
+        # the expensive call the installer budgets for (3-5 `env list` /
+        # `info --json` per recipe).
         prefix_str = _install._env_prefix(effective, caps.conda_binary)
         audit: Optional[PackageAudit] = None
         if prefix_str is not None:

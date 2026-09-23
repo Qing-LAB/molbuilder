@@ -5,26 +5,25 @@ ROLE    the ONE place a physical constant is spelled
 USED-BY the parsers, the emitters, the transport composer — anywhere a
         conversion between atomic units and the units a file speaks happens
 
-WHY THIS EXISTS (2026-08-30).  The Bohr radius was written out **eight
-times in three different values**::
+WHY THIS EXISTS.  A constant spelled at each call site drifts.  Left to
+itself the Bohr radius separates into **three values across eight sites**,
+differing in the seventh digit::
 
-    0.529177210903   makov_payne · pyscf/vibration_emitters · siesta_mdnc
-    0.5291772108     parse/coords/siesta_xv · parse/dirs · parse/engines/pyscf
-    0.529177         parse/fdf · parse/ion
+    0.529177210903
+    0.5291772108
+    0.529177
 
-The consequence was not theoretical.  Two modules read the same SIESTA
-``.XV`` file — ``parse.coords.siesta_xv`` and ``transport.compose`` (through
-what is now ``parse.fdf``) — using the first and third of those, so **the same
-file gave coordinates 4e-7 apart depending on which reader was asked**.  That
-surfaced as a test comparing the two answers and failing by 1.6e-6 Å on a gold
-lattice constant.
+The consequence is not theoretical.  Two readers of the same SIESTA ``.XV``
+file holding the first and the third return **coordinates 4e-7 apart for the
+same file**, which surfaces as a comparison of the two answers failing by
+1.6e-6 Å on a gold lattice constant.
 
 The size of the discrepancy is not the point.  A physical constant is a fact
 about the universe, not about a module, and eight copies of it are eight things
 that can be edited apart.
 
-VALUES are CODATA 2018 throughout, which is what the majority of the call sites
-already used and the most recent set the project cites.
+VALUES are CODATA 2018 throughout: the most recent set the project cites, and
+the one most call sites already speak.
 """
 
 from __future__ import annotations
@@ -62,11 +61,11 @@ AMU_ELECTRON_MASS: float = 1822.888486209
 #: third spelling of the same physics is how they drift apart.  A Hessian in
 #: Hartree/Bohr² weighted by amu gives eigenvalues in Hartree/(Bohr²·amu); the
 #: electron-mass convention would give true atomic units and use `HARTREE_CM1`
-#: directly.  Both are correct; mixing them silently is not, which is what the
-#: vibration deck did until 2026-09-21 -- PySCF's `harmonic_analysis` weights
-#: in amu and the deck's frozen-atom path weighted in electron masses, so the
-#: two paths disagreed about mode normalisation by sqrt(AMU_ELECTRON_MASS) and
-#: every frozen IR intensity came out ~1823x too small.
+#: directly.  Both are correct; mixing them silently is not, and a vibration
+#: deck is where they meet -- PySCF's `harmonic_analysis` weights in amu, so a
+#: frozen-atom path weighting in electron masses disagrees with it about mode
+#: normalisation by sqrt(AMU_ELECTRON_MASS) and every frozen IR intensity comes
+#: out ~1823x too small.
 #:
 #: (No `math.sqrt`: this module imports nothing at all -- see the header.)
 CM1_PER_SQRT_HARTREE_BOHR2_AMU: float = HARTREE_CM1 / (AMU_ELECTRON_MASS ** 0.5)

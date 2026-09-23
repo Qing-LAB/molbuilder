@@ -56,21 +56,23 @@ __all__ = [
 def repo_root() -> Path:
     """The directory that CONTAINS the ``molbuilder`` package.
 
-    **Architecture rule A11: one home per root.**  Five modules used to climb
-    a parent chain to this same place -- ``references.py`` for
-    ``docs/science/references.bib``, ``web/blueprints/docs.py`` for ``docs/``,
-    ``runwrap.py`` and ``script_emit.py`` for the checkout a generated script
-    must activate against, and ``builders/backends/_threedna.py`` (twice) for
-    the ``x3dna*/`` unpack directory (`ops/installation.md` § "Option A").
-    Each spelled the climb itself, and ``_threedna`` had to count four levels
-    instead of two because of where it sits.  A count is a fact about a file's
-    depth in the tree, and it is wrong the moment the file moves.
+    **Architecture rule A11: one home per root.**  The alternative is each
+    caller climbing its own parent chain to this same place --
+    ``references.py`` for ``docs/science/references.bib``,
+    ``web/blueprints/docs.py`` for ``docs/``, ``runwrap.py`` and
+    ``script_emit.py`` for the checkout a generated script must activate
+    against, ``builders/backends/_threedna.py`` for the ``x3dna*/`` unpack
+    directory (`ops/installation.md` § "Option A").  Every spelling of that
+    climb carries a level count, and the count differs by where the file sits:
+    ``_threedna`` is four levels down where the others are two.  A count is a
+    fact about a file's depth in the tree, and it is wrong the moment the file
+    moves.
 
     **Why the package's own module answers this.**  Only ``molbuilder`` knows
-    where ``molbuilder`` is; every one of those five derived it from a
-    ``__file__``, which is this package's self-knowledge read from outside.
-    Asking here means one answer, and it stays right when a caller is moved to
-    a different depth.
+    where ``molbuilder`` is, and a caller deriving it from its own ``__file__``
+    is reading this package's self-knowledge from outside.  Asking here means
+    one answer, and it stays right when a caller is moved to a different
+    depth.
 
     **What it is, precisely:** ``Path(__file__).resolve().parent.parent`` --
     for the supported deployment (a source checkout, run in place) that is the
@@ -92,11 +94,10 @@ def repo_root() -> Path:
 # --------------------------------------------------------------------- #
 
 
-# `load()` STOOD HERE AND IS GONE (2026-09-07).  It read a geometry file and
-# not the `.molstruct.json` beside it, so every caller got a structure quietly
-# smaller than what was on disk -- no regions, no frozen atoms, no cell.  It
-# predated the sidecar by two months and was never swept when `StructureCodec`
-# became the way a structure is read.
+# THERE IS NO `load()` HERE, and that is the rule, not an omission.  Reading a
+# geometry file without the `.molstruct.json` beside it hands the caller a
+# structure quietly smaller than what is on disk -- no regions, no frozen
+# atoms, no cell.
 #
 # THE DOOR IS `StructureCodec`:
 #
@@ -104,8 +105,8 @@ def repo_root() -> Path:
 #     s = StructureCodec().load("structure.xyz")
 #
 # which reads the pair, applies the sidecar through the one applier, and
-# refuses an extension it does not know.  A second name for it is what let the
-# two drift apart in the first place.
+# refuses an extension it does not know.  A second name for it is what lets
+# the geometry and its sidecar drift apart.
 
 # --------------------------------------------------------------------- #
 #  Optional builders -- imported lazily so users without RDKit /        #

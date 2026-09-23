@@ -8,23 +8,22 @@ Public surface (engine-agnostic):
   * :class:`molbuilder.spectra.results.ModeData`
   * :class:`molbuilder.spectra.results.ModeElectronicStructure`
 
-THE PRODUCER LEFT (spectra-migration plan P3, 2026-08-21): the old
-engine registry (``engine_base``), the PySCF engine class
-(``pyscf_engine``) and the standalone generator (``pyscf_script``)
-retired when the vibration calculation KIND became the one producer --
-``molbuilder.pyscf.vibration_deck`` renders the deck through the
-ordinary ``spec_for`` seam, composing the emitters that moved to
-``molbuilder.pyscf.vibration_emitters``.  Every module left in this
+THIS PACKAGE HOLDS NO PRODUCER: no engine registry, no engine class,
+no standalone generator.  The vibration calculation KIND is the one
+producer -- ``molbuilder.pyscf.vibration_deck`` renders the deck
+through the ordinary ``spec_for`` seam, composing the emitters in
+``molbuilder.pyscf.vibration_emitters``.  Every module in this
 package serves the ARTIFACT: ``results`` (the ``.spectra.json``
 shape), ``selection`` (which modes get per-mode ES), ``methods``
 (the Methods paragraph the deck header carries).
 """
 
-# NO CONFIG RE-EXPORT.  `SpectraConfig` was retired 2026-08-22: a 33-field
-# dataclass that nothing in production constructed, whose fields were
-# PySCFConfig's plus four the vibration deck's config view supplies.  A
-# spectra calculation is described by `PySCFConfig`; the shape the deck and
-# the Methods fragment read is `pyscf.vibration_deck.VibrationConfigView`.
+# NO CONFIG RE-EXPORT.  A spectra calculation is described by `PySCFConfig`;
+# the shape the deck and the Methods fragment read is
+# `pyscf.vibration_deck.VibrationConfigView`.  A spectra-specific config
+# dataclass would carry PySCFConfig's fields plus the four that config view
+# already supplies -- a second description of the same calculation, free to
+# drift from the one the job actually runs.
 from .results import (
     ModeData,
     ModeElectronicStructure,

@@ -7,10 +7,10 @@ does the binary launch?", this module answers the next question:
 For ``molbuilder-siesta-gpu`` -- the only recipe with a validator today --
 this runs the probes in :data:`_RECIPE_PROBES`, which is the list; each row
 carries a measured runtime hint, and that table is what the CLI prints.  This
-docstring deliberately does not restate the rows: it said "four probes (~2 min
-wall-clock)" while the table ran SIX, including ELPA's ``make check`` that the
-same docstring claimed was excluded pending a ``--deep`` flag that does not
-exist.  A person was told ~2 minutes and got ~30.
+docstring deliberately does not restate the rows: a second copy of the count
+and the wall-clock drifts from the table that actually runs, and the reader who
+believes the copy plans for the number it names and waits for the one the table
+costs -- ~2 minutes promised against ~30 spent.
 
 **The suite is NOT a smoke check, and the long probes are NOT optional.**
 Four probes are ours and cost ~9 s in total (binary links, CUDA stack, MPS,
@@ -18,7 +18,7 @@ ELPA GPU codepath).  Two are UPSTREAM TEST SUITES -- SIESTA's
 ``ctest -L simple`` (~2 min) and ELPA's ``make check`` (~15-30 min) -- and they
 are the whole of the runtime.
 
-WHY THEY RUN ANYWAY (settled 2026-09-12).  Running another project's test
+WHY THEY RUN ANYWAY.  Running another project's test
 suite is pointless for a PACKAGED dependency: whoever built the conda package
 already ran it, and the package manager's job is to deliver that verified
 artifact.  **This env is not that.**  `molbuilder-siesta-gpu` is COMPILED FROM
@@ -30,10 +30,10 @@ minutes once against a wrong-answer class that surfaces as bad science months
 later.
 
 So there is deliberately NO ``--quick``, no skip list and no interactive
-decline.  One was drafted and withdrawn: both suites are already at their
-cheapest upstream setting (ELPA's own ``CHECK_LEVEL=fast``, SIESTA's
-``-L simple -E verify`` subset), so nothing is left to trim -- all a knob
-could offer is not knowing, which is what a source build cannot afford.
+decline.  Such a knob would have nothing to trim: both suites already run at
+their cheapest upstream setting (ELPA's own ``CHECK_LEVEL=fast``, SIESTA's
+``-L simple -E verify`` subset), so all it could offer is not knowing, which is
+what a source build cannot afford.
 
 The load-bearing probe is ``elpa gpu codepath``: ``nvidia-smi`` can report a
 perfectly healthy GPU while ELPA silently runs on the CPU (elpa#15, same A100
@@ -84,10 +84,10 @@ class ProbeResult:
     advisory
         ``True`` for a probe whose failure does not make the env unusable --
         today only the MPS daemon, whose own docstring says "env still WORKS
-        without MPS".  It used to return ``passed=False`` and, because the
-        verdict required EVERY probe to pass, turned a CPU-fine GPU-fine
-        workstation whose distro split out `nvidia-cuda-mps` into "env not
-        production-ready".
+        without MPS".  Without the flag it reports ``passed=False``, and since
+        the verdict demands EVERY probe pass, a CPU-fine GPU-fine workstation
+        whose distro merely packages `nvidia-cuda-mps` separately is graded
+        "env not production-ready".
     detail
         One-line human summary suitable for table display.
     output
@@ -198,8 +198,8 @@ def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
     bin_dir = siesta_install / "bin"
     # SIESTA 5.4.2 ships these binaries.  ``transiesta`` is NOT a
     # separate executable -- TranSiesta is a run mode of ``siesta``
-    # itself (``%block ... transiesta`` in the .fdf).  Used to be its
-    # own binary in 4.x; the merge landed pre-5.0.  ``siesta_qmmm`` is
+    # itself (``%block ... transiesta`` in the .fdf).  SIESTA 4.x shipped
+    # it as its own binary; 5.x does not.  ``siesta_qmmm`` is
     # also present but is a niche QM/MM driver -- not required for the
     # "binary is sane" check.
     required = ("siesta", "tbtrans", "phtrans")

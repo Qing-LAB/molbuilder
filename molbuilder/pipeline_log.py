@@ -73,8 +73,8 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
     THE STEM COMES FROM THE GRAMMAR (`runfiles.stem`, job-contracts.md
     § 2.2a), not from a local rule: the tail here is not a role -- it is
     three facts about the prep -- but the head is the same
-    ``<label>[_<token>]`` every run file is named from, and it was written
-    out here until 2026-09-07.
+    ``<label>[_<token>]`` every run file is named from, and spelling it out
+    here would be a second copy of the grammar, free to drift from it.
     """
     return f"{_stem(label, token or None)}.{engine}.{shape}.{LOG_SUFFIX}"
 

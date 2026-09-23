@@ -2,19 +2,18 @@
 
 A leaf on purpose: **it imports nothing, and it sits ABOVE ``web/``.**
 
-The second half is not cosmetic.  It lived at ``web/reload_protocol.py`` for
-about a minute, and importing it ran ``web/__init__.py`` — which does
-``from .app import create_app``.  So reading a two-line protocol pulled in the
-whole application and Flask with it, and the supervisor was importing the very
-code it exists to survive.  Measured, not guessed: ``molbuilder.web.app`` was in
-``sys.modules`` immediately afterwards.
+The second half is not cosmetic.  Under ``web/`` this module is unreachable
+without running ``web/__init__.py``, which does ``from .app import create_app``:
+reading a two-line protocol pulls in the whole application and Flask with it, and
+leaves ``molbuilder.web.app`` in ``sys.modules`` — the supervisor importing the
+very code it exists to survive.
 
-The supervisor's whole value is that it NEVER IMPORTS APPLICATION CODE
-(docs/archive/2026-08-19-server-reload-plan.md § 3.2) — that is what lets a child which fails to
-import leave the parent alive, so the next reload can fix it.  A parent that had
-to import the app to learn its own exit code would lose exactly the property it
-exists for: a syntax error anywhere in the app would kill the supervisor too, and
-the site would be down until someone reached the machine.
+The supervisor's whole value is that it NEVER IMPORTS APPLICATION CODE — that is
+what lets a child which fails to import leave the parent alive, so the next
+reload can fix it.  A parent that had to import the app to learn its own exit
+code would lose exactly the property it exists for: a syntax error anywhere in
+the app would kill the supervisor too, and the site would be down until someone
+reached the machine.
 
 So both constants live here, where either side can read them at no cost and
 neither has to reach into the other.

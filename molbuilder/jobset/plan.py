@@ -3,19 +3,19 @@
 
 Pure formatting: it knows nothing but the data model.  The one basis for
 ``STAGE-PLAN.md`` — per-job resources, visible before anything is
-submitted.  *(R8, 2026-08-12: the header promised "the dependency graph +
-the carry-forward" columns deleted 2026-08-10 with stage chaining, cited
-a "§ 8 D3" that names no D3, and predicted a BENCH-PLAN.md the fold
-superseded — a sweep's plan IS a STAGE-PLAN.md in its bench/ container.)*
+submitted.  There are no dependency or carry-forward columns, because
+nothing chains stages: a carry is a COPY ``prep --from`` makes, not an
+edge a plan could draw.  And there is no second plan file for a sweep — a
+sweep's plan IS a ``STAGE-PLAN.md``, in its ``bench/`` container.
 """
 
 from __future__ import annotations
 
 
-#: The plan's filename.  A constant because it was written out twice in
-#: `prep.py` -- the same "spelled at the call site" shape the run-file grammar
-#: exists to end, one level up: these bundle files are not per-label, so they
-#: are not `runfiles` names, but they still deserve ONE home.
+#: The plan's filename.  A constant so the name has ONE home: spelled at
+#: each call site it is free to drift, which is the same shape the run-file
+#: grammar exists to end, one level up.  These bundle files are not
+#: per-label, so they are not `runfiles` names -- but one home still applies.
 FILENAME = "STAGE-PLAN.md"
 
 from typing import List
@@ -48,10 +48,9 @@ def render_plan(jobset: JobSet) -> str:
     """Render the plan: one row per job — its seq, input deck, warm files
     and resources.  Reads only the JobSet -- no IO.
 
-    (The *"dependency, carry, plus the dependency graph"* this promised
-    until 2026-08-12, died 2026-08-10 with stage chaining: nothing
-    orders anything, and a carry is a COPY ``prep --from`` makes, read
-    from the attempt's marker — not a plan column.)"""
+    Nothing here orders anything, so no column claims an order: a carry is
+    a COPY ``prep --from`` makes, read from the attempt's marker, not a
+    relation between rows."""
     js = jobset
     lines: List[str] = [
         f"JOB-SET PLAN -- {js.name} ({js.engine}, {js.kind})",
@@ -61,23 +60,23 @@ def render_plan(jobset: JobSet) -> str:
     ]
     hdr = ("seq", "job", "input", "warm files", "resources")
     rows = []
-    # The column is the stage's SEQ, never its row.  It printed `enumerate()`
-    # until 2026-08-10 -- the stage's POSITION, which `engines/stages.md` R5
-    # forbids as an identifier, in the column a reader takes for the ordinal.
-    # Disable a stage and the two differ.  A job with no ordinal prints `-`
-    # rather than falling back to the row, which would be the same mistake
-    # wearing the new column's name.
+    # The column is the stage's SEQ, never its row.  A row index is the
+    # stage's POSITION, which `engines/stages.md` R5 forbids as an identifier
+    # -- and printing it in the column a reader takes for the ordinal states
+    # a falsehood: disable a stage and the two differ.  A job with no ordinal
+    # prints `-` rather than falling back to the row, which would be the same
+    # mistake wearing the column's name.
     refs = stage_refs(js)
     for j in js.jobs:
         # WHAT this job would take from a run it is continued from -- never
-        # WHICH run.  The two columns here used to be `depends_on (dep_kind)`
-        # and the carry patterns; both named another job, and both went with
-        # the edges on 2026-08-10.
+        # WHICH run.  A column naming another job asserts an edge, and there
+        # are none; a list of file names is the strongest claim this plan can
+        # make and still be true.
         warm = ", ".join(w.name for w in j.warm) or "-"
         rows.append((refs[j.name].seq_text, j.name, j.script, warm,
                      _res_str(j.resources)))
-    # Off `hdr`, not off a literal count -- the same two hand-written numbers
-    # in `runstatus` disagreed the moment a column was added.
+    # Off `hdr`, not off a literal count -- a hand-written column count stops
+    # matching the header the moment a column is added.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]
     def fmt(r):
         return "  ".join(s.ljust(w[k]) for k, s in enumerate(r))
@@ -85,11 +84,10 @@ def render_plan(jobset: JobSet) -> str:
     lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
 
-    # How these are launched.  NOT "submit in parallel", which this said until
-    # 2026-08-10 and which is now the one thing that never happens: a scheduler
-    # is handed ONE job per invocation (job-system.md § 5.3, user rule).  A
-    # plan that ends by recommending the refused thing is worse than one that
-    # ends without advice.
+    # How these are launched.  NEVER "submit in parallel", which is the one
+    # thing that never happens: a scheduler is handed ONE job per invocation
+    # (job-system.md § 5.3, user rule).  A plan that ends by recommending the
+    # refused thing is worse than one that ends without advice.
     lines.append("")
     if js.kind == "ladder":
         # A staged ladder declares no edges (P7 unit 2) and that is the design,
