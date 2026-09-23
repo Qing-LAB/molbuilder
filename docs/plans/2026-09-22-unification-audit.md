@@ -414,6 +414,150 @@ Confirmed non-findings, recorded so nobody fixes them by analogy.
 
 ---
 
+## 7a. COVERAGE — what this audit read, and what it did not
+
+*(Recorded 2026-09-22 at the user's request, and then **validated** rather than
+asserted. The scope of this audit is **structure handling and metadata
+handling**. Everything else is audit #2, § 7c.)*
+
+### How the scope was established
+
+A reference scan located every production module that imports `Structure`,
+`StructureCodec`, `sidecars.molstruct`, or `metadata_to_dict` /
+`apply_metadata_dict` — **59 modules**. A scan locates candidates and settles
+nothing, so each was then checked against the read-depth table the owning
+review declared. That comparison is what § 7b is.
+
+### Read END TO END, by review
+
+| review | files |
+|---|---|
+| structure data model | `structure.py` (2232) · `workingcopy_structure.py` (379, ×3 reviews) · `cell.py` (1086) · `periodicity_gate.py` (626) |
+| sidecar / serialization | `sidecars/molstruct.py` (705) · `parse/sidecars/molstruct.py` (315) |
+| parse layer | **all of `parse/`** — `__init__`, `base`, `registry`, `errors`, `types`, `contract`, `fdf`, `ion`, `_log`; all of `coords/`, `engines/`, `sidecars/`, `instruments/`, `dirs/`; plus `engine_atom_index.py`, `runfiles.py`, `constants.py` |
+| transport | **all of `transport/`** — `compose` (1184), `transiesta` (776), `stages` (442), `wizard` (440), `deck` (624), `sort` (339), `record` (384), `citation_defaults` (118) · `config/transport.py` (671) |
+| tests | 18 files, **441 tests** · `conftest.py` (1039) · `testing.md` |
+| contracts | `structure.md` · `structure-periodicity.md` · `structure-molstruct.md` · `structure-annotations.md` · `parse.md` · `code-audit.md` · `testing.md` · `conventions.md` |
+| consumer seams | `modify.py` (1310) · `web/blueprints/modify.py` (1100) · `validation/geometry.py` (301) |
+| spectrum (4 reviews) | `pyscf/vibration_emitters.py` (1883) · `pyscf/vibration_deck.py` (696) · all of `spectra/` (1950) · `sidecars/spectra.py` · `parse/sidecars/spectra.py` · `web/blueprints/spectra.py` · `lib/spectra/core.js` (3617) · `lib/spectrumchart/index.js` · `lib/vibrationview/{index,_maths}.js` · `config/siesta.py` (1648) · `siesta/stages.py` · `pyscf/stages.py` |
+
+### Read at REGION depth only
+
+`script_emit.py` (2250 — the atom-metadata block and the emit call sites) ·
+`cli.py` (3663 — every structure-related region) · `siesta/input.py` (1925 —
+the deck writer's structure and cell paths) · `web/blueprints/build.py` (2579 —
+1-1300 end to end, the rest by region) · `web/blueprints/watch.py` (906) ·
+`web/blueprints/_shared.py` (three regions) · `jobset/prep.py` (the engine
+seam and dispatch) · `validation/siesta.py`, `validation/pyscf.py`,
+`validation/__init__.py` (the periodicity and kind-gate regions) ·
+`pyscf/input.py` (the deck assembly and `emit_save_helper`) ·
+`config/pyscf.py` (the vibration section) · `chemistry.py` (`symbol_for_z` only)
+
+---
+
+## 7b. THE COVERAGE GAP — 11,888 lines inside this audit's own scope
+
+**The validation found a hole, and it is not small.** Of the 59 modules that
+touch the structure/metadata surface, **eighteen were not opened by any of
+the seven reviews this audit ran.** That is a fact about this audit's reach,
+not about the code. Sized
+and grouped by what they are:
+
+### The structures are BORN here, and nothing audited it — ~2,200 lines
+
+`peptide.py` (262) · `smiles.py` (199) · `nucleic.py` (380) · `pubchem.py`
+(90) · `builders/backends/{__init__,_common,_rdkit,_amber,_threedna}.py`
+(1,413)
+
+Every one of these **constructs a `Structure`**. This audit is about one door
+per operation, and the door a structure comes *through at birth* was not
+looked at once. That matters concretely: the front-page docstring example
+taught `s.to_xyz("out.xyz")` until this session, and the builders are the
+other half of that story — whatever they do with regions, `axis_kind`,
+`vacuum` and identity columns on the way out is unexamined. Four separate
+backends is also the exact shape §§ 3 and 4 are about.
+
+### A sidecar validator, in a session about sidecar unification — 153 lines
+
+`validation/sidecar.py`. Never opened. Its name says it validates the thing
+three reviews spent their time on.
+
+### Two structure-touching web doors — 2,677 lines
+
+`web/blueprints/selection.py` (214) and `web/blueprints/files.py` (2463).
+`files.py` is mostly the file-picker and not structure work, but it is named
+in `structure-molstruct.md`'s own pairing rule (`_paired_sidecar_path`,
+`_existing_paired_sidecar`) — and those are two of the stale line references
+§ 2 counted.
+
+### The element and mass table — 1,947 lines
+
+`chemistry.py`, read only for `symbol_for_z`. `spectra.md` § 4.2 names
+`chemistry.atomic_mass` as the sanctioned mass source, and the worst defect
+this project has had was a mass-convention bug wrong by 1823×. The table
+itself was never audited.
+
+### Smaller, all unread — ~750 lines
+
+`describe.py` (320) · `frame.py` (250) · `trajectory_log/format.py` (180) ·
+`validation/chemistry.py` (303)
+
+### Out of scope even though it appeared in the scan
+
+`jobset/_cli.py` (3714) imports `Structure` but is the **execution** layer —
+audit #2. Same for the non-structure bulk of `files.py`.
+
+**So the honest coverage statement is:** this audit covered the *core* of
+structure and metadata handling — the model, the codec, the serialization
+stack, the parse layer, the transport consumer and the spectrum path — and did
+**not** cover where structures are **created**, nor the sidecar validator, nor
+the chemistry table, nor two web doors. The findings in §§ 1-5a stand on what
+was read; they are not a statement about the eighteen files that were not.
+
+### Closing the gap
+
+One targeted pass, three reviews, ~5,000 lines of genuinely in-scope code:
+
+| review | scope | the question |
+|---|---|---|
+| **G1 — birth** | the five builders + four backends | what does a newly built `Structure` carry, and does every backend agree? Do any of them write a file, hand-build metadata, or set fields the codec owns? |
+| **G2 — the unaudited validators** | `validation/sidecar.py`, `validation/chemistry.py`, `chemistry.py`'s mass/element tables | is `atomic_mass` one table? does the sidecar validator agree with the three gates? |
+| **G3 — the remaining seams** | `web/blueprints/selection.py`, the structure parts of `files.py`, `describe.py`, `frame.py`, `trajectory_log/format.py` | the same one-door and origin-rule questions §§ 1 and 4 asked of the other seams |
+
+This belongs to **this** audit, not the next one — it is inside the scope the
+audit claims.
+
+---
+
+## 7c. AUDIT #2 — the rest of the tree, planned not started
+
+Roughly **70,000 of ~110,000 lines** are outside this audit's scope
+altogether. Grouped as they would be reviewed, largest first:
+
+| area | lines | why it is its own audit |
+|---|---|---|
+| `web/static/lib/` | **33,364** | the browser half — molview, editor, inspectors, projects. The unification rules cross a **language boundary** here, so a violation looks different: a JS module re-deriving a fact the wire payload already carries cannot be found by reading Python |
+| `jobset/` | **11,895** | prep, materialize, submit, runstatus, summarize, ledger, model, ask, `_cli`. How a calculation becomes a job. Crosses a **process boundary** — the wrapper runs on a cluster node with no molbuilder |
+| `web/blueprints/` (remainder) | ~9,000 | results, transport, `_shared`, app, projects |
+| `runwrap.py` | 4,950 | the wrapper generator — the other side of the process boundary |
+| `runtime_config.py`, `template.py`, `monitor.py`, `checkpoint.py`, `task.py` | ~9,000 | the catalogue and config resolution; `template.py` is where a knob's identity is decided |
+| `config/`, `validation/` (remainder) | ~7,800 | |
+
+**Two reasons to keep it separate rather than extend this one.** The
+principles are different: this audit checked *one door per operation* over a
+data model, while the browser and the wrapper are about *one fact per side of
+a boundary* — a different failure shape needing different questions. And the
+evidence is different: a JS finding cannot be measured with a Python fixture,
+and a wrapper finding cannot be measured without submitting a job, which is
+one-at-a-time and manual here.
+
+**Sequencing.** After §§ 1-2 of this audit's order and after § 7b's gap pass.
+Running it sooner would mean navigating the browser layer by a map this audit
+has already shown to be 9 % accurate on line references — and the browser
+contracts were not among the eight documents checked.
+
+---
+
 ## 8. The order, and why
 
 1. **§ 0's three misleading comments.** One commit. Nothing else is safe until
@@ -440,6 +584,13 @@ Confirmed non-findings, recorded so nobody fixes them by analogy.
 10. **§ 5a's duplicate clusters** — ~24 tests out, one keeper per bit, each
     cluster's mutant re-run afterwards to confirm the keeper still goes red.
 11. **§ 5's residue** — last, and only the four with a clean step-0 verdict.
+
+**Before step 11, and after step 2:** § 7b's gap pass. Residue cannot be
+deleted from a surface where eighteen modules were never opened by this
+audit — the
+builders in particular, since they are where a `Structure` is created.
+
+**Then, separately:** audit #2 (§ 7c).
 
 **Standing on its own, not part of the order:** the 15 hand-built
 `structure_hash` fixtures (§ 5a). They agree with the writer today only
