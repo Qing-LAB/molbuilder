@@ -28,6 +28,83 @@ first reported, not better.
 
 ---
 
+## 0c. THE HARNESS COULD REPORT A GREEN SUITE THAT WAS NOT GREEN — and what that does to this plan's evidence
+
+*(2026-09-23. Three commits from the other machine — `9d586758`, `93fb090c`,
+`3ee27d9c` — fixed it. Reviewed and re-verified here.)*
+
+**`FAIL 0` was never evidence. `(exit 0)` is.** For **62 days**
+(2026-07-22 → 2026-09-22) a session-scoped fixture raising in **teardown**
+produced no test record, so `status` printed `FAIL 0`, and `cmd_status`
+returned **0**. The exit code was in the head line the whole time as
+decoration beside the counts. Same for an internal error or a plugin error:
+anything that fails outside a test's `call` phase.
+
+**It happened, once, and it is dated.** 2026-09-05:
+
+```
+[none2e] done (exit 1) | 8234/8234 ran | pass 8231  FAIL 0  skip 3 | 1399.4s
+```
+
+Complete run, non-zero exit, `--fails` printed nothing, the session moved on
+seven seconds later. Under the fixed harness that reads `UNEXPLAINED (exit 1)`
+and returns 1.
+
+### This plan's own evidence is SOUND, and here is the check
+
+`.test-progress/none2e.jsonl` still holds the run every "suite green" claim
+here rests on. Re-verified 2026-09-23:
+
+```
+{"event": "done", "exitstatus": 0, ...}
+9527 test records · 9518 passed + 9 skipped = 9527 = collected
+```
+
+**Exit 0 rules out the entire hidden class** — pytest assigns
+`session.exitstatus` *before* calling `pytest_sessionfinish`, so a teardown
+error cannot hide behind a zero. The counts close. Sound.
+
+**The unsafe form is the SUMMARY, not the raw line.** This session wrote
+`9527/9527 ran | pass 9518 | FAIL 0 | skip 9 | 2762s` — exit code dropped.
+That is exactly the shape that would have been wrong on 2026-09-05. **Quote
+the exit code or quote nothing.**
+
+### Three regressions the fix introduced — open, in `tools/`, NOT held
+
+1. **`run lf` with nothing to rerun now shouts NOT GREEN.** Verified:
+   `--last-failed --last-failed-no-failures none` exits **5** when the last
+   run was green, and the new branch fires on *any* non-zero exit with zero
+   failures — printing a message blaming a teardown canary. `exit 4 | 0/0 ran`
+   appears 302 times in this repo's history; that whole class becomes noise.
+   **This is how the new guard gets trained away**, which is the failure the
+   series exists to stop.
+2. **`testrun.py failed` emits invalid node-ids.** The `[teardown]` suffix
+   rides into the output; fed back to pytest it is a usage error, while the
+   docstring promises "feed back to pytest".
+3. **The head line stops summing.** A failing call plus a failing teardown
+   gives `2/2 ran | pass 1  FAIL 3`.
+
+### Two same-class holes still open
+
+* `progress_plugin.pytest_configure`'s `except OSError: _STATE["path"] = None`
+  silently disables the writer for a whole run, and `cmd_status` returns **0**
+  for `no-data`. A batch that measured nothing exits clean.
+* The env canary's *"DISARMED"* notice goes through `warnings.warn`, and the
+  plugin has no `pytest_warning_recorded` hook — so in `status`, a run where a
+  canary proved **nothing** is indistinguishable from one where it proved
+  everything. `conftest.py`'s own comment demands the opposite.
+
+### One note for the other machine
+
+**The commit messages' cited artifacts do not reproduce.** `all.jsonl`'s first
+record is 2026-09-04, not 2026-09-11, and it ends `done exit 0` — so it reads
+`done` and never reaches the liveness code the commit fixes. The "7812 of 9530
+records, no `done`" file holds 9530 records ending `done exit 0`, mtime
+*before* the commit. **The defects are real and were reproduced on fixtures;
+the artifacts named as evidence are not the ones that show them.**
+
+---
+
 ## 0. The one thing to read before deleting anything
 
 **A comment that says code is dead is not evidence that it is.** Three of the
