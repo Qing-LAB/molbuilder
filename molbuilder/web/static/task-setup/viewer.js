@@ -1125,21 +1125,24 @@ async function loadFolder(projects, dir) {
         ref = (doc && doc.structure) || {};
         docKind = (doc && doc.calculation) || "optimization";
     } catch (_) { /* a file that does not parse is refused further down */ }
-    /* THE COMPOSITE'S FOLDER IS task.json ALONE (transport-design.md
-     * 4.1): no template, no structure pair -- the contract and the
-     * geometry arrive from the citation at prep.  Listing "<label>.xyz
-     * ... not there yet" would be the page claiming files are missing
-     * that this kind never writes. */
-    for (const id of ["ts-f-tmpl", "ts-f-struct", "ts-f-side"]) {
+    /* THE COMPOSITE HAS NO STRUCTURE PAIR OF ITS OWN: its structure is the
+     * cited junction, composed at prep (`engines/transport.md` § 3.1), so
+     * listing "<label>.xyz ... not there yet" would be the page claiming a
+     * file is missing that this kind never writes.  It DOES have a
+     * template -- the shared electronic description the transport tab's
+     * shared panel writes (§ 3.8.2; TR1) -- so that row stays.  This card
+     * said "the composite has no template" until 2026-09-24, against the
+     * file sitting in the folder. */
+    for (const id of ["ts-f-struct", "ts-f-side"]) {
         const el = $(id);
         const li = el && el.closest("li");
         if (li) li.hidden = (docKind === "transport");
     }
     if (docKind === "transport" && taskText) {
         markFile("ts-f-task", true,
-                 "already here — the WHOLE description (the composite "
-                 + "has no template; everything else derives from the "
-                 + "citation at prep)");
+                 "already here — the five stages, the bias and the "
+                 + "citation; the structure is the cited junction, "
+                 + "composed at prep");
     }
     const structName = String(ref.source || "").split("/").pop();
     const sideName = structName

@@ -1894,10 +1894,11 @@ class TestTheBiasScan:
 
 
 class TestTheOverrideLane:
-    """Transport-only knobs travel as stage overrides (P7b): the
-    composite has no template, so the stages' own bags are the
-    description's one place for the transmission window, the contour --
-    everything that is NOT the citation's to say."""
+    """Transport-only knobs travel as stage overrides (P7b): the shared
+    electronic description lives in the template (the transport tab's
+    shared panel writes it), and the stages' own bags are the description's
+    place for what a rung owns alone -- the transmission window, the
+    contour (`engines/transport.md` § 3.8.2)."""
 
     def _with_override(self, calc, stage_name, overrides):
         from molbuilder.task import (Stage, Task, derive_run, read_task,
@@ -1915,9 +1916,9 @@ class TestTheOverrideLane:
     def test_a_knob_override_lands_in_the_deck(self, calc):
         """A transport-only knob set as a stage override reaches the rendered deck.
 
-        Catches the override lane being inert. The composite has no template, so a
-        stage's `overrides` bag is the description's ONLY place to say anything the
-        citation does not own -- the transmission window, the contour. An override
+        Catches the override lane being inert. A stage's `overrides` bag is the
+        description's place for what that rung owns alone -- the transmission
+        window, the contour (the shared description is the template's). An override
         that is accepted, written into task.json, and then not rendered gives the
         user a description that reads as configured and a deck that is at defaults.
 
