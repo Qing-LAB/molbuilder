@@ -1815,7 +1815,7 @@ two panels and they are not the same kind of thing:
 | what belongs on it | every value binding all five rungs — Class A (§ 2a.3) | Class C, the values a rung owns alone |
 | how many | **one**, for the calculation | one per rung |
 | the warning it carries | *changing this rebuilds all five stages* | none needed |
-| what it must never show | a rung-local value | **a shared value** — offering one is a control `prep` refuses |
+| what it must never offer as a control | a rung-local value | **a shared value** — offering one is a control `prep` refuses. It **shows** every shared value, as a read-only echo naming its source (§ 3.8.7) |
 
 § 2a.6 stated this as *"one editing surface, many read-only echoes"* and it
 is the rule that was lost: every attempt to build ONE form has produced
@@ -1939,6 +1939,21 @@ doors at once. Two shapes, and the choice is the user's:
 Either way the rule is the same and belongs in one place: **the catalogue
 declares what binds every rung; the form, the describe door and `prep` all
 read that one declaration.**
+
+---
+
+#### 3.8.7 The discipline this surface serves
+
+[`template.md`](?doc=engines/template.md) § 6.6 *(user, 2026-09-23)*: every
+parameter is explicit at every step — declared once with its source and its
+scope, recorded with its source, shown on every surface and edited in one
+place, written into every deck with the value that applies, and traceable
+from the deck line back to the decision. For transport that reads: five
+rungs, five decks, each stating every item of its layout, none relying on a
+SIESTA default it did not write; every rung's form carrying every shared
+value as an echo that names where it came from; and § 3.8.3's four
+provenance lines being states of the template file, which today records a
+value and not its origin. The § 3.8.2 row above means *never as a control*.
 
 ---
 

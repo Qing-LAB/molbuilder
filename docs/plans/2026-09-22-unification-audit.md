@@ -239,6 +239,18 @@ smaller and is the half that stops the rule drifting again.
 
 ---
 
+## 0d. The goal of this revision *(user, 2026-09-23)*
+
+**Every parameter explicit at every step** — `engines/template.md` § 6.6.
+Declared once with its source and scope; recorded with its source; shown
+everywhere and edited in one place; explicit in every deck; traceable on
+every road. § 1's findings and § 6's decisions read against it: D-1 is
+obligation 1, the shared panel and the per-rung echoes are obligation 3, the
+fabricated box and the silent `None` items are obligation 4, W20 is
+obligation 5.
+
+---
+
 ## 1. Correctness holes that reach a user's data or science
 
 Ordered by what they cost.
@@ -1898,6 +1910,16 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    input's `info`, measured). Adopt into § 2.2a, then the restatements
    (`structure.py`'s `info` comment, `wizard.as_structure`, `script_emit.py:448`,
    `parse/dirs/atom_metadata.py:47`) cite it.
+10. **The three mechanisms under `template.md` § 6.6.** (a) The source key on
+   a template item — proposed `source` with the vocabulary `cited` · `record`
+   · `person` · `default`, written by `init` / describe and read by every
+   surface. (b) Where a deck carries its per-parameter table — proposed: the
+   PROVENANCE reserved block grows it, because the deck is what is opened
+   months later, `.validation.txt` is never read back, and G4's text
+   comparison already tolerates that block's rendering moment. (c) The deck's
+   *not set* line for an `optional` item at `None` — proposed: a comment
+   naming the engine default that applies. The browser road's missing
+   pipeline log (W20) is obligation 5's and needs plumbing, not a decision.
 
 ---
 

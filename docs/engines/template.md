@@ -1636,6 +1636,59 @@ Read the loop at the top as the design cycle: a surface shows what the file
 declares, the person answers, and the answers become values in the same file.
 Nothing downstream needs to know a surface was involved.
 
+### 6.6 Explicit, end to end — the discipline every parameter follows *(user, 2026-09-23)*
+
+The six goals say what the FILE must be. This says what must be true of a
+parameter at every step between the catalogue and the engine, and it was
+missing: transport's surface was rebuilt several times on the strength of
+§ 6.4's markers alone, and each time a parameter that was not editable on a
+screen was left off it, so it looked absent — and each time a value reached a
+deck by silence, so nothing recorded what applied.
+
+> **Every parameter is explicit at every step.** It is declared once, with its
+> source and its scope; recorded in the description with its source; shown on
+> every surface and editable in exactly one place; written into every deck it
+> belongs to, with the value that applies; and traceable from that deck line
+> back to the decision that set it. Nothing reaches the engine by omission,
+> and nothing is hidden because it cannot be edited here.
+
+Five obligations, each naming the reader it binds.
+
+| | obligation | held by |
+|---|---|---|
+| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers. `shared` is the one not yet declared — [`transport.md`](?doc=engines/transport.md) § 3.8.6 |
+| **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The four states a shared panel shows (*from the run you cited · from the record saved with your structure · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `init` |
+| **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the scheduler answers this at prep*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
+| **4 — explicit in the deck** | Every item of a rung's layout is written into that rung's deck with the value that will apply. A value nobody chose is written as the documented default **and marked as such**. An item deliberately unset (`optional`, at `None`) states so in the deck, naming the engine default that therefore applies. **No value reaches the engine by omission.** § 6.4's third state — *absent from the file: not a parameter of this calculation* — still says which items a KIND has; it no longer licenses silence for an item the kind has. | § 8.1 `prep`; the deck writers |
+| **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · allocation · template — `resolve.provenance`) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
+
+**Measured against the tree, 2026-09-23 — where it does not yet hold:**
+
+* there is no `shared` declaration; both doors that refuse a per-rung
+  override of a shared value filter on `citation` instead (obligation 1;
+  [`transport.md`](?doc=engines/transport.md) § 3.8.6);
+* `citation_defaults` fills the template at `init` and marks nothing, and an
+  item has no key for a source, so obligation 2's four states cannot be
+  produced from the file;
+* the form schema has no read-only state and no source (`form-schema.md`
+  § 1.1), so a surface can only offer a control or omit the item —
+  [`transport.md`](?doc=engines/transport.md) § 3.8.2's *"must never show a
+  shared value"* was written inside that limitation and now reads *never as a
+  control, always as an echo*;
+* an `optional` item at `None` writes nothing: `BlockSize`
+  (`siesta/input.py:497`), `Spin.Fix` / `Spin.Total` (`:1449`); and
+  `TBT.Verbosity` reaches every transport deck from a field no catalogue row
+  declares ([`transport.md`](?doc=engines/transport.md) § 2a.13);
+* the per-parameter trace (`config_rows`) is written only when a person passes
+  `jobset prep --pipeline-log` on the CLI; the browser road writes none
+  (`plan.md` W20). Obligation 5 holds on one road of two.
+
+**Three mechanism choices are open and are the user's**
+([`plans/2026-09-22-unification-audit.md`](?doc=plans/2026-09-22-unification-audit.md)
+§ 6): the source key on an item and its vocabulary; whether the deck's
+PROVENANCE block grows the per-parameter table or a file beside the deck
+carries it; and the form of the deck's *not set* line.
+
 ---
 
 ## 7. What is an item, and what is not
