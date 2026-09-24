@@ -246,7 +246,7 @@ def test_the_frozen_regime_is_said_out_loud():
              if i.severity == "info" and "frozen" in i.message]
     assert len(infos) == 1, "the frozen regime is not announced"
     assert "holds them fixed" in infos[0].message
-    assert "Hessian excludes them" in infos[0].message
+    assert "taken over the free atoms only" in infos[0].message
     text = render_deck(spec_for(s, cfg, calculation="vibration"),
                        s, cfg, verbose=False)
     assert "static field of the fixed" in text, (

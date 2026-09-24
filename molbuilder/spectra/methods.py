@@ -289,9 +289,15 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
         # the canonical normal-coordinate framework that maps
         # Cartesian polarizability derivatives to mode-projected
         # Raman activities.
+        # ONE statement of the method (engines/vibration.md § 4.6): the polarizability
+        # is analytic at each displaced point, its DERIVATIVE is a central
+        # finite difference -- the engine's own fragment quotes the step.
         raman_clause = (" Raman activities (Å⁴/amu) were computed from "
-                        "analytic polarizability derivatives "
-                        "[Komornicki1979] projected onto the mode "
+                        "polarizability derivatives -- the static "
+                        "polarizability analytic at each displaced "
+                        "geometry, its derivative by central finite "
+                        "differences over the free Cartesian coordinates "
+                        "[Komornicki1979] -- projected onto the mode "
                         "eigenvectors using the standard normal-"
                         "coordinate framework [Wilson1955].")
 

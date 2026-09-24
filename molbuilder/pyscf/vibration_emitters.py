@@ -45,7 +45,7 @@ the PySCF stack.
 
 PROVENANCE -- WHERE EVERY NUMBER COMES FROM.  This module writes a script whose
 output is a quantitative result, so the chain from PySCF's own objects to each
-sidecar key is stated in `web/spectra.md` § 9b and must be kept true here.  The
+sidecar key is stated in `engines/vibration.md` § 6.4 and must be kept true here.  The
 distinction that matters:
 
   * PASSED THROUGH -- `scf_energy_eh` is `mf.kernel()`'s return, `mo_energies_eh`
@@ -416,7 +416,7 @@ def homo_index(mo_occ) -> int:
 
 
 #: Spliced into the deck by `_emit_dipole_derivative_rule`, for the reason
-#: `docs/web/spectra.md` § 9b.2 states: a derivation with a BRANCH ships as
+#: `docs/engines/vibration.md` § 6.4 states: a derivation with a BRANCH ships as
 #: source so one implementation runs and the tests exercise the one that runs.
 #: The branch here is unavoidable and RUNTIME, not emit-time -- the deck is
 #: generated on the host and executed inside `molbuilder-pySCF`, so whether the
@@ -483,7 +483,7 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
     three-centre contraction fails on one), so the deck builds a plain
     mean field for this route and the run states that the Hessian ran
     without density fitting.  Measured against compute-everything-and-slice
-    (design § 10): Hartree-Fock blocks agree to 1e-8 Hartree/Bohr^2; DFT
+    (engines/vibration.md § 4.4): Hartree-Fock blocks agree to 1e-8 Hartree/Bohr^2; DFT
     blocks to 1.5e-5, the held atoms' grid-weight response that the partial
     list omits -- about 0.05 cm^-1 on a stretch.
     """
@@ -619,7 +619,8 @@ def _emit_normal_mode_rules() -> List[str]:
     import inspect
     from ..spectra import normal_modes as _nm
     out: List[str] = []
-    for fn in (_nm.rigid_motions, _nm.vibrational_modes, _nm.vibrational_thermo):
+    for fn in (_nm.rigid_motions, _nm.vibrational_modes,
+               _nm.vibrational_thermo, _nm.vibrational_thermo_grid):
         out += [ln.rstrip() for ln in inspect.getsource(fn).splitlines()]
         out.append("")
     return out
@@ -900,6 +901,8 @@ def _emit_initial_state() -> List[str]:
     out.append("    'bibliography_keys':         BIBLIOGRAPHY_KEYS,")
     out.append("    'phase_frequencies':         PHASE_RUNNING,")
     out.append("    'phase_raman':               PHASE_EMPTY,")
+    out.append("    'raman_route':               'none',")
+    out.append("    'raman_fd_step_ang':         None,")
     out.append("    'phase_es':                  PHASE_EMPTY,")
     out.append("    'engine_metadata':           {},")
     out.append("    # Runtime facts collected by _emit_threading_setup +")
@@ -997,12 +1000,13 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("    'scf_energy_eh':  float(E_eq),")
     out.append("    'mo_energies_eh': _filter_finite(MO_ENERGIES_EQ),")
     out.append("    'homo_idx':       HOMO_IDX,")
-    out.append("    # Geometry is included so the spectra-tab UI")
-    out.append("    # can animate vibrational modes directly from")
-    out.append("    # the loaded results -- no need for the user")
-    out.append("    # to keep the source XYZ around.")
+    out.append("    # THE GEOMETRY THE HESSIAN IS TAKEN AT -- the relaxed one when")
+    out.append("    # this deck relaxed, the input otherwise (COORDS_EQ_ANG is")
+    out.append("    # rebound by the relaxation).  The viewer animates modes from")
+    out.append("    # it, and a mode's eigenvectors belong to THIS geometry, not")
+    out.append("    # to the input's.")
     out.append("    'elements':       list(ELEMENTS),")
-    out.append("    'positions_ang':  [[a[1], a[2], a[3]] for a in ATOMS],")
+    out.append("    'positions_ang':  np.asarray(COORDS_EQ_ANG, dtype=float).tolist(),")
     out.append("}")
     out.append("_atomic_write_json(state, JSON_PATH)")
     out.append("print(f'Equilibrium SCF: E = {E_eq:.10f} Ha; HOMO index = {HOMO_IDX}')")
@@ -1159,7 +1163,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#   NORM_MODES_CANONICAL  (n_modes, N_FREE, 3)")
     out.append("#       Cartesian normal modes L_cart in the *canonical*")
     out.append("#       mass-weighted normalisation: sum_k m_k |L_cart_k|^2 = 1")
-    out.append("#       (mass in atomic units).  This is the form the standard")
+    out.append("#       (mass in amu).  This is the form the standard")
     out.append("#       Placzek Raman-activity formula expects.  The 45 a^2 +")
     out.append("#       7 gamma^2 scalar comes out in (a.u. polarizability)² /")
     out.append("#       (Å² · amu), which is rescaled by BOHR_TO_ANG**6 in")
@@ -1603,6 +1607,11 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
         out.extend(_emit_ir_projection())
     out.append("state['modes'] = modes_payload")
     out.append("state['phase_raman'] = PHASE_COMPLETE")
+    out.append("# How dalpha/dR was obtained, for the run as a whole -- the one")
+    out.append("# Raman route there is, and the step a Methods paragraph must")
+    out.append("# quote to be reproducible (SpectraResults.raman_route).")
+    out.append("state['raman_route'] = 'finite-difference'")
+    out.append("state['raman_fd_step_ang'] = RAMAN_FD_STEP_ANG")
     out.append("_atomic_write_json(state, JSON_PATH)")
     if cfg.compute_ir:
         out.append("print(f'Phase 3 done: Raman + IR for "
@@ -1869,12 +1878,13 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # points -- claiming an analytic derivative overstated the method.
     if cfg.compute_raman:
         parts.append(
-            "Polarizability derivatives dα/dR were computed by "
-            "central finite differences of analytic CPHF "
-            "polarizabilities (`pyscf.prop.polarizability`) at "
-            "displaced geometries, then projected onto the "
-            "mass-weighted mode eigenvectors to obtain Raman "
-            "activities in Å⁴/amu [Komornicki1979]."
+            f"Polarizability derivatives dα/dR were computed by "
+            f"central finite differences (±{_RAMAN_FD_STEP_ANG:g} Å per "
+            f"free Cartesian coordinate) of analytic CPHF "
+            f"polarizabilities (`pyscf.prop.polarizability`) at "
+            f"displaced geometries, then projected onto the "
+            f"mass-weighted mode eigenvectors to obtain Raman "
+            f"activities in Å⁴/amu [Komornicki1979]."
         )
 
     # Density fitting note.  The emitted deck applies DF to the SCF

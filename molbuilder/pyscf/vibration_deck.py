@@ -79,9 +79,13 @@ from .vibration_emitters import (
 
 #: The viewer's G/H/S curves run over this grid (plan § 2b: a documented
 #: presentation default, not a scientific knob — the headline (T, P) items
-#: are the knobs).  50–1500 K, 30 points: wide enough to show the trend,
-#: cheap enough to be free (arithmetic over frequencies already in hand).
-_THERMO_GRID_K = "np.linspace(50.0, 1500.0, 30)"
+#: are the knobs).  ONE home for the numbers -- `spectra/normal_modes.py`,
+#: which the SIESTA derivation reads too -- written into the deck as a
+#: literal list; the deck adds the headline temperature to it at run time.
+def _nm_thermo_grid_home():
+    from ..spectra.normal_modes import THERMO_GRID_K
+    return THERMO_GRID_K
+_THERMO_GRID_K = repr(list(_nm_thermo_grid_home()))
 
 
 class VibrationConfigView:
@@ -435,8 +439,10 @@ def _vib_thermo_block() -> List[str]:
     partition function and is excluded with its count recorded.  Regime
     honesty: a free molecule gets full RRHO via PySCF's own
     ``thermo.thermo``; a system with atoms held gets the VIBRATIONAL
-    contributions only, stated -- an anchored system has no gas-phase
-    translational or rotational partition function."""
+    contributions only, stated -- there is no gas-phase translational or
+    rotational partition function to add.  ONE quantity under one label
+    (engines/vibration.md § 4.7): the headline and every point of the grid are the
+    same sum, and the headline temperature is on the grid."""
     return [
         "",
         "# ============================================================",
@@ -458,8 +464,10 @@ def _vib_thermo_block() -> List[str]:
         "    return vibrational_thermo(_freqs_cm1, T, _KB_EH, _CM1_TO_EH)",
         "_regime = 'rrho' if not FROZEN_ATOM_IDXS else 'vibrational-only'",
         "_zpe0, _u0, _s0 = _vib_thermo_at(THERMO_T_K)",
-        "_grid = {'temperatures_K': [], 'zpe_eh': [], 'u_vib_eh': [],",
-        "         'h_eh': [], 's_eh_k': [], 'g_eh': []}",
+        "# The grid the viewer draws, with the headline temperature ON it, so",
+        "# the curve passes through the headline number and the two cannot",
+        "# disagree.",
+        "_T_GRID = sorted(set(float(_t) for _t in THERMO_T_GRID) | {float(THERMO_T_K)})",
         "state['thermo'] = {",
         "    'regime': _regime,",
         "    'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
@@ -467,35 +475,60 @@ def _vib_thermo_block() -> List[str]:
         "    'n_modes': int(len(state['modes'])),",
         "    'n_imag_excluded': _N_IMAG_EXCLUDED,",
         "    'n_rigid_removed': N_RIGID,",
-        "    'note': ('full RRHO (rot+trans+vib) via pyscf thermo' if",
-        "             _regime == 'rrho' else",
-        "             'VIBRATIONAL contributions only: atoms are frozen, '",
-        "             'so the gas-phase rotational/translational partition '",
-        "             'functions do not apply (an anchored molecule does '",
-        "             'not rotate); low-frequency modes make the entropy '",
-        "             'soft even so'),",
         "}",
+        "# ONE QUANTITY UNDER ONE LABEL: the headline and every grid point are",
+        "# the same sum.  Free molecule: PySCF's full RRHO (electronic +",
+        "# translational + rotational + vibrational) at each T.  Atoms held:",
+        "# the vibrational sums above the electronic energy at each T -- there",
+        "# is no gas-phase translational or rotational partition function to",
+        "# add, and the whole-body motions of the free atoms were removed",
+        "# before diagonalising.",
+        "_grid = None",
         "if _regime == 'rrho':",
         "    try:",
-        "        # The same signed omega the modes were reported from;",
-        "        # pyscf's thermo keeps the positive ones itself.",
-        "        _t_res = _mb_thermo.thermo(",
-        "            mf, _OMEGA_AU, THERMO_T_K, THERMO_P_ATM * 101325.0)",
-        "        state['thermo']['h_eh'] = float(_t_res['H_tot'][0])",
-        "        state['thermo']['s_eh_k'] = float(_t_res['S_tot'][0])",
-        "        state['thermo']['g_eh'] = float(_t_res['G_tot'][0])",
+        "        def _rrho_at(_T):",
+        "            # The same signed omega the modes were reported from;",
+        "            # pyscf's thermo keeps the positive ones itself.",
+        "            _r = _mb_thermo.thermo(mf, _OMEGA_AU, float(_T),",
+        "                                   THERMO_P_ATM * 101325.0)",
+        "            return (float(_r['ZPE'][0]),",
+        "                    float(_r['E_vib'][0]) - float(_r['ZPE'][0]),",
+        "                    float(_r['H_tot'][0]), float(_r['S_tot'][0]),",
+        "                    float(_r['G_tot'][0]))",
+        "        _grid = {'temperatures_K': [], 'zpe_eh': [], 'u_vib_eh': [],",
+        "                 'h_eh': [], 's_eh_k': [], 'g_eh': []}",
+        "        for _T in _T_GRID:",
+        "            _z, _u, _h, _s, _g = _rrho_at(_T)",
+        "            _grid['temperatures_K'].append(float(_T))",
+        "            _grid['zpe_eh'].append(_z)",
+        "            _grid['u_vib_eh'].append(_u)",
+        "            _grid['h_eh'].append(_h)",
+        "            _grid['s_eh_k'].append(_s)",
+        "            _grid['g_eh'].append(_g)",
+        "        state['thermo']['note'] = ('full RRHO (electronic + translational + '",
+        "                                   'rotational + vibrational) via pyscf thermo, '",
+        "                                   'the headline and the grid alike')",
         "    except Exception as _e:",
         "        print(f'full-RRHO thermo unavailable ({_e}); '",
         "              'vibrational-only values recorded')",
-        "for _T in THERMO_T_GRID:",
-        "    _z, _u, _s = _vib_thermo_at(float(_T))",
-        "    _h = float(E_eq) + _z + _u + _KB_EH * float(_T)",
-        "    _grid['temperatures_K'].append(float(_T))",
-        "    _grid['zpe_eh'].append(_z)",
-        "    _grid['u_vib_eh'].append(_u)",
-        "    _grid['h_eh'].append(_h)",
-        "    _grid['s_eh_k'].append(_s)",
-        "    _grid['g_eh'].append(_h - float(_T) * _s)",
+        "        _regime = 'vibrational-only'",
+        "        state['thermo']['regime'] = _regime",
+        "        _grid = None",
+        "if _grid is None:",
+        "    _grid = vibrational_thermo_grid(_freqs_cm1, _T_GRID, float(E_eq),",
+        "                                    _KB_EH, _CM1_TO_EH)",
+        "    state['thermo']['note'] = ('VIBRATIONAL contributions only, above the '",
+        "                               'electronic energy, the headline and the grid '",
+        "                               'alike: with atoms held there is no gas-phase '",
+        "                               'translational or rotational partition '",
+        "                               'function to add, and the whole-body motions '",
+        "                               'of the free atoms (n_rigid_removed) were '",
+        "                               'removed before diagonalising; low-frequency '",
+        "                               'modes make the entropy soft even so')",
+        "_k = _grid['temperatures_K'].index(float(THERMO_T_K))",
+        "state['thermo']['h_eh'] = _grid['h_eh'][_k]",
+        "state['thermo']['s_eh_k'] = _grid['s_eh_k'][_k]",
+        "state['thermo']['g_eh'] = _grid['g_eh'][_k]",
         "state['thermo']['grid'] = _grid",
         "_atomic_write_json(state, JSON_PATH)",
     ]

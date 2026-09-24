@@ -160,6 +160,49 @@ def _no_equality(self, other):  # noqa: ARG001
 # --------------------------------------------------------------------- #
 
 
+#: THE KEYS EACH BLOCK MAY CARRY -- the rows of `engines/vibration.md` § 6.2-6.4, and
+#: nothing else.  The reader refuses a key outside them BY NAME (design
+#: § 16.4): a misspelled `ir_intesity_km_mol` used to serve a chart titled
+#: "not computed" with every number present and thrown away, silently.
+#: A key that starts being written is a row in § 9b first, then here.
+_ES_KEYS = frozenset({
+    "amplitude_ang", "mo_energies_eq_eh", "mo_energies_minus_eh",
+    "mo_energies_plus_eh", "homo_index_in_window", "scf_energy_eq_eh",
+    "scf_energy_minus_eh", "scf_energy_plus_eh",
+})
+_MODE_KEYS = frozenset({
+    "index_1based", "frequency_cm1", "raman_activity_a4_amu",
+    "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
+    "has_imag", "electronic_structure",
+    "eigenvector_free",                 # schema v1's single vector, read as both
+    # DERIVED at every serialisation, never stored (`spectra/activity.py`,
+    # the § 9b row): a file carries them, a reader recomputes them.
+    "ir_active", "raman_active", "activity_class",
+})
+_EQUILIBRIUM_KEYS = frozenset({
+    "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
+})
+_RESULTS_KEYS = frozenset({
+    "schema_version", "engine", "engine_version", "molbuilder_version",
+    "timestamp", "structure_hash", "n_atoms_total", "free_atom_idxs",
+    "frozen_atom_idxs", "equilibrium", "modes", "selected_mode_idxs_1based",
+    "config", "methods_text", "bibliography_keys", "phase_frequencies",
+    "phase_relaxation", "relaxation", "thermo", "removed_motions",
+    "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
+    "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
+    "phase_es", "engine_metadata", "runtime_info",
+})
+
+
+def _refuse_unknown_keys(d, known, where: str) -> None:
+    unknown = sorted(str(k) for k in d if k not in known)
+    if unknown:
+        raise ValueError(
+            f"{where}: unknown key(s) {unknown} -- every key of this file "
+            f"has a row in engines/vibration.md 6.2-6.4, and a key this reader does "
+            f"not know is a number it would throw away in silence")
+
+
 @dataclass(eq=False)
 class ModeElectronicStructure:
     """Displaced-geometry SCF results for a single mode.
@@ -250,7 +293,8 @@ class ModeElectronicStructure:
     def from_dict(cls, d: Dict[str, Any]) -> "ModeElectronicStructure":
         """Inverse of :meth:`to_dict`.  Coerces list-of-float arrays
         back to ``np.ndarray`` so the typed surface always carries
-        numpy.  Extra keys in ``d`` are ignored (forward compat)."""
+        numpy.  An unknown key is refused by name, never ignored."""
+        _refuse_unknown_keys(d, _ES_KEYS, "ModeElectronicStructure")
         return cls(
             amplitude_ang        = float(d["amplitude_ang"]),
             mo_energies_eq_eh    = np.asarray(d["mo_energies_eq_eh"],    dtype=float),
@@ -384,6 +428,7 @@ class ModeData:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
+        _refuse_unknown_keys(d, _MODE_KEYS, "ModeData")
         es = d.get("electronic_structure")
         # Resolve the eigenvector pair, accepting both schema versions:
         #
@@ -405,7 +450,7 @@ class ModeData:
             ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
             _disp = d.get("eigenvector_display", d.get("eigenvector_free"))
             if _disp is None:
-                # DERIVED (`web/spectra.md` § 9b): the canonical vector
+                # DERIVED (`engines/vibration.md` § 6.4): the canonical vector
                 # rescaled per mode so max|L| = 1 -- what the animation
                 # draws.  An engine writes the science form; this is ours.
                 _peak = float(np.max(np.abs(ev_canon))) if ev_canon.size else 0.0
@@ -599,6 +644,16 @@ class SpectraResults:
     #: step to be reproducible; ``None`` on the analytic route, which
     #: has no step to state.
     ir_fd_step_ang:            Optional[float] = None
+    #: How dalpha/dR was obtained, for the run as a whole (engines/vibration.md § 4.6):
+    #:   "finite-difference" -- central differences of the analytic CPHF
+    #:                          polarizability over the free Cartesians,
+    #:                          the one Raman route there is;
+    #:   "none"              -- Raman was not requested, or the engine
+    #:                          computes no intensities.
+    #: Older sidecars parse as "" -- absence of a record.
+    raman_route:               str = ""
+    #: The step of that difference, in Angstrom, when the route ran.
+    raman_fd_step_ang:         Optional[float] = None
     phase_frequencies:         str = PHASE_EMPTY
     phase_raman:               str = PHASE_EMPTY
     phase_es:                  str = PHASE_EMPTY
@@ -614,8 +669,11 @@ class SpectraResults:
     #: v5: RRHO thermochemistry (D2's re-homing) -- headline numbers at
     #: (temperature_K, pressure_atm), the T-grid arrays the viewer's
     #: G/H/S curves draw, and `regime`: "rrho" for a free molecule,
-    #: "vibrational-only" (stated, never refused) when atoms are frozen --
-    #: an anchored molecule does not rotate.
+    #: "vibrational-only" (stated, never refused) when atoms are held: there
+    #: is no gas-phase partition function to add, and the whole-body motions
+    #: that survived the hold were removed before diagonalising
+    #: (`removed_motions`).  The headline and every grid point are ONE sum,
+    #: and the headline temperature is on the grid (engines/vibration.md § 4.7).
     thermo:                    Dict[str, Any] = field(default_factory=dict)
     #: v6: what the harmonic analysis removed before diagonalising --
     #: {count, patterns: (count, n_free, 3) Cartesian, orthonormal over the
@@ -726,16 +784,23 @@ class SpectraResults:
         # count-only check passed an out-of-range index (e.g. free=[0,1,5],
         # frozen=[], n=3) -- which would then silently drop that atom's
         # displacement in the frontend scatter (`web/spectra.md` § 8).
-        expected = set(range(self.n_atoms_total))
-        union    = free_set | frozen_set
-        if union != expected:
-            missing = sorted(expected - union)
-            extra   = sorted(union - expected)
+        # Without materialising range(n_atoms_total): a file claiming 1e12
+        # atoms must be refused, not answered with a MemoryError (design
+        # § 16.4).  A set of n distinct indices all inside [0, n) IS
+        # range(n); the listing of what is missing stops after twenty.
+        n = int(self.n_atoms_total)
+        union = free_set | frozen_set
+        extra = sorted(i for i in union if not 0 <= i < n)
+        if extra or len(union) != n:
+            from itertools import islice
+            missing = list(islice((i for i in range(max(n, 0))
+                                   if i not in union), 20))
+            more = "..." if len(union) + len(missing) < n else ""
             raise ValueError(
                 f"SpectraResults: free_atom_idxs + frozen_atom_idxs must "
-                f"partition range({self.n_atoms_total}) "
+                f"partition range({n}) "
                 f"(web/spectra.md § 8); "
-                f"missing={missing} out-of-range/extra={extra}"
+                f"missing={missing}{more} out-of-range/extra={extra}"
             )
         # Phase status validation.
         for name, val in (("phase_frequencies", self.phase_frequencies),
@@ -886,6 +951,9 @@ class SpectraResults:
             "ir_route":             str(self.ir_route),
             "ir_fd_step_ang":       (None if self.ir_fd_step_ang is None
                                      else float(self.ir_fd_step_ang)),
+            "raman_route":          str(self.raman_route),
+            "raman_fd_step_ang":    (None if self.raman_fd_step_ang is None
+                                     else float(self.raman_fd_step_ang)),
             "phase_raman":          str(self.phase_raman),
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
@@ -909,7 +977,9 @@ class SpectraResults:
                 f"removed_motions -- so a v4 file reads whole; older "
                 f"versions do not)."
             )
+        _refuse_unknown_keys(d, _RESULTS_KEYS, "SpectraResults")
         eq = d["equilibrium"]
+        _refuse_unknown_keys(eq, _EQUILIBRIUM_KEYS, "SpectraResults.equilibrium")
         return cls(
             schema_version       = int(d["schema_version"]),
             engine               = str(d["engine"]),
@@ -963,6 +1033,9 @@ class SpectraResults:
             ir_route             = str(d.get("ir_route", "")),
             ir_fd_step_ang       = (None if d.get("ir_fd_step_ang") is None
                                     else float(d["ir_fd_step_ang"])),
+            raman_route          = str(d.get("raman_route", "")),
+            raman_fd_step_ang    = (None if d.get("raman_fd_step_ang") is None
+                                    else float(d["raman_fd_step_ang"])),
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),

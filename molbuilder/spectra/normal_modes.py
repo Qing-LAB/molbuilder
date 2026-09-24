@@ -231,4 +231,41 @@ def vibrational_thermo(freqs_cm1, temperature_K, kb_eh_per_k, eh_per_cm1):
     return zpe, u, s
 
 
-__all__ = ["rigid_motions", "vibrational_modes", "vibrational_thermo"]
+def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh,
+                            kb_eh_per_k, eh_per_cm1):
+    """The vibrational-only curves a viewer draws, at each temperature:
+    ``{temperatures_K, zpe_eh, u_vib_eh, h_eh, s_eh_k, g_eh}`` as lists.
+
+    ``h = e_ref + zpe + u_vib`` and ``g = h - T s``: the harmonic sums above
+    a reference energy (the electronic energy when one is reported, zero
+    when it is not), with NO ``kT`` term -- that is the ideal gas's ``pV``,
+    which a system with atoms held has no claim to.  One home for the
+    assembly, so the deck's grid and the host-side derivation cannot
+    differ; self-contained for the same reason as `vibrational_thermo`.
+    """
+    grid = {"temperatures_K": [], "zpe_eh": [], "u_vib_eh": [],
+            "h_eh": [], "s_eh_k": [], "g_eh": []}
+    for T in temperatures_K:
+        T = float(T)
+        z, u, s = vibrational_thermo(freqs_cm1, T, kb_eh_per_k, eh_per_cm1)
+        h = float(e_ref_eh) + z + u
+        grid["temperatures_K"].append(T)
+        grid["zpe_eh"].append(z)
+        grid["u_vib_eh"].append(u)
+        grid["h_eh"].append(h)
+        grid["s_eh_k"].append(s)
+        grid["g_eh"].append(h - T * s)
+    return grid
+
+
+#: The temperatures the viewer's G/H/S curves run over -- a documented
+#: presentation default, not a scientific knob (the headline T and P are
+#: the knobs): 50-1500 K in 30 points, wide enough to show the trend and
+#: free to compute.  Both writers take it from here and add the headline
+#: temperature to it, so the curve passes through the headline number.
+THERMO_GRID_K = tuple(float(x) for x in
+                      __import__("numpy").linspace(50.0, 1500.0, 30))
+
+
+__all__ = ["rigid_motions", "vibrational_modes", "vibrational_thermo",
+           "vibrational_thermo_grid", "THERMO_GRID_K"]

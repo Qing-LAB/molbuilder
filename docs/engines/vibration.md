@@ -1336,8 +1336,8 @@ only (V1.17).
 
 Every open row below is registered under **V1** in
 [`plans/plan.md`](?doc=plans/plan.md); this table says what stands, the plan
-says what is next. *Working tree* means edited on 2026-09-24 and not yet
-verified or committed.
+says what is next. *Working tree* would mean edited but not yet verified or committed;
+nothing is in that state as of 2026-09-24.
 
 | | status | note |
 |---|---|---|
@@ -1352,11 +1352,11 @@ verified or committed.
 | the thermochemistry's self-defence filter: the `> 0` line deleted, the imaginary exclusion stated as `n_imag_excluded` | **built 2026-09-23** | § 4.7 — the free energy no longer depends on the sign of noise |
 | the three counting sites read the one derivation; `_is_linear` and `_mode_count`'s `n_free < 2` arm deleted | **built 2026-09-23** | § 4.10, I1 |
 | the pre-run notice and the tab's prose say the relaxation holds the set *when it runs*, not unconditionally | **built 2026-09-24** | § 4.2; under `already_relaxed` there is no relaxation and no constraints file |
-| the emitted deck's comment on the canonical normalisation says amu, not "atomic units" | **working tree** | the phrase the 1823× confusion lived in |
-| the geometry in the file is the Hessian's | **working tree** | § 4.2 |
-| the thermochemistry headline and grid as one quantity, the headline T on the grid, no `kT` in the held regime | **working tree** | § 4.7 |
-| `raman_route`, `raman_fd_step_ang`; the Methods text states the Raman method one way | **working tree** | § 4.6 |
-| the reader's unknown-key gate; the partition check without a range the size of a lie | **working tree** | § 6.7 |
+| the emitted deck's comment on the canonical normalisation says amu, not "atomic units" | **built 2026-09-24** | the phrase the 1823× confusion lived in |
+| the geometry in the file is the Hessian's | **built 2026-09-24** | § 4.2; the water loop asserts the relaxed geometry differs from the input |
+| the thermochemistry headline and grid as one quantity, the headline T on the grid, no `kT` in the held regime | **built 2026-09-24** | § 4.7; the free and the held water runs assert the headline equals its grid row |
+| `raman_route`, `raman_fd_step_ang`; the Methods text states the Raman method one way | **built 2026-09-24** | § 4.6; the infrared-only and the solvated runs assert both |
+| the reader's unknown-key gate; the partition check without a range the size of a lie | **built 2026-09-24** | § 6.7; two forward-compatibility tests that asserted the old rule are retired into the gate test |
 | the Spectrum tab offers both engines: the `engine` item's choices, the form re-fetched for the chosen engine, the preflight and the hand-over sending it | **owed** | the CLI road is open; the tab and `web/blueprints/build.py`'s hand-over gate admit PySCF only |
 | Task setup prints `--target` when a machine is chosen, and `summarize run <stage>` as the last step of a SIESTA vibration | **owed** | measured missing on the UI walk of 2026-09-23 |
 | the Results viewer for a SIESTA file: `null` drawn as *not computed*, the equilibrium energy as a dash (today `Number(null)` prints `0.00000000`), the Raman line by route, the fingerprint off the unwritten `phase_ir` | **owed** | § 6.5 |

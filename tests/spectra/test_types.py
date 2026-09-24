@@ -66,16 +66,6 @@ class TestModeElectronicStructure:
         es2 = ModeElectronicStructure.from_dict(json.loads(text))
         np.testing.assert_allclose(es2.mo_energies_eq_eh, es.mo_energies_eq_eh)
 
-    def test_from_dict_ignores_extra_keys(self):
-        """Forward compat: a future field arriving on the wire must
-        not break the v1 parser."""
-        d = _make_es().to_dict()
-        d["future_field"] = "we don't know about this yet"
-        es2 = ModeElectronicStructure.from_dict(d)
-        # Old fields still load.
-        assert es2.homo_index_in_window == 2
-
-
 # --------------------------------------------------------------------- #
 #  ModeData                                                             #
 # --------------------------------------------------------------------- #
@@ -807,3 +797,42 @@ class TestPhaseStatus:
         assert r4.phase_raman       == PHASE_EMPTY
         assert r4.phase_es          == PHASE_COMPLETE
 
+
+def test_the_reader_refuses_a_key_it_does_not_know_by_name():
+    """design § 16.4: a misspelled key used to serve a chart titled 'not
+    computed' with every number present and thrown away.  Now the file is
+    refused, naming the key, at every block; and a file claiming 1e12 atoms
+    is refused without a range that size being built."""
+    from molbuilder.spectra.results import SpectraResults
+    from tests.spectra._helpers import _make_results
+    good = _make_results().to_dict()
+    SpectraResults.from_dict(good)                      # the control
+
+    d = json.loads(json.dumps(good))
+    d["modes"][0]["ir_intesity_km_mol"] = d["modes"][0].pop("ir_intensity_km_mol")
+    with pytest.raises(ValueError, match="ir_intesity_km_mol"):
+        SpectraResults.from_dict(d)
+
+    d = json.loads(json.dumps(good))
+    d["hessian_scop"] = "free"
+    with pytest.raises(ValueError, match="hessian_scop"):
+        SpectraResults.from_dict(d)
+
+    d = json.loads(json.dumps(good))
+    d["equilibrium"]["homo_index"] = 0
+    with pytest.raises(ValueError, match="homo_index"):
+        SpectraResults.from_dict(d)
+
+    # The per-mode electronic-structure block too: it used to ignore a key
+    # it did not know "for forward compatibility", which is the same silent
+    # drop one level down.
+    d = json.loads(json.dumps(good))
+    es = next(m for m in d["modes"] if m.get("electronic_structure"))
+    es["electronic_structure"]["future_field"] = 1.0
+    with pytest.raises(ValueError, match="future_field"):
+        SpectraResults.from_dict(d)
+
+    d = json.loads(json.dumps(good))
+    d["n_atoms_total"] = 10 ** 12
+    with pytest.raises(ValueError, match="partition range"):
+        SpectraResults.from_dict(d)

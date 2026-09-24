@@ -21,6 +21,7 @@ from pathlib import Path
 
 import subprocess
 
+import numpy as np
 import pytest
 
 def _conda_hook() -> Path:
@@ -122,6 +123,13 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     rel = d["relaxation"]
     assert rel["enabled"] and rel["converged"] and rel["n_steps"] >= 1
     assert rel["max_force_eh_a"] < 1e-3
+    # The geometry in the file is the one the Hessian was taken at -- the
+    # RELAXED one, not the input (design § 15.4): the relaxation moved
+    # atoms, so the two must differ.
+    from molbuilder.structure import Structure
+    _moved = np.abs(np.asarray(d["equilibrium"]["positions_ang"])
+                    - Structure.from_xyz(WATER).positions).max()
+    assert _moved > 1e-4, f"positions_ang is still the input geometry ({_moved})"
 
     # Water's three modes at B3LYP/def2-SVP (harmonic): bend ~1639,
     # stretches ~3791/3886.  Windows generous enough for BLAS-level
@@ -137,8 +145,15 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     th = d["thermo"]
     assert th["regime"] == "rrho"
     assert 0.019 < th["zpe_eh"] < 0.023
-    assert len(th["grid"]["temperatures_K"]) == 30
     assert th["g_eh"] < d["equilibrium"]["scf_energy_eh"] + 0.05
+    # ONE quantity under one label (design § 15.3): the headline T is on
+    # the grid and the grid's row there IS the headline -- full RRHO both.
+    tg = th["grid"]["temperatures_K"]
+    assert len(tg) == 31 and th["temperature_K"] in tg
+    k = tg.index(th["temperature_K"])
+    assert th["g_eh"] == th["grid"]["g_eh"][k]
+    assert th["s_eh_k"] == th["grid"]["s_eh_k"][k]
+    assert "the headline and the grid alike" in th["note"]
 
     # The Results door loads it -- the tab's half of the bar.
     from molbuilder.sidecars.spectra import parse_spectra_json
@@ -183,9 +198,11 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     assert d["ir_route"] in ("analytic", "finite-difference"), (
         f"IR ran but recorded no route: {d.get('ir_route')!r}")
 
-    # Raman was NOT requested: its phase closes as complete-with-nothing.
+    # Raman was NOT requested: its phase closes as complete-with-nothing,
+    # and the run says so as a route, not as a zero.
     assert d["phase_raman"] == "complete"
     assert all(m["raman_activity_a4_amu"] in (None, 0.0) for m in modes)
+    assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
 
 
 def test_water_in_water_runs_the_solvated_chain_end_to_end(
@@ -235,6 +252,12 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     assert all(m["raman_activity_a4_amu"] is not None for m in modes)
     assert all(m["ir_intensity_km_mol"] is not None for m in modes)
     assert d["thermo"]["grid"]["temperatures_K"], "thermo grid missing"
+    # The Raman route and its step are recorded (design § 15.7), and the
+    # Methods prose states the method ONE way.
+    assert d["raman_route"] == "finite-difference"
+    assert d["raman_fd_step_ang"] == 0.005
+    assert "analytic polarizability derivatives" not in d["methods_text"]
+    assert "central finite differences" in d["methods_text"]
 
 
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
@@ -401,6 +424,12 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert 1400.0 < freqs[0] < 1900.0 and 3300.0 < freqs[2] < 4100.0, freqs
     th = d["thermo"]
     assert th["regime"] == "vibrational-only"
+    # ONE quantity under one label here too: the vibrational sums above the
+    # electronic energy, the headline a row of the grid, no gas-phase term.
+    tg = th["grid"]["temperatures_K"]
+    k = tg.index(th["temperature_K"])
+    assert th["g_eh"] == th["grid"]["g_eh"][k]
+    assert th["h_eh"] == th["grid"]["h_eh"][k]
     assert th["n_modes"] == 3 and th["n_rigid_removed"] == 3
     assert th["n_imag_excluded"] == 0
     # The reduced calculation, stated: second derivatives for the two free

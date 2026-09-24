@@ -34,7 +34,8 @@ from ..parse.engines.siesta_fc import hessian_from_fc, read_fc
 from ..structure import Structure
 from ..transport.sort import Permutation
 from .methods import extract_citation_keys
-from .normal_modes import vibrational_modes, vibrational_thermo
+from .normal_modes import (THERMO_GRID_K, vibrational_modes,
+                           vibrational_thermo, vibrational_thermo_grid)
 from .results import (PHASE_COMPLETE, SCHEMA_VERSION, ModeData,
                       SpectraResults)
 
@@ -142,35 +143,32 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
     eh_per_cm1 = 1.0 / HARTREE_CM1
     zpe, u0, s0 = vibrational_thermo(kept, temperature_K,
                                      BOLTZMANN_HARTREE_K, eh_per_cm1)
-    grid = {"temperatures_K": [], "zpe_eh": [], "u_vib_eh": [],
-            "h_eh": [], "s_eh_k": [], "g_eh": []}
     # No total energy is reported on this route, so the curves are the
-    # vibrational contributions above the electronic minimum, as the
-    # viewer labels them.
-    for T in np.linspace(50.0, 1500.0, 30):
-        z, u, s = vibrational_thermo(kept, float(T), BOLTZMANN_HARTREE_K,
-                                     eh_per_cm1)
-        h = z + u + BOLTZMANN_HARTREE_K * float(T)
-        grid["temperatures_K"].append(float(T))
-        grid["zpe_eh"].append(z)
-        grid["u_vib_eh"].append(u)
-        grid["h_eh"].append(h)
-        grid["s_eh_k"].append(s)
-        grid["g_eh"].append(h - float(T) * s)
+    # vibrational contributions above the electronic minimum (e_ref = 0),
+    # through the one grid home both writers share; the headline
+    # temperature is on the grid, so the headline IS a grid row.
+    temps = sorted(set(THERMO_GRID_K) | {float(temperature_K)})
+    grid = vibrational_thermo_grid(kept, temps, 0.0, BOLTZMANN_HARTREE_K,
+                                   eh_per_cm1)
+    k = grid["temperatures_K"].index(float(temperature_K))
     n_rigid = int(len(patterns))
     thermo = {
         "regime": "vibrational-only",
         "temperature_K": float(temperature_K),
         "pressure_atm": float(pressure_atm),
         "zpe_eh": zpe,
+        "h_eh": grid["h_eh"][k],
+        "s_eh_k": grid["s_eh_k"][k],
+        "g_eh": grid["g_eh"][k],
         "n_modes": len(modes),
         "n_imag_excluded": n_imag,
         "n_rigid_removed": n_rigid,
-        "note": ("VIBRATIONAL contributions only: the force-constant route "
-                 "computes no rotational or translational partition "
-                 "function, and no total energy is reported here; the "
-                 "curves are the harmonic vibrational contributions above "
-                 "the electronic minimum"),
+        "note": ("VIBRATIONAL contributions only, above the electronic "
+                 "minimum, the headline and the grid alike: the "
+                 "force-constant route reports no total energy and has no "
+                 "gas-phase translational or rotational partition function "
+                 "to add; the whole-body motions of the free atoms "
+                 "(n_rigid_removed) were removed before diagonalising"),
         "grid": grid,
     }
 
@@ -216,6 +214,7 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         n_atoms_in_hessian=len(free_s),
         hessian_density_fit=None,
         ir_route="none",
+        raman_route="none",
         equilibrium_elements=list(struct.elements),
         equilibrium_positions_ang=np.asarray(struct.positions, dtype=float),
         engine_metadata={"fc_file": Path(fc.path).name,

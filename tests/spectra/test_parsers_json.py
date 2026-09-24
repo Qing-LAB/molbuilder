@@ -341,32 +341,14 @@ class TestParseSpectraJsonFieldErrors:
 
 
 class TestParseSpectraJsonForwardCompat:
-    """SpectraResults.from_dict ignores unknown keys by design
-    (archived-spec (docs/archive/old_docs/tabs/spectra/spec.md) § 5 forward-compat rule).  Test that the parser inherits
-    this -- new engines can add ``engine_metadata.foo`` keys
-    without breaking older readers."""
-
-    def test_extra_top_level_keys_ignored(self, tmp_path):
-        """PLUMBING. An unknown top-level key does not fail the parse, and does not get
-        attached to the typed object either.
-
-        Catches forward-compat breaking in both directions: a strict reader makes
-        a file written by a newer molbuilder unreadable by an older one, and an
-        auto-attaching reader would let a stray key shadow a real field name on
-        the dataclass. `from_dict` names the fields it reads, which is what keeps
-        both from happening.
-
-        Contract: the forward-compat rule in
-        `archive/old_docs/tabs/spectra/spec.md` § 5, inherited by this door.
-        """
-        payload = _make_minimal_results().to_dict()
-        payload["future_field_added_in_v2"] = {"some": "data"}
-        p = _write_json(tmp_path, payload)
-        loaded = parse_spectra_json(p)
-        # Parse succeeded, the extra key didn't surface as a field on
-        # the typed dataclass (no auto-attach).
-        assert loaded.engine == "pyscf"
-        assert not hasattr(loaded, "future_field_added_in_v2")
+    """``engine_metadata`` is the one free-form block: an engine may put
+    anything in it and it round-trips intact.  Every OTHER key is gated --
+    an unknown top-level, mode, equilibrium or electronic-structure key is
+    refused by name (`engines/vibration.md` § 6.7; the gate test is
+    `test_types.py::test_the_reader_refuses_a_key_it_does_not_know_by_name`).
+    The forward-compat rule this class was written under (the archived
+    spec's § 5: unknown keys ignored) was reversed on 2026-09-24, because a
+    misspelled key used to serve a chart with every number thrown away."""
 
     def test_extra_engine_metadata_keys_round_trip(self, tmp_path):
         """``engine_metadata`` is a free-form dict -- engines can
