@@ -917,6 +917,15 @@ SIESTA the cheap route is simply the right one, once reordering is solved.
    analytic stays the default.** It is today's behaviour, so nothing changes
    for existing runs; the cheap route (the free-atom `atmlst` Hessian with
    nudged infrared) is the opt-in, and the run states which way it went.
+   **Neither the opt-in nor the statement is built** (§ 18 step 4a). What
+   the deck does today, exactly: the constrained relaxation holds the atoms
+   (geomeTRIC `$freeze`); PySCF's analytic Hessian is computed for **every**
+   atom at full cost; the held rows and columns are removed afterwards (the
+   free–free block of the true Hessian); the surviving whole-body motions
+   are projected out; the block is diagonalised. Freezing shortens only the
+   Raman and finite-difference infrared loops, which run over the free atoms.
+   The gate's advisory that promised a Hessian saving from freezing was
+   false under R8 and was corrected the same day.
 3. ~~**The SIESTA contiguity answer**~~ — **DECIDED: reorder**, through
    `transport/sort.py`'s machinery with a second sort key (§ 14.2), under the
    atom-index contract of `model/overview.md` § 2.2 (user, 2026-09-23).
@@ -1342,6 +1351,16 @@ out of the emitters into real callables (§ 16.1), make the MO block optional
 (§ 16.2), add a `raman_route`, give the reader an unknown-key gate
 (§ 16.4), and retire the two Raman-ranked selectors (`web/spectra.md`
 § 9a.1). Doing this after the SIESTA arm means doing it twice.
+
+**Step 4a — the free-atom Hessian, the opt-in § 10 decided.** A catalogue
+item for the Hessian's scope (`all` atoms, today's default; `free` atoms —
+PySCF's `atmlst`, the Q-Chem saving), the artifact recording which ran
+(`hessian_scope`, beside `ir_route`), the infrared route forced to
+finite differences when the scope is `free` (the analytic route takes no
+atom list), and § 10's owed check: the `free`-scope block against
+compute-everything-and-slice, on the tier-3 systems, to numerical noise —
+because the result is numbered by position in the list passed, not by the
+atom's own index.
 
 **Step 5 — the SIESTA arm**, which is now: the siesta base, minus the
 relaxation driver, plus the FC surface, plus a `vibra` rung — the same sentence

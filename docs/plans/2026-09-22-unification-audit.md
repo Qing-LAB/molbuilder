@@ -670,7 +670,7 @@ and re-writing does the right thing on both inputs: the periodic file gets a
 real pair with its cell recorded, and a plain molecule with nothing to say
 gets the `.xyz` alone.
 
-#### 1.8b `write` deletes a sidecar the user never asked it to delete
+#### 1.8b `write` deletes a sidecar the user never asked it to delete — *WITHDRAWN as a defect, 2026-09-23: `structure.md` § 2.4 item 4 states `no .json == empty metadata` **in both directions**, so removing the sidecar of a structure whose metadata is empty is the codec obeying its invariant. What follows is an argument that the invariant could be weaker; it is a design question for § 6, not a finding.*
 
 ```python
 keep_sidecar=(not _metadata_is_default(meta) or bool(identity) or bool(struct.info))
@@ -1573,15 +1573,32 @@ any of them starts by reproducing it.*
 **The answer, in one paragraph.** The CORE is unified and it holds: every
 production door that loads, saves, pairs, resolves a cell or an origin,
 re-orders atoms or applies metadata goes through the owner (the
-confirmed-clean list below is long and specific). What is NOT true is that
-the hand-crafted uses are corrected: of the findings §§ 1–4 recorded, **six
-are closed and thirty-odd are open at HEAD**, and the four reads found
-**~45 new instances** of the same three conditions (§ 0a) — a second PDB
-reader, a second deserialiser, a placeholder spelled as a legal element,
-eight metadata-dropping rebuilds, three spellings of one file-naming rule,
-and a run artifact written in the wrong frame. Most are latent today
-(unreachable, or reached only with an empty label store); four reach a
-user's data or science now.
+confirmed-clean list below is long and specific). **Save-as-pair is fixed
+and works**: measured the same day, the CLI build wrote `pep.pdb` +
+`pep.molstruct.json`, the browser's Save wrote `water_Ofrozen.xyz.xyz` +
+its sidecar with the frozen oxygen, the hand-over wrote the travelling pair,
+and Task setup, `prep` and the run read the labels back. Exactly **one**
+save-related defect stands, and it is narrow: a **`.pdb` source with
+metadata** handed to `jobset init` is written as `<stem>.source.pdb.xyz`
+while `task.json` names `<stem>.source.pdb`, so `prep` cannot find it (X3
+below; reproduced on a fixture: `init` exit 0, `prep` exit 1, and the same
+from an `.xyz` source exit 0). Beside it, one promised property of the same
+door is not held — *both-or-neither atomicity on write* (§ 2.4 item 4):
+the geometry and the sidecar are two separate atomic replaces
+(`workingcopy_structure.py:362, 368`), so a sidecar that cannot serialise
+leaves the geometry behind; reachable only through a non-finite value that
+arrived in `info` from a parsed run or a sidecar (§ 1.1). Everything else
+that touches saving in this section — `pair()` returning a dict, the CLI's
+stdout stream, the deck's own `json.dump`, `describe(struct=None)` — is
+internal shape, unreachable, or a ruling, and none of it is a broken save.
+What is NOT true is that the hand-crafted uses elsewhere are corrected: of
+the findings §§ 1–4 recorded, **six are closed, one withdrawn, and
+thirty-odd are open at HEAD**, and the four reads found **~45 new
+instances** of the same three conditions (§ 0a) — a second PDB reader, a
+second deserialiser, a placeholder spelled as a legal element, eight
+metadata-dropping rebuilds, three spellings of one file-naming rule, and a
+run artifact written in the wrong frame. Most are latent today; four reach
+a user's data or science now.
 
 #### What the audit had found — status at HEAD
 
@@ -1597,7 +1614,7 @@ user's data or science now.
 | 1.7 malformed channel → bare `KeyError` | **OPEN** | A/B: `StructureCodec.load` → `KeyError('kind')`, no path in the message; `apply_atom_metadata` the same |
 | 1.8 no structure-path predicate | **OPEN** | A: eleven spellings across `workingcopy_structure.py`, `files.py:257`, `selection.py:99` (**dead**, zero readers), `siesta/input.py:1872,1902`, `build.py:240,722,813`, `cli.py:93,773`, `structure.py:94` |
 | 1.8a rename strands labels | **OPEN** (held) | A: `water.xyz → notes.txt` leaves `notes.molstruct.json` beside `notes.txt`; **and the reverse** (D-F16): `notes.txt → water.xyz` beside an existing `water.molstruct.json` runs no check and adopts a foreign sidecar |
-| 1.8b `write` deletes a sidecar | **OPEN** | A: write with regions → pair; write with `regions={}` → the sidecar is gone (`workingcopy_structure.py:369–370`) |
+| 1.8b `write` deletes a sidecar | **WITHDRAWN** | the behaviour A measured (write with `regions={}` → no sidecar) is `structure.md` § 2.4 item 4's own rule, *no .json == empty metadata in both directions*. Not a defect |
 | 1.8c hash gate checks length | **OPEN** | A: `'not a hash at all!!!'` and `'/etc/passwd\n\n\n\n\n\n'` both LOAD; three spellings still |
 | 1.8d `title` absorbs the extxyz header | CLOSED | `2eecd57a` … `801239a1` |
 | 1.11a registry fails open | **OPEN** | B: `sys.modules['molbuilder.siesta']=None` → registry `['PySCFConfig']`, no Issue; `validate(Au2, SiestaConfig())` runs no `config.*` check |
@@ -1621,7 +1638,7 @@ user's data or science now.
 |---|---|---|---|
 | **X1** ✓ | `chemistry.py:287–296, 345, 508` | `resolve_element('X')` returns `X`; `atomic_number('X') = 0`, `atomic_mass('X') = 1.0`. ASE's ghost placeholder is a legal element: it passes `check_species_labels`, contributes Z=0 to the electron count, and `render_fdf` writes `%block ChemicalSpeciesLabel / 1 0 X` — the exact defect the function's own docstring says it exists to end. `selection.py:147` uses `"X"` as its missing-element placeholder | D: measured, exit 0; re-run ✓ |
 | **X2** ✓ | `validation/geometry.py:89–90` | the H/heavy ratio counts `e == "H"` on RAW labels: labelled methane (`C1,H1..H4`) warns "H/heavy 0/5" on every deck route and the CLI; unlabelled does not. Owner `chemistry.is_atom` | B: measured; text ✓ |
-| **X3** ✓ | `describe.py:239–247` + `workingcopy_structure.py:306–309` + `jobset/prep.py:730–739` | a `.pdb` source WITH metadata: describe records `c.source.pdb`, the codec (`files()` never passes `fmt`, `.pdb` not replaceable) writes `c.source.pdb.xyz`, prep tries `c.source.pdb` then `c.source.xyz` → `PrepError: the structure this calculation describes is not here`. One naming rule, three spellings (the audit's § 4 `files()` vs `write()` row is the root) | D: measured; read ✓ |
+| **X3** ✓ | `describe.py:239–247` + `workingcopy_structure.py:306–309` + `jobset/prep.py:730–739` | a `.pdb` source WITH metadata: describe records `c.source.pdb`, the codec (`files()` never passes `fmt`, `.pdb` not replaceable) writes `c.source.pdb.xyz`, prep tries `c.source.pdb` then `c.source.xyz` → `PrepError: the structure this calculation describes is not here`. One naming rule, three spellings (the audit's § 4 `files()` vs `write()` row is the root) | D: measured; **reproduced by the primary session through the CLI on a fresh fixture** (`molbuilder peptide AG --pdb …` → pair; `jobset init --structure P/structure/pep.pdb …` exit 0, wrote `pep.source.pdb.xyz` + `pep.source.pdb.molstruct.json`, `task.json` names `pep.source.pdb`; `jobset prep run coarse --target this` exit 1 *"not here: 'pep.source.pdb'"*; the same from `pep.xyz` preps, exit 0) |
 | **X4** | `trajectory_log/format.py:117–177` ← `jobset/prep.py:1050` | the run's molwatch step 0 is written from `struct.positions` in the WORLD frame while the deck written in the same prep call is in the ENGINE frame (`siesta/input.py:868` shifts by the origin): a 45 Å jump between step 0 and step 1, unstamped (`structure-periodicity.md` § 6.1 clause 5) | D: measured (`H 50 50 50` vs `5 5 5`) |
 | **X5** ✓ | `script_emit.py:1953–1954` | `_extract_atom_metadata_dict` returns `None` on `JSONDecodeError`: a corrupted ATOM-METADATA fence reads as "no labels" with nothing said | B: measured; text ✓ |
 
