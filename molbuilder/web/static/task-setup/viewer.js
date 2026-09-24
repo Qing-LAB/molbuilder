@@ -1491,9 +1491,14 @@ async function loadColumnChoices(engine) {
         "/api/task-setup/columns?engine="
         + encodeURIComponent(engine || "siesta")
         + "&calculation=" + encodeURIComponent(kind), "column list");
-    if (!got.ok) { _cols = []; return _cols; }
-    const j = got.body;
-    _cols = (j && j.items) || [];
+    const items = (got.ok && got.body && got.body.items) || [];
+    /* A NEWER LOAD OWNS THE SLOT.  Two loads can be in flight for two
+     * engines (a hand-over's pickers and the hand-over itself asked for
+     * different ones until 2026-09-24), and the slower answer landing
+     * under the faster one's key poisoned the cache for the rest of the
+     * page load.  A superseded answer is handed back and not kept. */
+    if (_colsKey !== key) return items;
+    _cols = items;
     _fillMeta(_cols);
     return _cols;
 }
@@ -1553,9 +1558,9 @@ async function loadSweepChoices(engine) {
     const got = await fetchVocabulary(
         "/api/task-setup/sweepable?engine=" + encodeURIComponent(key),
         "sweepable settings");
-    if (!got.ok) { _sweep = []; return _sweep; }
-    const j = got.body;
-    _sweep = (j && j.items) || [];
+    const items = (got.ok && got.body && got.body.items) || [];
+    if (_sweepKey !== key) return items;   // a newer load owns the slot (see loadColumnChoices)
+    _sweep = items;
     _fillSweepMeta(_sweep);
     return _sweep;
 }
@@ -1622,7 +1627,14 @@ function fillPicker(sel, items, taken, empty) {
 }
 
 async function refreshPickers() {
-    const engine = (_task && _task.engine && _task.engine.name) || "siesta";
+    /* THE ENGINE IS THE DESCRIPTION'S, AND ON A HAND-OVER THE HAND-OVER'S.
+     * This read `_task` alone and fell back to SIESTA, so a PySCF hand-over
+     * (where `_task` is still null) fetched SIESTA's columns, sweepable set
+     * and presets: the measure card offered ScaLAPACK knobs to PySCF and the
+     * proposal seeded `mpi_np` / `omp_threads`, which the page's own
+     * preflight then refused (measured on the Spectrum walk, 2026-09-24). */
+    const engine = (_task && _task.engine && _task.engine.name)
+        || _handoverEngine(null);
     /* _meta is rebuilt from this engine's answers: its neighbours are
      * keyed (_colsKey/_sweepKey/_presetsKey) but _meta accreted across
      * engines -- a sweep-only item's record was written once and never
@@ -1722,9 +1734,9 @@ async function loadPresets(engine) {
     const got = await fetchVocabulary(
         "/api/task-setup/presets?engine=" + encodeURIComponent(key),
         "tier presets");
-    if (!got.ok) { _presets = []; return _presets; }
-    const j = got.body;
-    _presets = (j && j.presets) || [];
+    const presets = (got.ok && got.body && got.body.presets) || [];
+    if (_presetsKey !== key) return presets;   // a newer load owns the slot (see loadColumnChoices)
+    _presets = presets;
     return _presets;
 }
 
@@ -2046,13 +2058,35 @@ function renderNext(task) {
      * deck-rendering out of the browser; this is the job it was written
      * for.  Empty when the folder is not under the tree, where the verb's
      * own refusal says more than a truncated command could. */
-    /* `--target <machine>` for every command taught, once a machine is
-     * chosen and it is not this one.  Preparing for the box you are on is
-     * the case the flag is not for, so it is omitted there -- the same
-     * shape as `--bundle`, which is omitted when the cwd already is it. */
+    /* `--target <machine>` for every prep command taught, once a machine is
+     * chosen.  A remote machine is named; this machine is `this` -- the
+     * CLI's own name for it -- and ONLY when the choice was required: with
+     * several records `prep` refuses to guess between them (measured on the
+     * 2026-09-23 UI walk: the card said "Prepared for (this machine)" and
+     * the printed line, lacking the flag, was refused as printed).  With one
+     * record there is no question and no flag, the same shape as `--bundle`,
+     * which is omitted when the cwd already is it.  `launch` never carries
+     * it: launching happens on the machine. */
     function _targetArg() {
-        if (!_machine || _machine === "(this machine)") return "";
+        if (!_machine) return "";
+        if (_machine === "(this machine)") return _choiceRequired ? " --target this" : "";
         return " --target " + _machine;
+    }
+
+    /* THE STEP AFTER THE RUN, when the run leaves a file the host must
+     * derive the result from.  Read from the description -- its engine and
+     * its kind -- never from a list here: a SIESTA vibration leaves
+     * <label>.FC and `summarize run` writes <label>.spectra.json beside it
+     * (engines/vibration.md § 5.5).  A PySCF vibration writes its own file
+     * and needs nothing after launch. */
+    function _afterRunLines(task, name) {
+        const engine = ((task && task.engine && task.engine.name) || "siesta").toLowerCase();
+        const kind = (task && task.calculation) || "optimization";
+        if (engine === "siesta" && kind === "vibration") {
+            return "\nmolbuilder jobset summarize run " + name + _bundleArg()
+                 + "   # derives the modes from the .FC file into <label>.spectra.json";
+        }
+        return "";
     }
 
     function _bundleArg() {
@@ -2180,7 +2214,8 @@ function renderNext(task) {
             // works from wherever the user is standing
             // (job-contracts.md 2.5b).
             "molbuilder jobset prep run " + name + from + _bundleArg() + _targetArg() + "\n"
-            + "molbuilder jobset launch run " + name + _bundleArg()));
+            + "molbuilder jobset launch run " + name + _bundleArg()
+            + _afterRunLines(task, name)));
         // `--from` is deliberately NOT offered by the button: which run you
         // continue from is a scientific choice the CLI makes you say out
         // loud (`project-layout.md` § 1.6), and a button would have to pick
@@ -2551,6 +2586,9 @@ function proposedFromHandover(over, shape, varies, bench) {
 
 let _machine = "";          // the chosen record's name, "" until chosen
 let _machines = [];         // what /api/task-setup/machines answered
+let _choiceRequired = false; // the CLI's own rule: with several records it
+                             // refuses to guess, and `--target this` names
+                             // this machine (preparing-for-another-machine.md § 4)
 
 function setMachine(name) {
     _machine = name;
@@ -3264,6 +3302,7 @@ async function loadMachines() {
     } catch (e) { data = null; }
     if (!data || !data.ok) { card.hidden = true; return; }
     _machines = data.machines || [];
+    _choiceRequired = !!data.choice_required;
     const host = $("ts-target-choice");
     if (!host) return;
     host.textContent = "";
@@ -3327,8 +3366,7 @@ function setShape(shape) {
          * columns and nothing to edit, which is not a neutral starting point,
          * it is a dead end.  The group is a DEFAULT, never a restriction: any
          * parameter can be added and any of these removed (§ 1.2). */
-        const engine = (_handover && _handover.engine
-                        && _handover.engine.name) || "siesta";
+        const engine = _handoverEngine(null);
         Promise.all([loadColumnChoices(engine),
                      loadSweepChoices(engine)]).then(([cols, sweep]) => {
             const seed = cols.filter((c) => c.group === "stage")

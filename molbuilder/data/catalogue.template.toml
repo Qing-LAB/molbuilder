@@ -1145,33 +1145,6 @@ A symmetric molecule can run 2-10x faster with this on. It is unforgiving of num
 Leave it off unless you know the geometry is exact.
 """
 
-[item.engine]
-# `produce`, not `engine`, and no authored `anchor` -- template.md 6.0.  The
-# engine_key is a molbuilder NOTE, so `_bare_anchor` derives "" and the
-# default kind is refused; and an anchor is DERIVED, never authored, so the
-# `anchor = "pyscf"` that stood here contradicted its own engine_key.  This
-# item selects WHICH producer writes the deck, which is what `produce` means.
-# The dataclass half (`config/pyscf.py`) says the same -- 6.0's two homes.
-kind = "produce"
-category = ["method"]
-engines = ["pyscf"]
-calculations = ["vibration"]
-engine_key = "(molbuilder: selects the deck composer + the backend env)"
-type = "enum"
-choices = ["pyscf"]
-value = "pyscf"
-default = "pyscf"
-group = "profile"
-label = "Calculation engine"
-tier = "basic"
-help = """
-Which program runs the vibrational calculation.
-
-PySCF is the only engine wired to the Spectrum tab today: it supplies the analytic Hessian, the normal modes, and -- through pyscf.prop -- the IR and Raman intensities, and it runs in the managed `molbuilder-pySCF` env.
-
-There is one choice today, named here rather than assumed, so it travels on the form, in the task description and in the results sidecar like every other parameter.
-"""
-
 [item.method]
 kind = "engine"
 category = ["method"]
@@ -1860,7 +1833,7 @@ type = "enum"
 value = "skip"
 default = "skip"
 choices = ["skip", "all", "top_n", "threshold", "explicit"]
-group = "stage"
+group = "profile"
 label = "Mode selection"
 tier = "basic"
 help = """
@@ -1885,7 +1858,7 @@ type = "int"
 value = 10
 default = 10
 range = [1, 1000]
-group = "stage"
+group = "profile"
 label = "Top-N modes"
 tier = "advanced"
 help = """
@@ -1905,7 +1878,7 @@ value = 1.0
 default = 1.0
 range = [0.0, 1000.0]
 unit = "Å⁴/amu"
-group = "stage"
+group = "profile"
 label = "Raman-activity threshold"
 tier = "advanced"
 help = """
@@ -1923,7 +1896,7 @@ engine_key = "(molbuilder: per-mode selector parameter)"
 type = "str"
 value = ""
 default = ""
-group = "stage"
+group = "profile"
 label = "Explicit modes"
 tier = "advanced"
 help = """
@@ -1943,7 +1916,7 @@ type = "float"
 optional = true
 unit = "cm⁻¹"
 null_label = "(no lower bound)"
-group = "stage"
+group = "profile"
 label = "Min frequency"
 tier = "advanced"
 help = """
@@ -1962,7 +1935,7 @@ type = "float"
 optional = true
 unit = "cm⁻¹"
 null_label = "(no upper bound)"
-group = "stage"
+group = "profile"
 label = "Max frequency"
 tier = "advanced"
 help = """

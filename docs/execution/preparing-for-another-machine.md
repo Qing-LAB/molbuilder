@@ -282,9 +282,11 @@ not get its own rules: it surfaces the ones above.
   would then be maintained twice.
 - An **unreadable** record is listed and marked, not hidden. The user wrote
   it; hiding it leaves them waiting for something that cannot happen.
-- The commands the tab teaches carry `--target` once a remote machine is
-  chosen — and **`launch` does not**, because launching happens on the
-  machine.
+- The commands the tab teaches carry `--target` whenever the choice was
+  required — the record's name for a remote machine, **`this` for the box
+  you are on** (the CLI's own name for it, since with several records `prep`
+  refuses to guess) — and **`launch` does not**, because launching happens
+  on the machine.
 
 - **It shows what a `prep` would resolve, and from which file** —
   `GET /api/task-setup/resolved` serves `config_provenance`, the same block

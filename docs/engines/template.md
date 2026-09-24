@@ -248,8 +248,8 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **490 facts live in two places** (measured 2026-08-20 at 307, 618
-on 2026-09-15 when the transport rows landed, 485 once `help` moved out, and 490 with the SIESTA vibration item on 2026-09-24 —
+guarded.** **486 facts live in two places** (measured 2026-08-20 at 307, 618
+on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item and 486 once the one-choice `engine` item retired, both 2026-09-24 —
 the only fall in the series, and it came from deleting a home rather than from
 adding a check).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
@@ -2592,7 +2592,7 @@ closing one is a visible act. Measured 2026-08-17.
 | # | owed | stated at | why it matters, in one line |
 |---|---|---|---|
 | **1** | **`user_custom` has no schema field and no catalogue item** | § 9, § 9.2 | in the staged path a person's own engine text is silently dropped |
-| **2** | **`frozen_indices` has no item for SIESTA**; the deck is written from the sidecar | § 9.1 | the form cannot be authoritative over the freeze set, so clearing it does nothing — a silent absorption of config |
+| ~~**2**~~ | ~~`frozen_indices` has no item for SIESTA~~ — **closed 2026-09-24**: the held set is a structure fact for every engine (the `frozen_atoms` region, [`engines/overview.md`](?doc=engines/overview.md) § 3, [`engines/vibration.md`](?doc=engines/vibration.md) § 2.3); no engine has a form item for it and none should — the form copy was the silent absorption, and it retired on 2026-08-21 | § 9.1 | — |
 | **3** | **`kind` steers no reader**; `select` is never called with it | § 6, § 8, § 1.1a | G3 is declared and checked, not dispatched on |
 | **4** | **`read_by` is declared and unconsumed**; the wrapper still greps the deck | § 6.1, § 11.3 | a new engine cannot yet be served by declaring a wrapper dependency |
 | **5** | **`kind = "monitor"` has no items** | § 6 | either an item earns it or the member is retired; a vocabulary member nothing uses is the family § 10 retired `fingerprint` from |

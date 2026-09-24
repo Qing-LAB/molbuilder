@@ -41,7 +41,7 @@ viewer for one kind of file. Today there are seven:
 |---|---|---|---|
 | `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
 | `trajectory` | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
-| `spectra` | `.spectra.json` | a spectrum **chart** + a modes table | yes — *PySCF spectrum* |
+| `spectra` | `.spectra.json` | a spectrum **chart** + a modes table | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
 | `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |

@@ -230,9 +230,13 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             }
             if (mySeq !== _loadSeq) return;  // superseded by a newer load
             _sidebarLastFile = f;
-            // (Nothing else to push into spectra/core.js: it was handed the
-            // viewer at mount and reads the structure off it at send time --
-            // so there is no second in-memory copy to feed or drift.)
+            // The inspector reads the structure off the viewer it was handed
+            // at mount -- no second copy -- and is told a load landed so the
+            // structure can pick the default engine (a periodic structure is
+            // SIESTA's) and the live checks rerun.
+            if (_inspector && typeof _inspector.structureLoaded === "function") {
+                _inspector.structureLoaded();
+            }
             _updateInfo(mvHandle, _basename(f));
             setStatus("load-status",
                 `Loaded ${_basename(f)}.`, "ok");
@@ -305,10 +309,10 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         // (pyscf/auto_defaults.py's PyscfSuggestedParams), and
         // setValues matches by field name -- one vocabulary, no map.
         //
-        // Why a separate handler from /structure-optimization's:
-        // single form to fill (not SIESTA + PySCF), no SIESTA
-        // adapter needed.  Concurrency safety mirrors the
-        // _loadSeq pattern used by _commitStructure above.
+        // Both engines' forms are filled (the analyzer answers per
+        // engine), the same as /structure-optimization.  Concurrency
+        // safety mirrors the _loadSeq pattern used by _commitStructure
+        // above.
         function _refreshAutoDetectButton() {
             const btn = _$("auto-detect-btn");
             if (!btn) return;
@@ -368,29 +372,16 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         }
 
         /**
-         * Fetch the same catalogue schema the form renders from
-         * (so we don't have to reach into the inspector's private
-         * state) and call formSchema.setValues with the PySCF
-         * adapter's output -- adapter field names are catalogue
-         * item names, so values land by name.
+         * Hand the analyzer's per-engine answer to the inspector, which
+         * owns both forms and spreads the values by field name (the
+         * adapters' names are catalogue item names).  The page does not
+         * reach into the form containers (overview.md § 1: a capability
+         * a tab needs is a door on the module, never a workaround here).
          */
         async function _applyAutoDetectToSpectraForm(resp) {
-            const fs = (window.molbuilder || {}).formSchema;
-            if (!fs || typeof fs.setValues !== "function") return;
-            const container = _$("spectra-form-container");
-            if (!container) return;
-            const sug = (resp.suggested || {}).pyscf;
-            if (!sug) return;
-            let schema;
-            try {
-                schema = await fs.fetchSchema(
-                    "pyscf", { calculation: "vibration" });
-            } catch (e) {
-                console.warn("[spectra] auto-detect: schema fetch failed:",
-                              e);
-                return;
+            if (_inspector && typeof _inspector.applySuggested === "function") {
+                _inspector.applySuggested((resp && resp.suggested) || {});
             }
-            fs.setValues(container, schema, sug);
         }
 
         // Refresh the Auto-detect button state every time the

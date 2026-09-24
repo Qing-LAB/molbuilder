@@ -352,6 +352,12 @@ the answer *is* right now, not what it is defined as.
 > ([`stages.md § 6.2`](?doc=engines/stages.md)) — the page's two halves
 > disagreeing about one setting, in one document, three sections apart.
 
+**The vocabularies are the engine's.** The columns, the sweepable set and the
+tier presets are fetched for the description's engine — on a hand-over, the
+hand-over's — and the page never assumes one. *(Until 2026-09-24 the pickers
+read only the saved description and fell back to SIESTA, so a PySCF hand-over
+was offered ScaLAPACK knobs and seeded a rank sweep its own preflight refused.)*
+
 So ranks, threads and memory in the **measure** card are always *points to
 try* — one of them is one trial, never an answer. What a run uses is the
 **run** card, `execution`'s own block (§ 6.2b), and the two cards never read
@@ -922,7 +928,11 @@ that resolves to nothing is silent by design.
   *(Narrowed 2026-08-22. The page now asks which machine a calculation will
   be prepared FOR and puts `--target` in the command it teaches — because
   `prep` needs the target's measurements and refuses to guess between
-  several. That choice shapes a printed command; it never reaches
+  several: a remote machine's record name, and **`--target this` for this
+  machine whenever the choice was required** (with one record there is no
+  question and no flag; `launch` never carries it — it runs on the machine).
+  *(Until 2026-09-24 the flag was omitted for this machine even when the CLI
+  refused without it, measured on the UI walk of 2026-09-23.)* That choice shapes a printed command; it never reaches
   `task.json` or the template, so the written description still names no
   machine. See [`preparing-for-another-machine.md
   § 5`](?doc=execution/preparing-for-another-machine.md).)*
@@ -944,7 +954,7 @@ rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 | | |
 |---|---|
 | **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
-| **run it** | `prep run <stage>` → `launch run` |
+| **run it** | `prep run <stage>` → `launch run` — and, when the run leaves a file the host must derive the result from, the deriving verb as the last line: `summarize run <stage>` for a SIESTA vibration ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5), read from the description's engine and kind, never from a list in the page |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:

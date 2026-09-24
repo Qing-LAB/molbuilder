@@ -202,8 +202,12 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         phase_raman=PHASE_COMPLETE,      # not requested; nothing owed
         phase_es=PHASE_COMPLETE,
         phase_relaxation=PHASE_COMPLETE,
-        relaxation={"enabled": False, "already_relaxed": True,
-                    "n_steps": 0, "max_force_eh_a": None, "converged": None,
+        # `already_relaxed` is the PERSON'S assertion (vibration.md § 3.1),
+        # and nobody makes it on this route: the run relaxes nothing and
+        # the warning says so.  Written true, the viewer read it as the
+        # assertion and hid the warning (measured 2026-09-24).
+        relaxation={"enabled": False, "already_relaxed": False,
+                    "n_steps": 0, "max_force_eh_bohr": None, "converged": None,
                     "warning": ("the force-constant route does not relax: "
                                 "the input geometry is taken as the "
                                 "stationary point")},

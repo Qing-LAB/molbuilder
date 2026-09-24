@@ -110,44 +110,10 @@ fieldset select:disabled {
 }
 
 /* ---- Tabs (SIESTA / PySCF) — index only ---- */
-.tabs {
-    display: flex;
-    gap: var(--space-xs);
-    margin: var(--space-xs) 0 var(--space-md);
-    border-bottom: 1px solid var(--border-strong);
-    padding: 0 2px;
-}
-.tab-btn {
-    padding: var(--space-sm) var(--space-lg);
-    font: inherit;
-    font-size: var(--text-base);
-    font-weight: 500;
-    color: var(--text-secondary);
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    margin-bottom: -1px;
-    border-radius: 0;
-    transition: color 120ms, border-color 120ms, background 120ms;
-}
-.tab-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-card-hover);
-}
-.tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: transparent;
-}
-.tab-btn code {
-    font-family: var(--font-mono);
-    font-size: 0.86em;
-    color: inherit;
-    background: transparent;
-    padding: 0;
-}
-.tab-panel[hidden] { display: none; }
+/* (The SIESTA / PySCF engine strip -- .tabs, .tab-btn, .tab-panel -- moved to
+ * lib/form-components.css on 2026-09-24: the Spectrum tab offers two engines
+ * the same way, and a widget on two pages has one owner.  Only the
+ * #generate-card spacing above is this page's.) */
 
 /* (Fieldset/legend/label form rules moved to lib/form-schema.css 2026-07 --
  * the shared owner for every schema-driven form.  This sheet keeps only the

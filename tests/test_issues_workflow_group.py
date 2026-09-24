@@ -264,15 +264,14 @@ class TestValidateEndToEndAttaches:
             #     ``optimizer`` for PySCF), so attaching to one
             #     card would mis-direct the user.  Renders in the
             #     residual panel.
-            #   * ``config.charge`` / ``config.frozen_indices`` — the
-            #     spectra render gate (validation/spectra.py) speaks the
-            #     spectra VOCABULARY; its findings surface at prep
-            #     (stderr), not on a card UI, since the render route
-            #     retired at P3.  If the kind-aware preflight lands
-            #     (the F-B proposal in the P3 review), the mapping to
-            #     catalogue fields decides their group then.
+            #   * ``config.charge`` — the spectra render gate
+            #     (validation/spectra.py) speaks the spectra VOCABULARY;
+            #     its findings surface at prep (stderr), not on a card
+            #     UI, since the render route retired at P3.  (Its
+            #     held-atom findings name ``structure.regions``: the
+            #     held set is a structure fact, never a form field.)
             if where in ("config", "config.frozen_atoms",
-                         "config.charge", "config.frozen_indices"):
+                         "config.charge"):
                 continue
             unresolved.append(where)
         assert not unresolved, (

@@ -518,14 +518,21 @@ def _validate_siesta(struct: Structure, cfg,
     correctly post-Save (see pseudos.resolve_psml_lib).
     """
     issues: List[Issue] = []
+    # ONE FACT, ONE FINDING (science/validation.md § 7): the vibration kind
+    # names the unconsumed region labels and states the held atoms itself,
+    # from the rank rule, so this validator defers both families on that
+    # kind -- the same deferral the PySCF validator makes.  A second copy
+    # here spoke of "relaxation" on a run that relaxes nothing.
+    vibration = calculation == "vibration"
 
     # Pattern B, re-homed here from the deleted web endpoints (C-shared
     # 2026-08-21): region labels this run does not consume are named --
     # the frozen label is excluded (SIESTA consumes it as
     # Geometry.Constraints).
     from .sidecar import check_unconsumed_region_labels
-    issues += check_unconsumed_region_labels(
-        struct, engine="SIESTA", calculation=calculation)
+    if not vibration:
+        issues += check_unconsumed_region_labels(
+            struct, engine="SIESTA", calculation=calculation)
     # ...and the FIRST validation of a junction, beside it because it is
     # the same question one step further: the labels say which atoms are
     # leads, and a lead must come through the relaxation unmoved.  Asked
@@ -576,15 +583,16 @@ def _validate_siesta(struct: Structure, cfg,
     # only meaningful inside an MD/relax block.  When relax_type is
     # "none" the relaxer doesn't run, so the constraint is a no-op.
     relax = (getattr(cfg, "relax_type", "") or "").lower()
-    issues += _check_frozen_atoms_consumed(
-        struct,
-        engine="SIESTA",
-        honored=(relax not in ("none", "")),
-        reason_when_dropped=(
-            f"cfg.relax_type = {cfg.relax_type!r} (no MD/relax block "
-            f"is emitted, so Geometry.Constraints would be a no-op)"
-        ),
-    )
+    if not vibration:
+        issues += _check_frozen_atoms_consumed(
+            struct,
+            engine="SIESTA",
+            honored=(relax not in ("none", "")),
+            reason_when_dropped=(
+                f"cfg.relax_type = {cfg.relax_type!r} (no MD/relax block "
+                f"is emitted, so Geometry.Constraints would be a no-op)"
+            ),
+        )
 
     # NOTE (2026-08-07, P2 unit 2): this validator used to walk ``cfg.stages``
     # here and re-check every stage's relax knobs.  It does not any more, and

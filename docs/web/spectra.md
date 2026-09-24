@@ -406,12 +406,22 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    (`POST /api/structure/analyze`) for a sensible charge, spin, and method for
    this molecule and fills them into the form, with a one-line rationale. You can
    override anything.
-3. **Set the parameters.** The rest of the form is **built from the
-   CATALOGUE**, narrowed to the vibration kind
-   (`GET /api/build/schema/pyscf?calculation=vibration`) — the same door and
-   the same renderer as the Build tab, so a parameter is defined once and
-   rendered the same everywhere
-   ([`engines/template.md`](?doc=engines/template.md) § 6.3).
+3. **Pick the engine, set the parameters.** An engine strip — the
+   Structure-optimization tab's own component, two tabs over two mounted
+   forms — offers **PySCF** and **SIESTA**. Both forms are **built from the
+   CATALOGUE**, narrowed to (engine, vibration)
+   (`GET /api/build/schema/<engine>?calculation=vibration`), through the
+   same door and the same renderer as the Build tab, so a parameter is
+   defined once and rendered the same everywhere
+   ([`engines/template.md`](?doc=engines/template.md) § 6.3; the items each
+   engine shows and why are [`engines/vibration.md`](?doc=engines/vibration.md)
+   § 3.1). The strip's choice is the **description's engine** — what the
+   live checks validate against and what the hand-over sends — and never a
+   parameter of the deck (the one-choice `engine` form item retired
+   2026-09-24). **The structure decides the default**: a structure that
+   repeats or continues along an axis switches the strip to SIESTA and says
+   why, because PySCF's gate refuses a periodic structure; a click on the
+   strip beats the default. Auto-detect fills both forms.
 4. **Send to Task setup.** The Send button runs the general hand-over
    ([`handover-procedure.md`](?doc=web/handover-procedure.md), via
    `lib/task-handover.js` — the same door `/structure-optimization` uses):
@@ -424,12 +434,9 @@ On `/spectrum-calculation` the page is a short vertical workflow:
 
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
 Results tab) is what fills the chart. On SIESTA the run leaves `<label>.FC`
-and `molbuilder jobset summarize run <stage>` derives the same file beside the
-run ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5). **The tab
-offers PySCF only today**: the second engine on the tab — the `engine` item's
-choices, the form re-fetched for the chosen engine, the live checks and the
-hand-over sending it — is the first row of V1 in
-[`plans/plan.md`](?doc=plans/plan.md) (`vibration.md` § 10).
+and `molbuilder jobset summarize run <stage>` — the last line Task setup's
+rung tab prints for a SIESTA vibration — derives the same file beside the run
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5).
 
 ## 6. The API door
 

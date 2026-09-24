@@ -198,7 +198,7 @@ def _vib_state_init() -> List[str]:
         "state['phase_relaxation'] = 'empty'",
         "state['relaxation'] = {'enabled': (not ALREADY_RELAXED),",
         "                       'already_relaxed': ALREADY_RELAXED,",
-        "                       'n_steps': 0, 'max_force_eh_a': None,",
+        "                       'n_steps': 0, 'max_force_eh_bohr': None,",
         "                       'converged': None}",
         "state['thermo'] = {}",
         "# What the harmonic analysis removes before diagonalising, filled",
@@ -271,7 +271,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "            _mx = None",
         "        state['relaxation']['n_steps'] += 1",
         "        if _mx is not None:",
-        "            state['relaxation']['max_force_eh_a'] = _mx",
+        "            state['relaxation']['max_force_eh_bohr'] = _mx",
         "        _atomic_write_json(state, JSON_PATH)",
     ]
     if getattr(cfg, "write_molwatch_log", False):
@@ -414,8 +414,8 @@ def _vib_gradient_check() -> List[str]:
         "        # Both are recorded; only the free one is judged.",
         "        _maxf_all = float(np.abs(_g0).max())",
         "        _maxf = float(np.abs(_g0[FREE_ATOM_IDXS]).max())",
-        "        state['relaxation']['max_force_eh_a'] = _maxf",
-        "        state['relaxation']['max_force_all_atoms_eh_a'] = _maxf_all",
+        "        state['relaxation']['max_force_eh_bohr'] = _maxf",
+        "        state['relaxation']['max_force_all_atoms_eh_bohr'] = _maxf_all",
         "        if _maxf > GEOM_GMAX * 10.0:",
         "            _w = (f'input geometry is not a stationary point '",
         "                  f'(max |dE/dR| = {_maxf:.2e} Eh/Bohr, vs the '",

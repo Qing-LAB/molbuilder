@@ -9,7 +9,7 @@
  * the factory's ``provide``: the core is GIVEN the capability rather than sent
  * looking for one.
  *
- * Match rule: ``*.spectra.json`` (PySCF spectrum results emitted
+ * Match rule: ``*.spectra.json`` (vibrational-spectrum results emitted
  * by molbuilder's spectra wrapper).
  *
  * Auto-load: the spectra core's mount() honors ``opts.file`` by
@@ -53,7 +53,7 @@ import { mount as mountVibrationView } from "/static/lib/vibrationview/index.js"
         match:          (file, meta) => (meta && meta.role)
             ? meta.role === ".spectra.json"
             : file.toLowerCase().endsWith(".spectra.json"),
-        resultCategory: (_file) => "PySCF spectrum",
+        resultCategory: (_file) => "Vibrational spectrum",
         // The one thing the core cannot reach for itself.
         provide:        { mountVibrationView: mountVibrationView },
     });

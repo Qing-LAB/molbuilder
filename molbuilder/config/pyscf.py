@@ -205,41 +205,13 @@ class PySCFConfig:
 
     # ---------------- Engine ----------------
     #
-    # NAMED, not implied.  Until now "which program runs this" was a
-    # string literal in the browser (`engine: "pyscf"` in the tab's send
-    # payload), which made a real choice look like a constant and gave a
-    # second engine nowhere to land.  Declaring it here puts it on the
-    # form, into the task payload, and into the results sidecar through
-    # the same door every other parameter uses.
-    #
-    # One choice today.  That is the point: a single-option selector
-    # says "this is a choice that has one answer right now", where a
-    # hidden constant said "there is no choice".  A second engine adds
-    # its own config class declaring its own identity -- SIESTA's
-    # spectra path would carry engine="siesta" -- so this field is each
-    # engine's statement of what it is, not a global registry.
-    engine: str = field(default="pyscf", metadata={
-        "category": ("method",),
-        "section": "Engine",
-        "workflow_group": "profile",
-        "label":   "Calculation engine",
-        "tier":    "basic",
-        "choices": ("pyscf",),
-        "engine_key":  '(molbuilder: selects the deck composer + the backend env)',
-        # `produce`, and the contract forces the choice (template.md 6.0): an
-        # `engine_key` that is a molbuilder NOTE derives no anchor, so the
-        # default kind `engine` is refused -- "this item is not an engine
-        # keyword, so tell me what it is."  It is not `deck`: it writes no
-        # keyword and expands to none.  What it does is decide WHICH producer
-        # writes the script, which is 6's definition of `produce` -- shaping
-        # how the script is written without becoming a keyword itself.  Its
-        # siblings here agree: `job_name`, `optimize` and `on_nonconvergence`
-        # are all molbuilder-level selectors marked `produce`.
-        #
-        # Omitted when this field landed (3aaec645, 2026-09-11), which left
-        # four tests failing on main.
-        "item_kind": "produce",
-    })
+    # NOT A FIELD (retired 2026-09-24).  Which program runs a described job
+    # is the description's `engine` (task.json), chosen on the describing
+    # tab's engine strip the way the Structure-optimization tab has always
+    # chosen it, and carried by the hand-over -- never a parameter of the
+    # deck.  The catalogue item that stood here (`[item.engine]`, one
+    # choice) existed only because the Spectrum tab had no strip; it gained
+    # one with the second engine (engines/vibration.md § 3.1).
 
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
@@ -795,7 +767,7 @@ class PySCFConfig:
     })
     es_mode_selection: str = field(default='skip', metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Mode selection',
         "choices": ('skip', 'all', 'top_n', 'threshold', 'explicit'),
@@ -806,7 +778,7 @@ class PySCFConfig:
     })
     es_top_n: int = field(default=10, metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Top-N modes',
         "range": (1, 1000),
@@ -817,7 +789,7 @@ class PySCFConfig:
     })
     es_threshold: float = field(default=1.0, metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Raman-activity threshold',
         "unit": 'Å⁴/amu',
@@ -829,7 +801,7 @@ class PySCFConfig:
     })
     es_explicit_indices: str = field(default='', metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Explicit modes',
         "tier": "advanced",
@@ -839,7 +811,7 @@ class PySCFConfig:
     })
     freq_min_cm1: Optional[float] = field(default=None, metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Min frequency',
         "unit": 'cm⁻¹',
@@ -852,7 +824,7 @@ class PySCFConfig:
     })
     freq_max_cm1: Optional[float] = field(default=None, metadata={
         "category": ("procedure",),
-        "workflow_group": "stage",
+        "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Max frequency',
         "unit": 'cm⁻¹',

@@ -1186,10 +1186,15 @@ def api_task_setup_handover():
     # the vibration kind, 2026-08-20).  The template narrows by it, and
     # the receiving tab writes it into task.json.
     calculation = str(body.get("calculation") or "optimization")
-    if calculation == "vibration" and engine != "pyscf":
+    if calculation == "vibration" and engine not in ("pyscf", "siesta"):
+        # The same refusal `jobset init` gives, so the two doors agree
+        # about which engines run a vibration (engines/vibration.md § 2.1).
         return jsonify({"ok": False,
-                        "error": "the vibration kind is PySCF-first "
-                                 "(spectra-migration plan § 2)"}), 400
+                        "error": "calculation 'vibration' runs on pyscf "
+                                 "(analytic Hessian, intensities) or siesta "
+                                 "(force constants, frequencies and mode "
+                                 f"shapes only); engine {engine!r} has no "
+                                 "vibration deck."}), 400
     if calculation == "transport":
         # NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
         # nothing is awaiting -- the stages, the shape and the identity

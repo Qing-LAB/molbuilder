@@ -196,8 +196,11 @@ def test_every_shown_parameter_changes_the_deck_or_is_openly_pending():
             silent.append(item.name)
     # A single-choice field is exempt from the honesty measurement, but not
     # from being NOTICED: the day one grows a second choice it leaves this
-    # list and must then change the deck like everything else.
-    assert one_choice == ["engine"], (
+    # list and must then change the deck like everything else.  (`engine`
+    # was the one such field until 2026-09-24; the engine is the page's
+    # strip and the description's, not a parameter -- engines/vibration.md
+    # § 3.1.)
+    assert one_choice == [], (
         f"the set of single-choice vibration parameters changed: "
         f"{one_choice}.  A field that GAINED a second choice now owes the "
         f"honesty measurement; one that LOST its choices is a different "

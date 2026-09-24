@@ -282,7 +282,7 @@ def spectra_render_checks(struct: Structure,
                     f"still covers the whole system.  Ignore this if the "
                     f"whole system needs to vibrate."
                 ),
-                where="config.frozen_indices",
+                where="structure.regions",
             ))
 
     # WHAT SURVIVES THE FREEZE, from the one derivation (science/normal-modes.md
@@ -317,7 +317,7 @@ def spectra_render_checks(struct: Structure,
                     f"{3 * _n_free}, and the count removed is recorded with "
                     f"the results."
                 ),
-                where="config.frozen_indices",
+                where="structure.regions",
             ))
 
     # THIS ENGINE COMPUTES A MOLECULE IN FREE SPACE.  gto.M has no lattice, so
@@ -398,7 +398,7 @@ def spectra_render_checks(struct: Structure,
                              f"structure has {n} atoms; valid "
                              f"indices are 0..{n - 1} (counting "
                              f"from zero)."),
-                    where="config.frozen_indices",
+                    where="structure.regions",
                 ))
 
     # Boundary-condition guards (design.md "Sidecar-driven
@@ -437,7 +437,7 @@ def spectra_render_checks(struct: Structure,
                 f"the static field of the fixed ones; thermochemistry "
                 f"is vibrational-only."
             ),
-            where="config.frozen_indices",
+            where="structure.regions",
         ))
 
     # Pattern B -- THE one home (validation/sidecar.py, U5): region

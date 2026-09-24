@@ -122,7 +122,7 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     # D3, live: the relaxation ran, was tracked, and converged.
     rel = d["relaxation"]
     assert rel["enabled"] and rel["converged"] and rel["n_steps"] >= 1
-    assert rel["max_force_eh_a"] < 1e-3
+    assert rel["max_force_eh_bohr"] < 1e-3
     # The geometry in the file is the one the Hessian was taken at -- the
     # RELAXED one, not the input (design § 15.4): the relaxation moved
     # atoms, so the two must differ.

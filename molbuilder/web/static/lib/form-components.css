@@ -294,3 +294,47 @@ a.btn-like:hover {
     color: var(--text-primary);
 }
 
+/* ---- In-card engine strip (SIESTA / PySCF) ----
+ * The tab row a describing card uses to offer two engines' forms at once,
+ * one panel each, both mounted so switching loses nothing.  Used on
+ * /structure-optimization and /spectrum-calculation, so it lives here
+ * (ui-contract.md § 1: a widget on more than one page has one shared owner);
+ * it stood in structure-optimization/style.css until 2026-09-24. */
+.tabs {
+    display: flex;
+    gap: var(--space-xs);
+    margin: var(--space-xs) 0 var(--space-md);
+    border-bottom: 1px solid var(--border-strong);
+    padding: 0 2px;                              /* a hairline inset under the rule */
+}
+.tab-btn {
+    padding: var(--space-sm) var(--space-lg);
+    font: inherit;
+    font-size: var(--text-base);
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    margin-bottom: -1px;                         /* sits on the strip's rule */
+    border-radius: 0;
+    transition: color 120ms, border-color 120ms, background 120ms;
+}
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+}
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+}
+.tab-btn code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: inherit;
+    background: transparent;
+    padding: 0;
+}
+.tab-panel[hidden] { display: none; }

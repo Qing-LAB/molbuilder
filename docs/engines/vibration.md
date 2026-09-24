@@ -182,8 +182,8 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 
 ```mermaid
 flowchart LR
-  M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine (PySCF today; V1.1),<br/>set parameters (the catalogue's form),<br/>read the live checks"]
-  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, one stage;<br/>Save writes task.json;<br/>the stage's tab prints the commands"]
+  M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
+  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, one stage;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep run freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
   P -->|"launch run freq"| R["the run<br/>PySCF: writes &lt;label&gt;.spectra.json itself<br/>SIESTA: leaves &lt;label&gt;.FC"]
   R -->|"SIESTA only:<br/>summarize run freq"| A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 6"]
@@ -274,7 +274,6 @@ a parameter is defined once and rendered the same everywhere.
 
 | item | engine | what it reaches | default | note |
 |---|---|---|---|---|
-| `engine` | pyscf | which deck composer and which env run the job (`task.json`'s engine) | `pyscf` | **owed**: its choices list names PySCF alone, and the item is declared for the PySCF form only, so the tab cannot pick SIESTA (§ 10) |
 | `already_relaxed` | pyscf | `ALREADY_RELAXED` — skips Phase 0 (§ 4.2); the gradient is still checked | `false` | the person's assertion, answered with numbers, never refused |
 | `compute_raman` | pyscf | `COMPUTE_RAMAN` — the polarizability sweep (§ 4.6) | `true` | the expensive optional: about `6·N_free` extra SCFs, each with a response calculation |
 | `compute_ir` | pyscf | `COMPUTE_IR` — dipole derivatives (§ 4.6) | `false` | nearly free when it is the only strength asked for and no atom is held; otherwise rides the Raman sweep or its own dipole sweep |
@@ -287,11 +286,35 @@ a parameter is defined once and rendered the same everywhere.
 | `net_charge` | both | `NetCharge` / `gto.M(charge=)` | auto | shared with every kind; resolved once by `chemistry.resolve_net_charge` (explicit wins, 0 included; unset runs the phosphate rule — one negative charge per nucleic-acid backbone phosphate, [`model/chemistry.md`](?doc=model/chemistry.md)) |
 | `fc_displacement` | siesta | `FC.Displacement` — the nudge of the force-constant run (§ 5.3) | 0.04 Bohr | range 0.005–0.2 Bohr; smaller pushes the force difference toward the SCF noise floor, larger picks up anharmonic terms |
 
+**Where each item sits on the form** — the card is the item's `group`, the legend
+inside it the first `category` ([`engines/template.md`](?doc=engines/template.md)
+§ 6.2 and the key table there), and the vocabulary decides: what the run
+*computes* is `profile` (`already_relaxed`, `compute_raman`, `compute_ir`,
+`temperature_K`, `pressure_atm`, and the probe's five selectors
+`es_mode_selection` · `es_explicit_indices` · `freq_min_cm1` · `freq_max_cm1`
+and the two retired ones); a numerical step size is `stage` under *accuracy*
+(`displacement_amplitude_ang`, `fc_displacement`), the set a staged sequence
+may tighten; a record size is `output` (`es_n_homo_below`, `es_n_lumo_above`).
+The selectors are not convergence targets and nothing steps them per stage —
+they sat on the `stage` card until 2026-09-24, where Task setup also offered
+them as *vary per stage*.
+
+**The engine is not an item.** Which program runs a described job is the
+description's `engine` (`task.json`), chosen on the Spectrum tab's engine
+strip the way the Structure-optimization tab has always chosen it, carried by
+the hand-over, refused by `init` for anything but the two engines. A
+one-choice `engine` form item stood in for the strip until 2026-09-24 and
+retired with it: a parameter of the deck it never was.
+
 **The shared items** — method, functional, basis, spin, dispersion, density
 fitting, the implicit solvent (`solvent`, PCM), the SCF machinery, the
 geometry-convergence criteria (`geom_gmax` family, which the vibration template
 defaults to the **tight** tier, `geom_gmax` 2·10⁻⁴ Eh/Bohr: a frequency
-deserves a real stationary point), the relaxation's workflow knobs
+deserves a real stationary point — **⚠ contradiction, open as plan V1.20**:
+the catalogue carries one default per item and no kind-keyed default, so the
+template the hand-over and `init` write today carries 4.5·10⁻⁴, and the tight
+tier is the preset on Task setup's stage row; measured 2026-09-24), the
+relaxation's workflow knobs
 (`on_nonconvergence`, `geom_max_steps`, `geom_continue_retries`, `optimizer`,
 `write_trajectory`, `write_molwatch_log`, `save_initial_xyz`,
 `save_optimized_xyz` — § 4.2 says what each does here), the execution category
@@ -419,7 +442,7 @@ longest part of the run, would betray "the viewer tracks all the steps")*.
 
 What the phase honours from the description: the convergence criteria
 (`geom_gmax`, `geom_grms`, `geom_dmax`, `geom_drms`, `geom_etol`,
-`geom_max_steps`, defaulting to the tight tier), `on_nonconvergence`
+`geom_max_steps` — *defaulting to the tight tier* is the open contradiction of § 3.1, plan V1.20), `on_nonconvergence`
 (**this** is the phase that policy governs — `proceed` takes the partial
 geometry and records `converged: null` with a warning; `continue` re-runs the
 optimiser with the optimisation deck's retry budget; `halt` raises),
@@ -466,9 +489,10 @@ and `positions_ang`.
 **The stationarity check (R5)** takes the SCF's nuclear gradient and judges
 the largest force **over the free atoms** against ten times `geom_gmax`
 (2·10⁻³ Eh/Bohr with the vibration template's tight-tier default of 2·10⁻⁴),
-recording it as `relaxation.max_force_eh_a` and the all-atom figure beside it
-as `max_force_all_atoms_eh_a`. The unit is Eh/Bohr — the key's `_a` and the
-viewer's "Eh/Å" are a mislabel owed with the viewer (§ 10). Measured
+recording it as `relaxation.max_force_eh_bohr` and the all-atom figure beside
+it as `max_force_all_atoms_eh_bohr` — the keys say their unit *(they said
+`_a` until 2026-09-24 while the viewer printed "Eh/Å"; the number was always
+Eh/Bohr)*. Measured
 2026-09-22, why the free-atom rule matters: water with O and one H held,
 relaxed to the deck's own criterion, reads 3.35·10⁻² over all atoms against
 7.01·10⁻⁵ on the free ones; CO₂ with both O held 7.2·10⁻² against
@@ -1021,7 +1045,9 @@ so no force constant is taken with respect to them, that frequencies are those
 of the free atoms in the static field of the held ones, that thermochemistry
 is vibrational-only and that intensities are not computed; always, that the
 run relaxes nothing and a relaxed structure should be cited; and the
-unconsumed-region-label notice every kind carries.
+unconsumed-region-label notice every kind carries. The SIESTA engine
+validator defers that notice and its own *held during relaxation* line on
+this kind — one fact, one finding ([`science/validation.md`](?doc=science/validation.md) § 7).
 
 ---
 
@@ -1062,7 +1088,7 @@ by name.
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
 | `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
 | `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` (§ 4.9) |
-| `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_a, max_force_all_atoms_eh_a, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled: false` with the *relaxes nothing* warning |
+| `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled: false`, `already_relaxed: false` (nobody asserted it — the flag is the person's, § 3.1) and the *relaxes nothing* warning, which the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline (T, P) with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
 | `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |
@@ -1107,7 +1133,7 @@ tests can meaningfully guard:
 | `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, `E` at ±A | non-finite dropped; the shift and the coupling `ΔE/(2A)` are the viewer's arithmetic | Hartree |
 | `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
 | `thermo` | PySCF's `thermo.thermo` (rrho) or the one home's vibrational sums | the deck computes, the viewer draws; the headline is a row of the grid (§ 4.7) | Eh, Eh/K |
-| `relaxation.max_force_eh_a` | the nuclear gradient at the judged geometry | the largest force over the **free** atoms; the all-atom figure beside it | Eh/Bohr (mislabelled `_a`, § 10) |
+| `relaxation.max_force_eh_bohr` | the nuclear gradient at the judged geometry | the largest force over the **free** atoms; the all-atom figure beside it | Eh/Bohr |
 | SIESTA's `H_AA` | `.FC` rows in eV/Å² | mean of the two sides, symmetrised, converted (§ 5.5) | Hartree/Bohr² |
 
 **Two rules this table enforces** *(2026-09-09)*: a number molbuilder only
@@ -1357,11 +1383,11 @@ nothing is in that state as of 2026-09-24.
 | the thermochemistry headline and grid as one quantity, the headline T on the grid, no `kT` in the held regime | **built 2026-09-24** | § 4.7; the free and the held water runs assert the headline equals its grid row |
 | `raman_route`, `raman_fd_step_ang`; the Methods text states the Raman method one way | **built 2026-09-24** | § 4.6; the infrared-only and the solvated runs assert both |
 | the reader's unknown-key gate; the partition check without a range the size of a lie | **built 2026-09-24** | § 6.7; two forward-compatibility tests that asserted the old rule are retired into the gate test |
-| the Spectrum tab offers both engines: the `engine` item's choices, the form re-fetched for the chosen engine, the preflight and the hand-over sending it | **owed** | the CLI road is open; the tab and `web/blueprints/build.py`'s hand-over gate admit PySCF only |
-| Task setup prints `--target` when a machine is chosen, and `summarize run <stage>` as the last step of a SIESTA vibration | **owed** | measured missing on the UI walk of 2026-09-23 |
-| the Results viewer for a SIESTA file: `null` drawn as *not computed*, the equilibrium energy as a dash (today `Number(null)` prints `0.00000000`), the Raman line by route, the fingerprint off the unwritten `phase_ir` | **owed** | § 6.5 |
-| the force unit: the key `max_force_eh_a` and the viewer's "Eh/Å" for a number in Eh/Bohr | **owed** | § 4.3 |
-| `removed_motions` and `hessian_scope` shown beside the result | **owed** | R7's second half |
+| the Spectrum tab offers both engines — one strip over two catalogue-built forms, the structure choosing the default, the checks and the hand-over speaking the strip's engine; the hand-over gate admits SIESTA | **built 2026-09-24** | § 2.1, § 3.1; `web/spectra.md` § 5 |
+| Task setup prints `--target this` for this machine whenever the CLI would refuse to guess, and `summarize run <stage>` as the last step of a SIESTA vibration | **built 2026-09-24** | `web/task-setup.md` § 11 |
+| the Results viewer draws a SIESTA file: a `null` energy as a dash, the Raman and infrared lines by route, the fingerprint on the two routes, the relaxation line carrying a disabled phase's warning, the thermochemistry headline naming its regime | **built 2026-09-24** | § 6.5 |
+| the force keys say their unit: `max_force_eh_bohr`, `max_force_all_atoms_eh_bohr`, and the viewer prints Eh/Bohr | **built 2026-09-24** | § 4.3 |
+| `removed_motions` and `hessian_scope` shown beside the result | **built 2026-09-24** | R7's second half |
 | the phase flags gain a *not requested* state; today a run that asked for no strengths writes `phase_raman = 'complete'` on both writers | **owed** | § 4.9 |
 | `top_n` and `threshold` retired from the config, the catalogue, `selection.py`, `methods.py`, `validation/spectra.py`, the emitter's ranking and the tab's lock map | **owed** — decided 2026-09-23 | § 4.8 |
 | `temperature_K` and `pressure_atm` reachable on SIESTA | **owed** | § 5.5 sums at 298.15 K, 1 atm and says so |
@@ -1376,7 +1402,7 @@ nothing is in that state as of 2026-09-24.
 | four held systems through the whole road (acetylene, NH₃, the empty held list, the water dimer) | **owed** — V1.17 | § 9 |
 | `_mode_count`'s results arm: wire it into the load path or delete it | **owed** — V1.18 | § 4.10 |
 | a release note: every held-atom spectrum and free energy computed before 2026-09-23 contains a non-vibration | **owed** — V1.16 | true and intended; the old runs disagree with the new ones |
-| `presenters.md`'s *PySCF spectrum* label; the Spectrum tab's own engine sentence | **owed** with the engine choice | |
+| the presenter's category label names no engine (*Vibrational spectrum*); the Spectrum tab's engine sentence is the strip's | **built 2026-09-24** | |
 | the Molbuilder tab's save prompt doubling a typed suffix (`x.xyz.xyz`); the `#`-label unconsumed warning (needs a ruling); the vacuum notice on a gas-phase PySCF run | **owed** — UI walk 2026-09-23 | not this kind's, recorded where found |
 
 ---

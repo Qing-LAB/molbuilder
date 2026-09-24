@@ -663,7 +663,7 @@ class SpectraResults:
     #: with the gradient-check number in `relaxation` beside it.
     phase_relaxation:          str = PHASE_EMPTY
     #: v5: relaxation progress/result -- {enabled, already_relaxed,
-    #: n_steps, max_force_eh_a, converged, warning?}.  Written live so the
+    #: n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning?}.  Written live so the
     #: chip can show "step 14, max force 0.0042" ticking down.
     relaxation:                Dict[str, Any] = field(default_factory=dict)
     #: v5: RRHO thermochemistry (D2's re-homing) -- headline numbers at

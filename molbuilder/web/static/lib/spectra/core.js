@@ -79,7 +79,10 @@
         // over file selection.  loadXyzFile() and its event-listener
         // wiring are gone too (init had to null-check ``els.xyzLoadBtn``
         // since the id no longer exists; the whole branch was dead).
-        formContainer:  null,
+        formContainer:  null,   // wraps both panels: the generate-side gate + the edit-listener scope
+        form:           { pyscf: null, siesta: null },   // one schema-built form per engine
+        engineStrip:    null,
+        engineNote:     null,
         sendBtn:        null,
         sendStatus:     null,
         preflightPanel: null,
@@ -150,7 +153,9 @@
         // Form / calculation state -- NOT covered by the results-state
         // contract.  Kept at the top level of `state` for backward
         // compat; migrates to a future workspace contract.
-        schema:         null,
+        schemas:        { pyscf: null, siesta: null },   // the catalogue narrowed to (engine, vibration)
+        engine:         "pyscf",                          // the strip's choice: the description's engine
+        engineChosenByUser: false,                         // a click beats the structure's default
         lastJobName:    null,
 
         // Per contract § 2: IDLE / LOADING / LOADED / WATCHING / ERROR.
@@ -691,53 +696,132 @@
     async function initSchemaForm() {
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) {
-            els.formContainer.innerHTML =
-                '<p class="status error">form-schema.js not loaded; '
-                + 'check that <code>lib/form-schema.js</code> appears '
-                + 'before this script in the template.</p>';
+            for (const host of Object.values(els.form)) {
+                if (host) host.innerHTML =
+                    '<p class="status error">form-schema.js not loaded; '
+                    + 'check that <code>lib/form-schema.js</code> appears '
+                    + 'before this script in the template.</p>';
+            }
             return;
         }
-        await _reloadVibrationSchema(fs);
-        // No structure-commit subscription any more: the schema does
-        // not depend on the picked structure (the sidecar pre-fill it
-        // re-fetched for is gone -- see _reloadVibrationSchema), so a
-        // sidebar pick no longer wipes typed parameters, and the
-        // discard-confirm that guarded the wipe has nothing to guard.
+        _wireEngineStrip();
+        await _reloadVibrationSchemas(fs);
+        // No structure-commit subscription: the schemas do not depend on
+        // the picked structure (frozen atoms are structure-side facts that
+        // ride the hand-over, web/spectra.md § 8), so a sidebar pick never
+        // wipes typed parameters.  What a pick DOES decide is the default
+        // engine -- structureLoaded(), which the page calls.
     }
 
-    async function _reloadVibrationSchema(fs) {
-        // The vibration form comes from the CATALOGUE, narrowed to the
-        // vibration calculation kind (template.md § 6.3) -- the same
-        // door the Build tab reads, so a parameter is defined once and
-        // rendered the same on every tab (spectra-migration-plan.md
-        // P2's substitution).
-        //
-        // The schema does NOT depend on the picked structure any more:
-        // the old per-structure re-fetch existed to let the server
-        // seed ``frozen_indices`` from the .molstruct.json sidecar,
-        // and frozen atoms are STRUCTURE-side facts now -- they ride
-        // the hand-over's structure files straight off the model
-        // (plan § 2), never a form field.
+    async function _reloadVibrationSchemas(fs) {
+        // BOTH engines' forms come from the CATALOGUE, narrowed to the
+        // vibration kind (template.md § 6.3) -- the same door and the same
+        // renderer the Structure-optimization tab uses for its two
+        // sub-forms, so a parameter is defined once and rendered the same
+        // on every tab.  Both stay mounted; the strip only shows one.
         const mySeq = ++_schemaFetchSeq;
         try {
-            const schema = await fs.fetchSchema(
-                "pyscf", { calculation: "vibration" },
-            );
-            // Race guard: a rapid remount can issue a newer fetch
-            // during our await; the older response must not
-            // overwrite the newer one in state.schema.
+            const [pyscf, siesta] = await Promise.all([
+                fs.fetchSchema("pyscf",  { calculation: "vibration" }),
+                fs.fetchSchema("siesta", { calculation: "vibration" }),
+            ]);
+            // Race guard: a rapid remount can issue a newer fetch during
+            // our await; the older response must not overwrite the newer.
             if (mySeq !== _schemaFetchSeq) return;
-            state.schema = schema;
-            els.formContainer.innerHTML = "";
-            fs.renderForm(els.formContainer, schema);
+            state.schemas.pyscf  = pyscf;
+            state.schemas.siesta = siesta;
+            for (const [engine, schema] of [["pyscf", pyscf], ["siesta", siesta]]) {
+                const host = els.form[engine];
+                if (!host) continue;
+                host.innerHTML = "";
+                fs.renderForm(host, schema);
+            }
             wireCompatibilityListeners();
             applyCompatibility();
         } catch (exc) {
-            // Same race guard for the failure path.
             if (mySeq !== _schemaFetchSeq) return;
-            els.formContainer.innerHTML =
-                '<p class="status error">Could not load form schema: '
-                + escapeHtml(String(exc)) + '</p>';
+            for (const host of Object.values(els.form)) {
+                if (host) host.innerHTML =
+                    '<p class="status error">Could not load form schema: '
+                    + escapeHtml(String(exc)) + '</p>';
+            }
+        }
+    }
+
+    // ----- The engine strip -------------------------------------
+    //
+    // WHICH ENGINE is the description's `engine` (task.json), chosen here
+    // the way the Structure-optimization tab chooses it -- a strip over two
+    // mounted forms -- and carried by the hand-over.  It is not a parameter
+    // of the deck: the catalogue item that once stood in for this strip
+    // (`engine`, one choice) retired with it (engines/vibration.md § 3.1).
+    function _activeEngine() {
+        return state.engine === "siesta" ? "siesta" : "pyscf";
+    }
+
+    function setEngine(name, opts) {
+        const engine = name === "siesta" ? "siesta" : "pyscf";
+        const o = opts || {};
+        state.engine = engine;
+        if (o.byUser) state.engineChosenByUser = true;
+        if (els.engineStrip) {
+            for (const b of els.engineStrip.querySelectorAll(".tab-btn")) {
+                const active = b.dataset.tab === engine;
+                b.classList.toggle("active", active);
+                b.setAttribute("aria-selected", active ? "true" : "false");
+            }
+        }
+        for (const e of ["pyscf", "siesta"]) {
+            const panel = document.getElementById("spectra-tab-" + e);
+            if (panel) panel.hidden = (e !== engine);
+        }
+        if (els.engineNote) {
+            els.engineNote.textContent = o.reason || "";
+            els.engineNote.hidden = !o.reason;
+        }
+        refreshPreflightDebounced();
+    }
+
+    function _wireEngineStrip() {
+        if (!els.engineStrip) return;
+        for (const b of els.engineStrip.querySelectorAll(".tab-btn")) {
+            _on(b, "click", () => setEngine(b.dataset.tab, { byUser: true }));
+        }
+    }
+
+    /* THE STRUCTURE DECIDES THE DEFAULT.  A structure that repeats or
+     * continues along an axis is refused by PySCF's gate (an isolated-
+     * molecule code) and is what SIESTA is for, so a periodic load switches
+     * the strip to SIESTA and says why -- unless the person already chose.
+     * The page calls this after every successful load. */
+    function structureLoaded() {
+        const out = _viewer ? _viewer.data.exportFile() : null;
+        const s = out && out.structure;
+        const per = (s && (s.periodicity || s.cell)) || null;
+        const ak = (per && per.axis_kind) || (s && s.axis_kind) || null;
+        const periodic = Array.isArray(ak) && ak.some((k) => k && k !== "isolated");
+        if (periodic && !state.engineChosenByUser && _activeEngine() !== "siesta") {
+            setEngine("siesta", {
+                reason: "This structure repeats or continues along an axis, "
+                      + "which PySCF's gate refuses: SIESTA is the engine for "
+                      + "a periodic system.  Switch back if you meant a cluster.",
+            });
+            return;
+        }
+        refreshPreflightDebounced();
+    }
+
+    /* AUTO-DETECT'S ANSWER, spread onto both forms by field name -- the
+     * analyzer answers per engine (`suggested.<engine>`), and the adapter's
+     * names are catalogue item names (form-schema.md § 3: setValues fires
+     * input/change, so the live checks see the fill). */
+    function applySuggested(suggested) {
+        const fs = (window.molbuilder || {}).formSchema;
+        if (!fs || typeof fs.setValues !== "function") return;
+        const sug = suggested || {};
+        for (const engine of ["pyscf", "siesta"]) {
+            const host = els.form[engine], schema = state.schemas[engine];
+            if (host && schema && sug[engine]) fs.setValues(host, schema, sug[engine]);
         }
     }
 
@@ -759,7 +843,8 @@
         // module never spells an id.  The previous hardcoded
         // spellings ("s-es_top_n") had drifted from the real ids
         // ("s-es-top-n"), so the lock below had never fired.
-        const sections = (state.schema && state.schema.sections) || [];
+        const schema = state.schemas.pyscf;
+        const sections = (schema && schema.sections) || [];
         for (const sect of sections) {
             for (const f of (sect.fields || [])) {
                 if (f.name === name) return f.id || "";
@@ -769,8 +854,9 @@
     }
 
     function _esSelectionEl() {
+        // The probe's selectors are the PySCF form's; SIESTA has none.
         const id = _fieldIdByName("es_mode_selection");
-        return id ? els.formContainer.querySelector("#" + id) : null;
+        return (id && els.form.pyscf) ? els.form.pyscf.querySelector("#" + id) : null;
     }
 
     function wireCompatibilityListeners() {
@@ -797,8 +883,8 @@
         const active = activeByMode[which] || null;
         for (const name of valueFields) {
             const id = _fieldIdByName(name);
-            const f = id
-                ? els.formContainer.querySelector("#" + id) : null;
+            const f = (id && els.form.pyscf)
+                ? els.form.pyscf.querySelector("#" + id) : null;
             if (!f) continue;
             const isActive = (name === active);
             f.disabled = !isActive;
@@ -811,10 +897,12 @@
     }
 
     // ----- Helpers: gather form values + xyz -------------------
-    function collectParams() {
+    function collectParams(engine) {
         const fs = (window.molbuilder || {}).formSchema;
-        if (!fs || !state.schema) return {};
-        return fs.collectForm(els.formContainer, state.schema);
+        const e = engine || _activeEngine();
+        const host = els.form[e], schema = state.schemas[e];
+        if (!fs || !host || !schema) return {};
+        return fs.collectForm(host, schema);
     }
 
     /* THE VIEWER THIS PAGE MOUNTED, handed to us by the page that mounted it
@@ -848,15 +936,16 @@
     async function refreshPreflight() {
         const _out = _viewer ? _viewer.data.exportFile() : null;
         if (!_out || !_out.structure) return;
+        const engine = _activeEngine();
         try {
             const r = await fetch("/api/build/preflight", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     structure:   _out.structure,
-                    engine:      "pyscf",
+                    engine:      engine,
                     calculation: "vibration",
-                    params:      collectParams(),
+                    params:      collectParams(engine),
                 }),
             }).then(x => x.json());
             const vf = (window.molbuilder || {}).validationFindings;
@@ -868,12 +957,13 @@
                  * the panel's no-findings copy alive: the template's
                  * static row is destroyed by the first render. */
                 const ids = {};
-                const sects = (state.schema && state.schema.sections) || [];
+                const schema = state.schemas[engine];
+                const sects = (schema && schema.sections) || [];
                 for (const s of sects) {
                     for (const f of (s.fields || [])) ids[f.name] = f.id;
                 }
                 vf.render(r.issues, { panel: els.preflightPanel,
-                                      formScope: els.formContainer,
+                                      formScope: els.form[engine],
                                       fieldIds: ids,
                                       emptyText: "No findings yet — checks "
                                           + "run live as you edit." });
@@ -907,20 +997,18 @@
          * Frozen atoms REACH THE CALCULATION THIS WAY: they ride the
          * structure's own files, not a form field (plan § 2). */
         const _out = _viewer ? _viewer.data.exportFile() : null;
-        /* The engine is a FORM VALUE, not a literal.  It used to be
-         * hardcoded here, which made a real choice look like a constant
-         * and left a second engine nowhere to be selected.  Read from
-         * the params the user actually submitted; the literal survives
-         * only as the fallback for a form that has not rendered the
-         * field (an older cached schema), so a stale page still sends
-         * something the server accepts rather than `undefined`. */
-        const _params = collectParams();
+        /* The engine is THE STRIP'S CHOICE -- the description's engine, the
+         * same fact the Structure-optimization tab sends from its own strip
+         * -- and the params are that engine's form.  (It was a one-choice
+         * form field until 2026-09-24, which made a real choice look like a
+         * parameter of the deck.) */
+        const engine = _activeEngine();
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
             structure:   (_out && _out.structure) ? _out.structure : null,
-            engine:      _params.engine || "pyscf",
-            params:      _params,
+            engine:      engine,
+            params:      collectParams(engine),
             calculation: "vibration",
         });
     }
@@ -1408,7 +1496,47 @@
         // to see which one they got.  An older sidecar predates the
         // field: that is an absence of record, reported as such rather
         // than guessed either way.
+        /* R7's second half: what the harmonic analysis took out before
+         * diagonalising, and over which atoms the Hessian ran, said beside
+         * the result and not only in the file. */
+        function _removedMotionsLabel(r) {
+            const rm = r.removed_motions || {};
+            if (rm.count == null) return "not recorded";
+            const nFree = (r.free_atom_idxs || []).length;
+            const modes = (r.modes || []).length;
+            return rm.count + " (" + (3 * nFree) + " coordinates of the free atoms \u2192 "
+                 + modes + (modes === 1 ? " vibration)" : " vibrations)");
+        }
+        function _hessianScopeLabel(r) {
+            if (!r.hessian_scope) return "not recorded";
+            const n = r.n_atoms_in_hessian, N = r.n_atoms_total;
+            return r.hessian_scope === "free"
+                ? "the free atoms only (" + n + " of " + N + ")"
+                : "every atom (" + N + ")";
+        }
+        /* The Raman line by ROUTE, like the infrared line: a phase flag says
+         * a step finished, not whether it computed anything, and a SIESTA
+         * file's phase_raman is 'complete' with nothing behind it. */
+        function _ramanRouteLabel(r) {
+            if (r.engine === "siesta") return "not computed on this engine";
+            if (!r.config || !r.config.compute_raman) return "not requested";
+            switch (r.raman_route) {
+                case "finite-difference":
+                    return "computed \u2014 finite-difference polarizabilities"
+                         + (r.raman_fd_step_ang != null
+                            ? " (\u00b1" + r.raman_fd_step_ang + " \u00c5)" : "");
+                case "none":
+                    return "not computed";
+                case "":
+                case undefined:
+                    return r.phase_raman === "complete"
+                         ? "computed \u2014 route not recorded" : r.phase_raman;
+                default:
+                    return "computed \u2014 " + r.raman_route;
+            }
+        }
         function _irRouteLabel(r) {
+            if (r.engine === "siesta") return "not computed on this engine";
             if (!r.config || !r.config.compute_ir) return "not requested";
             switch (r.ir_route) {
                 case "analytic":
@@ -1430,16 +1558,21 @@
             ["Free / frozen",     (results.free_atom_idxs || []).length
                                     + " / "
                                     + (results.frozen_atom_idxs || []).length],
-            ["Equilibrium E (Eh)", (results.equilibrium &&
-                                    Number(results.equilibrium.scf_energy_eh)
-                                        .toFixed(8)) || "—"],
+            // ABSENT IS NOT ZERO (engines/vibration.md § 6.5): a SIESTA
+            // file carries no reference energy, and Number(null) is 0.
+            ["Equilibrium E (Eh)", (results.equilibrium
+                                    && results.equilibrium.scf_energy_eh != null)
+                                    ? Number(results.equilibrium.scf_energy_eh).toFixed(8)
+                                    : "\u2014"],
+            ["Hessian over",       _hessianScopeLabel(results)],
+            ["Whole-body motions removed", _removedMotionsLabel(results)],
             ["CPU / threads",      cpu],
             ["GPU",                gpu],
             ["Host",               rt.hostname || "—"],
             ["Relaxation",                _relaxSummary(results)],
             ["Frequencies (Hessian)",     results.phase_frequencies],
             ["IR intensities",            _irRouteLabel(results)],
-            ["Raman activities",           results.phase_raman],
+            ["Raman activities",           _ramanRouteLabel(results)],
             ["Per-mode orbital energies",  results.phase_es],
         ];
         // The Methods paragraph is composed during the run and grows as
@@ -1523,13 +1656,20 @@
         // deck recorded, in one line.  v4 files carry no block.
         const rx = results.relaxation || {};
         if (rx.already_relaxed) return "skipped (already relaxed)";
-        if (!rx.enabled) return results.phase_relaxation || "\u2014";
+        if (!rx.enabled) {
+            // A route that relaxes nothing says so in its warning (the
+            // SIESTA force-constant run); a v4 file says nothing at all.
+            return rx.warning ? "none \u2014 " + rx.warning
+                              : (results.phase_relaxation || "\u2014");
+        }
         let out = results.phase_relaxation || "empty";
         if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";
-        if (rx.max_force_eh_a != null) {
-            out += ", max |F| "
-                 + Number(rx.max_force_eh_a).toExponential(1)
-                 + " Eh/\u00c5";
+        // The judged force is over the FREE atoms, in Eh/Bohr -- the key
+        // says its unit (engines/vibration.md § 4.3).
+        if (rx.max_force_eh_bohr != null) {
+            out += ", max |F| on the free atoms "
+                 + Number(rx.max_force_eh_bohr).toExponential(1)
+                 + " Eh/Bohr";
         }
         if (rx.warning) out += " \u26a0 " + rx.warning;
         return out;
@@ -1582,7 +1722,8 @@
             _actSum("ir_intensity_km_mol"),
             results.phase_frequencies || "",
             results.phase_raman || "",
-            results.phase_ir || "",
+            results.ir_route || "",
+            results.raman_route || "",
             results.phase_es || "",
             results.phase_relaxation || "",
             String((results.relaxation
@@ -3124,10 +3265,14 @@
                      + Number(th.zpe_eh).toFixed(6) + " Eh ("
                      + (th.zpe_eh * _EH_TO_KCAL).toFixed(1) + " kcal/mol)";
             if (th.g_eh != null) {
+                // The headline names its regime: full RRHO for a free
+                // molecule, the vibrational sums when atoms are held --
+                // one quantity under one label (engines/vibration.md § 4.7).
                 head += "; H " + Number(th.h_eh).toFixed(6) + " Eh"
                       + "; S " + Number(th.s_eh_k).toExponential(4) + " Eh/K"
                       + "; G " + Number(th.g_eh).toFixed(6)
-                      + " Eh (full RRHO)";
+                      + (th.regime === "rrho" ? " Eh (full RRHO)"
+                                              : " Eh (vibrational contributions only)");
             }
             bits.push(head + ".");
             if (th.note) bits.push(String(th.note) + ".");
@@ -3288,6 +3433,10 @@
         // (sidebar took over file selection).  loadXyzFile() is also
         // gone; see the comment at the els declaration above.
         els.formContainer  = $("spectra-form-container");
+        els.form.pyscf     = $("spectra-form-pyscf");
+        els.form.siesta    = $("spectra-form-siesta");
+        els.engineStrip    = $("spectra-engine-strip");
+        els.engineNote     = $("spectra-engine-note");
         els.sendBtn        = $("send-to-task-setup");
         els.sendStatus     = $("send-status");
         els.preflightPanel = $("spectra-issues");
@@ -3593,6 +3742,15 @@
          * find `.mount`, logged that core.js must be missing, and the entire
          * Generate side of /spectrum-calculation never started. */
         useViewer: useViewer,
+        /* The engine strip's door, for the page that mounted this: which
+         * engine is active, set it, tell the inspector a structure landed
+         * (so the structure can pick the default), and spread auto-detect's
+         * per-engine answer onto the forms.  The page never reaches into
+         * the containers (overview.md § 1). */
+        activeEngine:    _activeEngine,
+        setEngine:       setEngine,
+        structureLoaded: structureLoaded,
+        applySuggested:  applySuggested,
     };
 
     }   // ----- end of mountInspector(rootEl, opts) -----

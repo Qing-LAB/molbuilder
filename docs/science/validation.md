@@ -530,6 +530,17 @@ registry (`_KIND_VALIDATORS`) composes a kind's own science from the
 described fact — `validate(struct, cfg, calculation=…)` is the
 one per-engine gate. Tests mirror the layout under `tests/validation/`.
 
+**One fact, one finding.** The kind's validator owns the families the kind's
+science answers — on a vibration: the parity of the electron count, the
+open-shell metal, the grid, the held atoms and what survives the freeze, and
+the region labels the run does not consume — and the engine validator, which
+receives `calculation`, **defers** those families on that kind rather than
+firing its own copy. Two findings for one fact is the failure this rule
+closes: the engine's copy is reasoned from the wrong calculation (a
+*"held fixed during relaxation"* line on a force-constant run that relaxes
+nothing — seen on the Spectrum tab, 2026-09-24). Both engine validators
+branch on the kind the same way (`validation/pyscf.py`, `validation/siesta.py`).
+
 > *This said **four** configs (SIESTA / PySCF / spectra / transport). Both of
 > the others keyed on a config class nothing in production validates, and both
 > retired for the same reason one year apart in code time: `SpectraConfig`
