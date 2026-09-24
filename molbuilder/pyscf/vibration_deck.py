@@ -296,7 +296,12 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # there.  The SAME set is excluded from the Hessian below",
             "    # (partial Hessian), so the geometry the frequencies are",
             "    # computed at is one where the fixed atoms never moved.",
-            f"    # Source: frozen set (0-based) = {_frozen!r}",
+            # ONE SPELLING of the frozen-set line, the optimization deck's
+            # (`pyscf/input.py`): the run wrapper reads the constraint back
+            # off the deck by that exact comment, so a second wording here
+            # made every held-atom vibration run report "no frozen_atoms --
+            # all atoms free" in its own header.
+            f"    # Source: Structure.frozen_atoms = {_frozen!r}  (0-based)",
             "    _FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB "
             f"+ {ROLE_CONSTRAINTS!r})",
             "    with open(_FROZEN_CONSTRAINTS_PATH, 'w') as _fh:",

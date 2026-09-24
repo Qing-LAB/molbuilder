@@ -403,6 +403,13 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert th["regime"] == "vibrational-only"
     assert th["n_modes"] == 3 and th["n_rigid_removed"] == 3
     assert th["n_imag_excluded"] == 0
+    # The run wrapper states the constraint in its own header, read back
+    # off the deck: one fact, one spelling across the process boundary.
+    attempt = bundle / "01_freq" / "run-0"
+    wrap_logs = sorted(attempt.glob("*.runwrap-*.log"))
+    assert wrap_logs, "the wrapper writes its session log beside the run"
+    header = wrap_logs[-1].read_text(errors="replace")
+    assert "frozen_atoms: 1 listed indices" in header, header[:1500]
     # Every mode is orthogonal to every removed motion in the mass metric
     # (science/normal-modes.md § 7 point 3), read off the artifact itself.
     import numpy as np

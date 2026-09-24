@@ -807,18 +807,21 @@ def _runtime_status_block(
                           f'_mb_has_state "{basename}{suf}"')
         )
         # PySCF embeds the canonical frozen-atom list as a single-line
-        # comment.  Counting digits in that comment is sufficient
-        # since the indices are comma-separated inside ``[...]``.
+        # comment.  The indices are comma-separated inside ``[...]``, so
+        # the count is the digits INSIDE the brackets -- the line's tail
+        # says "(0-based)", and counting the whole line reported one index
+        # too many for every deck.
         constraint_detection = (
             f'_constraints="(no frozen_atoms -- all atoms free)"\n'
             f'_py_path="{script_name}"\n'
             f'if [ -e "$_py_path" ]; then\n'
             f'    _frozen_line=$(grep -E \'^[[:space:]]*#[[:space:]]*Source:[[:space:]]+Structure\\.frozen_atoms\' "$_py_path" | head -1 || true)\n'
             f'    if [ -n "$_frozen_line" ]; then\n'
-            # || true: with ZERO digits in the line, grep -o exits 1 and
+            # || true: with ZERO digits in the list, grep -o exits 1 and
             # pipefail killed the wrapper -- making the very "lists 0
             # indices" branch below unreachable (R9).
-            f'        _ncon_indices=$(printf %s "$_frozen_line" | grep -oE \'[0-9]+\' | wc -l || true)\n'
+            f'        _frozen_list=$(printf %s "$_frozen_line" | grep -oE \'\\[[^]]*\\]\' | head -1 || true)\n'
+            f'        _ncon_indices=$(printf %s "$_frozen_list" | grep -oE \'[0-9]+\' | wc -l || true)\n'
             f'        if [ "$_ncon_indices" = "0" ]; then\n'
             f'            _constraints="frozen_atoms comment present but lists 0 indices -- all atoms free"\n'
             f"        else\n"

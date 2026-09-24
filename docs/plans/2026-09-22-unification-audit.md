@@ -1656,6 +1656,25 @@ An element must denote Z ≥ 1 · what the CLI's single stdout stream carries ·
 
 **§ 7b is closed** by C and D (5,974 + ~3,300 lines read end to end); what they found is above. § 7c, the rest of the tree, stands.
 
+#### Measured through the UI, the same day — the designed road, end to end
+
+*Water built from SMILES on the Molbuilder tab, its oxygen assigned
+`frozen_atoms` in the viewer, saved to a new project (`claude-vib-ui`,
+mine), loaded on the Spectrum tab, sent to Task setup, shape and machine
+chosen there, `task.json` saved, the printed `prep`/`launch` commands run,
+the result opened on the Results tab. It ran, and the run reported three
+vibrations with three motions removed. What the walk found beside that:*
+
+| # | where | what happened | the rule |
+|---|---|---|---|
+| U1 | `runwrap.py:813–825` ← `pyscf/vibration_deck.py:299` | the wrapper's header said **"(no frozen_atoms -- all atoms free)"** for a deck holding the oxygen: it greps the deck for `# Source: Structure.frozen_atoms`, and the vibration deck wrote `# Source: frozen set (0-based)`. **Fixed the same day** in the deck (one spelling, the optimization deck's) and pinned through the wrapper's own log — which exposed a second defect in the wrapper's parse: it counted every digit on the line, including the `0` of `(0-based)`, so every deck with frozen atoms was reported with one index too many; now the digits inside the brackets. The grep itself is audit #2's class — one fact re-derived across the process boundary | `overview.md` § 2; audit § 0a |
+| U2 | Task setup, the printed command | `molbuilder jobset prep run freq --bundle …` was handed over **without `--target`**, and refused as printed ("several machines could be meant"); `task-setup.md` § 10 says the page *"puts `--target` in the command it teaches"*. The page's own card said *"Prepared for (this machine)"* | held (`web/`) |
+| U3 | Molbuilder, Save to project | the filename prompt took `water_Ofrozen.xyz` and wrote `water_Ofrozen.xyz.xyz` + `water_Ofrozen.xyz.molstruct.json` — the prompt expects a stem and appends the suffix without checking for one | held (`web/`) |
+| U4 | Spectrum tab, Checks; `prep` | the provenance label the build door itself wrote (`O#`, `structure-annotations.md` § 5.1) is warned as *"region label(s) ['O#'], which the PySCF vibration run does NOT consume"* on every SMILES-built molecule — the reviews' unstated rule about `#`-labels, seen live | needs a ruling: is a `#` label exempt from the unconsumed-label check? |
+| U5 | Results tab, the relaxation chip; the artifact key | *"max \|F\| 5.6e-5 Eh/Å"* — the number is Eh/Bohr; the key is named `max_force_eh_a` and the viewer prints Å. Documented in `web/spectra.md` § 9b; the rename is owed with the viewer | held (`web/`); the key name is the deck's |
+| U6 | Results tab | `removed_motions` (schema 6) has no surface yet: the viewer shows 3 modes and "Free / frozen 2 / 1" but does not say what was taken out | held (`web/`); owed to W21's viewer |
+| U7 | Spectrum tab, hand-over notice | `[cell.vacuum_defaulted]` advises 8 Å of vacuum for a gas-phase PySCF run that has no box | cosmetic; the notice is right for SIESTA and speaks for both |
+
 
 ## 2. Documentation: one policy, not forty-four edits
 
