@@ -556,7 +556,7 @@ def _vib_ir_only_block(cfg) -> List[str]:
         "# ============================================================",
         "#  Phase 3-IR: IR intensities",
         "# ============================================================",
-        "state['phase_raman'] = 'complete'   # not requested; nothing owed",
+        "state['phase_raman'] = PHASE_NOT_REQUESTED   # no Raman sweep was asked for (vibration.md 4.9)",
         "if DMU_DR is None:",
         "    print('=== Stage: IR intensities (dipole finite differences) ===')",
         "    _h_ang = RAMAN_FD_STEP_ANG   # ONE step for both dmu/dR paths",
@@ -718,13 +718,13 @@ def vibration_spec(struct: Structure, cfg, *,
         elif view.compute_ir:
             out += _vib_ir_only_block(cfg)
         else:
-            out += ["", "state['phase_raman'] = 'complete'  "
-                        "# neither IR nor Raman requested",
+            out += ["", "state['phase_raman'] = PHASE_NOT_REQUESTED  "
+                        "# neither IR nor Raman requested (vibration.md 4.9)",
                     "_atomic_write_json(state, JSON_PATH)"]
         if view.es_mode_selection != "skip":
             out += _emit_es_loop(view)
         else:
-            out += ["", "state['phase_es'] = 'complete'  # selector: skip",
+            out += ["", "state['phase_es'] = PHASE_NOT_REQUESTED  # selector: skip -- nothing was asked (vibration.md 4.9)",
                     "_atomic_write_json(state, JSON_PATH)"]
         out += _emit_final_summary()
         return "\n".join(out) + "\n"

@@ -115,9 +115,11 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
 
     from molbuilder.spectra.results import SCHEMA_VERSION
     assert d["schema_version"] == SCHEMA_VERSION
-    for k in ("phase_relaxation", "phase_frequencies",
-              "phase_raman", "phase_es"):
+    for k in ("phase_relaxation", "phase_frequencies", "phase_raman"):
         assert d[k] == "complete", (k, d[k])
+    # the probe was never asked for (`es_mode_selection` left at `skip`):
+    # the flag says so from the first write (vibration.md § 4.9)
+    assert d["phase_es"] == "not requested"
 
     # D3, live: the relaxation ran, was tracked, and converged.
     rel = d["relaxation"]
@@ -198,9 +200,9 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
     assert d["ir_route"] in ("analytic", "finite-difference"), (
         f"IR ran but recorded no route: {d.get('ir_route')!r}")
 
-    # Raman was NOT requested: its phase closes as complete-with-nothing,
+    # Raman was NOT requested: its phase says so (vibration.md § 4.9),
     # and the run says so as a route, not as a zero.
-    assert d["phase_raman"] == "complete"
+    assert d["phase_raman"] == "not requested"
     assert all(m["raman_activity_a4_amu"] in (None, 0.0) for m in modes)
     assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
 

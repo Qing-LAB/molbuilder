@@ -38,7 +38,7 @@ from ..transport.sort import Permutation
 from .methods import extract_citation_keys
 from .normal_modes import (THERMO_GRID_K, vibrational_modes,
                            vibrational_thermo, vibrational_thermo_grid)
-from .results import (PHASE_COMPLETE, SCHEMA_VERSION, ModeData,
+from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED, SCHEMA_VERSION, ModeData,
                       SpectraResults)
 
 #: The temperature and pressure the thermochemistry is summed at when the
@@ -264,10 +264,13 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         config=dict(config or {}),
         methods_text=methods,
         bibliography_keys=extract_citation_keys(methods),
+        # The frequencies are this route's whole answer; the strengths, the
+        # probe and a relaxation were never asked of it, and the flag says so
+        # (`engines/vibration.md` § 4.9) rather than reporting them done.
         phase_frequencies=PHASE_COMPLETE,
-        phase_raman=PHASE_COMPLETE,      # not requested; nothing owed
-        phase_es=PHASE_COMPLETE,
-        phase_relaxation=PHASE_COMPLETE,
+        phase_raman=PHASE_NOT_REQUESTED,
+        phase_es=PHASE_NOT_REQUESTED,
+        phase_relaxation=PHASE_NOT_REQUESTED,
         relaxation=relaxation,
         thermo=thermo,
         removed_motions={"count": n_rigid,

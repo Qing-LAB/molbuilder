@@ -777,11 +777,22 @@ harmonic analysis (Phase 2) close `phase_frequencies`, which Phase 1 opened —
 are the reader's clock:
 
 ```text
-phase_relaxation   empty → running (step count, max force ticking) → complete   (complete by assertion under already_relaxed)
+phase_relaxation   empty → running (step count, max force ticking) → complete   (complete by assertion under already_relaxed;
+                                                                                 `not requested` on SIESTA, whose route relaxes nothing)
 phase_frequencies  empty → running → complete
-phase_raman        empty → running → complete      (complete-with-nothing when not requested — § 10)
-phase_es           empty → running → complete      (per-mode entries fill in one at a time)
+phase_raman        empty → running → complete      (`not requested` from the first write when the description
+                                                    asked for no Raman sweep, and on SIESTA, whose route has none)
+phase_es           empty → running → complete      (per-mode entries fill in one at a time; `not requested` under
+                                                    `es_mode_selection = skip`, and on SIESTA)
 ```
+
+**`not requested` is a fourth, terminal state** *(built 2026-09-24, V1.5)*: a
+phase the description never asked for is `not requested` from the first write
+and never changes, so a reader cannot mistake *nothing was asked* for *nothing
+has happened yet* (`empty`) or for *done with nothing behind it* (`complete`,
+which both writers used to write). The viewer counts it as finished when it
+decides whether the run is done, draws its chip as such, and prints it as the
+phase's status. Only a phase that was asked for is ever `running`.
 
 The Results-tab viewer polls the file while any phase is running and redraws as
 modes arrive ([`web/spectra.md`](?doc=web/spectra.md) § 7).
@@ -1152,7 +1163,7 @@ by name.
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
 | `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
-| `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` (§ 4.9) |
+| `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9); the SIESTA writer writes `complete` for the frequencies and `not requested` for the other three |
 | `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled: false`, `already_relaxed` as the person's assertion (true once made — the gate refuses the run otherwise, § 5.8), the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline (T, P) with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
@@ -1490,7 +1501,7 @@ nothing is in that state as of 2026-09-24.
 | the Results viewer draws a SIESTA file: a `null` energy as a dash, the Raman and infrared lines by route, the fingerprint on the two routes, the relaxation line carrying a disabled phase's warning, the thermochemistry headline naming its regime | **built 2026-09-24** | § 6.5 |
 | the force keys say their unit: `max_force_eh_bohr`, `max_force_all_atoms_eh_bohr`, and the viewer prints Eh/Bohr | **built 2026-09-24** | § 4.3 |
 | `removed_motions` and `hessian_scope` shown beside the result | **built 2026-09-24** | R7's second half |
-| the phase flags gain a *not requested* state; today a run that asked for no strengths writes `phase_raman = 'complete'` on both writers | **owed** | § 4.9 |
+| the phase flags' *not requested* state: a phase the description never asked for is `not requested` from the first write, on both writers; the viewer counts it finished and draws it | **built 2026-09-24** — V1.5 | § 4.9 |
 | `top_n` and `threshold` retired from the config, the catalogue, `selection.py`, `methods.py`, `validation/spectra.py`, the emitter's ranking and the tab's lock map | **owed** — decided 2026-09-23 | § 4.8 |
 | `temperature_K` and `pressure_atm` reachable on SIESTA | **owed** | § 5.5 sums at 298.15 K, 1 atm and says so |
 | the Methods paragraph reads the effective level of theory (`cfg.method`), and a functional or dispersion set under Hartree–Fock is advised against | **owed** | § 4.10 — a Hartree–Fock run's write-up names B3LYP-D3BJ |

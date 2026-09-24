@@ -223,13 +223,14 @@ def test_dot_classes_match_phase_status():
     based on ``results.phase_<dot's data-phase>``."""
     out = _run_with_results({
         "phase_frequencies": "complete",
-        "phase_raman": "in_progress",
-        "phase_es": "empty",
+        "phase_raman": "running",
+        "phase_es": "not requested",
     })
     by_phase = {d["phase"]: d for d in out["dot_states"]}
     assert by_phase["frequencies"]["className"] == "phase-dot phase-complete"
-    assert by_phase["raman"]["className"]       == "phase-dot phase-in_progress"
-    assert by_phase["es"]["className"]          == "phase-dot phase-empty"
+    assert by_phase["raman"]["className"]       == "phase-dot phase-running"
+    # the phrase is the state (vibration.md § 4.9); the class is one token
+    assert by_phase["es"]["className"]          == "phase-dot phase-not-requested"
 
 
 def test_missing_phase_field_defaults_to_empty():

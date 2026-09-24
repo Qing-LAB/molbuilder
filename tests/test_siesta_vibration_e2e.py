@@ -153,6 +153,11 @@ def test_h2_with_one_atom_held_runs_the_force_constant_road(tmp_path,
     assert d["equilibrium"]["mo_energies_eh"] is None
     assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert d["thermo"]["regime"] == "vibrational-only"
+    # the frequencies are this route's whole answer; the rest was never asked
+    # of it (vibration.md § 4.9)
+    assert d["phase_frequencies"] == "complete"
+    assert (d["phase_raman"], d["phase_es"], d["phase_relaxation"]) \
+        == ("not requested",) * 3
     assert "Head1997" in d["bibliography_keys"]
     # R5 on this route: the reference-step forces read back and judged
     rx = d["relaxation"]

@@ -466,8 +466,10 @@ travel with the structure now — § 8).
 If you load a spectrum whose calculation is still running, the viewer **polls
 `/api/spectra/load` every 2 seconds** and redraws as new modes arrive. (That's a
 faster cadence than the trajectory viewer's 15 seconds — a spectrum job produces
-its phases in quicker bursts.) It considers the run done once the result reports
-all its phases complete.
+its phases in quicker bursts.) It considers the run done once every phase the
+description asked for reports `complete`; a phase it never asked for reports
+`not requested` from the first write and counts as finished
+([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9).
 
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
 (idle → loading → loaded / watching → error), and **Refresh is a clean reload**

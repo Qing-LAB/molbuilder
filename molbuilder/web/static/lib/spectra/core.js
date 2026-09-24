@@ -1357,10 +1357,13 @@
         const r = results.phase_raman;
         const e = results.phase_es;
         if (f !== "complete") return "Computing vibrational frequencies (Hessian)";
-        if (results.config && results.config.compute_raman && r !== "complete")
+        // `not requested` is terminal (vibration.md § 4.9): nothing is
+        // computing for a phase the description never asked for.
+        const done = (v) => v === "complete" || v === "not requested";
+        if (results.config && results.config.compute_raman && !done(r))
             return "Computing Raman activities (polarizability derivatives)";
         const sel = results.config && results.config.es_mode_selection;
-        if (sel && sel !== "skip" && e !== "complete") {
+        if (sel && sel !== "skip" && !done(e)) {
             const haveES = (results.modes || [])
                 .filter(m => m.electronic_structure).length;
             const planned = (results.selected_mode_idxs_1based || []).length;
@@ -1381,9 +1384,10 @@
             return false;
         if (results.phase_frequencies !== "complete") return false;
         const cfg = results.config || {};
-        if (cfg.compute_raman && results.phase_raman !== "complete") return false;
+        const done = (v) => v === "complete" || v === "not requested";
+        if (cfg.compute_raman && !done(results.phase_raman)) return false;
         if (cfg.es_mode_selection && cfg.es_mode_selection !== "skip"
-            && results.phase_es !== "complete") return false;
+            && !done(results.phase_es)) return false;
         return true;
     }
 
@@ -1394,7 +1398,8 @@
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|es
             const v  = results["phase_" + ph] || "empty";
-            dot.className = "phase-dot phase-" + v;
+            // the state is a phrase (`not requested`); the class is one token
+            dot.className = "phase-dot phase-" + String(v).replace(/\s+/g, "-");
             dot.title = ph + ": " + v;
         });
     }

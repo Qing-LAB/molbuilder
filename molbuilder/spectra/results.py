@@ -108,8 +108,14 @@ PHASE_EMPTY    = "empty"     # not yet computed
 PHASE_RUNNING  = "running"   # script is mid-way through this phase
                              # (live-watch / atomic-replace JSON updates)
 PHASE_COMPLETE = "complete"  # phase done, data is final for this run
+#: A phase the description never asked for -- written from the first
+#: write and never changed, so *nothing was asked* cannot be read as
+#: *nothing yet* (empty) or *done with nothing behind it* (complete).
+#: Terminal: the viewer counts it finished (`engines/vibration.md` § 4.9).
+PHASE_NOT_REQUESTED = "not requested"
 
-_VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE)
+_VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE,
+                       PHASE_NOT_REQUESTED)
 
 
 def _reject_complex_then_asarray(value, *, field: str) -> np.ndarray:

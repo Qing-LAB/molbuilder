@@ -629,6 +629,13 @@ so #phase-indicator was
     border-color: var(--success);
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
+/* A phase the description never asked for (vibration.md § 4.9): hollow and
+ * dashed, so it reads as "nothing was asked", not as "not yet". */
+.phase-dot.phase-not-requested {
+    background: transparent;
+    border-style: dashed;
+    box-shadow: none;
+}
 @keyframes phase-pulse {
     0%,
 100% { opacity: 1; }
