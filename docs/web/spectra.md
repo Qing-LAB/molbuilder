@@ -494,10 +494,11 @@ pair the hand-over writes — never a form field
 carries them; the Send button exports the model **in one read**
 (`exportFile()`), so what you see frozen is what the calculation holds fixed.
 
-**Frozen means frozen through every phase** (user ruling 2026-08-21). The
-pre-Hessian relaxation holds the same set fixed — the deck writes geomeTRIC's
-`$freeze` constraints file, the same mechanism the optimization deck uses —
-and the Hessian is built over the free atoms only. Which atoms to freeze is
+**Frozen means frozen through every phase** (user ruling 2026-08-21). When
+the deck relaxes, the relaxation holds the same set fixed — it writes
+geomeTRIC's `$freeze` constraints file, the same mechanism the optimization
+deck uses; under `already_relaxed` there is no relaxation and no constraints
+file — and the Hessian is built over the free atoms only either way. Which atoms to freeze is
 the user's own call: the tab never second-guesses the set, and nothing warns
 you off a choice you made on purpose. What the calculation DOES say, out
 loud, is what the freeze means for the numbers: the deck states the regime
@@ -582,7 +583,7 @@ answers:
 | `explicit` | exactly the indices you list |
 | ~~`top_n`~~ · ~~`threshold`~~ | **retired** *(decided 2026-09-23)*. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths (§ 9b.3) they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters (8 SCFs for CO₂). *The code still carries both, in seven places named by V1 in [`plans/plan.md`](?doc=plans/plan.md); the retirement is owed.* |
 
-**The frequency window filters `skip` and `all` and is IGNORED by `explicit`** —
+**The frequency window filters `all` (`skip` selects nothing) and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
 dropped it would answer a question you did not ask.
 

@@ -378,7 +378,7 @@ the two paths is silent:
 | | the two choices | what must be used, and why |
 |---|---|---|
 | **which masses** | whole mass *numbers* (H = 1, S = 32) or real isotope-averaged masses (H = 1.008, S = 32.06) | **isotope-averaged.** PySCF's `harmonic_analysis` and `thermo.thermo` both use them, and `thermo` takes no mass argument — so it is the only convention that agrees with itself. Note `atom_mass_list()` *defaults to the whole numbers*: the convention has to be asked for. |
-| **how modes are normalised** | `Σₖ mₖ|Lₖ|² = 1` with masses in electron masses, or in amu | **amu.** The Gaussian/ORCA infrared prefactor `42.2561` is derived for amu; feed it a mode normalised in electron masses and every intensity is wrong by the ratio, **1823×**. |
+| **how modes are normalised** | `Σₖ mₖ\|Lₖ\|² = 1` with masses in electron masses, or in amu | **amu.** The Gaussian/ORCA infrared prefactor `42.2561` is derived for amu; feed it a mode normalised in electron masses and every intensity is wrong by the ratio, **1823×**. |
 
 Measured, BDT at one geometry, free versus both sulfurs held (§ 9): the ring C–H
 stretches agree to **0.001 cm⁻¹** and their infrared intensities to **0.2 %**.
@@ -399,6 +399,60 @@ in Hartree/(Bohr²·amu), so
 whereas the electron-mass convention would use `HARTREE_CM1` alone. Both are
 correct; mixing them is not. The constant lives in `constants.py`, derived from
 the two it is made of.
+
+### 3.3 What every other code does — checked 2026-09-21, and why the testing weight sits on the rank rule
+
+Before the rule was built, four places were checked for an implementation to
+borrow, so that this would be a borrowing where one was available:
+
+- **PySCF has nothing.** Not one of the eight entry points in
+  `pyscf.hessian.thermo` takes a frozen list, an atom list or a mask;
+  `harmonic_analysis(mol, hess, …)` reads the whole molecule and the whole
+  curvature table. Four phrasings searched on its issue tracker, nothing; no
+  such module in `pyscf-forge` or `pyscf/properties`; the installed tree
+  grepped for `partial_hessian|phva|frozen_atoms`, nothing. *(And the obvious
+  trick fails instructively: give the held atoms a huge mass and call
+  `harmonic_analysis` anyway. It computes the centre of mass from those
+  masses, so the centre lands on the held atoms, and it then removes six
+  motions built around that centre. Six is wrong — for BDT with both sulfurs
+  held the answer is one, for a held slab zero — the published error
+  [Vester2024] warns against, arrived at by a shortcut.)*
+- **ASE does what the old two-branch code did.** The most widely used
+  implementation of held-atom vibrational analysis [ASE2017],
+  `Vibrations(atoms, indices=[…])`, displaces only the chosen atoms and then
+  `omega2, modes = np.linalg.eigh(self.im[:, None] * H * self.im)`:
+  mass-weight, diagonalise, **no projection**, `3n` modes for `n` displaced
+  atoms — line for line the frozen branch this document retired. The
+  leftover-motion problem is a community-wide wart, not a molbuilder
+  peculiarity.
+- **Others have hit the wart and bolted projection on.** A pull request
+  against an ASE-based toolchain, *"Project translations/rotations out of
+  Hessians for all calculators"*, gives the reason this document measured:
+  the rigid-body modes otherwise stay in the frequency list *"contaminated by
+  residual gradients, grid noise or finite-difference error"*, and with
+  projection they *"vanish to machine precision"* — but it projects all six,
+  which is right for a free molecule and wrong when atoms are held.
+- **The literature says it from the physics side.** Ghysels *et al.*,
+  comparing partial-Hessian techniques: *"Although the PES is still invariant
+  under the six global translations and rotations, the zero eigenvalues
+  corresponding to global rotations may be lacking."* [Ghysels2010]
+
+| | what it does when atoms are held |
+|---|---|
+| ASE [ASE2017] | projects nothing — the leftover stays in the list |
+| the ASE-based pull request | projects all six — right for a free molecule, **wrong** when atoms are held |
+| Vester & Olsen [Vester2024] | identifies and removes after the fact, by character |
+| **the rank rule of § 3.1** | computes the right number from the geometry: 6, 5, 4, 3, 1 or 0 |
+
+**What this settled** *(the reason Option A was chosen, recorded 2026-09-21 and
+worth keeping)*: the risk of writing the rule ourselves is **not** "replacing
+a well-tested routine with ours", because there is no upstream held-atom
+implementation whose correctness would be second-guessed — there is none to
+replace. The real risk is the opposite one: the rank rule is ahead of every
+published implementation, so nobody else's testing covers it. That is why the
+whole testing weight sits on it (§ 7): it must reproduce the textbook answer
+everywhere a textbook has one — the gate against PySCF on free molecules —
+before it is trusted on the one case only it handles.
 
 ---
 
@@ -832,12 +886,13 @@ For a structure with held atoms:
 | CO₂ | — | 5 | straight, with no linearity flag anywhere |
 | a lone atom | — | 3 | an atom does not vibrate |
 | water | O | **3** | half of six reported numbers are not vibrations |
+| water | O + one H | **1** | two held atoms leave one turn that moves the free hydrogen — the old two-branch code reported 3 here where R2 gives 2 |
 | CO₂ | both O | **0** | ⚠ the table of § 3 says 1 |
 | acetylene | both C | **0** | ⚠ the same trap, all four atoms on the axis |
 | NH₃ | three H | 0 | three anchors not in a row pin everything |
 | periodic slab or crystal | — / any | 3 / 0 | § 3.1a |
 | periodic wire (one axis) | — | **4** | § 3.1a — the turn about the wire's own axis survives |
-| two waters 20 Å apart | one of them | **0** | **the over-removal guard** — nothing is projected, and the free molecule keeps its six soft modes. A rule that removed them here would be committing the published error of § 3.5 |
+| two waters 20 Å apart | one of them | **0** | **the over-removal guard** — nothing is projected, and the free molecule keeps its six soft modes. A rule that removed them here would be committing the published error § 3.1 warns against |
 
 Point 3 is the assertion worth having: it states the physical property rather
 than the shape of the implementation, and it fails loudly on the defect this
@@ -849,6 +904,11 @@ held-oxygen water run through the whole described road in
 ---
 
 ## 8. Why this document exists
+
+*(This section is the record of what was found on 2026-09-21. Every defect it
+names was fixed by 2026-09-23 — [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 10 says what stands — and the present tense below is the record's, kept so
+the reason for each rule stays visible.)*
 
 On 2026-09-21 an end-to-end run of BDT — free, then with both sulfurs held, at
 one shared geometry, driven through the web UI — measured the spurious mode
@@ -873,25 +933,28 @@ Three further consequences fell out of the same gap, and each is a rule above:
   at −0.93 rather than +0.93 cm⁻¹ — a mode at +0.93 cm⁻¹ contributes
   **6.4 k_B ≈ 12.7 cal mol⁻¹ K⁻¹** of entropy, about 3.8 kcal/mol in −TS at
   298 K, from a motion that is not a vibration (R4);
-* the stationarity check reads the force on every atom including the held ones,
-  so a correctly-converged constrained minimum is reported as *"not a stationary
-  point"* (R5).
+* the stationarity check read the force on every atom including the held ones,
+  so a correctly-converged constrained minimum was reported as *"not a
+  stationary point"* (R5; fixed 2026-09-23).
 
 **One more promise the code does not keep**, found in the same review and
 recorded here because it is what a user *buys* when they freeze an atom.
-`engines/overview.md` and the preflight advisory both say freezing cuts the cost
-sharply. For a frequencies-or-IR run it does not: `dipole_derivatives` calls
-`mf.Hessian().kernel()`, the **full** `N × N × 3 × 3` solve, and the held rows
-are discarded afterwards at `HESS[_free_idx][:, _free_idx]`. Only the Raman
-finite-difference loop actually scales with the free count.
+`engines/overview.md` and the preflight advisory both said freezing cuts the
+cost sharply. For a frequencies-or-IR run it did not: `dipole_derivatives`
+called `mf.Hessian().kernel()`, the **full** `N × N × 3 × 3` solve, and the
+held rows were discarded afterwards at `HESS[_free_idx][:, _free_idx]`. Only
+the Raman finite-difference loop scaled with the free count.
 
-The saving is real and achievable — it is simply not implemented. Q-Chem's
-manual describes the same feature working the other way: *"only the part of the
+The saving was real and achievable — and it was not implemented until
+2026-09-23, when the Hessian became the free atoms' block
+([`engines/vibration.md`](?doc=engines/vibration.md) § 4.4). Q-Chem's manual
+describes the same feature working the other way: *"only the part of the
 Hessian matrix comprising the second derivatives of a subset of the atoms
 defined by the user is computed … This results in a significant decrease in the
-cost of the calculation"* [QChemPHVA]. Measured here: 10.6 s free versus 10.1 s
-with 2 of 14 atoms held. Either the code earns the claim or the claim goes;
-**R8** decides which is acceptable.
+cost of the calculation"* [QChemPHVA]. Measured here, before the fix: 10.6 s
+free versus 10.1 s with 2 of 14 atoms held. Either the code earns the claim or
+the claim goes; **R8** decides which is acceptable, and now reads the claim
+from the code.
 
 **The lesson is the one `constants.py` already records**: a fact about the
 physical world belongs in one place. Eight spellings of the Bohr radius put the
@@ -1010,4 +1073,11 @@ text we may redistribute are in [`refs/README.md`](?doc=science/refs/README.md).
   limitation they share.
 * **[QChemPHVA]** *Q-Chem 6.3 User's Manual* § 10.7.4 — a shipping partial
   Hessian that computes only the block, and reports the cost saving molbuilder
-  promises but does not take (§ 8, R8).
+  promised before it took it (§ 8, R8).
+* **[ASE2017]** Larsen *et al.*, *J. Phys.: Condens. Matter* **29**, 273002
+  (2017) — the Atomic Simulation Environment, whose `Vibrations(indices=…)`
+  is the community's held-atom analysis: mass-weight and diagonalise, no
+  projection (§ 3.3).
+* **[Ghysels2010]** Ghysels *et al.*, comparing partial-Hessian techniques —
+  cited for one sentence in § 3.3: at a partially held geometry the zero
+  eigenvalues of the global rotations may be lacking.

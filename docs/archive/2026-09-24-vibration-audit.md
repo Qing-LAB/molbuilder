@@ -204,7 +204,7 @@ way `warm_files_label` already is.
 ### 3.4 The results file's structure identity has the job name baked into it
 
 `spectra.json`'s `structure_hash` is built from `[f'{N_ATOMS}', f'{JOB}']` plus
-coordinates — **the job name is line 1**. So the same molecule under two job
+coordinates — **the job name is line 1**. *(Correction 2026-09-24: the atom count is line 1 and the job name line 2 — `sidecars/spectra.py::structure_hash_text`; the finding stands.)* So the same molecule under two job
 names has two identities, and it never matches the `.molstruct.json` sidecar's
 hash of the same structure, which uses a different scheme entirely.
 

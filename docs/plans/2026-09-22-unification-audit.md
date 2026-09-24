@@ -1688,7 +1688,7 @@ vibrations with three motions removed. What the walk found beside that:*
 | U2 | Task setup, the printed command | `molbuilder jobset prep run freq --bundle …` was handed over **without `--target`**, and refused as printed ("several machines could be meant"); `task-setup.md` § 10 says the page *"puts `--target` in the command it teaches"*. The page's own card said *"Prepared for (this machine)"* | held (`web/`) |
 | U3 | Molbuilder, Save to project | the filename prompt took `water_Ofrozen.xyz` and wrote `water_Ofrozen.xyz.xyz` + `water_Ofrozen.xyz.molstruct.json` — the prompt expects a stem and appends the suffix without checking for one | held (`web/`) |
 | U4 | Spectrum tab, Checks; `prep` | the provenance label the build door itself wrote (`O#`, `structure-annotations.md` § 5.1) is warned as *"region label(s) ['O#'], which the PySCF vibration run does NOT consume"* on every SMILES-built molecule — the reviews' unstated rule about `#`-labels, seen live | needs a ruling: is a `#` label exempt from the unconsumed-label check? |
-| U5 | Results tab, the relaxation chip; the artifact key | *"max \|F\| 5.6e-5 Eh/Å"* — the number is Eh/Bohr; the key is named `max_force_eh_a` and the viewer prints Å. Documented in `web/spectra.md` § 9b; the rename is owed with the viewer | held (`web/`); the key name is the deck's |
+| U5 | Results tab, the relaxation chip; the artifact key | *"max \|F\| 5.6e-5 Eh/Å"* — the number is Eh/Bohr; the key is named `max_force_eh_a` and the viewer prints Å. Documented in `engines/vibration.md` § 6.4; the rename is owed with the viewer | held (`web/`); the key name is the deck's |
 | U6 | Results tab | `removed_motions` (schema 6) has no surface yet: the viewer shows 3 modes and "Free / frozen 2 / 1" but does not say what was taken out | held (`web/`); owed to W21's viewer |
 | U7 | Spectrum tab, hand-over notice | `[cell.vacuum_defaulted]` advises 8 Å of vacuum for a gas-phase PySCF run that has no box | cosmetic; the notice is right for SIESTA and speaks for both |
 | U8 | `web/blueprints/build.py:1191`; the Spectrum tab's engine list | the hand-over gate admits PySCF only for a vibration, while the CLI road (`jobset init --engine siesta --calculation vibration`) has been open since 2026-09-23 — the tab cannot send a SIESTA vibration to Task setup | held (`web/`); the refusal text to copy is `jobset/_cli.py`'s |
@@ -2064,7 +2064,7 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    `system_label` needs `role = ["transport"]` either way.
 7. **D-2 (their handover, W21) — DECIDED 2026-09-23** *(the user delegated
    it: "make the right decision")*: (a) the classifier as built is the rule,
-   home `web/spectra.md` § 9b; (b) `top_n` / `threshold` retire under
+   home `engines/vibration.md` § 6.6; (b) `top_n` / `threshold` retire under
    V1.6 of `plans/plan.md`; Γ-only is ruled; the cost/infrared default stays analytic. What
    the item said, kept as the record of why: (a) The activity classifier (`spectra/activity.py`, 2026-09-11:
    widest log-gap ≥ 2 decades and ≤ 1e-3 of the peak, else 1e-6 of the peak;
@@ -2079,7 +2079,7 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    Ruled** *(user, 2026-09-23)*: the file is one format for both engines; a
    number an engine cannot produce is absent, never zero; a result with no
    strengths is drawn as lines; the PySCF-only MO block becomes optional
-   before the SIESTA arm — `web/spectra.md` § 9b.3.
+   before the SIESTA arm — `engines/vibration.md` § 6.5 (built 2026-09-23).
 8. **`structure_hash` — delete, or detect-and-attest?** § 1.8c has the
    consolidated facts. Detect: compare in `StructureCodec.load` and report
    as a notice, never refuse; attest: a separate door that re-stamps the

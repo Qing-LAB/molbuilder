@@ -245,7 +245,7 @@ def test_the_frozen_regime_is_said_out_loud():
     infos = [i for i in validate(s, cfg, calculation="vibration")
              if i.severity == "info" and "frozen" in i.message]
     assert len(infos) == 1, "the frozen regime is not announced"
-    assert "relaxation holds them fixed" in infos[0].message
+    assert "holds them fixed" in infos[0].message
     assert "Hessian excludes them" in infos[0].message
     text = render_deck(spec_for(s, cfg, calculation="vibration"),
                        s, cfg, verbose=False)

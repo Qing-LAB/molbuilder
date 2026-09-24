@@ -519,8 +519,9 @@ def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
 
 
 def test_every_derived_quantity_is_named_in_the_provenance_table():
-    """The provenance table in `web/spectra.md` § 9b names every quantitative
-    key the emitter writes -- so a new number cannot ship undocumented.
+    """The provenance table in `engines/vibration.md` § 6.4 names every
+    quantitative key the emitter writes -- so a new number cannot ship
+    undocumented.
 
     THE FAILURE THIS CATCHES.  A spectrum is a quantitative result, and the
     chain from PySCF's own objects to the number on screen is what makes it
@@ -532,12 +533,13 @@ def test_every_derived_quantity_is_named_in_the_provenance_table():
     ARTIFACT LINT (`testing.md` § 3b): it quantifies over the class rather than
     naming today's keys, so the next one is caught the day it is added.
 
-    Contract: `web/spectra.md` § 9b.
+    Contract: `engines/vibration.md` § 6.4.
     """
     from pathlib import Path
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "web" / "spectra.md"
-           ).read_text(encoding="utf-8")
-    table = doc[doc.index("## 9b. Provenance"):doc.index("### 9b.1")]
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "engines"
+           / "vibration.md").read_text(encoding="utf-8")
+    table = doc[doc.index("### 6.4 Where every number comes from"):
+                doc.index("**Two rules this table enforces**")]
 
     # The quantitative keys -- values a person reads off a chart or a paper.
     # Bookkeeping keys (schema_version, engine, elements, ...) are excluded by
@@ -550,5 +552,5 @@ def test_every_derived_quantity_is_named_in_the_provenance_table():
     missing = sorted(k for k in quantitative if f"`{k}`" not in table
                      and k not in table)
     assert not missing, (
-        f"these quantitative keys have no row in `web/spectra.md` § 9b, so "
+        f"these quantitative keys have no row in `engines/vibration.md` § 6.4, so "
         f"nothing states where their values come from: {missing}")

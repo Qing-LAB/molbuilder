@@ -429,8 +429,10 @@ def spectra_render_checks(struct: Structure,
             severity="info",
             message=(
                 f"{len(frozen_now)} atom(s) (indices {frozen_now}) are "
-                f"frozen: the pre-Hessian relaxation holds them fixed "
-                f"(geomeTRIC $freeze) and the Hessian excludes them.  "
+                f"frozen: the deck's relaxation, when it runs, holds them "
+                f"fixed (geomeTRIC $freeze; under already_relaxed there is "
+                f"no relaxation), and the Hessian is taken over the free "
+                f"atoms only.  "
                 f"Frequencies will be those of the free atoms moving in "
                 f"the static field of the fixed ones; thermochemistry "
                 f"is vibrational-only."
