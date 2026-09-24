@@ -83,14 +83,18 @@ import numpy as np
 #          CC 8.9)" so a user can verify the run matched their
 #          configuration intent.  No backward compatibility: v3
 #          documents fail with a clear schema-version error.
-SCHEMA_VERSION = 5   # 5 (2026-08-20, spectra-migration plan D4): + the
-#                    OPTIONAL `phase_relaxation` + `relaxation` progress
-#                    block (the in-deck relaxation is a TRACKED step) and
-#                    the OPTIONAL `thermo` block (RRHO re-homed from the
-#                    retiring thermo.txt path; D2).  ADDITIVE -- a v4 file
-#                    lacks them and reads whole, which is why the reader
-#                    accepts a SET (the molstruct sidecar's own rule).
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5})
+#  v5 (2026-08-20, spectra-migration plan D4): + the OPTIONAL
+#          `phase_relaxation` + `relaxation` progress block (the in-deck
+#          relaxation is a TRACKED step) and the OPTIONAL `thermo` block
+#          (RRHO re-homed from the retiring thermo.txt path; D2).
+#          ADDITIVE -- a v4 file lacks them and reads whole, which is why
+#          the reader accepts a SET (the molstruct sidecar's own rule).
+SCHEMA_VERSION = 6   # 6: + the OPTIONAL `removed_motions` block -- how many
+#                    whole-body motions the harmonic analysis projected out
+#                    before diagonalising, and their Cartesian patterns over
+#                    the free atoms (science/normal-modes.md R7: what was
+#                    removed is stated beside what was kept).  ADDITIVE.
+READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6})
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -604,6 +608,13 @@ class SpectraResults:
     #: "vibrational-only" (stated, never refused) when atoms are frozen --
     #: an anchored molecule does not rotate.
     thermo:                    Dict[str, Any] = field(default_factory=dict)
+    #: v6: what the harmonic analysis removed before diagonalising --
+    #: {count, patterns: (count, n_free, 3) Cartesian, orthonormal over the
+    #: free atoms}.  Every mode in `modes` is a vibration BECAUSE these were
+    #: taken out first (science/normal-modes.md R3-R4); a reader that wants
+    #: to see the difference between 3 N_free and len(modes) finds it here.
+    #: Empty on a file written before the block existed.
+    removed_motions:           Dict[str, Any] = field(default_factory=dict)
 
     # Equilibrium geometry -- element symbols + Cartesian positions
     # in Å.  Optional in the wire format (older results from
@@ -829,6 +840,7 @@ class SpectraResults:
             "phase_relaxation":     str(self.phase_relaxation),
             "relaxation":           dict(self.relaxation),
             "thermo":               dict(self.thermo),
+            "removed_motions":      dict(self.removed_motions),
             "ir_route":             str(self.ir_route),
             "ir_fd_step_ang":       (None if self.ir_fd_step_ang is None
                                      else float(self.ir_fd_step_ang)),
@@ -850,9 +862,10 @@ class SpectraResults:
             raise ValueError(
                 f"SpectraResults: schema_version {sv!r} is not "
                 f"supported; this molbuilder build reads "
-                f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 added only the "
-                f"optional relaxation/thermo blocks, so a v4 file reads "
-                f"whole; older versions do not)."
+                f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 and v6 added only "
+                f"optional blocks -- relaxation/thermo, then "
+                f"removed_motions -- so a v4 file reads whole; older "
+                f"versions do not)."
             )
         eq = d["equilibrium"]
         return cls(
@@ -896,6 +909,7 @@ class SpectraResults:
             phase_relaxation     = str(d.get("phase_relaxation", PHASE_EMPTY)),
             relaxation           = dict(d.get("relaxation") or {}),
             thermo               = dict(d.get("thermo") or {}),
+            removed_motions      = dict(d.get("removed_motions") or {}),
             ir_route             = str(d.get("ir_route", "")),
             ir_fd_step_ang       = (None if d.get("ir_fd_step_ang") is None
                                     else float(d["ir_fd_step_ang"])),

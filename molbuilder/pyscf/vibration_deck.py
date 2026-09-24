@@ -6,8 +6,10 @@ Contract: ``docs/archive/2026-08-20-spectra-migration-plan.md`` § 2 (the ruling
 WHAT THIS IS.  ``vibration_spec(struct, cfg, stage_token)`` returns the
 :class:`~molbuilder.script_emit.DeckSpec` for ``calculation = "vibration"``:
 one deck, one run — the relaxation as its mandatory first act (geomeTRIC
-straight into the Hessian, in-process; D3's final form), the harmonic
-analysis with the frozen-atom partial-Hessian path, IR and Raman as
+straight into the Hessian, in-process; D3's final form), ONE harmonic
+analysis for free and held atoms (the whole-body motions that survive the
+frozen set projected out before diagonalising -- `spectra.normal_modes`,
+spliced), IR and Raman as
 INDEPENDENT toggles over shared machinery, RRHO thermochemistry into the
 artifact's v5 ``thermo`` block, the per-mode electronic-structure loop,
 and the phase-writing ``.spectra.json`` the viewer live-watches.
@@ -195,6 +197,9 @@ def _vib_state_init() -> List[str]:
         "                       'n_steps': 0, 'max_force_eh_a': None,",
         "                       'converged': None}",
         "state['thermo'] = {}",
+        "# What the harmonic analysis removes before diagonalising, filled",
+        "# beside the modes (science/normal-modes.md R7).",
+        "state['removed_motions'] = {}",
         "_atomic_write_json(state, JSON_PATH)",
     ]
 
@@ -386,8 +391,15 @@ def _vib_gradient_check() -> List[str]:
         "    print('=== gradient check (already_relaxed asserted) ===')",
         "    try:",
         "        _g0 = _as_numpy(mf.nuc_grad_method().kernel())",
-        "        _maxf = float(np.abs(_g0).max())",
+        "        # Judged in the subspace that is diagonalised (science/",
+        "        # normal-modes.md R5): a held atom carries the constraint",
+        "        # force by definition, and that number says nothing about",
+        "        # whether the free atoms sit at their stationary point.",
+        "        # Both are recorded; only the free one is judged.",
+        "        _maxf_all = float(np.abs(_g0).max())",
+        "        _maxf = float(np.abs(_g0[FREE_ATOM_IDXS]).max())",
         "        state['relaxation']['max_force_eh_a'] = _maxf",
+        "        state['relaxation']['max_force_all_atoms_eh_a'] = _maxf_all",
         "        if _maxf > GEOM_GMAX * 10.0:",
         "            _w = (f'input geometry is not a stationary point '",
         "                  f'(max |dE/dR| = {_maxf:.2e} Eh/Bohr, vs the '",
@@ -404,21 +416,28 @@ def _vib_gradient_check() -> List[str]:
 
 
 def _vib_thermo_block() -> List[str]:
-    """RRHO thermochemistry into the v5 ``thermo`` block (D2's re-homing),
-    from the mode list the hessian block just wrote — the one source both
-    Hessian paths (full and partial) share.  Regime honesty: a free
-    molecule gets full RRHO via PySCF's own ``thermo.thermo``; a
-    frozen-atom system gets the VIBRATIONAL contributions only, stated —
-    an anchored molecule does not rotate."""
+    """RRHO thermochemistry into the ``thermo`` block, from the mode list
+    the hessian block just wrote.  Every entry of that list is a vibration
+    (the whole-body motions were projected out before diagonalising), so
+    nothing here filters for one; an IMAGINARY mode has no harmonic
+    partition function and is excluded with its count recorded.  Regime
+    honesty: a free molecule gets full RRHO via PySCF's own
+    ``thermo.thermo``; a system with atoms held gets the VIBRATIONAL
+    contributions only, stated -- an anchored system has no gas-phase
+    translational or rotational partition function."""
     return [
         "",
         "# ============================================================",
         "#  Thermochemistry (v5 `thermo`; D2's re-homing)",
         "# ============================================================",
         "print('=== Stage: thermochemistry ===')",
+        "# Every mode is a vibration -- the whole-body motions were removed",
+        "# before diagonalising -- so nothing here filters for one.  An",
+        "# imaginary mode has no harmonic partition function; it is left out",
+        "# and the count is recorded, never dropped in silence.",
         "_freqs_cm1 = np.array([m['frequency_cm1'] for m in",
         "                       state['modes'] if not m['has_imag']])",
-        "_freqs_cm1 = _freqs_cm1[_freqs_cm1 > 0]",
+        "_N_IMAG_EXCLUDED = int(sum(1 for m in state['modes'] if m['has_imag']))",
         f"_KB_EH = {_BOLTZMANN_HARTREE_K!r}        # Boltzmann, Eh/K",
         f"_CM1_TO_EH = 1.0 / {_HARTREE_CM1!r}",
         "def _vib_thermo_at(T):",
@@ -433,7 +452,7 @@ def _vib_thermo_block() -> List[str]:
         "    _s = float(_KB_EH * (( _x / (np.exp(_x) - 1.0)",
         "               - np.log1p(-np.exp(-_x))).sum()))",
         "    return _zpe, _u, _s",
-        "_regime = 'rrho' if N_FREE == N_ATOMS else 'vibrational-only'",
+        "_regime = 'rrho' if not FROZEN_ATOM_IDXS else 'vibrational-only'",
         "_zpe0, _u0, _s0 = _vib_thermo_at(THERMO_T_K)",
         "_grid = {'temperatures_K': [], 'zpe_eh': [], 'u_vib_eh': [],",
         "         'h_eh': [], 's_eh_k': [], 'g_eh': []}",
@@ -441,6 +460,9 @@ def _vib_thermo_block() -> List[str]:
         "    'regime': _regime,",
         "    'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
         "    'zpe_eh': _zpe0,",
+        "    'n_modes': int(len(state['modes'])),",
+        "    'n_imag_excluded': _N_IMAG_EXCLUDED,",
+        "    'n_rigid_removed': N_RIGID,",
         "    'note': ('full RRHO (rot+trans+vib) via pyscf thermo' if",
         "             _regime == 'rrho' else",
         "             'VIBRATIONAL contributions only: atoms are frozen, '",
@@ -451,8 +473,10 @@ def _vib_thermo_block() -> List[str]:
         "}",
         "if _regime == 'rrho':",
         "    try:",
+        "        # The same signed omega the modes were reported from;",
+        "        # pyscf's thermo keeps the positive ones itself.",
         "        _t_res = _mb_thermo.thermo(",
-        "            mf, _ha['freq_au'], THERMO_T_K, THERMO_P_ATM * 101325.0)",
+        "            mf, _OMEGA_AU, THERMO_T_K, THERMO_P_ATM * 101325.0)",
         "        state['thermo']['h_eh'] = float(_t_res['H_tot'][0])",
         "        state['thermo']['s_eh_k'] = float(_t_res['S_tot'][0])",
         "        state['thermo']['g_eh'] = float(_t_res['G_tot'][0])",

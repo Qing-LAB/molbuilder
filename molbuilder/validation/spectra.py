@@ -281,35 +281,63 @@ def spectra_render_checks(struct: Structure,
                 where="config.frozen_indices",
             ))
 
-    # Partial-Hessian projection advisory.  When SOME atoms are
-    # frozen but FEWER THAN 3 (or 3+ but they're collinear), the
-    # partial-Hessian path can't fully anchor the system in
-    # space.  The result is 1-5 "spurious" near-zero modes that
-    # correspond to rigid-body motion of the free fragment, not
-    # real vibrations.  Three non-collinear anchor atoms remove
-    # all six translation+rotation DOFs; fewer leaves a residue.
-    # The genuinely-suspect case is one or two frozen atoms: too few to
-    # anchor the free fragment.  (Two further conditions stood here,
-    # excusing the warning when an element or residue freeze was also
-    # in play; both were always true, because the view supplies indices
-    # only -- 2026-08-22.)
-    if len(cfg.frozen_indices) in (1, 2):
+    # WHAT SURVIVES THE FREEZE, from the one derivation (science/normal-modes.md
+    # R1, R7).  Holding atoms removes the whole-body motions that would move
+    # them and leaves the rest -- a turn about the line through two held
+    # atoms, three turns about a single held atom -- and those leftovers are
+    # not vibrations.  The deck projects them out before diagonalising, so
+    # nothing here is a warning: it is the count the person will see missing
+    # from 3 N_free, said before the run is paid for.  A table of cases stood
+    # here ("6 - 2 x frozen ... -ish") and was wrong for CO2 with both O held.
+    _frozen_idx = sorted(int(i) for i in (cfg.frozen_indices or []))
+    _positions = getattr(struct, "positions", None)
+    if _frozen_idx and _positions is not None:
+        from ..spectra.normal_modes import rigid_motions
+        try:
+            _n_rigid = len(rigid_motions(
+                _positions, _frozen_idx,
+                getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+                cell=getattr(struct, "cell", None)))
+        except ValueError:
+            _n_rigid = None      # an index out of range is reported below
+        if _n_rigid:
+            _n_free = int(len(_positions)) - len(_frozen_idx)
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    f"Holding {len(_frozen_idx)} atom(s) leaves {_n_rigid} "
+                    f"whole-body motion(s) of the free atoms that cost no "
+                    f"energy (a turn about the held atoms).  They are not "
+                    f"vibrations: the deck removes them before diagonalising, "
+                    f"so {3 * _n_free - _n_rigid} modes will be reported, not "
+                    f"{3 * _n_free}, and the count removed is recorded with "
+                    f"the results."
+                ),
+                where="config.frozen_indices",
+            ))
+
+    # THIS ENGINE COMPUTES A MOLECULE IN FREE SPACE.  gto.M has no lattice, so
+    # a structure that repeats or continues along an axis would be computed
+    # as a cluster in silence -- and the harmonic analysis would then remove
+    # the six motions of a free molecule where the structure's own periodicity
+    # says three (science/normal-modes.md 3.1a).  Refused, naming the axis and
+    # the two honest ways out.
+    _kinds = tuple(getattr(struct, "axis_kind", None) or ())
+    _repeating = [f"{'xyz'[i]} ({k})" for i, k in enumerate(_kinds)
+                  if k != "isolated"]
+    if _repeating:
         issues.append(Issue(
-            severity="warn",
+            severity="error",
             message=(
-                f"You've frozen only {len(cfg.frozen_indices)} "
-                f"atom(s).  That isn't enough to fully anchor "
-                f"the free fragment in space (you need at "
-                f"least 3 non-collinear frozen atoms to remove "
-                f"all 6 translation+rotation degrees of "
-                f"freedom).  The vibrational analysis will "
-                f"include {6 - 2 * len(cfg.frozen_indices)}-ish "
-                f"spurious near-zero modes corresponding to "
-                f"rigid-body motion of the free atoms.  These "
-                f"won't crash the run but you should ignore "
-                f"them in your spectrum interpretation."
+                f"this structure states a repeating or continuing axis "
+                f"({', '.join(_repeating)}), and a PySCF vibration computes a "
+                f"molecule in free space: it would be run as a cluster while "
+                f"the description says periodic.  If a cluster is what you "
+                f"mean, make every axis isolated on the Cell page; a "
+                f"vibration of the periodic system belongs to the SIESTA "
+                f"engine (science/normal-modes.md 3.1a)."
             ),
-            where="config.frozen_indices",
+            where="structure.axis_kind",
         ))
 
     # GPU advisory: if the user asked for GPU acceleration, check

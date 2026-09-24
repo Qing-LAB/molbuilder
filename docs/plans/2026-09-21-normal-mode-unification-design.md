@@ -576,10 +576,10 @@ not travel. This is not hypothetical; it is the bug that was fixed on
 |---|---|---|
 | 1 | build `rigid_motions` + its tier-1 tests — **done 2026-09-23** | every row of § 7.6 tier 1 passes, no engine involved (`tests/spectra/test_normal_modes.py`, 40 tests; three mutations each turn the right rows red) |
 | 2 | **the gate**: prove it reproduces PySCF on free molecules — **passed 2026-09-23** | tier 2 matches to numerical noise (`tests/test_vibration_e2e.py::test_the_rank_rule_reproduces_pyscf_on_free_molecules`: water, CO₂, HF, methane at RHF/STO-3G; eigenvalues to 1e-8 relative, wavenumbers to 1e-4 cm⁻¹, water's and HF's mode vectors to 1e-6 in the mass metric) |
-| 3 | replace the deck's two-branch analysis with the single path | tier 3 passes |
-| 4 | point the three counting sites at the produced mode list | the Methods paragraph and the run agree by construction |
-| 5 | narrow the stationarity check to the free atoms | a constrained minimum stops raising a false alarm |
-| 6 | delete what is now dead | the list below is gone |
+| 3 | replace the deck's two-branch analysis with the single path — **done 2026-09-23** | tier 3 passes: water with its oxygen held reports **three** vibrations through the whole described road (`tests/test_vibration_e2e.py::test_water_with_its_oxygen_held_reports_three_vibrations`: bend and two stretches, `removed_motions.count = 3`, every mode orthogonal to every removed pattern in the mass metric); the free runs unchanged |
+| 4 | point the three counting sites at the produced mode list — **done** | the Methods paragraph's count is R2 from the one derivation before the run and the run's own list after it (`spectra/methods.py::_mode_count`); the emitter's fragment states one method with no count; the preflight says how many motions survive the freeze, from the same function |
+| 5 | narrow the stationarity check to the free atoms — **done** | `max_force_eh_a` is over the free atoms (judged), `max_force_all_atoms_eh_a` beside it (recorded) |
+| 6 | delete what is now dead — **done** | the list below is gone, with one transformation noted there |
 
 **Step 2 is a gate, not a milestone.** If the rank rule does not reproduce
 PySCF's free-molecule answer, nothing after it is built.
@@ -597,6 +597,10 @@ that adds code has not unified anything:
   advisory;
 - the thermochemistry's `has_imag` / `> 0` self-defence, which today is the only
   thing standing between a leftover rotation and the reported free energy.
+  *(Done as a transformation, not a deletion: the `> 0` line is gone; the
+  `has_imag` exclusion stays, because an imaginary mode has no harmonic
+  partition function — and it is now STATED, as `thermo.n_imag_excluded`,
+  never silent.)*
 
 **What gets added to the report** (rule R7): how many motions were removed and
 what each one was — *"1 leftover motion: a turn about the line through atoms 7
@@ -1031,7 +1035,7 @@ And `spectrum/`'s README is the one that promises `.spectra.json`.
 
 ## 15. What the reviews found in the code — blocking, in order of what it costs
 
-### 15.1 The frozen path removes nothing, and the modes it invents are the loudest bands
+### 15.1 The frozen path removes nothing, and the modes it invents are the loudest bands — *FIXED 2026-09-23 (§ 18 step 3)*
 
 **R3** says *"Both paths remove the surviving whole-body motions before
 diagonalising … never differ in whether the removal happens."* The frozen arm
@@ -1070,7 +1074,7 @@ essentially all of it from the three non-vibrations — **−6.0 kcal/mol in −
 The audit's 12.7 cal/mol/K was one mode on a coin-flip; with one atom held
 there are three rotations and three coin-flips, and this run lost all three.
 
-### 15.2 The stationarity check false-alarms on every converged constrained minimum
+### 15.2 The stationarity check false-alarms on every converged constrained minimum — *FIXED 2026-09-23 (R5 in the deck)*
 
 **R5** says the check *"looks at the forces on the **free** atoms."* The code
 is `_maxf = float(np.abs(_g0).max())` — all atoms.
@@ -1106,7 +1110,7 @@ Hessian was actually taken at, on a 0.96 Å bond. The eigenvectors in the same
 record belong to the relaxed geometry; the coordinates do not — and the deck's
 comment says the viewer animates modes from this field.
 
-### 15.5 Periodicity never reaches the vibration path
+### 15.5 Periodicity never reaches the vibration path — *CLOSED 2026-09-23: refused at the gate*
 
 `axis_kind`, `pbc` and `cell` appear **nowhere** in the two vibration modules
 or `validation/spectra.py`. `_emit_build_mol` always emits `gto.M(...)` — a
@@ -1327,7 +1331,11 @@ schema and the format, and it is not the downstream layers' to make.
 
 **Step 3 — then the five § 15 defects**, in that order. 15.1 first: it is the
 one that puts wrong peaks in a user's spectrum and wrong entropy in their
-free energy, and steps 1-2 are exactly what fixes it.
+free energy, and steps 1-2 are exactly what fixes it. **Done 2026-09-23 for
+15.1, 15.2 and 15.5** (§ 7.5's table): the deck has one path, the
+stationarity check reads the free atoms, and a structure with a repeating
+axis is refused at the PySCF vibration gate instead of computed as a
+cluster. **15.3, 15.4, 15.6, 15.7 remain** and are step 4's neighbours.
 
 **Step 4 — the API shape, before the SIESTA arm.** Lift the array-only physics
 out of the emitters into real callables (§ 16.1), make the MO block optional

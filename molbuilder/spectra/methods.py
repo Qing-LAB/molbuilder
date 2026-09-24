@@ -273,12 +273,15 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
         n_atoms = _count_structure_atoms(struct)
         if n_atoms:
             n_free = _count_free_atoms(struct, cfg)
-            n_modes = _mode_count(struct, n_free, results=results)
+            n_modes, n_rigid = _mode_count(struct, cfg, results=results)
+            removed = (f" after projecting out the {n_rigid} whole-body "
+                       f"motion(s) the geometry permits" if n_rigid
+                       else "")
             atom_clause = (f" The system contains {n_atoms} atoms "
                            f"({n_free} free, {n_atoms - n_free} frozen "
                            f"during the Hessian), giving "
                            f"{n_modes} non-translational / non-rotational "
-                           f"vibrational modes.")
+                           f"vibrational modes{removed}.")
 
     raman_clause = ""
     if cfg.compute_raman:
@@ -447,78 +450,42 @@ def _count_structure_atoms(struct: Structure) -> int:
 
 
 
-def _is_linear(struct: Structure, tol_deg: float = 5.0) -> bool:
-    """Do the atoms lie on one straight line?
+def _mode_count(struct: Structure, cfg: "VibrationConfigView", *,
+                results: "Optional[SpectraResults]" = None):
+    """How many vibrations this system has, and how many motions were removed.
 
-    A LINEAR molecule has 3N-5 vibrations, not 3N-6: it has two rotational
-    degrees of freedom rather than three, because spinning about its own axis
-    moves nothing.  CO2, N2, HCN and every diatomic are in this class, and the
-    Methods paragraph said 3N-6 for all of them until 2026-09-11 -- which for
-    CO2 claimed 3 modes beside a run that reported 4, and for a diatomic
-    claimed 0 beside a run that reported 1.
+    Returns ``(n_modes, n_rigid)``.
 
-    **The arithmetic was the only thing wrong.**  The calculation has always
-    been right: it delegates to PySCF's `harmonic_analysis`, which projects
-    "the 6 (or 5 for linear molecules)" itself (`vibration_emitters.py`).  So
-    this is a prose defect -- and a Methods paragraph is written to be pasted
-    into a paper, which is why it is worth the same care as a number.
+    **THE CALCULATION IS THE AUTHORITY when there is one**: where results
+    exist the count is the length of the mode list the run produced and the
+    removed count is what the run recorded, never a formula re-derived
+    beside them (science/normal-modes.md R6).
 
-    Measured by ANGLE rather than by a cross-product magnitude: the tolerance
-    then means something a person can judge ("within 5 degrees of straight")
-    instead of depending on how far apart the atoms happen to be.  Fewer than
-    three atoms is linear by construction.
-    """
-    import numpy as np
-    try:
-        p = np.asarray(struct.positions, dtype=float)
-    except Exception:                       # noqa: BLE001 -- a duck-typed mock
-        return False
-    if p.ndim != 2 or p.shape[0] < 3:
-        return True
-    v = p[1:] - p[0]
-    axis = None
-    for row in v:                           # the first atom that is not p[0]
-        n = np.linalg.norm(row)
-        if n > 1e-6:
-            axis = row / n
-            break
-    if axis is None:
-        return True
-    for row in v:
-        n = np.linalg.norm(row)
-        if n <= 1e-6:
-            continue
-        cos = abs(float(np.dot(row / n, axis)))
-        if np.degrees(np.arccos(min(1.0, cos))) > tol_deg:
-            return False
-    return True
-
-
-def _mode_count(struct: Structure, n_free: int, *,
-                results: "Optional[SpectraResults]" = None) -> int:
-    """How many vibrations this system has.
-
-    **THE CALCULATION IS THE AUTHORITY when there is one.**  The projection
-    already separates translation and rotation from vibration -- PySCF's
-    `harmonic_analysis` removes five eigenvectors for a linear system and six
-    otherwise -- so where results exist the count is what came out, not a
-    formula re-derived beside them.  A second derivation is a second answer
-    (user, 2026-09-11: *"isn't the calculation going to tell?"*).
-
-    The geometric arm is the PREDICTION, and it is needed only because the one
-    caller today -- `pyscf/vibration_deck.py`, writing the Methods paragraph
-    into the deck header -- renders BEFORE anything has run, where there is
-    nothing else to go on.  It was `3N-6` unconditionally until 2026-09-11,
-    which is wrong for every linear molecule: CO2's paragraph claimed 3 beside
-    a run that reported 4, and a diatomic's claimed 0 beside a run reporting 1.
+    Before the run, the count is R2 -- ``3 N_free - n_rigid`` -- with
+    ``n_rigid`` from the one derivation (R1): the rank rule in
+    ``spectra.normal_modes``, the same function the deck splices, so the
+    paragraph written into the deck header and the list the run produces
+    agree by construction.  Straight molecules, a lone atom, held atoms
+    on a line: none is a case here, because none is a case there.
     """
     if results is not None:
         modes = getattr(results, "modes", None)
         if modes is not None:
-            return len(modes)
-    if n_free < 2:
-        return 0
-    return max(0, 3 * n_free - (5 if _is_linear(struct) else 6))
+            removed = getattr(results, "removed_motions", None) or {}
+            return len(modes), int(removed.get("count", 0) or 0)
+    from .normal_modes import rigid_motions
+    n_free = _count_free_atoms(struct, cfg)
+    try:
+        positions = struct.positions
+    except AttributeError:                  # a duck-typed mock: no geometry
+        return max(0, 3 * n_free - 6), 6
+    frozen = [int(i) for i in (cfg.frozen_indices or [])
+              if 0 <= int(i) < len(positions)]
+    n_rigid = len(rigid_motions(
+        positions, frozen,
+        getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+        cell=getattr(struct, "cell", None)))
+    return 3 * n_free - n_rigid, n_rigid
 
 
 def _count_free_atoms(struct: Structure, cfg: "VibrationConfigView") -> int:

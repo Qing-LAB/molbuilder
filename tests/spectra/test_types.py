@@ -273,10 +273,13 @@ class TestSpectraResults:
             (READABLE_SCHEMA_VERSIONS is a set, the molstruct sidecar's
             own doctrine), so "no backward compat" now applies only to
             facts that MOVED.
+        v6: + the OPTIONAL ``removed_motions`` block (what the harmonic
+            analysis projected out before diagonalising); additive, so
+            v4 and v5 files still read whole.
         """
         r = _make_results()
-        assert r.schema_version == SCHEMA_VERSION == 5
-        assert READABLE_SCHEMA_VERSIONS == {4, 5}
+        assert r.schema_version == SCHEMA_VERSION == 6
+        assert READABLE_SCHEMA_VERSIONS == {4, 5, 6}
         # The additive rule, executed: a v4 payload reads whole.
         d = r.to_dict(); d["schema_version"] = 4
         for k in ("phase_relaxation", "relaxation", "thermo"):

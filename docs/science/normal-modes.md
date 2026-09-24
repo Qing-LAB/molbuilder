@@ -715,7 +715,10 @@ For a structure with held atoms:
 
 Point 3 is the assertion worth having: it states the physical property rather
 than the shape of the implementation, and it fails loudly on the defect this
-document exists to close.
+document exists to close. **Pinned**: tier 1 in `tests/spectra/test_normal_modes.py`
+(every row above, no engine); the four-molecule equivalence with PySCF and the
+held-oxygen water run through the whole described road in
+`tests/test_vibration_e2e.py`.
 
 ---
 

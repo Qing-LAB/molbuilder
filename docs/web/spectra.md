@@ -491,9 +491,12 @@ and the Hessian is built over the free atoms only. Which atoms to freeze is
 the user's own call: the tab never second-guesses the set, and nothing warns
 you off a choice you made on purpose. What the calculation DOES say, out
 loud, is what the freeze means for the numbers: the deck states the regime
-(partial Hessian, *vibrational-only* thermochemistry), the preflight names the
-frozen count, and the Methods paragraph spells out that the reported
-frequencies are those of the free atoms moving in the field of the fixed ones.
+(the free atoms' block of the true Hessian, *vibrational-only*
+thermochemistry), the preflight names the frozen count **and how many
+whole-body motions survive it**, the artifact records what was removed
+(`removed_motions`, § 9b), and the Methods paragraph spells out that the
+reported frequencies are those of the free atoms moving in the field of the
+fixed ones.
 
 **How many vibrations that leaves is not `3N−6`, and it is not free either.**
 Freezing removes the whole-body motions that would move a frozen atom — and
@@ -620,7 +623,9 @@ wrong, and is the only part its tests can meaningfully guard.**
 | `modes[].has_imag` | the sign of the eigenvalue | a negative wavenumber is reported as imaginary and drawn in red at its negative frequency (§ 2) | — |
 | `modes[].ir_active` · `raman_active` · `activity_class` | — | **DERIVED at every serialisation, never stored** (`spectra/activity.py` through `SpectraResults._modes_with_activity`). A mode whose channel was not computed is `partial`. Otherwise, per channel: divide every mode by the channel's strongest, sort on a log scale, and cut at the widest gap between neighbours when that gap is at least two decades wide and sits below a thousandth of the peak; when the channel will not separate itself, cut at a millionth of the peak; and a channel whose strongest value is under an absolute floor (1e-3 km/mol · 1e-3 Å⁴/amu) has no band at all, so every mode is inactive. **This is the rule** *(built 2026-09-11, confirmed as the rule 2026-09-23)*: it is asked of the data because where the residue sits is a property of the calculation — measured cuts ranged 2.6e-6 to 1.5e-4 across four real runs — while the separation is a property of the symmetry. Pinned on the real CO₂ numbers by `tests/spectra/test_activity.py` | class · bool |
 | `ir_route` · `ir_fd_step_ang` | which dμ/dR route ran, and its step | recorded once per run (`science/normal-modes.md` § 4a.3). **`raman_route` does not exist** and is owed (design § 15.7) | — |
-| `thermo` | PySCF's `thermo.thermo` at the headline (T, P); the deck's own temperature grid | the deck computes, the viewer draws (§ 3). The grid is vibrational-only and the headline full RRHO under one `note` — design § 15.3 | — |
+| `thermo` | PySCF's `thermo.thermo` at the headline (T, P); the deck's own temperature grid | the deck computes, the viewer draws (§ 3). The grid is vibrational-only and the headline full RRHO under one `note` — design § 15.3. `n_modes`, `n_imag_excluded` (an imaginary mode has no harmonic partition function; the count is stated, never dropped in silence) and `n_rigid_removed` say what the sums ran over | — |
+| `removed_motions` | — | **DERIVED in the deck by the one rule** (`spectra/normal_modes.py`, spliced): `count` whole-body motions that survive holding the frozen set — six or five for a free molecule, fewer with atoms held — and their Cartesian `patterns` over the free atoms, orthonormal. Every entry of `modes` is a vibration *because* these were projected out before diagonalising (`science/normal-modes.md` R3-R4, R7); `len(modes) = 3·n_free − count` by construction. Schema v6, additive | count · (count, n_free, 3) |
+| `relaxation.max_force_eh_a` · `max_force_all_atoms_eh_a` | the SCF's nuclear gradient at the asserted-relaxed geometry | the first is over the **free** atoms and is the one judged (R5: a held atom carries the constraint force by definition); the second is recorded so a reader can see the difference | Eh/Bohr |
 | `electronic_structure.mo_energies_*_eh` | `mf.mo_energy` at ±displaced geometries | non-finite dropped | Hartree |
 
 ### 9b.1 Two rules this table exists to enforce

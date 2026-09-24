@@ -17,8 +17,11 @@ torn document (spec § 6.1).  The wire format is the engine-agnostic
 This module is the only place where the actual scientific choices
 land in code form:
 
-  * frozen-atom partial Hessian by row/col deletion of the full
-    analytic Hessian, mass-weighted on the free-atom subspace;
+  * ONE harmonic analysis for free and held atoms alike: the free-free
+    block of the true Hessian, mass-weighted, diagonalised in the
+    complement of the whole-body motions that survive holding the frozen
+    set -- `spectra.normal_modes`, spliced into the deck as source
+    (science/normal-modes.md R1-R4);
   * eigenvalue → cm⁻¹ via the PySCF helper
     ``hessian.thermo._freq_from_force_constant`` (the conversion
     factor that pins atomic-units frequencies to wavenumbers);
@@ -570,6 +573,22 @@ def _emit_homo_rule() -> List[str]:
     return [ln.rstrip() for ln in src.splitlines()]
 
 
+def _emit_normal_mode_rules() -> List[str]:
+    """The rank rule and the one harmonic path, spliced from
+    :mod:`molbuilder.spectra.normal_modes` -- the one derivation of how many
+    whole-body motions a held system keeps (science/normal-modes.md R1) and
+    the one path that removes them before diagonalising (R3).  Both are
+    self-contained by that module's contract, so nothing travels with them;
+    `vibrational_modes` calls `rigid_motions` by name, hence the order."""
+    import inspect
+    from ..spectra import normal_modes as _nm
+    out: List[str] = []
+    for fn in (_nm.rigid_motions, _nm.vibrational_modes):
+        out += [ln.rstrip() for ln in inspect.getsource(fn).splitlines()]
+        out.append("")
+    return out
+
+
 def _emit_atomic_writer() -> List[str]:
     """Inline the same atomic-write helper as
     :func:`molbuilder.sidecars.spectra.dump_spectra_json` so
@@ -1016,18 +1035,16 @@ def _emit_gpu_coverage_probe(cfg: "VibrationConfigView") -> List[str]:
 
 
 def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
-    """Analytic Hessian -> mass-weighted -> diagonalize ->
-    frequencies + eigenvectors.
+    """Analytic Hessian -> the one harmonic path -> frequencies +
+    eigenvectors.
 
-    The frozen-atom case takes the (N_free × 3) block of the full
-    Hessian and mass-weights with the free-atom masses only.  No
-    rotation/translation projection in that path -- the fixed
-    atoms anchor the system.
-
-    The all-free case calls PySCF's
-    ``thermo.harmonic_analysis(mol, hess)`` which handles
-    projection internally, then exposes ``freq_au`` and the
-    normal-mode eigenvectors.
+    Free and held atoms take the SAME path: `vibrational_modes` (spliced
+    from `spectra.normal_modes`) keeps the free-free block of the true
+    Hessian, mass-weights it, and diagonalises it in the complement of the
+    whole-body motions that survive holding the frozen set -- six or five
+    for a free molecule, fewer or none with atoms held, decided by a rank
+    and never by a table.  Exactly ``3 * N_FREE - N_RIGID`` modes come
+    out and every one is a vibration (science/normal-modes.md R2-R4).
 
     GPU branching at the kernel call (driven by the
     ``_GPU_HAS_HESSIAN`` flag set by :func:`_emit_gpu_coverage_probe`):
@@ -1041,6 +1058,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# ============================================================")
     out.append("#  Phase 2: Hessian -> frequencies + eigenvectors")
     out.append("# ============================================================")
+    out += _emit_normal_mode_rules()
     out.append("print('=== Stage: analytic Hessian ===')")
     out.append("# Branch on the GPU-coverage probe set above:")
     out.append("#   _GPU_HAS_HESSIAN True   -> use mf directly, bridge CuPy -> NumPy")
@@ -1112,88 +1130,30 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# eigenvector_display out of the JSON.")
     out.append("# ------------------------------------------------------------")
     out.append("")
-    out.append("def _signed_wavenumber(w):")
-    out.append("    '''Normalise a per-mode wavenumber to signed real cm⁻¹.")
-    out.append("")
-    out.append("    PySCF's harmonic_analysis may emit ``freq_wavenumber`` in")
-    out.append("    one of two shapes for imaginary modes:")
-    out.append("      * signed real:        w = -500.0 for a 500i mode")
-    out.append("      * imaginary complex:  w = 0 + 500j for the same")
-    out.append("    Whichever shape is in hand, we want a single convention")
-    out.append("    downstream: a negative real for imaginary modes, positive")
-    out.append("    real for real modes.  Then HAS_IMAG falls out as ``f < 0``")
-    out.append("    and matches the partial-Hessian path below.'''")
-    out.append("    if hasattr(w, 'imag') and abs(w.imag) > 0:")
-    out.append("        return -abs(float(w.imag))")
-    out.append("    return float(w.real if hasattr(w, 'real') else w)")
-    out.append("")
-    out.append("if N_FREE == N_ATOMS:")
-    out.append("    # ----- All-free path -----")
-    out.append("    # PySCF's harmonic_analysis projects out the 6 (or 5 for")
-    out.append("    # linear molecules) translation+rotation modes from the")
-    out.append("    # mass-weighted Hessian internally, then returns:")
-    out.append("    #   freq_wavenumber : per-mode wavenumber (real or complex,")
-    out.append("    #                     see _signed_wavenumber above)")
-    out.append("    #   norm_mode       : (n_modes, N_ATOMS, 3) Cartesian normal")
-    out.append("    #                     modes in the canonical mass-weighted")
-    out.append("    #                     unit-norm convention.")
-    # THE SAME ARRAY, PASSED IN.  `harmonic_analysis` recomputes its own
-    # masses when `mass=` is omitted, which is how the two paths came to
-    # disagree.  Handing it ours makes one array authoritative.
-    out.append("    _ha = _mb_thermo.harmonic_analysis(mol, HESS,")
-    out.append("                                       mass=MASSES_AMU)")
-    out.append("    FREQ_CM1 = np.asarray([_signed_wavenumber(w)")
-    out.append("                            for w in _ha['freq_wavenumber']])")
-    out.append("    HAS_IMAG = [bool(f < 0) for f in FREQ_CM1]")
-    out.append("    NORM_MODES_CANONICAL = _as_numpy(_ha['norm_mode'])")
-    out.append("else:")
-    out.append("    # ----- Partial-Hessian path (frozen atoms anchor the system) -----")
-    out.append("    # No translation/rotation projection: the frozen atoms")
-    out.append("    # break full T/R invariance, so the 6 (or 5) zero-frequency")
-    out.append("    # modes the all-free path projects out simply do not exist")
-    out.append("    # here.  All 3·N_FREE eigenvalues are physical.")
-    out.append("    _free_idx = np.asarray(FREE_ATOM_IDXS, dtype=int)")
-    out.append("    # Slice HESS (N_atoms × N_atoms × 3 × 3) down to the")
-    out.append("    # (N_FREE × N_FREE × 3 × 3) block coupling free atoms.")
-    out.append("    _hess_free = HESS[_free_idx][:, _free_idx]")
-    out.append("    # Reshape (N_FREE, N_FREE, 3, 3) -> (3*N_FREE, 3*N_FREE)")
-    out.append("    # with axis order (atom_i, dir_i, atom_j, dir_j) so the flat")
-    out.append("    # 2-D index k = 3*atom + direction.")
-    out.append("    _h2 = _hess_free.transpose(0, 2, 1, 3).reshape(")
-    out.append("        3 * N_FREE, 3 * N_FREE)")
-    out.append("    _masses_free = MASSES_AMU[_free_idx]")
-    out.append("    _msqrt_inv = 1.0 / np.sqrt(_masses_free)")
-    out.append("    # Mass-weight: H_ij <- H_ij / sqrt(m_i * m_j) for each 3x3")
-    out.append("    # atom-atom block, by broadcasting the per-atom 1/sqrt(m)")
-    out.append("    # vector (length 3*N_FREE after np.repeat) onto both axes.")
-    out.append("    _weights = np.repeat(_msqrt_inv, 3)")
-    out.append("    _hmw = _h2 * np.outer(_weights, _weights)")
-    out.append("    # Symmetrise to clean up the numerical asymmetry that")
-    out.append("    # accumulates in the analytic Hessian (small enough that")
-    out.append("    # eigh would silently average anyway; doing it here makes")
-    out.append("    # the result deterministic across BLAS implementations).")
-    out.append("    _hmw = 0.5 * (_hmw + _hmw.T)")
-    out.append("    _eigvals, _eigvecs = np.linalg.eigh(_hmw)")
-    out.append("    # Frequency in atomic units of frequency:")
-    out.append("    #     ω_au = sign(λ) · sqrt(|λ|)")
-    out.append("    # negative ω_au for an imaginary mode (negative eigenvalue")
-    out.append("    # of the mass-weighted Hessian).  Then convert a.u. -> cm⁻¹.")
-    out.append("    _omega_au = np.sign(_eigvals) * np.sqrt(np.abs(_eigvals))")
-    out.append("    FREQ_CM1  = _omega_au * CM1_PER_SQRT_EH_BOHR2_AMU")
-    out.append("    HAS_IMAG  = [bool(f < 0) for f in FREQ_CM1]")
-    out.append("    # Convert each eigenvector L_mw of the mass-weighted Hessian")
-    out.append("    # back to a Cartesian normal mode L_cart via")
-    out.append("    #     L_cart_k = L_mw_k / sqrt(m_k)")
-    out.append("    # which automatically preserves the canonical mass-weighted")
-    out.append("    # unit norm  Σ_k m_k |L_cart_k|^2 = 1  (verifiable: substitute")
-    out.append("    # L_cart and the m_k cancels against the 1/sqrt(m_k)^2 to")
-    out.append("    # give Σ_k |L_mw_k|^2, which is 1 because eigh-eigenvectors")
-    out.append("    # of a symmetric matrix have unit Euclidean norm).")
-    out.append("    NORM_MODES_CANONICAL = np.zeros((len(_eigvals), N_FREE, 3))")
-    out.append("    for _k in range(len(_eigvals)):")
-    out.append("        _L_mw   = _eigvecs[:, _k].reshape(N_FREE, 3)")
-    out.append("        _L_cart = _L_mw * _msqrt_inv[:, None]")
-    out.append("        NORM_MODES_CANONICAL[_k] = _L_cart")
+    out.append("# THE ONE PATH (science/normal-modes.md R1-R4): the free-free block")
+    out.append("# of the TRUE Hessian, mass-weighted, diagonalised in the complement")
+    out.append("# of the whole-body motions that survive holding FROZEN_ATOM_IDXS")
+    out.append("# still.  With nothing frozen that is the free molecule's six (or")
+    out.append("# five) motions removed; with atoms frozen it is the same calculation")
+    out.append("# over what survives -- one code path, so the two cannot disagree.")
+    out.append("#")
+    out.append("# gto.M builds a molecule in free space, so the motions the energy is")
+    out.append("# invariant under are an isolated system's -- stated here; a structure")
+    out.append("# that repeats along an axis is refused at the kind gate rather than")
+    out.append("# computed as a cluster in silence.")
+    out.append("_LAMBDA, NORM_MODES_CANONICAL, RIGID_PATTERNS = vibrational_modes(")
+    out.append("    HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS,")
+    out.append("    ('isolated', 'isolated', 'isolated'))")
+    out.append("N_RIGID = int(len(RIGID_PATTERNS))")
+    out.append("# omega = sign(lambda) * sqrt(|lambda|): a negative eigenvalue of the")
+    out.append("# mass-weighted Hessian is an imaginary mode, reported as a negative")
+    out.append("# wavenumber.  The eigenvalues are in Eh/(Bohr^2 amu); the one")
+    out.append("# constant converts them.")
+    out.append("_OMEGA_AU = np.sign(_LAMBDA) * np.sqrt(np.abs(_LAMBDA))")
+    out.append("FREQ_CM1  = _OMEGA_AU * CM1_PER_SQRT_EH_BOHR2_AMU")
+    out.append("HAS_IMAG  = [bool(f < 0) for f in FREQ_CM1]")
+    out.append("print(f'  whole-body motions removed before diagonalising: {N_RIGID}; '")
+    out.append("      f'{len(FREQ_CM1)} modes = 3*{N_FREE} - {N_RIGID}')")
     out.append("")
     out.append("# Derive the DISPLAY form (max(|L|)=1 per mode) from the canonical")
     out.append("# form.  Both forms ship in the JSON under explicit names so")
@@ -1245,6 +1205,14 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("        'electronic_structure':  None,")
     out.append("    })")
     out.append("state['modes'] = modes_payload")
+    out.append("# What was removed, beside what was kept (R7): the count and the")
+    out.append("# Cartesian patterns over the free atoms, so a reader can see that")
+    out.append("# a mode list of 3*N_FREE - N_RIGID is complete and what the")
+    out.append("# difference was.")
+    out.append("state['removed_motions'] = {")
+    out.append("    'count':    N_RIGID,")
+    out.append("    'patterns': [_filter_finite(_p) for _p in RIGID_PATTERNS],")
+    out.append("}")
     out.append("state['phase_frequencies'] = PHASE_COMPLETE")
     out.append("_atomic_write_json(state, JSON_PATH)")
     out.append("print(f'Phase 2 done: {len(modes_payload)} modes; "
@@ -1796,44 +1764,36 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
         "initio package."
     ]
 
-    # Mention the analytic Hessian explicitly -- the choice of
-    # analytic over finite-difference is a load-bearing claim
-    # for the Methods reader (no FD noise on frequencies).  The
-    # projection claim is CONDITIONAL: it is true of the full
-    # Hessian only -- on the partial-Hessian path the molecule is
-    # anchored and the six rigid-body modes are not projected out.
+    # Analytic over finite-difference is a load-bearing claim for the
+    # Methods reader (no FD noise on frequencies).  ONE sentence for free
+    # and held atoms alike, because there is one path: the free-free block
+    # of the true Hessian, the whole-body motions the geometry permits
+    # projected out before diagonalisation.  NO COUNT HERE: how many were
+    # removed is the geometry's answer (spectra.methods states it from the
+    # one derivation, and the artifact records it), and this function is
+    # handed `cfg` alone.
     frozen = list(getattr(cfg, "frozen_indices", []) or [])
+    parts.append(
+        f"The harmonic Hessian was obtained analytically via "
+        f"`{hessian_module}`; its block over the free atoms was "
+        f"mass-weighted and diagonalized after projecting out the "
+        f"whole-body motions the geometry permits (the number removed "
+        f"is recorded with the results)."
+    )
     if frozen:
-        parts.append(
-            f"The harmonic Hessian was obtained analytically via "
-            f"`{hessian_module}` over the free atoms only and "
-            f"mass-weighted (partial Hessian)."
-        )
-        # THE FROZEN SET, SAID OUT LOUD (user ruling 2026-08-21:
-        # freezing is the user's own choice, and the interpretation
-        # must be explicit).  This paragraph is what a reader of the
-        # results sees first, so the regime statement lives here.
+        # THE FROZEN SET, SAID OUT LOUD: freezing is the user's own
+        # choice, and what it means must be explicit.  This paragraph is
+        # what a reader of the results sees first, so the regime statement
+        # lives here.
         parts.append(
             f"{len(frozen)} atom(s) (0-based indices {sorted(frozen)}) "
             f"were held fixed throughout: the geometry relaxation "
             f"constrained them (geomeTRIC `$freeze`) and the Hessian "
-            f"excludes them, so the reported frequencies are those of "
-            f"the free atoms moving in the static field of the fixed "
+            f"block excludes them, so the reported frequencies are those "
+            f"of the free atoms moving in the static field of the fixed "
             f"ones.  Thermochemistry is vibrational-only (an anchored "
-            f"system neither translates nor rotates)."
-        )
-    else:
-        parts.append(
-            # NO COUNT HERE.  It said "the six" until 2026-09-11, which is
-            # wrong for every linear molecule (five: a linear system has two
-            # rotational degrees of freedom, not three) -- and this function
-            # is handed `cfg` alone, so it cannot tell.  The arithmetic lives
-            # where the GEOMETRY is, in `spectra.methods._mode_count`; naming
-            # the number twice is how the two came to disagree.
-            f"The harmonic Hessian was obtained analytically via "
-            f"`{hessian_module}` and mass-weighted, then "
-            f"diagonalized after projection of the translational and "
-            f"rotational eigenvectors."
+            f"system has no gas-phase translational or rotational "
+            f"partition function)."
         )
 
     # Raman path: α is analytic (CPHF) at each displaced point; the

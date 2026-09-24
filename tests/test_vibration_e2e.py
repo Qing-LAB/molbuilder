@@ -57,16 +57,25 @@ pytestmark = pytest.mark.skipif(
 WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
 
 
-def _describe(tmp_path, monkeypatch):
+def _describe(tmp_path, monkeypatch, *, frozen=()):
     """Create the calculation the way a user does: both citations read from
-    the projects root (`job-contracts.md` § 2.5b)."""
+    the projects root (`job-contracts.md` § 2.5b).  ``frozen`` holds atoms
+    still the way the viewer does -- as the structure's own region, written
+    into its pair by the codec -- never as a form field."""
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
-    (tree / "P" / "structure" / "w.xyz").write_text(WATER)
+    if frozen:
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        s = Structure.from_xyz(WATER)
+        s.frozen_atoms = list(frozen)
+        StructureCodec().write(s, tree / "P" / "structure" / "w.xyz")
+    else:
+        (tree / "P" / "structure" / "w.xyz").write_text(WATER)
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tmp_path)
     r = CliRunner().invoke(jobset_group, [
@@ -103,7 +112,8 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     bundle = _describe(tmp_path, monkeypatch)
     d = _prep_and_run(bundle)
 
-    assert d["schema_version"] == 5
+    from molbuilder.spectra.results import SCHEMA_VERSION
+    assert d["schema_version"] == SCHEMA_VERSION
     for k in ("phase_relaxation", "phase_frequencies",
               "phase_raman", "phase_es"):
         assert d[k] == "complete", (k, d[k])
@@ -366,3 +376,43 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
         assert np.allclose(ours_cm1, np.asarray(r["ref_cm1"]), atol=1e-4), (name, ours_cm1, r["ref_cm1"])
         if name in ("water", "hf"):
             assert all(abs(o - 1.0) < 1e-6 for o in r["overlaps"]), (name, r["overlaps"])
+
+
+def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
+                                                             monkeypatch):
+    """The unification's demonstrator (design § 7.6): hold water's oxygen
+    and half of the six numbers the old path reported were not vibrations
+    -- the two hydrogens swinging about a nailed-down atom, at 15-24 cm-1
+    with the two loudest infrared bands of the run.  Through the whole
+    described road, the run must now report the three vibrations only,
+    say what it removed, and keep the free atoms' own stationarity test
+    (R5) rather than the constraint force on the oxygen."""
+    bundle = _describe(tmp_path, monkeypatch, frozen=(0,))
+    d = _prep_and_run(bundle)
+
+    assert d["frozen_atom_idxs"] == [0] and d["free_atom_idxs"] == [1, 2]
+    freqs = sorted(m["frequency_cm1"] for m in d["modes"])
+    assert len(freqs) == 3, freqs
+    assert d["removed_motions"]["count"] == 3
+    assert len(d["removed_motions"]["patterns"]) == 3
+    # Nothing under 100 cm-1 survives: the leftovers are gone, and the three
+    # that remain are the bend and the two stretches.
+    assert freqs[0] > 1000.0, freqs
+    assert 1400.0 < freqs[0] < 1900.0 and 3300.0 < freqs[2] < 4100.0, freqs
+    th = d["thermo"]
+    assert th["regime"] == "vibrational-only"
+    assert th["n_modes"] == 3 and th["n_rigid_removed"] == 3
+    assert th["n_imag_excluded"] == 0
+    # Every mode is orthogonal to every removed motion in the mass metric
+    # (science/normal-modes.md § 7 point 3), read off the artifact itself.
+    import numpy as np
+    from molbuilder.chemistry import atomic_mass
+    masses = np.array([atomic_mass(e) for e in d["equilibrium"]["elements"]])
+    free = d["free_atom_idxs"]
+    sqm = np.sqrt(masses[free])
+    for m in d["modes"]:
+        L = np.asarray(m["eigenvector_canonical"]) * sqm[:, None]
+        for pat in d["removed_motions"]["patterns"]:
+            v = np.asarray(pat) * sqm[:, None]
+            v /= np.linalg.norm(v)
+            assert abs(float((L * v).sum())) < 1e-6
