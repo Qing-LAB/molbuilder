@@ -76,7 +76,7 @@ block, and all metadata (`regions`/`annotations`). These indices
 are valid only against the structure they were computed on — **pinned by
 `structure_hash`**; a mismatch must refuse, not mis-apply.
 
-**TRANSLATED** — only at three boundaries, each with one API:
+**TRANSLATED** — only at three boundaries, each with one API — and **NORMALISED** at a fourth, § 2.2, which is a reorder and not an offset:
 
 ```mermaid
 flowchart LR
@@ -115,8 +115,12 @@ web-UI implementation; the standalone viewer embed inlines `+1` at the label,
 drift-guarded against `toDisplay`.
 
 **The load-bearing invariant.** Engine coordinate blocks emit atoms in internal
-`Structure` order (no reordering), so engine atom `siesta_atom_index(i)` is the
-coordinate line for internal atom `i`. The display convention is chosen so
+`Structure` order for every kind that does not sort, so engine atom
+`siesta_atom_index(i)` is the coordinate line for internal atom `i`. A kind
+that must reorder — transport, for TranSIESTA's contiguous electrode ranges;
+the SIESTA force-constant run, for a contiguous free range — emits the
+**sorted copy** of § 2.2, and the same invariant holds on that copy, under its
+recorded permutation. The display convention is chosen so
 `toDisplay(i)` **equals** the engine atom number the user reads in the file
 (SIESTA `.fdf`, geomeTRIC `$freeze`) — bound by
 `tests/test_engine_atom_index.py` — **but the front-end half of this
@@ -125,6 +129,32 @@ invariant is UNBOUND.** This line named
 repo-wide grep finds that name in this citation and nowhere else. The file
 exists and holds six tests; none of them is that one,
 with end-to-end element+position tests binding the full user→engine round-trip.
+
+### 2.2 Normalised — a sorted COPY under one recorded permutation *(user, 2026-09-23)*
+
+Some engines need atoms in an order the source file does not have. TranSIESTA
+identifies each electrode by a **contiguous** atom range; SIESTA's
+force-constant run nudges atoms *A through B* and cannot take a scattered free
+set. The identity does not bend to them. **The program sorts a COPY at prep,
+records the permutation in both directions beside it, and maps every number
+that comes back through the inverse before a person sees it.** From the
+outside, atoms go in and come out in the input order; the sorted order is an
+engine fact, like the 1-based numbering, and it never leaks.
+
+| | the rule |
+|---|---|
+| **one home per sort key** | the sort is a pure function, `(Structure) -> (sorted Structure, permutation)`, with one implementation per key — `transport/sort.py`'s categorical sort today. The free-versus-held key the SIESTA vibration path needs is a **second key over the same machinery**, not a second machine ([`plans/2026-09-21-normal-mode-unification-design.md`](?doc=plans/2026-09-21-normal-mode-unification-design.md) § 14.2) |
+| **every index-carrying field moves with its atom** | `regions`, `frozen_atoms`, `annotations`, the identity columns, every per-atom array — through one map, checked to be a bijection before the copy is returned |
+| **recorded, both directions** | `atom-permutation.json` beside the record ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.1): `original_to_sorted` and `sorted_to_original` |
+| **inverted at every return** | a per-atom result read from a sorted run — a force, a Mulliken charge, a projected DOS, an eigenchannel weight — passes through `sorted_to_original` before it reaches any surface. **No reader does this today, because no per-atom transport result is parsed yet**; the first one that is, does, and it is the row this table exists for |
+| **the sorted copy is an engine artifact** | it lives in the calculation's record (the `junction.xyz` there is the *sorted* junction) and in the decks. A surface that opens it presents it as the engine's order, with the permutation beside it — never as the person's structure |
+| **the person's interfaces speak the input order** | a displacement script for a frame group receives the base structure in input order and returns frames in input order ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9). The sort runs per frame at prep, and because a frame inherits the base's labels the permutation is **the same for every frame of a group** |
+| **one copy, one permutation** | a structure sorted for two reasons — a junction ordered for TranSIESTA and again for force-constant contiguity — carries **one composed permutation, recorded once**. Two records for one copy is how a return leg inverts the wrong one. How the composition is built is the design's to settle (§ 14.2 above); that there is one is this contract's |
+
+This is a fourth translation, and it differs in kind from the three above: those
+are a base offset with no state; this is a per-structure reorder with a record.
+`engine_atom_index.py` therefore does not hold it, and must not — its invariant
+is that its two directions cannot disagree because they share one base.
 
 ---
 

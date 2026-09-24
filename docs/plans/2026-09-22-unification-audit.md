@@ -791,7 +791,9 @@ would not make `"z"*16` refuse at build time. Verified beside it:
 `StructureCodec.load`-as-a-notice plus a sidecar-only attestation door. If the
 latter: the RULE goes into `structure-molstruct.md` § 3 first (name the door,
 the channel, and that a hash mismatch *reports* while a count mismatch
-*refuses*, with the reason), then the two comments above follow it.
+*refuses*, with the reason), then the two comments above follow it — and a
+third restatement, `model/overview.md` § 2.1's *"a mismatch must refuse, not
+mis-apply"*, written about the hash pin.
 
 #### 1.8d `title` absorbs the extended-XYZ header, and `to_xyz` writes it back
 

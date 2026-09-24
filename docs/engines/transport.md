@@ -701,7 +701,7 @@ it is checkable.** Every frame the rule produces, whoever wrote it:
 
 | promise | why | checked how |
 |---|---|---|
-| the same atom count, in the **same order** | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
+| the same atom count, in the **input order** — the script never sees the sorted copy; the sort runs per frame at prep, under one permutation for the whole group (`model/overview.md` § 2.2) | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
 | the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
 | the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
 | **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, to the coordinate tolerance the sort uses |
