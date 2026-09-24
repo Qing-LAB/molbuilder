@@ -677,7 +677,15 @@ a second engine adds its own. The block `equilibrium.scf_energy_eh` /
 `mo_energies_eh` / `homo_idx` is PySCF's — a periodic engine has a Fermi
 level, not a HOMO — and **becomes optional** (design § 16.2, step 4 of § 18,
 before the SIESTA arm). What SIESTA supplies per mode is `frequency_cm1` and
-`eigenvector_canonical`, once its convention is established (design § 19.4).
+`eigenvector_canonical`, once its convention is established (design § 19.4);
+`eigenvector_display` is molbuilder's own per-mode rescale of it, derived,
+never supplied — yet today's reader refuses a mode carrying only the
+canonical form (`results.py`, the `eigenvector_display` shape check), which
+is step 4's to fix beside the MO block. Two more places say the opposite of
+*absent* and have to stop: the run-level phase flags have no *not requested*
+state, so a run that asked for no strengths writes `phase_raman = 'complete'`
+(`vibration_deck.py`); and the viewer's change fingerprint reads a
+`phase_ir` key nothing writes.
 `presenters.md`'s *PySCF spectrum* label names the engine and will be wrong
 the day it is not.
 
