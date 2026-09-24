@@ -562,6 +562,15 @@ sidecar) retired with the P2 substitution: a form default was a **second
 copy** of a structure fact, editable into disagreement with the structure it
 described.
 
+**The relaxation record travels the same way** *(2026-09-24)*. A pair exported
+from the Results tab of a finished relaxation carries `info.relaxation` beside
+`info.calculation` ([`model/parse.md` § 5b.1](?doc=model/parse.md)); the tab
+reads nothing of it itself — the gate does, and its findings land on the
+`already_relaxed` card like every other finding about that field, so the
+record is displayed where the choice is made
+([`engines/vibration.md` § 2.2](?doc=engines/vibration.md), the record table).
+The Metadata pane of the viewer shows the raw store.
+
 ## 9. Where the module stands — ESM status
 
 The design goal for every front-end module is a **concealed, independently
