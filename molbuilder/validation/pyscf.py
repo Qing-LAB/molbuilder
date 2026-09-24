@@ -196,8 +196,12 @@ def _validate_pyscf(struct: Structure, cfg,
 
     # Periodicity vs what this emitter can express.  FIRST, because it changes
     # what every other finding is about: the rest describe a cluster
-    # calculation, and this says whether you asked for one.
-    issues += _check_periodic_structure_in_a_gas_phase_script(struct)
+    # calculation, and this says whether you asked for one.  The vibration
+    # kind REFUSES a repeating axis itself (validation/spectra.py), so this
+    # warning defers there -- one fact, one finding (science/validation.md
+    # § 7).
+    if not vibration:
+        issues += _check_periodic_structure_in_a_gas_phase_script(struct)
 
     # Open-shell metal + closed-shell SCF: shared rule with SIESTA.
     # The vibration kind runs the same shared body over the deck's view.

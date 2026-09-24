@@ -730,7 +730,7 @@ class PySCFConfig:
         "label": 'Structure is already relaxed',
         "tier": "basic",
         "item_kind": "deck",
-        "expands": ('geomeTRIC optimize()', 'gradient check', 'FC step 0 forces'),
+        "expands": ('geomeTRIC optimize()', 'gradient check'),
         "engine_key": "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)",
     })
     compute_raman: bool = field(default=True, metadata={

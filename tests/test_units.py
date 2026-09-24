@@ -239,8 +239,9 @@ def test_the_browsers_copy_of_a_constant_equals_the_one_home(js_name,
     scalars.  `architecture.md` § 3 allows that for a handful of numbers
     and requires this pin: the copy is only legal while it is equal.
 
-    Four of the five derive exactly from `constants`; `ZERO_POINT_Q` is a
-    composite with no single counterpart and is covered below.
+    Every row derives exactly from `constants`.  (The zero-point amplitude is
+    no longer the browser's to compute: every mode in the file carries it,
+    vibration.md § 6.3.)
     """
     import re
     from pathlib import Path

@@ -514,3 +514,56 @@ def test_spectrum_auto_detect_button_populates_form(
     rationale = page.locator("#auto-detect-rationale").inner_text()
     assert "Fe" in rationale
     assert "open-shell" in rationale.lower()
+
+
+def test_a_periodic_structure_moves_the_spectrum_strip_to_siesta(
+        page, flask_server, tmp_path, monkeypatch):
+    """`web/spectra.md` § 5: a structure that repeats along an axis switches
+    the Spectrum tab's engine strip to SIESTA and says why, because PySCF's
+    gate refuses a periodic structure.  Driven the way a person drives it:
+    the pair picked in the sidebar, the Load button, the strip read back."""
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "strip_proj"
+    proj.mkdir()
+    target = proj / "chain.xyz"
+    StructureCodec().write(
+        Structure(elements=["C", "C"],
+                  positions=np.array([[5.0, 5.0, 0.0], [5.0, 5.0, 1.3]]),
+                  cell=np.diag([10.0, 10.0, 2.6]),
+                  axis_kind=("isolated", "isolated", "periodic")),
+        target)
+
+    page.goto(f"{flask_server}/spectrum-calculation",
+              wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.projects "
+        "      && typeof window.molbuilder.projects.setShared === 'function'",
+        timeout=10000)
+    page.wait_for_selector(
+        "#spectra-form-container input, #spectra-form-container select",
+        timeout=15000)
+    assert page.evaluate(
+        "() => document.querySelector('#spectra-engine-strip .tab-btn.active').dataset.tab"
+    ) == "pyscf"
+    page.evaluate(
+        "(p) => window.molbuilder.projects.setShared("
+        "  p.substring(0, p.lastIndexOf('/')), p)", str(target))
+    page.wait_for_function(
+        "() => !document.getElementById('load-from-sidebar-btn').disabled",
+        timeout=5000)
+    page.locator("#load-from-sidebar-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('#spectra-engine-strip .tab-btn.active')"
+        "        .dataset.tab === 'siesta'",
+        timeout=15000)
+    assert not page.evaluate(
+        "() => document.getElementById('spectra-engine-note').hidden")
+    assert page.evaluate(
+        "() => document.getElementById('spectra-tab-siesta').hidden") is False
+    assert page.evaluate(
+        "() => document.getElementById('spectra-tab-pyscf').hidden") is True

@@ -105,6 +105,12 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
     return out
 
 
+#: The engines a vibration runs on -- ONE home, read by the `init` refusal
+#: (`engines/vibration.md` § 2.1): PySCF for the analytic Hessian and the
+#: strengths, SIESTA for the force-constant run.
+VIBRATION_ENGINES = ("pyscf", "siesta")
+
+
 def vibration_stages() -> List["Stage"]:
     """The vibration calculation's ladder: ONE stage, named ``freq``
     (spectra-migration plan § 2, user rulings 2026-08-20).

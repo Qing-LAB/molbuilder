@@ -233,6 +233,13 @@ works in — a wavenumber ν̃ in cm⁻¹, since ω = 2πcν̃ — this evaluate
     Q_rms = 4.106 / √( ν̃ [cm⁻¹] )        in √amu · Å
 ```
 
+**The tab does not compute this number.** Every mode in the file carries it
+as `zero_point_amplitude_amu12_ang`, derived at every serialisation from the
+one constant in `constants.py` ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6.3, § 6.6); the animation reads it and applies only the thermal factor
+below. *(A second spelling of the constant lived in the tab until
+2026-09-24.)*
+
 and the Cartesian displacement of atom *i* is `Q_rms × L_i`, with **L** the
 mass-weighted eigenvector normalised so `Σᵢ mᵢ|Lᵢ|² = 1` (`eigenvector_canonical`).
 The mass carried in that normalisation is what makes the amplitude **atom-specific**:
@@ -406,9 +413,10 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    (`POST /api/structure/analyze`) for a sensible charge, spin, and method for
    this molecule and fills them into the form, with a one-line rationale. You can
    override anything.
-3. **Pick the engine, set the parameters.** An engine strip — the
-   Structure-optimization tab's own component, two tabs over two mounted
-   forms — offers **PySCF** and **SIESTA**. Both forms are **built from the
+3. **Pick the engine, set the parameters.** An engine strip — the same
+   widget the Structure-optimization tab mounts, `lib/tab-strip.js` over
+   the shared sheet, two buttons over two mounted forms — offers **PySCF**
+   and **SIESTA**. Both forms are **built from the
    CATALOGUE**, narrowed to (engine, vibration)
    (`GET /api/build/schema/<engine>?calculation=vibration`), through the
    same door and the same renderer as the Build tab, so a parameter is
@@ -449,7 +457,7 @@ catalogue schema + hand-over doors (§ 5):
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data | `{ok, results}` — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 
 Both follow the app's `{ok: …}` envelope convention. The form schema comes
-from the catalogue door (`GET /api/build/schema/pyscf?calculation=vibration`);
+from the catalogue door (`GET /api/build/schema/<engine>?calculation=vibration`, once per engine);
 (the old `GET /api/build/schema/spectra` route retired at P3; frozen atoms
 travel with the structure now — § 8).
 

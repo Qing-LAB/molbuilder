@@ -124,6 +124,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // global, because a viewer belongs to whoever mounted it (molview.md § 5.6).
     // Workspace is a separate module, read at call time.
     const _ws   = () => (window.molbuilder && window.molbuilder.workspace) || null;
+    // The engine strip is a SHARED widget (ui-contract.md § 1): the sheet in
+    // form-components.css, the behaviour in lib/tab-strip.js, mounted below.
+    let _engineStrip = null;
     const _data = () => ((_mvHandle && _mvHandle.ok) ? _mvHandle.data : null);
     let _mvHandle = null;
 
@@ -393,19 +396,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     // ----- Tabs (SIESTA / PySCF) -------------------------------------
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const target = btn.dataset.tab;
-            document.querySelectorAll(".tab-btn").forEach(b => {
-                const active = (b === btn);
-                b.classList.toggle("active", active);
-                b.setAttribute("aria-selected", active ? "true" : "false");
-            });
-            document.querySelectorAll(".tab-panel").forEach(p => {
-                p.hidden = (p.id !== "tab-" + target);
-            });
-        });
-    });
+    // One switcher for both tabs that offer two engine forms
+    // (lib/tab-strip.js); the buttons name their panels by aria-controls.
+    _engineStrip = window.molbuilder.tabStrip.mount(
+        document.querySelector("#generate-card .tabs")
+            || document.querySelector(".tabs"), {});
 
     // ----- Parameter compatibility rules -----------------------------
     //
@@ -1534,10 +1529,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     /** Which engine's form is showing — the one the user has been filling. */
     function _activeEngine() {
-        const pyscf = document.getElementById("tab-pyscf");
-        const showing = pyscf && !pyscf.hidden
-            && getComputedStyle(pyscf).display !== "none";
-        return showing ? "pyscf" : "siesta";
+        return (_engineStrip && _engineStrip.active()) || "siesta";
     }
 
     {

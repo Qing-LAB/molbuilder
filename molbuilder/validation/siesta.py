@@ -539,7 +539,13 @@ def _validate_siesta(struct: Structure, cfg,
     # HERE, where it is cheap -- the compose-time gate that refuses a
     # MOVED lead is correct and runs after the relaxation is paid for.
     from .sidecar import check_electrode_labels_are_frozen
-    issues += check_electrode_labels_are_frozen(struct)
+    # The fact holds on every kind (an unheld lead is moved by whatever
+    # moves atoms); the sentence names the run that would move it, so a
+    # force-constant run is not told about a relaxation it does not do
+    # (science/validation.md § 7).
+    issues += check_electrode_labels_are_frozen(
+        struct, run=("the force-constant run" if vibration
+                     else "the relaxation"))
 
     # A species label must name an element -- SIESTA needs the Z beside
     # it in ChemicalSpeciesLabel.  Blocks here with a readable message

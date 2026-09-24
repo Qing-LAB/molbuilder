@@ -856,10 +856,14 @@ flowchart LR
 chosen functional, basis and ECP; the free coordinates stationary,
 `|F_i| ≈ 0`; the held atoms electronically present and left out of the
 active set. *Tool:* Phase 0, geomeTRIC under the `geom_*` criteria, the held
-atoms in a `$freeze` file; the check afterwards reads the largest force on
-the free atoms and warns above the criterion (R5). `already_relaxed` skips
-the optimiser and still runs the check, so the person's assertion is answered
-with a number rather than believed.
+atoms in a `$freeze` file, and the force the deck records afterwards is
+geomeTRIC's final one over the free atoms. Under `already_relaxed` the
+optimiser is skipped and the deck checks the gradient instead, warning above
+**ten times** `geom_gmax` on the largest force component
+(`vibration.md` § 4.3) — the assertion answered with a number rather than
+believed. That factor, and the component-versus-norm convention (geomeTRIC's
+`gmax` is a per-atom norm), differ from the SIESTA read-back's 1× on a
+component: one rule for both routes is owed beside R5 (V1.30).
 
 **B — the Hessian, analytically.** *Discussion:* the orbital response
 `∂C/∂R_i` from coupled-perturbed equations gives `∂²E/∂R_i∂R_j` for the
@@ -906,7 +910,8 @@ engine.
 several points such as `−Q, −Q/2, 0, +Q/2, +Q`, the held coordinates unchanged
 (`R_F(Q) = R_F(0)`). *Tool:* two points per mode, `q ± A·L_display`, where
 `A = displacement_amplitude_ang` (0.02 Å by default, window 0.02–0.20 Å) and
-`L_display` is the eigenvector rescaled so its largest atomic entry is 1 — a
+`L_display` is the eigenvector rescaled so its largest absolute Cartesian
+component is 1 (an atom moving off-axis swings up to `√3·A`) — a
 deterministic peak displacement per mode, chosen on purpose as a *probe*
 geometry rather than a physical amplitude. The held atoms do not move: the
 displacement loop runs over the free atoms only, which is the discussion's
@@ -915,10 +920,10 @@ eigenvector forms are in the file, so the conversion is exact:
 
 ```text
     canonical    L_c :  Σ_k m_k |L_c,k|² = 1              (amu^{-1/2};  u_k = Q · L_c,k  with  Q in amu^{1/2}·Å)
-    display      L_d =  L_c / max_k |L_c,k|               (dimensionless, largest entry 1)
+    display      L_d =  L_c / max|L_c|                    (dimensionless; max over every Cartesian component, largest entry 1)
 
-    the probe's step in the normal coordinate:     Q_probe = A / max_k |L_c,k|
-    the discussion's coupling, from the file:      ∂ε/∂Q_ν = ΔE/(2A) · max_k |L_c,k|
+    the probe's step in the normal coordinate:     Q_probe = A / max|L_c|
+    the discussion's coupling, from the file:      ∂ε/∂Q_ν = ΔE/(2A) · max|L_c|
     the zero-point amplitude of the mode:          Q_zp = √(ħ/2ω) = 4.106 / √(ν̃ / cm⁻¹)   amu^{1/2}·Å
     the coupling per zero-point displacement:      g_ν = (∂ε/∂Q_ν) · Q_zp                    (the IETS number, in meV)
 ```
@@ -965,12 +970,13 @@ substrate, active substrate and molecule; every atom in the same periodic DFT
 calculation; relax with `ΔR_F = 0`, the deep layers at bulk positions; after
 it, `F_A ≈ 0` while `F_F` need not vanish. *Tool:* the vibration kind relaxes
 nothing (`vibration.md` § 2.2), so this is two calculations — an optimization
-that holds the set, then the vibration on the relaxed pair. **What the tool does, and what it measured, 2026-09-24:** the vibration kind
-relaxes nothing, so `already_relaxed` is offered on this engine too as the
-precondition the person asserts — refused at the gate while unmade, since
+that holds the set, then the vibration on the relaxed pair. **What the tool does, and what it measured, 2026-09-24:** `already_relaxed`
+is offered on this engine too as the precondition the person asserts — refused at the gate while unmade, since
 the run has no relaxation to fall back on — and the read-back reads the
-forces SIESTA evaluated at its FC step 0 into the artifact and judges them
-against the relaxation's own criterion (R5 on both routes; `vibration.md`
+forces SIESTA evaluated at its FC step 0 into the artifact and judges the
+largest component on the free atoms against the catalogue's recommended
+tolerance, 0.02 eV/Å — the tolerance the person's own relaxation used does not
+travel with the structure yet, V1.28 — (R5 on both routes; `vibration.md`
 § 5.5). The H₂ fixture at the experimental 0.741 Å, sent through the whole
 road before that judgement existed, carried **1.27 eV/Å** on its reference
 step with nothing said and reported **3358 cm⁻¹**; relaxed through an
@@ -1000,9 +1006,9 @@ ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
 two stages at δ and δ/2 is describable and `summarize run <stage>` derives
 each — the comparison is by hand. The symmetry diagnostic is recorded since 2026-09-24 —
 `engine_metadata.fc_asymmetry_max_ev_ang2`, `max |H_ij − H_ji|` over the free
-block before the read-back symmetrises it — and with one free atom it says
-nothing (10⁻¹² eV/Å² on H₂: the block is one atom's own three nudges); it
-earns its place at two free atoms and up. The ladder itself was measured on
+block before the read-back symmetrises it — and on a block whose off-diagonals
+vanish by symmetry it says nothing (10⁻¹² eV/Å² on H₂ along its axis); an atom
+at a low-symmetry site shows it from one free atom on. The ladder itself was measured on
 the tightly relaxed H₂ (three stages of one description, δ = 0.02, 0.04 and
 0.08 Bohr):
 
@@ -1012,13 +1018,17 @@ the tightly relaxed H₂ (three stages of one description, δ = 0.02, 0.04 and
 | 0.0212 (the default) | 3022.3 | 4.7 |
 | 0.0423 | 3044.7 | 9.0 |
 
-The one-sided constants drift apart linearly in δ — the cubic term of the
-bond, which the central difference cancels to first order — and the
-frequency still moves by 10 cm⁻¹ between the default and its half, so the
-plateau is **not** reached at the default for this stiff, light oscillator:
-exactly the case the discussion warns about, and the reason the ladder is
-worth running before a production step is trusted. The comparison across
-the stages is by hand today (V1.23).
+The one-sided constants drift apart linearly in δ — the bond's cubic term,
+which the central difference cancels (every odd order; its leading error is
+O(δ²)). The frequency drift is **not** that O(δ²) signature: 10 cm⁻¹ per
+doubling then 22, an exponent near one, where a Morse estimate of the bond's
+quartic term gives a few wavenumbers with the wrong power of δ. Most of the
+drift is numerical, and the real-space grid (0.09 Å spacing against 0.01–0.04 Å
+nudges) is the usual suspect, not isolated here — which is the sharper lesson:
+a δ-only ladder cannot separate the harmonic region's edge from the grid, so
+the plateau `ω(δ) ≈ ω(δ/2)` is not reached at the default and the ladder alone
+cannot say why. V1.23's design pairs a mesh rung with the δ rung. The
+comparison across the stages is by hand today.
 
 **D — the active Hessian.** *Discussion:* `H_AA` with all its cross terms;
 the frozen atoms still shape it through the potential. *Tool:* § 4b.4 — the
@@ -1142,7 +1152,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 
 | the discussion said | this contract and this tool |
 |---|---|
-| keep every metal atom in the quantum calculation; take the Hessian only with respect to the coordinates allowed to move (`H_AA`); "deleting the frozen rows" means deleting *degrees of freedom*, not atoms | **the same**, and it is the built behaviour on both engines (`vibration.md` § 4.4, § 5.5); on PySCF the held rows are never computed at all |
+| keep every metal atom in the quantum calculation; take the Hessian only with respect to the coordinates allowed to move (`H_AA`); "deleting the frozen rows" means deleting *degrees of freedom*, not atoms | **the same**, and it is the built behaviour on both engines (`vibration.md` § 4.4, § 5.5); on PySCF the response equations are never solved for the held rows, while the nuclear and dispersion terms are computed in full and sliced (`vibration.md` § 4.4) |
 | `hess.kernel(atmlst = active_atoms)` | **differs, by measurement**: `kernel(atmlst=)` adds a full-size dispersion term and the density-fitted Hessian class refuses the list, so the deck sums `hess_elec + hess_nuc + D3[A,A]` on a plain mean field (`vibration.md` § 4.4) |
 | mass-weight `H_AA` and diagonalise; the eigenvectors are the modes; at most `3·N_A` of them | **goes further**: the surviving whole-body motions are removed first (R3, § 3.1), and the count is `3·N_A − n_rigid(F)`. For a slab or three anchors off a line nothing survives and the two agree; for one or two held atoms the difference is measured — water with its oxygen held reported six numbers, three of them turns, and the two loudest infrared bands were among them (§ 8; `vibration.md` § 11) |
 | the condition is `∇_A E = 0`; the frozen atoms may carry force | **the same** (R5) — and it was a live defect here until 2026-09-23: the check read every atom and warned on every converged constrained minimum |
@@ -1179,8 +1189,9 @@ designed as one each and need a decision.
 
 | | what | why it is owed | rule or section |
 |---|---|---|---|
-| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the relaxation's criterion; `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
-| ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | one free atom cannot show it (§ 4b.6 C) | § 4b.6 C |
+| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the catalogue's recommended tolerance (the run's own does not travel yet, V1.28); `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
+| ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
+| V1.30 | **one stationarity rule for both routes**: PySCF warns above ten times `geom_gmax` (geomeTRIC's per-atom norm) on the largest force component, SIESTA judges once the catalogue's tolerance on the largest component — one factor and one convention, written beside R5 | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
 | V1.28 | **the structure carries its relaxation record** — engine, level of theory, criterion, achieved force, the held set, the run — in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs (needs a design and a yes) | the assertion is today the person's memory of a run the tree already holds | § 4b.6 A |
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | the ladder is describable today; the comparison is by hand | § 4b.6 C |
@@ -1343,7 +1354,7 @@ held-oxygen water run through the whole described road in
 ## 8. Why this document exists
 
 *(This section is the record of what was found on 2026-09-21. Every defect it
-names was fixed by 2026-09-23 — [`engines/vibration.md`](?doc=engines/vibration.md)
+names was fixed by 2026-09-23, and the addendum's by 2026-09-24 — [`engines/vibration.md`](?doc=engines/vibration.md)
 § 10 says what stands — and the present tense below is the record's, kept so
 the reason for each rule stays visible.)*
 

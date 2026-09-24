@@ -73,7 +73,7 @@ CM1_PER_SQRT_HARTREE_BOHR2_AMU: float = HARTREE_CM1 / (AMU_ELECTRON_MASS ** 0.5)
 #: The zero-point mean-square amplitude of a harmonic mode, in the units the
 #: spectra file uses: ``<Q²> = ħ/2ω`` with ``Q`` in amu^½·Å and the frequency as
 #: a wavenumber, so ``Q_zp² = ZERO_POINT_Q2_AMU_ANG2_CM1 / ν̃``.  DERIVED from
-#: the three constants the wavenumber conversion above uses -- in atomic units
+#: the two constants the wavenumber conversion above uses plus the Bohr radius -- in atomic units
 #: ħ = 1, ``ω`` in Hartree is ``ν̃ / HARTREE_CM1``, mass in m_e, length in Bohr
 #: -- so one Bohr and one amu spelling serve both (16.858 amu·Å²·cm⁻¹; H₂ at
 #: 4400 cm⁻¹ gives 0.062 amu^½·Å, a bond-length r.m.s. of 0.087 Å).

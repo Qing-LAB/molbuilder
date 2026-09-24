@@ -1691,7 +1691,11 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("        _tot = _occ")
     out.append("    _homo = int(np.max(np.where(_tot > 0.5)[0]))")
     out.append("    _lo = max(0, _homo - ES_N_HOMO_BELOW)")
-    out.append("    _hi = min(len(_mos), _homo + 1 + ES_N_LUMO_ABOVE)")
+    # The window is SYMMETRIC by contract (vibration.md § 4.8): the HOMO and
+    # n below it, the LUMO and n above it -- `_homo + 2 + n` ends one past
+    # the last orbital kept.  It read `+ 1 +` until 2026-09-24 and kept one
+    # unoccupied orbital fewer than the help text promised.
+    out.append("    _hi = min(len(_mos), _homo + 2 + ES_N_LUMO_ABOVE)")
     out.append("    return _mos[_lo:_hi].copy(), _homo - _lo")
     out.append("")
     out.append("# Defensive: skip out-of-range explicit indices.  The")
@@ -1736,7 +1740,7 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # three arrays share length even when an orbital swap")
     out.append("    # shifts the HOMO index at a displaced geometry.")
     out.append("    _lo = max(0, HOMO_IDX - ES_N_HOMO_BELOW)")
-    out.append("    _hi = min(len(MO_ENERGIES_EQ), HOMO_IDX + 1 + ES_N_LUMO_ABOVE)")
+    out.append("    _hi = min(len(MO_ENERGIES_EQ), HOMO_IDX + 2 + ES_N_LUMO_ABOVE)")
     out.append("    _mos_eq = MO_ENERGIES_EQ[_lo:_hi]")
     out.append("    _n_win = len(_mos_eq)")
     out.append("    # Re-slice ± arrays to match the equilibrium window size.")

@@ -28,7 +28,8 @@ from typing import Optional, Sequence
 import numpy as np
 
 from ..chemistry import atomic_mass
-from ..constants import (BOLTZMANN_HARTREE_K, CM1_PER_SQRT_HARTREE_BOHR2_AMU,
+from ..constants import (BOHR_ANGSTROM, BOLTZMANN_HARTREE_K,
+                         CM1_PER_SQRT_HARTREE_BOHR2_AMU,
                          HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_CM1)
 from ..parse.engines.siesta_fc import (fc_block_asymmetry, hessian_from_fc,
                                         read_fc)
@@ -92,9 +93,12 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
     left.  ``reference_forces_ev_ang`` are the forces SIESTA evaluated at
     the undisplaced geometry (its FC step 0, `siesta_fc.reference_forces_from_out`),
     in the SORTED order like everything the run wrote; with them and
-    ``force_criterion_ev_ang`` (the relaxation's own criterion) the
-    artifact's ``relaxation`` block judges stationarity over the free
-    atoms (R5 on this route, `engines/vibration.md` § 5.5).
+    ``force_criterion_ev_ang`` -- today the catalogue's recommended
+    `relax_force_tol`, since the tolerance the person's own relaxation
+    used does not travel with the structure yet (plan V1.28) -- the
+    artifact's ``relaxation`` block judges stationarity as the largest
+    absolute force COMPONENT over the free atoms (R5 on this route,
+    `engines/vibration.md` § 5.5).
     ``already_relaxed`` is the person's assertion, carried as such.
     """
     n = len(sorted_struct.elements)
@@ -187,9 +191,12 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
 
     # STATIONARITY, JUDGED HERE (R5 on this route; `engines/vibration.md`
     # § 5.5).  The forces are the run's, in the sorted order; the judged
-    # number is the largest component over the FREE atoms, the way the
-    # PySCF deck judges its own (§ 4.3), converted with the force-unit
-    # constant every force number in this codebase uses.  `already_relaxed`
+    # number is the largest absolute Cartesian COMPONENT over the FREE
+    # atoms -- the convention the PySCF deck judges its own by (§ 4.3),
+    # stated in § 5.5 -- converted with the force-unit constant every
+    # force number in this codebase uses.  The criterion is the caller's,
+    # and today that is the catalogue's recommended tolerance, so the
+    # warning names it as such.  `already_relaxed`
     # is the person's assertion and is carried as such: on this route it is
     # the precondition itself, and the numbers below say whether it held.
     warning = ("the force-constant route does not relax: the input geometry "
@@ -212,13 +219,14 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
             if converged:
                 warning += (f".  The forces at the reference geometry were "
                             f"read back: the largest on the free atoms is "
-                            f"{max_free_ev:.4f} eV/Å, within the relaxation "
-                            f"criterion of {float(force_criterion_ev_ang):g} eV/Å")
+                            f"{max_free_ev:.4f} eV/Å, within the catalogue's "
+                            f"recommended relaxation tolerance of "
+                            f"{float(force_criterion_ev_ang):g} eV/Å")
             else:
                 warning = (f"the reference geometry is not a stationary point "
                            f"at this level of theory: the largest force on the "
                            f"free atoms is {max_free_ev:.4f} eV/Å against the "
-                           f"relaxation criterion of "
+                           f"catalogue's recommended relaxation tolerance of "
                            f"{float(force_criterion_ev_ang):g} eV/Å.  The "
                            f"frequencies are the curvature at this point, not "
                            f"at the minimum.  Relax first (an optimization "
@@ -233,7 +241,7 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
     from ..sidecars.spectra import structure_hash_text
     methods = siesta_methods_text(
         displacement_bohr=(float(displacement_bohr) if displacement_bohr
-                           is not None else fc.displacement_ang / 0.529177210903),
+                           is not None else fc.displacement_ang / BOHR_ANGSTROM),
         n_free=len(free_s), n_held=len(held_s), n_rigid=n_rigid,
         siesta_version=engine_version)
     return SpectraResults(

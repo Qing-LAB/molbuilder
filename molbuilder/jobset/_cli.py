@@ -628,8 +628,8 @@ def init_cmd(structure, bundle: str, shape: str,
             # The vibration kind's own ladder (spectra-migration plan § 2):
             # ONE freq stage, PySCF first.  A --stage-strategy names the
             # optimization ladder's tiers, which grade nothing here.
-            from ..pyscf.stages import vibration_stages
-            if engine not in ("pyscf", "siesta"):
+            from ..pyscf.stages import VIBRATION_ENGINES, vibration_stages
+            if engine not in VIBRATION_ENGINES:
                 raise click.ClickException(
                     f"calculation 'vibration' runs on pyscf (analytic "
                     f"Hessian, intensities) or siesta (force constants, "
@@ -2716,8 +2716,6 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             # in the sorted order prep recorded; the record is read back and
             # every per-atom number is put in the input order before it is
             # written (model/overview.md 2.2).
-            import re as _re
-
             from .. import __version__ as _mb_version
             from ..sidecars.spectra import dump_spectra_json
             from ..spectra.from_siesta import spectra_results_from_fc
@@ -2754,10 +2752,15 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             outs = sorted(where.glob("*.out"),
                           key=lambda q: q.stat().st_mtime)
             if outs:
-                head = "\n".join(outs[-1].read_text(
-                    encoding="utf-8", errors="replace").splitlines()[:40])
-                m = _re.search(r"Version\s*:\s*(\S+)", head)
-                ver = m.group(1) if m else ""
+                # The engine's build, through the one SIESTA output parser
+                # (its header probes), not a regex over the file's head.
+                from ..parse.engines.siesta import SiestaParser as _SiestaParser
+                try:
+                    _build = (_SiestaParser.parse(str(outs[-1]))
+                              .runtime_info.get("siesta_build") or {})
+                    ver = str(_build.get("version") or "")
+                except Exception:                        # noqa: BLE001
+                    ver = ""
             # THE REFERENCE-STEP FORCES, read from the run's own output, and
             # the relaxation's criterion from the one catalogue, so the
             # artifact judges stationarity (R5 on this route; vibration.md
@@ -2773,18 +2776,38 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                 except Exception as e:                   # noqa: BLE001
                     click.echo(f"  reference forces not read from "
                                f"{outs[-1].name}: {e}")
+            # THE CRITERION is the catalogue's recommended `relax_force_tol`
+            # -- the tolerance the person's own relaxation used does not
+            # travel with the structure yet (plan V1.28) -- and the warning
+            # names it as such.
             crit_item = one(_catalogue(), "relax_force_tol", engine="siesta")
             crit = float(crit_item.default) if crit_item is not None else None
-            asserted = False
-            tmpl = find_template(base)
-            if tmpl is not None:
-                try:
-                    from ..config.siesta import SiestaConfig
-                    asserted = bool(config_from_template(
-                        tmpl.read_text(encoding="utf-8"),
-                        SiestaConfig).already_relaxed)
-                except Exception:                        # noqa: BLE001
-                    asserted = False
+            # THE ASSERTION, resolved the way prep resolves this stage's
+            # config: the template's values plus the stage's own overrides
+            # (`effective_config`, stages.md § 4), so an override prep
+            # honoured is not invisible here -- and a description that
+            # cannot be resolved is a refusal, never a silent "nobody
+            # asserted".
+            from ..config.siesta import SiestaConfig
+            from ..resolve import effective_config
+            try:
+                tmpl = find_template(base)
+                if tmpl is None:
+                    raise click.ClickException(
+                        f"no template beside {base}: the description cannot "
+                        f"be resolved for its assertion")
+                stage_obj = next(s for s in _tt.stages if s.name == stage)
+                cfg_eff = effective_config(
+                    config_from_template(tmpl.read_text(encoding="utf-8"),
+                                         SiestaConfig),
+                    stage_obj.overrides, where=stage)
+                asserted = bool(cfg_eff.already_relaxed)
+            except click.ClickException:
+                raise
+            except Exception as e:                       # noqa: BLE001
+                raise click.ClickException(
+                    f"the description could not be resolved for stage "
+                    f"{stage!r}: {e}")
             try:
                 res = spectra_results_from_fc(
                     struct, sorted_struct, perm, fc, label=_tt.label,

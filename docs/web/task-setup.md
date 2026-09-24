@@ -354,7 +354,10 @@ the answer *is* right now, not what it is defined as.
 
 **The vocabularies are the engine's.** The columns, the sweepable set and the
 tier presets are fetched for the description's engine — on a hand-over, the
-hand-over's — and the page never assumes one. *(Until 2026-09-24 the pickers
+hand-over's — and while either is loaded the page assumes none; the loaders'
+own SIESTA fallback is reachable only on a page with neither, where no card
+is filled. One fetch per engine key at a time: a second caller for the same
+key awaits the fetch in flight rather than reading the previous folder's list. *(Until 2026-09-24 the pickers
 read only the saved description and fell back to SIESTA, so a PySCF hand-over
 was offered ScaLAPACK knobs and seeded a rank sweep its own preflight refused.)*
 

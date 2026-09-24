@@ -119,11 +119,11 @@
       <h2>3. Calculation parameters</h2>
 
       <div class="tabs" role="tablist" aria-label="Calculation engine">
-        <button class="tab-btn active" role="tab"
+        <button class="tab-btn active" role="tab" aria-controls="tab-siesta"
                 aria-selected="true" data-tab="siesta">
           SIESTA <code>.fdf</code>
         </button>
-        <button class="tab-btn" role="tab"
+        <button class="tab-btn" role="tab" aria-controls="tab-pyscf"
                 aria-selected="false" data-tab="pyscf">
           PySCF script
         </button>
@@ -315,6 +315,7 @@
 <script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='structure-optimization/viewer.js') }}"></script>
 </body>
 </html>

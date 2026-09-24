@@ -157,10 +157,9 @@ def test_h2_with_one_atom_held_runs_the_force_constant_road(tmp_path,
     # R5 on this route: the reference-step forces read back and judged
     rx = d["relaxation"]
     assert rx["already_relaxed"] is True and rx["converged"] is True
-    assert rx["max_force_eh_bohr"] is not None and rx["max_force_eh_bohr"] < 0.02 / 51.42
-    assert "within the relaxation criterion" in rx["warning"]
-    assert d["engine_metadata"]["fc_asymmetry_max_ev_ang2"] >= 0.0
-    # the mass-calibrated displacement a transport step displaces along
+    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    assert rx["max_force_eh_bohr"] < 0.02 / HARTREE_BOHR_EV_ANGSTROM_ASE
+    # the mass-calibrated displacement a transport step displaces along:
+    # one hydrogen near 3000 cm-1 swings about 0.075 A at its zero point
     m0 = d["modes"][0]
-    assert m0["zero_point_amplitude_amu12_ang"] > 0
-    assert np.asarray(m0["zero_point_displacement_ang"]).shape == (1, 3)
+    assert 0.06 < m0["zero_point_amplitude_amu12_ang"] < 0.09

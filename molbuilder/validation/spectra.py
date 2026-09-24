@@ -690,8 +690,9 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
                 "theory; the force-constant run relaxes nothing and takes "
                 "the input geometry as the stationary point.  The read-back "
                 "reads the forces SIESTA evaluates at that geometry (its FC "
-                "step 0) and judges them against the relaxation's own "
-                "criterion, so the statement is answered with numbers."),
+                "step 0) and judges them against the catalogue's recommended "
+                "relaxation tolerance, so the statement is answered with "
+                "numbers."),
             where="config.already_relaxed"))
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(

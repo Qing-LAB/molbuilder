@@ -384,9 +384,10 @@ warning), so an un-mapped field never silently disappears.
 
 - **Build tab** (structure-optimization) — the full four-call cycle, for SIESTA
   and PySCF.
-- **Spectrum tab** — the same four calls against
-  `fetchSchema("pyscf", {calculation: "vibration"})` — the Build engines'
-  door, narrowed to the kind (no config of its own since P3).
+- **Spectrum tab** — the same four calls, once per engine, against
+  `fetchSchema(<engine>, {calculation: "vibration"})` — the Build engines'
+  door, narrowed to the kind (no config of its own since P3); both forms stay
+  mounted and the engine strip shows one.
 - **Transport tab** — uses `renderForm` / `collectForm`, but fetches its shape
   from its own route (`GET /api/transport/schema`) rather than through
   `fetchSchema` (which targets the Build engines).

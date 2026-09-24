@@ -694,8 +694,10 @@ class SiestaConfig:
         "workflow_group": "profile",
         "label": 'Structure is already relaxed',
         "tier": "basic",
-        "item_kind": "deck",
-        "expands": ('geomeTRIC optimize()', 'gradient check', 'FC step 0 forces'),
+        # `produce`, not `deck`: on this engine the item puts no keyword in
+        # the deck (template.md § 6 -- the `restart` precedent); the gate
+        # and the read-back are what consume it.
+        "item_kind": "produce",
         "engine_key": "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)",
     })
     relax_max_displ: float = field(default=0.05, metadata={

@@ -23,7 +23,6 @@ copy (`model/overview.md` § 2.2).
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 from pathlib import Path
 from typing import Sequence
 
@@ -141,8 +140,9 @@ def fc_block_asymmetry(fc: ForceConstantFile,
     symmetrised, in the file's own eV/Å² -- the numerical diagnostic
     `science/normal-modes.md` § 4b.6 C names, recorded with the result
     (`engines/vibration.md` § 5.5).  A step too small leaves noise here, a
-    step too large leaves anharmonicity; with one free atom the block is
-    that atom's own three nudges and the number says little.
+    step too large leaves anharmonicity.  On a block whose off-diagonals
+    vanish by symmetry (H₂ on its axis) it says nothing; an atom at a
+    low-symmetry site shows it from one free atom on.
     """
     H = _two_sided_mean(fc, displaced)
     ix = np.ix_([int(i) for i in displaced], [int(i) for i in displaced])
@@ -152,43 +152,25 @@ def fc_block_asymmetry(fc: ForceConstantFile,
     return float(np.max(np.abs(block - np.transpose(block, (1, 0, 3, 2)))))
 
 
-_FC_STEP_RE = re.compile(r"Begin FC step\s*=\s*(\d+)")
-_FORCES_HEAD = "siesta: Atomic forces (eV/Ang):"
-
-
 def reference_forces_from_out(path) -> np.ndarray:
     """The forces at the UNDISPLACED geometry of a force-constant run, in
     eV/Å, shape ``(n_atoms, 3)`` in the deck's atom order.
 
-    SIESTA evaluates the reference geometry as its ``FC step = 0`` before
-    the first nudge, so the block is the first ``siesta: Atomic forces``
-    after that marker -- and the first block of the file when the marker is
-    absent.  These are what the read-back judges stationarity by (R5 on
-    this route; `engines/vibration.md` § 5.5).
+    SIESTA evaluates the reference geometry as its ``FC step = 0`` before the
+    first nudge, so they are the first force block of the run's output --
+    read through the one SIESTA output parser (`parse.engines.siesta`, whose
+    frames carry every step's forces); nothing here re-reads the file.  They
+    are what the read-back judges stationarity by (R5 on this route;
+    `engines/vibration.md` § 5.5).
     """
-    p = Path(path)
-    lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-    start = 0
-    for i, ln in enumerate(lines):
-        m = _FC_STEP_RE.search(ln)
-        if m and int(m.group(1)) == 0:
-            start = i
-            break
-    for i in range(start, len(lines)):
-        if not lines[i].strip().startswith(_FORCES_HEAD):
-            continue
-        rows = []
-        for ln in lines[i + 1:]:
-            parts = ln.split()
-            if not parts or not parts[0].isdigit():
-                break
-            rows.append([float(x) for x in parts[1:4]])
-        if rows:
-            return np.asarray(rows, dtype=float)
-        break
-    raise ParseError(f"{p.name}: no 'siesta: Atomic forces' block for the "
-                     f"reference geometry (FC step 0) -- the force-constant "
-                     f"run has not written its first step")
+    from .siesta import SiestaParser
+    traj = SiestaParser.parse(str(path))
+    for fr in traj.frames:
+        if fr.forces is not None:
+            return np.asarray(fr.forces, dtype=float)
+    raise ParseError(f"{Path(path).name}: no force block for the reference "
+                     f"geometry (FC step 0) -- the force-constant run has not "
+                     f"written its first step")
 
 
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",

@@ -156,6 +156,7 @@
         schemas:        { pyscf: null, siesta: null },   // the catalogue narrowed to (engine, vibration)
         engine:         "pyscf",                          // the strip's choice: the description's engine
         engineChosenByUser: false,                         // a click beats the structure's default
+        strip:              null,                          // the shared strip's handle (lib/tab-strip.js)
         lastJobName:    null,
 
         // Per contract § 2: IDLE / LOADING / LOADED / WATCHING / ERROR.
@@ -762,19 +763,11 @@
     function setEngine(name, opts) {
         const engine = name === "siesta" ? "siesta" : "pyscf";
         const o = opts || {};
-        state.engine = engine;
-        if (o.byUser) state.engineChosenByUser = true;
-        if (els.engineStrip) {
-            for (const b of els.engineStrip.querySelectorAll(".tab-btn")) {
-                const active = b.dataset.tab === engine;
-                b.classList.toggle("active", active);
-                b.setAttribute("aria-selected", active ? "true" : "false");
-            }
-        }
-        for (const e of ["pyscf", "siesta"]) {
-            const panel = document.getElementById("spectra-tab-" + e);
-            if (panel) panel.hidden = (e !== engine);
-        }
+        // The strip owns the buttons and the panels (lib/tab-strip.js); its
+        // onChange records the choice here.  The note and the checks are
+        // this tab's.
+        if (state.strip) state.strip.select(engine, o);
+        else { state.engine = engine; if (o.byUser) state.engineChosenByUser = true; }
         if (els.engineNote) {
             els.engineNote.textContent = o.reason || "";
             els.engineNote.hidden = !o.reason;
@@ -783,10 +776,23 @@
     }
 
     function _wireEngineStrip() {
-        if (!els.engineStrip) return;
-        for (const b of els.engineStrip.querySelectorAll(".tab-btn")) {
-            _on(b, "click", () => setEngine(b.dataset.tab, { byUser: true }));
-        }
+        const mb = window.molbuilder || {};
+        if (!els.engineStrip || !mb.tabStrip) return;
+        state.strip = mb.tabStrip.mount(els.engineStrip, {
+            onChange: (name, meta) => {
+                state.engine = name === "siesta" ? "siesta" : "pyscf";
+                if (meta && meta.byUser) {
+                    // A click beats the structure's default, and retires the
+                    // note that explained the default.
+                    state.engineChosenByUser = true;
+                    if (els.engineNote) {
+                        els.engineNote.textContent = "";
+                        els.engineNote.hidden = true;
+                    }
+                    refreshPreflightDebounced();
+                }
+            },
+        });
     }
 
     /* THE STRUCTURE DECIDES THE DEFAULT.  A structure that repeats or
@@ -795,10 +801,12 @@
      * the strip to SIESTA and says why -- unless the person already chose.
      * The page calls this after every successful load. */
     function structureLoaded() {
-        const out = _viewer ? _viewer.data.exportFile() : null;
-        const s = out && out.structure;
-        const per = (s && (s.periodicity || s.cell)) || null;
-        const ak = (per && per.axis_kind) || (s && s.axis_kind) || null;
+        // THE MODEL'S OWN DOOR for the axis kinds (molview.md § 9.3) -- never
+        // the wire envelope, whose metadata is nested where no caller should
+        // know (it was read off `exportFile()` until 2026-09-24, from keys the
+        // envelope does not have, so the default never fired).
+        const d = _viewer && _viewer.data;
+        const ak = (d && typeof d.getAxisKind === "function") ? d.getAxisKind() : null;
         const periodic = Array.isArray(ak) && ak.some((k) => k && k !== "isolated");
         if (periodic && !state.engineChosenByUser && _activeEngine() !== "siesta") {
             setEngine("siesta", {
@@ -807,6 +815,12 @@
                       + "a periodic system.  Switch back if you meant a cluster.",
             });
             return;
+        }
+        // An isolated load after a periodic one: the previous reason is not
+        // this structure's.
+        if (!periodic && els.engineNote && !els.engineNote.hidden) {
+            els.engineNote.textContent = "";
+            els.engineNote.hidden = true;
         }
         refreshPreflightDebounced();
     }
@@ -961,6 +975,14 @@
                 const sects = (schema && schema.sections) || [];
                 for (const s of sects) {
                     for (const f of (s.fields || [])) ids[f.name] = f.id;
+                }
+                // Both forms stay mounted (one is shown), so the OTHER form's
+                // field rows are cleared before this engine's are drawn --
+                // a scope of one form left the hidden form's stale.
+                for (const e of ["pyscf", "siesta"]) {
+                    if (e !== engine && els.form[e] && typeof vf.clear === "function") {
+                        vf.clear({ formScope: els.form[e] });
+                    }
                 }
                 vf.render(r.issues, { panel: els.preflightPanel,
                                       formScope: els.form[engine],
@@ -1518,7 +1540,12 @@
          * a step finished, not whether it computed anything, and a SIESTA
          * file's phase_raman is 'complete' with nothing behind it. */
         function _ramanRouteLabel(r) {
-            if (r.engine === "siesta") return "not computed on this engine";
+            // By ROLE, not by engine name: a file whose config never asked
+            // (SIESTA carries no `compute_raman`) and whose route is `none`
+            // computed nothing on that route; a PySCF file that asked and
+            // was answered `none` was not requested.
+            const asked = r.config && ("compute_raman" in r.config);
+            if (!asked && r.raman_route === "none") return "not computed on this route";
             if (!r.config || !r.config.compute_raman) return "not requested";
             switch (r.raman_route) {
                 case "finite-difference":
@@ -1536,7 +1563,8 @@
             }
         }
         function _irRouteLabel(r) {
-            if (r.engine === "siesta") return "not computed on this engine";
+            const asked = r.config && ("compute_ir" in r.config);
+            if (!asked && r.ir_route === "none") return "not computed on this route";
             if (!r.config || !r.config.compute_ir) return "not requested";
             switch (r.ir_route) {
                 case "analytic":
@@ -1652,37 +1680,36 @@
     }
 
     function _relaxSummary(results) {
-        // The tracked relaxation phase (v5; plan D3/D4): what the
-        // deck recorded, in one line.  v4 files carry no block.
+        // The tracked relaxation phase (v5; plan D3/D4): what the deck or the
+        // read-back recorded, in one line.  v4 files carry no block.
         const rx = results.relaxation || {};
-        if (rx.already_relaxed) return "skipped (already relaxed)";
+        // THE JUDGED FORCE FIRST, whichever route measured it (vibration.md
+        // § 4.3 for PySCF, § 5.5 for SIESTA): an early return on
+        // `already_relaxed` used to hide it on exactly the runs that carry
+        // it -- every SIESTA run that passed the gate, and PySCF's asserted
+        // path.  The key says its unit.
+        let force = "";
+        if (rx.max_force_eh_bohr != null) {
+            force = " \u2014 max |F| on the free atoms "
+                  + Number(rx.max_force_eh_bohr).toExponential(1) + " Eh/Bohr"
+                  + (rx.converged === true ? " (within the criterion)"
+                     : rx.converged === false ? " \u26a0 above the criterion"
+                     : "");
+        }
         if (!rx.enabled) {
-            // A route that relaxes nothing says so in its warning (the
-            // SIESTA force-constant run); a v4 file says nothing at all.
-            let none = rx.warning ? "none \u2014 " + rx.warning
-                                  : (results.phase_relaxation || "\u2014");
-            // The read-back's judgement, when the route measured it
-            // (engines/vibration.md § 5.5): the number in the viewer's own
-            // force unit, and the verdict.
-            if (rx.max_force_eh_bohr != null) {
-                none += " \u2014 max |F| on the free atoms "
-                     + Number(rx.max_force_eh_bohr).toExponential(1)
-                     + " Eh/Bohr"
-                     + (rx.converged === true ? " (within the relaxation criterion)"
-                        : rx.converged === false ? " \u26a0 above the relaxation criterion"
-                        : "");
+            // Nothing ran: the person's assertion (either route), or the
+            // force-constant route that relaxes nothing and says so in its
+            // warning; a v4 file says nothing at all.
+            if (rx.already_relaxed) {
+                return "asserted relaxed"
+                     + (rx.warning ? " \u2014 " + rx.warning : "") + force;
             }
-            return none;
+            return (rx.warning ? "none \u2014 " + rx.warning
+                               : (results.phase_relaxation || "\u2014")) + force;
         }
         let out = results.phase_relaxation || "empty";
         if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";
-        // The judged force is over the FREE atoms, in Eh/Bohr -- the key
-        // says its unit (engines/vibration.md § 4.3).
-        if (rx.max_force_eh_bohr != null) {
-            out += ", max |F| on the free atoms "
-                 + Number(rx.max_force_eh_bohr).toExponential(1)
-                 + " Eh/Bohr";
-        }
+        out += force;
         if (rx.warning) out += " \u26a0 " + rx.warning;
         return out;
     }
@@ -2511,10 +2538,10 @@
      * displacement array and a number and animates their product.
      */
 
-    // Q for the zero-point RMS, in √amu·Å, from a wavenumber in cm⁻¹:
-    //     √(ħ / 4πcν̃) expressed in those units. At 1000 cm⁻¹ this is 0.1298,
-    //     so a mode entirely on one hydrogen swings 0.13 Å — the textbook figure.
-    const ZERO_POINT_Q = 4.105804;
+    // The zero-point amplitude is READ FROM THE FILE, never recomputed here:
+    // every mode carries `zero_point_amplitude_amu12_ang`, derived at every
+    // serialisation from the one constant in constants.py (vibration.md
+    // § 6.3, § 6.6).  A second spelling of it stood here until 2026-09-24.
     // ħω / k_B per cm⁻¹, in kelvin: the temperature at which a mode's quantum
     // is comparable to kT.
     const CM1_IN_KELVIN = 1.4387768775281484;
@@ -2526,10 +2553,13 @@
      * chemistry, not what is drawn. */
     const BOND_LIKE_ANG = 3.0;
 
-    function _physicalAmplitude(waveNumberCm1, mode, temperatureK) {
-        const nu = Math.abs(Number(waveNumberCm1));
-        if (!isFinite(nu) || nu <= 0) return null;   // an imaginary or zero mode
-        let q = ZERO_POINT_Q / Math.sqrt(nu);
+    function _physicalAmplitude(modeRow, mode, temperatureK) {
+        const nu = Math.abs(Number(modeRow && modeRow.frequency_cm1));
+        const qzp = Number(modeRow && modeRow.zero_point_amplitude_amu12_ang);
+        // An imaginary or zero mode carries null, and a file older than the
+        // key carries nothing: no physical amplitude, the display form stays.
+        if (!isFinite(nu) || nu <= 0 || !isFinite(qzp) || qzp <= 0) return null;
+        let q = qzp;
         if (mode === "thermal") {
             const t = Number(temperatureK);
             if (isFinite(t) && t > 0) {
@@ -2618,7 +2648,7 @@
          * both, and splitting it is why there are two. */
         const wantPhysical = state.animAmplitudeMode !== "display";
         const physical = wantPhysical
-            ? _physicalAmplitude(hz, state.animAmplitudeMode, state.animTemperature)
+            ? _physicalAmplitude(mode, state.animAmplitudeMode, state.animTemperature)
             : null;
         const usePhysical = physical !== null
             && Array.isArray(mode.eigenvector_canonical);

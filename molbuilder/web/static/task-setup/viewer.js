@@ -1405,6 +1405,7 @@ function renderCameOver(obj) {
 
 let _cols = null;       // every parameter this engine has  {name,label,group}
 let _colsKey = null;
+const _colsInflight = {};   // key -> the pending fetch (see loadColumnChoices)
 /* name -> the catalogue's own item, so the table can show what a parameter
  * DEFAULTS to and what it is for.  The catalogue already carries `default`,
  * `unit` and `help`; a second copy here would be the drift the one-source rule
@@ -1416,6 +1417,7 @@ let _sweep = null;      // the ones a benchmark may sweep
 //: does not matter which of the four lookups was the one that failed.
 let _vocabFailed = false;
 let _sweepKey = null;
+const _sweepInflight = {};  // key -> the pending fetch
 
 /** Every parameter that may become a column.
  *
@@ -1486,21 +1488,28 @@ async function loadColumnChoices(engine) {
         _fillMeta(_cols);
         return _cols;
     }
+    /* ONE FETCH PER KEY, AND THE IN-FLIGHT ONE IS THE CACHE.  Two callers can
+     * ask for the same key before the first answer lands (the hand-over's
+     * pickers and the hand-over itself), and a key set before the fetch made
+     * "in flight" read as "cached" -- the second caller took the PREVIOUS
+     * folder's list.  A pending promise per key is what every caller awaits;
+     * a newer key still owns the slot (the guard below), the way the other
+     * in-flight guards in this file are sequences or memoised promises. */
+    if (_colsInflight[key]) return _colsInflight[key];
     _colsKey = key;
-    const got = await fetchVocabulary(
-        "/api/task-setup/columns?engine="
-        + encodeURIComponent(engine || "siesta")
-        + "&calculation=" + encodeURIComponent(kind), "column list");
-    const items = (got.ok && got.body && got.body.items) || [];
-    /* A NEWER LOAD OWNS THE SLOT.  Two loads can be in flight for two
-     * engines (a hand-over's pickers and the hand-over itself asked for
-     * different ones until 2026-09-24), and the slower answer landing
-     * under the faster one's key poisoned the cache for the rest of the
-     * page load.  A superseded answer is handed back and not kept. */
-    if (_colsKey !== key) return items;
-    _cols = items;
-    _fillMeta(_cols);
-    return _cols;
+    const p = (async () => {
+        const got = await fetchVocabulary(
+            "/api/task-setup/columns?engine="
+            + encodeURIComponent(engine || "siesta")
+            + "&calculation=" + encodeURIComponent(kind), "column list");
+        const items = (got.ok && got.body && got.body.items) || [];
+        if (_colsKey !== key) return items;      // a newer load owns the slot
+        _cols = items;
+        _fillMeta(_cols);
+        return _cols;
+    })();
+    _colsInflight[key] = p;
+    try { return await p; } finally { delete _colsInflight[key]; }
 }
 
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
@@ -1542,6 +1551,7 @@ async function loadSweepChoices(engine) {
         _fillSweepMeta(_sweep);      // same reason as the column cache above
         return _sweep;
     }
+    if (_sweepInflight[key]) return _sweepInflight[key];   // one fetch per key (see loadColumnChoices)
     _sweepKey = key;
     /* A LABEL LOOKUP MUST NOT BE ABLE TO STRAND THE PAGE (2026-08-23).
      *
@@ -1555,14 +1565,18 @@ async function loadSweepChoices(engine) {
      * Now it degrades: rows paint with their raw names and the card says the
      * labels are missing.  A surface that cannot get its nicety shows what it
      * has; only a surface that cannot get its SUBSTANCE may refuse. */
-    const got = await fetchVocabulary(
-        "/api/task-setup/sweepable?engine=" + encodeURIComponent(key),
-        "sweepable settings");
-    const items = (got.ok && got.body && got.body.items) || [];
-    if (_sweepKey !== key) return items;   // a newer load owns the slot (see loadColumnChoices)
-    _sweep = items;
-    _fillSweepMeta(_sweep);
-    return _sweep;
+    const p = (async () => {
+        const got = await fetchVocabulary(
+            "/api/task-setup/sweepable?engine=" + encodeURIComponent(key),
+            "sweepable settings");
+        const items = (got.ok && got.body && got.body.items) || [];
+        if (_sweepKey !== key) return items;   // a newer load owns the slot
+        _sweep = items;
+        _fillSweepMeta(_sweep);
+        return _sweep;
+    })();
+    _sweepInflight[key] = p;
+    try { return await p; } finally { delete _sweepInflight[key]; }
 }
 
 /** Fold the sweepable items into `_meta` WITHOUT overwriting a column's
@@ -1626,6 +1640,8 @@ function fillPicker(sel, items, taken, empty) {
     }
 }
 
+let _pickersSeq = 0;
+
 async function refreshPickers() {
     /* THE ENGINE IS THE DESCRIPTION'S, AND ON A HAND-OVER THE HAND-OVER'S.
      * This read `_task` alone and fell back to SIESTA, so a PySCF hand-over
@@ -1641,10 +1657,14 @@ async function refreshPickers() {
      * refreshed, and the previous engine's names backed legalValues /
      * valueInForce / helpText forever. */
     for (const k of Object.keys(_meta)) delete _meta[k];
+    // A SEQUENCE, like the other in-flight guards here: a refresh that was
+    // superseded while its answers were in flight paints nothing.
+    const seq = ++_pickersSeq;
     try {
         const [cols, sweep] = await Promise.all([
             loadColumnChoices(engine), loadSweepChoices(engine),
             loadPresets(engine)]);
+        if (seq !== _pickersSeq) return;
         fillPicker($("ts-add-col"), cols,
                    Array.isArray(_task && _task.varies) ? _task.varies : [],
                    "every parameter is already a column");
@@ -1724,20 +1744,26 @@ function helpText(name) {
 
 let _presets = null;
 let _presetsKey = null;
+const _presetsInflight = {};  // key -> the pending fetch
 
 async function loadPresets(engine) {
     /* Keyed by ENGINE, like `_cols` (R2-1): a stale cache here APPLIED
      * SIESTA tier values into a PySCF description opened second. */
     const key = engine || "siesta";
     if (_presets && _presetsKey === key) return _presets;
+    if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
     _presetsKey = key;
-    const got = await fetchVocabulary(
-        "/api/task-setup/presets?engine=" + encodeURIComponent(key),
-        "tier presets");
-    const presets = (got.ok && got.body && got.body.presets) || [];
-    if (_presetsKey !== key) return presets;   // a newer load owns the slot (see loadColumnChoices)
-    _presets = presets;
-    return _presets;
+    const p = (async () => {
+        const got = await fetchVocabulary(
+            "/api/task-setup/presets?engine=" + encodeURIComponent(key),
+            "tier presets");
+        const presets = (got.ok && got.body && got.body.presets) || [];
+        if (_presetsKey !== key) return presets;   // a newer load owns the slot
+        _presets = presets;
+        return _presets;
+    })();
+    _presetsInflight[key] = p;
+    try { return await p; } finally { delete _presetsInflight[key]; }
 }
 
 /**

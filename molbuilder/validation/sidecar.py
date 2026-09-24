@@ -61,7 +61,8 @@ def _check_frozen_atoms_consumed(struct: Structure, *,
     )]
 
 
-def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
+def check_electrode_labels_are_frozen(struct: Structure, *,
+                                      run: str = "the relaxation") -> List[Issue]:
     """**The first validation of a junction** — are the labeled electrodes
     the fixed atoms?
 
@@ -113,9 +114,9 @@ def check_electrode_labels_are_frozen(struct: Structure) -> List[Issue]:
         (f"{len(loose)} atom(s) carry an electrode label but are NOT frozen: "
          f"{shown}{more}.  A transport calculation takes the lead atoms out "
          f"of this structure by that label and treats them as pristine bulk, "
-         f"so they must come through the relaxation unmoved -- and nothing "
+         f"so they must come through {run} unmoved -- and nothing "
          f"holds them.  Add them to \"frozen_atoms\" in /modify before "
-         f"running this, or the relaxation will move the leads and the "
+         f"running this, or {run} will move the leads and the "
          f"junction cannot be composed afterwards (the composer refuses it, "
          f"by which point this run has been paid for)."),
         "structure.electrode_frozen",

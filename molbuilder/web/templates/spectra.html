@@ -130,10 +130,12 @@
     <div class="tabs" id="spectra-engine-strip" role="tablist"
          aria-label="Calculation engine">
       <button class="tab-btn active" role="tab" type="button"
+              aria-controls="spectra-tab-pyscf"
               aria-selected="true" data-tab="pyscf">
         PySCF
       </button>
       <button class="tab-btn" role="tab" type="button"
+              aria-controls="spectra-tab-siesta"
               aria-selected="false" data-tab="siesta">
         SIESTA <code>.fdf</code>
       </button>
@@ -191,7 +193,8 @@
       sidebar, then opens <strong>Task setup</strong> to finish shape
       and stages.  Frozen atoms travel with the structure (set them in
       the viewer above, or load a structure whose sidecar carries
-      them); parameter checks run in Task setup.
+      them); the checks above run live, and the same gate runs again
+      at prep.
     </p>
     <div class="inline-row primary-actions">
       <button id="send-to-task-setup" class="primary" type="button">
@@ -233,6 +236,7 @@
    load-bearing: this MUST precede spectra/viewer.js so the bootstrap
    finds the mount API. #}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
 

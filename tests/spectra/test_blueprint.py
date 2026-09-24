@@ -825,11 +825,15 @@ class TestModeAnimationControls:
         """§ 12.2: "both are computed by the TAB… the physics of how big a
         vibration is belongs with the spectrum, not with the viewer".
 
-        The module contains no frequency, no temperature and no physical
-        constant; this is the file that does.
+        The zero-point amplitude itself comes from the FILE (every mode
+        carries it, derived at serialisation from the one constant in
+        `constants.py` -- vibration.md § 6.3, § 6.6); the tab reads it and
+        owns only the thermal factor.  The viewer module contains no
+        frequency, no temperature and no physical constant.
         """
         core = web_client.get("/static/lib/spectra/core.js").data.decode()
-        assert "ZERO_POINT_Q" in core
+        assert "zero_point_amplitude_amu12_ang" in core
+        assert "ZERO_POINT_Q" not in core, "the tab must not respell the constant"
         assert "CM1_IN_KELVIN" in core
         assert "Math.tanh" in core, "the thermal form needs coth"
 

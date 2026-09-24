@@ -14,7 +14,8 @@ Measured 2026-09-23 (design § 18 step 0.5):
 * `h2.FCC` — the same file with the HELD atoms' force rows zeroed (SIESTA's
   "constrained" variant).  The free block is identical, so the reader takes
   `.FC` and slices the free atoms.
-* The geometry is not relaxed (0.44 eV/Å on the atoms), which is why the two
+* The geometry is not relaxed (1.27 eV/Å on each atom at the reference step,
+  measured 2026-09-24 on the same bond through the road), which is why the two
   turns of the free atom come back with negative curvature (−1.70 eV/Å²)
   rather than zero — the reason the surviving whole-body motions are
   projected out and never trusted.

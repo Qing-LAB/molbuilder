@@ -1736,7 +1736,7 @@ It sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S cu
 [item.already_relaxed]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["geomeTRIC optimize()", "gradient check", "FC step 0 forces"]
+expands = ["geomeTRIC optimize()", "gradient check"]
 category = ["procedure"]
 engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)"
@@ -1747,10 +1747,11 @@ group = "profile"
 label = "Structure is already relaxed"
 tier = "basic"
 help = """
-Your assertion that this structure already sits at a stationary point -- a geometry where the forces vanish.  With it on, the vibration deck skips its built-in relaxation and goes straight to the Hessian; relaxation is otherwise the deck's mandatory first act.
+Your assertion that this structure already sits at a stationary point -- a geometry where the forces vanish -- at the level of theory about to run.  Both engines ask it, and neither takes it on trust: each answers it with the forces it measures at that geometry.
+On PySCF, with it on, the vibration deck skips its built-in relaxation and goes straight to the Hessian; relaxation is otherwise the deck's mandatory first act.
 A harmonic analysis is only valid at a stationary point.  Off one, frequencies shift and spurious imaginary modes appear.
 The deck still checks the gradient at the input geometry and warns with the max-force number.  It never refuses, because the statement is yours to make.  That number also appears on the viewer's relaxation phase chip.
-On SIESTA the force-constant run cannot relax at all, so this statement is the precondition itself: unmade, preparing is refused with the two ways out (relax first with an optimization calculation that holds the same atoms, then export its final frame from the Results tab as a pair); made, the run proceeds and `summarize` reads the forces SIESTA evaluated at the reference geometry (its FC step 0) into the result and judges them against the relaxation's own criterion -- your statement, answered with numbers.
+On SIESTA the force-constant run cannot relax at all, so this statement is the precondition itself: unmade, preparing is refused with the two ways out (relax first with an optimization calculation that holds the same atoms, then export its final frame from the Results tab as a pair); made, the run proceeds and `summarize` reads the forces SIESTA evaluated at the reference geometry (its FC step 0) into the result and judges them against the catalogue's recommended relaxation tolerance (`relax_force_tol`; the tolerance your own relaxation used does not travel with the structure yet) -- your statement, answered with numbers.
 """
 
 [item.compute_raman]
@@ -1976,7 +1977,7 @@ group = "output"
 label = "Orbitals above LUMO to save"
 tier = "advanced"
 help = """
-How many orbitals above the LUMO -- the lowest empty orbital -- to record at each displaced geometry.  Five matches the HOMO setting, for a symmetric window around the gap.  It changes the size of the record, not the cost of the run.
+How many orbitals above the LUMO -- the lowest empty orbital -- to record at each displaced geometry, the LUMO itself included beside them.  Five matches the HOMO setting, for a symmetric window around the gap: the HOMO and five below it, the LUMO and five above it.  It changes the size of the record, not the cost of the run.
 """
 [item.geom_gmax]
 kind = "engine"
