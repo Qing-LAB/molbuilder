@@ -2,7 +2,10 @@
 
 **Role:** contract
 **Domain:** web
-**Companions:** [`results.md`](?doc=web/results.md) — the Results-tab shell that
+**Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) — **the
+calculation this tab describes and displays**: the road, the parameters, the
+two engines' routes, and the result file's contract (what every key is and
+where it comes from); [`results.md`](?doc=web/results.md) — the Results-tab shell that
 hosts the spectra *presenter*; [`presenters.md`](?doc=web/presenters.md) — the
 registry that picks it for a `.spectra.json`; [`molview.md`](?doc=web/molview.md)
 — the read-only 3D viewer the standalone tab uses to inspect the input structure;
@@ -12,7 +15,8 @@ produces the `.spectra.json`.
 
 > **Migration status (2026-08-21).** The compute side of this surface is
 > **framework-native**: the Send button hands over to Task setup, and the
-> vibration deck is a calculation KIND of the PySCF engine, rendered by
+> vibration deck is a calculation KIND of either engine
+> ([`engines/vibration.md`](?doc=engines/vibration.md)), rendered by
 > `render_deck` through the same gates as an optimization deck and run
 > through `prep`/`launch`. (The old standalone-script path retired at the
 > spectra migration's P3.) The *viewing* half — the presenter, the chart,
@@ -20,7 +24,7 @@ produces the `.spectra.json`.
 
 The spectra surface computes a **vibrational spectrum** for a molecule —
 frequencies and mode shapes, and on PySCF the infrared and Raman strengths
-beside them (§ 9b.3) — and then shows it as an interactive chart: two stacked
+beside them ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.5) — and then shows it as an interactive chart: two stacked
 panels of sticks over one frequency axis, a sortable table of the vibrational
 modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
 both times.
@@ -419,12 +423,13 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
-Results tab) is what fills the chart. **On SIESTA the run writes
-`<label>.FC` instead**, and `molbuilder jobset summarize run <stage>` derives
-the modes from it on the host and writes the same `.spectra.json` beside the
-run (`science/normal-modes.md` § 4a.5b). *(The tab's engine list and the
-hand-over gate still admit PySCF only — `web/blueprints/build.py`, held; the
-CLI road `jobset init --engine siesta --calculation vibration` is open.)*
+Results tab) is what fills the chart. On SIESTA the run leaves `<label>.FC`
+and `molbuilder jobset summarize run <stage>` derives the same file beside the
+run ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5). **The tab
+offers PySCF only today**: the second engine on the tab — the `engine` item's
+choices, the form re-fetched for the chosen engine, the live checks and the
+hand-over sending it — is the first row of V1 in
+[`plans/plan.md`](?doc=plans/plan.md) (`vibration.md` § 10).
 
 ## 6. The API door
 
@@ -575,7 +580,7 @@ answers:
 | `skip` | none |
 | `all` | every mode |
 | `explicit` | exactly the indices you list |
-| ~~`top_n`~~ · ~~`threshold`~~ | **retired** *(decided 2026-09-23)*. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths (§ 9b.3) they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters (8 SCFs for CO₂). *The code still carries both — the config field and its catalogue rows, `spectra/selection.py`, `spectra/methods.py`, `validation/spectra.py`, the emitter's ranking in `pyscf/vibration_emitters.py`, and the tab's lock map in `lib/spectra/core.js` — and retires them at step 4 of the design's § 18, with the rest of the API shape.* |
+| ~~`top_n`~~ · ~~`threshold`~~ | **retired** *(decided 2026-09-23)*. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths (§ 9b.3) they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters (8 SCFs for CO₂). *The code still carries both, in seven places named by V1 in [`plans/plan.md`](?doc=plans/plan.md); the retirement is owed.* |
 
 **The frequency window filters `skip` and `all` and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
@@ -606,67 +611,26 @@ It has two forms and takes one optional engine paragraph:
 prose, so what is cited is what was actually said rather than a second list
 kept beside it.
 
-## 9b. Provenance — where every number comes from *(2026-09-09)*
+## 9b. Where every number comes from — the file's contract
 
 **This is a quantitative result, so the chain from the engine's output to the
-number on screen has to be written down.** Each row says what PySCF reports,
-what molbuilder does to it, and which sidecar key it lands in. The column that
-matters is the middle one: **anything molbuilder DERIVES is molbuilder's to get
-wrong, and is the only part its tests can meaningfully guard.**
-
-| sidecar key | PySCF reports | what molbuilder does | units |
-|---|---|---|---|
-| `equilibrium.scf_energy_eh` | `mf.kernel()` return | stored as-is | Hartree |
-| `equilibrium.mo_energies_eh` | `mf.mo_energy` | non-finite entries dropped (`_filter_finite`) | Hartree |
-| `equilibrium.homo_idx` | `mf.mo_occ` | **DERIVED** — `vibration_emitters.homo_index`: sums the two spin channels when `mo_occ` is 2-D (UHF/UKS), then takes the highest index with occupancy **> 0.5** | index into `mo_energies_eh` |
-| `modes[].frequency_cm1` | `thermo.harmonic_analysis(mol, hess)` → `freq_wavenumber` | sign convention applied (`_signed_wavenumber`): an imaginary root is reported as a NEGATIVE wavenumber, not dropped | cm⁻¹ |
-| `modes[].eigenvector_canonical` | `harmonic_analysis` → `norm_mode` | non-finite dropped; kept in PySCF's mass-weighted unit-norm convention | dimensionless |
-| `modes[].ir_intensity_km_mol` | `mf.dip_moment` at displaced geometries → `DMU_DR` | **DERIVED** — `dμ/dQ = einsum('kai,ka->i', DMU_DR, L_canonical)`, then `42.2561 · |dμ/dQ|²` | km/mol |
-| `modes[].raman_activity_a4_amu` | polarizability, in **atomic units (Bohr³)** | **DERIVED** — Placzek scalar, then one global `(Bohr/Å)⁶ ≈ 0.02197` conversion so the stored value is genuine Å⁴/amu, comparable to Gaussian/ORCA | Å⁴/amu |
-| `modes[].amplitude_ang` | — | molbuilder's own display choice (§ 4.1) | Å |
-| `modes[].eigenvector_display` | — | **DERIVED** — the canonical vector rescaled per mode so `max|L_k| = 1`, the animation's input (§ 4.1). Today's reader requires both forms; § 9b.3 says which an engine supplies | dimensionless |
-| `modes[].has_imag` | the sign of the eigenvalue | a negative wavenumber is reported as imaginary and drawn in red at its negative frequency (§ 2) | — |
-| `modes[].ir_active` · `raman_active` · `activity_class` | — | **DERIVED at every serialisation, never stored** (`spectra/activity.py` through `SpectraResults._modes_with_activity`). A mode whose channel was not computed is `partial`. Otherwise, per channel: divide every mode by the channel's strongest, sort on a log scale, and cut at the widest gap between neighbours when that gap is at least two decades wide and sits below a thousandth of the peak; when the channel will not separate itself, cut at a millionth of the peak; and a channel whose strongest value is under an absolute floor (1e-3 km/mol · 1e-3 Å⁴/amu) has no band at all, so every mode is inactive. **This is the rule** *(built 2026-09-11, confirmed as the rule 2026-09-23)*: it is asked of the data because where the residue sits is a property of the calculation — measured cuts ranged 2.6e-6 to 1.5e-4 across four real runs — while the separation is a property of the symmetry. Pinned on the real CO₂ numbers by `tests/spectra/test_activity.py` | class · bool |
-| `ir_route` · `ir_fd_step_ang` | which dμ/dR route ran, and its step | recorded once per run (`science/normal-modes.md` § 4a.3). **`raman_route` does not exist** and is owed (design § 15.7) | — |
-| `thermo` | PySCF's `thermo.thermo` at the headline (T, P); the deck's own temperature grid | the deck computes, the viewer draws (§ 3). The grid is vibrational-only and the headline full RRHO under one `note` — design § 15.3. `n_modes`, `n_imag_excluded` (an imaginary mode has no harmonic partition function; the count is stated, never dropped in silence) and `n_rigid_removed` say what the sums ran over | — |
-| `removed_motions` | — | **DERIVED in the deck by the one rule** (`spectra/normal_modes.py`, spliced): `count` whole-body motions that survive holding the frozen set — six or five for a free molecule, fewer with atoms held — and their Cartesian `patterns` over the free atoms, orthonormal. Every entry of `modes` is a vibration *because* these were projected out before diagonalising (`science/normal-modes.md` R3-R4, R7); `len(modes) = 3·n_free − count` by construction. Schema v6, additive | count · (count, n_free, 3) |
-| `relaxation.max_force_eh_a` · `max_force_all_atoms_eh_a` | the SCF's nuclear gradient at the asserted-relaxed geometry (or geomeTRIC's last gradient when the deck relaxed) | the first is over the **free** atoms and is the one judged (R5: a held atom carries the constraint force by definition); the second is recorded so a reader can see the difference. **The key's `_a` and the viewer's "Eh/Å" are wrong: the number is Eh/Bohr** (PySCF's and geomeTRIC's gradient unit, the same unit `geom_gmax` is compared against). The rename is owed together with the viewer that reads the key (`lib/spectra/core.js`, held) | Eh/Bohr |
-| `electronic_structure.mo_energies_*_eh` | `mf.mo_energy` at ±displaced geometries | non-finite dropped | Hartree |
-
-### 9b.1 Two rules this table exists to enforce
-
-**A number molbuilder only PASSES THROUGH is not ours to test.** `scf_energy_eh`
-is `mf.kernel()`'s return value; a test asserting its magnitude is asserting
-PySCF's SCF, which we neither wrote nor control. What is ours is that it reaches
-the right key, in the right unit, unrounded.
-
-**A number molbuilder DERIVES must have its rule callable, not embedded in
-script text.** `homo_index` was inline in the generated script until
-2026-09-09, where nothing could call it — and it has a branch (restricted vs
-unrestricted `mo_occ`) whose failure is silent and affects only open-shell work.
-It is now a function the emitter splices in from its own source, so one
-implementation runs and is tested. The same standard applies to the IR and Raman
-scalars, which are still inline: **see § 9b.2.**
-
-### 9b.2 Still inline, and what would move them
-
-The IR and Raman derivations live in generated script text. Both carry a unit
-conversion that a reader cannot check without doing the algebra:
-
-- IR: the prefactor `42.2561` km·mol⁻¹ per (D/Å)²/amu.
-- Raman: `(Bohr/Å)⁶ ≈ 0.02197`, applied once on the final scalar, because PySCF
-  reports polarizability in Bohr³ and the textbook unit is Å⁴/amu.
-
-Neither has a branch, which is why they were left (the trigger stated in
-`siesta/makov_payne.py`: copy a branchless formula if you must, ship the source
-once it has a branch). **If either grows one — a second polarizability
-convention, a per-mode prefactor — it moves to a callable function the way
-`homo_index` did.**
+number on screen is written down** — and it is written with the calculation,
+not with the tab: [`engines/vibration.md`](?doc=engines/vibration.md) § 6
+holds the result file's contract — every key and who writes it (§ 6.2), a
+mode (§ 6.3), the provenance table saying what molbuilder only passes through
+and what it **derives** (§ 6.4, with the two rules that table enforces: a
+passed-through number is not ours to test, a derived number's rule is
+callable and never only script text), what a SIESTA file looks like beside a
+PySCF file (§ 6.5), the activity classes and the element shares derived at
+serialisation and at load (§ 6.6), and what the reader refuses (§ 6.7). This
+tab reads that file and draws it; the one thing it derives at load is the
+element-share sentence of § 4.2, computed on the server for the reason given
+there.
 
 ### 9b.3 A second engine, and what the file says when a number is missing *(user, 2026-09-23)*
 
-The design (`plans/2026-09-21-normal-mode-unification-design.md` § 5, chosen
-2026-09-21) gives this calculation **two engines**: PySCF for isolated
+The calculation has **two engines** (chosen 2026-09-21;
+[`engines/vibration.md`](?doc=engines/vibration.md) § 1.3): PySCF for isolated
 molecules, SIESTA for slabs and junctions — where the point is consistency,
 the same pseudopotentials, orbitals and functional as the transport the modes
 will be displaced for. SIESTA yields **frequencies and mode shapes only**;
@@ -688,42 +652,22 @@ that cannot request it:
 | the modes table | a `—` in the cell, not a `0.00` |
 | the write-up | names what was computed; the file and the viewer name what was not, so an absence cannot be read as a zero |
 
-**What changes for the file.** The table above has a *PySCF reports* column;
-a second engine adds its own. The block `equilibrium.scf_energy_eh` /
-`mo_energies_eh` / `homo_idx` is PySCF's — a periodic engine has a Fermi
-level, not a HOMO — and **is optional, whole or not at all** *(built
-2026-09-23, schema 6)*: the three keys travel together, `null` in all three
-is *this engine has none*, `null` in one is a broken file (`results.py`
-refuses it at construction). What SIESTA supplies per mode is
-`frequency_cm1` and `eigenvector_canonical`, in the same Σm|L|² = 1
-convention, because both engines' modes come out of the one derivation
-(`spectra/normal_modes.py`; design § 19.4 closed); `eigenvector_display` is
-molbuilder's own per-mode rescale, and the reader derives it when a file
-carries only the canonical form. The SIESTA file (`spectra/from_siesta.py`,
-written by `jobset summarize run <stage>`) has `ir_intensity_km_mol` and
-`raman_activity_a4_amu` `null` on every mode, `equilibrium.*` `null`,
-`thermo.regime = 'vibrational-only'` at the stated T and P, `ir_route =
-'none'`, and `engine_metadata` naming the `.FC` file, its displacement and
-the 1-based range. Two places still say the opposite of *absent* and have to
-stop: the run-level phase flags have no *not requested* state, so a run that
-asked for no strengths writes `phase_raman = 'complete'` (both writers); and
-the viewer's change fingerprint reads a `phase_ir` key nothing writes.
-`presenters.md`'s *PySCF spectrum* label names the engine and will be wrong
-the day it is not.
+**What the file carries for each engine** — the molecular-orbital block
+optional as a whole, the intensities `null` on every SIESTA mode, the routes
+recorded per run, the SIESTA metadata naming the `.FC` file and its range —
+is [`engines/vibration.md`](?doc=engines/vibration.md) § 6.5. What this tab
+must still learn from it is registered under V1: the equilibrium energy drawn
+as a dash rather than `0.00000000` when it is `null`, the Raman line said by
+route rather than by a phase flag, the change fingerprint reading `ir_route`
+rather than the `phase_ir` nothing writes, and
+[`presenters.md`](?doc=web/presenters.md)'s *PySCF spectrum* label, which
+names an engine and will be wrong the day it is not.
 
 ## 10. Test map
 
-Engine + backend (`tests/spectra/`): `test_blueprint.py` (the page +
-`/api/spectra/load`), `test_config.py` (defaults + validation metadata),
-`test_methods.py` (the Methods prose + citations),
-`test_parsers_json.py` (the `.spectra.json` round-trip),
-`test_selection.py` (the reference selector + the deck-parity
-cross-check), `test_atom_index_contract.py` (the free-atom invariant).
-The emitted DECK's tests live with the engine:
-`tests/test_vibration_render_gate.py` and `tests/test_vibration_e2e.py`
-(`test_engine.py` / `test_script.py` died at P3 with the old generator).
-
-Viewer + integration: `test_results_state_contract_spectra_js.py` (the state
+The calculation's own tests — the rank rule, the decks, the artifact's gates,
+the end-to-end runs on both engines — are mapped in
+[`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's: `test_results_state_contract_spectra_js.py` (the state
 buckets), `test_spectra_phase_indicator_js.py` (the phase indicator, the
 relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),

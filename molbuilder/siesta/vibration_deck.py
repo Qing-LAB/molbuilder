@@ -1,7 +1,7 @@
 """The vibration calculation's deck on SIESTA — the force-constant run.
 
-Contract: `science/normal-modes.md` § 4a.6 and § 8 of the design
-(`plans/2026-09-21-normal-mode-unification-design.md`); the seam this
+Contract: `engines/vibration.md` § 5 (the deck, the sorted copy, the
+read-back) and `science/normal-modes.md` § 3; the seam this
 serves is `script-preparation.md` § 4, and the shape is the one
 `transport/deck.py` and `pyscf/vibration_deck.py` share: the KIND is a
 render argument, the seam stays ONE per engine, and the kind's own module
@@ -83,7 +83,7 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             "# --- The force-constant run ---",
             "# MD.TypeOfRun FC nudges atoms FC.First..FC.Last by FC.Displacement",
             "# along x, y, z, both ways, and writes the force constants to",
-            f"# {cfg.system_label}.FC (science/normal-modes.md 4a.6).  No atom is",
+            f"# {cfg.system_label}.FC (engines/vibration.md § 5.4).  No atom is",
             "# relaxed here: the input geometry is taken as the stationary point.",
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",

@@ -1,0 +1,1355 @@
+# Vibration — the calculation, on PySCF and on SIESTA
+
+**Role:** contract — **the master document for the `vibration` calculation
+kind.** What the calculation is, how each engine computes it, what the script
+and the deck contain, what the result file holds, and which rules the code is
+checked against. Where this document and the code disagree, the code is wrong
+or this document is out of date — and the second is fixed first.
+**Domain:** engines — with its science half in
+[`science/normal-modes.md`](?doc=science/normal-modes.md) and its web half in
+[`web/spectra.md`](?doc=web/spectra.md).
+**Companions:** [`science/normal-modes.md`](?doc=science/normal-modes.md) (the
+derivations, the rules R1–R8, the acceptance test);
+[`web/spectra.md`](?doc=web/spectra.md) (the Spectrum tab and the Results-tab
+viewer), [`web/spectrumchart.md`](?doc=web/spectrumchart.md) and
+[`web/vibrationview.md`](?doc=web/vibrationview.md) (the chart and the
+animation); [`engines/pyscf.md`](?doc=engines/pyscf.md) and
+[`engines/siesta.md`](?doc=engines/siesta.md) (the two emitters this kind
+rides); [`engines/stages.md`](?doc=engines/stages.md) (the description on
+disk); [`engines/template.md`](?doc=engines/template.md) § 6.3 (how the
+catalogue is narrowed to a kind);
+[`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a and § 6.1
+(warm files, the artifact registry);
+[`model/overview.md`](?doc=model/overview.md) § 2.2 (what a reorder may do);
+[`science/validation.md`](?doc=science/validation.md) (the gate the kind's
+checks run in). **Open items:** row **V1** of
+[`plans/plan.md`](?doc=plans/plan.md), and nowhere else.
+
+> **Consolidated 2026-09-24** from the design of 2026-09-21, the follow-up
+> audit of 2026-09-22, the UI walk of 2026-09-23 and the implementation
+> sections that had accumulated in the science and web contracts. The design
+> and the audit are archived (`archive/2026-09-24-normal-mode-unification-design.md`,
+> `archive/2026-09-24-vibration-audit.md`) as the record of how the decisions
+> were reached; every decision, measurement and open item they held is here
+> or in the plan. Nothing decided there is re-decided here.
+
+---
+
+## 0. How to read this document
+
+Three documents share this subject, and each owns one kind of statement:
+
+| document | owns | read it when you want to know |
+|---|---|---|
+| [`science/normal-modes.md`](?doc=science/normal-modes.md) | **why** — the derivations, the rank rule for the motions that are not vibrations, stationarity, masses, the rules R1–R8 and the acceptance test | why a held-atom run reports fewer modes than `3·N_free`, and why that number is a rank and not a table |
+| **this document** | **what and how** — what the calculation computes on each engine, what the script and the deck contain, what the result file holds, what the code must keep true, what is built and what is owed | how a run works end to end, where a number in the file comes from, what to check the code against |
+| [`web/spectra.md`](?doc=web/spectra.md) | **the tab** — the Spectrum tab, the hand-over to Task setup, the viewer, the chart, the animation, and how an absent number is drawn | what a person sees and clicks |
+
+**A student** reads § 1 (the calculation in one page), § 2 (the road), § 4 and
+§ 5 (the two routes, with pseudocode and pictures), then § 11 (worked
+examples), and takes the science document for the derivations.
+**A developer** reads § 2, § 3 (the parameters), § 6 (the result file), § 7
+(the invariants), § 8 (the pieces), § 9 (validation and tests) and § 10
+(shipped and owed), and checks the code against § 7.
+
+---
+
+## 1. The calculation in one page
+
+### 1.1 What a vibration calculation is
+
+Near a geometry `R₀`, write every atom's displacement as one long vector `u`
+(three numbers per atom). The energy is a quadratic bowl and the force is minus
+its gradient — the many-coordinate form of Hooke's law:
+
+```text
+    E(u)  ≈  E₀  +  ½ uᵀ H u ,     H_{Iα,Jβ} = ∂²E / ∂R_{Iα} ∂R_{Jβ}      (the Hessian)
+    F  =  −∇E  =  −H u             moving one atom pushes on the others: that
+                                   coupling IS the off-diagonal Hessian
+```
+
+Divide each entry by the square roots of the two atoms' masses and diagonalise:
+each eigenvector is a **normal mode** — a pattern of atoms moving together at
+one frequency `ω = √λ` — and the spectrum is the list of them. Six of the
+eigenvectors of a free molecule are not vibrations (three slides, three turns;
+five for a straight molecule), so they are removed before the diagonalisation.
+Two more quantities ride on the modes: how strongly each absorbs or scatters
+light (the **infrared** and **Raman** strengths, from how the dipole and the
+polarizability change along the mode), and the harmonic **thermochemistry**
+(zero-point energy, entropy, free energy) summed over them.
+
+### 1.2 What holding atoms means
+
+Hold some atoms — an anchor, a metal slab — and split the coordinates into free
+`A` and held `F`. Impose `u_F = 0`:
+
+```text
+    ┌ F_A ┐       ┌ H_AA  H_AF ┐ ┌ u_A ┐           F_A = −H_AA u_A
+    │     │  = −  │            │ │     │     ⇒
+    └ F_F ┘       └ H_FA  H_FF ┘ └  0  ┘           F_F = −H_FA u_A   ≠ 0
+```
+
+Four consequences, each a rule in the science document:
+
+1. **What is diagonalised is `H_AA`** — the free–free block of the Hessian of
+   the *whole* system, with every held atom present in the energy. A held atom's
+   displacement is zero; its interaction is not. This is the partial Hessian
+   (PHVA) of Head, Li & Jensen and Besley [Head1997, LiJensen2002, Besley2008].
+2. **Some eigenvectors of `H_AA` are still not vibrations.** The free atoms can
+   turn about one held atom, or about the line through two, at no cost. How
+   many such motions survive is a **rank** computed from the geometry
+   ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 3.1 — six, five,
+   three, one or zero, with two traps a table gets wrong), and they are
+   removed **before** diagonalising (R3). With three held atoms not on one line,
+   or any held atom in a periodic cell, nothing survives and nothing is removed.
+3. **Stationarity is asked of the free atoms only** (R5): `∇_A E = 0`. The
+   held atoms carry the constraint force `−H_FA u_A` by definition.
+4. **One mass convention on every route** (§ 3.2 there): isotope-averaged
+   masses, modes normalised `Σ_k m_k |L_k|² = 1` in amu. Crossing the
+   conventions once put every infrared intensity out by 1823×.
+
+### 1.3 The two engines, and the one path after them
+
+| | **PySCF** | **SIESTA** |
+|---|---|---|
+| suits | isolated molecules, small clusters | periodic slabs, surfaces, junctions |
+| basis | Gaussian functions | numerical atomic orbitals |
+| how it gets `H_AA` | **analytic** second derivatives, for the free atoms (§ 4.4) | **central differences** of its analytic forces: nudge each free atom, read every force (§ 5) |
+| frequencies + mode shapes | yes | yes |
+| infrared / Raman strengths | yes (§ 4.6) | **not offered** (§ 5.6) |
+| thermochemistry | full RRHO for a free molecule; vibrational sums with atoms held | vibrational sums |
+| per-mode electronic structure | yes (§ 4.8) | no |
+| a gold electrode | must be faked as a finite cluster | its natural home — and the same pseudopotentials, orbitals and k-points as the transport step (§ 5.6) |
+| where a typical run lands | `spectrum/` | `frequency/` — a storage vocabulary, not an engine rule (§ 2.4) |
+
+Only *how the block is obtained* differs. Everything after it is one function,
+`spectra/normal_modes.py::vibrational_modes`, which both engines hand the same
+three things — the block, the masses, the geometry with its held set — and
+which returns the modes with the surviving whole-body motions removed. The
+PySCF deck carries that function's source inside the generated script; the
+SIESTA read-back calls it on the host. There is no second path (R1–R4).
+
+### 1.4 The smallest example, with real numbers
+
+H₂ from the measured SIESTA fixture (`tests/fixtures/siesta_fc`): the bond's
+force constant read from the `.FC` file is `k = 41.713 eV/Å²`, `m = 1.008 amu`.
+
+| | diagonalised | motions removed | modes | ω |
+|---|---|---|---|---|
+| both atoms free | the 6×6 block | 5 (three slides, two turns; the turn about the bond moves nothing) | 1 | `√(2k/m)` = **4744 cm⁻¹** |
+| one atom held | the free atom's 3×3 block, `[k]` along the bond | 2 (the free atom swinging about the held one) | 1 | `√(k/m)` = **3355 cm⁻¹** |
+
+Holding one end lowers the stretch by exactly `√2`, because the partner no
+longer recoils: the reduced mass is `m` instead of `m/2`. Both numbers are
+right for the question each asks — a constrained Hessian is a different
+question, not a worse answer. The two swings of the free atom are the
+surviving motions of point 2 above; without R3 they would be reported as two
+modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
+§ 4b works the same example from the eigenvectors up.
+
+---
+
+## 2. The road — from a description to a result file
+
+### 2.1 The whole road
+
+```mermaid
+flowchart LR
+  M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine,<br/>set parameters (the catalogue's form),<br/>read the live checks"]
+  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, one stage;<br/>Save writes task.json;<br/>the rung tab prints the commands"]
+  T -->|"prep run freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
+  P -->|"launch run freq"| R["the run<br/>PySCF: writes &lt;label&gt;.spectra.json itself<br/>SIESTA: leaves &lt;label&gt;.FC"]
+  R -->|"SIESTA only:<br/>summarize run freq"| A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 6"]
+  A --> V["Results tab<br/>chart · modes table · animation ·<br/>electronic structure · thermochemistry"]
+```
+
+The CLI walks the same road without the browser:
+
+```bash
+molbuilder jobset init --structure P/structure/x.xyz --bundle P/frequency/F \
+    --engine pyscf|siesta --calculation vibration --name X --shape hierarchical
+molbuilder jobset prep run freq --bundle P/frequency/F --target this
+molbuilder jobset launch run freq --bundle P/frequency/F --mode direct --yes
+molbuilder jobset summarize run freq --bundle P/frequency/F      # SIESTA only
+```
+
+`init` refuses `--stage-strategy` for this kind (a tier ladder grades an
+optimisation's convergence; a vibration has one stage) and any engine but the
+two named.
+
+### 2.2 The description: one stage, and relaxation inside it
+
+A vibration is an ordinary described job: `task.json` carries
+`calculation: "vibration"`, the engine, and **one stage, `freq`**
+(`pyscf/stages.py::vibration_stages`, shared by both engines;
+[`engines/stages.md`](?doc=engines/stages.md)). The parameters travel in
+`<label>.template.toml`, the catalogue narrowed to the kind (§ 3).
+
+**Why one stage** *(user rulings, 2026-08-20, refined twice)*: a harmonic
+analysis is only valid at a stationary point, so the relaxation is the
+measurement's **precondition, not a peer rung** you toggle among others. On
+PySCF the deck relaxes the free atoms as its first act and takes the Hessian
+on the result, in one process, geomeTRIC straight into the Hessian. The only
+way the relaxation does not run is the person's own statement,
+`already_relaxed = true` — and even then the deck checks the forces on the free
+atoms and **warns with the numbers, never refuses**. On SIESTA the
+force-constant run relaxes nothing: the input geometry is taken as the
+stationary point, and the gate says so (§ 5.8). Cite a relaxed structure.
+
+### 2.3 Held atoms travel with the structure, never as a form field
+
+Which atoms are held is a fact about the **structure**: the `frozen_atoms`
+region in its `.molstruct.json` half of the codec pair
+([`model/structure-annotations.md`](?doc=model/structure-annotations.md)). Set
+it in the viewer or load a structure that carries it; the Send button exports
+the model in one read, so what is drawn held is what the calculation holds.
+**Frozen means frozen through every phase** *(user, 2026-08-21)*: the PySCF
+relaxation holds the same set (geomeTRIC's `$freeze` file, the optimisation
+deck's own mechanism) and the Hessian is taken over the free atoms only; the
+SIESTA deck writes the set into `Geometry.Constraints` and nudges the free
+range only. The old form field (`frozen_indices`, pre-filled from the sidecar)
+was retired at the spectra migration's P2 because a form copy of a structure
+fact could be edited into disagreement with the structure it described. The
+set is never second-guessed: nothing warns you off a choice you made on
+purpose. What the run **says** about the choice is the point — the regime, the
+motions removed, the Methods sentence (§ 4.10, § 6).
+
+### 2.4 Where results land — `frequency/` and `spectrum/`
+
+`frequency/` and `spectrum/` are two of the nine folder topics a person picks
+from ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5),
+split by *what is computed* — frequencies and thermochemistry against
+intensities — and nothing derives a topic from an engine: a PySCF run with both
+intensity flags off belongs in `frequency/` by that description. The table in
+§ 1.3 says where a typical run of each engine lands, not where a mechanism
+puts it. There is no `frequency` calculation kind; the kinds are
+`optimization`, `vibration` and `transport`.
+
+---
+
+## 3. The parameters
+
+### 3.1 One catalogue, narrowed to the kind
+
+Every parameter of every calculation lives in the one catalogue
+(`molbuilder/data/catalogue.template.toml`;
+[`engines/template.md`](?doc=engines/template.md)). An item declares which
+engines it applies to (`engines`, absent = all) and which calculation kinds
+select it (`calculations`, absent = every kind — § 6.3 there). The vibration
+template, the Spectrum tab's form (`GET /api/build/schema/<engine>?calculation=vibration`)
+and the deck's own item lines are all the same narrowing of the same file, so
+a parameter is defined once and rendered the same everywhere.
+
+**The vibration-only items** *(the catalogue as of 2026-09-24)*:
+
+| item | engine | what it reaches | default | note |
+|---|---|---|---|---|
+| `engine` | pyscf | which deck composer and which env run the job (`task.json`'s engine) | `pyscf` | **owed**: its choices list names PySCF alone, and the item is declared for the PySCF form only, so the tab cannot pick SIESTA (§ 10) |
+| `already_relaxed` | pyscf | `ALREADY_RELAXED` — skips Phase 0 (§ 4.2); the gradient is still checked | `false` | the person's assertion, answered with numbers, never refused |
+| `compute_raman` | pyscf | `COMPUTE_RAMAN` — the polarizability sweep (§ 4.6) | `true` | the expensive optional: about `6·N_free` extra SCFs, each with a response calculation |
+| `compute_ir` | pyscf | `COMPUTE_IR` — dipole derivatives (§ 4.6) | `false` | nearly free when it is the only strength asked for and no atom is held; otherwise rides the Raman sweep or its own dipole sweep |
+| `temperature_K` · `pressure_atm` | pyscf | `THERMO_T_K`, `THERMO_P_ATM` — the headline of the thermochemistry (§ 4.7) | 298.15 K · 1 atm | **owed on SIESTA**: the derivation sums at these defaults and says so (§ 5.5) |
+| `displacement_amplitude_ang` | pyscf | `DISPLACEMENT_AMPLITUDE_ANG` — the ± push along a mode for the electronic-structure probe (§ 4.8) | 0.02 Å | window 0.02–0.20 Å: smaller drowns in SCF noise, larger leaves the harmonic region |
+| `es_mode_selection` | pyscf | `ES_MODE_SELECTION` — which modes get the probe (§ 4.8) | `skip` | `skip` · `all` · `explicit`; `top_n` and `threshold` are **retired by decision** and still in the code (§ 10) |
+| `es_explicit_indices` | pyscf | the list for `explicit` | `""` | 1-based, `"3, 7, 12"` or `"3-7, 12"`; one format, parsed at the emitter |
+| `freq_min_cm1` · `freq_max_cm1` | pyscf | the window the probe's `skip`/`all` selectors filter by | unset | ignored by `explicit` — naming a mode is saying *that one* |
+| `es_n_homo_below` · `es_n_lumo_above` | pyscf | the orbital window recorded per displaced geometry | 5 · 5 | record size, not cost |
+| `net_charge` | both | `NetCharge` / `gto.M(charge=)` | auto | shared with every kind; resolved once by `chemistry.resolve_net_charge` (explicit wins, 0 included; unset runs the phosphate rule) |
+| `fc_displacement` | siesta | `FC.Displacement` — the nudge of the force-constant run (§ 5.3) | 0.04 Bohr | range 0.005–0.2 Bohr; smaller pushes the force difference toward the SCF noise floor, larger picks up anharmonic terms |
+
+**The shared items** — method, functional, basis, spin, dispersion, density
+fitting, the SCF machinery, the geometry-convergence criteria (`geom_gmax`
+family, which the vibration template defaults to the **tight** tier: a
+frequency deserves a real stationary point), the execution category (threads,
+memory, GPU, `mpi_np`) — are the engines' own rows, selected into the vibration
+template with the kind's defaults. Their meaning is
+[`engines/pyscf.md`](?doc=engines/pyscf.md) and
+[`engines/siesta.md`](?doc=engines/siesta.md); the SCF knobs reach every mean
+field the PySCF deck builds through one generated dresser (§ 4.3).
+
+**Items the kind does NOT show, and why:** `restart` (the SIESTA start state
+is the kind's own, § 5.3; the PySCF deck carries no deck-level restart state);
+the relaxation driver's items on SIESTA (the force-constant run moves nothing,
+§ 5.3); `frozen_indices` (retired, § 2.3); `SpectraConfig` (a 33-field class
+nothing constructed, retired 2026-08-22 — the kind's science is the kind's).
+
+### 3.2 The honesty gate
+
+A form that shows a knob the calculation ignores is a lie *(user, 2026-08-21)*.
+`tests/test_vibration_form_honesty.py` renders the deck once per offered
+parameter with a non-default value and requires the deck text to change; a
+parameter still awaiting its integration sits on an explicit list in that test,
+each row naming its plan item, and the list only shrinks. The kind validator
+refuses by name what the render cannot honour (`validation/spectra.py`).
+
+### 3.3 What the person is told before paying for the run
+
+The live checks on the Spectrum tab and the settings gate at `prep` run the same
+function, `validation.validate(struct, cfg, calculation="vibration")`, which
+dispatches on the config class — `spectra_render_checks` for PySCF,
+`siesta_vibration_checks` for SIESTA — and **refuses any other class by name**
+rather than returning an empty verdict (an empty list reads as *checked,
+nothing found* on every surface; [`science/validation.md`](?doc=science/validation.md)
+F4). Both say, from the one rank rule: how many atoms are held, how many
+whole-body motions survive and will be removed, and how many modes will be
+reported (R7). PySCF's adds the finite-difference and amplitude checks, the
+parity of the electron count, and the cost of what was ticked, stated from what
+the code does (R8); SIESTA's adds the every-atom-held refusal and the
+*relaxes nothing* notice (§ 5.8). A structure with a repeating axis is refused
+at the PySCF gate rather than computed as a cluster.
+
+---
+
+## 4. The PySCF route — the generated script, phase by phase
+
+The deck is a Python script generated by `pyscf/vibration_deck.py` (the
+composer) from blocks in `pyscf/vibration_emitters.py`, through the same seam
+every deck uses — `pyscf.input.spec_for(struct, cfg, calculation="vibration")`
+→ `script_emit.prepare_deck` ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)
+§ 4). It runs in the `molbuilder-pySCF` env, needs no molbuilder at run time,
+and writes `<label>.spectra.json` beside itself after every phase.
+
+### 4.1 The script, top to bottom
+
+```text
+# constants from the description: JOB, ATOMS, ELEMENTS, N_ATOMS, FROZEN_ATOM_IDXS,
+# FREE_ATOM_IDXS, ALREADY_RELAXED, GEOM_* criteria, THERMO_T_K, THERMO_P_ATM,
+# THERMO_T_GRID, COMPUTE_IR, COMPUTE_RAMAN, RAMAN_FD_STEP_ANG, DISPLACEMENT_AMPLITUDE_ANG,
+# ES_MODE_SELECTION, ..., and the spliced functions (homo_index, dipole_derivatives,
+# rigid_motions, vibrational_modes, vibrational_thermo, vibrational_thermo_grid,
+# structure_hash_text) — source text copied from their one home, so the deck
+# imports nothing of molbuilder.
+
+mol = gto.M(atoms = EVERY atom, held ones included; basis, charge, spin, ...)
+_mb_configure_scf / _mb_configure_dft   # the generated dressers (§ 4.3)
+state = {schema_version: 6, engine: 'pyscf', phases: empty, ...}; write the artifact
+
+# Phase 0 — relaxation (§ 4.2)
+if not ALREADY_RELAXED:
+    mol = geomeTRIC(build_mf(mol), freeze = FROZEN_ATOM_IDXS).run()   # the free atoms relax
+COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')                     # the Hessian's geometry
+
+# Phase 1 — the equilibrium SCF (§ 4.3)
+mf = build_mf(COORDS_EQ_ANG).run();  E_eq, MO_ENERGIES_EQ, HOMO_IDX
+check  max|F_a| over a ∈ FREE  <  GEOM_GMAX        # R5 — warns with the numbers, never refuses
+
+# Phase 2 — the Hessian and the one harmonic path (§ 4.4, § 4.5)
+HESS, DMU_DR, IR_ROUTE = dipole_derivatives(mf_for_hess, FREE_ATOM_IDXS, want_analytic_ir)
+λ, L, patterns = vibrational_modes(HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS, axis_kind)
+FREQ_CM1 = sign(λ)·√|λ|·5140.487 ;  state['modes'], state['removed_motions']
+
+# thermochemistry (§ 4.7)
+state['thermo'] = RRHO (nothing held) | vibrational sums above E_eq (atoms held), headline + grid
+
+# Phase 3 — intensities (§ 4.6)
+Raman: for each free Cartesian coordinate, ±RAMAN_FD_STEP_ANG: SCF + analytic polarizability
+       (and the dipole, read for free) → dα/dR, dμ/dR → per-mode activities and intensities
+IR alone: analytic dμ/dR from the Hessian's own response (no atom held), else the dipole sweep
+
+# Phase 4 — per-mode electronic structure (§ 4.8)
+for each selected mode: SCF at q ± A·L_display → the orbital window around HOMO/LUMO
+
+write the artifact; print the summary
+```
+
+Every construction site of a mean field calls the same generated
+`_mb_configure_scf(mf)` (and `_mb_configure_dft(mf)` on a DFT deck) —
+[`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a: the framework never spells an
+SCF knob twice, and a deck that builds many mean fields (equilibrium,
+displaced points, relaxation) inherits one definition with N call sites.
+
+### 4.2 Phase 0 — the relaxation, the measurement's precondition
+
+`geomeTRIC` runs in-process before the equilibrium SCF, on the free atoms,
+with the held set written to its `$freeze` constraints file exactly as the
+optimisation deck does. It is a **tracked phase**: `phase_relaxation` goes
+`empty → running → complete`, and every step writes the artifact with the step
+count and the current largest force, so the viewer's chip shows convergence
+ticking down *(user, 2026-08-20: a silent gap while geomeTRIC works, likely the
+longest part of the run, would betray "the viewer tracks all the steps")*.
+
+What the phase honours from the description: the convergence criteria
+(`geom_gmax`, `geom_grms`, `geom_dmax`, `geom_drms`, `geom_etol`,
+`geom_max_steps`, defaulting to the tight tier), `on_nonconvergence`
+(**this** is the phase that policy governs — `proceed` takes the partial
+geometry and records `converged: null` with a warning; `continue` re-runs the
+optimiser with the optimisation deck's retry budget; `halt` raises),
+`write_trajectory` (geomeTRIC's streaming XYZ), `write_molwatch_log` (the same
+live-watch hooks the optimisation deck emits), `save_initial_xyz` /
+`save_optimized_xyz` (written as **pairs**, geometry plus sidecar, through the
+codec — a bare `.xyz` carries no labels, no cell and no identity; fixed
+2026-09-22). `optimizer` is geomeTRIC by refusal: pyberny is absent from the
+run environment and has no step callback for a tracked phase.
+
+`already_relaxed = true` skips the optimiser and marks the phase
+**complete by assertion**; the gradient check of § 4.3 then carries the number
+the assertion is judged by. The rule for what to freeze: the set held for the
+spectrum should be a subset of the set held for the relaxation that produced
+the geometry — holding *more* for the spectrum is always safe, holding *less*
+puts the free atoms off a stationary point in the very subspace that is
+diagonalised.
+
+**The geometry in the file is the geometry the Hessian is taken at** —
+`COORDS_EQ_ANG`, rebound by this phase — so the eigenvectors and the
+coordinates in `equilibrium.positions_ang` belong to the same geometry. *(Until
+2026-09-24 the file carried the input coordinates: measured 0.0488 Å off on a
+0.96 Å bond after a relaxation. Status in § 10.)*
+
+### 4.3 Phase 1 — the equilibrium SCF, and the check on the geometry
+
+One whole-system SCF at `COORDS_EQ_ANG`, the held atoms present, on the mean
+field the dresser configured (chkfile written, GPU promotion when the probe of
+§ 4.4 allows it, `newton()` when `scf_soscf` is on). It **halts unconditionally**
+on non-convergence: this density feeds the Hessian, every intensity and the
+thermochemistry, so no policy makes it optional.
+
+It records the **equilibrium block**: `scf_energy_eh` (the SCF's return value,
+stored as is), `mo_energies_eh` (non-finite entries dropped) and `homo_idx`
+(derived by the spliced `homo_index`: sum the two spin channels of a 2-D
+`mo_occ`, take the highest index with occupancy above 0.5 — a rule with a
+branch, so it ships as source and one implementation runs), plus `elements`
+and `positions_ang`.
+
+**The stationarity check (R5)** takes the SCF's nuclear gradient and judges
+the largest force **over the free atoms** against `geom_gmax`
+(4.5·10⁻³ Eh/Bohr by default), recording it as `relaxation.max_force_eh_a`
+and the all-atom figure beside it as `max_force_all_atoms_eh_a`. The unit is
+Eh/Bohr — the key's `_a` and the viewer's "Eh/Å" are a mislabel owed with the
+viewer (§ 10). Measured why the free-atom rule matters: water with O and one H
+held, relaxed to the deck's own criterion, reads 3.35·10⁻² over all atoms
+against 7.01·10⁻⁵ on the free ones; CO₂ with both O held 7.2·10⁻² against
+3.9·10⁻¹⁴. Judging every atom warned on four of five correct constrained
+minima, and the warning reached the web UI.
+
+**The structure hash** (`structure_hash`, `sha256:…`) is computed by
+`sidecars.spectra.structure_hash_text` over `n_atoms`, the label and one line
+per input atom, spliced into the deck so the SIESTA derivation and the PySCF
+deck cannot hash differently. It is provenance for a reader; nothing enforces
+it, and it carries the job name as its second line, which the identity rule of
+§ 10 will remove.
+
+### 4.4 Phase 2 — the Hessian over the free atoms
+
+**The rule** (design decision 2026-09-23; R8): with atoms held, second
+derivatives are computed **for the free atoms only**, and the run says so
+(`hessian_scope = 'free'`, `n_atoms_in_hessian`). With nothing held the
+Hessian is the whole molecule's and `hessian_scope = 'all'`. The spliced
+`dipole_derivatives(mf, free_atom_idxs, want_ir)` is the one place this is
+decided:
+
+```text
+if some atom is held:
+    mf_h  = rebuild(COORDS_EQ_ANG, density_fit = False)      # PySCF's density-fitted Hessian
+                                                              # class takes no atom list
+    hobj  = mf_h.Hessian()
+    H_AA  = hobj.hess_elec(atmlst = FREE) + hobj.hess_nuc(mol, atmlst = FREE)
+            + hobj.get_dispersion()[FREE, FREE]               # kernel(atmlst=) adds this term FULL-SIZE
+    H = zeros(N, N, 3, 3);  H[FREE, FREE] = H_AA              # held rows stay zero and are never read
+    route = 'finite-difference' if IR is wanted else 'none'   # the analytic dμ/dR route takes no atom list
+else:
+    IR alone wanted → pyscf.prop.infrared: Hessian + dμ/dR from ONE response solve (§ 4.6)
+    otherwise       → mf.Hessian().kernel()
+```
+
+Two corrections found by measurement and kept: PySCF 2.14's density-fitted
+Hessian class fails on a partial list (`pyscf/df/hessian/rhf.py:216`, a shape
+mismatch), so the reduced route rebuilds a plain mean field and records
+`hessian_density_fit = false`; and `kernel(atmlst=)` cannot be used because its
+dispersion term is full-size, so the three pieces are summed by hand. The
+block agrees with compute-everything-and-slice to **1·10⁻⁸ Hartree/Bohr² for
+Hartree–Fock** and **7.5·10⁻⁶ for DFT at grid level 4** (1.5·10⁻⁵ at level 3) —
+the difference entirely in the coupled-perturbed response part, whose
+tolerance PySCF scales with the number of atoms in a batch, so the full
+calculation converges its response more loosely than the partial one; about
+0.03 cm⁻¹ on a stretch. Pinned by `tests/test_vibration_e2e.py` with and
+without a dispersion correction.
+
+**GPU.** A run-time probe (`_emit_gpu_coverage_probe`) asks whether gpu4pyscf
+covers the Hessian for this SCF type; if not, the mean field is rebuilt on the
+CPU for this phase — one extra SCF, and the only path when the coverage is
+absent. The reduced route with a GPU mean field is untested (§ 10).
+
+**What the reduced calculation skips, read from PySCF's own code**
+(`pyscf/hessian/rhf.py`, `rks.py`, version 2.14), not from a timing:
+
+| piece of the analytic Hessian | runs over | 300 atoms, 50 free |
+|---|---|---|
+| the SCF, and one rebuild without density fitting when atoms are held | every atom, once each | a 300-atom SCF, twice |
+| `_partial_hess_ejk`: the `int2e_ipip1` diagonal contraction | every atom, once | unchanged |
+| `_partial_hess_ejk`: the `int2e_ip1ip2` / `int2e_ipvip1` contractions, one per atom with `shls_slice` on that atom's shells | **the free atoms** | 50 of 300 — about a sixth |
+| `make_h1`: the `int2e_ip1` contraction, one per atom | **the free atoms** | about a sixth |
+| `solve_mo1`: the coupled-perturbed equations, `3·len(atmlst)` perturbations in memory-sized batches | **the free atoms** | 150 perturbations instead of 900 |
+| `hess_elec`: the final pair loop | free × free | a thirty-sixth |
+| `hess_nuc` | every pair, then sliced | trivial |
+| **DFT only** — `_get_vxc_diag`; `_get_vxc_deriv2` with `vmat = zeros((natm, 3, 3, nao, nao))` and `for ia in range(mol.natm)`; `_get_vxc_deriv1` with `(natm, 3, nao, nao)` | **every atom** | unchanged — and it is memory: `300 × 9 × nao²` doubles, about 200 GB at 3 000 basis functions |
+
+So the pieces that dominate *time* — the response equations and the
+two-electron derivative contractions — scale with the free atoms, and a
+300-atom system with 250 held costs those pieces about what a 50-atom system
+would. The exchange-correlation derivative matrices do not shrink: PySCF builds
+them for every atom whatever list it is given, and at a few hundred atoms their
+size is what stops the run. **Consequence:** the PySCF analytic route is for
+molecules of tens of atoms, and for anything without a functional
+(Hartree–Fock has no such term); a junction of hundreds of atoms goes to the
+SIESTA route (§ 5.7). *(The frozen-atom cost claim in this tool's advisories
+was false until 2026-09-23 — the full Hessian was computed and sliced, measured
+10.6 s free against 10.1 s with 2 of 14 held. R8 now requires a cost statement
+to be read from the code.)*
+
+### 4.5 The one harmonic path
+
+`spectra/normal_modes.py::vibrational_modes(hessian, masses, positions, held, axis_kind, cell)`
+— spliced into the deck as source, called on the host by the SIESTA read-back —
+is the only place modes are made. In order: take the free–free block; divide
+by `√(m_i m_j)` per 3×3; build the surviving whole-body motions with
+`rigid_motions` (three slides, the turns the lattice permits, then only the
+combinations that leave every held atom in place, then only those that move a
+free atom — the rank of [`science/normal-modes.md`](?doc=science/normal-modes.md)
+§ 3.1, tolerance 10⁻³ Å per unit motion); diagonalise in the **complement** of
+those motions in the mass-weighted metric; return `3·N_free − n_rigid`
+eigenvalues (ascending; negative = imaginary), the modes in the canonical
+normalisation `Σ m_k |L_k|² = 1` (amu), and the removed patterns.
+
+Conventions that must not fork: isotope-averaged masses (`atomic_mass`, the
+same table PySCF's `thermo` uses); the wavenumber conversion
+`√λ × 5140.487…` for a Hessian in Hartree/Bohr² weighted in amu
+(`constants.CM1_PER_SQRT_HARTREE_BOHR2_AMU`, derived from the two constants it
+is made of); the display form `eigenvector_display` = the canonical vector
+rescaled per mode so `max|L_k| = 1`, for the animation only (§ 6.5). The
+artifact records what was removed (`removed_motions.count`, `patterns`), so a
+reader can see the difference between `3·N_free` and `len(modes)` (R7).
+
+The gate this rests on: the rank rule reproduces PySCF's own
+`harmonic_analysis` on free molecules — water, CO₂, HF, methane at
+RHF/STO-3G: eigenvalues to 1·10⁻⁸ relative, wavenumbers to 1·10⁻⁴ cm⁻¹,
+water's and HF's vectors to 1·10⁻⁶ in the mass metric (methane's degenerate
+sets compared by frequency only) — before the old two-branch analysis was
+deleted (2026-09-23).
+
+### 4.6 Phase 3 — infrared and Raman strengths
+
+**What an intensity is.** An infrared band is strong when the vibration moves
+charge: the quantity is the dipole's rate of change along the mode,
+
+```text
+    I  =  42.2561 × |dμ/dQ|²     km/mol,   μ in Debye, Q in Å·√amu,
+    dμ/dQ_n = Σ_{k,α} (dμ/dR_{k,α}) · L_canonical_{k,α,n}
+```
+
+and a Raman band scatters when the mode changes the polarizability: `dα/dQ`,
+combined by Placzek's formula `S = 45 a² + 7 γ²` into an activity in Å⁴/amu.
+The `42.2561` prefactor is derived for modes normalised in **amu** — the
+convention of § 4.5 — which is where the 1823× defect lived.
+
+**Three ways to obtain dμ/dR, and what each costs** (measured NH₃/PBE0/6-31G,
+2026-09-11; the two tensors agree to 0.02 %, so the choice is cost, not
+accuracy):
+
+| route | how | cost | availability |
+|---|---|---|---|
+| **analytic** | the same coupled-perturbed response the Hessian solves, contracted with dipole integrals — one solve for both | **+14 %** over the Hessian alone | `pyscf.prop.infrared`, master branch only, never released to PyPI |
+| **finite-difference dipoles** | nudge each free coordinate ±0.005 Å, read the converged dipole, difference | **+486 %** — `6·N_free` extra SCFs | always |
+| **rides with Raman** | the Raman sweep already runs those SCFs; the dipole at each point is a one-line read on a converged wavefunction | free | whenever Raman is on |
+
+**The rule for which runs:** analytic **only when infrared is the only strength
+asked for and no atom is held** — Raman's sweep would make it buy nothing, and
+the analytic module takes no atom list. The choice is made **at run time**,
+because `pyscf.prop.infrared` is a property of the environment the deck lands
+in, not of the machine that wrote it: the deck tries the analytic route, falls
+back loudly (the reason printed into the job log), and records which ran as
+`ir_route` (`analytic` · `finite-difference` · `none`) with the step as
+`ir_fd_step_ang` when a difference ran. **Asking for intensities must not move
+the frequencies**, so the analytic route carries two corrections, both
+measured: it is handed the SCF's own `mf.Hessian()` (upstream's class is
+hardcoded non-DF, a 7.2·10⁻⁵ Hartree/Bohr² mismatch on a density-fitted SCF,
+0.11 cm⁻¹) and the dispersion Hessian is added back (upstream drops it:
+7.2·10⁻⁴ Hartree/Bohr², **3.7 cm⁻¹ on every frequency** of a B3LYP-D3BJ run).
+With them the Hessian matches the no-infrared path to 10⁻¹².
+
+**Raman** has one route: the static polarizability is analytic
+(`pyscf.prop.polarizability`, coupled-perturbed; the polarizability points run
+**without density fitting** because the module has no DF implementation) at
+each displaced geometry, and its **derivative** is a central difference over
+the free Cartesian coordinates at ±`RAMAN_FD_STEP_ANG` = 0.005 Å (the step
+Gaussian and ORCA use for static polarizability derivatives). PySCF reports the
+polarizability in atomic units (Bohr³), so one global factor `(Bohr/Å)⁶ ≈
+0.02197` is applied on the final scalar — without it the spectrum's shape is
+right and every absolute activity is about 50× too small. The run records the
+route as `raman_route = 'finite-difference'` with `raman_fd_step_ang` (§ 10 for
+status), and the Methods text states the method one way: analytic
+polarizability, finite-difference derivative.
+
+**Where the numbers are not well defined.** A charged molecule's dipole depends
+on the origin, so its infrared intensities carry a bookkeeping term; they are
+computed, said so, and treated with suspicion. With atoms held the formulas
+consume the free-atom vectors and derivatives, both of which exist, but a held
+atom contributes no dipole derivative: for a molecule anchored at one or two
+atoms a small correction, for a molecule on a metal that screens and carries
+the charge transfer, not small. The number is computed; how much it means is
+the reader's judgement.
+
+**What is validated** (§ 9): band-level — water at B3LYP/def2-SVP in the
+literature windows with the right ordering; CO₂ reproducing the mutual
+exclusion of a centrosymmetric molecule. **Not done**: a mode-by-mode
+cross-check against an external code.
+
+### 4.7 Thermochemistry
+
+The harmonic sums run over the reported modes — every one a vibration (R4) —
+minus the imaginary ones, which have no partition function and whose count is
+**stated** (`thermo.n_imag_excluded`), never dropped in silence; the motions
+removed before diagonalising are counted beside them (`n_rigid_removed`).
+Two regimes, said out loud in `thermo.regime` and `thermo.note`:
+
+| regime | when | what is summed |
+|---|---|---|
+| `rrho` | nothing held | PySCF's own `thermo.thermo`: electronic + translational + rotational + vibrational, at the headline (T, P) and at every point of the grid |
+| `vibrational-only` | any atom held | the vibrational sums above the electronic energy, `vibrational_thermo` / `vibrational_thermo_grid` from the one home — there is no gas-phase translational or rotational partition function to add, and no `kT` (the ideal gas's `pV`) either |
+
+**One quantity under one label**: the headline numbers and the curves the
+viewer draws are the same sum, and the headline temperature is a point of the
+grid (`THERMO_GRID_K` = 50–1500 K in 30 points, a documented presentation
+default, plus the headline T). *(Until 2026-09-24 the headline was full RRHO and
+the grid vibrational-only under one note — measured 11.73 kcal/mol apart on
+free water. Status in § 10.)* The deck computes, the viewer draws; the viewer
+derives nothing but the electronic reference it needs to plot.
+
+### 4.8 Phase 4 — the electronic structure along a mode
+
+For each selected mode the deck pushes the geometry to `q ± A·L_display` —
+`A = displacement_amplitude_ang` along the **display** form of the eigenvector
+(largest atomic swing = `A`) — runs an SCF at each, and records the orbital
+window `[HOMO − es_n_homo_below, LUMO + es_n_lumo_above]` and the SCF energy at
+both, beside the equilibrium ones: **two SCFs per selected mode**. The viewer
+draws the three level stacks joined orbital by orbital, the gap's shift, and
+the coupling `ΔE/(2A)` — the electron–vibration coupling that decides how a
+mode modulates a junction's transmission [Galperin2007, Frederiksen2007].
+
+Which modes get it is `es_mode_selection` with the frequency window
+(`spectra/selection.py`, inlined into the deck so a cluster node needs no
+molbuilder): `skip` (none), `all` (every mode inside the window), `explicit`
+(the listed indices; the window is ignored — naming a mode is saying *that
+one*). `top_n` and `threshold` ranked modes by Raman activity and are
+**retired by decision** (2026-09-23): the probe measures `∂ε/∂Q`, which
+follows its own selection rule — in a centrosymmetric molecule the
+Raman-bright modes are exactly the infrared-dark ones, so the filter kept one
+symmetry class and dropped the other every time, and for an engine that
+computes no strengths they were undefined rather than empty. The window is the
+cost control, and `all` is cheap where it matters (8 SCFs for CO₂). A mode
+whose electronic structure is already in the file is skipped on a resume,
+whatever the selector says.
+
+### 4.9 The live artifact
+
+The script writes `<label>.spectra.json` at the end of every phase and after
+every per-mode SCF, always by **atomic replace** (a temporary file, then
+`os.replace`), so a reader polling every two seconds never sees a torn file.
+The phase flags are the reader's clock:
+
+```text
+phase_relaxation   empty → running (step count, max force ticking) → complete   (complete by assertion under already_relaxed)
+phase_frequencies  empty → running → complete
+phase_raman        empty → running → complete      (complete-with-nothing when not requested — § 10)
+phase_es           empty → running → complete      (per-mode entries fill in one at a time)
+```
+
+The Results-tab viewer polls the file while any phase is running and redraws as
+modes arrive ([`web/spectra.md`](?doc=web/spectra.md) § 7).
+
+### 4.10 The Methods paragraph
+
+`spectra/methods.py::render_methods_md` composes one Markdown paragraph from
+the config — level of theory, basis, dispersion, the atom clause (how many
+free, how many held, how many modes by R2), the selector and window, the
+amplitude convention — takes the engine's own fragment as an argument
+(`pyscf_methods_fragment`: the free-atom Hessian sentence citing
+[Head1997, LiJensen2002, Besley2008], the density-fitting note, the Raman
+sentence with its step), and extracts the bibliography keys back out of the
+prose it rendered, so what is cited is what was said. It ships in the script's
+header and beside the result. **Before the run it is route-neutral** for
+infrared — which dμ/dR route runs is settled inside the job — and the load path
+adds the route sentence from `ir_route` and `ir_fd_step_ang`
+(`with_ir_route`, § 6). The count it states is R2 before the run and the run's
+own list after it, never a third derivation (R6). One defect stands: the
+paragraph reads `cfg.functional` and `cfg.dispersion` whatever `cfg.method`
+is, so a Hartree–Fock run's write-up names a functional it did not use (§ 10).
+
+---
+
+## 5. The SIESTA route — force constants, a sorted copy, and a read-back
+
+### 5.1 What SIESTA does
+
+SIESTA takes no second derivative. A **force-constant run** nudges each atom of
+one contiguous range by a fixed displacement along x, y and z, both ways, runs
+an SCF at each displaced geometry, and writes the forces on every atom to
+`<SystemLabel>.FC`. The keywords, with the spellings SIESTA 5.4.2 honours
+(verified against the manual-derived table in `tests/validation/test_siesta.py`
+and `parse/fdf.py::_norm` — never against `strings` on the binary, whose
+concatenated keyword table matches any prefix; `FC.Displ` "matched" four
+times and is not a keyword):
+
+| what | keyword | note |
+|---|---|---|
+| ask for a force-constant run | `MD.TypeOfRun FC` | `PHONON` is retired |
+| first / last atom to nudge | `FC.First` / `FC.Last` | 1-based, **one contiguous range**; `MD.FCFirst` / `MD.FCLast` are deprecated aliases and refused by the deck gates |
+| how far to nudge | `FC.Displacement` | Bohr; SIESTA's default 0.04; `MD.FCDispl` deprecated |
+| the result | `<SystemLabel>.FC` (and `.FCC`) | § 5.4 |
+| the derivatives of H and S | `FC.Save.dHS` | the manual's option for writing ∂H/∂R and ∂S/∂R, the ingredient of the electron–vibration coupling (§ 5.6); not in the manual-derived keyword table this repo checks against, and not used |
+
+SIESTA has no unrecognised-keyword diagnostic, so a misspelled keyword runs at
+the engine's own default without a word — the `MD.NumBroydenSteps` failure
+class that cost a 444-atom allocation in June. Every keyword this deck writes
+is a catalogue anchor or a line of `siesta/vibration_deck.py`, and both gates
+that refuse a deprecated spelling run over it.
+
+**`vibra` is not used.** SIESTA ships a utility that turns `.FC` into modes,
+and it was tried on the measurement of 2026-09-23: it has its own, older fdf
+reader (`recoor`) that accepts four coordinate formats, none of them the
+`AtomicCoordinatesFormat Ang` molbuilder writes, and it refused the deck twice.
+Nothing it computes lies outside the one harmonic path, so the file is read on
+the host instead (§ 5.5) and the deck needs no `SuperCell_N`, `BandLines` or
+`Eigenvectors` lines — `vibra`'s inputs, not SIESTA's.
+
+### 5.2 The contiguity constraint, and the sorted copy
+
+`FC.First`..`FC.Last` nudges atoms *A through B*; it cannot take a scattered
+list. The held set is whatever the person ticked in the viewer, so in general
+the free atoms are not one run of atom numbers. Three ways out were weighed
+(refuse and tell the person to reorder; nudge the smallest covering range and
+discard the extra, which wastes exactly the compute the feature saves; reorder
+invisibly with the permutation made a first-class fact) and **reorder was
+decided** (2026-09-23), under the contract of
+[`model/overview.md`](?doc=model/overview.md) § 2.2:
+
+- `prep` sorts a **copy** with the `held-first` key — held atoms first, free
+  atoms last, each in the input's own relative order — through the one sort
+  machinery (`transport/sort.py`: `sort_by(struct, "held-first")` hands its
+  order to the shared `apply_order`, which remaps every per-atom field, checks
+  the bijection and records both directions; a second key over the same
+  machine, never a second machine; the categorical `transport` key is the
+  other);
+- it records `atom-permutation.json` beside the calculation, with the key that
+  made the copy (`write_permutation`; [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+  § 6.1):
+
+  ```json
+  {"schema": "molbuilder/atom-permutation@1",
+   "original_to_sorted": [1, 0], "sorted_to_original": [1, 0], "key": "held-first"}
+  ```
+
+- the deck is rendered from the copy; the free range is the tail,
+  `FC.First = n_held + 1`, `FC.Last = N`;
+- the read-back (§ 5.5) reads the record and puts every per-atom row back in
+  the input order through `Permutation.rows_to_input_order` and `original_of`
+  — the first reader in the codebase that inverts a permutation, and the only
+  way any reader may: **the input order never reaches the engine and the sorted
+  order never reaches a person.**
+
+The deck writer checks the shape and refuses by name a copy whose free atoms
+are not one trailing run (`vibration_deck.fc_facts`): a deck rendered from the
+input order would nudge the wrong atoms and converge without complaint.
+TranSIESTA's `elec-pos` demands consecutive atoms for the same reason, which
+is why the machinery already existed. **Open**: a structure sorted for two
+reasons — a junction sorted for TranSIESTA *and* for FC contiguity — carries
+one composed permutation, recorded once (ruled); how it is composed is not
+built, and no calculation asks for both today.
+
+```text
+input order (the person's):        sorted copy (the engine's):
+  1 H  free                          1 H  held   ← Geometry.Constraints: position 1
+  2 H  held                          2 H  free   ← FC.First = 2, FC.Last = 2
+                                     atom-permutation.json: sorted_to_original = [1, 0], key = held-first
+```
+
+### 5.3 The deck
+
+`siesta/input.py::spec_for(struct, cfg, calculation="vibration")` renders the
+optimisation deck's sections ([`engines/siesta.md`](?doc=engines/siesta.md)
+§ 3) **without the geometry-optimisation section** (row 14 there: nothing
+relaxes) and with two additions from `siesta/vibration_deck.py`, the kind's
+own module: the catalogue section *Force constants* (the one item,
+`fc_displacement`, with its unit and note) and the structural block the kind
+derives from the structure:
+
+```text
+%block Geometry.Constraints
+position 1 … n_held               # the held atoms, first in this numbering
+%endblock Geometry.Constraints
+FC.Displacement   0.04 Bohr       # the catalogue item, through the syntax door
+MD.TypeOfRun      FC              # the force-constant run: nothing relaxes here
+FC.First          n_held + 1      # the free range is the tail
+FC.Last           N
+DM.UseSaveDM      .true.          # the start state is the KIND's (below)
+MD.UseSaveXV      .false.
+```
+
+The stage header line names the range, the counts and the displacement
+(`stage_science`); the record blocks that every deck carries follow.
+
+**The start state is the kind's, not the description's.** The catalogue offers
+`restart` to optimisations only, and a force-constant run has no optimiser
+history to resume. The density is read when present (the first displacement's
+SCF starts from it; every later one from the previous displacement's, in
+memory). The geometry is **never** read back: an FC run leaves its *last
+displacement* in `<label>.XV` — measured on the two-atom run, the last free
+atom sits `FC.Displacement` off the input along z afterwards — so a deck that
+honoured that file would take a nudged geometry as the stationary point and
+converge. SIESTA reads the files it finds unless told `.false.`, so the answer
+is written, not left out (`start_state_lines`, from the restart group's own
+declaration). `siesta/warm-files.toml` carries the `[vibration]` section under
+the 4.2a growth rule — `.FC` and `.FCC`, inventory-only, since a rerun restarts
+at `FC.First` — and says why the base `.XV` row means something else under
+this kind.
+
+### 5.4 The run, and what it leaves
+
+```text
+SCF at R₀ (every atom present, the held ones too)
+for a in FC.First .. FC.Last:
+    for α in (x, y, z):
+        for s in (−, +):
+            R = R₀;  R[a, α] += s · δ
+            SCF at R, started from the previous density  →  forces F_b on EVERY atom b
+            one row per atom b  →  <SystemLabel>.FC
+```
+
+`1 + 6·n_free` force evaluations, each a whole-system SCF. What is left:
+
+| file | what it is | measured on the fixture (`tests/fixtures/siesta_fc`) |
+|---|---|---|
+| `<label>.FC` | one header (`n_atoms`, `δ` in Å), then `6·n_free·N` rows of three numbers in **eV/Å²**, in the order displaced atom → direction → side (−, +) → atom | the file's two sides average to 41.713 for the H₂ bond; two single points displaced by hand give −ΔF/2δ = 41.713 |
+| `<label>.FCC` | the same with the held atoms' force rows zeroed (SIESTA's "constrained" variant) | the free block is identical, so the reader takes `.FC` and slices |
+| `<label>.XV` | the **last displaced** geometry, not the input | the last free atom `FC.Displacement` off along z |
+| `<label>.DM`, the usual outputs | the density of the last displacement, the `.out` with the version line | |
+
+The wrapper `launch` writes treats the run like any SIESTA run: it activates
+the env, sizes the ranks from the machine record or the description's
+`execution` block, logs, and marks the attempt concluded.
+
+### 5.5 The read-back — `jobset summarize run <stage>`
+
+The deliverable of the run is the artifact, and it is derived **on the host**
+(`spectra/from_siesta.py`, `parse/engines/siesta_fc.py`), through the same
+function the PySCF deck carries:
+
+```text
+struct  = the calculation's structure, INPUT order;  perm = read_permutation(bundle)
+sorted  = apply_order(struct, perm.sorted_to_original)          # the copy the deck was written from
+fc      = read_fc(<label>.FC)                                    # (n_free, 3, ±, N, 3), eV/Å²
+H_AA    = mean over ± of fc[a, α, ·, b, β], a, b ∈ FREE          # the central difference
+H_AA    = ½ (H_AA + H_AAᵀ);  × Bohr²/Hartree_eV                  # symmetrise; → Hartree/Bohr²
+λ, L, patterns = vibrational_modes(H, masses_amu, R₀_sorted, F_sorted, axis_kind, cell)
+rows → input order through Permutation.rows_to_input_order       # the recorded permutation, inverted once
+write <label>.spectra.json beside the run:  engine 'siesta', the SIESTA version from the .out,
+    intensities null, the MO block null, thermo = the vibrational sums (§ 4.7's second regime),
+    hessian_scope 'free'|'all', removed_motions, engine_metadata {fc_file, fc_displacement_ang, fc_range_1based},
+    config {engine, calculation, stage}
+```
+
+The reader refuses a `.FC` whose row count is not `6·N·k`, a range whose
+length disagrees with the free set, a record whose two directions are not
+inverse bijections, and a sorted copy whose free atoms are not one trailing
+run. The modes are at **Γ** (R3): a force-constant run over the cell as given
+is the Γ matrix; a phonon dispersion is a different feature and is not this
+one. The thermochemistry is summed at 298.15 K and 1 atm because the headline
+items are PySCF's (§ 3.1) — owed. Measured end to end through jobset on this
+workstation (`tests/test_siesta_vibration_e2e.py`, SIESTA 5.4.2): H₂ with the
+held atom **last** in the input → one mode at 3358 cm⁻¹, two motions removed,
+the free atom reported as atom 0.
+
+### 5.6 What is absent, never zero — and the transport connection
+
+**Infrared and Raman are not offered on SIESTA**, and the controls are **not
+drawn** for it rather than defaulted off — a control that silently does nothing
+is worse than an absent one, because the person believes they asked for
+something. This is a statement about this tool, not about SIESTA: infrared
+intensities are reachable there by a different route — **Born effective
+charges** from the Berry-phase polarisation, the right answer for a periodic
+system where a molecular dipole is not defined — and that is a separate
+feature with its own physics and validation, to be designed as one if wanted.
+The molecular-orbital block is absent because a periodic system has a Fermi
+level, not a HOMO. Nothing is relaxed (§ 2.2).
+
+**Why the SIESTA route exists at all — consistency of the potential-energy
+surface.** A junction study is a chain: relax → find the vibrations →
+displace along one → compute transport. Done in one program, every step sees
+the same pseudopotentials, the same numerical orbitals, the same functional,
+the same slab and k-points; done in another, the mode displaced along is not a
+mode of the system the transport runs through. And the modes differ in the way
+that matters — a mode of BDT on gold includes the Au–S interface stretching,
+`Au ⟷ S — C₆H₄ — S ⟷ Au`, which is what modulates the electrode–molecule
+coupling and which an isolated-molecule calculation cannot produce.
+
+Two levels of that connection, neither built:
+
+- **Level one — displace along a mode and look.** `positions(Q) = R₀ + Q · L`
+  swept from negative to positive gives real geometries caught at successive
+  points of one vibration; transport at each gives how the current-carrying
+  ability changes across it (`Q < 0`: Au–S shorter, stronger coupling). The
+  PySCF deck already does the displacement half for its electronic-structure
+  probe (§ 4.8). **How far is `Q`** is a physical quantity with one right
+  answer, not a knob: the zero-point amplitude `Q_rms = √(ħ/2ω)` and its
+  thermal growth, exactly the amplitudes [`web/spectra.md`](?doc=web/spectra.md)
+  § 4.1 derives for the animation, and they pair with the **canonical**
+  eigenvector only — the convention mismatch that put intensities out by
+  1823× is the same family of error.
+- **Level two — the coupling itself.** `FC.Save.dHS` writes how the Hamiltonian
+  and overlap change when each atom moves; combined with a mode's pattern that
+  is the electron–vibration coupling for the mode, the systematic route to
+  inelastic tunnelling spectroscopy [Frederiksen2007, Galperin2007]. A research
+  capability, recorded so the design does not foreclose it.
+
+### 5.7 What it costs, by construction
+
+`1 + 6·n_free` force evaluations, each a whole-system SCF started from the
+previous one's density, and the memory of one SIESTA SCF whatever `n_free` is.
+For 300 atoms with 50 free: 301 evaluations instead of 1 801. There is no
+all-atom matrix anywhere in the route, which is why it is the one that scales
+to a junction (compare § 4.4's last row). Holding atoms buys exactly the
+proportion of evaluations it removes, and nothing on the size of each.
+
+### 5.8 The checks a SIESTA vibration is told before it runs
+
+`validation/spectra.py::siesta_vibration_checks`: every atom held is an error
+(nothing to nudge); an index outside the structure is an error; with atoms
+held, the rank-derived count of surviving motions and how many modes will be
+reported (R7), and the statement that the held atoms sit outside the FC range
+so no force constant is taken with respect to them, that frequencies are those
+of the free atoms in the static field of the held ones, that thermochemistry
+is vibrational-only and that intensities are not computed; always, that the
+run relaxes nothing and a relaxed structure should be cited; and the
+unconsumed-region-label notice every kind carries.
+
+---
+
+## 6. The result file — `<label>.spectra.json`
+
+One file, every engine, written by the PySCF deck itself and by the SIESTA
+read-back; read by `sidecars.spectra.parse_spectra_json` →
+`SpectraResults.from_dict` (`spectra/results.py`), and served to the browser by
+`POST /api/spectra/load` with one derived field added at load (§ 6.6). It is
+registered in [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.1 with `atom-permutation.json` beside it.
+
+### 6.1 Schema history
+
+| version | date | change |
+|---|---|---|
+| 1 | — | one eigenvector per mode, used for both the animation and the Raman projection — recorded as a correctness defect when the two uses were separated |
+| 2 | — | `eigenvector_canonical` (`Σ m|L|² = 1`) and `eigenvector_display` (`max|L| = 1`) per mode; a v1 file's single vector is read as both, best effort |
+| 3 | 2026-05-21 | `fixed_atom_idxs` → `frozen_atom_idxs`; no backward compatibility |
+| 4 | 2026-05-22 | `runtime_info` (CPU, threads, GPU, host) |
+| 5 | 2026-08-20 | the optional `relaxation` and `thermo` blocks and `phase_relaxation` — additive, a v4 file reads whole |
+| **6** | 2026-09-23 | `removed_motions`, `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit`; the equilibrium block optional as a whole; `eigenvector_display` derived when a file carries only the canonical form — additive |
+
+`READABLE_SCHEMA_VERSIONS = {4, 5, 6}`; an older or unknown version is refused
+by name.
+
+### 6.2 The keys, and who writes each
+
+| key | written by | meaning |
+|---|---|---|
+| `schema_version` · `engine` · `engine_version` · `molbuilder_version` · `timestamp` | both | provenance; `engine` is `pyscf` or `siesta` |
+| `structure_hash` | both, through one function (§ 4.3) | `sha256:` over `n_atoms`, the label and the input atom lines — a reader's provenance, not a gate |
+| `n_atoms_total` · `free_atom_idxs` · `frozen_atom_idxs` | both | 0-based, in the **input** order (SIESTA: inverted through the record); the two lists partition `range(n_atoms_total)` and the reader refuses otherwise |
+| `equilibrium.{scf_energy_eh, mo_energies_eh, homo_idx}` | PySCF | the reference SCF and its orbital ladder; **`null` as a whole on SIESTA** — a periodic engine has a Fermi level, not a HOMO; `null` in one slot only is a broken file |
+| `equilibrium.{elements, positions_ang}` | both | the geometry the Hessian is taken at (§ 4.2) — what the animation draws from |
+| `modes[]` | both | ascending frequency; every entry a vibration (§ 6.3) |
+| `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
+| `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
+| `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
+| `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` (§ 4.9) |
+| `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_a, max_force_all_atoms_eh_a, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled: false` with the *relaxes nothing* warning |
+| `thermo` | both | `regime`, the headline (T, P) with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
+| `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
+| `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |
+| `methods_text` · `bibliography_keys` | both | the composed paragraph and the keys it cites (§ 4.10) |
+| `engine_metadata` | both | engine-specific facts; SIESTA: `fc_file`, `fc_displacement_ang`, `fc_range_1based` |
+| `runtime_info` | PySCF | CPU, threads, GPU, host |
+
+### 6.3 A mode
+
+| key | meaning |
+|---|---|
+| `index_1based` · `frequency_cm1` | a negative wavenumber **is** an imaginary mode (a saddle, not a minimum), reported, never dropped; `has_imag` says so |
+| `eigenvector_canonical` | `(n_free, 3)` Cartesian, `Σ m_k|L_k|² = 1` in amu — the science form: intensities, the physical amplitudes and the element shares pair with **this** one |
+| `eigenvector_display` | the same, rescaled so `max|L_k| = 1` — the animation's exaggerated form only; derived from the canonical form by the reader when absent |
+| `ir_intensity_km_mol` · `raman_activity_a4_amu` | `null` when the channel was not computed (not requested, or the engine has none); **`0.0` is a measured absence**, a symmetry-forbidden band's residue |
+| `electronic_structure` | the probe of § 4.8: `amplitude_ang`, the orbital windows at −A, 0, +A, the SCF energies, `homo_index_in_window`; `null` when the mode was not selected |
+| `ir_active` · `raman_active` · `activity_class` | **derived at every serialisation, never stored** (§ 6.6) |
+
+**The two normalisations must never be crossed** — the exaggerated amplitude
+(Å) pairs with the display form, the physical amplitudes (√amu·Å) with the
+canonical form, and an export records which pairing produced it
+([`web/spectra.md`](?doc=web/spectra.md) § 4.1, [`web/vibrationview.md`](?doc=web/vibrationview.md) § 12.2).
+
+### 6.4 Where every number comes from
+
+The chain from the engine to the key, so a reader can see what molbuilder only
+passes through and what it **derives** — the derived half is the only part its
+tests can meaningfully guard:
+
+| key | the engine reports | what molbuilder does | units |
+|---|---|---|---|
+| `equilibrium.scf_energy_eh` | `mf.kernel()`'s return | stored as is | Hartree |
+| `equilibrium.mo_energies_eh` | `mf.mo_energy` | non-finite entries dropped | Hartree |
+| `equilibrium.homo_idx` | `mf.mo_occ` | **derived** — `homo_index` (§ 4.3) | index |
+| `equilibrium.positions_ang` | the relaxed (or asserted) geometry | the Hessian's geometry, `COORDS_EQ_ANG` | Å |
+| `modes[].frequency_cm1` | the eigenvalues of § 4.5 | `sign(λ)·√|λ|·5140.487`; imaginary → negative wavenumber | cm⁻¹ |
+| `modes[].eigenvector_canonical` | the eigenvectors of § 4.5 | the canonical normalisation, from the one path on both engines | 1/√amu |
+| `modes[].eigenvector_display` | — | **derived** — per-mode rescale to `max|L| = 1` | dimensionless |
+| `modes[].ir_intensity_km_mol` | `dμ/dR` (analytic response, or dipoles at displaced geometries) | **derived** — `dμ/dQ = Σ (dμ/dR)·L_canonical`, then `42.2561·|dμ/dQ|²` | km/mol |
+| `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global `(Bohr/Å)⁶ ≈ 0.02197` | Å⁴/amu |
+| `modes[].electronic_structure.*` | `mf.mo_energy`, `E` at ±A | non-finite dropped; the shift and coupling are the viewer's arithmetic | Hartree, Å |
+| `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
+| `thermo` | PySCF's `thermo.thermo` (rrho) or the one home's vibrational sums | the deck computes, the viewer draws; the headline is a row of the grid (§ 4.7) | Eh, Eh/K |
+| `relaxation.max_force_eh_a` | the nuclear gradient at the judged geometry | the largest force over the **free** atoms; the all-atom figure beside it | Eh/Bohr (mislabelled `_a`, § 10) |
+| SIESTA's `H_AA` | `.FC` rows in eV/Å² | mean of the two sides, symmetrised, converted (§ 5.5) | Hartree/Bohr² |
+
+**Two rules this table enforces** *(2026-09-09)*: a number molbuilder only
+passes through is not ours to test — a test asserting the magnitude of
+`scf_energy_eh` asserts PySCF; what is ours is that it reaches the right key in
+the right unit, unrounded. And a number molbuilder **derives** must have its
+rule callable, not embedded in script text: `homo_index`, the harmonic path,
+the thermo sums and the hash all ship as spliced source so one implementation
+runs and is tested. The IR and Raman scalars are still inline, because neither
+has a branch; if either grows one — a second polarizability convention, a
+per-mode prefactor — it moves to a callable the way `homo_index` did.
+
+### 6.5 What a SIESTA file looks like beside a PySCF file
+
+| | PySCF | SIESTA |
+|---|---|---|
+| `equilibrium.scf_energy_eh`, `mo_energies_eh`, `homo_idx` | numbers | **`null`, all three** |
+| `modes[].ir_intensity_km_mol`, `raman_activity_a4_amu` | numbers, or `null` when not requested | **`null` on every mode** |
+| `modes[].electronic_structure` | present on selected modes | `null` |
+| `ir_route` / `raman_route` | `analytic` · `finite-difference` · `none` | `none` |
+| `thermo.regime` | `rrho` or `vibrational-only` | `vibrational-only`, above the electronic minimum (no total energy is reported) |
+| `relaxation` | the tracked phase | `enabled: false`, *the force-constant route does not relax* |
+| `hessian_density_fit` | `true` / `false` | `null` |
+| `engine_metadata` | `{}` | `fc_file`, `fc_displacement_ang`, `fc_range_1based` |
+| beside the calculation | — | `atom-permutation.json` (§ 5.2) |
+
+**A missing number is absent, never zero.** A key an engine cannot produce is
+`null`, and a reader treats it as *not computed* — a different statement from
+`0.0`, which is a measured absence (a symmetry-forbidden band). How each
+surface draws an absent number is [`web/spectra.md`](?doc=web/spectra.md)
+§ 9b.3: lines at the mode positions with no heights, a `—` in the table, the
+`partial` colour on the rug, and a write-up that names what was computed.
+
+### 6.6 Derived at every serialisation — the activity classes
+
+`ir_active`, `raman_active` and `activity_class` are computed whenever a result
+is serialised (`spectra/activity.py` through `SpectraResults._modes_with_activity`)
+and never stored: whether a band is active is a **decision**, not a read,
+because a symmetry-forbidden mode's stored strength is floating-point residue
+(measured on CO₂: 4.8·10⁻⁹ to 7.5·10⁻⁸ beside bands of 32.85 and 613.04
+km/mol). The rule: a mode whose channel was not computed is `partial`;
+otherwise, per channel, divide every mode by the channel's strongest, sort on
+a log scale, and cut at the widest gap between neighbours when that gap is at
+least two decades wide and sits below a thousandth of the peak; when the
+channel will not separate itself, cut at a millionth of the peak; and a
+channel whose strongest value is under an absolute floor (10⁻³ km/mol,
+10⁻³ Å⁴/amu) has no band at all. It is asked of the data because where the
+residue sits is a property of the calculation (measured cuts 2.6·10⁻⁶ to
+1.5·10⁻⁴ across four real runs) while the separation is a property of the
+symmetry. Confirmed as the rule 2026-09-23; pinned on CO₂ by
+`tests/spectra/test_activity.py`. The load path adds one more derived field,
+`motion_share_by_element` — each element's share of the mass-weighted motion,
+`m_i|L_i|² / Σ m_k|L_k|²` — because the browser has no masses and the file
+stores none ([`web/spectra.md`](?doc=web/spectra.md) § 4.2).
+
+### 6.7 What the reader refuses
+
+`SpectraResults` is built at the boundary and refuses, by name: a schema
+version outside `{4, 5, 6}`; free and frozen lists that do not partition
+`range(n_atoms_total)` (a count-only check once passed `free = [0, 1, 5]` for
+three atoms and the viewer silently dropped a displacement); a mode whose
+eigenvector does not carry one row per free atom; an equilibrium block with
+`null` in some slots and numbers in others; and — in the working tree, § 10 —
+a key it does not know, at every block, because a misspelled
+`ir_intesity_km_mol` used to serve a chart titled *not computed* with every
+number present and thrown away, and a file claiming 10¹² atoms used to be
+answered with a `MemoryError`. `/api/spectra/load` turns each refusal into a
+typed error (missing → 404, wrong version → 422, malformed → 400) so the viewer
+reacts without parsing a message.
+
+---
+
+## 7. The invariants — what the code must keep true
+
+These are the statements a code review checks the implementation against.
+Each names where it holds and what pins it.
+
+| # | invariant | where it holds | pinned by |
+|---|---|---|---|
+| I1 | **One derivation of the surviving motions** (R1): `rigid_motions` is the only place `n_rigid` is computed; no call site tabulates it, branches on `len(F)`, or asks whether a molecule is straight | `spectra/normal_modes.py`; the deck splices it; `methods._mode_count`, the two preflights and the SIESTA read-back call it | `tests/spectra/test_normal_modes.py` (every row of the science § 7 table, three mutations each); review |
+| I2 | **One harmonic path** (R3, R4): both engines hand `vibrational_modes` the block, the masses and the geometry; there is no free-molecule branch and no engine branch after the block | the PySCF deck (spliced source), `spectra/from_siesta.py` | the rank gate against PySCF on free molecules; the held-water and H₂ end-to-end runs |
+| I3 | **One mass convention**: isotope-averaged masses, `Σ m|L|² = 1` in amu, one wavenumber constant derived from its parts | `chemistry.atomic_mass`, `constants.CM1_PER_SQRT_HARTREE_BOHR2_AMU`, the deck's `MASSES_AMU` | the BDT pair (C–H stretches equal to 0.001 cm⁻¹ free vs held); `tests/spectra/test_atom_index_contract.py` |
+| I4 | **The Hessian is over the free atoms**, and the run says so (R8): `hessian_scope`, `n_atoms_in_hessian`, `hessian_density_fit` | `dipole_derivatives` (spliced); the FC range on SIESTA | the free-atom-block check in `tests/test_vibration_e2e.py`; `tests/test_siesta_vibration_deck.py` |
+| I5 | **Stationarity is judged on the free atoms** (R5), and the number is recorded beside the all-atom one | `_vib_gradient_check`; the relax callback | the held-water run's `relaxation` block |
+| I6 | **The held set has one source** — the structure's `frozen_atoms` region — and reaches every phase from it: the PySCF `$freeze` file, the free-atom Hessian, the SIESTA `Geometry.Constraints` and FC range | `VibrationConfigView.frozen_indices`; `fc_facts` | `tests/test_vibration_render_gate.py`; the wrapper's constraint banner reads the deck's one spelling |
+| I7 | **The reorder is recorded and inverted once, through one pair**: `write_permutation` / `read_permutation`, `Permutation.rows_to_input_order`; the input order never reaches the engine, the sorted order never reaches a person | `jobset/prep.py`, `spectra/from_siesta.py` | `tests/test_siesta_vibration_e2e.py` (held atom last in the input → reported as atom 1) |
+| I8 | **One start state per kind on SIESTA**: the density read, the geometry declined out loud; the vibration warm-file section names `.FC`/`.FCC` inventory-only | `siesta/vibration_deck.start_state_lines`, `siesta/warm-files.toml` | `tests/test_siesta_vibration_deck.py`, `tests/test_warmfiles.py` |
+| I9 | **Every mean field the PySCF deck builds is dressed by the one generated door** (`_mb_configure_scf`, `_mb_configure_dft`); no SCF knob is spelled twice | `pyscf/scf_setup.py`; every `_build_mf_at` | `tests/test_pyscf_spec.py`; the honesty gate |
+| I10 | **Every parameter the form shows is honoured by the render, or refused by name** | `tests/test_vibration_form_honesty.py`; `validation/spectra.py` | the same test |
+| I11 | **The kind's science gate fails closed**: an engine config the dispatch does not name is refused, never given an empty verdict | `validation/__init__._validate_vibration_kind` | `tests/test_vibration_render_gate.py` |
+| I12 | **A cost claim is read from the code** (R8): the advisories say what the code skips, and what it cannot | `validation/spectra.py`; § 4.4, § 5.7 | review |
+| I13 | **The Methods paragraph is composed once**, route-neutral before the run, the route added at load; the count it states is R2 or the run's list | `spectra/methods.py`, `_loaded` in `web/blueprints/spectra.py` | `tests/spectra/test_methods.py`; the IR-only and solvated runs assert the text |
+| I14 | **Absent is never zero** in the file, on both engines; the equilibrium block travels whole or not at all | `SpectraResults.__post_init__`, `from_siesta` | `tests/spectra/test_types.py`, the SIESTA fixture test |
+| I15 | **One hash**: `structure_hash_text` has one home and is spliced into the deck | `sidecars/spectra.py` | review (the SIESTA and PySCF files hash the same structure identically) |
+| I16 | **The activity classes are derived at serialisation, never stored**; the element shares at load, never in the file | `results._modes_with_activity`, `_loaded` | `tests/spectra/test_activity.py`, `test_motion_share.py` |
+| I17 | **Every catalogue citation resolves** in `science/references.bib`, and every key the prose cites is an entry | the catalogue-refs test | `tests/spectra/test_methods.py` |
+| I18 | **No second producer**: a deck is written by `prep` from a description, through `spec_for`; there is no engine verb and the tab renders nothing | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 1 | review |
+| I19 | **The topics `frequency/` and `spectrum/` are a storage vocabulary** the person picks; nothing derives a folder from an engine or a kind | `projects.py` | review |
+
+---
+
+## 8. The pieces, and how the data flows
+
+### 8.1 The file map
+
+| file | role |
+|---|---|
+| `molbuilder/spectra/normal_modes.py` | `rigid_motions`, `vibrational_modes`, `vibrational_thermo`, `vibrational_thermo_grid`, `THERMO_GRID_K` — the one harmonic path and the thermo sums, self-contained so they travel into a deck as source |
+| `molbuilder/spectra/results.py` | `SpectraResults`, `ModeData`, `ModeElectronicStructure`; the schema and its history; the reader's gates; the activity classes at serialisation; `motion_share_by_element` |
+| `molbuilder/spectra/activity.py` | the active/inactive decision per channel (§ 6.6) |
+| `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) |
+| `molbuilder/spectra/methods.py` | `render_methods_md`, `with_ir_route`, `extract_citation_keys`, `_mode_count` (§ 4.10) |
+| `molbuilder/spectra/from_siesta.py` | the SIESTA read-back: `spectra_results_from_fc`, `siesta_methods_text` (§ 5.5) |
+| `molbuilder/parse/engines/siesta_fc.py` | `read_fc`, `hessian_from_fc` — the `.FC` reader (§ 5.4) |
+| `molbuilder/sidecars/spectra.py` | `dump_spectra_json`, `parse_spectra_json`, `structure_hash_text` |
+| `molbuilder/pyscf/vibration_deck.py` | the PySCF deck composer, the `VibrationConfigView`, the relaxation / gradient / thermo / IR-only blocks, `vibration_stages` in `pyscf/stages.py` |
+| `molbuilder/pyscf/vibration_emitters.py` | the emitted blocks: constants, the molecule, the equilibrium SCF, the Hessian, the Raman sweep, the IR projection, the electronic-structure loop, the Methods fragment; the spliced `homo_index` and `dipole_derivatives` |
+| `molbuilder/pyscf/scf_setup.py` | the generated SCF and DFT dressers (I9) |
+| `molbuilder/siesta/vibration_deck.py` · `siesta/input.py::spec_for` · `siesta/layout.py::FC_SECTION` · `siesta/warm-files.toml` | the SIESTA deck (§ 5.3) |
+| `molbuilder/config/pyscf.py` · `config/siesta.py` · `data/catalogue.template.toml` | the fields and the catalogue rows of § 3 |
+| `molbuilder/transport/sort.py` | `sort_by`, `SORT_KEYS`, `apply_order`, `Permutation`, `write_permutation`, `read_permutation` (§ 5.2) |
+| `molbuilder/validation/spectra.py` · `validation/__init__.py` | the two kinds' checks and the dispatch (§ 3.3) |
+| `molbuilder/jobset/prep.py` · `jobset/_cli.py` · `jobset/materialize.py` | the sort at prep; `init`'s kind gate; `summarize run` for SIESTA |
+| `molbuilder/runwrap.py` | the run wrapper; its banner names the held atoms from the deck's one spelling |
+| `molbuilder/web/blueprints/spectra.py` · `build.py` | the tab page, `/api/spectra/load` and `_loaded`; the schema, preflight and hand-over doors |
+| `molbuilder/web/static/spectra/viewer.js` · `lib/spectra/core.js` · `lib/inspectors/spectra.js` · `lib/spectrumchart/` · `lib/vibrationview/` · `lib/task-handover.js` · `task-setup/viewer.js` | the tab, the shared engine, the presenter, the chart, the animation, the hand-over, the rung tab that prints the commands |
+
+### 8.2 The data flow
+
+```mermaid
+flowchart TB
+  subgraph describe["describe (browser or CLI)"]
+    ST["structure + frozen_atoms region<br/>(.xyz + .molstruct.json)"]
+    CAT["catalogue narrowed to (engine, vibration)<br/>→ the form · → &lt;label&gt;.template.toml"]
+    TJ["task.json: calculation vibration,<br/>engine, one stage freq"]
+  end
+  subgraph prep["prep run freq"]
+    G["validate(struct, cfg, calculation)<br/>PySCF checks | SIESTA checks | refuse"]
+    SORT["SIESTA: sort a copy held-first,<br/>write atom-permutation.json"]
+    D["spec_for(…, calculation='vibration') → prepare_deck<br/>PySCF: the script · SIESTA: the .fdf"]
+  end
+  subgraph run["launch run freq"]
+    PY["PySCF script: relax → SCF → Hessian(free) →<br/>modes → strengths → thermo → ES → .spectra.json"]
+    SI["SIESTA: SCF + 6·n_free displaced SCFs → .FC"]
+  end
+  SUM["summarize run freq (SIESTA):<br/>read .FC → H_AA → vibrational_modes →<br/>invert the permutation → .spectra.json"]
+  LOAD["POST /api/spectra/load → SpectraResults.from_dict<br/>+ with_ir_route + motion_share_by_element"]
+  VIEW["Results tab: chart · table · animation ·<br/>electronic structure · thermochemistry"]
+  ST --> G; CAT --> G; TJ --> G; G --> SORT --> D; G --> D
+  D --> PY; D --> SI; SI --> SUM; PY --> LOAD; SUM --> LOAD; LOAD --> VIEW
+```
+
+### 8.3 The doors
+
+| door | does |
+|---|---|
+| `GET /api/build/schema/<engine>?calculation=vibration` | the form schema from the catalogue narrowed to the kind |
+| `POST /api/build/preflight` | the live checks: `validate(struct, cfg, calculation="vibration")` |
+| `POST /api/structure/analyze` | auto-detect charge, spin and method for the loaded structure (engine-agnostic, translated per engine) |
+| `POST /api/task-setup/handover` | render `<label>.template.toml` and `task.1st.json` for the kind; the browser writes them where the person chose |
+| `POST /api/task-setup/save` · `/prep` | write `task.json`; run `prep` for one stage on a named machine |
+| `POST /api/spectra/load` | parse an existing `.spectra.json` into display data; typed errors |
+| `molbuilder jobset init / prep / launch / summarize` | the same road from a terminal (§ 2.1) |
+
+---
+
+## 9. Validation status, and the tests
+
+**Validated, with numbers:**
+
+- the rank rule against PySCF's own analysis on free molecules (§ 4.5);
+- water with its oxygen held through the whole road: three modes, three motions
+  removed, every mode orthogonal to every removed pattern in the mass metric;
+- the free-atom Hessian against compute-everything-and-slice, Hartree–Fock
+  and DFT, with and without dispersion (§ 4.4);
+- BDT free against BDT with both sulfurs held at one geometry: ring C–H
+  stretches equal to 0.001 cm⁻¹ and intensities to 0.2 %, the S–H stretches
+  lower by the reduced-mass ratio to 3·10⁻⁵ ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 9);
+- infrared at band level: water at B3LYP/def2-SVP inside the literature windows
+  with bend > asymmetric > symmetric; CO₂ reproducing mutual exclusion
+  (653.45 cm⁻¹ ×2 at 32.85 km/mol and Raman-silent; 1388.81 at 14.74 Å⁴/amu
+  and infrared-silent; 2460.11 at 613.04 km/mol — the band of the CO₂ infrared
+  spectrum);
+- the `.FC` units and the `.FCC` shape on H₂ (§ 5.4); H₂ with one atom held on
+  SIESTA through jobset (§ 5.5).
+
+**Not done:** a mode-by-mode cross-check of intensities against an external
+code (Gaussian, ORCA, Turbomole) — absolute intensities carry that caveat;
+the reduced Hessian with a GPU mean field; any SIESTA run larger than two
+atoms through the road (the reorder with a scattered held set is pinned by
+the deck test, not by a run).
+
+**The tests**, by what each proves:
+
+| file | proves |
+|---|---|
+| `tests/spectra/test_normal_modes.py` | every row of the science acceptance table (tier 1), no engine |
+| `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check |
+| `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the read-back on the measured fixture; the whole SIESTA road through jobset |
+| `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
+| `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
+| `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
+| `tests/spectra/test_activity.py` · `test_motion_share.py` · `test_selection.py` · `test_methods.py` · `test_config.py` · `test_blueprint.py` | the derived classes; the element shares; the selectors; the prose and its citations; the defaults; the page and the load door |
+| `tests/spectra/test_spectrumchart_*.py` · `tests/test_vibrationview_*_js.py` · `test_results_state_contract_spectra_js.py` · `test_spectra_phase_indicator_js.py` · `test_task_setup_tab.py` | the chart's maths, seal and box; the animation's maths and mount; the viewer's state; the phase indicator; the send flow |
+| `tests/test_warmfiles.py` · `tests/validation/test_siesta.py` | the vibration warm-file section; the keyword table the deck is checked against |
+| fixtures: `tests/fixtures/siesta_fc/` (the measured H₂ `.FC`, `.FCC`, `.fdf`), `tests/fixtures/psml/` | |
+
+---
+
+## 10. Shipped and owed
+
+Every open row below is registered under **V1** in
+[`plans/plan.md`](?doc=plans/plan.md); this table says what stands, the plan
+says what is next. *Working tree* means edited on 2026-09-24 and not yet
+verified or committed.
+
+| | status | note |
+|---|---|---|
+| the one harmonic path, the rank rule, its gate | **built 2026-09-23** | § 4.5 |
+| one mass convention | **built 2026-09-21** | the 1823× defect |
+| stationarity on the free atoms | **built 2026-09-23** | § 4.3 |
+| the runs write the structure pair | **built 2026-09-22** | § 4.2 |
+| the Hessian over the free atoms, the two corrections, the scope in the file | **built 2026-09-23** | § 4.4 |
+| the SIESTA arm: deck, sorted copy, record, `.FC` reader, read-back, warm-file section, start state | **built 2026-09-23 / 24** | § 5 |
+| the equilibrium block optional; the display form derived | **built 2026-09-23** | schema 6 |
+| the wrapper names the held atoms | **built 2026-09-23** | it read a comment no deck wrote, then counted the `0` of `0-based` |
+| the geometry in the file is the Hessian's | **working tree** | § 4.2 |
+| the thermochemistry headline and grid as one quantity, the headline T on the grid, no `kT` in the held regime | **working tree** | § 4.7 |
+| `raman_route`, `raman_fd_step_ang`; the Methods text states the Raman method one way | **working tree** | § 4.6 |
+| the reader's unknown-key gate; the partition check without a range the size of a lie | **working tree** | § 6.7 |
+| the Spectrum tab offers both engines: the `engine` item's choices, the form re-fetched for the chosen engine, the preflight and the hand-over sending it | **owed** | the CLI road is open; the tab and `web/blueprints/build.py`'s hand-over gate admit PySCF only |
+| Task setup prints `--target` when a machine is chosen, and `summarize run <stage>` as the last step of a SIESTA vibration | **owed** | measured missing on the UI walk of 2026-09-23 |
+| the Results viewer for a SIESTA file: `null` drawn as *not computed*, the equilibrium energy as a dash (today `Number(null)` prints `0.00000000`), the Raman line by route, the fingerprint off the unwritten `phase_ir` | **owed** | § 6.5 |
+| the force unit: the key `max_force_eh_a` and the viewer's "Eh/Å" for a number in Eh/Bohr | **owed** | § 4.3 |
+| `removed_motions` and `hessian_scope` shown beside the result | **owed** | R7's second half |
+| the phase flags gain a *not requested* state; today a run that asked for no strengths writes `phase_raman = 'complete'` on both writers | **owed** | § 4.9 |
+| `top_n` and `threshold` retired from the config, the catalogue, `selection.py`, `methods.py`, `validation/spectra.py`, the emitter's ranking and the tab's lock map | **owed** — decided 2026-09-23 | § 4.8 |
+| `temperature_K` and `pressure_atm` reachable on SIESTA | **owed** | § 5.5 sums at 298.15 K, 1 atm and says so |
+| the Methods paragraph reads the effective level of theory (`cfg.method`), and a functional or dispersion set under Hartree–Fock is advised against | **owed** | § 4.10 — a Hartree–Fock run's write-up names B3LYP-D3BJ |
+| the structure identity: two hashes (geometry, broad), minted at the three gates and carried, the job name out of it | **owed** — ruled 2026-09-22 | § 4.3; the run-written pair already hashes its bytes |
+| the pair writer renders both halves (`pair()` returns text, the deck splices the codec's own JSON) | **owed** — ruled 2026-09-23 | the audit's § 1.1a; the deck's sidecar writer is its third serialiser |
+| the reduced Hessian with a GPU mean field | **untested** | § 4.4 |
+| a composed permutation for a structure sorted for two reasons | **owed** — no caller yet | § 5.2 |
+| `transport/compose.py` writes and reads its record through the one pair and stamps its key | **owed** | § 5.2, I7 |
+| the transport connection, levels one and two; Born-charge infrared on SIESTA | **not in scope** — recorded so the design does not foreclose them | § 5.6 |
+| an external mode-by-mode intensity cross-check | **not done** | § 9 |
+| `presenters.md`'s *PySCF spectrum* label; the Spectrum tab's own engine sentence | **owed** with the engine choice | |
+| the Molbuilder tab's save prompt doubling a typed suffix (`x.xyz.xyz`); the `#`-label unconsumed warning (needs a ruling); the vacuum notice on a gas-phase PySCF run | **owed** — UI walk 2026-09-23 | not this kind's, recorded where found |
+
+---
+
+## 11. Worked examples
+
+**Water with its oxygen held — the demonstrator.** Six numbers come out of the
+free atoms' 6×6 block. Three are the hydrogens swinging about the nailed-down
+oxygen: measured before R3 at RHF/STO-3G they sat at 15.7, 19.4 and 23.7 cm⁻¹
+with infrared intensities of 0.0, **62.5 and 151.5 km/mol** — the two loudest
+bands of the "spectrum" were rotations, because turning a polar molecule turns
+its dipole — and carried 20.1 cal/mol/K of entropy, −6.0 kcal/mol in −TS.
+After: `removed_motions.count = 3`, three modes (bend, symmetric and
+asymmetric stretch), every one orthogonal to every removed pattern. It runs
+in a second and half its raw output is not a vibration, which is why it is the
+test and the teaching case.
+
+**BDT free and with both sulfurs held — the real case.** One RHF/STO-3G
+geometry, 14 atoms. Free: `3·14 − 6 = 36` modes. Held: one surviving turn
+about the S···S line (the sulfurs sit *on* it), `3·12 − 1 = 35` modes. The
+ring C–H stretches agree to 0.001 cm⁻¹ between the two runs; the S–H
+stretches fall by `√(μ_free/μ_held) = 0.984643` (measured 0.984673 and
+0.984664); the 36th number of the old two-branch code was the turn, at
+−0.93 cm⁻¹ at the minimum and **96.78 cm⁻¹ off it**, in the middle of the real
+vibrations, which is why it is removed before the solve and never spotted
+after ([`science/normal-modes.md`](?doc=science/normal-modes.md) §§ 1, 4.1, 9).
+
+**H₂ on SIESTA — the road.** § 1.4 and § 5.5: the held atom last in the
+input, one mode, two motions removed, the free atom reported by its own
+number.
+
+**CO₂ — mutual exclusion.** A centrosymmetric molecule's infrared-active
+modes are Raman-silent and vice versa. The run: 653.45 cm⁻¹ (×2) infrared
+32.85 km/mol and Raman-silent; 1388.81 Raman 14.74 Å⁴/amu and infrared-silent;
+2460.11 infrared 613.04 km/mol. The silent entries came back as 10⁻⁹ to 10⁻⁸
+residue, which is what § 6.6's classifier exists for. With both oxygens held
+the free carbon sits *on* the O···O line, the surviving turn moves nothing,
+and `n_rigid = 0` — the trap a table of cases gets wrong.
+
+**A molecule on a metal — the layered model, and the test the person owns.**
+The discussion this work started from set out the model in three layers:
+
+```text
+             molecule                ← free
+       Au atoms bonded to it         ← free (the "active" layer)
+       deeper Au layers              ← held
+       bulk-like Au                  ← held
+```
+
+Every Au atom stays in the quantum calculation; only the free ones enter the
+Hessian. Holding the substrate makes it infinitely rigid, so the answer is
+converged the way the discussion recommends: molecule only, then +1 active Au
+layer, +2, +3, comparing the modes that are mostly molecular. The artifact
+makes two such runs comparable by their own files — `free_atom_idxs`,
+`hessian_scope`, `removed_motions` — and with three or more held atoms not on
+a line nothing is removed. For a periodic slab the calculation goes to SIESTA
+(§ 1.3), and the held-first sort makes any tick pattern a legal FC range
+(§ 5.2).
+
+**What the thermochemistry headline contains.** Free water, `regime = rrho`:
+`G = E_elec + ZPE + H_thermal(trans + rot + vib) − T·S(trans + rot + vib)`, from
+PySCF's `thermo.thermo`, and the same at every point of the curve. Water with
+its oxygen held, `regime = vibrational-only`: `G = E_elec + ZPE + U_vib − T·S_vib`
+— no translation, no rotation, no `pV`; the note in the file says so, and the
+three removed motions carry no entropy because they are not in the sum.
+
+---
+
+## 12. Glossary
+
+The physics terms — Hessian, partial Hessian, mass-weighting, stationary point,
+constrained minimum, whole-body motion, rank — are
+[`science/normal-modes.md`](?doc=science/normal-modes.md) § 10; SCF, DFT, CPHF
+are the [`science/overview.md`](?doc=science/overview.md) glossary. The words
+this document adds:
+
+| term | meaning here |
+|---|---|
+| **kind** | which calculation a description asks for: `optimization`, `vibration`, `transport` |
+| **description** | `task.json` plus `<label>.template.toml`: what is computed, on which engine, with which parameters and stages |
+| **the pair** | a structure's `.xyz` and its `.molstruct.json` half, written together by the codec; the held set lives in the second |
+| **hand-over** | the Spectrum tab rendering the template and `task.1st.json` for Task setup to finish |
+| **deck** | the engine input `prep` writes: the PySCF script, the SIESTA `.fdf` |
+| **dresser** | the generated function every mean field of the PySCF deck is configured by |
+| **phase** | one of the four tracked steps of the PySCF script, with its flag in the file |
+| **the sorted copy** · **the record** | the structure SIESTA is given, and `atom-permutation.json` that undoes it |
+| **artifact** | `<label>.spectra.json` |
+| **route** | which way a strength was obtained (`ir_route`, `raman_route`) |
+
+## 13. References
+
+Cited by key; entries and their verification records are in
+[`science/references.bib`](?doc=science/references.bib), the science
+document's § 11 annotates the ones the rules rest on. Used here:
+[Head1997], [LiJensen2002], [Besley2008], [Ghysels2008], [Vester2024],
+[Tao2021], [QChemPHVA], [ASE2017], [Ghysels2010], [Wilson1955],
+[Komornicki1979] (dipole and polarizability derivatives), [Grimme2011]
+(the D3 dispersion correction), [Sun2018], [Sun2020] (PySCF),
+[Galperin2007], [Frederiksen2007] (vibrations in molecular junctions and
+inelastic transport, the transport connection of § 5.6).

@@ -232,6 +232,12 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 15 | Output flags | `WriteForces`, `WriteCoorXmol`, `SaveHS`, … | |
 | 16 | Troubleshooting block | inline tuning hints | only if `verbose_comments` |
 
+**The vibration kind** renders this table without row 14 — a force-constant
+run relaxes nothing — plus a *Force constants* section and the
+`MD.TypeOfRun FC` block, from a copy of the structure sorted held-first so
+the free atoms are one `FC.First`..`FC.Last` range, with its own start
+state: [`engines/vibration.md`](?doc=engines/vibration.md) § 5.3.
+
 **Verbose comments (default on).** Every numeric parameter is preceded by a `# …`
 block: what it controls (one sentence), a sensible range, and what to tweak when
 it misbehaves. Removing/changing one of those comments is a spec change and

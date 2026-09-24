@@ -52,6 +52,12 @@ flowchart LR
 ```
 
 
+> **The vibration kind** — the second deck this emitter renders
+> (`spec_for(…, calculation="vibration")`, composed by
+> `pyscf/vibration_deck.py`) — is specified phase by phase in
+> [`engines/vibration.md`](?doc=engines/vibration.md) § 4; § 7a below is
+> the one rule of this document that deck depends on.
+
 > **`molbuilder pyscf` and `convert()` are both DELETED (2026-09-17).**
 > `convert()` was the single-shot "read a structure file, write a deck" worker;
 > `cmd_pyscf` was its command line. **No engine has a verb** — the ruling is

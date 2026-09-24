@@ -1,12 +1,20 @@
 # Vibrations with held atoms — the design
 
+> **Archived 2026-09-24 — a record, not policy.** Superseded by
+> `engines/vibration.md` (the calculation's contract: routes, decks, the
+> result file, the invariants, what is shipped and owed),
+> `science/normal-modes.md` (the science) and `plans/plan.md` row V1 (every
+> open item). Every decision, measurement and finding below was carried into
+> those before this file moved; read it to see how a decision was reached,
+> never to learn what is open.
+
 **Role:** design — **Option A chosen** (user, 2026-09-21). § 18 is the order of work, **started 2026-09-23** at step 0; § 19 is what is still open, and what was decided that day
 **Domain:** science · engines · web
 **Started:** 2026-09-21 · **SIESTA half added** 2026-09-21
 **The science it rests on:** [`science/normal-modes.md`](?doc=science/normal-modes.md)
 (the contract — derivations, rules R1–R8, the measured BDT run)
 **Open items:** registered as **V1** in [`plan.md`](?doc=plans/plan.md) § 2
-**The follow-up list:** [`2026-09-22-vibration-audit.md`](?doc=plans/2026-09-22-vibration-audit.md)
+**The follow-up list:** [`2026-09-24-vibration-audit.md`](?doc=archive/2026-09-24-vibration-audit.md)
 
 Written to be read straight through by someone who has not followed the
 investigation. Plain words throughout; where a formula is unavoidable it is
@@ -892,6 +900,26 @@ what forces the contiguity question. Note that this choice does **not** exist fo
 SIESTA on the infrared side, because infrared is not offered there — so for
 SIESTA the cheap route is simply the right one, once reordering is solved.
 
+**Static review, 2026-09-24** *(user: "the result will be the result of
+design; design review comes first")* — the scaling is read from PySCF 2.14's
+Hessian code and recorded in `science/normal-modes.md` § 4b.2–4b.3, not
+timed. On PySCF the coupled-perturbed solve (`solve_mo1`, `3·len(atmlst)`
+perturbations) and the per-atom two-electron derivative contractions
+(`_partial_hess_ejk`, `make_h1`, `shls_slice` on the atom's shells) run over
+the free atoms; the SCF and the `int2e_ipip1` diagonal contraction run once
+over every atom; and the DFT exchange-correlation derivative matrices
+(`_get_vxc_deriv2`: `vmat = zeros((natm, 3, 3, nao, nao))`, `_get_vxc_deriv1`:
+`(natm, 3, nao, nao)`, both looping `range(mol.natm)`) run over **every atom
+whatever list is passed** — about 200 GB at 300 atoms and 3 000 basis
+functions, which is the wall for the PySCF analytic DFT route long before
+time is. On SIESTA the force-constant run is `1 + 6·n_A` whole-system force
+evaluations and nothing all-atom-sized. **The consequence for the 300-atom
+junction with 250 held: the SIESTA route is the one that scales; the PySCF
+analytic route is for molecules of tens of atoms, or Hartree–Fock.** The
+timing probe of 2026-09-24 was a hand-written script outside the jobset road
+and is withdrawn; R8 now reads a cost claim from the code, and no timing is
+owed for the statement above.
+
 ---
 
 ## 11. Risks, and what retires each
@@ -1426,9 +1454,10 @@ spurious, and the two loudest IR bands among them.
 1. **Γ-only or dispersion** — **RULED 2026-09-23: Γ-only.** The transport use
    displaces along a mode at one geometry, `n_rigid` is a Γ quantity, and a flat
    mode list is what the artifact carries; a phonon dispersion is a different
-   feature, designed as one if ever wanted. The deck says so with
-   `SuperCell_N = 1` and a single-point `BandLines`; R3 in
-   `science/normal-modes.md` now reads *at q = Γ*.
+   feature, designed as one if ever wanted. As built there is nothing to
+   say in the deck: `SuperCell_N` and `BandLines` are `vibra`'s inputs and
+   there is no `vibra` rung; a force-constant run over the cell as given IS
+   the Γ matrix. R3 in `science/normal-modes.md` reads *at q = Γ*.
 2. ~~**`.FC` or `C.FC`**~~ — **MEASURED 2026-09-23** (`tests/fixtures/siesta_fc`):
    the constrained file is `<label>.FCC`, and it is `.FC` with the held
    atoms' force rows zeroed; the free block is identical. The reader takes
@@ -1443,9 +1472,11 @@ spurious, and the two loudest IR bands among them.
    than empty for such a run — that is the audit's D-2(b)
    (`plans/2026-09-22-unification-audit.md` § 6 item 7), where retiring
    them is recommended.
-4. **Whether `vibra`'s eigenvectors are mass-weighted or plain Cartesian.**
-   § 9.1 already flags this as the 1823×-class risk. Unestablished, and it
-   must be settled before any SIESTA mode reaches the viewer.
+4. ~~**Whether `vibra`'s eigenvectors are mass-weighted or plain Cartesian.**~~
+   — **MOOT 2026-09-23**: no SIESTA mode comes from `vibra`. Both engines'
+   eigenvectors are `spectra/normal_modes.vibrational_modes`'s, in the one
+   stated convention (Σm|L|² = 1, Cartesian), so the 1823×-class risk § 9.1
+   names has no second source to arise from.
 5. ~~**`.FC` numeric units**~~ — **MEASURED 2026-09-23: eV/Å²**. Two
    single points displaced by hand give −ΔF/2Δ = 41.713 eV/Å² for the H2
    stretch; the file's two sides average to 41.713. `vibra`'s own reader

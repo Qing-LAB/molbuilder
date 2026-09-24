@@ -2,12 +2,14 @@
 
 **Role:** contract
 **Domain:** science
-**Companions:** [`overview.md`](?doc=science/overview.md) (the science domain's
-promise), [`validation.md`](?doc=science/validation.md) (the runtime advisory
-machinery that carries these rules to the user),
-[`web/spectra.md`](?doc=web/spectra.md) § 8 (what freezing an atom means to the
-Spectrum tab), [`engines/pyscf.md`](?doc=engines/pyscf.md) (the deck that
-computes it).
+**Companions:** [`engines/vibration.md`](?doc=engines/vibration.md) — **the
+calculation's master contract**: how each engine obtains the block this
+document reasons about, the script and the deck, the result file, the
+invariants the code is checked against, and what is built and owed;
+[`overview.md`](?doc=science/overview.md) (the science domain's promise),
+[`validation.md`](?doc=science/validation.md) (the runtime advisory machinery
+that carries these rules to the user), [`web/spectra.md`](?doc=web/spectra.md)
+§ 8 (what freezing an atom means to the Spectrum tab).
 
 This document owns **one fact**: *how many of the numbers a vibrational
 calculation produces are vibrations, and how the rest are identified and
@@ -262,7 +264,8 @@ tolerance of a millionth would hand a real bend to the projection on a
 geometry converged to ordinary criteria; PySCF's own linearity test sits at a
 moment of inertia of 5·10⁻⁶ amu·Å², the same order of off-axis distance for a
 light atom. The one home is `spectra/normal_modes.py`, and the four-molecule
-gate of the design's § 7.6 tier 2 is what pins it against PySCF.
+gate against PySCF on free molecules ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 4.5) is what pins it.
 
 **The junction case falls out as zero.** A slab with its lower layers held is the
 second row: nothing survives, nothing is removed, and the spurious-mode problem
@@ -483,47 +486,20 @@ formula into an activity in Å⁴/amu.
 > count and the intensity scale are not separate concerns; they are the same
 > convention, read twice.
 
-### 4a.2 Three ways to get dμ/dR, and what each costs
+### 4a.2 How the derivatives are obtained, and the rule that follows
 
-| route | how | cost | availability |
-|---|---|---|---|
-| **analytic** | dμ/dR is the *same* response equations the Hessian already solves, contracted with dipole integrals — so asking for both costs one solve, not two | **+14 %** over the Hessian alone | needs `pyscf.prop.infrared`, which **has never been released to PyPI** — master branch only |
-| **finite-difference dipoles** | nudge each atom, read the converged dipole, take the difference | **+486 %** — it needs 6N extra SCF solves | always available |
-| **rides along with Raman** | the Raman sweep already runs 6·N_free displaced SCFs for dα/dR; the dipole at each point is a one-line integral on an already-converged wavefunction | **free** | whenever Raman is on |
-
-*(Measured on NH₃/PBE0/6-31G, 2026-09-11. The two dμ/dR tensors agree to
-**0.02 %**, so the choice is a cost choice, not an accuracy one.)*
-
-**The third row is why the rule is what it is.** If Raman is being computed, the
-displacement loop is already being paid for, so the analytic route would buy
-nothing. Hence: *analytic only when infrared is the only intensity asked for.*
-
-### 4a.3 Why the route is chosen at run time, not when the deck is written
-
-`pyscf.prop.infrared` is a property of **the environment the deck lands in**, not
-of the machine that wrote it. A deck composed here may run on a cluster whose
-environment was installed from the package index and has no analytic route at
-all. So the deck **tries** the analytic route and falls back, loudly, printing
-why — and records which one ran as `ir_route` in the results.
-
-That has a consequence for the write-up: the Methods paragraph is composed
-before the run, so it must stay **route-neutral**, and the sentence naming the
-route is added afterwards by whoever holds the results. A paragraph that claimed
-"analytic" at compose time would be making a promise the composer cannot keep.
-
-### 4a.4 Two corrections the analytic route needs, both measured
-
-Taking the analytic route means using upstream's Hessian object, and twice that
-silently differs from the Hessian the no-infrared path would produce. **Asking
-for intensities must not move the frequencies**, so both are corrected:
-
-| | what upstream does | the error | the fix |
-|---|---|---|---|
-| **density fitting** | its Hessian class is hardcoded to the **non**-DF variant, so on a density-fitted SCF it builds a non-DF Hessian of a DF density | **7.2 × 10⁻⁵** Eh/Bohr² — a **0.11 cm⁻¹** shift | hand it the SCF's own `mf.Hessian()`; agreement then 3.6 × 10⁻¹² — *and it is faster* |
-| **dispersion** | computes only the electronic + nuclear terms and overwrites the result with them, dropping the dispersion Hessian | **7.2 × 10⁻⁴** Eh/Bohr² — a **3.7 cm⁻¹** shift on *every* frequency, invisible on any functional without a dispersion correction | add the term back; agreement then 5.7 × 10⁻¹² |
-
-Neither is a rounding artefact. The second is the larger and the more dangerous,
-because a 3.7 cm⁻¹ shift on every band looks like a plausible answer.
+Which route produces dμ/dR (the Hessian's own response, contracted with
+dipole integrals; a dipole at each nudged geometry; or the Raman sweep's
+points read for free), what each was measured to cost, the two corrections
+the analytic route needs so that asking for intensities never moves a
+frequency, and the fact that the route is chosen at **run time** because the
+analytic module is a property of the environment the deck lands in — all of
+that is the implementation contract's,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 4.6. The rule this
+document keeps is the one that follows from the measurements: **analytic
+only when infrared is the only strength asked for and no atom is held**, and
+the Methods paragraph stays route-neutral until the results say which route
+ran.
 
 ### 4a.5 Where infrared is not well defined
 
@@ -542,25 +518,12 @@ small correction; for a molecule on a metal surface, where the substrate screens
 and the interface carries much of the charge transfer, it is not small. The
 number is computed; how much it means is the reader's judgement.
 
-### 4a.5b The SIESTA route, as built *(2026-09-23)*
+### 4a.5b The SIESTA route
 
-SIESTA computes the force constants by central differences of its analytic
-forces: `MD.TypeOfRun FC` nudges each atom of one contiguous range
-(`FC.First`..`FC.Last`) by `FC.Displacement` (default 0.04 Bohr) along x, y
-and z, both ways, and writes `<SystemLabel>.FC` in **eV/Å²** (measured
-against two single points displaced by hand: 41.713 both ways). The held
-atoms sit in `Geometry.Constraints` outside the range, so no force constant
-is taken with respect to them — the same partial Hessian as § 3, obtained by
-nudging instead of differentiating, at 6 force evaluations per free atom,
-each a whole-system SCF. The run leaves its *last displacement* in
-`<SystemLabel>.XV` (measured), so the deck tells SIESTA not to read that
-file back and takes only the density. Because the range must be contiguous, `prep` renders
-the deck from a copy sorted held-first and records the permutation
-(`model/overview.md` § 2.2); `jobset summarize run <stage>` reads `.FC` back,
-puts the free block through the same projection and diagonalisation the
-PySCF deck runs (`spectra/normal_modes.py`), inverts the permutation, and
-writes the one artifact. Intensities are not computed (§ 4a.6); the
-thermochemistry is the vibrational sums only.
+Built 2026-09-23 and described with the PySCF route, side by side, in § 4b.3:
+force constants by central differences of SIESTA's forces over the free atoms
+only, read back on the host and put through the same harmonic path.
+Intensities are not computed on it (§ 4a.6).
 
 ### 4a.6 SIESTA: not offered, and why that is a statement about this tool
 
@@ -584,19 +547,159 @@ to the *electrons* — ∂H/∂Q rather than ∂μ/∂Q. That is the electron–
 coupling, and it is the thing SIESTA's force-constant machinery can hand over
 directly [Frederiksen2007, Galperin2007].
 
-### 4a.7 Validation status, stated plainly
+### 4a.7 Validation status
 
-The projection mathematics and the km/mol prefactor are textbook, and the
-implementation is **band-level validated**: water at B3LYP/def2-SVP against
-literature windows, with the right band ordering, and a CO₂ run reproducing the
-mutual-exclusion rule of a centrosymmetric molecule (653.45 cm⁻¹ Raman-silent /
-infrared-active at 32.85 km/mol; 1388.81 Raman-active at 14.74 Å⁴/amu;
-2460.11 the asymmetric stretch at 613.04 km/mol, which is *the* band of the CO₂
-infrared spectrum).
+Band-level validated (water in the literature windows with the right
+ordering; CO₂ reproducing mutual exclusion), and not cross-checked mode by
+mode against an external code — the numbers and the caveat are
+[`engines/vibration.md`](?doc=engines/vibration.md) § 9.
 
-**What has not been done: a mode-by-mode cross-check against an external code**
-(Gaussian, ORCA, Turbomole). Absolute intensities should be quoted with that
-caveat until it is.
+---
+
+## 4b. The theory the two engines share, a two-atom example, and the discussion this started from
+
+§ 3 says *what* is computed: the free–free block of the true Hessian, then the
+surviving whole-body motions removed, then the mass-weighted eigenproblem.
+This section restates that in the terms of the discussion the work started
+from, shows the two engines meeting at one function, works the smallest
+example with real numbers, and records where this contract agrees with that
+discussion and where it goes further. *How* each engine obtains the block —
+the script, the deck, the pseudocode, the cost read from the code — is
+[`engines/vibration.md`](?doc=engines/vibration.md) §§ 4–5.
+
+### 4b.1 The theory, in five lines
+
+Near a geometry `R₀`, write the atoms' displacement as one long vector `u`
+(three numbers per atom). The energy is a quadratic bowl,
+
+```text
+    E(u)  ≈  E₀  +  ½ uᵀ H u ,            H_{Iα,Jβ} = ∂²E / ∂R_{Iα} ∂R_{Jβ}
+```
+
+and the force is minus its gradient — the many-coordinate form of Hooke's law:
+
+```text
+    F  =  −∇E  =  −H u          (F_x = −H_xx·x − H_xy·y − … : moving one atom
+                                  pushes on the others; that coupling IS the
+                                  off-diagonal Hessian)
+```
+
+Split the coordinates into free `A` and held `F`, and impose `u_F = 0`:
+
+```text
+    ┌ F_A ┐       ┌ H_AA  H_AF ┐ ┌ u_A ┐            F_A = −H_AA u_A
+    │     │  = −  │            │ │     │      ⇒
+    └ F_F ┘       └ H_FA  H_FF ┘ └  0  ┘            F_F = −H_FA u_A   ≠ 0
+```
+
+The second line is the one to keep in mind: **a held atom's displacement is
+zero, its interaction is not.** It feels the free atoms move; the constraint
+only forbids it from answering. So `H_AA` is a slice through the full energy
+surface with every atom present — never the Hessian of a molecule with the held
+atoms deleted [Besley2008].
+
+Mass-weight the block and solve the eigenproblem:
+
+```text
+    D_AA  =  M_A^{-1/2} H_AA M_A^{-1/2} ,        D_AA e_ν  =  ω_ν² e_ν
+```
+
+What this contract adds to that textbook picture, and why (§ 3, § 4):
+
+1. **Not every eigenvector of `D_AA` is a vibration.** A turn of the free atoms
+   about one held atom, or about the line through two, costs no energy and is a
+   zero of `H_AA` — it comes out of the eigenproblem looking like a mode, and
+   off a stationary point it acquires a frequency (§ 4.1: 97 cm⁻¹, in the
+   middle of the spectrum). The rank rule of § 3.1 finds these motions from
+   the geometry, and they are projected out **before** `eigh` (R3). With three
+   held atoms not on one line there are none, and nothing is removed.
+2. **Stationarity is asked of the free atoms only** (R5): `∇_A E = 0`. The
+   held atoms carry the constraint force `−H_FA u_A`; that force is expected
+   and says nothing about whether `H_AA` is meaningful.
+3. **Masses and normalisation are one convention on both routes** (§ 3.2):
+   isotope-averaged masses, `Σ m_k|L_k|² = 1` in amu.
+
+Both engines hand the same function the same three things — the block, the
+masses, the geometry with its held set — and get the same answer back:
+
+```mermaid
+flowchart LR
+  subgraph P["PySCF — analytic second derivatives, isolated molecule"]
+    direction TB
+    P1["gto.M: every atom present,<br/>held ones too"] --> P2["one whole-system SCF"]
+    P2 --> P3["relax the FREE atoms (geomeTRIC, $freeze)<br/>check max|F| over the free atoms"]
+    P3 --> P4["hess_elec(atmlst=A) + hess_nuc(atmlst=A)<br/>+ D3 block [A,A]  →  H_AA"]
+  end
+  subgraph S["SIESTA — central differences of forces, periodic or not"]
+    direction TB
+    S1["prep: sort a COPY held-first,<br/>record atom-permutation.json"] --> S2["deck: Geometry.Constraints ·<br/>MD.TypeOfRun FC · FC.First..FC.Last = the free range"]
+    S2 --> S3["run: SCF at R₀, then ±δ on each free coordinate<br/>→ forces on every atom → &lt;label&gt;.FC"]
+    S3 --> S4["summarize: read .FC, central difference,<br/>symmetrise → H_AA · invert the permutation"]
+  end
+  P4 --> M["spectra/normal_modes.vibrational_modes<br/>mass-weight H_AA · remove the surviving whole-body<br/>motions (the rank of § 3.1) · diagonalise"]
+  S4 --> M
+  M --> R["&lt;label&gt;.spectra.json — the one artifact:<br/>modes · what was removed · thermochemistry ·<br/>intensities (PySCF) or null (SIESTA)"]
+```
+
+### 4b.2 A two-atom example with real numbers
+
+The discussion this started from worked the textbook case: two equal atoms on a
+spring, Hessian
+
+```text
+    H  =  ┌  k  −k ┐        eigenvalues 0 and 2k
+          └ −k   k ┘        eigenvectors (1, 1)  — both atoms move together: a translation
+                                         (1, −1) — against each other: the stretch
+```
+
+Here is the same molecule out of the measured fixture (`tests/fixtures/siesta_fc`,
+H₂ at 0.741 Å, SIESTA GGA/DZP), with `k = 41.713 eV/Å²` read from the `.FC` file
+and `m = 1.008 amu`:
+
+| | what is diagonalised | motions removed | modes | ω |
+|---|---|---|---|---|
+| **both atoms free** | the 6×6 block; along the bond, the 2×2 above | 5 (three slides, two turns; the axial turn moves nothing) | 1 | `√(2k/m)` = **4744 cm⁻¹** |
+| **one atom held** | the 3×3 block of the free atom: `[k]` along the bond | 2 (the two turns about the held atom: the free atom moving sideways costs nothing) | 3·1 − 2 = 1 | `√(k/m)` = **3355 cm⁻¹** |
+
+The held case is the discussion's `(1, −1)` stretch with one end nailed down:
+the mode is now `(1)` on the free atom alone, and the frequency is lower by
+exactly `√2`, because the partner no longer recoils — the reduced mass is `m`
+instead of `m/2`. This is the "constrained Hessian is not the full spectrum"
+point made quantitative: holding an atom is a choice about the physics, and
+the two numbers above are both right for the question each asks. The two
+sideways motions of the free atom are the surviving whole-body motions of
+§ 3.1 (`n_rigid = 2` for one held atom on a line of two), and without R3 they
+would be reported as two modes near zero. The run through jobset
+(`tests/test_siesta_vibration_e2e.py`; `vibration.md` § 5.5) reports exactly
+one mode, two motions removed, and the free atom by its input number.
+
+### 4b.3 The discussion this started from, and where this contract differs
+
+The work began from a discussion of a molecule anchored on a metal surface
+(*"a large array of metal atoms fixed, a few metal atoms allowed to participate
+with the adsorbed molecule"*), which set out the picture § 4b.1 restates. The
+cross-check, point by point (the implementation sections cited are
+[`engines/vibration.md`](?doc=engines/vibration.md)'s):
+
+| the discussion said | this contract |
+|---|---|
+| keep every metal atom in the quantum calculation; take the Hessian only with respect to the coordinates allowed to move (`H_AA`); "deleting the frozen rows" means deleting *degrees of freedom*, not atoms | **the same**, and it is the built behaviour on both engines (`vibration.md` § 4.4, § 5.5); on PySCF the held rows are never computed at all |
+| `hess.kernel(atmlst = active_atoms)` | **differs, by measurement**: `kernel(atmlst=)` adds a full-size dispersion term and the density-fitted Hessian class refuses the list, so the deck sums `hess_elec + hess_nuc + D3[A,A]` on a plain mean field (`vibration.md` § 4.4) |
+| mass-weight `H_AA` and diagonalise; the eigenvectors are the modes | **goes further**: the surviving whole-body motions are removed first (R3, § 3.1). For a slab or three anchors off a line nothing survives and the two agree; for one or two held atoms the difference is measured — water with its oxygen held reported six numbers, three of them turns, and the two loudest infrared bands were among them (§ 8; `vibration.md` § 11) |
+| the condition is `∇_A E = 0`; the frozen atoms may carry force | **the same** (R5) — and it was a live defect here until 2026-09-23: the check read every atom and warned on every converged constrained minimum |
+| the constrained Hessian makes the substrate infinitely rigid; converge the answer by adding active metal layers (molecule only, +1 layer, +2, +3) and watching the molecular modes | **the same judgement, and it is the person's**: the artifact records the free set and `hessian_scope`, so two runs that differ only in which atoms are held are comparable by their own files. § 3's honest-cost paragraph and § 4a.5 say the same about intensities |
+| frozen is not cheap electronically — "a 200-Au cluster remains a 200-Au electronic-structure problem" | **the same, and sharpened from the code** (`vibration.md` § 4.4, § 5.7): on PySCF the response equations and the derivative integrals shrink with the free atoms, the exchange-correlation derivative matrices do not, and at hundreds of atoms those matrices are the wall; on SIESTA the count of force evaluations shrinks and each stays whole-system |
+| PySCF is a finite-system code; a metal surface is a periodic solid | **the same, and it is why there are two routes**: the isolated molecule goes to PySCF, the slab or junction to SIESTA, and both hand the same block to the same harmonic path |
+| whether PySCF can give infrared or Raman intensities for the constrained system "depends on the property implementation" | **settled** (§ 4a; `vibration.md` § 4.6): the analytic dipole-derivative route takes no atom list, so with atoms held infrared goes by central differences of the dipole over the free atoms, and Raman by central differences of the polarizability over the free atoms — the same numbers by the other route |
+| a fixed atom's displacement is zero, its interaction is not: `F_F = −H_FA u_A ≠ 0` | **the same**, and it is the sentence a reader of a held-atom result should carry: the held atoms shape every number in `H_AA` |
+
+What the discussion did not need and this contract had to add: the count of
+motions that survive a hold, computed rather than tabulated (§ 3.1, because
+the Spectrum tab lets anyone hold one atom of a molecule, the case the surface
+literature never meets); the reorder machinery SIESTA's contiguous range
+forces, and the record that undoes it (`vibration.md` § 5.2); and the artifact's honesty
+about absent numbers (`web/spectra.md` § 9b.3), so a SIESTA file cannot be
+read as a PySCF file with zero intensities.
 
 ---
 
@@ -696,12 +799,15 @@ the surface says how many spurious motions there are and what they are (a
 rotation about which line), before the run is paid for — not a guess at the
 number, and not silence.
 
-**R8 — A cost claim is a measurement, not an expectation.** No surface tells a
-user that freezing saves compute unless the code it describes actually skips
-that compute. Today the analytic-Hessian path does not (§ 8), so either the
-partial Hessian is built over the free atoms only — as Q-Chem's is [QChemPHVA] —
-or the claim is withdrawn and the real saving (the Raman displacement loop) is
-named instead.
+**R8 — A cost claim is read from the code, and what the code cannot skip is
+stated beside it.** No surface tells a person that holding atoms saves compute
+unless the code it describes skips that compute.
+[`engines/vibration.md`](?doc=engines/vibration.md) § 4.4 and § 5.7 say, from
+the code text, which pieces of each route run over the free atoms and which
+run over every atom — and the piece that does not shrink (PySCF's
+exchange-correlation derivative matrices) is stated as plainly as the pieces
+that do. The partial Hessian is built over the free atoms only, as Q-Chem's is
+[QChemPHVA]. A timing is a check on this statement, never its source.
 
 ---
 

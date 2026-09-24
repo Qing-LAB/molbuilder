@@ -31,15 +31,9 @@
           "label": "The plan (one file)"
         },
         {
-          "path": "plans/2026-09-21-normal-mode-unification-design.md"
-        },
-        {
-          "path": "plans/2026-09-22-vibration-audit.md"
-        },
-        {
           "path": "plans/2026-09-22-unification-audit.md",
-          "label": "Unification audit \u2014 findings + cleanup order, 2026-09-22",
-          "subtitle": "Unification audit \u2014 findings + cleanup order, 2026-09-22"
+          "label": "Unification audit — findings + cleanup order, 2026-09-22",
+          "subtitle": "Unification audit — findings + cleanup order, 2026-09-22"
         },
         {
           "path": "plans/2026-09-22-handover.md",
@@ -119,6 +113,10 @@
         },
         {
           "path": "engines/transport.md"
+        },
+        {
+          "path": "engines/vibration.md",
+          "label": "Vibration — the calculation, on PySCF and on SIESTA"
         },
         {
           "path": "engines/builders.md"
@@ -608,6 +606,16 @@
           "path": "archive/2026-09-22-structure-io-consolidation.md",
           "label": "Structure I/O — what is duplicated, and how it should be organised",
           "subtitle": "Structure I/O — what is duplicated, and how it should be organised"
+        },
+        {
+          "path": "archive/2026-09-24-normal-mode-unification-design.md",
+          "label": "Vibrations with held atoms — the design",
+          "subtitle": "Vibrations with held atoms — the design"
+        },
+        {
+          "path": "archive/2026-09-24-vibration-audit.md",
+          "label": "Vibration calculations — the audit, and what is left",
+          "subtitle": "Vibration calculations — the audit, and what is left"
         },
         {
           "path": "archive/MIGRATION.md",

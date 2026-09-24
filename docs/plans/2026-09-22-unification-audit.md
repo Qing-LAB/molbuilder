@@ -2064,8 +2064,8 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    `system_label` needs `role = ["transport"]` either way.
 7. **D-2 (their handover, W21) — DECIDED 2026-09-23** *(the user delegated
    it: "make the right decision")*: (a) the classifier as built is the rule,
-   home `web/spectra.md` § 9b; (b) `top_n` / `threshold` retire at the design's
-   step 4, with the rest of the API shape; Γ-only is ruled; the cost/infrared default stays analytic. What
+   home `web/spectra.md` § 9b; (b) `top_n` / `threshold` retire under
+   V1.6 of `plans/plan.md`; Γ-only is ruled; the cost/infrared default stays analytic. What
    the item said, kept as the record of why: (a) The activity classifier (`spectra/activity.py`, 2026-09-11:
    widest log-gap ≥ 2 decades and ≤ 1e-3 of the peak, else 1e-6 of the peak;
    an absolute presence floor per channel; "partial" when a channel was not

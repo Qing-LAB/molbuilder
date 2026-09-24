@@ -1,10 +1,18 @@
 # Vibration calculations — the audit, and what is left
 
+> **Archived 2026-09-24 — a record, not policy.** Superseded by
+> `engines/vibration.md` (the calculation's contract: routes, decks, the
+> result file, the invariants, what is shipped and owed),
+> `science/normal-modes.md` (the science) and `plans/plan.md` row V1 (every
+> open item). Every decision, measurement and finding below was carried into
+> those before this file moved; read it to see how a decision was reached,
+> never to learn what is open.
+
 **Role:** audit — the follow-up list
 **Domain:** science · engines · web
 **Opened:** 2026-09-22, from an end-to-end run driven through the web interface
 **The science:** [`science/normal-modes.md`](?doc=science/normal-modes.md)
-**The design:** [`plans/2026-09-21-normal-mode-unification-design.md`](?doc=plans/2026-09-21-normal-mode-unification-design.md)
+**The design:** [`archive/2026-09-24-normal-mode-unification-design.md`](?doc=archive/2026-09-24-normal-mode-unification-design.md)
 **Plan row:** **V1** in [`plan.md`](?doc=plans/plan.md) § 2
 
 Every item below was **measured**, not inferred, unless it says otherwise. Each

@@ -97,102 +97,75 @@ issue**, never as silent absorption.
 > from config to actual calculation… if labels are not consistent or not recognized,
 > the script should give an explicit warning. No silent absorption of config."*
 
-**Reference instance.** The contract is **fully wired today for the spectra engine**
-(the PySCF vibrational path — frozen-atom masking), so every code path cited below is a
-`spectra/…` site. It is the **template** the other engines adopt stage by stage: they
-already deliver boundary conditions verbatim (Stage 2) and round-trip the labels in the
-script's ATOM-METADATA block (§ 2). The Stage-3 divergence check (A) is spectra-specific
-so far, but the unrecognized-label notice (B) is not — the unconsumed-region-label
-warning already exists, in `validation/sidecar.py::check_unconsumed_region_labels`.
-*(This cited "transport's engine preflight (`transiesta.py:748`)" until 2026-09-18;
-that preflight was deleted 2026-09-17 and the check re-homed.)* ("spectra" =
-the vibrational / IR-spectrum engine that rides
-on PySCF; it lives in its own `spectrum-calculation` domain, not among the docs mapped
-above, but it's the reference for this contract.)
+**Reference instance — revised 2026-09-24.** The contract was first wired for
+the vibration kind on PySCF, when the held set was a **form field** seeded from
+the sidecar. That field retired at the spectra migration's P2 (2026-08-21), and
+the held set is now a **structure fact for every engine**: the `frozen_atoms`
+region of the `.molstruct.json` half of the pair, assigned in the viewer and
+never copied into a form. The three stages read today as:
 
 ```mermaid
 flowchart LR
-    SEL["selection panel<br/>(mark frozen / regions)"] -->|"writes"| SC[".molstruct.json<br/>sidecar"]
-    SC -->|"schema endpoint pre-fills the form"| FORM["engine form<br/>(user sees + can edit)"]
-    FORM -->|"Generate → cfg"| EMIT["emitter"]
-    EMIT -->|"FROZEN_INDICES_USER = [...] verbatim"| SCRIPT["generated script"]
-    SC -.->|"preflight reads for divergence"| PF["engine preflight<br/>WARN / INFO"]
-    FORM -.-> PF
-    PF -.->|"Issues panel"| FORM
+    SEL["the viewer's selection panel<br/>(assign frozen_atoms / regions)"] -->|"writes the region"| SC[".molstruct.json<br/>(the structure's own half of the pair)"]
+    SC -->|"Send: exportFile() in one read"| HO["the hand-over writes the pair<br/>beside task.1st.json"]
+    HO -->|"prep reads the structure"| EMIT["the deck: every engine reads the region<br/>through one adapter and writes it verbatim"]
+    EMIT --> SCRIPT["$freeze (PySCF) · Geometry.Constraints + the FC range (SIESTA)<br/>· the free-atom Hessian · the leads (transport)"]
+    SC -.->|"the kind's checks"| PF["preflight: what is held, what survives it,<br/>what the engine does not consume"]
 ```
 
-- **Stage 1 — UI → config (capture intent visibly).** The selection panel writes
-  the labels into the [`.molstruct.json` sidecar](?doc=model/structure-molstruct.md)'s
-  one `regions` store — `frozen_atoms` is one of them, a *reserved* label rather
-  than a key of its own (schema 7). The label *vocabulary* — `L-electrode` /
-  `bridge` / `interface` / `frozen_atoms` — is owned by
-  [`model/structure-annotations.md`](?doc=model/structure-annotations.md).
-  When the user opens an engine form against that structure, the schema endpoint
-  **pre-fills** the freeze field from the sidecar (`web/blueprints/spectra.py::_seed_frozen_indices_from_sidecar`),
-  so the user **sees** what will be frozen *before* Generate. The form is then
-  **authoritative** — leave the pre-fill, add to it, or clear it (a deliberate
-  override). If the sidecar can't be applied (atom-count mismatch, corrupt JSON) the
-  response carries a human-readable `notice` instead of silently failing.
-- **Stage 2 — config → script (deliver verbatim).** The emitter writes the user's set
-  exactly — `FROZEN_INDICES_USER = list(cfg.frozen_indices)` (`pyscf/vibration_emitters.py::_emit_constants`)
-  — and nothing else. It does **not** silently union with `struct.frozen_atoms` at emit
-  time, and the generated script does **not** read the sidecar at run time. Whatever
-  the form showed is what lands in the script.
+- **Stage 1 — intent is captured where the structure is.** The selection panel
+  writes the labels into the sidecar's one `regions` store — `frozen_atoms` is
+  one of them, a *reserved* label rather than a key of its own (schema 7); the
+  vocabulary (`L-electrode` / `bridge` / `interface` / `frozen_atoms`) is
+  [`model/structure-annotations.md`](?doc=model/structure-annotations.md)'s.
+  What is drawn held in the viewer is what the calculation holds: the Send
+  button exports the model in one read, and there is no second copy for a
+  person to edit into disagreement.
+- **Stage 2 — every deck delivers the set verbatim.** The PySCF vibration
+  deck reads it through `VibrationConfigView.frozen_indices`
+  (`pyscf/vibration_deck.py`) into `FROZEN_ATOM_IDXS` — geomeTRIC's `$freeze`
+  file for the relaxation, the free-atom Hessian after it; the SIESTA decks
+  write `%block Geometry.Constraints` from `struct.frozen_atoms`, and the
+  vibration deck the FC range beside it; transport freezes the leads. No
+  emitter unions, infers or drops an index, and no generated script reads the
+  sidecar at run time ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 2.3, invariant I6).
+- **Stage 3 — the preflight says what it cannot use.** The unconsumed-label
+  notice (`validation/sidecar.py::check_unconsumed_region_labels`) fires for
+  every kind: a label an engine does not consume is named — *these stay in the
+  sidecar for the engine that uses them* — never silently absorbed. The
+  divergence check that compared a form value against the sidecar retired with
+  the form value; with one source there is nothing to diverge.
 
-  > **⚠ SIESTA does not do this yet, and the difference is Stage 1 rather than
-  > Stage 2** *(measured 2026-08-17; this bullet claimed the SIESTA emitter
-  > "obeys the same Stage-2 rule")*. `siesta/input.py` writes
-  > `%block Geometry.Constraints` from **`struct.frozen_atoms`** — the sidecar
-  > itself. There is no `frozen_indices` field on `SiestaConfig` and no such
-  > catalogue item, so **there is no form value for the form to be
-  > authoritative with**: clearing the field cannot unfreeze an atom, because
-  > the sidecar is what the deck is written from either way. Stage 2 is
-  > technically satisfied (the emitter copies verbatim and invents nothing) and
-  > Stage 1 is not, which is the half that carries the user's intent.
-  >
-  > It is a **silent absorption of config** — the thing the 2026-05-21
-  > directive above names — and the Stage-3A divergence check that would report
-  > it is spectra-only. Tracked as row 2 of
-  > [`template.md`](?doc=engines/template.md) § 12.1.
-- **Stage 3 — preflight (warn on what it can't use).** The two structure checks live
-  in the render gate (`validation/spectra.py::spectra_render_checks` — patterns A and
-  B), which the vibration deck composes at render (P3: the third, endpoint-side check
-  retired with the render route; the hand-over door's cell gate covers the applied
-  structure instead):
+Each surfaces as a structured `Issue` in the form's panel, and the vibration
+kind's checks add what holding means for the numbers: how many whole-body
+motions survive the hold and are removed, and how many modes will be reported
+([`science/normal-modes.md`](?doc=science/normal-modes.md) R7).
 
-| Check | Fires when | Severity |
-|---|---|---|
-| **A. Divergence** | the sidecar's `frozen_atoms` isn't a subset of the config's — the script is about to omit atoms the sidecar marked (stale pre-fill, or the sidecar changed in another tab) | `warn` (`where=config.frozen_indices`) |
-| **B. Unrecognized label** | the structure carries labels this engine doesn't consume (e.g. transport `regions` seen by a spectra run) — named explicitly, "these stay in the sidecar for the engine that uses them" | `warn` |
-| **C. Sidecar failed to apply** | a sidecar exists but couldn't be applied — "the form's freeze rules are the sole boundary condition for this run" | `warn` (`where=structure_path`) |
+**Why it's structural, not a nicety.** A script that silently freezes a
+*different* set than the person marked isn't a rounding error — it's a
+*different calculation*. The contract guarantees the person can read the
+structure and the Issues panel and know exactly what will happen.
 
-Each surfaces as a structured `Issue` in the form's panel — e.g. a Check-A divergence:
-
-```text
-[WARN] config.frozen_indices — the sidecar marks atoms 5, 6 frozen, but the form
-       omits them; this run will NOT freeze 5, 6. Re-open the structure to re-seed,
-       or clear the field deliberately.
-```
-
-**Why it's structural, not a nicety.** A script that silently freezes a *different*
-set than the form showed isn't a rounding error — it's a *different calculation*. The
-contract guarantees the user can read the form (config) and the Issues panel (engine
-understanding) and know exactly what will happen.
-
-**Per-engine label consumption** — which sidecar labels each engine actually uses. A
-label an engine doesn't consume is never silently absorbed: it's either surfaced by a
-Stage-3B notice (the spectra engine, today) or round-tripped untouched in the script's
+**Per-engine label consumption** — which sidecar labels each engine actually
+uses. A label an engine doesn't consume is never silently absorbed: it is
+surfaced by the Stage-3 notice or round-tripped untouched in the script's
 ATOM-METADATA block:
 
-| Label | builders | siesta / pyscf opt | spectra | transport |
+| Label | builders | siesta / pyscf opt | vibration (both engines) | transport |
 |---|---|---|---|---|
-| `frozen_atoms` | (sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | seeds the form → masks the partial Hessian¹ | freezes the leads (union with lead regions) |
-| `regions` (`L-electrode`/`bridge`/…) | (sets it) | round-tripped in metadata (not consumed) | Stage-3B notice | **drives the whole derivation** |
+| `frozen_atoms` | (sets it) | freezes in the relax (`Geometry.Constraints` / `$freeze`) | holds the relaxation and takes the Hessian over the free atoms only¹ | freezes the leads (union with lead regions) |
+| `regions` (`L-electrode`/`bridge`/…) | (sets it) | round-tripped in metadata (not consumed) | Stage-3 notice | **drives the whole derivation** |
 
-¹ *partial Hessian* = the vibrational analysis computes second derivatives only for the
-free (non-frozen) atoms, so freezing a slab or anchor cuts the cost sharply. spectra
-consumes the **form value** (`cfg.frozen_indices`), which the sidecar's `frozen_atoms`
-only *seeds* via the Stage-1 pre-fill — the form stays authoritative.
+¹ *partial Hessian* = second derivatives for the free atoms only, the block of
+the whole system's energy. What that saves, and what it cannot, is read from
+the engines' own code in [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 4.4 and § 5.7 — on PySCF the response equations and the derivative
+integrals shrink with the free atoms and the exchange-correlation derivative
+matrices do not; on SIESTA the count of force evaluations shrinks and each
+stays whole-system. *(This footnote said "cuts the cost sharply" and "spectra
+consumes the form value" until 2026-09-24; both were false — the audit of
+2026-09-22 § 5.)*
 
 ---
 
