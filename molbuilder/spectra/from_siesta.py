@@ -194,13 +194,14 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
     # number is the largest absolute Cartesian COMPONENT over the FREE
     # atoms -- the convention the PySCF deck judges its own by (§ 4.3),
     # stated in § 5.5 -- converted with the force-unit constant every
-    # force number in this codebase uses.  The criterion is the caller's,
-    # and today that is the catalogue's recommended tolerance, so the
-    # warning names it as such.  `already_relaxed`
-    # is the person's assertion and is carried as such: on this route it is
-    # the precondition itself, and the numbers below say whether it held.
-    warning = ("the force-constant route does not relax: the input geometry "
-               "is taken as the stationary point")
+    # force number in this codebase uses.  The criterion is the caller's:
+    # this description's own `relax_force_tol`, the tolerance the person
+    # set or left at the kind's recommendation, and the warning names it
+    # so.  `already_relaxed` is the person's statement and is carried as
+    # such; the numbers below say whether the geometry the force constants
+    # were taken at is a stationary point, whoever relaxed it.
+    warning = ("the force-constant run relaxes nothing: its reference "
+               "geometry is taken as the stationary point")
     max_free_eh = max_all_eh = None
     converged = None
     if reference_forces_ev_ang is not None:
@@ -219,20 +220,23 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
             if converged:
                 warning += (f".  The forces at the reference geometry were "
                             f"read back: the largest on the free atoms is "
-                            f"{max_free_ev:.4f} eV/Å, within the catalogue's "
-                            f"recommended relaxation tolerance of "
+                            f"{max_free_ev:.4f} eV/Å, within this "
+                            f"calculation's relaxation tolerance "
+                            f"(relax_force_tol) of "
                             f"{float(force_criterion_ev_ang):g} eV/Å")
             else:
                 warning = (f"the reference geometry is not a stationary point "
                            f"at this level of theory: the largest force on the "
-                           f"free atoms is {max_free_ev:.4f} eV/Å against the "
-                           f"catalogue's recommended relaxation tolerance of "
+                           f"free atoms is {max_free_ev:.4f} eV/Å against this "
+                           f"calculation's relaxation tolerance "
+                           f"(relax_force_tol) of "
                            f"{float(force_criterion_ev_ang):g} eV/Å.  The "
                            f"frequencies are the curvature at this point, not "
-                           f"at the minimum.  Relax first (an optimization "
-                           f"calculation holding the same atoms, its final "
-                           f"frame exported as a pair), or keep this run "
-                           f"knowing that")
+                           f"at the minimum, and will be off.  Relax first -- "
+                           f"untick `already_relaxed` so the ladder's relax "
+                           f"stage runs, or relax elsewhere at this level of "
+                           f"theory and hand the result over -- or keep this "
+                           f"run knowing that")
     relaxation = {"enabled": False, "already_relaxed": bool(already_relaxed),
                   "n_steps": 0, "max_force_eh_bohr": max_free_eh,
                   "max_force_all_atoms_eh_bohr": max_all_eh,

@@ -996,6 +996,10 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # the vibration form is the same renderer over the same catalogue.
     items = [it for it in items
              if not it.calculations or calculation in it.calculations]
+    # THE KIND'S OWN RECOMMENDATION stands in for the general default on a
+    # form built for that kind (template.md § 6.3a): the field shows the
+    # value the kind recommends, and the person changes it like any other.
+    items = [_T.with_recommended(it, calculation) for it in items]
     # A ROLE ITEM IS NOT A FORM FIELD (`template.md` § 6.4, ruled
     # 2026-09-16): "offering any of these presents a choice with exactly one
     # correct answer, and a person who changed it would not be tuning the

@@ -603,3 +603,33 @@ def test_the_calculation_kind_filters_the_generated_template():
     assert "calculations = " not in vib, (
         "the generated file must not carry the key -- selection already "
         "happened (the engines-stripping writer rule)")
+
+
+def test_a_recommended_value_on_a_tier_field_is_the_engines_tight_tier():
+    """`template.md` § 6.3a: a kind's `recommended` value on a field the
+    engine's tier table also carries is that table's tight tier -- one
+    number with two homes, compared here so they cannot drift.  The
+    vibration kind's recommendations are the ones the rule was written
+    for (`vibration.md` § 3.1)."""
+    from molbuilder.config.pyscf import PYSCF_STAGE_PRESETS
+    from molbuilder.config.siesta import SIESTA_STAGE_PRESETS
+    from molbuilder.template import catalogue, select
+
+    tight = {"siesta": SIESTA_STAGE_PRESETS[max(SIESTA_STAGE_PRESETS)],
+             "pyscf": PYSCF_STAGE_PRESETS[max(PYSCF_STAGE_PRESETS)]}
+    compared = []
+    for engine, table in tight.items():
+        for it in select(catalogue(), engine=engine):
+            for kind, value in it.recommended:
+                if it.name in table:
+                    assert value == table[it.name], (
+                        f"{engine} {it.name}: recommended {value!r} for "
+                        f"{kind}, the tight tier says {table[it.name]!r}")
+                    compared.append((engine, it.name))
+    # the rule has subjects: every relaxation setting § 3.1 exposes on the
+    # vibration form carries the tight tier as its recommendation
+    assert {n for _e, n in compared} >= {
+        "relax_type", "relax_steps", "relax_force_tol", "relax_max_displ",
+        "geom_gmax", "geom_grms", "geom_dmax", "geom_drms", "geom_etol",
+        "geom_max_steps"}
+

@@ -859,11 +859,12 @@ active set. *Tool:* Phase 0, geomeTRIC under the `geom_*` criteria, the held
 atoms in a `$freeze` file, and the force the deck records afterwards is
 geomeTRIC's final one over the free atoms. Under `already_relaxed` the
 optimiser is skipped and the deck checks the gradient instead, warning above
-**ten times** `geom_gmax` on the largest force component
-(`vibration.md` § 4.3) — the assertion answered with a number rather than
-believed. That factor, and the component-versus-norm convention (geomeTRIC's
-`gmax` is a per-atom norm), differ from the SIESTA read-back's 1× on a
-component: one rule for both routes is owed beside R5 (V1.30).
+`geom_gmax` itself on the largest force component over the free atoms
+(`vibration.md` § 4.3) — the statement answered with a number rather than
+believed, by the same rule the SIESTA read-back applies to `relax_force_tol`
+(one rule for both routes, V1.30, closed 2026-09-24; it was ten times the
+criterion before). geomeTRIC's own `gmax` is a per-atom norm, so the deck's
+component test is the stricter reading of the same number.
 
 **B — the Hessian, analytically.** *Discussion:* the orbital response
 `∂C/∂R_i` from coupled-perturbed equations gives `∂²E/∂R_i∂R_j` for the
@@ -974,10 +975,12 @@ that holds the set, then the vibration on the relaxed pair. **What the tool does
 is offered on this engine too as the precondition the person asserts — refused at the gate while unmade, since
 the run has no relaxation to fall back on — and the read-back reads the
 forces SIESTA evaluated at its FC step 0 into the artifact and judges the
-largest component on the free atoms against the catalogue's recommended
-tolerance, 0.02 eV/Å — the tolerance the person's own relaxation used does not
-travel with the structure yet, V1.28 — (R5 on both routes; `vibration.md`
-§ 5.5). The H₂ fixture at the experimental 0.741 Å, sent through the whole
+largest component on the free atoms against the description's own
+`relax_force_tol` — 0.01 eV/Å at the kind's recommendation; the tolerance a
+relaxation made elsewhere used does not travel with the structure yet, V1.28
+— (R5 on both routes; `vibration.md` § 5.5). And since the same day the
+relaxation is the person's explicit choice on this engine too: unticked, the
+ladder relaxes first (`vibration.md` § 5.2a); ticked, the read-back measures. The H₂ fixture at the experimental 0.741 Å, sent through the whole
 road before that judgement existed, carried **1.27 eV/Å** on its reference
 step with nothing said and reported **3358 cm⁻¹**; relaxed through an
 optimization calculation to 0.02 eV/Å and exported from the Results tab as a
@@ -1189,9 +1192,9 @@ designed as one each and need a decision.
 
 | | what | why it is owed | rule or section |
 |---|---|---|---|
-| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the catalogue's recommended tolerance (the run's own does not travel yet, V1.28); `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
+| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the description's own `relax_force_tol` (a relaxation made elsewhere does not carry its tolerance yet, V1.28); `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
 | ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
-| V1.30 | **one stationarity rule for both routes**: PySCF warns above ten times `geom_gmax` (geomeTRIC's per-atom norm) on the largest force component, SIESTA judges once the catalogue's tolerance on the largest component — one factor and one convention, written beside R5 | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
+| ~~V1.30~~ | **built 2026-09-24** — one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own tolerance (`geom_gmax` on PySCF, `relax_force_tol` on SIESTA), a plain warning above it | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
 | V1.28 | **the structure carries its relaxation record** — engine, level of theory, criterion, achieved force, the held set, the run — in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs (needs a design and a yes) | the assertion is today the person's memory of a run the tree already holds | § 4b.6 A |
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | the ladder is describable today; the comparison is by hand | § 4b.6 C |

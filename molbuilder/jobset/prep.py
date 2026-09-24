@@ -41,6 +41,8 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
@@ -711,6 +713,101 @@ def _environment_for(base: Path, target: Optional[str] = None):
     return machine_for(base, target=target)
 
 
+def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
+    """``(structure, cell)`` the `freq` stage of a SIESTA vibration is written
+    with (`engines/vibration.md` § 5.2a): the sorted copy as given, and no
+    cell of its own, when the ladder holds no `relax` stage; the coordinates
+    that stage relaxed to, in the cell it ran in, when it does -- read from
+    its latest concluded attempt through the one SIESTA output parser.  The
+    cell travels because the deck otherwise re-derives one around the new
+    bounding box and shifts the atoms into it, and a relaxed geometry moved
+    against the real-space grid is not stationary on that grid any more.
+    Every other rung comes back unchanged.
+
+    Two refusals, each naming what to do first.  `freq` before `relax` has
+    concluded: the job set's own order, not a guess at which geometry the
+    force constants belong to.  And `freq` with no `relax` stage while the
+    structure is not stated relaxed: the box says *relax first* and the
+    ladder holds nothing that would, so the description contradicts itself
+    and is refused with the two ways out rather than measured at a geometry
+    nobody chose (§ 2.2).
+    """
+    from ..pyscf.stages import VIBRATION_FREQ_STAGE, VIBRATION_RELAX_STAGE
+    if pset.stage != VIBRATION_FREQ_STAGE:
+        return struct, None
+    relax = next((s for s in task.stages
+                  if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
+    if relax is None:
+        if not bool(getattr(pset[0].render_config(), "already_relaxed", False)):
+            raise PrepError(
+                f"the structure is not stated to be relaxed (already_relaxed "
+                f"is false in the template) and this ladder has no enabled "
+                f"`{VIBRATION_RELAX_STAGE}` stage to relax it -- a harmonic "
+                f"analysis off a stationary point reports the wrong "
+                f"frequencies (engines/vibration.md 2.2).  Either add the "
+                f"`{VIBRATION_RELAX_STAGE}` stage before "
+                f"`{VIBRATION_FREQ_STAGE}` (Task setup, or task.json) and run "
+                f"it first, or state already_relaxed = true in the template; "
+                f"the read-back then measures the forces at this geometry "
+                f"and says whether the statement held.")
+        return struct, None
+    from ..paths import Shape
+    from ..paths import attempt_dir as _adir
+    from ..paths import attempts_in as _ain
+    from ..runfiles import find as _rf_find
+    from ..runfiles import stdout_roles
+    from .materialize import attempt_concluded
+    token = token_for(task, relax.name)
+    container = base / Shape.named(task.shape).stage_dir(token)
+    stem = _rf_stem(task.label, token)
+    run_first = (f"molbuilder jobset prep run {relax.name} && "
+                 f"molbuilder jobset launch run {relax.name}")
+    # Newest first; a flat bundle keeps no attempts and IS the attempt.
+    candidates = ([_adir(container, n) for n in reversed(_ain(container))]
+                  or [container])
+    concluded = [d for d in candidates
+                 if attempt_concluded(d, stem) is not None]
+    if not concluded:
+        raise PrepError(
+            f"the `{VIBRATION_FREQ_STAGE}` stage takes its geometry from the "
+            f"`{relax.name}` stage, which has no concluded attempt -- it was "
+            f"never launched, is still running, or was force-stopped (the "
+            f"last two look identical on disk; project-layout.md 1.6).  Let "
+            f"it finish, or run it first --\n    {run_first}")
+    attempt = concluded[0]
+    outs = [p for role in stdout_roles("siesta")
+            for p, _rf in _rf_find(attempt, task.label, role=role, stage=token)]
+    if not outs:
+        raise PrepError(
+            f"{attempt.relative_to(base)} concluded without the engine's "
+            f"output for `{relax.name}`; there is no geometry to read.  "
+            f"Re-run it --\n    {run_first}")
+    from ..parse.engines.siesta import SiestaParser
+    traj = SiestaParser.parse(str(outs[-1]))
+    frames = [fr for fr in traj.frames if fr.structure is not None]
+    if not frames:
+        raise PrepError(
+            f"{outs[-1].name} holds no coordinate block: the `{relax.name}` "
+            f"run never reached its first geometry.  Re-run it --\n"
+            f"    {run_first}")
+    last = frames[-1]
+    if list(last.structure.elements) != list(struct.elements):
+        raise PrepError(
+            f"{outs[-1].name} describes {last.structure.formula} in an order "
+            f"that is not this calculation's sorted copy ({struct.formula}): "
+            f"the `{relax.name}` stage ran a different structure.  Re-run "
+            f"it --\n    {run_first}")
+    cell = last.lattice if last.lattice is not None else traj.lattice
+    if log is not None:
+        log.step(f"the geometry the `{VIBRATION_FREQ_STAGE}` stage measures at")
+        log.received(str(outs[-1].relative_to(base)),
+                     f"{len(frames)} geometry step(s); the last is written as "
+                     f"the deck's coordinates, in that run's cell")
+    return (struct.replace(positions=np.asarray(last.structure.positions,
+                                                dtype=float)),
+            (np.asarray(cell, dtype=float) if cell is not None else None))
+
+
 def _structure_for(task, base: Path):
     """The structure this calculation is *of*, from the reference in the
     description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
@@ -928,6 +1025,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # atoms go last under the 'held-first' key.  The record is what the
     # return leg (`jobset summarize run`) inverts; the input order never
     # reaches the engine and the sorted order never reaches a person.
+    # WHICH DECK THIS RUNG RENDERS, and IN WHICH FRAME.  Both are the
+    # calculation's unless the kind says otherwise: the SIESTA vibration's
+    # `relax` stage is the relaxation deck (`engines/vibration.md` § 5.2a),
+    # and its `freq` stage, after one, is written at the coordinates that
+    # stage relaxed to, in that run's own cell -- so the force constants
+    # are taken on the grid the geometry was relaxed on.
+    _render_kind = task.calculation
+    _render_cell = None
     if task.calculation == "vibration" and str(task.engine) == "siesta":
         from ..transport.sort import sort_by, write_permutation
         _sorted = sort_by(struct, "held-first")
@@ -937,6 +1042,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             log.step("the atom order the engine needs")
             log.produced("atom-permutation.json",
                          f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
+        from ..pyscf.stages import vibration_render_kind
+        _render_kind = vibration_render_kind(pset.stage)
+        struct, _render_cell = _vibration_stage_geometry(base, task, pset,
+                                                          struct, log=log)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1063,7 +1172,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                               where=script, log=log):
                     spec = seam.spec_for(struct, cfg,
                                          stage_token=(token or None),
-                                         calculation=task.calculation)
+                                         calculation=_render_kind,
+                                         **({"cell": _render_cell}
+                                            if _render_cell is not None else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log)
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,

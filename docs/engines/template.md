@@ -707,6 +707,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the fourteen vibration items stay out of an optimization template by declaration |
+| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` and `range` at parse time |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
@@ -1401,6 +1402,36 @@ default  = true
 group    = "output"
 help     = "Write <job>.molwatch.log alongside the run."
 ```
+
+### 6.3a `recommended` — one parameter, a kind's own recommendation
+
+`calculations` says which kinds *show* an item; `recommended` says what a
+kind *recommends* for it when the general default is the wrong starting
+point *(user ruling 2026-09-24: the relaxation's convergence settings are
+exposed on the vibration setup like on the optimization setup, "and the
+recommended value should be reasonably tight, such as 0.01 eV/Å")*.
+
+```toml
+[item.relax_force_tol]
+kind = "engine"
+category = ["accuracy"]
+type = "float"
+value   = 0.02                       # the general default: an optimization's
+default = 0.02
+recommended = { vibration = 0.01 }   # a frequency deserves a real stationary point
+help = "The largest force allowed on any free atom when the relaxation stops."
+```
+
+Three readers, one rule: the form-schema door narrowed to a kind
+(`/api/build/schema/<engine>?calculation=<kind>`) presents the recommended
+value as the field's value and default; `jobset init` writes it into the
+kind's template as the item's `value` and `default`; and
+`template_with_values(..., calculation=)` writes it as the `default` beside
+whatever value the config holds. After that the template is the answer and
+the person changes it like any other value — the recommendation is where the
+number starts, never a lock. A test compares every `recommended` value of a
+tier field against the engine's tier table, so the two homes of that number
+cannot drift.
 
 ### 6.4 An item may be declared without a value
 

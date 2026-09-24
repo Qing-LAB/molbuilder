@@ -110,18 +110,38 @@ def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:
 #: strengths, SIESTA for the force-constant run.
 VIBRATION_ENGINES = ("pyscf", "siesta")
 
+#: The vibration ladder's two stage names (`engines/vibration.md` § 2.2,
+#: § 5.2a): the measurement, and the relaxation SIESTA runs before it when
+#: the person has not stated the structure is relaxed.  Spelled here and
+#: read everywhere else -- `prep` decides which deck a stage renders by
+#: them, and the Task setup tab proposes them by the same words.
+VIBRATION_FREQ_STAGE = "freq"
+VIBRATION_RELAX_STAGE = "relax"
 
-def vibration_stages() -> List["Stage"]:
-    """The vibration calculation's ladder: ONE stage, named ``freq``
-    (spectra-migration plan § 2, user rulings 2026-08-20).
 
-    One stage because the calculation is one measurement whose
-    precondition -- the relaxation -- lives INSIDE the deck (D3's final
-    form: geomeTRIC straight into the Hessian, in-process; the user's
-    explicit ``already_relaxed = true`` is the one skip, answered with a
-    gradient check and a warning).  A tier ladder makes no sense here:
-    tiers grade an optimization's convergence, and the freq deck already
-    defaults the geometry criteria to the tight tier via the template.
+def vibration_stages(engine: str, *, already_relaxed: bool) -> List["Stage"]:
+    """The vibration calculation's ladder, read from the person's one
+    statement (`engines/vibration.md` § 2.2, § 5.2a).
+
+    ``freq`` alone when the structure is stated relaxed, and always on
+    PySCF, whose deck relaxes in-process (Phase 0) before the Hessian;
+    ``relax`` then ``freq`` on SIESTA otherwise, because a SIESTA run is one
+    ``MD.TypeOfRun`` and cannot relax and take force constants in one go.
+    No tier overrides on either rung: the convergence settings are the
+    template's own, recommended tight by the catalogue (`template.md`
+    § 6.3a), and a person changes them there.
     """
     from ..task import Stage
-    return [Stage(name="freq", enabled=True, overrides={})]
+    out: List[Stage] = []
+    if str(engine) == "siesta" and not already_relaxed:
+        out.append(Stage(name=VIBRATION_RELAX_STAGE, enabled=True, overrides={}))
+    out.append(Stage(name=VIBRATION_FREQ_STAGE, enabled=True, overrides={}))
+    return out
+
+
+def vibration_render_kind(stage_name: str) -> str:
+    """Which deck a vibration stage renders (`engines/vibration.md` § 5.2a):
+    the ``relax`` stage is the ordinary relaxation deck -- nothing is
+    invented for it -- and every other rung is the kind's own."""
+    return ("optimization" if stage_name == VIBRATION_RELAX_STAGE
+            else "vibration")

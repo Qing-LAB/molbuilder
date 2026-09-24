@@ -137,12 +137,14 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "test_doc_claims.py rather than restated anywhere"),
     "vibration_stages": (
         2, "molbuilder/pyscf/stages.py",
-        "the vibration kind's ONE-STAGE ladder (`stages.md` § 6.8, "
-        "spectra-migration P1): a `freq` stage with no overrides, so a "
-        "vibration description is an ordinary § 6.5 ladder rather than a "
-        "stage-less special shape.  `jobset init` selects it by "
-        "`--calculation vibration` and refuses --stage-strategy beside it "
-        "-- the tiers are an optimization vocabulary"),
+        "the vibration kind's ladder (`vibration.md` § 2.2, § 5.2a): a "
+        "`freq` stage with no overrides, and before it on SIESTA a `relax` "
+        "stage unless the structure is stated relaxed -- so a vibration "
+        "description is an ordinary § 6.5 ladder rather than a stage-less "
+        "special shape.  `jobset init` selects it by `--calculation "
+        "vibration` and refuses --stage-strategy beside it -- the tiers "
+        "are an optimization vocabulary; the convergence settings are the "
+        "template's own"),
     "--stage-strategy": (
         2, "molbuilder/jobset/_cli.py",
         "named presets over the *enable* flags, on `jobset init` -- "
@@ -290,6 +292,33 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "stage: its attempts, its launch record and what it continued from.  "
         "Answerable only because a try is a directory and a launch is a "
         "record (project-layout 1.5, 1.6)"),
+    "VIBRATION_FREQ_STAGE": (
+        2, "molbuilder/pyscf/stages.py",
+        "what the vibration ladder's measuring rung is CALLED -- read by "
+        "`vibration_stages`, by `prep` to know which rung is written at the "
+        "relaxed geometry, and spelled the same by the Task setup proposal "
+        "(`vibration.md` § 2.2, § 5.2a)"),
+    "VIBRATION_RELAX_STAGE": (
+        2, "molbuilder/pyscf/stages.py",
+        "what the vibration ladder's relaxing rung is CALLED -- the stage "
+        "SIESTA runs before `freq` unless the structure is stated relaxed; "
+        "`vibration_render_kind` maps it to the relaxation deck, so a SIESTA "
+        "run that is one MD.TypeOfRun can relax and then take force "
+        "constants as two rungs of one description"),
+    "_vibration_stage_geometry": (
+        None, "molbuilder/jobset/prep.py",
+        "reads a rung's ROLE in the vibration ladder -- the observing side: "
+        "for `freq` after a `relax` stage it takes the relaxed coordinates "
+        "and the cell from that stage's concluded attempt through the one "
+        "SIESTA output parser, and refuses `freq` before `relax` concluded "
+        "or with no `relax` stage while the box is unticked (`vibration.md` "
+        "§ 5.2a).  It expresses no stage; it asks the ladder what a rung "
+        "is for"),
+    "stage_science": (
+        None, "molbuilder/siesta/vibration_deck.py",
+        "the force-constant rung's one-line deck header -- `_stage_science`'s "
+        "job for a run that moves nothing, DERIVED from the same facts the "
+        "FC block is rendered from"),
     "_stage_science": (
         None, "molbuilder/siesta/input.py",
         "the deck's one-line stage comment, DERIVED from the config being "

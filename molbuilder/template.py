@@ -271,6 +271,12 @@ class Item:
     #: every optimization template the day they were added -- measured, not
     #: assumed.
     calculations: Tuple[str, ...] = ()
+    #: A KIND'S OWN RECOMMENDATION for this parameter, as ``(kind, value)``
+    #: pairs (§ 6.3a): what a form built for that kind shows and what
+    #: `init` writes into that kind's template in place of the general
+    #: default -- a frequency's relaxation is tighter than an optimization's.
+    #: Pairs rather than a mapping so the frozen item stays hashable.
+    recommended: Tuple[Tuple[str, Any], ...] = ()
 
     #: Citation keys into ``docs/science/references.bib`` -- the one
     #: bibliography the whole validation design argues from (user,
@@ -815,7 +821,7 @@ def _toml_value(v: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "default", "optional", "allocation",
+                   "choices", "value", "default", "recommended", "optional", "allocation",
                    "citation", "role", "stages",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
@@ -858,6 +864,9 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["engines"] = list(it.engines)
     if it.calculations:
         out["calculations"] = list(it.calculations)
+    if it.recommended:
+        out["recommended"] = {k: (list(v) if isinstance(v, tuple) else v)
+                              for k, v in it.recommended}
     if it.refs:
         out["refs"] = list(it.refs)
     if it.allocation:
@@ -1020,6 +1029,13 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             value=(None
                    if (it.allocation or calculation in it.role)
                    else getattr(config, it.name, it.value)),
+            # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
+            # the table itself does not travel -- a per-kind template has
+            # already answered which kind it serves.
+            default=(recommended_for(it, calculation)
+                     if recommended_for(it, calculation) is not None
+                     else it.default),
+            recommended=(),
         )
         for it in select(parsed, engine=eng)
         if not it.calculations or calculation in it.calculations
@@ -1220,6 +1236,55 @@ _TYPE_CHECKS = {
 }
 
 
+def _recommended_from(name: str, raw, type_: str, choices) -> Tuple[Tuple[str, Any], ...]:
+    """The ``recommended`` table of an item, checked value by value against
+    the item's own declaration (§ 6.3a): a kind's recommendation obeys the
+    same type and enum membership as the general default."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping) or not all(isinstance(k, str) for k in raw):
+        _refuse("`recommended` must be a table keyed by calculation kind, "
+                "e.g. recommended = { vibration = 0.01 }", where=name)
+    out = []
+    for kind, v in raw.items():
+        _check_raw_value(name, f"recommended.{kind}", v, type_, choices)
+        out.append((str(kind), _shape(v, type_)))
+    return tuple(out)
+
+
+def recommended_for(item: "Item", calculation: str) -> Any:
+    """The value ``item`` recommends for ``calculation``, or ``None``."""
+    for kind, v in item.recommended:
+        if kind == calculation:
+            return v
+    return None
+
+
+def with_recommended(item: "Item", calculation: str) -> "Item":
+    """``item`` with the kind's recommendation as its value and default --
+    what a surface built for that kind shows (§ 6.3a); the item unchanged
+    when the kind recommends nothing."""
+    rec = recommended_for(item, calculation)
+    if rec is None:
+        return item
+    return dataclasses.replace(item, value=rec, default=rec)
+
+
+def apply_recommended(config, calculation: str, *, engine: str = ""):
+    """A copy of ``config`` carrying every recommendation the catalogue makes
+    for ``calculation`` on its engine (§ 6.3a) -- what `init` writes a kind's
+    template from, so the template starts where the kind says it should."""
+    eng = engine or _engine_name(type(config))
+    updates = {}
+    for it in select(catalogue(), engine=eng):
+        if it.calculations and calculation not in it.calculations:
+            continue
+        rec = recommended_for(it, calculation)
+        if rec is not None and hasattr(config, it.name):
+            updates[it.name] = rec
+    return dataclasses.replace(config, **updates) if updates else config
+
+
 def _check_raw_value(name: str, key: str, raw, type_: str,
                      choices) -> None:
     """Refuse a SET value (or default) that is not what its own
@@ -1348,6 +1413,8 @@ def _item_from(name: str, body: Any) -> Item:
         category=tuple(body.get("category", ()) or ()),
         engines=tuple(body.get("engines", ()) or ()),
         calculations=tuple(body.get("calculations", ()) or ()),
+        recommended=_recommended_from(name, body.get("recommended"), type_,
+                                      choices),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),

@@ -152,27 +152,43 @@ def fc_block_asymmetry(fc: ForceConstantFile,
     return float(np.max(np.abs(block - np.transpose(block, (1, 0, 3, 2)))))
 
 
+def reference_frame_of(trajectory, *, name: str = "the output"):
+    """The force-constant run's FC step 0 -- the UNDISPLACED geometry with
+    the forces SIESTA evaluated there -- out of an already parsed SIESTA
+    trajectory (`parse.engines.siesta`; its frames carry every step's
+    coordinates and forces, so nothing here re-reads the file).
+
+    SIESTA evaluates the reference geometry before the first nudge, so it is
+    the first frame carrying forces.  The read-back takes both halves from
+    it: the coordinates are the geometry the force constants belong to --
+    the relaxed one after a `relax` stage, the input one when the structure
+    was stated relaxed -- and the forces are what stationarity is judged by
+    (R5 on this route; `engines/vibration.md` § 5.2a, § 5.5).
+    """
+    for fr in trajectory.frames:
+        if fr.forces is not None and fr.structure is not None:
+            return fr
+    raise ParseError(f"{name}: no force block for the reference geometry "
+                     f"(FC step 0) -- the force-constant run has not written "
+                     f"its first step")
+
+
+def reference_frame_from_out(path):
+    """:func:`reference_frame_of` for a file: one parse, through the one
+    SIESTA output parser."""
+    from .siesta import SiestaParser
+    return reference_frame_of(SiestaParser.parse(str(path)),
+                              name=Path(path).name)
+
+
 def reference_forces_from_out(path) -> np.ndarray:
     """The forces at the UNDISPLACED geometry of a force-constant run, in
-    eV/Å, shape ``(n_atoms, 3)`` in the deck's atom order.
-
-    SIESTA evaluates the reference geometry as its ``FC step = 0`` before the
-    first nudge, so they are the first force block of the run's output --
-    read through the one SIESTA output parser (`parse.engines.siesta`, whose
-    frames carry every step's forces); nothing here re-reads the file.  They
-    are what the read-back judges stationarity by (R5 on this route;
-    `engines/vibration.md` § 5.5).
-    """
-    from .siesta import SiestaParser
-    traj = SiestaParser.parse(str(path))
-    for fr in traj.frames:
-        if fr.forces is not None:
-            return np.asarray(fr.forces, dtype=float)
-    raise ParseError(f"{Path(path).name}: no force block for the reference "
-                     f"geometry (FC step 0) -- the force-constant run has not "
-                     f"written its first step")
+    eV/Å, shape ``(n_atoms, 3)`` in the deck's atom order -- the forces half
+    of :func:`reference_frame_from_out`."""
+    return np.asarray(reference_frame_from_out(path).forces, dtype=float)
 
 
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",
-           "fc_block_asymmetry", "reference_forces_from_out",
+           "fc_block_asymmetry", "reference_frame_of",
+           "reference_frame_from_out", "reference_forces_from_out",
            "EV_PER_ANG2_TO_HARTREE_PER_BOHR2"]

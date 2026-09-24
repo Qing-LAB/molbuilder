@@ -184,7 +184,7 @@ modes near zero. [`science/normal-modes.md`](?doc=science/normal-modes.md)
 ```mermaid
 flowchart LR
   M["Molbuilder tab<br/>build the structure,<br/>hold atoms in the viewer,<br/>Save to project (the pair)"] --> S["Spectrum tab<br/>load the structure, pick the engine on the strip<br/>(a periodic structure defaults to SIESTA),<br/>set parameters (the catalogue's form per engine),<br/>read the live checks"]
-  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, one stage;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
+  S -->|"Send to Task setup<br/>= the hand-over"| T["Task setup<br/>shape, machine, the kind's ladder;<br/>Save writes task.json;<br/>the stage's tab prints the commands<br/>(--target when the CLI would refuse to guess)"]
   T -->|"prep run freq"| P["the deck<br/>PySCF: &lt;label&gt;_01_freq.py<br/>SIESTA: &lt;label&gt;_01_freq.fdf (from a sorted copy)"]
   P -->|"launch run freq"| R["the run<br/>PySCF: writes &lt;label&gt;.spectra.json itself<br/>SIESTA: leaves &lt;label&gt;.FC"]
   R -->|"SIESTA only:<br/>summarize run freq"| A["&lt;label&gt;.spectra.json<br/>the one artifact, schema 6"]
@@ -206,34 +206,41 @@ description's list of stages, each a *rung* with its own parameter set; a
 *tier* ladder — coarse, medium, tight — grades an optimisation's convergence,
 and a vibration has one stage) and any engine but the two named.
 
-### 2.2 The description: one stage, and relaxation inside it
+### 2.2 The description: the relaxation is the person's explicit choice
 
 A vibration is an ordinary described job: `task.json` carries
-`calculation: "vibration"`, the engine, and **one stage, `freq`**
-(`pyscf/stages.py::vibration_stages`, shared by both engines;
-[`engines/stages.md`](?doc=engines/stages.md)). The parameters travel in
-`<label>.template.toml`, the catalogue narrowed to the kind (§ 3).
+`calculation: "vibration"`, the engine, and its ladder
+(`pyscf/stages.py::vibration_stages`; [`engines/stages.md`](?doc=engines/stages.md)).
+The parameters travel in `<label>.template.toml`, the catalogue narrowed to
+the kind (§ 3) — **including the relaxation's convergence settings on both
+engines**, shown and editable exactly as on the Structure-optimization tab,
+with the kind's own recommended values, which are tight (§ 3.1).
 
-**Why one stage** *(user rulings, 2026-08-20, refined twice)*: a harmonic
-analysis is only valid at a stationary point, so the relaxation is the
-measurement's **precondition, not a peer stage** you toggle among others. On
-PySCF the deck relaxes the free atoms as its first act and takes the Hessian
-on the result, in one process, geomeTRIC straight into the Hessian. The only
-way the relaxation does not run is the person's own statement,
-`already_relaxed = true` — and even then the deck checks the forces on the free
-atoms and **warns with the numbers, never refuses**. On SIESTA the
-force-constant run relaxes nothing, so the same statement is the
-**precondition the person asserts**: `already_relaxed = true` says the
-structure was relaxed at this level of theory — an optimization calculation
-that held the same set, its final frame exported from the Results tab as a
-pair — and without it the gate refuses to prepare, naming the two ways out
-(§ 5.8). The assertion is answered with numbers here too: the read-back reads
-the forces SIESTA evaluated at the undisplaced geometry, its FC step 0, and
-records the largest one over the free atoms against the relaxation's own
-criterion (§ 5.5), so R5 holds on both routes. *(Until 2026-09-24 the route
-measured nothing: the H₂ fixture at 0.741 Å went through with 1.27 eV/Å on
-its reference step and reported 3358 cm⁻¹ where the relaxed bond gives
-3022 — § 9.)*
+**A harmonic analysis is only valid at a stationary point**, so the
+relaxation is the measurement's precondition, and **whether it runs is the
+person's explicit say** *(user rulings 2026-08-20, refined 2026-09-24: "this
+is totally user's control and it is explicit")*, made with one box on both
+engines, `already_relaxed`:
+
+| the box | what the tool does, on either engine |
+|---|---|
+| **unticked** (the default) | the calculation **relaxes first**, at the template's convergence settings — recommended tight, a largest remaining force of about 0.01 eV/Å — and then takes the second derivatives at the relaxed geometry. On PySCF that is Phase 0 of the one script (§ 4.2); on SIESTA it is a **`relax` stage before the `freq` stage** (§ 5.2a), the relaxed geometry carried into the force-constant deck as coordinates |
+| **ticked** | the person states the structure is already relaxed **at this level of theory**. Nothing is relaxed; the tool measures the forces at the starting geometry and, above the template's force tolerance, **warns in plain words that the frequencies will be off** — never refuses, because the statement is the person's to make. The hint beside the box says the same before the run is paid for |
+
+Why the warning is plain and the default is to relax *(measured 2026-09-24,
+§ 9)*: the H₂ fixture at the experimental bond length, sent through the
+SIESTA road unrelaxed, reported 3358 cm⁻¹ where the relaxed bond gives 3022 —
+a tenth of the frequency — and the two relaxation tolerances 0.02 and
+0.001 eV/Å differ by two wavenumbers. An unrelaxed structure is the one error
+that looks like a result.
+
+**How the tool answers the ticked box with numbers**: PySCF's deck checks
+the gradient at the input geometry (§ 4.3); SIESTA's read-back reads the
+forces SIESTA evaluated at its FC step 0 (§ 5.5). Both judge the largest
+absolute force component over the **free** atoms (R5) against the template's
+own force tolerance — `geom_gmax` on PySCF, `relax_force_tol` on SIESTA — the
+one the person set or left at the kind's recommendation; both write the
+number and the verdict into the result, and the viewer shows them.
 
 ### 2.3 Held atoms travel with the structure, never as a form field
 
@@ -285,7 +292,7 @@ a parameter is defined once and rendered the same everywhere.
 
 | item | engine | what it reaches | default | note |
 |---|---|---|---|---|
-| `already_relaxed` | both | PySCF: `ALREADY_RELAXED` — skips Phase 0 (§ 4.2); the gradient is still checked. SIESTA: the precondition itself — `false` is refused at the gate (the force-constant run cannot relax), `true` proceeds and the read-back measures the reference forces (§ 5.5) | `false` | the person's assertion, answered with numbers; refused on SIESTA only while unmade, because there the run has no relaxation to fall back on |
+| `already_relaxed` | both | the person's explicit say (§ 2.2). Unticked: PySCF runs Phase 0, SIESTA runs a `relax` stage first. Ticked: nothing is relaxed; the forces at the starting geometry are measured against the template's force tolerance and a plain warning says the frequencies will be off when they fail | `false` | never refused; the hint beside the box carries the same warning |
 | `compute_raman` | pyscf | `COMPUTE_RAMAN` — the polarizability sweep (§ 4.6) | `true` | the expensive optional: about `6·N_free` extra SCFs, each with a response calculation |
 | `compute_ir` | pyscf | `COMPUTE_IR` — dipole derivatives (§ 4.6) | `false` | nearly free when it is the only strength asked for and no atom is held; otherwise rides the Raman sweep or its own dipole sweep |
 | `temperature_K` · `pressure_atm` | pyscf | `THERMO_T_K`, `THERMO_P_ATM` — the headline of the thermochemistry (§ 4.7) | 298.15 K · 1 atm | **owed on SIESTA**: the derivation sums at these defaults and says so (§ 5.5) |
@@ -296,6 +303,8 @@ a parameter is defined once and rendered the same everywhere.
 | `es_n_homo_below` · `es_n_lumo_above` | pyscf | the orbital window recorded per displaced geometry | 5 · 5 | record size, not cost |
 | `net_charge` | both | `NetCharge` / `gto.M(charge=)` | auto | shared with every kind; resolved once by `chemistry.resolve_net_charge` (explicit wins, 0 included; unset runs the phosphate rule — one negative charge per nucleic-acid backbone phosphate, [`model/chemistry.md`](?doc=model/chemistry.md)) |
 | `fc_displacement` | siesta | `FC.Displacement` — the nudge of the force-constant run (§ 5.3) | 0.04 Bohr | range 0.005–0.2 Bohr; smaller pushes the force difference toward the SCF noise floor, larger picks up anharmonic terms |
+| `relax_type` · `relax_steps` · `relax_force_tol` · `relax_max_displ` | siesta | the `relax` stage's driver, step cap, force tolerance and largest step (§ 5.2a) — the same items the optimization kind shows | the kind's **recommended** values are the tight tier: Broyden, 100 steps, **0.01 eV/Å**, 0.02 Å (`recommended = { vibration = … }` in the catalogue, [`engines/template.md`](?doc=engines/template.md) § 6.3a) | editable like every other item; the tolerance is also the yardstick the read-back judges a ticked box by (§ 5.5) |
+| `geom_gmax` · `geom_grms` · `geom_dmax` · `geom_drms` · `geom_etol` · `geom_max_steps` | pyscf | Phase 0's geomeTRIC criteria (§ 4.2) — the optimization kind's own items | the kind's **recommended** values are the tight tier: `geom_gmax` **2·10⁻⁴ Eh/Bohr** (0.010 eV/Å), `geom_grms` 1·10⁻⁴, `geom_dmax` 1·10⁻³ Å, `geom_drms` 5·10⁻⁴ Å, `geom_etol` 1·10⁻⁶ Eh, 100 steps | the general default stays the medium tier for an optimization; the vibration kind recommends tight because a frequency deserves a real stationary point |
 
 **Where each item sits on the form** — the card is the item's `group`, the legend
 inside it the first `category` ([`engines/template.md`](?doc=engines/template.md)
@@ -319,13 +328,9 @@ retired with it: a parameter of the deck it never was.
 
 **The shared items** — method, functional, basis, spin, dispersion, density
 fitting, the implicit solvent (`solvent`, PCM), the SCF machinery, the
-geometry-convergence criteria (`geom_gmax` family, which the vibration template
-defaults to the **tight** tier, `geom_gmax` 2·10⁻⁴ Eh/Bohr: a frequency
-deserves a real stationary point — **⚠ contradiction, open as plan V1.20**:
-the catalogue carries one default per item and no kind-keyed default, so the
-template the hand-over and `init` write today carries 4.5·10⁻⁴, and the tight
-tier is the preset on Task setup's stage row; measured 2026-09-24), the
-relaxation's workflow knobs
+geometry-convergence criteria (`geom_gmax` family, whose values for this
+kind are the tight tier through the catalogue's `recommended` key — the row
+above; V1.20 closed 2026-09-24), the relaxation's workflow knobs
 (`on_nonconvergence`, `geom_max_steps`, `geom_continue_retries`, `optimizer`,
 `write_trajectory`, `write_molwatch_log`, `save_initial_xyz`,
 `save_optimized_xyz` — § 4.2 says what each does here), the execution category
@@ -343,8 +348,7 @@ field the PySCF deck builds through one generated dresser (§ 4.3).
 
 **Items the kind does NOT show, and why:** `restart` (the SIESTA start state
 is the kind's own, § 5.3; the PySCF deck carries no deck-level restart state);
-the relaxation driver's items on SIESTA (the force-constant run moves nothing,
-§ 5.3); `frozen_indices` (retired, § 2.3); `SpectraConfig` (a 33-field class
+`frozen_indices` (retired, § 2.3); `SpectraConfig` (a 33-field class
 nothing constructed, retired 2026-08-22 — the kind's science is the kind's);
 and **no "how many layers should move" question** (withdrawn 2026-09-21: the
 structure already carries the answer, and comparing two freeze depths is two
@@ -453,7 +457,7 @@ longest part of the run, would betray "the viewer tracks all the steps")*.
 
 What the phase honours from the description: the convergence criteria
 (`geom_gmax`, `geom_grms`, `geom_dmax`, `geom_drms`, `geom_etol`,
-`geom_max_steps` — *defaulting to the tight tier* is the open contradiction of § 3.1, plan V1.20), `on_nonconvergence`
+`geom_max_steps` — the tight tier at the kind's recommendation, § 3.1), `on_nonconvergence`
 (**this** is the phase that policy governs — `proceed` takes the partial
 geometry and records `converged: null` with a warning; `continue` re-runs the
 optimiser with the optimisation deck's retry budget; `halt` raises),
@@ -498,8 +502,10 @@ text on 2026-09-09 so one implementation runs and is tested), plus `elements`
 and `positions_ang`.
 
 **The stationarity check (R5)** takes the SCF's nuclear gradient and judges
-the largest force **over the free atoms** against ten times `geom_gmax`
-(2·10⁻³ Eh/Bohr with the vibration template's tight-tier default of 2·10⁻⁴),
+the largest absolute force component **over the free atoms** against the
+template's own `geom_gmax` — 2·10⁻⁴ Eh/Bohr at the kind's recommendation —
+the one rule both routes judge by (§ 2.2; SIESTA's read-back judges the same
+quantity against `relax_force_tol`, § 5.5) *(ten times it until 2026-09-24)*,
 recording it as `relaxation.max_force_eh_bohr` and the all-atom figure beside
 it as `max_force_all_atoms_eh_bohr` — the keys say their unit *(they said
 `_a` until 2026-09-24 while the viewer printed "Eh/Å"; the number was always
@@ -918,6 +924,50 @@ input order (the person's):        sorted copy (the engine's):
                                      atom-permutation.json: sorted_to_original = [1, 0], key = held-first
 ```
 
+### 5.2a The `relax` stage — the relaxation the kind runs when the box is unticked
+
+SIESTA cannot relax and take force constants in one run (`MD.TypeOfRun` is
+one thing per run), so the vibration ladder on SIESTA is **two stages when
+the box is unticked** — `relax`, then `freq` — and one, `freq`, when it is
+ticked (`pyscf/stages.py::vibration_stages(engine, already_relaxed=…)`,
+read from the template's own value at `init` and at the hand-over's proposal).
+
+**The `relax` stage is an ordinary SIESTA relaxation deck** rendered from the
+same template and the same **sorted copy** (§ 5.2): `MD.TypeOfRun` from
+`relax_type`, `MD.MaxForceTol` from `relax_force_tol`, the held atoms in
+`Geometry.Constraints`. Nothing is invented for it; `spec_for` renders the
+optimization deck for a stage named `relax` inside the vibration kind.
+
+**The relaxed geometry travels as coordinates, not as a restart file.** When
+`prep` prepares `freq` and the ladder holds a `relax` stage, it reads the
+relaxed geometry from that stage's latest concluded attempt — the last
+coordinate block of the stage's own output, through the one SIESTA output
+parser, in the sorted order both decks share, **and the cell that run used**
+— and writes it as the force-constant deck's coordinates, in that cell
+(`jobset/prep.py::_vibration_stage_geometry`). The output rather than
+`<label>.XV`, because on the flat shape both stages share one `.XV` and the
+force-constant run overwrites it with its last displacement, while the output
+carries the stage's token in its name; the cell rather than a re-derived
+vacuum box, because the deck otherwise shifts the atoms into a box drawn
+around the new bounding box, and a relaxed geometry moved against the
+real-space grid is not stationary on that grid any more. The FC deck's start
+state stays the kind's (§ 5.3: `MD.UseSaveXV .false.`), because honouring a
+found `.XV` is exactly what would take a displaced geometry as the stationary
+point on a re-run. `prep` **refuses to prepare `freq` before `relax` has
+concluded** when the ladder has one, naming the stage to run first — the job
+set's own order, not a guess — and **refuses `freq` when the box is unticked
+and the ladder holds no enabled `relax` stage**: the box says *relax first*
+and the ladder holds nothing that would, so the description contradicts
+itself, and the refusal names the two ways out (add the stage, or state the
+structure relaxed) rather than measuring at a geometry nobody chose.
+
+**And the read-back reads the geometry the force constants belong to**: the
+first frame of the force-constant run's output (its FC step 0, through the
+one SIESTA output parser) is the geometry the projection and the artifact's
+`equilibrium.positions_ang` use (§ 5.5) — the relaxed one, or the input one
+when the box was ticked. The file's geometry is the Hessian's, on this route
+as on PySCF's (§ 4.2).
+
 ### 5.3 The deck
 
 `siesta/input.py::spec_for(struct, cfg, calculation="vibration")` renders the
@@ -992,7 +1042,7 @@ The deliverable of the run is the artifact, and it is derived **on the host**
 function the PySCF deck carries:
 
 ```text
-struct  = the calculation's structure, INPUT order;  perm = read_permutation(bundle)
+struct  = the calculation's structure, INPUT order, its positions replaced by the run's FC step 0 (§ 5.2a);  perm = read_permutation(bundle)
 sorted  = apply_order(struct, perm.sorted_to_original)          # the copy the deck was written from
 fc      = read_fc(<label>.FC)                                    # (n_free, 3, ±, N, 3), eV/Å²
 H_AA    = mean over ± of fc[a, α, ·, b, β], a, b ∈ FREE          # the central difference
@@ -1024,10 +1074,13 @@ and its forces are the first `siesta: Atomic forces` block of the run's
 output. `summarize` reads them (`parse/engines/siesta_fc.py::reference_forces_from_out`)
 and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
 atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
-against the catalogue's **recommended** `relax_force_tol` (0.02 eV/Å, read from
-the one catalogue) — not the tolerance the person's own relaxation used, which
-does not travel with the structure yet (V1.28); the warning names it as such,
-and `engine_metadata.reference_force_criterion_ev_ang` records it. The judged
+against **this description's own `relax_force_tol`** — the item is on the
+vibration template (§ 3.1), so the yardstick is the tolerance the person set
+or left at the kind's recommendation, resolved for the stage the way `prep`
+resolves it; `engine_metadata.reference_force_criterion_ev_ang` records the
+number used. *(Until 2026-09-24 the catalogue's general default stood in for
+it.)* The positions the projection and the artifact use are the run's own
+reference geometry, its FC step 0 (§ 5.2a). The judged
 number is the **largest absolute Cartesian component** over the free atoms, the
 convention the PySCF deck's own check uses (§ 4.3). Above it the block carries a warning naming the number and the
 two ways out, `summarize` prints it, and the viewer's relaxation row shows the
@@ -1115,12 +1168,12 @@ held, the rank-derived count of surviving motions and how many modes will be
 reported (R7), and the statement that the held atoms sit outside the FC range
 so no force constant is taken with respect to them, that frequencies are those
 of the free atoms in the static field of the held ones, that thermochemistry
-is vibrational-only and that intensities are not computed; the precondition:
-an unmade `already_relaxed` is an **error** naming the two ways out (relax
-first with an optimization calculation that holds the same atoms and export its
-final frame from the Results tab as a pair, or state the assertion), a made one
-an info line saying the read-back answers it with the reference-step forces
-(§ 5.5); and the
+is vibrational-only and that intensities are not computed; the precondition
+(§ 2.2): with the box unticked, an info line that the ladder relaxes first, to
+the template's force tolerance, before the force constants; with it ticked, a
+**warning** that the frequencies will be off if the structure is not relaxed
+at this level of theory, and that the read-back measures the reference-step
+forces against that tolerance (§ 5.5); and the
 unconsumed-region-label notice every kind carries. The SIESTA engine
 validator defers that notice and its own *held during relaxation* line on
 this kind — one fact, one finding ([`science/validation.md`](?doc=science/validation.md) § 7).
@@ -1207,9 +1260,9 @@ tests can meaningfully guard:
 | `modes[].ir_intensity_km_mol` | `dμ/dR` (analytic response, or dipoles at displaced geometries) | **derived** — `dμ/dQ = Σ (dμ/dR)·L_canonical` (`einsum('kai,ka->i', DMU_DR, L_canonical)`), then `42.2561·\|dμ/dQ\|²` | km/mol |
 | `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global `(Bohr/Å)⁶ ≈ 0.02197` | Å⁴/amu |
 | `modes[].zero_point_amplitude_amu12_ang` · `zero_point_displacement_ang` | the mode's frequency and canonical vector | **derived at serialisation** — `√(16.858 / ν̃)`, times `L_canonical` per free atom (§ 6.3) | amu^½·Å · Å |
-| `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by `summarize` — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the catalogue's `relax_force_tol` default | Eh/Bohr |
+| `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by `summarize` — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the description's own `relax_force_tol` (§ 5.5) | Eh/Bohr |
 | `engine_metadata.fc_asymmetry_max_ev_ang2` (SIESTA) | the `.FC` file | **derived** — `max \|H_ij − H_ji\|` over the free block before symmetrisation (§ 5.5) | eV/Å² |
-| `engine_metadata.reference_force_criterion_ev_ang` (SIESTA) | the catalogue's `relax_force_tol` default | **read** by `summarize` — the criterion the verdict used, so the verdict carries its provenance (§ 5.5) | eV/Å |
+| `engine_metadata.reference_force_criterion_ev_ang` (SIESTA) | the description's `relax_force_tol`, resolved for the stage | **read** by `summarize` — the criterion the verdict used, so the verdict carries its provenance (§ 5.5) | eV/Å |
 | `modes[].electronic_structure.amplitude_ang` | — | the push `A` of § 4.8, molbuilder's own choice (`displacement_amplitude_ang`), recorded with the probe it produced | Å |
 | `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, `E` at ±A | non-finite dropped; the shift and the coupling `ΔE/(2A)` are the viewer's arithmetic | Hartree |
 | `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
@@ -1360,7 +1413,7 @@ flowchart TB
   subgraph describe["describe (browser or CLI)"]
     ST["structure + frozen_atoms region<br/>(.xyz + .molstruct.json)"]
     CAT["catalogue narrowed to (engine, vibration)<br/>→ the form · → &lt;label&gt;.template.toml"]
-    TJ["task.json: calculation vibration,<br/>engine, one stage freq"]
+    TJ["task.json: calculation vibration,<br/>engine, the ladder (freq; relax + freq)"]
   end
   subgraph prep["prep run freq"]
     G["validate(struct, cfg, calculation)<br/>PySCF checks #124; SIESTA checks #124; refuse"]
@@ -1460,7 +1513,7 @@ mode matching across runs (V1.24).
 | `tests/spectra/test_normal_modes.py` | every row of the science acceptance table — the rank rule alone, no engine |
 | `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check |
 | `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
-| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the gate's demand for the relaxed-assertion; the read-back on the measured fixtures — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset on the relaxed fixture, `prep` refusing until the assertion is made |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the read-back on the measured fixtures — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
@@ -1517,11 +1570,11 @@ nothing is in that state as of 2026-09-24.
 | a release note: every held-atom spectrum and free energy computed before 2026-09-23 contains a non-vibration | **owed** — V1.16 | true and intended; the old runs disagree with the new ones |
 | the presenter's category label names no engine (*Vibrational spectrum*); the Spectrum tab's engine sentence is the strip's | **built 2026-09-24** | |
 | the Molbuilder tab's save prompt doubling a typed suffix (`x.xyz.xyz`); the `#`-label unconsumed warning (needs a ruling); the vacuum notice on a gas-phase PySCF run | **owed** — UI walk 2026-09-23 | not this kind's, recorded where found |
-| the SIESTA route judges stationarity: the forces at FC step 0 read into `relaxation.max_force_eh_bohr` over the free atoms, `converged` against the catalogue's `relax_force_tol`, the warning printed and shown | **built 2026-09-24** — V1.21 | § 5.5; R5 on both routes |
+| the SIESTA route judges stationarity: the forces at FC step 0 read into `relaxation.max_force_eh_bohr` over the free atoms, `converged` against the description's own `relax_force_tol`, the warning printed and shown | **built 2026-09-24** — V1.21 | § 5.5; R5 on both routes |
 | the asymmetry diagnostic `max \|H_ij − H_ji\|` recorded as `engine_metadata.fc_asymmetry_max_ev_ang2` | **built 2026-09-24** — V1.22; no warning threshold yet; on an axial block the off-diagonals vanish by symmetry, so H₂ shows nothing | § 5.5 |
-| `already_relaxed` on SIESTA: the precondition asserted by the person, refused while unmade, measured when made | **built 2026-09-24** | § 2.2, § 3.1, § 5.8 |
+| `already_relaxed` on both engines as the person's explicit say: unticked the tool relaxes first (PySCF Phase 0; SIESTA a `relax` stage, the geometry carried as coordinates), ticked it measures and warns plainly; the relaxation's convergence items on the vibration form with the kind's recommended tight values | **built 2026-09-24** | § 2.2, § 3.1, § 5.2a, § 5.8 |
 | the mass-calibrated displacement per mode — `zero_point_amplitude_amu12_ang`, `zero_point_displacement_ang`, derived at serialisation | **built 2026-09-24** — V1.29 | § 6.3, § 6.6 |
-| one stationarity rule for both routes: PySCF warns above ten times `geom_gmax` (a per-atom norm in geomeTRIC's definition) on the largest force component, SIESTA judges once the catalogue's tolerance on the largest component; one factor and one convention, written beside R5 | **needs a decision** — V1.30 | § 4.3, § 5.5 |
+| one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own force tolerance, a plain warning above it, on PySCF and SIESTA alike | **built 2026-09-24** — V1.30, by the ruling of § 2.2 | § 2.2, § 4.3, § 5.5 |
 | the structure carries its relaxation record (engine, level of theory, criterion, achieved force, the held set, the run) in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs | **proposed** — V1.28, needs a design and a yes | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **owed, needs a design** — V1.23 | `science/normal-modes.md` § 4b.6 C |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |

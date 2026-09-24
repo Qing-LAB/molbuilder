@@ -197,8 +197,11 @@ The three prerequisites named here landed with the spectra migration
    shared renderer as Build, and `dataclass_to_form_schema`'s spectra route
    retires at P3.
 3. **The decision was made** — a vibration calculation IS a description with
-   a ladder: one `freq` stage ([`engines/stages.md`](?doc=engines/stages.md)
-   § 6.8), with relaxation an in-deck precondition rather than a stage.
+   a ladder, read from the template's own `already_relaxed` box
+   ([`engines/vibration.md`](?doc=engines/vibration.md) § 2.2, § 5.2a): a
+   `freq` stage, and before it on SIESTA a `relax` stage unless the structure
+   is stated relaxed; on PySCF the relaxation is the deck's own Phase 0. The
+   Task setup tab proposes that ladder from the template that came over.
 
 **And the hand-over is now exactly what this section predicted**: a Send
 button on the same endpoint. One extension rode along — the body may carry

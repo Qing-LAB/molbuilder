@@ -2100,15 +2100,17 @@ function renderNext(task) {
     }
 
     /* THE STEP AFTER THE RUN, when the run leaves a file the host must
-     * derive the result from.  Read from the description -- its engine and
-     * its kind -- never from a list here: a SIESTA vibration leaves
-     * <label>.FC and `summarize run` writes <label>.spectra.json beside it
-     * (engines/vibration.md § 5.5).  A PySCF vibration writes its own file
-     * and needs nothing after launch. */
+     * derive the result from.  Read from the description -- its engine,
+     * its kind and the rung's name -- never from a list here: a SIESTA
+     * vibration's `freq` stage leaves <label>.FC and `summarize run`
+     * writes <label>.spectra.json beside it (engines/vibration.md § 5.5);
+     * its `relax` stage leaves a relaxation, which needs nothing derived.
+     * A PySCF vibration writes its own file and needs nothing after
+     * launch. */
     function _afterRunLines(task, name) {
         const engine = ((task && task.engine && task.engine.name) || "siesta").toLowerCase();
         const kind = (task && task.calculation) || "optimization";
-        if (engine === "siesta" && kind === "vibration") {
+        if (engine === "siesta" && kind === "vibration" && name === "freq") {
             return "\nmolbuilder jobset summarize run " + name + _bundleArg()
                  + "   # derives the modes from the .FC file into <label>.spectra.json";
         }
@@ -2580,14 +2582,25 @@ function proposedFromHandover(over, shape, varies, bench) {
     const run = (over && over.run) || {};
     // THE KIND rides the hand-over (absent = optimization, the same
     // absent-is-a-state rule task.json uses).  A vibration hand-over
-    // proposes the kind's own ladder -- ONE `freq` stage
-    // (spectra-migration plan § 2: the relaxation is the deck's
-    // precondition, not a rung) -- where an optimization proposes the
-    // ordinary `coarse` start.
+    // proposes the kind's own ladder, read from the template that came
+    // over with it (`engines/vibration.md` § 2.2, § 5.2a): `freq` alone
+    // when the person ticked "already relaxed" or the engine is PySCF,
+    // whose deck relaxes in-process; `relax` then `freq` on SIESTA
+    // otherwise, because one SIESTA run cannot relax and take force
+    // constants.  An optimization proposes the ordinary `coarse` start.
     const kind = (over && over.calculation) || "optimization";
-    const stages = kind === "vibration"
-        ? [{ name: "freq", enabled: true, overrides: {} }]
-        : [{ name: "coarse", enabled: true, overrides: {} }];
+    const engineName = String(_handoverEngine(over) || "siesta").toLowerCase();
+    const relaxed = _tmpl.values.already_relaxed === true;
+    let stages;
+    if (kind === "vibration") {
+        stages = [];
+        if (engineName === "siesta" && !relaxed) {
+            stages.push({ name: "relax", enabled: true, overrides: {} });
+        }
+        stages.push({ name: "freq", enabled: true, overrides: {} });
+    } else {
+        stages = [{ name: "coarse", enabled: true, overrides: {} }];
+    }
     const out = {
         schema:    "molbuilder/task@1",
         engine:    (over && over.engine) || { name: "siesta" },

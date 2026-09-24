@@ -402,11 +402,12 @@ engines = ["siesta"]
 anchor = "MD.TypeOfRun"
 engine_key = "MD.TypeOfRun"
 manual = "SIESTA 5.4.2 §7 'STRUCTURAL RELAXATION, PHONONS, AND MOLECULAR DYNAMICS'"
-calculations = ["optimization"]
+calculations = ["optimization", "vibration"]
 type = "enum"
 choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
 default = "CG"
+recommended = { vibration = "Broyden" }
 group = "stage"
 label = "Relaxation / MD algorithm"
 help = """
@@ -428,10 +429,11 @@ engines = ["siesta"]
 expands = ["MD.Steps", "MD.FinalTimeStep"]
 engine_key = "MD.Steps (CG / Broyden / FIRE) | MD.FinalTimeStep (Verlet / Nose)"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation' + §7.4 'Molecular dynamics'"
-calculations = ["optimization"]
+calculations = ["optimization", "vibration"]
 type = "int"
 value = 200
 default = 200
+recommended = { vibration = 100 }
 range = [1, 10000]
 group = "budget"
 label = "Max geometry-optimisation steps"
@@ -450,10 +452,11 @@ engines = ["siesta"]
 anchor = "MD.MaxForceTol"
 engine_key = "MD.MaxForceTol"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
-calculations = ["optimization"]
+calculations = ["optimization", "vibration"]
 type = "float"
 value = 0.02
 default = 0.02
+recommended = { vibration = 0.01 }
 unit = "eV/Å"
 range = [0.001, 0.5]
 group = "stage"
@@ -473,10 +476,11 @@ engines = ["siesta"]
 anchor = "MD.MaxDispl"
 engine_key = "MD.MaxDispl (CG / Broyden / FIRE)"
 manual = "SIESTA 5.4.2 §7.2 'Structural relaxation'"
-calculations = ["optimization"]
+calculations = ["optimization", "vibration"]
 type = "float"
 value = 0.05
 default = 0.05
+recommended = { vibration = 0.02 }
 unit = "Å"
 range = [0.001, 0.5]
 group = "stage"
@@ -1739,7 +1743,7 @@ calculations = ["vibration"]
 expands = ["geomeTRIC optimize()", "gradient check"]
 category = ["procedure"]
 engines = ["pyscf", "siesta"]
-engine_key = "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)"
+engine_key = "(molbuilder: no engine keyword -- unticked, the relaxation runs first, as PySCF's Phase 0 or SIESTA's `relax` stage; ticked, the forces at the starting geometry are measured instead)"
 type = "bool"
 value = false
 default = false
@@ -1747,11 +1751,10 @@ group = "profile"
 label = "Structure is already relaxed"
 tier = "basic"
 help = """
-Your assertion that this structure already sits at a stationary point -- a geometry where the forces vanish -- at the level of theory about to run.  Both engines ask it, and neither takes it on trust: each answers it with the forces it measures at that geometry.
-On PySCF, with it on, the vibration deck skips its built-in relaxation and goes straight to the Hessian; relaxation is otherwise the deck's mandatory first act.
-A harmonic analysis is only valid at a stationary point.  Off one, frequencies shift and spurious imaginary modes appear.
-The deck still checks the gradient at the input geometry and warns with the max-force number.  It never refuses, because the statement is yours to make.  That number also appears on the viewer's relaxation phase chip.
-On SIESTA the force-constant run cannot relax at all, so this statement is the precondition itself: unmade, preparing is refused with the two ways out (relax first with an optimization calculation that holds the same atoms, then export its final frame from the Results tab as a pair); made, the run proceeds and `summarize` reads the forces SIESTA evaluated at the reference geometry (its FC step 0) into the result and judges them against the catalogue's recommended relaxation tolerance (`relax_force_tol`; the tolerance your own relaxation used does not travel with the structure yet) -- your statement, answered with numbers.
+Is this structure already relaxed at the level of theory about to run?  Your call, and explicit: nothing is assumed either way.
+UNTICKED (the default): the calculation relaxes the free atoms first, to the convergence settings in this form -- recommended tight, a largest remaining force of about 0.01 eV/A -- and then takes the second derivatives at the relaxed geometry.  On PySCF that is the script's first phase; on SIESTA it is a `relax` stage before the `freq` stage, the relaxed geometry carried into the force-constant deck.
+TICKED: nothing is relaxed.  If the structure is NOT relaxed at this level of theory the frequencies will be off -- an unrelaxed H2 bond gave 3358 cm-1 where the relaxed one gives 3022 (a tenth) -- so the tool measures the forces at the starting geometry and warns with the number when they exceed the force tolerance in this form.  It never refuses: the statement is yours to make.
+A structure exported from a finished relaxation at the same level of theory is the case this box is for; anything drawn, edited or relaxed elsewhere should be left unticked.
 """
 
 [item.compute_raman]
@@ -1989,6 +1992,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'convergence_gmax' (driven via pyscf.geomopt)
 type = "float"
 value = 0.00045
 default = 0.00045
+recommended = { vibration = 0.0002 }
 unit = "Ha/Bohr"
 range = [1e-06, 0.1]
 group = "stage"
@@ -2010,6 +2014,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'convergence_grms' (driven via pyscf.geomopt)
 type = "float"
 value = 0.0003
 default = 0.0003
+recommended = { vibration = 0.0001 }
 unit = "Ha/Bohr"
 range = [1e-06, 0.1]
 group = "stage"
@@ -2030,6 +2035,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'convergence_dmax' (driven via pyscf.geomopt)
 type = "float"
 value = 0.0018
 default = 0.0018
+recommended = { vibration = 0.001 }
 unit = "Å"
 range = [1e-05, 1.0]
 group = "stage"
@@ -2049,6 +2055,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'convergence_drms' (driven via pyscf.geomopt)
 type = "float"
 value = 0.0012
 default = 0.0012
+recommended = { vibration = 0.0005 }
 unit = "Å"
 range = [1e-05, 1.0]
 group = "stage"
@@ -2069,6 +2076,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'convergence_energy' (driven via pyscf.geomop
 type = "float"
 value = 1e-06
 default = 1e-06
+recommended = { vibration = 0.000001 }
 unit = "Hartree"
 range = [1e-12, 0.01]
 group = "stage"
@@ -2090,6 +2098,7 @@ manual = "PySCF 2.13 geomeTRIC 1.0 'maxsteps' (driven via pyscf.geomopt)"
 type = "int"
 value = 200
 default = 200
+recommended = { vibration = 100 }
 range = [1, 10000]
 group = "stage"
 label = "Max steps"

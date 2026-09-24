@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import click
+import numpy as np
 from ..issues import Issue
 
 from .ledger import record as _ledger
@@ -625,10 +626,15 @@ def init_cmd(structure, bundle: str, shape: str,
                    "pyscf": default_pyscf_stages}[engine]
         _one = SIESTA_STAGE_NAMES[1]        # the shared ladder vocabulary
         if calculation == "vibration":
-            # The vibration kind's own ladder (spectra-migration plan § 2):
-            # ONE freq stage, PySCF first.  A --stage-strategy names the
-            # optimization ladder's tiers, which grade nothing here.
+            # The vibration kind's own ladder, read from the person's one
+            # statement (`engines/vibration.md` § 2.2, § 5.2a): a fresh
+            # description carries the catalogue's own value of the box --
+            # unticked -- so SIESTA gets `relax` then `freq`, PySCF `freq`
+            # alone.  A --stage-strategy names the optimization ladder's
+            # tiers, which grade nothing here: the convergence settings are
+            # the template's, recommended tight (`template.md` § 6.3a).
             from ..pyscf.stages import VIBRATION_ENGINES, vibration_stages
+            from ..template import catalogue as _catalogue, one as _one
             if engine not in VIBRATION_ENGINES:
                 raise click.ClickException(
                     f"calculation 'vibration' runs on pyscf (analytic "
@@ -638,10 +644,14 @@ def init_cmd(structure, bundle: str, shape: str,
             if stage_strategy:
                 raise click.ClickException(
                     "--stage-strategy names the optimization ladder's "
-                    "tiers; a vibration calculation has one `freq` stage "
-                    "whose geometry criteria default to the tight tier "
-                    "in its template.")
-            stages = tuple(vibration_stages())
+                    "tiers; a vibration calculation's ladder is read from "
+                    "its own template -- `freq`, with a `relax` stage "
+                    "before it on SIESTA unless the structure is stated "
+                    "relaxed (engines/vibration.md 2.2) -- and its "
+                    "convergence settings are the template's own.")
+            _box = _one(_catalogue(), "already_relaxed", engine=engine)
+            stages = tuple(vibration_stages(
+                engine, already_relaxed=bool(_box.default if _box else False)))
         else:
             stages = (tuple(_ladder(stage_strategy))
                       if stage_strategy
@@ -658,6 +668,11 @@ def init_cmd(structure, bundle: str, shape: str,
             cfg = PySCFConfig(job_name=label)
         else:
             cfg = SiestaConfig(system_label=label, psml_lib=psml_lib)
+        # The kind's own recommendations become the template's values
+        # (`template.md` § 6.3a): a vibration's relaxation settings start
+        # tight, and the person changes them there like any other value.
+        from ..template import apply_recommended as _apply_recommended
+        cfg = _apply_recommended(cfg, calculation, engine=engine)
 
         desc = build_description(
             struct, cfg, stages,
@@ -2748,48 +2763,17 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                 # A CLI boundary: the record's refusals (SortError) and a
                 # structure that cannot be read both end as the message.
                 raise click.ClickException(str(e))
-            ver = ""
-            outs = sorted(where.glob("*.out"),
-                          key=lambda q: q.stat().st_mtime)
-            if outs:
-                # The engine's build, through the one SIESTA output parser
-                # (its header probes), not a regex over the file's head.
-                from ..parse.engines.siesta import SiestaParser as _SiestaParser
-                try:
-                    _build = (_SiestaParser.parse(str(outs[-1]))
-                              .runtime_info.get("siesta_build") or {})
-                    ver = str(_build.get("version") or "")
-                except Exception:                        # noqa: BLE001
-                    ver = ""
-            # THE REFERENCE-STEP FORCES, read from the run's own output, and
-            # the relaxation's criterion from the one catalogue, so the
-            # artifact judges stationarity (R5 on this route; vibration.md
-            # § 5.5).  The person's assertion travels from the template.
-            from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE as _EV_ANG_PER_EH_BOHR
-            from ..parse.engines.siesta_fc import reference_forces_from_out
-            from ..template import (catalogue as _catalogue,
-                                    config_from_template, find_template, one)
-            f_ref = None
-            if outs:
-                try:
-                    f_ref = reference_forces_from_out(outs[-1])
-                except Exception as e:                   # noqa: BLE001
-                    click.echo(f"  reference forces not read from "
-                               f"{outs[-1].name}: {e}")
-            # THE CRITERION is the catalogue's recommended `relax_force_tol`
-            # -- the tolerance the person's own relaxation used does not
-            # travel with the structure yet (plan V1.28) -- and the warning
-            # names it as such.
-            crit_item = one(_catalogue(), "relax_force_tol", engine="siesta")
-            crit = float(crit_item.default) if crit_item is not None else None
-            # THE ASSERTION, resolved the way prep resolves this stage's
-            # config: the template's values plus the stage's own overrides
-            # (`effective_config`, stages.md § 4), so an override prep
-            # honoured is not invisible here -- and a description that
-            # cannot be resolved is a refusal, never a silent "nobody
-            # asserted".
+            # THE STATEMENT AND THE YARDSTICK, resolved the way prep resolves
+            # this stage's config: the template's values plus the stage's
+            # own overrides (`effective_config`, stages.md § 4), so an
+            # override prep honoured is not invisible here -- and a
+            # description that cannot be resolved is a refusal, never a
+            # silent "nobody asserted".  The criterion is this description's
+            # own `relax_force_tol` (vibration.md § 5.5): the tolerance the
+            # person set or left at the kind's recommendation.
             from ..config.siesta import SiestaConfig
             from ..resolve import effective_config
+            from ..template import config_from_template, find_template
             try:
                 tmpl = find_template(base)
                 if tmpl is None:
@@ -2802,12 +2786,62 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                                          SiestaConfig),
                     stage_obj.overrides, where=stage)
                 asserted = bool(cfg_eff.already_relaxed)
+                crit = (float(cfg_eff.relax_force_tol)
+                        if cfg_eff.relax_force_tol is not None else None)
             except click.ClickException:
                 raise
             except Exception as e:                       # noqa: BLE001
                 raise click.ClickException(
                     f"the description could not be resolved for stage "
                     f"{stage!r}: {e}")
+            # THE RUN'S OWN REFERENCE STEP, through the one SIESTA output
+            # parser (vibration.md § 5.2a, § 5.5): its FC step 0 is the
+            # geometry the force constants belong to -- the relaxed one
+            # after a `relax` stage, the input one when the structure was
+            # stated relaxed -- and the forces there are what stationarity
+            # is judged by (R5 on this route).  The coordinates replace the
+            # structure file's in BOTH orders: the sorted copy the
+            # projection runs on, and the input order the artifact speaks.
+            from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE as _EV_ANG_PER_EH_BOHR
+            from ..parse.engines.siesta import SiestaParser as _SiestaParser
+            from ..parse.engines.siesta_fc import reference_frame_of
+            ver = ""
+            f_ref = None
+            outs = sorted(where.glob("*.out"),
+                          key=lambda q: q.stat().st_mtime)
+            if outs:
+                # ONE parse of the run's output: the engine's build from the
+                # parser's header probes (not a regex over the file's head)
+                # and the reference step from its frames.
+                _traj = None
+                try:
+                    _traj = _SiestaParser.parse(str(outs[-1]))
+                    _build = _traj.runtime_info.get("siesta_build") or {}
+                    ver = str(_build.get("version") or "")
+                except Exception as e:                   # noqa: BLE001
+                    click.echo(f"  {outs[-1].name} not parsed: {e}")
+                try:
+                    if _traj is None:
+                        raise ValueError("the output did not parse")
+                    _ref = reference_frame_of(_traj, name=outs[-1].name)
+                except Exception as e:                   # noqa: BLE001
+                    click.echo(f"  reference step not read from "
+                               f"{outs[-1].name}: {e}")
+                else:
+                    f_ref = np.asarray(_ref.forces, dtype=float)
+                    _pos_s = np.asarray(_ref.structure.positions, dtype=float)
+                    if (list(_ref.structure.elements)
+                            != list(sorted_struct.elements)):
+                        raise click.ClickException(
+                            f"{outs[-1].name} describes "
+                            f"{_ref.structure.formula} in an order that is "
+                            f"not this calculation's sorted copy "
+                            f"({sorted_struct.formula}); the run and the "
+                            f"description disagree about the atoms.")
+                    _pos_in = np.empty_like(_pos_s)
+                    _pos_in[list(perm.sorted_to_original)] = _pos_s
+                    sorted_struct = sorted_struct.replace(positions=_pos_s)
+                    struct = struct.replace(positions=_pos_in)
             try:
                 res = spectra_results_from_fc(
                     struct, sorted_struct, perm, fc, label=_tt.label,

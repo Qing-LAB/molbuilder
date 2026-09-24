@@ -663,36 +663,41 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
                 f"vibrational-only.  Intensities are not computed on this "
                 f"route."),
             where="structure.regions"))
-    # THE PRECONDITION IS THE PERSON'S TO ASSERT (`engines/vibration.md`
-    # § 2.2, § 5.8): the force-constant run cannot relax, so unmade the
-    # statement is a refusal naming the two ways out, and made it is a
-    # statement the read-back answers with the reference-step forces.
+    # THE RELAXATION IS THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md`
+    # § 2.2, § 5.8), made with one box.  Unticked, the ladder relaxes first
+    # -- a `relax` stage before the force constants, to this template's own
+    # tolerance -- and the finding says so.  Ticked, nothing relaxes, and the
+    # finding is a WARNING in plain words: off a stationary point the
+    # frequencies will be off; the read-back measures the reference-step
+    # forces against the same tolerance and says whether the statement held.
+    # Never a refusal: the statement is the person's to make.
+    _tol = getattr(cfg, "relax_force_tol", None)
+    _tol_text = (f"{float(_tol):g} eV/Å" if _tol is not None
+                 else "the template's relax_force_tol")
     if not bool(getattr(cfg, "already_relaxed", False)):
-        issues.append(Issue(
-            severity="error",
-            message=(
-                "The force-constant run relaxes nothing, and this structure "
-                "has not been stated to be relaxed.  Relax it first -- an "
-                "optimization calculation holding the same atoms, its final "
-                "frame exported from the Results tab as a pair -- and then "
-                "state `already_relaxed = true`; the read-back reads the "
-                "forces at the reference geometry and says whether the "
-                "statement held.  Off a minimum the free atoms' residual "
-                "forces put curvature into motions that are not vibrations "
-                "(science/normal-modes.md 4), which the projection removes "
-                "but the real modes still shift."),
-            where="config.already_relaxed"))
-    else:
         issues.append(Issue(
             severity="info",
             message=(
-                "You stated the structure is relaxed at this level of "
-                "theory; the force-constant run relaxes nothing and takes "
-                "the input geometry as the stationary point.  The read-back "
-                "reads the forces SIESTA evaluates at that geometry (its FC "
-                "step 0) and judges them against the catalogue's recommended "
-                "relaxation tolerance, so the statement is answered with "
-                "numbers."),
+                f"The structure is not stated to be relaxed, so the ladder "
+                f"relaxes it first: a `relax` stage runs before the "
+                f"force-constant stage, to this calculation's own force "
+                f"tolerance ({_tol_text}, the relaxation settings on this "
+                f"form), and the force constants are taken at the relaxed "
+                f"geometry."),
+            where="config.already_relaxed"))
+    else:
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"You stated the structure is already relaxed at this level "
+                f"of theory, so nothing here relaxes it: the force constants "
+                f"are taken at the geometry as given.  If it is not relaxed "
+                f"at this level of theory -- another code, another basis, a "
+                f"looser tolerance -- the frequencies will be off, the low "
+                f"ones most.  The read-back measures the forces SIESTA "
+                f"evaluates at that geometry (its FC step 0) against this "
+                f"calculation's force tolerance ({_tol_text}) and reports "
+                f"the verdict with the modes."),
             where="config.already_relaxed"))
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(
