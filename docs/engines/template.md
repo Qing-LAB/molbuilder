@@ -438,6 +438,7 @@ engines     = ["siesta"]                # REQUIRED — which engines this
 | `value` | **when the item has been answered.** Its absence is a real state — *explicitly unset* — distinct from the default and from an absent key elsewhere. It was listed as unconditionally required until 2026-08-13, which read as though a valueless item were malformed; § 6.4 makes valueless the **normal** state for anything resolved at `prep` (memory, `block_size`, rank count, threads) |
 | `allocation` | when the **scheduler** answers this item, not a person — § 6.4. It is what makes a `value` on the item a refusal rather than a choice |
 | `citation` | **which calculation KINDS have this item answered by a cited run** rather than by a person — § 6.4's sibling, ruled 2026-09-15. A list, like `calculations`, and absence means *never* |
+| `shared` | **which calculation KINDS this item binds every rung of** — a scope, not an answerer (`engines/transport.md` § 3.8.6, decided 2026-09-24). A list, like `calculations`; absence means *any rung may own it*. Every `citation` row is shared; the marker exists because the shared set is larger than the cited one |
 | `expands` | `kind = "deck"` — it is how a reader learns what this item produces: the engine keywords when the product is keywords (`restart` → `DM.UseSaveDM`, …), or the deck MECHANISM by name when the product is control flow (`displacement_amplitude_ang` → `finite-difference polarizability loop` — the vibration kind's items generate loops, not lines, and inventing pseudo-keywords for them would send a reader grepping for spellings no engine has) |
 | `choices` | `type = "enum"` — an enum with no members cannot be validated or rendered as a control |
 
@@ -711,6 +712,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
+| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `spin_treatment`, `spin_total`, `kgrid_displacement`, `psml_lib` and `system_label` (Class A, `engines/transport.md` § 2a.3). Three readers ask it: the shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -1457,6 +1459,7 @@ are how a layer asks which is which instead of carrying its own list of names.
 |---|---|---|---|
 | `allocation` | the scheduler | at `prep`, on the machine that runs it | nothing — declared, valueless |
 | `citation` | the cited run | at **`jobset init`**, once | **a value**, which the person may then change |
+| `shared` | *(not an answerer — a scope)* | — | whatever answered it; the value binds every rung and no stage overrides it |
 
 The `citation` row said *"declared, valueless, filled at `prep`"* until
 2026-09-16, and that was the SEALED reading. `engines/transport.md` § 2a.7

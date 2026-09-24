@@ -1895,15 +1895,21 @@ markers the catalogue carries, never by a list a blueprint keeps:
 | `calculations` | not a parameter of this kind | — | — |
 | `allocation` | the scheduler answers at prep | no | no |
 | `role` | the rung's own identity; a choice with one correct answer | no | no |
-| **shared** *(see § 3.8.6 — no marker exists yet)* | binds every rung | **yes** | **no** |
+| `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials) answer themselves | **no** |
 | `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
 | `stages` | only these rungs may own it | — | routed to those rungs |
 
-**`citation` is not the same as shared, and treating it as one is the defect
-of 2026-09-23.** `citation` says *who supplies the default*; shared says
-*who it binds*. Every `citation` row is shared, and Class A contains more:
-`species_order`, `spin_treatment`, `spin_total` and the pseudopotentials are
-shared and answered by nobody's run.
+**`citation` is not the same as `shared`, and treating it as one was the
+defect of 2026-09-23.** `citation` says *who supplies the default*; `shared`
+says *who it binds*. Every `citation` row is shared, and Class A contains
+more: `species_order`, `spin_treatment`, `spin_total`, the transverse grid's
+offset and the pseudopotentials are shared and answered by nobody's run.
+Both surfaces are served by `/api/transport/schema?surface=rung|shared`
+from `catalogue_to_form_schema(surface=)`; the shared one, given the
+citation, carries the citation's answers as its values and names their
+source (`transport/citation_defaults.py::citation_answers`). The two panels
+sit one above the other on the tab (cards 2 and 4), so the per-rung form
+carries no second echo of the shared values on this page.
 
 The organisation of each panel is `web/form-schema.md` § 1.3's two axes and
 is not chosen here: `group` is the outer card, `category` the legend inside.
@@ -1964,18 +1970,20 @@ six scattered versions could not do.
 | | state |
 |---|---|
 | the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
-| the per-rung form is generated from the catalogue | ❌ **reverted** — see § 3.8.6 |
-| the shared panel exists | ❌ **not built.** So there is nowhere in the UI to state the electronic description at all: the form hides those values and nothing writes a template. `/api/task-setup/template-values` can READ one |
-| a value nobody chose is shown as not chosen | ❌ not built; `init` writes catalogue defaults into unanswered `citation` rows |
+| the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `role`, `allocation` and staging items kept off it by their markers |
+| the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
+| a value nobody chose is shown as not chosen | **half built** — the panel shows an unanswered `citation` row blank, and the describe door writes it VALUELESS into the template; `prep` then still falls back to the class default rather than leaving the keyword to SIESTA (the deck writer writes every field it has). The CLI's `init` still writes defaults into those rows |
 | the deck viewer | ❌ not built |
 | `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
 
 ---
 
-#### 3.8.6 The one open decision — there is no marker for SHARED
+#### 3.8.6 The decision — a marker for SHARED *(decided 2026-09-24: option 1)*
 
-**This is the keystone, and nothing above it can be built until it is
-settled.**
+**This was the keystone, and nothing above it could be built until it was
+settled.** The user chose the sibling marker — `shared = ["transport"]`
+beside `citation`, "don't over design" — and the form door, the describe
+door and `prep` read that one declaration (`template.md` § 6.4).
 
 On 2026-09-23 the per-rung form was swapped to the catalogue and **reverted
 the same day**. The swap filtered shared values using the `citation` marker,
@@ -2002,7 +2010,7 @@ doors at once. Two shapes, and the choice is the user's:
 
 Either way the rule is the same and belongs in one place: **the catalogue
 declares what binds every rung; the form, the describe door and `prep` all
-read that one declaration.**
+read that one declaration.** *(Built 2026-09-24 with the first shape.)*
 
 ---
 

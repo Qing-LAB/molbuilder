@@ -29,8 +29,9 @@ at prep: they are not parameters, they are the structure (§ 2a.3's
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 if TYPE_CHECKING:                                    # pragma: no cover
     from ..config.siesta import SiestaConfig
@@ -110,32 +111,34 @@ def _apply_kgrid(kw: dict, kgrid) -> None:
     kw["tbt_k_grid"] = (kx, ky, 1)
 
 
-def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
-    """The config `jobset init` writes a transport template from.
+@dataclass(frozen=True)
+class CitationAnswers:
+    """What the cited directory answers of the shared electronic description
+    (`engines/transport.md` § 3.1's three cases, § 3.8.1): ``values`` in
+    ``SiestaConfig``'s field names, ``source`` one of ``"deck"`` (a finished
+    run's own deck), ``"record"`` (a saved structure that remembers its
+    run) or ``"none"`` (a saved structure that answers nothing), and
+    ``source_name`` the file the answers were read from."""
+    values: Dict[str, Any]
+    source: str
+    source_name: str = ""
 
-    *cite_dir* is the directory being cited; *label* names the calculation.
 
-    THE THREE CASES OF § 3.1, and each answers what it has:
+def citation_answers(cite_dir) -> CitationAnswers:
+    """Read the cited directory once (`engines/transport.md` § 3.8.0: at
+    `init`, into this calculation's own template).
 
-    * **a finished run** — its deck answers the electronic description, and
-      every answer becomes a template value the person may afterwards change;
-    * **a saved structure that remembers its run** — its sidecar carries that
-      run's own settings, recorded by the Results tab at export, and they
-      answer exactly as a deck's do;
-    * **a saved structure** — answers none of it, and the template is written
-      from the catalogue's defaults. That is the honest result rather than a
-      failure: nothing has been measured, so the person chooses.
+    * **a finished run** -- its deck answers the electronic description;
+    * **a saved structure that remembers its run** -- its sidecar carries
+      that run's own settings, recorded by the Results tab at export;
+    * **a saved structure** -- answers none of it.
 
-    *(This said the second and third were one case — "a labeled structure
-    answers none of it, there is no deck to read". § 3.1 of the live contract
-    listed two forms where the 2026-08-29 ruling gave three, so this file was
-    written to a contract missing the middle one. Restored 2026-09-23.)*
+    *(This said the second and third were one case until 2026-09-23.)*
     """
-    from ..config.siesta import SiestaConfig
     from .compose import classify_citation
     from ..parse.fdf import parse_fdf_params
 
-    kw = {}
+    kw: Dict[str, Any] = {}
     cited = classify_citation(Path(cite_dir))
     p = None
     if cited.deck is not None:
@@ -144,32 +147,10 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
             p = parse_fdf_params(cited.deck.read_text(encoding="utf-8",
                                                       errors="replace"))
         except UnknownUnit:
-            # A default this build cannot convert is not offered; the
-            # person fills the field themselves rather than starting from
-            # a number wrong by a fixed ratio.
+            # A deck the unit door refuses answers nothing here; the
+            # refusal itself is prep's to raise, by name.
             p = None
     if p is None:
-        # NO DECK TO READ -- either there is none, or the one there states a
-        # unit this build cannot convert (above) -- BUT THE PAIR MAY REMEMBER
-        # ONE.  § 3.1's middle case.  A form-A citation reaches here only by
-        # the second road, and `recorded_contract_of` answers None for it, so
-        # an unreadable deck still fills nothing rather than falling back to
-        # some other run's numbers.
-        # A structure exported from the Results tab after a run carries that
-        # run's own settings in its sidecar (`info.calculation`), and they
-        # answer here exactly as a deck's do: the reading transferred to the
-        # recorded copy.
-        #
-        # THIS WAS RULED IN AND THEN LOST.  `archive/2026-09-01-transport-
-        # design.md` § 4.1b (2026-08-29) gave the condition THREE shades and
-        # § 3.1 of the live contract carried only two, so when the parameter
-        # path moved onto the template on 2026-09-16 the code that acted on
-        # the middle one -- `stages.config_for` -- had nothing to be
-        # preserved against and was left without a caller.  Everything that
-        # READS the record survived: the tab still said "contract RECORDED",
-        # `compose` still warned the record might be stale.  Measured
-        # 2026-09-23 before this was restored: a pair recording 400 Ry, TZP
-        # and a 4x4 mesh produced a template of 300 Ry, DZP and Gamma-only.
         from .compose import recorded_contract_of
         recorded = recorded_contract_of(cited)
         block = dict((recorded or {}).get("contract") or {})
@@ -178,6 +159,8 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
             if v is not None:
                 kw[dst] = v
         _apply_kgrid(kw, block.get("k_mesh_transverse"))
+        source = "record" if recorded else "none"
+        source_name = str((recorded or {}).get("source") or "")
     else:
         for src, dst in _FROM_DECK.items():
             v = getattr(p, src, None)
@@ -185,9 +168,21 @@ def siesta_config_from_citation(cite_dir, *, label: str) -> "SiestaConfig":
                 kw[dst] = v
         if getattr(p, "kgrid", None):
             _apply_kgrid(kw, p.kgrid)      # the one rule, both sources
-
-    # `mesh_cutoff` is declared as a float and an .fdf usually states an
-    # integer; the type is the catalogue's to decide, not the deck's.
+        source, source_name = "deck", cited.deck.name
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
+    return CitationAnswers(values=kw, source=source, source_name=source_name)
+
+
+def siesta_config_from_citation(cite_dir, *, label: str,
+                                **chosen) -> "SiestaConfig":
+    """The config `jobset init` and the describe door write a transport
+    template from: the citation's answers (:func:`citation_answers`), then
+    what the person chose on the shared panel (``chosen``, in the same
+    field names) laid over them -- the person may change any of it, for
+    all five rungs at once (`engines/transport.md` § 2a.7 ruling 1).
+    """
+    from ..config.siesta import SiestaConfig
+    kw = dict(citation_answers(cite_dir).values)
+    kw.update({k: v for k, v in chosen.items() if v is not None})
     return SiestaConfig(system_label=label, **kw)

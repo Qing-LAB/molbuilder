@@ -960,8 +960,17 @@ def _control_for(item) -> str:
 
 def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                              calculation: str = "optimization",
+                             surface: Optional[str] = None,
                              ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
+
+    ``surface`` is a composite kind's second axis (`engines/transport.md`
+    § 3.8.2): ``"shared"`` is the panel that edits the TEMPLATE -- every item
+    the catalogue marks `shared` for this kind, except the `setup` group,
+    whose two members (the identity, the pseudopotential directory) the
+    description and the citation answer themselves -- and ``"rung"`` is the
+    per-rung form, which never offers a shared item.  ``None`` is every
+    surface at once, the ordinary kinds' one form.
 
     **The two grouping axes** (`form-schema.md` § 1.3), both carried by every
     item and answering different questions:
@@ -1013,6 +1022,14 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # on the latter would take a legitimate control off the Build form.
     items = [it for it in items
              if not getattr(it, "role", None) or calculation not in it.role]
+    if surface == "shared":
+        items = [it for it in items
+                 if calculation in it.shared and it.group != "setup"]
+    elif surface == "rung":
+        items = [it for it in items if calculation not in it.shared]
+    elif surface is not None:
+        raise ValueError(f"surface must be 'shared', 'rung' or None, "
+                         f"not {surface!r}")
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"

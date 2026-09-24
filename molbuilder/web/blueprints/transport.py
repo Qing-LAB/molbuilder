@@ -37,11 +37,10 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
-    dataclass_to_form_schema as _dataclass_to_form_schema,
+    catalogue_to_form_schema,
     issues_to_json as _issues_to_json,
 )
 
-from molbuilder.config.transport import TransportConfig
 from molbuilder.units import UnknownUnit
 from molbuilder.validation import validate as _validate
 
@@ -352,9 +351,7 @@ def api_transport_describe() -> Any:
     from molbuilder import template as _T
     from molbuilder.transport.citation_defaults import (
         siesta_config_from_citation)
-    from molbuilder.transport.stages import (CONTRACT_FIELDS,
-                                             SEALED_ALWAYS,
-                                             TRANSPORT_STAGES,
+    from molbuilder.transport.stages import (TRANSPORT_STAGES,
                                              resolvable_override_names,
                                              stages_for_transport)
     _RESOLVABLE = resolvable_override_names()
@@ -381,6 +378,10 @@ def api_transport_describe() -> Any:
     if not isinstance(overrides, dict):
         return jsonify({"ok": False,
                         "error": "overrides must be an object"}), 400
+    shared_chosen = body.get("shared") or {}
+    if not isinstance(shared_chosen, dict):
+        return jsonify({"ok": False,
+                        "error": "shared must be an object"}), 400
     typed = str(body.get("name") or "") or "transport"
 
     try:
@@ -388,19 +389,19 @@ def api_transport_describe() -> Any:
     except ComposeError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # Refused HERE, not at prep on the cluster: an unknown knob or a
-    # sealed one names itself while changing it is still free.  Same
-    # sets, same conditions as config_for (4.1b: the contract fields
-    # are the citation's ONLY when the citation carries a deck).
-    import dataclasses as _dc
-
+    # Refused HERE, not at prep on the cluster: an unknown knob, a shared
+    # value or a role-fixed one names itself while changing it is still
+    # free.  Three questions, three markers, one catalogue
+    # (`engines/transport.md` § 3.8.2; `engines/template.md` § 6.4).
+    _cat = _T.catalogue()
+    _shared_names = {it.name for it in _T.select(_cat, engine="siesta",
+                                                  shared=True)
+                     if "transport" in it.shared}
+    _role_names = {it.name for it in _T.select(_cat, engine="siesta",
+                                                role=True)
+                   if "transport" in it.role}
     # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
-    # listed (`stages.resolvable_override_names`).  This door checked
-    # `TransportConfig` alone, which refused a person's own lead k-density
-    # (`electrode_kz` is a catalogue row); widening it to the UNION with
-    # `SiestaConfig` fixed that and overshot in the other direction, letting
-    # through three names prep then refuses -- so "Described" succeeded and
-    # every later prep failed, naming a field the person never typed.
+    # listed (`stages.resolvable_override_names`).
     for _name in overrides:
         if _name not in _RESOLVABLE:
             return jsonify({"ok": False,
@@ -412,35 +413,44 @@ def api_transport_describe() -> Any:
                                      f"machine fact the description must "
                                      f"never carry (engines/template.md "
                                      f"7)."}), 400
-        if _name in SEALED_ALWAYS:
+        if _name in _role_names:
             return jsonify({"ok": False,
-                            "error": f"{_name!r} is the description's "
-                                     f"own field (identity, bias) -- "
-                                     f"it is never an override"}), 400
-        if _name in CONTRACT_FIELDS:
+                            "error": f"{_name!r} is the rung's own -- a "
+                                     f"choice with one correct answer, "
+                                     f"which the stage decides and no "
+                                     f"form offers"}), 400
+        if _name in _shared_names:
             # SHARED, therefore not a per-stage override -- and that is the
-            # reason, not "the citation owns it".
-            #
-            # This said *"cite a relaxation that ran with the values you
-            # want"* until 2026-09-16, which was the SEALED reading and by
-            # then actively misleading advice: it told a person to redo a
-            # relaxation when they could edit one line of the template.
-            # `engines/transport.md` § 2a.7 ruled that the cited run
-            # DEFAULTS these values; what remains true is that they are
-            # shared by every rung, so giving ONE rung its own would let the
-            # device disagree with its own leads -- the single thing that
-            # must be impossible.
+            # reason, not "the citation owns it" (`engines/transport.md`
+            # § 2a.7: the cited run DEFAULTS these values; what stays true
+            # is that every rung shares them, so giving ONE rung its own
+            # would let the device disagree with its own leads).
             return jsonify({"ok": False,
                             "error": f"{_name!r} is shared by every stage "
                                      f"of this calculation, so it cannot "
                                      f"be a per-stage override: the "
                                      f"electrode and the device must not "
                                      f"be able to disagree about it.  "
-                                     f"Change it in the calculation's "
-                                     f"template ({_name} there applies to "
-                                     f"all five rungs at once) -- it was "
-                                     f"filled in from the run you cited, "
-                                     f"and it is yours to change."}), 400
+                                     f"Change it on the shared panel, which "
+                                     f"edits the calculation's template -- "
+                                     f"there it applies to all five rungs at "
+                                     f"once; it was filled in from the run "
+                                     f"you cited, and it is yours to "
+                                     f"change."}), 400
+    for _name in shared_chosen:
+        if _name not in _shared_names:
+            return jsonify({"ok": False,
+                            "error": f"{_name!r} is not a shared value of "
+                                     f"this calculation; the shared panel "
+                                     f"carries the items the catalogue "
+                                     f"marks `shared` for transport"}), 400
+    from molbuilder.transport.citation_defaults import citation_answers
+    _answers = citation_answers(cited.path)
+    _chosen = {k: v for k, v in shared_chosen.items() if v is not None}
+    _unanswered = sorted(
+        it.name for it in _T.select(_cat, engine="siesta", citation=True)
+        if "transport" in it.citation
+        and it.name not in _answers.values and it.name not in _chosen)
     try:
         task = Task(
             engine="siesta", shape="hierarchical",
@@ -482,8 +492,14 @@ def api_transport_describe() -> Any:
                   {"name": _T.template_filename(task.label),
                    "text": _T.template_with_values(
                        siesta_config_from_citation(cited.path,
-                                                   label=task.label),
-                       engine="siesta", calculation="transport")}],
+                                                   label=task.label,
+                                                   **_chosen),
+                       engine="siesta", calculation="transport",
+                       # A `citation` row neither the citation nor the
+                       # person answered stays VALUELESS (§ 3.8.3): the
+                       # class default there would claim a run said
+                       # something no run said.
+                       valueless=_unanswered)}],
         "notices": [],
     })
 
@@ -495,92 +511,79 @@ def api_transport_describe() -> Any:
 
 @bp.route("/api/transport/schema", methods=["GET"])
 def api_transport_schema() -> Any:
-    """Return the transport TAB's form schema: the transport-only knobs.
+    """The transport tab's TWO surfaces, both from the catalogue narrowed to
+    the kind (`engines/transport.md` § 3.8.2; the markers decide which
+    value lands where, `catalogue_to_form_schema(surface=)`).
 
-    The electronic contract (engine, basis, XC, mesh, temperature, the
-    transverse k, the bias, the label) is the CITATION's to say — it
-    arrives from the cited junction's own deck at prep, and the
-    describe door refuses those fields BY NAME.  A form field the door
-    is guaranteed to refuse is a trap, not a control (found rendered
-    2026-08-29: ten sealed fields sat as editable inputs, and the bias
-    was asked twice), so the sealed set is filtered HERE, from the same
-    one constant the two refusing doors read.  What remains IS the
-    override lane: Transmission / NEGF / Runtime knobs that ride the
-    device stage's bag (stages.md § 6.2).  The bias is card 4's own
-    input — a describe-level fact beside the citation, not a config
-    override.
+    ``?surface=rung`` (the default) is the per-rung form -- every transport
+    item that is not `shared`, `role`, `allocation` or staging; its values
+    are override bags, routed to the rung that owns each by the `stages`
+    marker.  ``?surface=shared`` is the panel that edits the TEMPLATE:
+    every item marked `shared` for transport, outside the `setup` group.
+    With ``&junction=<citation>`` the shared panel's values are the cited
+    directory's answers (`citation_answers`: a deck's, a record's, or
+    none), and a `citation` row the citation does not answer is shown as
+    not chosen (§ 3.8.3); the answer names the source so the page can say
+    where the numbers came from.
 
-    Section order still follows ``TransportConfig._form_section_order``;
-    sections the filter empties (System, Electrodes) are dropped whole.
+    *(Until 2026-09-24 this route reflected `TransportConfig`'s fields
+    through a filter measured dead in seven of its ten branches, and the
+    catalogue swap that replaced it was reverted because `citation` was
+    the only marker and Class A is larger -- `plans/plan.md` W30.  The
+    `shared` marker is the declaration that swap lacked.)*
     """
-    from molbuilder.transport.stages import (CONTRACT_FIELDS,
-                                             SEALED_ALWAYS,
-                                             UNRESOLVED_FIELDS,
-                                             resolvable_override_names)
-    # HIDDEN IN BOTH LANES, and the `?contract=` argument no longer
-    # changes anything here.
-    #
-    # It used to: `cited` hid the contract fields and `open` offered them,
-    # because a form-B citation (a labeled pair, no deck) had nowhere else
-    # to state a basis.  On 2026-09-16 the describe door stopped making
-    # that distinction -- `engines/transport.md` § 2a.7 ruled the cited run
-    # DEFAULTS these values into the calculation's TEMPLATE, which every
-    # form now gets, so they are never a per-stage override for anyone.
-    #
-    # The filter was not updated with the door, and for a few hours the
-    # `open` lane rendered seven controls the door was guaranteed to
-    # refuse -- precisely the trap this docstring says the filter exists
-    # to prevent.  The argument is kept only so an older page that still
-    # sends it is not a 400; it selects nothing.
-    # ⚠ THIS FILTER IS MEASURED DEAD IN SEVEN OF ITS TEN BRANCHES, and the
-    # swap that replaced it was REVERTED because it opened a worse hole.
-    # Both halves are recorded in `plans/plan.md` W30; do not re-attempt
-    # either without reading it.
-    #
-    # DEAD: `SEALED_ALWAYS`'s three names and four of `CONTRACT_FIELDS`'
-    # seven are `TransportConfig` spellings, and `resolvable_override_names`
-    # one line below rejects them first -- so those branches cannot fire.
-    # LIVE HOLE, the same coin: the catalogue's own spellings for four of
-    # those values (`mesh_cutoff`, `kgrid`, `pao_energy_shift`,
-    # `electronic_temperature`) pass BOTH guards here and are refused by
-    # `prep`, which is the "Described succeeded, every later prep failed"
-    # trap this docstring says the filter exists to prevent.
-    #
-    # WHY THE CATALOGUE SWAP WAS REVERTED (2026-09-23): the catalogue's
-    # narrowing offers `system_label`, `species_order`, `spin_treatment`
-    # and `spin_total`, none of which carries the `citation` marker, so a
-    # `skip_shared` filter built on that marker let them through as
-    # PER-RUNG overrides.  `route_overrides` sends them to the device,
-    # where a `system_label` breaks the ladder's file handover and a
-    # `species_order` gives the device one orbital ordering and the leads
-    # another -- the disagreement `model/chemistry.md` § 3a exists to make
-    # impossible.  The root is that there is NO MARKER FOR "SHARED":
-    # `citation` means "a cited run answers this" and Class A (§ 2a.13) is
-    # larger than that.  W28 is where that is decided.
-    hidden = set(SEALED_ALWAYS) | UNRESOLVED_FIELDS | set(CONTRACT_FIELDS)
-    # AND EVERY CONTROL PREP CANNOT RESOLVE.  The three sets above are the
-    # SEALED question -- what a person may not change.  This is the different
-    # one: what the description is able to CARRY.  `num_threads`, `log_level`
-    # and `max_memory_mb` are `TransportConfig` fields the schema has no row
-    # for, so the door accepted them and every later prep refused the whole
-    # calculation.  A control the door is guaranteed to reject is not a
-    # control, and it is the same trap this filter already exists to close.
-    import dataclasses as _dcs
-    _resolvable = resolvable_override_names()
-    hidden |= {f.name for f in _dcs.fields(TransportConfig)
-               if f.name not in _resolvable}
-    schema = _dataclass_to_form_schema(TransportConfig, "t")
-    kept = []
-    for sec in schema.get("sections", []):
-        fields_left = [f for f in sec.get("fields", [])
-                       if f.get("name") not in hidden]
-        if fields_left:
-            sec = dict(sec)
-            sec["fields"] = fields_left
-            kept.append(sec)
-    schema = dict(schema)
-    schema["sections"] = kept
-    response: Dict[str, Any] = {"ok": True, "schema": schema}
+    from molbuilder.projects import projects_root
+    from molbuilder.transport.citation_defaults import citation_answers
+    from molbuilder.transport.compose import ComposeError, resolve_citation
+    from molbuilder.transport.stages import resolvable_override_names
+    from molbuilder import template as _T
+
+    surface = str(request.args.get("surface") or "rung")
+    if surface not in ("rung", "shared"):
+        return jsonify({"ok": False,
+                        "error": f"surface must be 'rung' or 'shared', "
+                                 f"not {surface!r}"}), 400
+    schema = catalogue_to_form_schema("siesta", "t", calculation="transport",
+                                      surface=surface)
+    response: Dict[str, Any] = {"ok": True, "surface": surface}
+    if surface == "rung":
+        # AND EVERY CONTROL PREP CANNOT RESOLVE: a control the describe door
+        # is guaranteed to reject is not a control (measured 2026-09-16).
+        _resolvable = resolvable_override_names()
+        kept = []
+        for sec in schema.get("sections", []):
+            fields_left = [f for f in sec.get("fields", [])
+                           if f.get("name") in _resolvable]
+            if fields_left:
+                sec = dict(sec)
+                sec["fields"] = fields_left
+                kept.append(sec)
+        schema = dict(schema)
+        schema["sections"] = kept
+    else:
+        citation = str(request.args.get("junction") or "")
+        source: Dict[str, Any] = {"kind": "none", "name": ""}
+        if citation:
+            try:
+                _, cited = resolve_citation(citation, projects_root())
+            except ComposeError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            answers = citation_answers(cited.path)
+            source = {"kind": answers.source, "name": answers.source_name}
+            cited_rows = {it.name for it in _T.select(_T.catalogue(),
+                                                       engine="siesta",
+                                                       citation=True)
+                          if "transport" in it.citation}
+            for sec in schema.get("sections", []):
+                for f in sec.get("fields", []):
+                    name = f.get("name")
+                    if name in answers.values:
+                        v = answers.values[name]
+                        f["default"] = list(v) if isinstance(v, tuple) else v
+                    elif name in cited_rows:
+                        f["default"] = None      # not chosen (§ 3.8.3)
+        response["source"] = source
+    response["schema"] = schema
     return jsonify(response)
 
 

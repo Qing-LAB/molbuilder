@@ -1273,11 +1273,35 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolat
         # its own is how the device comes to disagree with its leads.
         assert "shared" in msg.lower(), (
             f"the refusal must say why -- the value is shared: {msg}")
-        assert "template" in msg, (
+        assert "shared panel" in msg, (
             f"...and where it IS changed, or the person is refused with "
             f"nowhere to go: {msg}")
     finally:
         pass    # tmp_path removes the tree
+
+
+def test_transport_describe_writes_the_shared_panels_values_into_the_template(
+        web_client, isolated_projects_root):
+    """`engines/transport.md` § 3.8.2: the shared panel edits the TEMPLATE
+    -- a value chosen there applies to all five rungs at once and is what
+    the template carries; a name the catalogue does not mark `shared` is
+    refused by the same door."""
+    import tomllib
+    _cited_junction(isolated_projects_root)
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
+        overrides={}, shared={"mesh_cutoff": 450.0, "spin_treatment": "polarized"}))
+    assert r.status_code == 200, r.get_json()
+    tmpl = next(f["text"] for f in r.get_json()["files"]
+                if f["name"].endswith(".template.toml"))
+    items = tomllib.loads(tmpl)["item"]
+    assert items["mesh_cutoff"]["value"] == 450.0
+    assert items["spin_treatment"]["value"] == "polarized"
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
+        overrides={}, shared={"transmission_n_points": 7}))
+    assert r.status_code == 400
+    assert "not a shared value" in r.get_json()["error"]
 
 
 def test_describe_attempt_names_a_recorded_contract(web_client, isolated_projects_root):

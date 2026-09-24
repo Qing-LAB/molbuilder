@@ -32,7 +32,8 @@
  *     calculation,  // optional; omitted or "optimization" sends none
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
- *     overrides,    // transport only: {TransportConfig field: value}
+ *     overrides,    // transport only: {catalogue item: value}, a rung's own
+ *     shared,       // transport only: {catalogue item: value}, the shared panel
  *   })
  */
 (function () {
@@ -170,6 +171,7 @@
             req.junction  = o.junction;
             req.bias      = o.bias || [0.0];
             req.overrides = o.overrides || {};
+            req.shared    = o.shared || {};
         } else {
             req.structure = structure;
             req.params    = o.params || {};

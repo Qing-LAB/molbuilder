@@ -56,11 +56,11 @@
     </p>
     <ul>
       <li><code>.fdf</code> + <code>.XV</code> — a relaxation that
-          concluded.  Its deck also fixes basis, functional and mesh,
-          so step 3 leaves those alone.</li>
+          concluded.  Its deck answers the basis, functional and mesh,
+          and step 2 shows them as the run's, yours to change.</li>
       <li><code>.xyz</code> + <code>.molstruct.json</code> — a
-          labelled structure.  There is no deck to be truth, so step 3
-          asks for the basis, functional and mesh instead.</li>
+          labelled structure.  A record saved with it answers the same
+          values; without one, step 2 asks for them.</li>
     </ul>
     <p class="hint">
       Pick any directory: the line under the button names what it is,
@@ -105,22 +105,46 @@
     <div id="transport-molview-host" class="molviewer-host"></div>
   </section>
 
-  {#- ===================== 2. Analyze chemistry ===================== -#}
+  {#- ===================== 2. Shared by every rung ===================== -#}
+  {#- THE SHARED PANEL (engines/transport.md 3.8.2): the one surface that
+      edits the TEMPLATE.  Every item the catalogue marks `shared` for
+      transport lands here and nowhere else; the per-rung form below never
+      offers one.  Rendered by lib/transport/core.js from
+      /api/transport/schema?surface=shared, again whenever the junction
+      changes, because the values are the citation's answers. -#}
+  <section class="card" id="shared-card">
+    <h2>2. Shared by every rung</h2>
+    <p class="hint">
+      <strong>One electronic description for all five stages.</strong>
+      The lead self-energy attaches to a device Hamiltonian built the
+      same way, so the basis, the functional, the mesh, the energy
+      shift, the electronic temperature, the spin, the species order
+      and the transverse k-sampling are decided once, here, and no
+      stage may override them.  <strong>Changing a value here rebuilds
+      all five stages.</strong>
+    </p>
+    <p class="hint" id="transport-shared-source">Loading&hellip;</p>
+    <div id="transport-shared-container" class="param-grid">
+      <p class="muted">Loading the shared panel&hellip;</p>
+    </div>
+  </section>
+
+  {#- ===================== 3. Analyze chemistry ===================== -#}
   {% set hint %}<strong>Read the cited structure back before you
       spend any compute on it.</strong>  Two things are reported: the
       open-shell-metal check — whether this system wants a
       spin-polarised run — and a count of the atoms carrying each
       region label.  It runs automatically when you cite a junction;
       the button re-runs it.  Nothing here changes a setting: the panel
-      is a reading, and acting on it means editing step 3 or
+      is a reading, and acting on it means editing step 2 or step 4, or
       relabelling in <a href="/molbuilder">Molbuilder</a>.{% endset %}
   {% set title = "Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited." %}
   {% set button_label = "Re-analyze chemistry" %}
   {% include "_analyze_chemistry_card.html" %}
 
-  {#- ===================== 3. The physics ===================== -#}
+  {#- ===================== 4. The physics ===================== -#}
   <section class="card" id="parameters-card">
-    <h2>3. The physics</h2>
+    <h2>4. The physics, rung by rung</h2>
     {#- THE BIAS LEADS, because it is the experiment and it GOVERNS the
         fields under it: at zero bias the whole non-equilibrium half of
         the density contour is inert, and more than one value turns the
@@ -151,11 +175,11 @@
       the reasoning and the citation.
     </p>
     <p class="hint">
-      <strong>Basis, functional and mesh are deliberately absent.</strong>
-      They arrive from the cited junction's own deck, because the
-      electrodes and the device must share them or the lead self-energy
-      cannot attach.  They appear here only for a citation that carries
-      no deck.
+      <strong>Basis, functional, mesh and the rest of the shared
+      description are not here.</strong>  They bind every rung, so they
+      are set once on step 2; a value given to one rung here would let the
+      device disagree with its own leads, and the describe door refuses
+      it by name.
     </p>
     <p class="hint">
       Reference —
@@ -169,15 +193,16 @@
     </div>
   </section>
 
-  {#- ===================== 4. Describe ===================== -#}
+  {#- ===================== 5. Describe ===================== -#}
   <section class="card" id="composite-card">
-    <h2>4. Describe</h2>
+    <h2>5. Describe</h2>
     <p class="hint">
-      <strong>Write the calculation down.</strong>  This produces one
-      <code>task.json</code> — the citation, your settings from step 3,
-      and the bias list — in the folder selected in the Projects
-      sidebar.  It runs nothing; the stages are prepared and launched
-      afterwards.
+      <strong>Write the calculation down.</strong>  This produces
+      <code>task.json</code> — the citation, the bias list and your
+      per-rung settings from step 4 — and the template that carries the
+      shared description from step 2, in the folder selected in the
+      Projects sidebar.  It runs nothing; the stages are prepared and
+      launched afterwards.
     </p>
     <p class="hint">
       Select a folder <strong>of its own</strong>, not the cited

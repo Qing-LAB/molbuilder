@@ -8,6 +8,7 @@ engines     = ["siesta", "pyscf"]
 kind = "engine"
 category = ["system", "procedure"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "SystemLabel"
 engine_key = "SystemLabel"
 manual = "SIESTA 5.4.2 §6.1 'General system descriptors'"
@@ -25,6 +26,7 @@ The FDF SystemLabel: every file SIESTA writes takes this as its prefix, so it is
 kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "PAO.BasisSize"
 engine_key = "PAO.BasisSize"
 manual = "SIESTA 5.4.2 §6.3.3 'Size of the basis set'"
@@ -49,6 +51,7 @@ All nine choices are accepted by SIESTA 5.4.2 (basis_specs.f::size_name), though
 kind = "engine"
 category = ["method", "accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "PAO.EnergyShift"
 engine_key = "PAO.EnergyShift"
 manual = "SIESTA 5.4.2 §6.3.4 'Range of the orbitals'"
@@ -74,6 +77,7 @@ SIESTA's own default is 0.02 Ry. This catalogue starts at 0.01 because its targe
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "MeshCutoff"
 engine_key = "MeshCutoff"
 manual = "SIESTA 5.4.2 §6.10 'The real-space grid and the eggbox-effect'"
@@ -104,6 +108,7 @@ Below 150 Ry the forces and energies are noticeably wrong on organic / biomolecu
 kind = "engine"
 category = ["method"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "XC.functional"
 engine_key = "XC.functional"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -130,6 +135,7 @@ SIESTA's own default is LDA; this catalogue starts at GGA.  The reason is the ov
 kind = "engine"
 category = ["method"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "XC.authors"
 engine_key = "XC.authors"
 manual = "SIESTA 5.4.2 §6.6 'Exchange-correlation functionals'"
@@ -330,6 +336,7 @@ The one ordinary reason to set false is a run that is a measurement rather than 
 kind = "engine"
 category = ["system", "accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "ElectronicTemperature"
 engine_key = "ElectronicTemperature"
 manual = "SIESTA 5.4.2 §6.12.3 'Occupation of electronic states and Fermi level'"
@@ -354,6 +361,7 @@ A raised smearing temperature adds an entropy term to the free energy (F = E - T
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
@@ -378,6 +386,7 @@ SIESTA reports an equivalent cutoff for whatever mesh you give -- a length that 
 kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack  (displ column)"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
@@ -962,6 +971,7 @@ The two ELPA entries are strategies, not versions -- one library ships both, and
 kind = "produce"
 category = ["method"]
 engines = ["siesta"]
+shared = ["transport"]
 engine_key = "(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)"
 type = "str"
 group = "setup"
@@ -999,6 +1009,7 @@ Copy the psml pseudopotential files into the output directory, alongside the gen
 kind = "produce"
 category = ["system"]
 engines = ["siesta"]
+shared = ["transport"]
 engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"
 type = "strlist"
 group = "profile"
@@ -1062,6 +1073,7 @@ Get it wrong and the run solves for the wrong number of electrons, which is a di
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
+shared = ["transport"]
 anchor = "Spin"
 engine_key = "Spin"
 manual = "SIESTA 5.4.2 §6.7 'Spin polarization'"
@@ -1084,6 +1096,7 @@ Only 'polarized' can carry a fixed total spin.
 kind = "deck"
 category = ["system"]
 engines = ["siesta"]
+shared = ["transport"]
 expands = ["Spin.Fix", "Spin.Total"]
 engine_key = "Spin.Fix + Spin.Total"
 type = "float"
@@ -2461,6 +2474,7 @@ stages = ["device"]
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
+role = ["transport"]
 calculations = ["transport"]
 anchor = "TS.Voltage"
 engine_key = "TS.Voltage"

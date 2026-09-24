@@ -1502,12 +1502,15 @@ def _resolve_transport(base, task, stage: str, allocation,
     # the self-energies were built on, which is the single thing that must
     # be impossible.
     #
-    # WHICH items are shared is the catalogue's own answer (`citation`,
-    # `engines/template.md` § 6.4): the rows the cited run fills in at
-    # `init` and every rung then shares.  Asked, not listed here.
+    # WHICH items are shared is the catalogue's own answer -- the `shared`
+    # marker (`engines/template.md` § 6.4, `engines/transport.md` § 3.8.6):
+    # every row the cited run fills in at `init`, and the rows no run
+    # answers that still bind every rung (the species order, the spin
+    # treatment, the pseudopotentials).  Gating on `citation` alone let a
+    # `species_order` override through until 2026-09-24.  Asked, not listed.
     shared = {i.name for i in select(catalogue(), engine="siesta",
-                                     citation=True)
-              if "transport" in i.citation}
+                                     shared=True)
+              if "transport" in i.shared}
     for bag in (task.stages or ()):
         clash = sorted(set(bag.overrides or {}) & shared)
         if clash:

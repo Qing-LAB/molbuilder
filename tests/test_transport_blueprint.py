@@ -51,75 +51,56 @@ class TestTransportSchemaEndpoint:
             f"the actual engine keyword string otherwise)."
         )
 
-    def test_no_lane_offers_the_contract_fields(self, web):
-        """The describe door refuses the electronic-contract fields
-        UNCONDITIONALLY, so no value of ``?contract=`` may offer them.
-
-        This asserted the opposite until 2026-09-16 — that ``open``
-        (a form-B citation: a labeled pair has no deck) offers them —
-        which was the SEALED reading `engines/transport.md` § 2a.7
-        reversed.  Under the ruling the cited run DEFAULTS these values
-        into the calculation's TEMPLATE, which every form gets: form A
-        from the cited deck, form B from the catalogue
-        (``citation_defaults.siesta_config_from_citation``).  They are
-        editable there and are never a per-stage override for anyone,
-        so a lane that rendered them served seven controls the door was
-        guaranteed to 400 — the exact trap this filter exists to stop.
-        """
-        from molbuilder.transport.stages import (CONTRACT_FIELDS,
-                                                 SEALED_ALWAYS)
-        for lane in ("", "?contract=open", "?contract=cited"):
+    def test_the_rung_surface_never_offers_a_shared_value(self, web):
+        """`engines/transport.md` § 3.8.2: the per-rung form edits a rung's
+        override bag and never offers a value that binds every rung -- the
+        catalogue's `shared` marker (§ 3.8.6, decided 2026-09-24), nor a
+        role-fixed one, nor the machine's.  Offering one is a control the
+        describe door refuses by name (the trap of 2026-08-29 and the
+        revert of 2026-09-23)."""
+        from molbuilder.template import catalogue, select
+        cat = catalogue()
+        shared = {it.name for it in select(cat, engine="siesta", shared=True)
+                  if "transport" in it.shared}
+        role = {it.name for it in select(cat, engine="siesta", role=True)
+                if "transport" in it.role}
+        machine = {it.name for it in select(cat, engine="siesta",
+                                             allocation=True)}
+        for lane in ("", "?surface=rung"):
             body = web.get(f"/api/transport/schema{lane}").get_json()
+            assert body["ok"] is True and body["surface"] == "rung"
             offered = {f["name"] for s in body["schema"]["sections"]
                        for f in s["fields"]}
-            assert not (offered & CONTRACT_FIELDS), (
-                f"lane {lane or '(default)'!r} offers contract fields "
-                f"{sorted(offered & CONTRACT_FIELDS)} -- the describe "
-                f"door refuses them by name whatever the citation form")
-            assert not (offered & SEALED_ALWAYS)
+            assert offered, "the per-rung form offers nothing"
+            assert not (offered & shared), sorted(offered & shared)
+            assert not (offered & role), sorted(offered & role)
+            assert not (offered & machine), sorted(offered & machine)
+            from molbuilder.transport.stages import resolvable_override_names
+            unresolvable = offered - resolvable_override_names()
+            assert not unresolvable, (
+                f"the form offers {sorted(unresolvable)}, which `prep` "
+                f"refuses by name -- a control the door is guaranteed to "
+                f"reject is not a control")
 
-    def test_schema_serves_only_the_override_lane(self, web):
-        """The tab's form is the OVERRIDE lane: the electronic contract
-        is the citation's to say, and a field the describe door refuses
-        BY NAME must not be offered as an input (found rendered
-        2026-08-29 — ten sealed fields as editable inputs, the bias
-        asked twice).  The filter empties System and Electrodes whole,
-        so the served sections are the ones that carry transport-only
-        knobs, still in ``_form_section_order`` order.
+    def test_the_shared_surface_offers_every_shared_value_outside_setup(self, web):
+        """The other surface: every item the catalogue marks `shared` for
+        transport, except the `setup` group -- the identity the description
+        derives and the pseudopotential directory the citation supplies
+        (`engines/transport.md` § 3.8.2)."""
+        from molbuilder.template import catalogue, select
+        cat = catalogue()
+        expected = {it.name for it in select(cat, engine="siesta", shared=True)
+                    if "transport" in it.shared and it.group != "setup"}
+        body = web.get("/api/transport/schema?surface=shared").get_json()
+        assert body["ok"] is True and body["surface"] == "shared"
+        offered = {f["name"] for s in body["schema"]["sections"]
+                   for f in s["fields"]}
+        assert offered == expected, (sorted(offered ^ expected))
+        assert body["source"] == {"kind": "none", "name": ""}
 
-        **The list grew on 2026-09-15** and the order is now a scientific
-        one (`engines/transport.md` § 3.3): what is computed, how sharply,
-        what is written, then the machinery.  "NEGF" is gone as a heading --
-        it had collected both the density contour AND the five electronic-
-        contract fields, which are not NEGF parameters at all."""
-        from molbuilder.transport.stages import SEALED_TRANSPORT_FIELDS
-        body = web.get("/api/transport/schema").get_json()
-        sections = body["schema"]["sections"]
-        assert [s["name"] for s in sections] == [
-            "Transmission", "Transmission k-sampling", "Spin channel",
-            "Broadening", "Outputs", "NEGF density contour", "Leads",
-        ], (
-            "the override lane's sections, in the order a person decides "
-            "in.  System and Electrodes are emptied by the seal filter, "
-            "and 'Electronic contract' appears in NO lane: § 2a.7 makes "
-            "those the template's to answer, never a per-stage override.  "
-            "Runtime and Logging went on 2026-09-16: they held only "
-            "`max_memory_mb`, `num_threads` and `log_level`, which `prep` "
-            "cannot resolve -- three controls whose use guaranteed that "
-            "every later prep refused the whole calculation")
-        offered = {f["name"] for s in sections for f in s["fields"]}
-        from molbuilder.transport.stages import resolvable_override_names
-        unresolvable = offered - resolvable_override_names()
-        assert not unresolvable, (
-            f"the form offers {sorted(unresolvable)}, which `prep` refuses "
-            f"by name -- a control the door is guaranteed to reject is not "
-            f"a control")
-        leaked = offered & SEALED_TRANSPORT_FIELDS
-        assert not leaked, (
-            f"sealed fields served as form inputs: {sorted(leaked)} — "
-            f"the describe door refuses these by name, so offering "
-            f"them is a guaranteed 400"
-        )
+    def test_an_unknown_surface_is_refused(self, web):
+        r = web.get("/api/transport/schema?surface=lane")
+        assert r.status_code == 400
 
     # `test_engine_choices_are_registered_engines` deleted 2026-09-17 with the engine registry.
 

@@ -1965,6 +1965,13 @@ class TestTheOverrideLane:
         with pytest.raises(PrepError) as e:
             prep_calculation(calc, "device")
         msg = str(e.value)
+        # AND a shared value no run answers (`species_order` binds the leads'
+        # orbital ordering to the device's; `engines/transport.md` § 3.8.6):
+        # the refusal read the `citation` marker alone until 2026-09-24 and
+        # let this one through.
+        self._with_override(calc, "device", {"species_order": ["S", "C", "Au"]})
+        with pytest.raises(PrepError, match="(?i)shared by every stage"):
+            prep_calculation(calc, "device")
         assert "SHARED" in msg or "shared" in msg, (
             f"the refusal must say WHY -- the value is shared by every "
             f"stage, so one rung cannot have its own.  It said \"the "

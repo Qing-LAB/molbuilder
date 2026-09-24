@@ -42,11 +42,11 @@ const WORKSPACE_TAG = "transport";
      * doesn't fail silently.
      */
     function _fetchAndRender(formContainer, formSchema) {
-        /* The contract lane rides the query (4.1b): "cited" hides the
-         * electronic-contract fields (the deck's to say); "open"
-         * offers them (a labeled pair has no deck). */
-        var url = SCHEMA_URL
-            + (_junctionContract === "open" ? "?contract=open" : "");
+        /* THE PER-RUNG FORM (engines/transport.md 3.8.2): every transport
+         * item that is not shared, role-fixed or the machine's; its
+         * values are override bags, routed to the rung that owns each.
+         * The shared description is the panel above it, never here. */
+        var url = SCHEMA_URL + "?surface=rung";
         return root.fetch(url)
             .then(function (r) {
                 return r.json().then(function (body) {
@@ -485,6 +485,9 @@ const WORKSPACE_TAG = "transport";
         }
         _junction = described.citation;
         _junctionStructure = described.structure || null;
+        // The shared panel follows the citation: its values are what the
+        // cited directory answers (3.8.1).
+        _fetchAndRenderShared(root.molbuilder && root.molbuilder.formSchema);
         var out = _$("transport-junction-readout");
         if (out) out.textContent = _junction;
         var meta = _$("transport-junction-meta");
@@ -626,6 +629,12 @@ const WORKSPACE_TAG = "transport";
                     + "and retry.");
                 return;
             }
+            var shared = _sharedValues();
+            if (shared === null) {
+                _setSendStatus("The shared panel has invalid values — fix "
+                    + "them and retry.");
+                return;
+            }
             mb.taskHandover.send({
                 projects: mb.projects,
                 say: function (kind, msg) {
@@ -641,6 +650,7 @@ const WORKSPACE_TAG = "transport";
                 junction: _junction,
                 bias: bias,
                 overrides: overrides,
+                shared: shared,
             });
         });
     }
@@ -649,6 +659,75 @@ const WORKSPACE_TAG = "transport";
     // re-fetch on every click; populated by _fetchAndRender on
     // first load.
     var _cachedSchema = null;
+    var _sharedSchema = null;      // the shared panel's, by _fetchAndRenderShared
+
+    /* THE SHARED PANEL (engines/transport.md 3.8.2): the items the
+     * catalogue marks `shared` for transport, which bind every rung and
+     * edit the TEMPLATE.  Its values are the citation's answers -- a
+     * deck's, a record's, or none -- so it is rendered again whenever
+     * the junction changes, and the line under its heading names the
+     * source (3.8.1).  A `citation` row the citation does not answer
+     * renders blank: not chosen (3.8.3). */
+    function _fetchAndRenderShared(formSchema) {
+        var host = _$("transport-shared-container");
+        if (!host || !formSchema) return Promise.resolve();
+        var url = SCHEMA_URL + "?surface=shared"
+            + (_junction ? "&junction=" + encodeURIComponent(_junction) : "");
+        return root.fetch(url)
+            .then(function (r) {
+                return r.json().then(function (body) {
+                    if (!r.ok || !body.ok) {
+                        throw new Error(body.error || "schema fetch failed");
+                    }
+                    return body;
+                });
+            })
+            .then(function (body) {
+                while (host.firstChild) host.removeChild(host.firstChild);
+                formSchema.renderForm(host, body.schema);
+                _sharedSchema = body.schema;
+                var line = _$("transport-shared-source");
+                if (line) {
+                    var src = body.source || {kind: "none", name: ""};
+                    line.textContent = !_junction
+                        ? "No junction cited yet: these are the catalogue's "
+                          + "starting values."
+                        : src.kind === "deck"
+                        ? "Values from the run you cited (" + src.name + ").  "
+                          + "Change any of them; a change applies to all five "
+                          + "rungs at once."
+                        : src.kind === "record"
+                        ? "Values recorded with the structure you cited"
+                          + (src.name ? " (" + src.name + ")" : "") + ".  "
+                          + "Change any of them; a change applies to all five "
+                          + "rungs at once."
+                        : "The citation carries no deck and no record, so it "
+                          + "answers none of these.  A blank field is not "
+                          + "chosen: the template records no value for it and "
+                          + "prep falls back to the catalogue's default until "
+                          + "you choose.";
+                }
+            })
+            .catch(function (e) {
+                _renderErrorParagraph(host,
+                    "Could not load the shared panel: "
+                    + (e && e.message ? e.message : String(e)));
+            });
+    }
+
+    /* What the shared panel says now -- every field, not only the changed
+     * ones: the panel edits the template, and the template answers all
+     * five rungs. */
+    function _sharedValues() {
+        var fs = root.molbuilder && root.molbuilder.formSchema;
+        var host = _$("transport-shared-container");
+        if (!fs || !host || !_sharedSchema
+                || typeof fs.collectForm !== "function") {
+            return {};
+        }
+        try { return fs.collectForm(host, _sharedSchema); }
+        catch (e) { return null; }
+    }
 
     function _init() {
         var formContainer = _$("transport-form-container");
@@ -665,6 +744,7 @@ const WORKSPACE_TAG = "transport";
             return;
         }
         _fetchAndRender(formContainer, formSchema);
+        _fetchAndRenderShared(formSchema);
         _restoreSession();
         _wireJunctionPicker();
         _wireSendButton(formContainer);

@@ -358,6 +358,29 @@ class Item:
     #:
     #: Ask it directly, or filter for it: ``select(t, role=True)``.
     role: Tuple[str, ...] = ()
+    #: **BINDS EVERY RUNG of these kinds** -- a scope, not an answerer
+    #: (`engines/transport.md` § 3.8.6, decided 2026-09-24: a sibling marker
+    #: beside `citation`, which keeps meaning *who supplies the default*).
+    #:
+    #: A transport calculation is five rungs on one electronic description:
+    #: the lead self-energy attaches to a device Hamiltonian built the same
+    #: way, so basis, functional, mesh, energy shift, electronic temperature,
+    #: spin treatment, species order, the pseudopotentials and the transverse
+    #: k-sampling are decided once and may not be overridden on one rung.
+    #: Every `citation` row is shared; Class A is larger -- `species_order`,
+    #: `spin_treatment`, `spin_total` and the pseudopotentials bind every rung
+    #: and no run answers them.  Filtering on `citation` for "shared" offered
+    #: those four as per-rung overrides (2026-09-23), and a species order
+    #: that differs between the leads and the device is the disagreement
+    #: `model/chemistry.md` § 3a exists to make impossible.
+    #:
+    #: Three readers ask this one declaration: the shared panel (which shows
+    #: these and nothing else), the per-rung form (which never offers them)
+    #: and `prep` (which refuses a stage override naming one).  A list of
+    #: CALCULATION KINDS, like `citation`; absence means *never*.
+    #:
+    #: Ask it directly, or filter for it: ``select(t, shared=True)``.
+    shared: Tuple[str, ...] = ()
 
     #: **WHICH RUNGS may carry their own value for this item.**
     #:
@@ -644,6 +667,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     _alloc = bool(f.metadata.get("allocation"))
     _cited = tuple(f.metadata.get("citation") or ())
     _role = tuple(f.metadata.get("role") or ())
+    _shared = tuple(f.metadata.get("shared") or ())
     _stages = tuple(f.metadata.get("stages") or ())
 
     ann, optional = _unwrap_optional(annotation)
@@ -711,6 +735,7 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         allocation=_alloc,
         citation=_cited,
         role=_role,
+        shared=_shared,
         stages=_stages,
         kind=kind,
         type=type_,
@@ -822,7 +847,7 @@ def _toml_value(v: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "recommended", "optional", "allocation",
-                   "citation", "role", "stages",
+                   "citation", "shared", "role", "stages",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
@@ -875,6 +900,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["citation"] = list(it.citation)
     if it.role:
         out["role"] = list(it.role)
+    if it.shared:
+        out["shared"] = list(it.shared)
     if it.stages:
         out["stages"] = list(it.stages)
     if it.label:
@@ -978,7 +1005,8 @@ def catalogue() -> "Template":
 
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
                          calculation: str = "optimization",
-                         title: str = "") -> str:
+                         title: str = "",
+                         valueless: Sequence[str] = ()) -> str:
     """**This calculation's** template: the catalogue, narrowed to one engine,
     carrying the values *config* holds (§ 4.3).
 
@@ -1026,8 +1054,13 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # produces is an ordinary template value from then on.  The
             # marker keeps its name because *which items are harvested from
             # the cited run* is still exactly what it answers.
+            # AND the rows the caller says nobody answered (``valueless``,
+            # `engines/transport.md` § 3.8.3): a citation that carries no
+            # deck answers no basis, and writing the class default there
+            # would claim a run said something no run said.
             value=(None
-                   if (it.allocation or calculation in it.role)
+                   if (it.allocation or calculation in it.role
+                       or it.name in set(valueless))
                    else getattr(config, it.name, it.value)),
             # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
             # the table itself does not travel -- a per-kind template has
@@ -1419,6 +1452,7 @@ def _item_from(name: str, body: Any) -> Item:
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
         role=tuple(body.get("role", ()) or ()),
+        shared=tuple(body.get("shared", ()) or ()),
         stages=tuple(body.get("stages", ()) or ()),
         null_label=str(body.get("null_label", "") or ""),
     )
@@ -1503,7 +1537,8 @@ def _check_engine(t: "Template", engine) -> None:
 
 def select(t: "Template", *, category=None, engine=None,
            kind=None, read_by=None, allocation=None,
-           citation=None, role=None, stages=None) -> List[Item]:
+           citation=None, role=None, stages=None,
+           shared=None) -> List[Item]:
     """The items matching every filter given, **in category order**.
 
     One function, one file, every reader (`engines/template.md` § 8.0).
@@ -1561,6 +1596,8 @@ def select(t: "Template", *, category=None, engine=None,
             continue  # `True` = some kind's citation answers it
         if role is not None and bool(it.role) is not bool(role):
             continue  # `True` = some kind's stage role answers it
+        if shared is not None and bool(it.shared) is not bool(shared):
+            continue  # `True` = binds every rung of some kind
         if stages is not None:
             # A STAGE NAME, not a boolean: "may this rung own this item?".
             # An item declaring no stages may be owned by any -- the ordinary
