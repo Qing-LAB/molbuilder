@@ -46,7 +46,7 @@ Three documents share this subject, and each owns one kind of statement:
 
 | document | owns | read it when you want to know |
 |---|---|---|
-| [`science/normal-modes.md`](?doc=science/normal-modes.md) | **why** — the derivations, the rank rule for the motions that are not vibrations, stationarity, masses, the rules R1–R8 and the acceptance test | why a held-atom run reports fewer modes than `3·N_free`, and why that number is a rank and not a table |
+| [`science/normal-modes.md`](?doc=science/normal-modes.md) | **why** — the derivations, the rank rule for the motions that are not vibrations, stationarity, masses, the rules R1–R8 and the acceptance test | why a held-atom run reports fewer modes than `3·N_free`, and why that number is a rank and not a table; and, in its § 4b, both engines' workflows step by step against the discussion this work started from — what the tool does at each step, where it differs, and what is owed |
 | **this document** | **what and how** — what the calculation computes on each engine, what the script and the deck contain, what the result file holds, what the code must keep true, what is built and what is owed | how a run works end to end, where a number in the file comes from, what to check the code against |
 | [`web/spectra.md`](?doc=web/spectra.md) | **the tab** — the Spectrum tab, the hand-over to Task setup, the viewer, the chart, the animation, and how an absent number is drawn | what a person sees and clicks |
 
@@ -730,6 +730,15 @@ both, beside the equilibrium ones: **two SCFs per selected mode**. The viewer
 draws the three level stacks joined orbital by orbital, the gap's shift, and
 the coupling `ΔE/(2A)` — the electron–vibration coupling that decides how a
 mode modulates a junction's transmission [Galperin2007, Frederiksen2007].
+**Which coordinate.** `A` is the largest atomic swing along the display
+eigenvector, so `ΔE/(2A)` is a slope per Å of that swing. The slope per unit
+normal coordinate, `∂ε/∂Q_ν = ΔE/(2A) · max_k|L_canonical,k|`, and the
+coupling per zero-point amplitude, `g_ν = (∂ε/∂Q_ν) · √(ħ/2ω)` — the number
+the inelastic-transport literature quotes — follow from the file, since both
+eigenvector forms are in it ([`science/normal-modes.md`](?doc=science/normal-modes.md)
+§ 4b.5 F), and neither is written today. Two points give the slope and not
+its linearity over `A`; the five-point sample, `g_ν`, and a molecule-projected
+window for a cluster whose HOMO and LUMO are metal states are V1.27 (§ 10).
 
 Which modes get it is `es_mode_selection` with the frequency window
 (`spectra/selection.py`, inlined into the deck so a cluster node needs no
@@ -984,6 +993,17 @@ workstation (`tests/test_siesta_vibration_e2e.py`, SIESTA 5.4.2): H₂ with the
 held atom **last** in the input → one mode at 3358 cm⁻¹, two motions removed,
 the free atom reported as atom 0.
 
+**What the read-back does not judge — two gaps measured 2026-09-24.** No
+stationarity: the run's output holds the forces at `FC step = 0`, and the
+artifact writes `relaxation.max_force_eh_bohr: null`. The H₂ fixture at the
+experimental 0.741 Å went through the whole road with **1.27 eV/Å** on each
+atom at its reference step and nothing was said beyond the standing *cite a
+relaxed structure* note — R5 is judged on the PySCF route only (V1.21). And no
+asymmetry: `hessian_from_fc` keeps `½(B + Bᵀ)` and records no
+`max |H_ij − H_ji|`, the number that says first whether `FC.Displacement` was
+too small (noise) or too large (anharmonicity) (V1.22; the δ-convergence
+protocol is [`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.6 C).
+
 ### 5.6 What is absent, never zero — and the transport connection
 
 **Infrared and Raman are not offered on SIESTA**, and the controls are **not
@@ -1025,6 +1045,17 @@ Two levels of that connection, neither built:
   is the electron–vibration coupling for the mode, the systematic route to
   inelastic tunnelling spectroscopy [Frederiksen2007, Galperin2007]. A research
   capability, recorded so the design does not foreclose it.
+
+**Named since, from the discussion's update** ([`science/normal-modes.md`](?doc=science/normal-modes.md)
+§ 4b.6 G, § 4b.7): the displaced pair at the zero-point amplitude written as
+a structure pair of its own, the held atoms unmoved (V1.25); the
+density-difference map `Δρ_ν(r) = ρ(r, +Q_ν) − ρ(r, −Q_ν)` from SIESTA's
+density grid at the two points — the discussion's intermediate quantity
+before any oscillator strength, which says whether a mode polarises the
+molecule, moves charge across the Au–S bond or drives the metal's screening
+(V1.26); and the projected density of states, resonance energies and widths
+along the mode, each a run of its own kind on that pair, with `T(E, Q)` the
+transport kind on it. Each is a feature to design as one.
 
 ### 5.7 What it costs, by construction
 
@@ -1338,7 +1369,9 @@ through the whole road — acetylene with both carbons held (the collinear
 trap), NH₃ with its three hydrogens held (nothing removed), an empty held
 list reproducing the free path *exactly*, and the water dimer with one
 molecule held (the over-removal guard) — which exist today as rank rows
-only (V1.17).
+only (V1.17); the SIESTA route's stationarity and its asymmetry diagnostic
+(V1.21, V1.22 — the first measured missing on the H₂ fixture, § 5.5); a
+δ-convergence comparison (V1.23); mode matching across runs (V1.24).
 
 **The tests**, by what each proves:
 
@@ -1404,6 +1437,12 @@ nothing is in that state as of 2026-09-24.
 | a release note: every held-atom spectrum and free energy computed before 2026-09-23 contains a non-vibration | **owed** — V1.16 | true and intended; the old runs disagree with the new ones |
 | the presenter's category label names no engine (*Vibrational spectrum*); the Spectrum tab's engine sentence is the strip's | **built 2026-09-24** | |
 | the Molbuilder tab's save prompt doubling a typed suffix (`x.xyz.xyz`); the `#`-label unconsumed warning (needs a ruling); the vacuum notice on a gas-phase PySCF run | **owed** — UI walk 2026-09-23 | not this kind's, recorded where found |
+| the SIESTA route judges stationarity: the forces at `FC step = 0` read into `relaxation.max_force_eh_bohr` over the free atoms, a warning above the optimization's criterion | **owed** — V1.21, measured 2026-09-24 | § 5.5; R5 on both routes |
+| the asymmetry diagnostic `max \|H_ij − H_ji\|` recorded beside `fc_displacement_ang`, with a warning | **owed** — V1.22 | § 5.5 |
+| a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **owed, needs a design** — V1.23 | `science/normal-modes.md` § 4b.6 C |
+| mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
+| mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
+| the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |
 
 ---
 
