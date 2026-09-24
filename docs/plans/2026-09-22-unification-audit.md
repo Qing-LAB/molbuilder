@@ -1557,6 +1557,106 @@ transform, never delete — the reasoning in those comments survives and the
 dates and *"was reverted"* narrative go, so the pointer still lands. Those
 files are held; the pass over them waits for the hold to lift.
 
+### 1.18 Re-measured at HEAD, and the coverage gap closed *(2026-09-23)*
+
+*The user asked whether the structure API is unified and every hand-crafted
+use corrected. Four full-text reviews answered it at `3382b851`/`0aa417eb`
+(read-only, fixtures only, nothing under `projects/`): the codec and its
+doors (A), the rules re-derived at call sites and the validation registry
+(B), where a `Structure` is born — § 7b's G1 (C), and the unaudited
+validators, the chemistry table and the remaining seams — § 7b's G2+G3 (D).
+Every claim below names its evidence; the ones marked ✓ were re-verified by
+the primary session against the code text or by re-running the measurement.
+The rest rest on the review's quoted command and exit code, and a fix of
+any of them starts by reproducing it.*
+
+**The answer, in one paragraph.** The CORE is unified and it holds: every
+production door that loads, saves, pairs, resolves a cell or an origin,
+re-orders atoms or applies metadata goes through the owner (the
+confirmed-clean list below is long and specific). What is NOT true is that
+the hand-crafted uses are corrected: of the findings §§ 1–4 recorded, **six
+are closed and thirty-odd are open at HEAD**, and the four reads found
+**~45 new instances** of the same three conditions (§ 0a) — a second PDB
+reader, a second deserialiser, a placeholder spelled as a legal element,
+eight metadata-dropping rebuilds, three spellings of one file-naming rule,
+and a run artifact written in the wrong frame. Most are latent today
+(unreachable, or reached only with an empty label store); four reach a
+user's data or science now.
+
+#### What the audit had found — status at HEAD
+
+| § | status | evidence |
+|---|---|---|
+| 1.1 half-written pair · 1.1a generator returns a dict | **OPEN** | A: a NaN in `info` raises at the sidecar write after the `.xyz` is on disk; reopen shows the moved atom and the deleted region back; hash `db1821ce` vs actual `5ecbb590`, nothing compared. `pair().sidecar` is still a `dict`; `pyscf/input.py:1502/1551` splice it by `repr` |
+| 1.2 `validate` with no `--engine` | **OPEN ✓** | re-run: `validate lh.xyz --exit-on-error` on an explicit left-handed cell → `n_errors 0`, **exit 0**; `--engine siesta` → `cell.left_handed`, exit 2. `cli.py:454–467` still branches to `validate_geometry` |
+| 1.3 · § 5 lead ④ | CLOSED | `764addd3` |
+| 1.4 CLI pipe destroys the pair | **OPEN**, shape changed | A: `modify a.xyz - \| modify - b.xyz` → `b.xyz` only, no sidecar; regions/cell/origin/axes gone. With `title` retired the second stage writes NO sidecar, so the loss is now silent absence rather than a vacuum-box sidecar |
+| 1.5 `/api/structure/analyze` | **OPEN** (held) | A: latin-1 PDB → HTTP 500 (`build.py:236 p.read_text()`); BOM'd `.xyz` → 400 where `/api/build/load` → 200; the sidecar never read |
+| 1.5a three "load refuses a bad cell" statements | CLOSED | `350a907b` |
+| 1.6 containment without the origin | **OPEN ✓** | `validation/siesta.py:802–803` `inv(cell); positions @ inv`; B: owner says inside, the check warns "2 of 2 atoms outside"; `cell_contains_atoms` has zero external callers |
+| 1.7 malformed channel → bare `KeyError` | **OPEN** | A/B: `StructureCodec.load` → `KeyError('kind')`, no path in the message; `apply_atom_metadata` the same |
+| 1.8 no structure-path predicate | **OPEN** | A: eleven spellings across `workingcopy_structure.py`, `files.py:257`, `selection.py:99` (**dead**, zero readers), `siesta/input.py:1872,1902`, `build.py:240,722,813`, `cli.py:93,773`, `structure.py:94` |
+| 1.8a rename strands labels | **OPEN** (held) | A: `water.xyz → notes.txt` leaves `notes.molstruct.json` beside `notes.txt`; **and the reverse** (D-F16): `notes.txt → water.xyz` beside an existing `water.molstruct.json` runs no check and adopts a foreign sidecar |
+| 1.8b `write` deletes a sidecar | **OPEN** | A: write with regions → pair; write with `regions={}` → the sidecar is gone (`workingcopy_structure.py:369–370`) |
+| 1.8c hash gate checks length | **OPEN** | A: `'not a hash at all!!!'` and `'/etc/passwd\n\n\n\n\n\n'` both LOAD; three spellings still |
+| 1.8d `title` absorbs the extxyz header | CLOSED | `2eecd57a` … `801239a1` |
+| 1.11a registry fails open | **OPEN** | B: `sys.modules['molbuilder.siesta']=None` → registry `['PySCFConfig']`, no Issue; `validate(Au2, SiestaConfig())` runs no `config.*` check |
+| 1.11b kind gate `return []` | CLOSED | `3382b851` (raises `TypeError`; pinned). The audit's sentence for `validation.md` § 7 is still owed |
+| 1.12a `estimate_partial_charges` label-blind | **OPEN** | B/D: water `O,H,H` → 1.80 D; `O1,H2,H3` → **0.0 D**; `_DEFAULT_EN = 2.20` is hydrogen's value |
+| 1.12b the `axis_kind` fallbacks | **OPEN — 12 today** | B's site table: 11 × `("isolated",)*3` + 1 × `()`, all unreachable (the owner always resolves `None`; every field write is followed by `__post_init__`), plus one `None`-tolerant read (`validation/siesta.py:734–737`) that resolves the opposite way. Pure deletion |
+| 1.12c k-sampling hint measures two frames | **OPEN** | B: hexagonal cell, C chain along y: hint says ~5.5 Å for `b`; perpendicular gap 4.16 Å; `_min_image_distance(axes=[1])` 6.5 — the number matches neither door |
+| 1.12d transport fabricates a box | **OPEN vs the ruling** | B: arms still at `transiesta.py:68,151,330,401`, `wizard.py:424`; the kind gate has no no-cell row; a cell-less junction **renders a 184-line deck** with every atom outside the box. Ruling recorded in `transport.md` § 2a.9 / I14 (`cf337a8c`); the code is owed |
+| 1.13 `load()` restamps `schema_version` | **OPEN** | A: on disk 7 → `molstruct.load` says 9 |
+| 1.15a backbone check keys on `rid − 1` | **OPEN** | B/C: a 5P duplex is refused "residue 4 O3' → residue 5 P 16.74 Å", blame on `$X3DNA` |
+| 1.15b rdkit placeholder identity | **OPEN** | B/C: 7 of 12 (or 50 of 129) atoms carry `(1, MOL, A)` and are persisted as real |
+| 1.16a/b/c (in `structure.py`) | CLOSED | `97a20ee2`; `§ 3c` **survives** in `periodicity_gate.py:385,422,592` (user-facing error text) and `_shared.py:156` (A-N10) |
+| 1.16d bare § references | open by design | 26 of 59 bare now (was 33 of 58) |
+| 1.16e `replace()` guard on a hand-built fixture | **OPEN** | A: a `replace()` that drops `annotations` passes the test (fixture has `{}`) |
+| § 3 every row | **OPEN** | A: three `_CONTAIN_EPS`/`_EPS` (one with zero readers); `cell._contains` re-implements `Structure.cell_contains_atoms`; two comments claim a delegation that does not exist; `affine`/`concat` hand-list the columns |
+| § 4 every row | **OPEN** | A: `vacuum=-5` accepted by the model, refused by the gate; `annotations` accepts a `str` index `regions` refuses; `set_channel` installs then validates (a refused channel stays and breaks `copy()`); `files('mol.pdb')` writes an XYZ inside; `apply_to_structure` on a partial payload resets the cell |
+
+#### New — reaches a user's data or science today
+
+| # | where | what | evidence |
+|---|---|---|---|
+| **X1** ✓ | `chemistry.py:287–296, 345, 508` | `resolve_element('X')` returns `X`; `atomic_number('X') = 0`, `atomic_mass('X') = 1.0`. ASE's ghost placeholder is a legal element: it passes `check_species_labels`, contributes Z=0 to the electron count, and `render_fdf` writes `%block ChemicalSpeciesLabel / 1 0 X` — the exact defect the function's own docstring says it exists to end. `selection.py:147` uses `"X"` as its missing-element placeholder | D: measured, exit 0; re-run ✓ |
+| **X2** ✓ | `validation/geometry.py:89–90` | the H/heavy ratio counts `e == "H"` on RAW labels: labelled methane (`C1,H1..H4`) warns "H/heavy 0/5" on every deck route and the CLI; unlabelled does not. Owner `chemistry.is_atom` | B: measured; text ✓ |
+| **X3** ✓ | `describe.py:239–247` + `workingcopy_structure.py:306–309` + `jobset/prep.py:730–739` | a `.pdb` source WITH metadata: describe records `c.source.pdb`, the codec (`files()` never passes `fmt`, `.pdb` not replaceable) writes `c.source.pdb.xyz`, prep tries `c.source.pdb` then `c.source.xyz` → `PrepError: the structure this calculation describes is not here`. One naming rule, three spellings (the audit's § 4 `files()` vs `write()` row is the root) | D: measured; read ✓ |
+| **X4** | `trajectory_log/format.py:117–177` ← `jobset/prep.py:1050` | the run's molwatch step 0 is written from `struct.positions` in the WORLD frame while the deck written in the same prep call is in the ENGINE frame (`siesta/input.py:868` shifts by the origin): a 45 Å jump between step 0 and step 1, unstamped (`structure-periodicity.md` § 6.1 clause 5) | D: measured (`H 50 50 50` vs `5 5 5`) |
+| **X5** ✓ | `script_emit.py:1953–1954` | `_extract_atom_metadata_dict` returns `None` on `JSONDecodeError`: a corrupted ATOM-METADATA fence reads as "no labels" with nothing said | B: measured; text ✓ |
+
+#### New — the three conditions, more instances (latent or unreachable today)
+
+*Condition 1, a rule with an owner re-derived at the call site:*
+
+- **a second PDB reader** — `builders/backends/_common.py:57–93` `parse_pdb_to_structure` (element fallback `atom_name[:1]`, no TER, no `.capitalize()`), used on every X3DNA/AMBER build; `structure.md` § 2.3 says *"no comparable second reader exists"*. On a probe with a blank element column it reads `Mg → M`, `Cl → C` ✓
+- **a second deserialiser** — `web/blueprints/selection.py:131–173` `_struct_from_atoms` (keyed access, own `MOL`/`A`/`"X"` defaults; held); `_shared.py:124–165, 1349–1406` reads and `setattr`s the four periodicity fields outside `apply_metadata_dict` and treats `cell: null` as "not stated" (held)
+- **eight metadata-dropping rebuilds** ✓ — `chemistry.py` `add_hydrogens` (both routes), `protonate_phosphate_oxygens`, `_drop_overlapping_hydrogens`, `relieve_clashes`; `_threedna._strip_5prime_phosphate`, `_common.select_chain`, `peptide._patch_residue`, `_amber._fix_methylene_hydrogens`: each returns `Structure(...)`/`from_pdb(...)` listing identity + title only — cell, origin, vacuum, regions (incl. frozen), annotations, `info` all gone; the five that change the atom count carry no remap. Callers today are the birth path (empty store), but three are public API (`docs/model/chemistry.md`)
+- `describe.write_description(struct=None)` copies the geometry alone (`shutil.copy2`) and re-derives `keep_sidecar` from `len(pair) > 1`; the one production caller passes `struct`
+- `periodicity_gate._reset_to_derived:295–300` re-derives `resolve_cell`'s per-axis rule with its own 1e-6 Å length threshold beside `cell.resolve_and_check`'s `cell.no_volume`
+- `_validate_transport_kind:598–604` reads the RAW `struct.cell` (skips when `None` — the state the § 1.12d ruling refuses) and hand-rolls `|c| − z-span` as a third spelling of "empty space along an axis"
+- `transport/transiesta.py:601, 705` bare `+ 1` atom indices into the deck (held; `engine_atom_index` is the sole translator by `overview.md` § 2.1) ✓
+- `pyscf/input.py:1575` the run-time pair writer serialises with `json.dump` (no `allow_nan=False`, `ensure_ascii` default) and always writes a sidecar; `molstruct.dumps` is the one serialisation ✓
+- `chemistry.py:1394–1412` `_adjacency` compares `"H"` on raw labels beside `is_atom` for P/O (outcomes invariant by arithmetic today); `chemistry.py:80–103` a second periodic table (`SYMBOL_TO_Z` has zero callers; header names a `siesta/memory.py` that does not exist)
+- `script_emit.emit_atom_metadata:448–521` hand-builds the payload and drops a channel dict without `kind` in silence ✓ (the writer is sanctioned by `structure-annotations.md` § 4a; the enumeration is the drift)
+- `web/blueprints/build.py:410` writes `struct.regions` directly; `:1296` decides the geometry file by its own suffix test; `web/static/task-setup/viewer.js:1144` derives `<stem>.molstruct.json` in JS — the pairing rule's fourth spelling, the first in the browser (all held)
+- the backend set `{threedna, amber, rdkit}` spelled in seven places (`builders/backends/__init__.py`, `cli.py:328`, two JS panels, a docstring, `builders.md` § 4)
+
+*Condition 3, a placeholder spelled as a legal value:* X1 above; `smiles.py:155,187` and `_common.py:35,40` spell index-generated names `C1, O3, H4…` as stated identity, so **every SMILES-built molecule ships a sidecar** holding element + index ✓; `_amber.py:77–86` warns "requested B-form … not enforced" on every build because the default is passed as if stated; `nucleic.py:260`, `_threedna.py:443`, `chemistry.py:1866` guard a "no residue labels" case that `__post_init__` makes impossible.
+
+*Stale comments pointing the wrong way (§ 0's class):* `structure.py:9–13` cites the deleted `molbuilder.load` and `docs/design.md` ✓; `structure.py:892` asserts a `frozen_atoms` reader that refuses ✓; `workingcopy_structure.py:28–30` says the CLI "still writes geometry alone" — it writes the pair ✓; `validation/sidecar.py:3–7` describes a key the schema has not got and an INFO the code emits as `warn`; `validation/chemistry.py:11–14, 269–270` cite `validation.md § 5.3 / § 3.4`, which do not exist; `files.py:250–257` calls itself "the single source of truth" for a rule it delegates; `files.py:478–481` names a browser sidecar read that no longer exists; `selection.py`'s docstring describes a deleted route; `sidecars/molstruct.py:76, 350` and `parse/sidecars/molstruct.py:157, 291` describe the pre-v7 schema; `web/blueprints/build.py:424–427` says "most builders don't set a title" — every builder does; `docs/engines/builders.md` § 8 names the wrong door, its § 5 documents § 1.15b as behaviour, and 10 of 15 checked line citations are stale; `docs/web/tabs.md:166` says the peptide builder is `tleap` (it is PeptideBuilder).
+
+#### Confirmed clean — the doors that hold
+
+`StructureCodec.load/write/files/pair`; `siesta/input.py:_struct_from_file` and `spec_for`'s no-cell branch (six resolvers, `species_order`, `siesta_atom_index`); `pyscf/input.py` (`resolve_net_charge`, `geometric_atom_index`, the codec's own `pair().sidecar`); `cli.py:_emit`, `cmd_modify`'s file branch, `cmd_xv2xyz`, `_apply_run_metadata`; `jobset/prep.py:_structure_for` and `_prep_transport`; `build.py` `/api/build/load`, `/api/structure/save`, `/api/structure/export`, `/api/task-setup/handover`, `api_periodicity`; `_shared.struct_from_body/structure_to_dict/ok_structure_response`; all nine `modify.py` routes and every rebuild there (`_carry_nonatom`, `concat`, `affine`, `remap_annotations`, `add_slab`'s captured cell); `transport/sort.py`, `compose.py` (both citation forms, the record, `_unusable_cell`), `wizard.py` (`as_structure` states cell + kinds), `transiesta._emit_geometry`; `sidecars/molstruct.py` (three gates honour retired keys), `parse/sidecars/molstruct.py`; `cell.resolve`/`periodicity_gate` (every field write followed by `__post_init__`); `validation/sidecar.py` (reads no file, one `FROZEN_LABEL`, one `PARTITION_LABELS`), `validation/chemistry.py` (`resolve_element`, `analyze_structure`); `chemistry.atomic_mass` is **one table** (ASE IUPAC 2016 = PySCF's `MASSES` = IUPAC 2013 for H, C, S, Au to every printed digit), consumed at `spectra/results.py:489` only; **no builder writes a file or sets a codec-owned metadata field**, and nine codec round trips of born structures diff to nothing; the browser reads no sidecar bytes (`missing_ok`'s only caller reads `task.json`).
+
+#### Unstated rules the reads surfaced
+
+An element must denote Z ≥ 1 · what the CLI's single stdout stream carries · `cell: null` in a load body · a partial `apply_to_structure` payload · a `.XV`'s companion sidecar · whether *Delete file* pairs the sidecar (`structure-molstruct.md` § 6 names rename/move/copy only) · `Frame.lattice` vs `Structure.cell` (`parse.md` vs `structure-periodicity.md`) · which frame a molbuilder-written run artifact is in · whether `write_description`'s raw copy is ever legitimate · the travelling copy's name for a `.pdb` source · backbone adjacency is per `(chain, residue)` · what a builder owes an unnamed atom, must leave unset, records of its parameters, and puts in `title` · the `#`-suffixed provenance label's consumption status · whether `check_open_shell_metal` fires on odd-electron organics · the vacuum sign's owner · the ATOM-METADATA block's malformed-channel behaviour · the `validate(cfg=None)` info sentence · a kind validator does not gate on a config class.
+
+**§ 7b is closed** by C and D (5,974 + ~3,300 lines read end to end); what they found is above. § 7c, the rest of the tree, stands.
+
+
 ## 2. Documentation: one policy, not forty-four edits
 
 **6 of 39 `file.py:NNN` references in the contract documents resolve — 15%.**
@@ -2043,7 +2143,7 @@ seam and dispatch) · `validation/siesta.py`, `validation/pyscf.py`,
 
 ---
 
-## 7b. THE COVERAGE GAP — 11,888 lines inside this audit's own scope
+## 7b. THE COVERAGE GAP — 11,888 lines inside this audit's own scope *(closed 2026-09-23 — § 1.18)*
 
 **The validation found a hole, and it is not small.** Of the 59 modules that
 touch the structure/metadata surface, **eighteen were not opened by any of
@@ -2150,7 +2250,14 @@ contracts were not among the eight documents checked.
 
 1. **§ 0's three misleading comments.** One commit. Nothing else is safe until
    the map is right — that is `handover.md` § 5's D5-before-X1 rule, and lead
-   ① is what happens when it is skipped.
+   ① is what happens when it is skipped. **§ 1.18 adds fourteen more of the
+   same class** (the stale-comment list there); they ride the same pass.
+1a. **§ 1.18's four live ones first**: `X` as a legal element (X1), the
+   H-ratio on raw labels (X2), the `.pdb` travelling name (X3 — fix
+   `files()`'s `fmt`, the § 4 root, and the other two spellings fall), the
+   silent `JSONDecodeError` (X5). Each is a measured defect against a
+   written rule; none needs a ruling. X4 (the preview's frame) needs the
+   frame rule stated first.
 2. **§ 1.1 + § 1.1a** — the generator renders both halves. Do this one FIRST
    of the set: it is the only structural change here, and it closes the
    design document's § 15.6 deck-writer items in the same commit rather than
@@ -2167,11 +2274,16 @@ contracts were not among the eight documents checked.
    contract is what produced them.
 6. **§ 1.11** — the registry seam. Small, and it belongs beside § 1.2: all
    three are "a check that does not happen, and the absence is invisible".
-   § 1.11b is design § 18 step 0a — do it there, not twice.
-7. **§ 1.12 — the systematic item.** Start with § 1.12b's eleven deletions:
-   it is pure removal and it makes the rest safe to read. Then § 1.12a and
-   § 1.12c onto their doors. § 1.12d needs a reachability answer first. Three document
-   sentences ride with § 1.12c.
+   § 1.11b is **done** (`3382b851`); § 1.11a remains.
+7. **§ 1.12 — the systematic item.** Start with § 1.12b's **twelve**
+   deletions (plus the `None`-tolerant read): pure removal, and it makes the
+   rest safe to read. Then § 1.12a and § 1.12c onto their doors. § 1.12d is
+   **ruled** (§ 6 item 2): delete the arms and `_compute_cell_from_extents`,
+   add the no-cell row to `_validate_transport_kind` — `transport/` is held,
+   the validator is not. Three document sentences ride with § 1.12c. **§ 1.18's
+   condition-1 instances join here**: the second PDB reader, the eight
+   rebuilds (through `replace()`/`_carry_nonatom()`), `_reset_to_derived`,
+   the I12 arithmetic, the run-time pair writer's serialisation.
 8. **§ 1.13 + § 1.15** — the second and third conditions. § 1.13 is two
    one-liners. § 1.15a is a chain-aware adjacency key plus dropping a
    misdirected `$X3DNA` from a self-check failure; § 1.15b needs the
