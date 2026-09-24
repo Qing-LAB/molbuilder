@@ -70,7 +70,10 @@ def test_h2_with_one_atom_held_runs_the_force_constant_road(tmp_path,
     # Free atom first, held atom second: the input order is NOT the order
     # the deck needs, so the sort and its record are exercised for real.
     s = Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]]),
+                  # the relaxed bond (fixtures/siesta_fc/README.md): a
+                  # harmonic analysis is asked of a stationary point, and
+                  # the road now judges that (vibration.md § 5.5)
+                  positions=np.array([[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]]),
                   cell=np.diag([10.0, 10.0, 10.0]),
                   axis_kind=("isolated",) * 3)
     s.frozen_atoms = [1]
@@ -104,6 +107,19 @@ def test_h2_with_one_atom_held_runs_the_force_constant_road(tmp_path,
     task["execution"] = {**task.get("execution", {}), "mpi_np": 2}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
+    # THE GATE ASKS FOR THE ASSERTION (vibration.md § 2.2): unmade, prep
+    # refuses and names the two ways out; made -- in the template, the
+    # person's own file -- the road goes on.
+    r = CliRunner().invoke(jobset_group, ["prep", "run", stage,
+                                          "--bundle", str(bundle),
+                                          "--target", "this"])
+    assert r.exit_code != 0 and "already_relaxed" in r.output, r.output
+    tmpl = bundle / "H2.template.toml"
+    text = tmpl.read_text()
+    head, _, tail = text.partition("[item.already_relaxed]")
+    assert tail, text
+    tail = tail.replace("value = false", "value = true", 1)
+    tmpl.write_text(head + "[item.already_relaxed]" + tail)
     r = CliRunner().invoke(jobset_group, ["prep", "run", stage,
                                           "--bundle", str(bundle),
                                           "--target", "this"])
@@ -138,3 +154,13 @@ def test_h2_with_one_atom_held_runs_the_force_constant_road(tmp_path,
     assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert d["thermo"]["regime"] == "vibrational-only"
     assert "Head1997" in d["bibliography_keys"]
+    # R5 on this route: the reference-step forces read back and judged
+    rx = d["relaxation"]
+    assert rx["already_relaxed"] is True and rx["converged"] is True
+    assert rx["max_force_eh_bohr"] is not None and rx["max_force_eh_bohr"] < 0.02 / 51.42
+    assert "within the relaxation criterion" in rx["warning"]
+    assert d["engine_metadata"]["fc_asymmetry_max_ev_ang2"] >= 0.0
+    # the mass-calibrated displacement a transport step displaces along
+    m0 = d["modes"][0]
+    assert m0["zero_point_amplitude_amu12_ang"] > 0
+    assert np.asarray(m0["zero_point_displacement_ang"]).shape == (1, 3)

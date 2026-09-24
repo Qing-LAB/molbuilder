@@ -663,16 +663,36 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
                 f"vibrational-only.  Intensities are not computed on this "
                 f"route."),
             where="structure.regions"))
-    issues.append(Issue(
-        severity="info",
-        message=(
-            "The force-constant run relaxes nothing: the input geometry is "
-            "taken as the stationary point.  Cite a relaxed structure -- "
-            "off a minimum the free atoms' residual forces put curvature "
-            "into motions that are not vibrations (science/normal-modes.md "
-            "4), which the projection removes but the real modes still "
-            "shift."),
-        where="structure.positions"))
+    # THE PRECONDITION IS THE PERSON'S TO ASSERT (`engines/vibration.md`
+    # § 2.2, § 5.8): the force-constant run cannot relax, so unmade the
+    # statement is a refusal naming the two ways out, and made it is a
+    # statement the read-back answers with the reference-step forces.
+    if not bool(getattr(cfg, "already_relaxed", False)):
+        issues.append(Issue(
+            severity="error",
+            message=(
+                "The force-constant run relaxes nothing, and this structure "
+                "has not been stated to be relaxed.  Relax it first -- an "
+                "optimization calculation holding the same atoms, its final "
+                "frame exported from the Results tab as a pair -- and then "
+                "state `already_relaxed = true`; the read-back reads the "
+                "forces at the reference geometry and says whether the "
+                "statement held.  Off a minimum the free atoms' residual "
+                "forces put curvature into motions that are not vibrations "
+                "(science/normal-modes.md 4), which the projection removes "
+                "but the real modes still shift."),
+            where="config.already_relaxed"))
+    else:
+        issues.append(Issue(
+            severity="info",
+            message=(
+                "You stated the structure is relaxed at this level of "
+                "theory; the force-constant run relaxes nothing and takes "
+                "the input geometry as the stationary point.  The read-back "
+                "reads the forces SIESTA evaluates at that geometry (its FC "
+                "step 0) and judges them against the relaxation's own "
+                "criterion, so the statement is answered with numbers."),
+            where="config.already_relaxed"))
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(
         struct, engine="SIESTA vibration"))

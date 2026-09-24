@@ -1659,8 +1659,20 @@
         if (!rx.enabled) {
             // A route that relaxes nothing says so in its warning (the
             // SIESTA force-constant run); a v4 file says nothing at all.
-            return rx.warning ? "none \u2014 " + rx.warning
-                              : (results.phase_relaxation || "\u2014");
+            let none = rx.warning ? "none \u2014 " + rx.warning
+                                  : (results.phase_relaxation || "\u2014");
+            // The read-back's judgement, when the route measured it
+            // (engines/vibration.md § 5.5): the number in the viewer's own
+            // force unit, and the verdict.
+            if (rx.max_force_eh_bohr != null) {
+                none += " \u2014 max |F| on the free atoms "
+                     + Number(rx.max_force_eh_bohr).toExponential(1)
+                     + " Eh/Bohr"
+                     + (rx.converged === true ? " (within the relaxation criterion)"
+                        : rx.converged === false ? " \u26a0 above the relaxation criterion"
+                        : "");
+            }
+            return none;
         }
         let out = results.phase_relaxation || "empty";
         if (rx.n_steps != null) out += " \u2014 " + rx.n_steps + " steps";

@@ -1736,10 +1736,10 @@ It sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S cu
 [item.already_relaxed]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["geomeTRIC optimize()", "gradient check"]
+expands = ["geomeTRIC optimize()", "gradient check", "FC step 0 forces"]
 category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: skips the deck's built-in relaxation)"
+engines = ["pyscf", "siesta"]
+engine_key = "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)"
 type = "bool"
 value = false
 default = false
@@ -1750,6 +1750,7 @@ help = """
 Your assertion that this structure already sits at a stationary point -- a geometry where the forces vanish.  With it on, the vibration deck skips its built-in relaxation and goes straight to the Hessian; relaxation is otherwise the deck's mandatory first act.
 A harmonic analysis is only valid at a stationary point.  Off one, frequencies shift and spurious imaginary modes appear.
 The deck still checks the gradient at the input geometry and warns with the max-force number.  It never refuses, because the statement is yours to make.  That number also appears on the viewer's relaxation phase chip.
+On SIESTA the force-constant run cannot relax at all, so this statement is the precondition itself: unmade, preparing is refused with the two ways out (relax first with an optimization calculation that holds the same atoms, then export its final frame from the Results tab as a pair); made, the run proceeds and `summarize` reads the forces SIESTA evaluated at the reference geometry (its FC step 0) into the result and judges them against the relaxation's own criterion -- your statement, answered with numbers.
 """
 
 [item.compute_raman]

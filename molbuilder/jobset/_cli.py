@@ -2758,12 +2758,42 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                     encoding="utf-8", errors="replace").splitlines()[:40])
                 m = _re.search(r"Version\s*:\s*(\S+)", head)
                 ver = m.group(1) if m else ""
+            # THE REFERENCE-STEP FORCES, read from the run's own output, and
+            # the relaxation's criterion from the one catalogue, so the
+            # artifact judges stationarity (R5 on this route; vibration.md
+            # § 5.5).  The person's assertion travels from the template.
+            from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE as _EV_ANG_PER_EH_BOHR
+            from ..parse.engines.siesta_fc import reference_forces_from_out
+            from ..template import (catalogue as _catalogue,
+                                    config_from_template, find_template, one)
+            f_ref = None
+            if outs:
+                try:
+                    f_ref = reference_forces_from_out(outs[-1])
+                except Exception as e:                   # noqa: BLE001
+                    click.echo(f"  reference forces not read from "
+                               f"{outs[-1].name}: {e}")
+            crit_item = one(_catalogue(), "relax_force_tol", engine="siesta")
+            crit = float(crit_item.default) if crit_item is not None else None
+            asserted = False
+            tmpl = find_template(base)
+            if tmpl is not None:
+                try:
+                    from ..config.siesta import SiestaConfig
+                    asserted = bool(config_from_template(
+                        tmpl.read_text(encoding="utf-8"),
+                        SiestaConfig).already_relaxed)
+                except Exception:                        # noqa: BLE001
+                    asserted = False
             try:
                 res = spectra_results_from_fc(
                     struct, sorted_struct, perm, fc, label=_tt.label,
                     engine_version=ver, molbuilder_version=str(_mb_version),
                     config={"engine": "siesta", "calculation": "vibration",
-                            "stage": stage})
+                            "stage": stage},
+                    reference_forces_ev_ang=f_ref,
+                    force_criterion_ev_ang=crit,
+                    already_relaxed=asserted)
             except ValueError as e:
                 raise click.ClickException(str(e))
             out = where / f"{_tt.label}.spectra.json"
@@ -2774,10 +2804,24 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                        f"diagonalising; scope {res.hessian_scope} "
                        f"({res.n_atoms_in_hessian} of {res.n_atoms_total} "
                        f"atoms)")
+            rx = res.relaxation
+            if rx.get("max_force_eh_bohr") is not None:
+                _f_ev = rx["max_force_eh_bohr"] * _EV_ANG_PER_EH_BOHR
+                verdict = ("stationary" if rx.get("converged")
+                           else "NOT stationary" if rx.get("converged") is False
+                           else "no criterion")
+                click.echo(f"reference geometry: max |F| on the free atoms "
+                           f"{_f_ev:.4f} eV/Å"
+                           + (f" against {crit:g} eV/Å" if crit is not None else "")
+                           + f" -> {verdict}")
+                if rx.get("converged") is False:
+                    click.echo(f"warn: {rx['warning']}")
             click.echo(f"-> {out}")
             _ledger(base, "summarize", "vibration-modes",
                     out=str(out), modes=len(res.modes), removed=n_rm,
-                    permutation_key=perm.key)
+                    permutation_key=perm.key,
+                    max_force_eh_bohr=rx.get("max_force_eh_bohr"),
+                    stationary=rx.get("converged"))
             return
         raise click.ClickException(
             "summarize reads a BENCH sweep's measurements.  A run's own "

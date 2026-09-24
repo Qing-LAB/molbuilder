@@ -965,13 +965,19 @@ substrate, active substrate and molecule; every atom in the same periodic DFT
 calculation; relax with `ΔR_F = 0`, the deep layers at bulk positions; after
 it, `F_A ≈ 0` while `F_F` need not vanish. *Tool:* the vibration kind relaxes
 nothing (`vibration.md` § 2.2), so this is two calculations — an optimization
-that holds the set, then the vibration on the relaxed pair. **What the tool
-does not do, measured 2026-09-24:** the H₂ fixture at the experimental
-0.741 Å was sent through the whole road, its force-constant run's reference
-step carried **1.27 eV/Å** on each atom, and the artifact recorded no force
-and raised no warning beyond the standing *cite a relaxed structure* note.
-R5 is judged on the PySCF route only. The forces at `FC step = 0` are in the
-run's own output, and reading them into the artifact is owed (§ 4b.9).
+that holds the set, then the vibration on the relaxed pair. **What the tool does, and what it measured, 2026-09-24:** the vibration kind
+relaxes nothing, so `already_relaxed` is offered on this engine too as the
+precondition the person asserts — refused at the gate while unmade, since
+the run has no relaxation to fall back on — and the read-back reads the
+forces SIESTA evaluated at its FC step 0 into the artifact and judges them
+against the relaxation's own criterion (R5 on both routes; `vibration.md`
+§ 5.5). The H₂ fixture at the experimental 0.741 Å, sent through the whole
+road before that judgement existed, carried **1.27 eV/Å** on its reference
+step with nothing said and reported **3358 cm⁻¹**; relaxed through an
+optimization calculation to 0.02 eV/Å and exported from the Results tab as a
+pair it reports **3024.4**, and relaxed to 0.001 eV/Å, **3022.3** at the same
+step. A tenth of the frequency from the missing relaxation, two wavenumbers
+from the tolerance (the table is `vibration.md` § 9).
 
 **B — the force constants.** *Discussion:*
 `H_ij ≈ −(F_i(R_j + δ) − F_i(R_j − δ)) / 2δ`; one `±δ` pair per active
@@ -992,10 +998,27 @@ modes that matter. Too small drowns in noise, too large picks up
 anharmonicity. *Tool:* `fc_displacement` carries the range and the help text
 ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
 two stages at δ and δ/2 is describable and `summarize run <stage>` derives
-each — the comparison is by hand. The symmetry diagnostic is **symmetrised
-away and not recorded**: the read-back keeps `½(B + Bᵀ)` and forgets
-`max |H_ij − H_ji|`, which is the number that would say first whether δ was
-too small or too large. Both are owed (§ 4b.9).
+each — the comparison is by hand. The symmetry diagnostic is recorded since 2026-09-24 —
+`engine_metadata.fc_asymmetry_max_ev_ang2`, `max |H_ij − H_ji|` over the free
+block before the read-back symmetrises it — and with one free atom it says
+nothing (10⁻¹² eV/Å² on H₂: the block is one atom's own three nudges); it
+earns its place at two free atoms and up. The ladder itself was measured on
+the tightly relaxed H₂ (three stages of one description, δ = 0.02, 0.04 and
+0.08 Bohr):
+
+| δ (Å) | ω (cm⁻¹) | max abs(k⁺ − k⁻), the two one-sided constants (eV/Å²) |
+|---|---|---|
+| 0.0106 | 3012.1 | 2.4 |
+| 0.0212 (the default) | 3022.3 | 4.7 |
+| 0.0423 | 3044.7 | 9.0 |
+
+The one-sided constants drift apart linearly in δ — the cubic term of the
+bond, which the central difference cancels to first order — and the
+frequency still moves by 10 cm⁻¹ between the default and its half, so the
+plateau is **not** reached at the default for this stiff, light oscillator:
+exactly the case the discussion warns about, and the reason the ladder is
+worth running before a production step is trusted. The comparison across
+the stages is by hand today (V1.23).
 
 **D — the active Hessian.** *Discussion:* `H_AA` with all its cross terms;
 the frozen atoms still shape it through the potential. *Tool:* § 4b.4 — the
@@ -1132,9 +1155,9 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along `±Q_ν` and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
 | `R(Q_ν) = R₀ + Q_ν e_ν` with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement `A`; the held atoms unchanged; the conversion to the discussion's `∂ε/∂Q_ν` and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
-| on SIESTA, relax with `ΔR_F = 0` first; `F_A ≈ 0`, `F_F` need not vanish | **the same, as two calculations** — and the tool does **not verify** it on this route: measured 1.27 eV/Å on the H₂ fixture's reference step with nothing said (§ 4b.6 A); owed |
+| on SIESTA, relax with `ΔR_F = 0` first; `F_A ≈ 0`, `F_F` need not vanish | **the same, as two calculations**, and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one `±δ` pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
-| converge δ: `ΔF ≫ σ_F`, `H(δ) ≈ H(δ/2)`, `H_ij ≈ H_ji`, `ω(δ) ≈ ω(δ/2)` | **in part**: the range and the noise-floor note are on the item; a two-stage ladder at δ and δ/2 is describable; the comparison is by hand and the asymmetry is symmetrised away unrecorded (§ 4b.6 C); both owed |
+| converge δ: `ΔF ≫ σ_F`, `H(δ) ≈ H(δ/2)`, `H_ij ≈ H_ji`, `ω(δ) ≈ ω(δ/2)` | **in part**: the range and the noise-floor note are on the item; the ladder is describable and was run (§ 4b.6 C); the asymmetry is recorded; the comparison across stages is by hand (V1.23) |
 | mode-displaced structures on SIESTA for `PDOS(E, Q)`, `ε_r(Q)`, `Γ(Q)`, `Δρ(r, Q)`, `T(E, Q)` | **not built**; the displacement arithmetic and the pair writer exist, and the amplitude rule is stated (`vibration.md` § 5.6, level one) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; `Δρ_ν(r)` as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |
@@ -1156,8 +1179,10 @@ designed as one each and need a decision.
 
 | | what | why it is owed | rule or section |
 |---|---|---|---|
-| V1.21 | **stationarity on the SIESTA route**: read the forces at `FC step = 0` from the run's output into `relaxation.max_force_eh_bohr` over the free atoms, and warn above the optimization's own criterion | R5 holds on one route only; a non-stationary input gives shifted modes with nothing said (measured, § 4b.6 A) | R5 |
-| V1.22 | **the asymmetry diagnostic**: `max abs(H_ij − H_ji)` over the free block, recorded beside `fc_displacement_ang`, with a warning above a stated fraction of the block's largest element | the read-back symmetrises and forgets the one number that says whether δ was too small or too large (§ 4b.6 C) | § 4b.6 C |
+| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the relaxation's criterion; `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
+| ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | one free atom cannot show it (§ 4b.6 C) | § 4b.6 C |
+| V1.28 | **the structure carries its relaxation record** — engine, level of theory, criterion, achieved force, the held set, the run — in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs (needs a design and a yes) | the assertion is today the person's memory of a run the tree already holds | § 4b.6 A |
+| ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | the ladder is describable today; the comparison is by hand | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
 | V1.25 | **mode-displaced structure pairs on SIESTA** at the zero-point and thermal amplitudes, paired with the canonical eigenvector, the held atoms unmoved — the input to PDOS, density-difference and transport runs | level one of `vibration.md` § 5.6; the third link of the chain on the engine that shares the transport's model | § 4b.6 G |
@@ -1379,8 +1404,8 @@ and an explicit treatment of fixed atoms on each engine; § 4b.3–4b.9 restate 
 systematically and check every point against the code text. One gap was
 measured on the road that day: the SIESTA route judges no stationarity — R5
 holds on the PySCF route only — and the H₂ fixture's force-constant run carried
-1.27 eV/Å on its reference step with nothing said. It is V1.21, with six more
-rows the cross-check leaves owed (§ 4b.9).
+1.27 eV/Å on its reference step with nothing said. It was built the same day (§ 4b.6 A), with the δ ladder
+measured beside it; what the cross-check still leaves owed is § 4b.9.
 
 ---
 

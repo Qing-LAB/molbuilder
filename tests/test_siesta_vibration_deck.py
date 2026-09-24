@@ -53,7 +53,8 @@ def test_the_force_constant_deck_nudges_the_free_range_only(in_tree_psml):
     deck relaxes."""
     s = _three_h(held=[1])
     sorted_s = sort_by(s, "held-first").structure
-    cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml)
+    cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml,
+                       already_relaxed=True)
     text = render_deck(spec_for(sorted_s, cfg, calculation="vibration",
                                 stage_token="01_fc"), sorted_s, cfg,
                        verbose=False)
@@ -76,7 +77,8 @@ def test_an_unsorted_copy_is_refused_by_name(in_tree_psml):
     """A deck written from the input order would nudge the wrong atoms;
     the writer refuses rather than guessing a range."""
     s = _three_h(held=[1])
-    cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml)
+    cfg = SiestaConfig(system_label="h3", psml_lib=in_tree_psml,
+                       already_relaxed=True)
     with pytest.raises(ValueError, match="held-first"):
         render_deck(spec_for(s, cfg, calculation="vibration",
                              stage_token="01_fc"), s, cfg, verbose=False)
@@ -119,3 +121,120 @@ def test_the_modes_come_back_in_the_input_order(tmp_path):
                for m in r.modes)
     assert r.thermo["regime"] == "vibrational-only"
     assert "Head1997" in r.bibliography_keys
+
+
+def _relaxed_h2():
+    """The relaxed fixture's structure, held atom LAST in the input so the
+    sort really reorders (`fixtures/siesta_fc/README.md`)."""
+    return Structure(elements=["H", "H"],
+                     positions=np.array([[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]]),
+                     regions={"frozen_atoms": [1]},
+                     cell=np.diag([10.0, 10.0, 10.0]),
+                     axis_kind=("isolated",) * 3)
+
+
+def test_the_gate_asks_for_the_assertion_on_siesta():
+    """`engines/vibration.md` § 2.2: the force-constant run cannot relax, so
+    an unmade `already_relaxed` is a refusal naming the two ways out, and a
+    made one is answered later by the read-back."""
+    from molbuilder.validation.spectra import siesta_vibration_checks
+    s = _relaxed_h2()
+    refused = [i for i in siesta_vibration_checks(s, SiestaConfig(system_label="h2"))
+               if i.severity == "error"]
+    assert refused and refused[0].where == "config.already_relaxed"
+    assert "already_relaxed = true" in refused[0].message
+    stated = siesta_vibration_checks(
+        s, SiestaConfig(system_label="h2", already_relaxed=True))
+    assert not [i for i in stated if i.severity == "error"]
+    assert any(i.where == "config.already_relaxed" and i.severity == "info"
+               for i in stated)
+
+
+def test_the_reference_forces_are_read_from_the_run_and_stationarity_is_judged(tmp_path):
+    """R5 on this route (`engines/vibration.md` § 5.5): the forces SIESTA
+    evaluated at its FC step 0 are read from the run's output, the largest
+    over the FREE atoms is judged against the relaxation's criterion, and
+    the verdict is written with the number -- on the measured relaxed
+    fixture, then with a criterion the same forces cannot meet."""
+    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    from molbuilder.parse.engines.siesta_fc import (fc_block_asymmetry,
+                                                    read_fc,
+                                                    reference_forces_from_out)
+    from molbuilder.spectra.from_siesta import spectra_results_from_fc
+    f = reference_forces_from_out(FIXTURES / "siesta_fc" / "h2_fc.out")
+    assert f.shape == (2, 3)
+    # the deck's order: the held atom first, the free one second
+    assert abs(f[0, 2] - (-0.003787)) < 1e-9 and abs(f[1, 2] - (-0.000057)) < 1e-9
+    fc = read_fc(FIXTURES / "siesta_fc" / "h2_relaxed.FC")
+    assert 0.0 <= fc_block_asymmetry(fc, [1]) < 1e-9    # one free atom: nothing to show
+    s = _relaxed_h2()
+    sort = sort_by(s, "held-first")
+    write_permutation(tmp_path, sort)
+    perm = read_permutation(tmp_path)
+    r = spectra_results_from_fc(s, sort.structure, perm,
+                                FIXTURES / "siesta_fc" / "h2_relaxed.FC",
+                                label="h2", displacement_bohr=0.04,
+                                reference_forces_ev_ang=f,
+                                force_criterion_ev_ang=0.02,
+                                already_relaxed=True)
+    assert [round(m.frequency_cm1, 1) for m in r.modes] == [3022.3]
+    rx = r.relaxation
+    assert rx["converged"] is True and rx["already_relaxed"] is True
+    assert abs(rx["max_force_eh_bohr"] - 0.000057 / HARTREE_BOHR_EV_ANGSTROM_ASE) < 1e-12
+    assert abs(rx["max_force_all_atoms_eh_bohr"]
+               - 0.003787 / HARTREE_BOHR_EV_ANGSTROM_ASE) < 1e-12
+    assert "within the relaxation criterion of 0.02" in rx["warning"]
+    assert r.engine_metadata["reference_force_criterion_ev_ang"] == 0.02
+    assert r.engine_metadata["fc_asymmetry_max_ev_ang2"] < 1e-9
+    # the same forces against a criterion they cannot meet: the verdict flips
+    # and the warning names the number and the two ways out
+    r2 = spectra_results_from_fc(s, sort.structure, perm,
+                                 FIXTURES / "siesta_fc" / "h2_relaxed.FC",
+                                 label="h2", displacement_bohr=0.04,
+                                 reference_forces_ev_ang=f,
+                                 force_criterion_ev_ang=1e-5)
+    assert r2.relaxation["converged"] is False
+    assert "not a stationary point" in r2.relaxation["warning"]
+    assert "0.0001 eV/Å against the relaxation criterion of 1e-05" in r2.relaxation["warning"]
+    # no forces given: nothing judged, nothing invented
+    r3 = spectra_results_from_fc(s, sort.structure, perm,
+                                 FIXTURES / "siesta_fc" / "h2_relaxed.FC",
+                                 label="h2", displacement_bohr=0.04)
+    assert r3.relaxation["converged"] is None and r3.relaxation["max_force_eh_bohr"] is None
+
+
+def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
+    """`engines/vibration.md` § 6.3: the zero-point amplitude and the
+    displacement at it are derived at serialisation from the frequency and
+    the canonical vector -- the number a vibration-coupled transport step
+    displaces along -- and are absent for an imaginary mode."""
+    import math
+    from molbuilder.constants import ZERO_POINT_Q2_AMU_ANG2_CM1
+    from molbuilder.spectra.from_siesta import spectra_results_from_fc
+    s = _relaxed_h2()
+    sort = sort_by(s, "held-first")
+    write_permutation(tmp_path, sort)
+    r = spectra_results_from_fc(s, sort.structure, read_permutation(tmp_path),
+                                FIXTURES / "siesta_fc" / "h2_relaxed.FC",
+                                label="h2", displacement_bohr=0.04)
+    row = r.to_dict()["modes"][0]
+    nu = row["frequency_cm1"]
+    q = row["zero_point_amplitude_amu12_ang"]
+    assert abs(q - math.sqrt(ZERO_POINT_Q2_AMU_ANG2_CM1 / nu)) < 1e-12
+    # the constant is physics, not a fit: the H-H zero-point r.m.s. bond
+    # amplitude, sqrt(hbar / 2 mu omega) with mu = 0.504 amu at 4401 cm-1,
+    # is the textbook 0.087 A
+    assert abs(math.sqrt(ZERO_POINT_Q2_AMU_ANG2_CM1 / 4401.0) / math.sqrt(0.504)
+               - 0.0873) < 5e-4
+    disp = np.asarray(row["zero_point_displacement_ang"])
+    canon = np.asarray(row["eigenvector_canonical"])
+    assert disp.shape == canon.shape == (1, 3)
+    assert np.allclose(disp, q * canon)
+    # one hydrogen at 3022 cm-1 swings 0.074 A at its zero point
+    assert 0.070 < abs(disp[0, 2]) < 0.078
+    # an imaginary mode has no amplitude
+    r.modes[0].frequency_cm1 = -abs(nu)
+    r.modes[0].has_imag = True
+    row = r.to_dict()["modes"][0]
+    assert row["zero_point_amplitude_amu12_ang"] is None
+    assert row["zero_point_displacement_ang"] is None

@@ -18,3 +18,17 @@ Measured 2026-09-23 (design § 18 step 0.5):
   turns of the free atom come back with negative curvature (−1.70 eV/Å²)
   rather than zero — the reason the surviving whole-body motions are
   projected out and never trusted.
+
+**The relaxed pair of files, measured 2026-09-24** through the road — an
+optimization calculation holding atom 1 to `MD.MaxForceTol` 0.001 eV/Å, its
+final frame exported from the Results tab as a pair (H–H 0.7745 Å in the same
+10 Å box, PBE/DZP), then the vibration description's `freq04` stage,
+`FC.Displacement 0.04 Bohr`, `FC.First 2`, `FC.Last 2`:
+
+* `h2_relaxed.FC` — its force constants (the free atom's z-block averages to
+  33.859 eV/Å²; the mode comes out at 3022.3 cm⁻¹).
+* `h2_fc.out` — the run's output, trimmed to the header and the first two
+  `Begin FC step` blocks: step 0 is the reference geometry, whose forces
+  (−0.003787 eV/Å on the held atom, −0.000057 on the free one) are what the
+  read-back judges stationarity by (`engines/vibration.md` § 5.5); step 1 is
+  the first nudge.

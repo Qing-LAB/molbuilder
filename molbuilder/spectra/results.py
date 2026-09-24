@@ -48,6 +48,8 @@ branch; see spec § 6.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -178,6 +180,9 @@ _MODE_KEYS = frozenset({
     # DERIVED at every serialisation, never stored (`spectra/activity.py`,
     # the § 9b row): a file carries them, a reader recomputes them.
     "ir_active", "raman_active", "activity_class",
+    # DERIVED the same way (`engines/vibration.md` § 6.3): the zero-point
+    # amplitude and the mass-calibrated displacement at it.
+    "zero_point_amplitude_amu12_ang", "zero_point_displacement_ang",
 })
 _EQUILIBRIUM_KEYS = frozenset({
     "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
@@ -893,6 +898,25 @@ class SpectraResults:
         )
         for row, flag in zip(rows, flags):
             row.update(flag)
+        # THE MASS-CALIBRATED DISPLACEMENT (`engines/vibration.md` § 6.3):
+        # the zero-point amplitude Q_zp = sqrt(hbar / 2 omega) in amu^1/2.A
+        # and every free atom's displacement at it, Q_zp * L_canonical, in A
+        # -- what a vibration-coupled transport step displaces along.
+        # Derived here, never stored, like the activity classes: a file
+        # written before the keys existed gains them on read, and no writer
+        # can put a second convention beside the canonical vector.  An
+        # imaginary mode has no amplitude.
+        from ..constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
+        for row, m in zip(rows, self.modes):
+            nu = float(m.frequency_cm1)
+            if m.has_imag or not nu > 0.0:
+                row["zero_point_amplitude_amu12_ang"] = None
+                row["zero_point_displacement_ang"] = None
+            else:
+                q_zp = math.sqrt(_Q2 / nu)
+                row["zero_point_amplitude_amu12_ang"] = q_zp
+                row["zero_point_displacement_ang"] = (
+                    q_zp * m.eigenvector_canonical).tolist()
         return rows
 
     def to_dict(self) -> Dict[str, Any]:

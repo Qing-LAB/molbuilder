@@ -29,8 +29,9 @@ import numpy as np
 
 from ..chemistry import atomic_mass
 from ..constants import (BOLTZMANN_HARTREE_K, CM1_PER_SQRT_HARTREE_BOHR2_AMU,
-                         HARTREE_CM1)
-from ..parse.engines.siesta_fc import hessian_from_fc, read_fc
+                         HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_CM1)
+from ..parse.engines.siesta_fc import (fc_block_asymmetry, hessian_from_fc,
+                                        read_fc)
 from ..structure import Structure
 from ..transport.sort import Permutation
 from .methods import extract_citation_keys
@@ -78,14 +79,23 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
                             engine_version: str = "",
                             molbuilder_version: str = "",
                             config: Optional[dict] = None,
-                            timestamp: Optional[str] = None) -> SpectraResults:
+                            timestamp: Optional[str] = None,
+                            reference_forces_ev_ang: Optional[np.ndarray] = None,
+                            force_criterion_ev_ang: Optional[float] = None,
+                            already_relaxed: bool = False) -> SpectraResults:
     """The artifact for a finished force-constant run.
 
     ``struct`` is the structure the calculation is OF, in INPUT order;
     ``sorted_struct`` the copy the deck was written from and
     ``permutation`` the record read back beside the calculation
     (`transport.sort.read_permutation`); ``fc_path`` the ``.FC`` the run
-    left.
+    left.  ``reference_forces_ev_ang`` are the forces SIESTA evaluated at
+    the undisplaced geometry (its FC step 0, `siesta_fc.reference_forces_from_out`),
+    in the SORTED order like everything the run wrote; with them and
+    ``force_criterion_ev_ang`` (the relaxation's own criterion) the
+    artifact's ``relaxation`` block judges stationarity over the free
+    atoms (R5 on this route, `engines/vibration.md` § 5.5).
+    ``already_relaxed`` is the person's assertion, carried as such.
     """
     n = len(sorted_struct.elements)
     if len(struct.elements) != n or permutation.n_atoms != n:
@@ -109,6 +119,9 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
             f"{Path(fc.path).name} describes {fc.n_atoms} atoms; the "
             f"structure has {n}")
     H = hessian_from_fc(fc, free_s)
+    # The block's own numerics, before the symmetrisation hides them
+    # (`engines/vibration.md` § 5.5): read from the same two-sided mean.
+    fc_asymmetry = fc_block_asymmetry(fc, free_s)
     masses = np.array([atomic_mass(e) for e in sorted_struct.elements],
                       dtype=float)
     lam, L_sorted, patterns_sorted = vibrational_modes(
@@ -172,6 +185,51 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         "grid": grid,
     }
 
+    # STATIONARITY, JUDGED HERE (R5 on this route; `engines/vibration.md`
+    # § 5.5).  The forces are the run's, in the sorted order; the judged
+    # number is the largest component over the FREE atoms, the way the
+    # PySCF deck judges its own (§ 4.3), converted with the force-unit
+    # constant every force number in this codebase uses.  `already_relaxed`
+    # is the person's assertion and is carried as such: on this route it is
+    # the precondition itself, and the numbers below say whether it held.
+    warning = ("the force-constant route does not relax: the input geometry "
+               "is taken as the stationary point")
+    max_free_eh = max_all_eh = None
+    converged = None
+    if reference_forces_ev_ang is not None:
+        f_ref = np.asarray(reference_forces_ev_ang, dtype=float)
+        if f_ref.shape != (n, 3):
+            raise ValueError(
+                f"the reference forces describe "
+                f"{f_ref.shape[0] if f_ref.ndim else '?'} atoms; the "
+                f"structure has {n}")
+        max_free_ev = float(np.max(np.abs(f_ref[free_s])))
+        max_all_ev = float(np.max(np.abs(f_ref)))
+        max_free_eh = max_free_ev / HARTREE_BOHR_EV_ANGSTROM_ASE
+        max_all_eh = max_all_ev / HARTREE_BOHR_EV_ANGSTROM_ASE
+        if force_criterion_ev_ang is not None:
+            converged = bool(max_free_ev <= float(force_criterion_ev_ang))
+            if converged:
+                warning += (f".  The forces at the reference geometry were "
+                            f"read back: the largest on the free atoms is "
+                            f"{max_free_ev:.4f} eV/Å, within the relaxation "
+                            f"criterion of {float(force_criterion_ev_ang):g} eV/Å")
+            else:
+                warning = (f"the reference geometry is not a stationary point "
+                           f"at this level of theory: the largest force on the "
+                           f"free atoms is {max_free_ev:.4f} eV/Å against the "
+                           f"relaxation criterion of "
+                           f"{float(force_criterion_ev_ang):g} eV/Å.  The "
+                           f"frequencies are the curvature at this point, not "
+                           f"at the minimum.  Relax first (an optimization "
+                           f"calculation holding the same atoms, its final "
+                           f"frame exported as a pair), or keep this run "
+                           f"knowing that")
+    relaxation = {"enabled": False, "already_relaxed": bool(already_relaxed),
+                  "n_steps": 0, "max_force_eh_bohr": max_free_eh,
+                  "max_force_all_atoms_eh_bohr": max_all_eh,
+                  "converged": converged, "warning": warning}
+
     from ..sidecars.spectra import structure_hash_text
     methods = siesta_methods_text(
         displacement_bohr=(float(displacement_bohr) if displacement_bohr
@@ -202,15 +260,7 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         phase_raman=PHASE_COMPLETE,      # not requested; nothing owed
         phase_es=PHASE_COMPLETE,
         phase_relaxation=PHASE_COMPLETE,
-        # `already_relaxed` is the PERSON'S assertion (vibration.md § 3.1),
-        # and nobody makes it on this route: the run relaxes nothing and
-        # the warning says so.  Written true, the viewer read it as the
-        # assertion and hid the warning (measured 2026-09-24).
-        relaxation={"enabled": False, "already_relaxed": False,
-                    "n_steps": 0, "max_force_eh_bohr": None, "converged": None,
-                    "warning": ("the force-constant route does not relax: "
-                                "the input geometry is taken as the "
-                                "stationary point")},
+        relaxation=relaxation,
         thermo=thermo,
         removed_motions={"count": n_rigid,
                          "patterns": [p.tolist() for p in patterns]},
@@ -223,7 +273,11 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         equilibrium_positions_ang=np.asarray(struct.positions, dtype=float),
         engine_metadata={"fc_file": Path(fc.path).name,
                          "fc_displacement_ang": fc.displacement_ang,
-                         "fc_range_1based": [free_s[0] + 1, free_s[-1] + 1]},
+                         "fc_range_1based": [free_s[0] + 1, free_s[-1] + 1],
+                         "fc_asymmetry_max_ev_ang2": fc_asymmetry,
+                         "reference_force_criterion_ev_ang": (
+                             None if force_criterion_ev_ang is None
+                             else float(force_criterion_ev_ang))},
     )
 
 

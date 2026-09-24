@@ -23,6 +23,7 @@ copy (`model/overview.md` § 2.2).
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -91,18 +92,12 @@ def read_fc(path) -> ForceConstantFile:
                              n_displaced=n_displaced, k=k)
 
 
-def hessian_from_fc(fc: ForceConstantFile,
+def _two_sided_mean(fc: ForceConstantFile,
                     displaced: Sequence[int]) -> np.ndarray:
-    """The second-derivative table in Hartree/Bohr², shape
-    ``(n_atoms, n_atoms, 3, 3)``, filled where the file says something.
-
-    ``displaced`` names, in range order, which atoms the FC range covered
-    (0-based, in the order of the structure the deck was written from).
-    The two sides of each nudge are averaged -- a central difference --
-    and the block over the displaced atoms is symmetrised.  Rows of atoms
-    the file did not nudge stay zero and are never read: the one path
-    (`spectra.normal_modes.vibrational_modes`) slices the free block.
-    """
+    """The central-difference table in the file's own eV/Å², shape
+    ``(n_atoms, n_atoms, 3, 3)``, NOT yet symmetrised -- the one place the
+    two sides of each nudge are averaged, so the Hessian and its asymmetry
+    diagnostic read the same numbers."""
     displaced = [int(i) for i in displaced]
     if len(displaced) != fc.n_displaced:
         raise ParseError(
@@ -118,11 +113,84 @@ def hessian_from_fc(fc: ForceConstantFile,
         # k[p, i, side, b, j]: mean over the two sides -> H[a, b, i, j]
         H[a, :, :, :] = np.transpose(0.5 * (fc.k[p, :, 0] + fc.k[p, :, 1]),
                                      (1, 0, 2))
-    ix = np.ix_(displaced, displaced)
+    return H
+
+
+def hessian_from_fc(fc: ForceConstantFile,
+                    displaced: Sequence[int]) -> np.ndarray:
+    """The second-derivative table in Hartree/Bohr², shape
+    ``(n_atoms, n_atoms, 3, 3)``, filled where the file says something.
+
+    ``displaced`` names, in range order, which atoms the FC range covered
+    (0-based, in the order of the structure the deck was written from).
+    The two sides of each nudge are averaged -- a central difference --
+    and the block over the displaced atoms is symmetrised.  Rows of atoms
+    the file did not nudge stay zero and are never read: the one path
+    (`spectra.normal_modes.vibrational_modes`) slices the free block.
+    """
+    H = _two_sided_mean(fc, displaced)
+    ix = np.ix_([int(i) for i in displaced], [int(i) for i in displaced])
     block = H[ix]
     H[ix] = 0.5 * (block + np.transpose(block, (1, 0, 3, 2)))
     return H * EV_PER_ANG2_TO_HARTREE_PER_BOHR2
 
 
+def fc_block_asymmetry(fc: ForceConstantFile,
+                       displaced: Sequence[int]) -> float:
+    """``max |H_ij - H_ji|`` over the displaced atoms' block BEFORE it is
+    symmetrised, in the file's own eV/Å² -- the numerical diagnostic
+    `science/normal-modes.md` § 4b.6 C names, recorded with the result
+    (`engines/vibration.md` § 5.5).  A step too small leaves noise here, a
+    step too large leaves anharmonicity; with one free atom the block is
+    that atom's own three nudges and the number says little.
+    """
+    H = _two_sided_mean(fc, displaced)
+    ix = np.ix_([int(i) for i in displaced], [int(i) for i in displaced])
+    block = H[ix]
+    if block.size == 0:
+        return 0.0
+    return float(np.max(np.abs(block - np.transpose(block, (1, 0, 3, 2)))))
+
+
+_FC_STEP_RE = re.compile(r"Begin FC step\s*=\s*(\d+)")
+_FORCES_HEAD = "siesta: Atomic forces (eV/Ang):"
+
+
+def reference_forces_from_out(path) -> np.ndarray:
+    """The forces at the UNDISPLACED geometry of a force-constant run, in
+    eV/Å, shape ``(n_atoms, 3)`` in the deck's atom order.
+
+    SIESTA evaluates the reference geometry as its ``FC step = 0`` before
+    the first nudge, so the block is the first ``siesta: Atomic forces``
+    after that marker -- and the first block of the file when the marker is
+    absent.  These are what the read-back judges stationarity by (R5 on
+    this route; `engines/vibration.md` § 5.5).
+    """
+    p = Path(path)
+    lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    start = 0
+    for i, ln in enumerate(lines):
+        m = _FC_STEP_RE.search(ln)
+        if m and int(m.group(1)) == 0:
+            start = i
+            break
+    for i in range(start, len(lines)):
+        if not lines[i].strip().startswith(_FORCES_HEAD):
+            continue
+        rows = []
+        for ln in lines[i + 1:]:
+            parts = ln.split()
+            if not parts or not parts[0].isdigit():
+                break
+            rows.append([float(x) for x in parts[1:4]])
+        if rows:
+            return np.asarray(rows, dtype=float)
+        break
+    raise ParseError(f"{p.name}: no 'siesta: Atomic forces' block for the "
+                     f"reference geometry (FC step 0) -- the force-constant "
+                     f"run has not written its first step")
+
+
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",
+           "fc_block_asymmetry", "reference_forces_from_out",
            "EV_PER_ANG2_TO_HARTREE_PER_BOHR2"]

@@ -221,8 +221,18 @@ on the result, in one process, geomeTRIC straight into the Hessian. The only
 way the relaxation does not run is the person's own statement,
 `already_relaxed = true` — and even then the deck checks the forces on the free
 atoms and **warns with the numbers, never refuses**. On SIESTA the
-force-constant run relaxes nothing: the input geometry is taken as the
-stationary point, and the gate says so (§ 5.8). Cite a relaxed structure.
+force-constant run relaxes nothing, so the same statement is the
+**precondition the person asserts**: `already_relaxed = true` says the
+structure was relaxed at this level of theory — an optimization calculation
+that held the same set, its final frame exported from the Results tab as a
+pair — and without it the gate refuses to prepare, naming the two ways out
+(§ 5.8). The assertion is answered with numbers here too: the read-back reads
+the forces SIESTA evaluated at the undisplaced geometry, its FC step 0, and
+records the largest one over the free atoms against the relaxation's own
+criterion (§ 5.5), so R5 holds on both routes. *(Until 2026-09-24 the route
+measured nothing: the H₂ fixture at 0.741 Å went through with 1.27 eV/Å on
+its reference step and reported 3358 cm⁻¹ where the relaxed bond gives
+3022 — § 9.)*
 
 ### 2.3 Held atoms travel with the structure, never as a form field
 
@@ -274,7 +284,7 @@ a parameter is defined once and rendered the same everywhere.
 
 | item | engine | what it reaches | default | note |
 |---|---|---|---|---|
-| `already_relaxed` | pyscf | `ALREADY_RELAXED` — skips Phase 0 (§ 4.2); the gradient is still checked | `false` | the person's assertion, answered with numbers, never refused |
+| `already_relaxed` | both | PySCF: `ALREADY_RELAXED` — skips Phase 0 (§ 4.2); the gradient is still checked. SIESTA: the precondition itself — `false` is refused at the gate (the force-constant run cannot relax), `true` proceeds and the read-back measures the reference forces (§ 5.5) | `false` | the person's assertion, answered with numbers; refused on SIESTA only while unmade, because there the run has no relaxation to fall back on |
 | `compute_raman` | pyscf | `COMPUTE_RAMAN` — the polarizability sweep (§ 4.6) | `true` | the expensive optional: about `6·N_free` extra SCFs, each with a response calculation |
 | `compute_ir` | pyscf | `COMPUTE_IR` — dipole derivatives (§ 4.6) | `false` | nearly free when it is the only strength asked for and no atom is held; otherwise rides the Raman sweep or its own dipole sweep |
 | `temperature_K` · `pressure_atm` | pyscf | `THERMO_T_K`, `THERMO_P_ATM` — the headline of the thermochemistry (§ 4.7) | 298.15 K · 1 atm | **owed on SIESTA**: the derivation sums at these defaults and says so (§ 5.5) |
@@ -993,16 +1003,29 @@ workstation (`tests/test_siesta_vibration_e2e.py`, SIESTA 5.4.2): H₂ with the
 held atom **last** in the input → one mode at 3358 cm⁻¹, two motions removed,
 the free atom reported as atom 0.
 
-**What the read-back does not judge — two gaps measured 2026-09-24.** No
-stationarity: the run's output holds the forces at `FC step = 0`, and the
-artifact writes `relaxation.max_force_eh_bohr: null`. The H₂ fixture at the
-experimental 0.741 Å went through the whole road with **1.27 eV/Å** on each
-atom at its reference step and nothing was said beyond the standing *cite a
-relaxed structure* note — R5 is judged on the PySCF route only (V1.21). And no
-asymmetry: `hessian_from_fc` keeps `½(B + Bᵀ)` and records no
-`max |H_ij − H_ji|`, the number that says first whether `FC.Displacement` was
-too small (noise) or too large (anharmonicity) (V1.22; the δ-convergence
-protocol is [`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.6 C).
+**What the read-back judges (built 2026-09-24).** Stationarity: SIESTA
+evaluates the undisplaced geometry as its FC step 0 before the first nudge,
+and its forces are the first `siesta: Atomic forces` block of the run's
+output. `summarize` reads them (`parse/engines/siesta_fc.py::reference_forces_from_out`)
+and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
+atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
+against the relaxation's own criterion, the catalogue's `relax_force_tol`
+default (0.02 eV/Å, read from the one catalogue so a change there moves this
+verdict too). Above it the block carries a warning naming the number and the
+two ways out, `summarize` prints it, and the viewer's relaxation row shows the
+force. And the block's honesty about its own numerics:
+`engine_metadata.fc_asymmetry_max_ev_ang2` is `max |H_ij − H_ji|` over the
+free block **before** it is symmetrised — the first number to look at when
+`FC.Displacement` is suspected of being too small (noise) or too large
+(anharmonicity); with one free atom the block is 3×3 from one atom's own
+three nudges and the number says little (measured 10⁻¹² eV/Å² on H₂), so it
+earns its place at two free atoms and up.
+
+**What the measurement taught** (H₂ with one atom held, GGA/DZP, § 9): the
+unrelaxed experimental bond, 1.27 eV/Å on the reference step, gave 3358 cm⁻¹;
+the same bond relaxed to 0.02 eV/Å gave 3024.4 and to 0.001 eV/Å gave 3022.3
+at the same step — a tenth of the frequency from the missing relaxation, two
+wavenumbers from the tolerance. The δ ladder is § 9's second table.
 
 ### 5.6 What is absent, never zero — and the transport connection
 
@@ -1137,6 +1160,7 @@ by name.
 | `ir_intensity_km_mol` · `raman_activity_a4_amu` | `null` when the channel was not computed (not requested, or the engine has none); **`0.0` is a measured absence**, a symmetry-forbidden band's residue |
 | `electronic_structure` | the probe of § 4.8: `amplitude_ang` (the push `A`, kept with the probe so the coupling's denominator travels with its numerator — an older provenance table listed it as a top-level mode key; the code has always kept it here), the orbital windows at −A, 0, +A, the SCF energies, `homo_index_in_window`; `null` when the mode was not selected |
 | `ir_active` · `raman_active` · `activity_class` | **derived at every serialisation, never stored** (§ 6.6) |
+| `zero_point_amplitude_amu12_ang` · `zero_point_displacement_ang` | **derived at every serialisation, never stored** (§ 6.6): the zero-point amplitude of the mode, `Q_zp = √(ħ/2ω)` in amu^½·Å — `√(ZERO_POINT_Q2_AMU_ANG2_CM1 / ν̃)`, the constant 16.858 amu·Å²·cm⁻¹ derived in `constants.py` from the same three constants as the wavenumber conversion — and the Cartesian displacement of every free atom at that amplitude, `Q_zp · L_canonical` in Å: the **mass-calibrated displacement** a vibration-coupled transport step moves the structure along (the thermal amplitude is this times `√coth(ħω/2k_BT)`, [`web/spectra.md`](?doc=web/spectra.md) § 4.1). `null` for an imaginary mode, which has no amplitude |
 
 **The two normalisations must never be crossed** — the exaggerated amplitude
 (Å) pairs with the display form, the physical amplitudes (√amu·Å) with the
@@ -1160,6 +1184,9 @@ tests can meaningfully guard:
 | `modes[].eigenvector_display` | — | **derived** — per-mode rescale to `max\|L\| = 1` | dimensionless |
 | `modes[].ir_intensity_km_mol` | `dμ/dR` (analytic response, or dipoles at displaced geometries) | **derived** — `dμ/dQ = Σ (dμ/dR)·L_canonical` (`einsum('kai,ka->i', DMU_DR, L_canonical)`), then `42.2561·\|dμ/dQ\|²` | km/mol |
 | `modes[].raman_activity_a4_amu` | polarizabilities at displaced geometries, in Bohr³ | **derived** — central differences, the Placzek scalar, one global `(Bohr/Å)⁶ ≈ 0.02197` | Å⁴/amu |
+| `modes[].zero_point_amplitude_amu12_ang` · `zero_point_displacement_ang` | the mode's frequency and canonical vector | **derived at serialisation** — `√(16.858 / ν̃)`, times `L_canonical` per free atom (§ 6.3) | amu^½·Å · Å |
+| `relaxation.max_force_eh_bohr` (SIESTA) | the first `siesta: Atomic forces` block of the run's output, its FC step 0 | **read** by `summarize` — the largest over the free atoms, eV/Å → Eh/Bohr; `converged` against the catalogue's `relax_force_tol` default | Eh/Bohr |
+| `engine_metadata.fc_asymmetry_max_ev_ang2` (SIESTA) | the `.FC` file | **derived** — `max \|H_ij − H_ji\|` over the free block before symmetrisation (§ 5.5) | eV/Å² |
 | `modes[].electronic_structure.amplitude_ang` | — | the push `A` of § 4.8, molbuilder's own choice (`displacement_amplitude_ang`), recorded with the probe it produced | Å |
 | `modes[].electronic_structure.mo_energies_*_eh`, `scf_energy_*_eh` | `mf.mo_energy`, `E` at ±A | non-finite dropped; the shift and the coupling `ΔE/(2A)` are the viewer's arithmetic | Hartree |
 | `removed_motions` | — | **derived** by the one rule (§ 4.5), on both engines | count · (count, n_free, 3) |
@@ -1223,6 +1250,10 @@ symmetry. Built 2026-09-11, confirmed as the rule 2026-09-23; pinned on CO₂ by
 `motion_share_by_element` — each element's share of the mass-weighted motion,
 `m_i|L_i|² / Σ m_k|L_k|²` — because the browser has no masses and the file
 stores none ([`web/spectra.md`](?doc=web/spectra.md) § 4.2).
+The zero-point amplitude and displacement of § 6.3 are derived at the same
+moment, from the frequency and the canonical vector, for the same reason: a
+file written before they existed gains them on read, and no writer can put a
+second convention beside the first.
 
 ### 6.7 What the reader refuses
 
@@ -1359,6 +1390,26 @@ flowchart TB
   numbers are § 11);
 - the `.FC` units and the `.FCC` shape on H₂ (§ 5.4); H₂ with one atom held on
   SIESTA through jobset (§ 5.5).
+- **the convergence condition and the step, measured 2026-09-24** on H₂ with
+  one atom held (GGA/DZP, the road end to end: an optimization calculation,
+  its final frame exported from the Results tab, the vibration on the pair):
+
+  | input geometry | max force at the reference step (eV/Å) | δ (Å) | ω (cm⁻¹) |
+  |---|---|---|---|
+  | the experimental 0.741 Å, unrelaxed | 1.274 | 0.0212 | 3358.0 |
+  | relaxed to `MD.MaxForceTol` 0.02 eV/Å (0.7744 Å) | 0.011 | 0.0212 | 3024.4 |
+  | relaxed to 0.001 eV/Å (0.7745 Å) | 0.004 | 0.0106 | 3012.1 |
+  | the same | 0.004 | 0.0212 (the default 0.04 Bohr) | 3022.3 |
+  | the same | 0.004 | 0.0423 | 3044.7 |
+
+  The missing relaxation costs a tenth of the frequency; the tolerance, two
+  wavenumbers. The step moves the answer by 10 cm⁻¹ between the default and
+  its half and by 22 more at its double — roughly linearly in δ, so the
+  plateau `ω(δ) ≈ ω(δ/2)` of [`science/normal-modes.md`](?doc=science/normal-modes.md)
+  § 4b.6 C is **not** reached at the default for this stiff, light bond, and
+  the one-sided constants differ by 2.4, 4.7 and 9.0 eV/Å² (the cubic term
+  the central difference cancels). The block's asymmetry is 10⁻¹² eV/Å²
+  throughout: one free atom cannot show it.
 
 **Not done:** a mode-by-mode cross-check of intensities against an external
 code (Gaussian, ORCA, Turbomole) — absolute intensities carry that caveat;
@@ -1380,7 +1431,7 @@ only (V1.17); the SIESTA route's stationarity and its asymmetry diagnostic
 | `tests/spectra/test_normal_modes.py` | every row of the science acceptance table — the rank rule alone, no engine |
 | `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check |
 | `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
-| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the read-back on the measured fixture; the whole SIESTA road through jobset |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the gate's demand for the relaxed-assertion; the read-back on the measured fixtures — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset on the relaxed fixture, `prep` refusing until the assertion is made |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
@@ -1437,8 +1488,11 @@ nothing is in that state as of 2026-09-24.
 | a release note: every held-atom spectrum and free energy computed before 2026-09-23 contains a non-vibration | **owed** — V1.16 | true and intended; the old runs disagree with the new ones |
 | the presenter's category label names no engine (*Vibrational spectrum*); the Spectrum tab's engine sentence is the strip's | **built 2026-09-24** | |
 | the Molbuilder tab's save prompt doubling a typed suffix (`x.xyz.xyz`); the `#`-label unconsumed warning (needs a ruling); the vacuum notice on a gas-phase PySCF run | **owed** — UI walk 2026-09-23 | not this kind's, recorded where found |
-| the SIESTA route judges stationarity: the forces at `FC step = 0` read into `relaxation.max_force_eh_bohr` over the free atoms, a warning above the optimization's criterion | **owed** — V1.21, measured 2026-09-24 | § 5.5; R5 on both routes |
-| the asymmetry diagnostic `max \|H_ij − H_ji\|` recorded beside `fc_displacement_ang`, with a warning | **owed** — V1.22 | § 5.5 |
+| the SIESTA route judges stationarity: the forces at FC step 0 read into `relaxation.max_force_eh_bohr` over the free atoms, `converged` against the catalogue's `relax_force_tol`, the warning printed and shown | **built 2026-09-24** — V1.21 | § 5.5; R5 on both routes |
+| the asymmetry diagnostic `max \|H_ij − H_ji\|` recorded as `engine_metadata.fc_asymmetry_max_ev_ang2` | **built 2026-09-24** — V1.22; no warning threshold yet, one free atom cannot show it | § 5.5 |
+| `already_relaxed` on SIESTA: the precondition asserted by the person, refused while unmade, measured when made | **built 2026-09-24** | § 2.2, § 3.1, § 5.8 |
+| the mass-calibrated displacement per mode — `zero_point_amplitude_amu12_ang`, `zero_point_displacement_ang`, derived at serialisation | **built 2026-09-24** — V1.29 | § 6.3, § 6.6 |
+| the structure carries its relaxation record (engine, level of theory, criterion, achieved force, the held set, the run) in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs | **proposed** — V1.28, needs a design and a yes | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **owed, needs a design** — V1.23 | `science/normal-modes.md` § 4b.6 C |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |

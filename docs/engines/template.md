@@ -248,8 +248,8 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **486 facts live in two places** (measured 2026-08-20 at 307, 618
-on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item and 486 once the one-choice `engine` item retired, both 2026-09-24 —
+guarded.** **489 facts live in two places** (measured 2026-08-20 at 307, 618
+on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24 —
 the only fall in the series, and it came from deleting a home rather than from
 adding a check).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus

@@ -684,6 +684,20 @@ class SiestaConfig:
         "range": (0.005, 0.2),
         "tier":  "advanced",
     })
+    # THE PERSON'S ASSERTION THAT THE STRUCTURE IS RELAXED -- on this engine
+    # the vibration kind's precondition itself (`engines/vibration.md` § 2.2):
+    # the force-constant run cannot relax, the gate refuses while it is
+    # unmade, and the read-back answers it with the reference-step forces.
+    already_relaxed: bool = field(default=False, metadata={
+        "category": ("procedure",),
+        "section": "Vibration",
+        "workflow_group": "profile",
+        "label": 'Structure is already relaxed',
+        "tier": "basic",
+        "item_kind": "deck",
+        "expands": ('geomeTRIC optimize()', 'gradient check', 'FC step 0 forces'),
+        "engine_key": "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)",
+    })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),
         "section": "Compute & budget",
