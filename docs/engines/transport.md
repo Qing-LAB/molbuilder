@@ -1817,7 +1817,7 @@ item 7's *"shown locked"*, § 8's *"sealed at both doors"*, and the whole of
 | question | the answer, and it is the code's |
 |---|---|
 | **When do the cited run's values arrive, and may the person change them?** | **Once, at `jobset init`**, into this calculation's own template, by `transport/citation_defaults.py` — *"the whole of the filling"* (`template.md` § 6.4). After that the template is the answer and `prep` reads the file, never the citation. The person **may change any of them**; a change applies to all five rungs at once because there is one template (§ 2a.7 ruling 1). The older reading — declared valueless, filled at prep, sealed — is withdrawn |
-| **Where are the shared values edited?** | In **one panel that writes the template** (§ 3.8.4). **Not** on the per-rung form, because that form's payload is a rung's override bag and a shared value given to one rung is refused at `prep`. They are not hidden; they are elsewhere |
+| **Where are the shared values edited?** | In **one panel that writes the template** (§ 3.8.4). **Never edited** on the per-rung form, because that form's payload is a rung's override bag and a shared value given to one rung is refused at `prep` — but **shown** there, as a read-only echo naming its source (§ 3.8.2, § 3.8.7). They are not hidden; they are elsewhere |
 | **What generates the form?** | The **catalogue**, narrowed by kind — never a dataclass's field list. Not yet true of the code: the swap that did it was reverted (§ 3.8.6), and the reason is the open decision below |
 
 ---

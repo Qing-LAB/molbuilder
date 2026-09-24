@@ -1515,6 +1515,40 @@ been refused, and `jobset/` was never in this audit's scope;
 `validation/sidecar.py` grew from 153 to 194 lines after § 7b sized it, so
 G2's scope statement is stale.
 
+**The transport contract's own contradictions, from the full read of
+2026-09-23** (each verified at the line): § 3.8 says every superseded
+paragraph is marked, and three are not — § 3.4.3's *"a surface asks, or
+`prep` fills"*, § 3.4.4's *"contract rows, VALUELESS"*, § 1's *"render from
+ONE config filled from the citation's deck"* — all still state the sealed
+reading § 3.8.0 withdrew · § 3.4.2 *"transmission: the same text as device"*
+vs § 6.1's per-rung resolution · § 6.1's *"byte-for-byte"* deck gate vs
+§ 3.6a's `same_calculation`, which masks three fields (the code agrees with
+§ 3.6a) · § 3.6a says `config_for` still validates overrides; it has zero
+callers · § 2a.13 lists `TS.HS.Save` and the bias point as rows the catalogue
+lacks; both exist (`ts_hs_save`, `bias_voltage_v`) · § 6 says `stages.py`
+holds the renders; they are `deck.py`'s · § 3.6 item 7's *"no production
+caller"* line (already in § 2 item 7) · § 3.8.5 *"nothing writes a
+template"* — describe writes one at init, nothing edits one · § 6.2's lead
+*"bulk in all three"* vs the handover's *"a lead states the device's
+periodicity"*, which is what `as_structure` does · § 7 cites a 300 Ry config
+default, a deleted preflight and an unread wizard constant · and the counts:
+*"49 siesta items / 40 survive / 9 relaxation rows"* are 68 / 57 / 11. Their
+handover's *"bias asked twice"* is **false at HEAD** (the served form offers
+neither spelling) and becomes true the moment the catalogue form lands,
+because `bias_voltage_v` carries `stages = ["device"]` and no marker.
+`wizard.py:54-57` still names a deleted `--z-period` and a deleted preflight.
+These are the other machine's sections; listed here so the marking pass
+they owe § 3.8 has its list.
+
+**Two rulings on one arm, one day apart in hours.** `transiesta.py:259-266`
+records *"THIS ARM IS FOR AN ISOLATED ELECTRODE, AND IT IS A REAL CASE
+(user, 2026-09-23)"* — the morning ruling, on the other machine, under which
+transport derives the box with its own 15 Å default. The afternoon ruling,
+here (§ 6 item 2): transport refuses a cell-less structure and derives
+nothing; the vacuum stays a structure feature the Cell page commits. Same
+physics, opposite home for the derivation. The later ruling stands and is
+recorded; the other machine holds the earlier one and has to hear it.
+
 **The comment rule meets their practice.** Their handover points the next
 person at dated, narrative comments as the durable record
 (`blueprints/transport.py:535-559`, `transiesta.py:283-295`,
