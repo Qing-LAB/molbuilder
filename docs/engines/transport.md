@@ -685,6 +685,46 @@ base structure, an electrode region identical across every frame, and the
 displacement rule recorded beside the frames — so a result can always say what
 it was a displacement *of*.
 
+#### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
+
+The rule that derives the frames is not molbuilder's to own. The first
+built-in one will read a mode from a vibration run — `.spectra.json` already
+carries each mode's `eigenvector_canonical`, so *cite that run, this mode,
+this amplitude* is a complete rule. But the person may also supply **a script
+of their own** that takes the base structure and writes the frames; then the
+script is the rule, it is recorded beside the frames exactly as a built-in
+rule would be, and the person takes over the responsibility a built-in rule
+would have carried.
+
+**What that responsibility is, stated as a contract, because every part of
+it is checkable.** Every frame the rule produces, whoever wrote it:
+
+| promise | why | checked how |
+|---|---|---|
+| the same atom count, in the **same order** | the sidecar's labels are indices; the seed's density and the leads' Hamiltonians are indexed the same way | count and index, per frame, against the base |
+| the same species, in the same species order | the orbital set is what makes the seed's density usable as a start (§ 2a.9's approximate gate) | species table per frame against the base |
+| the same labels — regions, frozen set, identity columns | the partition is what the whole ladder is built on (§ 4); a frame is the base with atoms moved, never relabelled | the frame carries no labels of its own: it inherits the base's, which makes the promise structural rather than checked |
+| **no electrode atom moves** | the exact-sharing gate above: the lead Hamiltonian is truth | electrode positions per frame against the base, to the coordinate tolerance the sort uses |
+| one base structure, an optimised junction | a group is a *displacement of* something, and the result has to say of what | the base is the group's citation |
+
+What is trusted rather than checked is only what cannot be: that the
+displacement means something physically. Everything a wrong script could do
+to the ladder's bookkeeping is refused at the citation door, frame by frame,
+naming the frame and the promise it broke.
+
+**The seed needs no promise.** Sharing it is valid for any nearby geometry
+(the approximate row above), and a displacement large enough to make a poor
+starting guess costs the device iterations, not correctness. So the seed is
+shared across the group by default; the one guarantee the person actually
+gives is the electrode one, and that one is checked.
+
+**One job, one more axis.** `task.json` already names the axes a calculation
+varies over (`varies`; today the bias). A frame group is that with a second
+axis: the device and the transmission carry the frame level, the seed and the
+leads do not, and § 2a.11's tree says so without a new mechanism. **For now
+the input is one structure**; this section fixes what a group must look like
+so that adding the generator later changes nothing above it.
+
 #### What this changes about the deliverable
 
 The result of a frame group is not one transmission curve but a **family** of
