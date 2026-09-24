@@ -618,6 +618,30 @@ region**, and the two lead calculations are the same calculation for all of
 them. Sharing them is therefore not an optimisation bolted on later; it is a
 statement about what an electrode stage *depends on*.
 
+#### The structure states its own cell, and transport derives none *(user, 2026-09-23)*
+
+> **A structure may carry vacuum around an electrode — for an optimisation, for
+> anything the structure model allows — and transport refuses a structure that
+> states no cell.** There is no requirement that an electrode be periodic in
+> the plane; there is a requirement that a transport calculation be given the
+> box it runs in.
+
+The two halves are one rule seen from two sides. The structure model owns
+periodicity (`model/structure-periodicity.md`): an isolated axis, a vacuum
+gap, a lead relaxed in a padded box are all legitimate structures, and
+nothing here narrows what a person may build or relax. But the calculation
+process cannot use one: the lead's transverse vectors must tile the device's
+(I6), the transport period is the bulk repeat and is not recoverable from
+atom extents (§ 7), and the leads must continue into their periodic image
+(I12). So a transport calculation **derives no cell** — not a bounding box, not
+a padded one, not a lateral pair from the atoms — and a structure that states
+none is refused at the citation door (§ 6.2 hop 3) and by the kind gate
+(§ 5), as an `error` that names what is missing and where to commit it (the
+Cell page). The 15 Å of transverse vacuum that an earlier reading fabricated
+around an isolated lead survives only as advice: on a committed cell, the
+gate may say the transverse gap looks like an isolated lead rather than a
+bulk one, and leave the person to decide.
+
 #### The axis rule, which the bias scan already follows
 
 > **A stage carries a sub-level for each axis it varies over, and none for an
@@ -2160,8 +2184,9 @@ by a command a person must run.
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
 | I12 | z-vacuum ≈ 0 at the leads | device | a gap = severed lead, not a junction | **`cell.transport_vacuum`** — `_validate_transport_kind`, warn *(re-homed 2026-09-17)* |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
+| I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door; `_validate_transport_kind`, **error** on every prep *(ruled 2026-09-23; the kind-gate row is owed in code)* |
 
-**ELEVEN OF THE THIRTEEN NEED NO GATE UNDER THE COMPOSITE** *(measured
+**ELEVEN OF THE FIRST THIRTEEN NEED NO GATE UNDER THE COMPOSITE** *(measured
 2026-09-17, `plan.md` § 5p.3p.7)*. Seven hold by construction — every rung
 resolves from ONE template, so I1/I3/I4/I5 cannot differ; the lead's atoms ARE
 the device's, extracted by `compose`, so I2/I10 hold; and the lead takes the
@@ -2549,7 +2574,7 @@ and hop 7 only for the two electrode rungs.
 |---|---|---|
 | 1 | SIESTA wrote it into the `.XV` | a fixed-cell relaxation ends in the box it started in |
 | 2 | read from the `.XV`, **never from the atoms** | § 7: the box is not recoverable from atom extents. If a sidecar carries the labels, its `cell` is *completed* from the `.XV` rather than allowed to replace it |
-| 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks |
+| 3 | **refused** if absent, non-finite or flat | the citation is the one place user input enters, so it is the one place that checks — and transport derives no cell of its own, by ruling (§ 2a.9; I14) |
 | 4–5 | carried through `replace()` | a reorder states the per-atom fields and nothing else, so the box rides along untouched |
 | 6 | written to the sidecar, read back verbatim | |
 | 7 | **lateral taken verbatim, transport DERIVED** | the two halves differ on purpose — see below |
@@ -2583,7 +2608,8 @@ the lead, extracted from the L-electrode region
     cell   a = (17.30, 0.00, 0)      <- COPIED, character and all
            b = ( 8.65, 14.98, 0)     <- COPIED
            c = ( 0,     0,    14.4)  <- COMPUTED: 12.0 span + 2.40 spacing
-    axis_kind  periodic, periodic, periodic   <- a lead is bulk in all three
+    axis_kind  periodic, periodic, periodic   <- bulk along transport; the
+                                                 transverse pair is the device's own
 ```
 
 The lead's `b` keeps its `14.98` y-component. That single number is what I6

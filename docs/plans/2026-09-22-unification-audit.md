@@ -1886,15 +1886,21 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    `transport`, because the extxyz `pbc=` header is boolean. Either molbuilder
    writes its own `axis_kind` key into the comment line, or the loss stands and
    the pair remains the only faithful carrier.
-2. **Lead ① / § 1.12d — is a cell-less lead a supported input?** The
-   production ladder refuses one at `compose`; the other machine's handover
-   § 4 says that makes the isolated-electrode path *"the user asked to keep"*
-   unusable today. Supported → the branch resolves cell and origin through
-   the owner, with the lead's 15 Å vacuum default as a **parameter of
-   `resolve_cell`** (a design change: § 0a's *parameter* rung, replacing the
-   copy their rewrite left beside the owner); not supported → delete the
-   branch and `_compute_cell_from_extents`, and retire the two tests that pin
-   the fabricated box as the contract.
+2. **Lead ① / § 1.12d — RULED** *(user, 2026-09-23, twice)*: **the structure
+   allows vacuum around an electrode — for an optimization, for anything —
+   and transport refuses a structure that states no cell**, because the
+   calculation process cannot use one today; there is no requirement that an
+   electrode be periodic in the plane. So transport derives nothing: the
+   no-cell arms of the deck writer and the wizard, `_compute_cell_from_extents`
+   and the 15 Å transport default go; the refusal is a transport KIND finding
+   of severity `error` through the one gate (`science/validation.md` § 1.1 —
+   *"a finding that needed new plumbing to reach a surface would be a finding
+   put in the wrong layer"*), with `compose`'s citation-door refusal staying as
+   the early, better-worded door; the 15 Å reasoning survives as an advisory
+   check on the committed cell's transverse vacuum; the two tests pinning the
+   fabricated box retire. The other machine recorded the morning's opposite
+   reading in `transiesta.py:259-266` and holds it. Contract sentence owed in
+   `engines/transport.md` § 2a.9 and the kind-gate rows.
 3. **`TBT.Contour` energies** — absolute or E_F-relative? `record.py:326`
    writes `"energies_relative_to_ef": True` unconditionally and
    `conductance_g0` reads T at E = 0; `config/transport.py:202` says the
@@ -1917,8 +1923,11 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    with no run to cite, and the shared panel's provenance line (*"from the
    run you cited"*) would need a second distinction anyway. Recommended: A.
    `system_label` needs `role = ["transport"]` either way.
-7. **D-2 (their handover, W21) — two parts, and the first is already
-   built.** (a) The activity classifier (`spectra/activity.py`, 2026-09-11:
+7. **D-2 (their handover, W21) — DECIDED 2026-09-23** *(the user delegated
+   it: "make the right decision")*: (a) the classifier as built is the rule,
+   home `web/spectra.md` § 9b; (b) `top_n` / `threshold` retire at the design's
+   step 4, with the rest of the API shape; Γ-only is ruled; the cost/infrared default stays analytic. What
+   the item said, kept as the record of why: (a) The activity classifier (`spectra/activity.py`, 2026-09-11:
    widest log-gap ≥ 2 decades and ≤ 1e-3 of the peak, else 1e-6 of the peak;
    an absolute presence floor per channel; "partial" when a channel was not
    computed) — endorse as the rule, then give it a document home; no
