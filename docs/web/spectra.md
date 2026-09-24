@@ -647,6 +647,40 @@ once it has a branch). **If either grows one — a second polarizability
 convention, a per-mode prefactor — it moves to a callable function the way
 `homo_index` did.**
 
+### 9b.3 A second engine, and what the file says when a number is missing *(user, 2026-09-23)*
+
+The design (`plans/2026-09-21-normal-mode-unification-design.md` § 5, chosen
+2026-09-21) gives this calculation **two engines**: PySCF for isolated
+molecules, SIESTA for slabs and junctions — where the point is consistency,
+the same pseudopotentials, orbitals and functional as the transport the modes
+will be displaced for. SIESTA yields **frequencies and mode shapes only**;
+infrared and Raman are not offered there (`science/normal-modes.md` § 4a.6).
+So the file has to carry a result with pieces missing, and say so.
+
+**One file, every engine; a missing number is ABSENT, never zero.** `engine`
+names who produced the file. A key an engine cannot produce is absent or
+`null`, and a reader treats that as *not computed* — a different statement
+from `0.0`, which is a measured absence (`ModeData`'s own rule, and the
+`partial` activity class). The consequences, each already the code's
+behaviour for a channel that was not requested and now the rule for an engine
+that cannot request it:
+
+| where | what a reader sees |
+|---|---|
+| the chart | a result with no computed strength is drawn as **lines at the mode positions**, all one height, under the note *strengths not computed — height means nothing here*; a lane whose channel is missing is titled *not computed* |
+| the rug | every mode, in the `partial` colour — never `silent`, because nobody looked |
+| the modes table | a `—` in the cell, not a `0.00` |
+| the write-up | names what was computed; the file and the viewer name what was not, so an absence cannot be read as a zero |
+
+**What changes for the file.** The table above has a *PySCF reports* column;
+a second engine adds its own. The block `equilibrium.scf_energy_eh` /
+`mo_energies_eh` / `homo_idx` is PySCF's — a periodic engine has a Fermi
+level, not a HOMO — and **becomes optional** (design § 16.2, step 4 of § 18,
+before the SIESTA arm). What SIESTA supplies per mode is `frequency_cm1` and
+`eigenvector_canonical`, once its convention is established (design § 19.4).
+`presenters.md`'s *PySCF spectrum* label names the engine and will be wrong
+the day it is not.
+
 ## 10. Test map
 
 Engine + backend (`tests/spectra/`): `test_blueprint.py` (the page +

@@ -1322,13 +1322,16 @@ spurious, and the two loudest IR bands among them.
 
 1. **Γ-only or dispersion** (step 2.5). Blocks the schema.
 2. **`.FC` or `C.FC`** (step 0.5). One run settles it.
-3. **What a frequencies-only spectrum looks like in the tab.** § 2's rug
-   colours by channel activity; with no channels *every* mode is dark to
-   both, so the "this is remarkable" signal fires on 100 % of modes. And
+3. **What a frequencies-only spectrum looks like in the tab** — **ruled**
+   *(user, 2026-09-23)*: lines at the mode positions, no heights, and the file
+   says what is absent; `web/spectra.md` § 9b.3 is the rule's home. The rug
+   half was already answered on 2026-09-11 by the `partial` activity class —
+   a mode whose channel was not computed is `partial`, in its own colour,
+   never `silent`, so nothing fires on 100 % of modes. The other half stands:
    `top_n`/`threshold` rank by Raman activity, so they are undefined rather
-   than empty — only `skip`, `all` and `explicit` survive. § 4a.6 rules that
-   the IR/Raman controls are *not drawn*; by the same argument the
-   Raman-ranked selectors should not be either, and no document says so.
+   than empty for such a run — that is the audit's D-2(b)
+   (`plans/2026-09-22-unification-audit.md` § 6 item 7), where retiring
+   them is recommended.
 4. **Whether `vibra`'s eigenvectors are mass-weighted or plain Cartesian.**
    § 9.1 already flags this as the 1823×-class risk. Unestablished, and it
    must be settled before any SIESTA mode reaches the viewer.

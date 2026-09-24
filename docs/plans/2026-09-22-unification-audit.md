@@ -1891,7 +1891,11 @@ way — the § 1.1a result shows the screen finds costs the item itself missed.
    molecule keeps one symmetry class and drops every IR-active mode. Retire
    both and keep `skip` / `all` / `explicit` plus the frequency window
    (recommended; the plan row's own suggestion), or re-key them on the
-   activity class, or rank by measured gap change after computing.
+   activity class, or rank by measured gap change after computing. **(c)
+   Ruled** *(user, 2026-09-23)*: the file is one format for both engines; a
+   number an engine cannot produce is absent, never zero; a result with no
+   strengths is drawn as lines; the PySCF-only MO block becomes optional
+   before the SIESTA arm — `web/spectra.md` § 9b.3.
 8. **`structure_hash` — delete, or detect-and-attest?** § 1.8c has the
    consolidated facts. Detect: compare in `StructureCodec.load` and report
    as a notice, never refuse; attest: a separate door that re-stamps the
