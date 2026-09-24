@@ -642,11 +642,10 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     # Identity first (schema 8), FULL-REPLACE -- the same semantics
     # apply_metadata_dict documents for the metadata block: an absent key
     # resets the field to its default (post_init refills the placeholders).
-    # This is what makes the sidecar the identity AUTHORITY for a pair: the
-    # xyz half's comment line is provenance, and without the reset the
-    # loader's comment-as-title lift would round-trip a "Built by
-    # molbuilder" the user never stated into the next sidecar.  Plain
-    # attribute sets, so the apply_metadata_dict call below re-runs
+    # This is what makes the sidecar the identity AUTHORITY for the four
+    # columns it carries: an absent column means the synthesized default, so
+    # a placeholder the reader invented cannot round-trip into the next
+    # sidecar as something the person stated.  Plain attribute sets, so the apply_metadata_dict call below re-runs
     # __post_init__ over them -- one validator, one message.
     # `title` IS NOT IN THIS LOOP.  The geometry file owns it
     # (``model/structure.md`` § 2.2c), so this door leaves it alone.  Were it

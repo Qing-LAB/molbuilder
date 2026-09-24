@@ -1431,13 +1431,11 @@ class Structure:
         lines = text.splitlines()
         comment = lines[1].strip() if len(lines) >= 2 else ""
         # ...BUT THE MACHINE HALF OF THAT LINE IS NOT A NAME.  An extended-XYZ
-        # comment is `<free text> Lattice="..." Properties=... pbc="..."`, and
-        # taking it whole made the title of every ASE/VMD file the header
-        # itself -- persisted into the sidecar as the structure's IDENTITY,
-        # beside a correctly parsed 3x3 `cell` (``model/structure.md``
-        # § 2.2c).  A sidecar carrying its own copy masks this, so it shows
-        # up only once the pair is separated -- or once another tool reads
-        # the `.xyz`, which is what that format is kept for.
+        # comment is `<free text> Lattice="..." Properties=... pbc="..."`.
+        # The header states the cell, which is parsed into `cell`; calling
+        # it the title would file the same fact twice, once mislabelled, in
+        # the one line of the file another tool reads as the name
+        # (``model/structure.md`` § 2.2c).
         #
         # Only the three STRUCTURAL keys are cut, and only from the first one
         # on.  A sentence is what the paragraph above exists to protect, so

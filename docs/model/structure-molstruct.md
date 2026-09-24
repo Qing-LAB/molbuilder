@@ -43,7 +43,6 @@ plus the structure's **metadata fields** spread in alongside them.
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
 
-  "title": "hemeC anchor",
   "atom_names": ["CA", "SG"],
   "residue_ids": [14, 14],
   "residue_names": ["CYS", "CYS"],
@@ -56,8 +55,10 @@ plus the structure's **metadata fields** spread in alongside them.
 The identity block (schema 8, 2026-08-20) is **optional and real-only**: a
 column appears only when it says something the server would not have
 synthesized itself (names ≠ elements, residues ≠ `MOL`, chains ≠ `A`,
-resids ≠ 1, a non-empty title — `Structure.identity_to_dict` owns that
-judgment, beside the synthesis it mirrors).  An xyz-born pair carries none
+resids ≠ 1 — `Structure.identity_to_dict` owns that judgment, beside the
+synthesis it mirrors). `title` is not among them: it is the geometry file's
+own comment line, and the sidecar does not carry it (`model/structure.md`
+§ 2.2c).  An xyz-born pair carries none
 of them and its sidecar is a v7 sidecar plus a version stamp.
 
 | Envelope key | Meaning |
@@ -73,7 +74,7 @@ of them and its sidecar is a v7 sidecar plus a version stamp.
 atom edits because every edit layer carries it with its atom (`regions`
 membership, the identity columns, each channel's atom-indexed half) — or it
 is **system** — stored separately, whole (`cell`, `cell_origin`,
-`axis_kind`, `vacuum`, `title`, each channel's kind/color/fdf).  Everything
+`axis_kind`, `vacuum`, each channel's kind/color/fdf).  Everything
 in this file is one or the other, and every layer (the codec, the wire, the
 viewer's two translation doors) folds and unfolds along exactly that line.
 
@@ -120,6 +121,16 @@ invalidated every pair on disk for changes that lose nothing.  A
 version whose facts moved homes (v3's top-level frozen atoms) stays
 refused, with an error naming what changed and what to do — never
 partially read.
+
+**Retired keys.** A key the schema once wrote and no longer does — `pbc`
+(metadata) and `title` (identity) — is listed in `RETIRED_METADATA_KEYS` /
+`RETIRED_IDENTITY_KEYS` (`structure.py`) and passes **three gates**: tolerated
+on read, so a file already on disk is not refused as carrying a stray key;
+never applied; dropped on rewrite, so the pair heals on its next save. Every
+gate has to know every retired key — a guard that disagrees with its
+neighbours about what is retired is how a retirement reaches one gate of
+three — and `tests/test_molstruct_json.py::TestARetiredKeyPassesEveryGate`
+pins it for every key in those tuples, present and future.
 
 **This is deliberate, and it is not a transitional state.** molbuilder is a new
 product with no installed base to protect. Accepting several schemas costs more
@@ -193,7 +204,7 @@ at any of them is refused, not upgraded.
 | v5 | drops `kgrid` — a `SiestaConfig` sampling knob, not geometry |
 | v6 | `cell_origin` persisted |
 | v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
-| v8 | the optional **identity columns** (`title`, `atom_names`, `residue_ids`, `residue_names`, `chain_ids`), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
+| v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
 | **v9** | **current** *(2026-08-29)* — the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one |
 
 ### Changing the schema

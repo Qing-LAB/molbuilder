@@ -267,29 +267,29 @@ is its only home. It remains a `Structure` FIELD and still rides `to_dict`,
 Written because § 2.2b needed a `title` row and the field turned out to have
 no rule anywhere.
 
-`title` is neither metadata nor lattice nor atom-indexed. It sits in
-`IDENTITY_FIELDS` (`structure.py:177`) beside `atom_names` / `residue_ids` /
-`residue_names` / `chain_ids`, but unlike those it is **also a field of the
-geometry file**. That is the whole problem.
+`title` is neither metadata nor lattice nor atom-indexed. It sat in
+`IDENTITY_FIELDS` beside `atom_names` / `residue_ids` / `residue_names` /
+`chain_ids` until the rule below took it out, because unlike those it is
+**also a field of the geometry file**. That was the whole problem.
 
-#### Where it comes from — five sources
+#### Where it came from — five sources, one of them now retired
 
 | source | where |
 |---|---|
 | the `.xyz` **comment line**, verbatim | `from_xyz:1424` `comment = lines[1].strip()`, `:1459` `title=comment` |
 | the PDB `TITLE` record | `from_pdb` |
-| the **sidecar's identity block** | `sidecars/molstruct.py:398` |
+| ~~the **sidecar's identity block**~~ | **retired** by the rule below — `title` is in `RETIRED_IDENTITY_KEYS`: tolerated on read, never applied |
 | the **upload filename** | `web/blueprints/build.py:825,827` — `from_xyz(text, title=filename or None)` |
 | the **file stem** | `parse/coords/pyscf_geom.py:41-42` — *"mirror the file stem onto Structure.title"* |
 
-#### Where it goes — four writers
+#### Where it went — four writers, one of them now retired
 
 | writer | form |
 |---|---|
 | `to_xyz:1698` | the comment line — `(comment or self.title or "Built by molbuilder")` |
 | `to_extxyz:1777,1785` | **prepended to the header** — `f"{title} {head}"` |
 | `to_pdb:1800` | `TITLE     {self.title:<70s}` — **truncated at 70 characters** |
-| `identity_to_dict:910` | the sidecar, whenever the title is non-empty |
+| ~~`identity_to_dict`~~ | **retired** — it no longer emits the title, so a comment line makes no sidecar |
 
 #### It is not carried by the door that carries the others
 
@@ -300,7 +300,7 @@ Structure therefore spells `title=struct.title` by hand — **ten sites**:
 one fact, ten hand-written carries, and nothing that fails if the eleventh
 forgets.
 
-#### Six measured defects
+#### Six measured defects — measured before the rule, all closed by it
 
 1. **`from_xyz` puts the ENTIRE comment line into `title`** — no keyword
    stripping. Reading an extended XYZ gives

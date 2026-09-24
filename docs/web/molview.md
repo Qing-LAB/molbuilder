@@ -3640,8 +3640,9 @@ and 4 is a view of it, which is the line § 11.2 draws.
 
 **What an export of the truth carries** *(2026-08-20)*: everything the
 structure says — elements, the frame range's coordinates, labels (as
-`regions`), the identity columns (title, atom names, residue ids/names,
-chains), the per-atom channels, and the periodicity block. There is no
+`regions`), the identity columns (atom names, residue ids/names, chains —
+the title is the geometry file's own comment line, `model/structure.md`
+§ 2.2c), the per-atom channels, and the periodicity block. There is no
 narrower "export subset": the envelope is built by the ONE outbound read
 (§ 9.3's `structureForServer`), whose fields mirror the ONE adoption
 (§ 11.1), so a pair that enters the viewer leaves with all of it — edits
