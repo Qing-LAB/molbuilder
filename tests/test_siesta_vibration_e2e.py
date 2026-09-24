@@ -200,6 +200,14 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
 
+    # WHAT THE RUN SAYS ABOUT THE GEOMETRY IT LEFT (model/parse.md § 5b.1):
+    # the record the Results tab records onto an exported pair
+    from molbuilder.parse.dirs.run_info import run_info_for_dir
+    rec = run_info_for_dir(bundle / "01_relax" / "run-0")["relaxation"]
+    assert rec["engine"] == "siesta" and rec["converged"] is True
+    assert rec["force_tolerance_ev_ang"] == 0.01
+    assert rec["max_force_free_ev_ang"] <= 0.01 and rec["held_atom_idxs"] == [0]
+
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     perm = read_permutation(bundle)

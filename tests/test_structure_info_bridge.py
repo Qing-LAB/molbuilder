@@ -83,10 +83,23 @@ class TestTheComposer:
         (tmp_path / "Relax.fdf").write_text(_DECK)
         info = run_info_for_dir(tmp_path)
         assert set(info) == {"calculation"}, (
-            "today the block has exactly one key; a new metadata category "
-            "is a new key HERE and nowhere else")
+            "a deck with no run beside it says only what the deck states; "
+            "a new metadata category is a new key HERE and nowhere else")
         assert info["calculation"]["contract"]["basis_size"] == "DZP"
         assert info["calculation"]["source"] == "Relax.fdf"
+
+    def test_a_finished_run_answers_both_keys(self):
+        """A run directory says two things about the structure it left
+        (`model/parse.md` § 5b, § 5b.1): the level of theory its deck
+        stated and what the run did to the geometry.  Measured fixture:
+        the H2 relaxation under `tests/fixtures/siesta_relax`."""
+        from molbuilder.parse.dirs.run_info import run_info_for_dir
+        run = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax"
+               / "01_relax" / "run-0")
+        info = run_info_for_dir(run)
+        assert set(info) == {"calculation", "relaxation"}
+        assert info["calculation"]["contract"]["basis_size"] == "DZP"
+        assert info["relaxation"]["converged"] is True
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
         """``None`` reads like its two siblings on the same response

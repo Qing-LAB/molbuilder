@@ -219,3 +219,116 @@ def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
     row = r.to_dict()["modes"][0]
     assert row["zero_point_amplitude_amu12_ang"] is None
     assert row["zero_point_displacement_ang"] is None
+
+
+# --------------------------------------------------------------------- #
+#  The structure's own evidence (vibration.md § 2.2, the record table)   #
+# --------------------------------------------------------------------- #
+
+_RELAX_RUN = FIXTURES / "siesta_relax" / "01_relax" / "run-0"
+
+
+def _relaxed_h2_with_record(*, shift_z: float = 0.0):
+    """The geometry the measured relaxation left (held atom first, as the
+    run had it), carrying the record the run directory answers for
+    itself -- the pair the Results tab would export."""
+    from molbuilder.parse.dirs.run_info import run_info_for_dir
+    s = Structure(elements=["H", "H"],
+                  positions=np.array([[5.0, 5.0, 5.0],
+                                      [5.0, 5.0, 5.774583 + shift_z]]),
+                  regions={"frozen_atoms": [0]},
+                  cell=np.diag([10.0, 10.0, 10.0]),
+                  axis_kind=("isolated",) * 3)
+    s.apply_info_dict(run_info_for_dir(_RELAX_RUN))
+    return s
+
+
+def _record_findings(struct, cfg):
+    from molbuilder.validation import validate
+    # the record's findings open with the structure or the record; the
+    # statement's own finding opens with "You stated" / "The structure is"
+    return [i for i in validate(struct, cfg, calculation="vibration")
+            if i.where == "config.already_relaxed"
+            and i.message.startswith(("This structure", "No relaxation record",
+                                      "The relaxation held"))]
+
+
+def test_a_matching_record_answers_the_ticked_box_with_its_numbers(
+        in_tree_psml):
+    """Ticked, record present for these coordinates, within this
+    calculation's tolerance at the same level and held set: one info line
+    with the engine, the tolerance and the largest remaining force; no
+    warning about the record."""
+    s = _relaxed_h2_with_record()
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True, relax_force_tol=0.01)
+    found = _record_findings(s, cfg)
+    assert len(found) == 1 and found[0].severity == "info", found
+    assert "relaxed on siesta to 0.01 eV/Å" in found[0].message
+    assert "0.0010 eV/Å, within this calculation's tolerance of 0.01" \
+        in found[0].message
+
+
+def test_a_record_looser_than_this_calculation_warns_when_ticked(
+        in_tree_psml):
+    s = _relaxed_h2_with_record()
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True, relax_force_tol=0.0005)
+    found = _record_findings(s, cfg)
+    assert len(found) == 1 and found[0].severity == "warn", found
+    assert "above this calculation's tolerance of 0.0005" in found[0].message
+    # unticked, the same fact is information: the ladder relaxes anyway
+    cfg2 = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                        already_relaxed=False, relax_force_tol=0.0005)
+    found2 = _record_findings(s, cfg2)
+    assert len(found2) == 1 and found2[0].severity == "info", found2
+
+
+def test_a_record_for_another_geometry_does_not_vouch(in_tree_psml):
+    """Another frame of the run, or an edit since: the fingerprint differs
+    and the record is set aside with a warning (ticked)."""
+    s = _relaxed_h2_with_record(shift_z=0.01)
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True)
+    found = _record_findings(s, cfg)
+    assert len(found) == 1 and found[0].severity == "warn", found
+    assert "different geometry" in found[0].message
+
+
+def test_a_record_at_another_level_of_theory_warns(in_tree_psml):
+    """The recorded contract (DZP, GGA/PBE, 300 Ry, 300 K) against a form
+    that runs SZ: a different level of theory, named field by field."""
+    s = _relaxed_h2_with_record()
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True, basis_size="SZ")
+    found = [i for i in _record_findings(s, cfg) if i.severity == "warn"]
+    assert len(found) == 1, found
+    assert "basis_size: relaxed with DZP, this run SZ" in found[0].message
+    # and a different ENGINE is the same fact at the engine level
+    from molbuilder.config.pyscf import PySCFConfig
+    pfound = _record_findings(s, PySCFConfig(job_name="h2",
+                                             already_relaxed=True))
+    assert any(i.severity == "warn"
+               and "relaxed on siesta; this is a pyscf calculation"
+               in i.message for i in pfound), pfound
+
+
+def test_a_good_record_under_an_unticked_box_offers_the_skip(in_tree_psml):
+    s = _relaxed_h2_with_record()
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=False, relax_force_tol=0.01)
+    found = _record_findings(s, cfg)
+    assert len(found) == 1 and found[0].severity == "info", found
+    assert "tick the box to skip the relaxation" in found[0].message
+
+
+def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(in_tree_psml):
+    s = _relaxed_h2_with_record()
+    s.apply_info_dict(None)
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True)
+    found = _record_findings(s, cfg)
+    assert len(found) == 1 and found[0].severity == "info", found
+    assert "No relaxation record travels with this structure" \
+        in found[0].message
+

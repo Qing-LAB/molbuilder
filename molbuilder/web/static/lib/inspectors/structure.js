@@ -254,22 +254,27 @@ import { molviewFiles } from "../projects/molview-doors.js";
                             return;
                         }
                     }
-                    /* RECORD THE CALCULATION CONTRACT (structure-info-plan.md
-                     * I5): the one engine deck in the SAME directory states
-                     * the electronic contract; recorded through the info
-                     * door it shows on the Metadata page and travels with
-                     * any export -- which is what lets a transport citation
-                     * of the exported pair run sealed (4.1b).  Best-effort:
-                     * the viewer works without the record. */
+                    /* RECORD WHAT THE RUN DIRECTORY SAYS ABOUT THIS
+                     * STRUCTURE (structure-info-plan.md I5; model/parse.md
+                     * 5b, 5b.1): the electronic contract its deck states
+                     * (`calculation`) and what the run did to the geometry
+                     * it left (`relaxation`).  Recorded through the info
+                     * door, each shows on the Metadata page and travels
+                     * with any export -- which is what lets a transport
+                     * citation of the pair run sealed (4.1b), and lets a
+                     * vibration calculation check a structure stated
+                     * relaxed against its own record (vibration.md 2.2).
+                     * Best-effort: the viewer works without either. */
                     try {
                         const cr = await fetch("/api/results/contract?path="
                             + encodeURIComponent(structPath));
                         const cb = await cr.json();
-                        if (!disposed && cb && cb.ok && cb.calculation
+                        if (!disposed && cb && cb.ok
                                 && handle.data && handle.data.info
                                 && typeof handle.data.info.set === "function") {
-                            handle.data.info.set("calculation",
-                                                 cb.calculation);
+                            for (const key of ["calculation", "relaxation"]) {
+                                if (cb[key]) handle.data.info.set(key, cb[key]);
+                            }
                         }
                     } catch (_) { /* no record is a real answer */ }
                     if (disposed) return;

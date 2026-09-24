@@ -242,6 +242,31 @@ own force tolerance — `geom_gmax` on PySCF, `relax_force_tol` on SIESTA — th
 one the person set or left at the kind's recommendation; both write the
 number and the verdict into the result, and the viewer shows them.
 
+**The structure can carry its own evidence** *(user direction 2026-09-24:
+"if the info meta data is present, we should display it and check against
+tolerance of calculation; if not present … we will just accept that but with
+a warning/hint")*. A pair exported from the Results tab of a finished
+relaxation carries `info.relaxation` — the run's engine, its force tolerance,
+the largest force left on the atoms it moved, the atoms it held, and a
+fingerprint of the geometry it describes
+([`model/parse.md` § 5b.1](?doc=model/parse.md)) — beside `info.calculation`,
+the level of theory the deck stated (SIESTA today). Both kinds' gates read
+them (`validation/sidecar.py::check_relaxation_record`), and every finding
+lands on the box's own card, so the record is displayed where the choice is
+made; the Metadata pane shows the raw store.
+
+| the box | the record | the finding |
+|---|---|---|
+| ticked | absent | the plain warning of the table above, and an info line that no record travels with this structure — the statement stands on its own and the read-back measures it |
+| ticked | present, for a different geometry (another frame of that run, or edited since — the fingerprint differs) | **warning**: the record does not vouch for these coordinates |
+| ticked | present, for these coordinates | the engine, the tolerance, the steps and the largest remaining force are shown; a different engine, a different level of theory (`info.calculation` against this form's basis, functional, mesh cutoff, electronic temperature), a largest force above **this calculation's** tolerance, or a different held set is each a **warning** naming the number or the field; within tolerance at the same level is an info line |
+| unticked | present, for these coordinates, within this calculation's tolerance at the same level and held set | an info line: the record already meets this calculation's criterion, so the box may be ticked and the relaxation skipped |
+| unticked | anything else | the same facts as information; the ladder relaxes regardless |
+
+Never a refusal: the record informs the person's explicit choice; it does not
+make it. What the PySCF deck's own `_optimized.xyz` pair should record is
+V1.31 (§ 10).
+
 ### 2.3 Held atoms travel with the structure, never as a form field
 
 Which atoms are held is a fact about the **structure**: the `frozen_atoms`
@@ -1173,7 +1198,8 @@ is vibrational-only and that intensities are not computed; the precondition
 the template's force tolerance, before the force constants; with it ticked, a
 **warning** that the frequencies will be off if the structure is not relaxed
 at this level of theory, and that the read-back measures the reference-step
-forces against that tolerance (§ 5.5); and the
+forces against that tolerance (§ 5.5); the relaxation-record findings of
+§ 2.2 when the structure carries one; and the
 unconsumed-region-label notice every kind carries. The SIESTA engine
 validator defers that notice and its own *held during relaxation* line on
 this kind — one fact, one finding ([`science/validation.md`](?doc=science/validation.md) § 7).
@@ -1513,7 +1539,7 @@ mode matching across runs (V1.24).
 | `tests/spectra/test_normal_modes.py` | every row of the science acceptance table — the rank rule alone, no engine |
 | `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check |
 | `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
-| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the read-back on the measured fixtures — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on the measured relaxation fixture (`tests/fixtures/siesta_relax`: a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint); the read-back on the measured fixtures — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
@@ -1575,7 +1601,8 @@ nothing is in that state as of 2026-09-24.
 | `already_relaxed` on both engines as the person's explicit say: unticked the tool relaxes first (PySCF Phase 0; SIESTA a `relax` stage, the geometry carried as coordinates), ticked it measures and warns plainly; the relaxation's convergence items on the vibration form with the kind's recommended tight values | **built 2026-09-24** | § 2.2, § 3.1, § 5.2a, § 5.8 |
 | the mass-calibrated displacement per mode — `zero_point_amplitude_amu12_ang`, `zero_point_displacement_ang`, derived at serialisation | **built 2026-09-24** — V1.29 | § 6.3, § 6.6 |
 | one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own force tolerance, a plain warning above it, on PySCF and SIESTA alike | **built 2026-09-24** — V1.30, by the ruling of § 2.2 | § 2.2, § 4.3, § 5.5 |
-| the structure carries its relaxation record (engine, level of theory, criterion, achieved force, the held set, the run) in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs | **proposed** — V1.28, needs a design and a yes | § 2.2 |
+| the structure carries its relaxation record — `info.relaxation` (engine, the run's tolerance, the largest remaining force, the held set, the geometry's fingerprint) beside `info.calculation` (the level of theory) — recorded by the Results tab's structure inspector from the run directory, read by both kinds' gates on the box's card: absent and ticked accepted with a hint, present checked against this calculation's tolerance, level and held set | **built 2026-09-24** — V1.28 | § 2.2; `model/parse.md` § 5b.1 |
+| the PySCF deck's own `_optimized.xyz` pair records `info.relaxation` (the deck knows its criteria, its convergence and its held set at the moment it writes; the spliced pair writer would carry the fingerprint) | **owed** — V1.31 | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **owed, needs a design** — V1.23 | `science/normal-modes.md` § 4b.6 C |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |

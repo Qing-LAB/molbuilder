@@ -13,7 +13,7 @@ signature are identical to the pre-split version.
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Mapping, Optional
 
 from ..issues import Issue
 from ..structure import Structure
@@ -193,3 +193,156 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
          f"{what} does NOT consume. {advice}"),
         "structure.regions",
     )]
+
+
+def check_relaxation_record(struct: Structure, *, engine: str,
+                            already_relaxed: bool,
+                            force_tolerance_ev_ang: Optional[float],
+                            level: Optional[Mapping[str, Any]] = None
+                            ) -> List[Issue]:
+    """The structure's own evidence against the person's statement
+    (`engines/vibration.md` § 2.2, the record table; `model/parse.md`
+    § 5b.1).
+
+    ``info.relaxation`` is what a finished run said about the geometry it
+    left; ``info.calculation`` the level of theory its deck stated.  Both
+    ride the pair the Results tab exports.  This reads them beside the box
+    -- every finding lands on ``config.already_relaxed`` -- and never
+    refuses: the record informs the choice, it does not make it.  One
+    finding per fact: the record's absence (ticked only), a geometry the
+    record does not describe, a different engine or level of theory, the
+    largest remaining force against THIS calculation's tolerance, a
+    different held set.  Ticked, a disagreement is a warning; unticked,
+    the same fact is information, because the ladder relaxes regardless.
+    """
+    issues: List[Issue] = []
+    where = "config.already_relaxed"
+    info = getattr(struct, "info", None) or {}
+    rec = info.get("relaxation")
+    if not isinstance(rec, dict) or not rec.get("geometry_sha256"):
+        if already_relaxed:
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    "No relaxation record travels with this structure (its "
+                    "metadata has no `relaxation` entry -- a pair exported "
+                    "from a finished relaxation on the Results tab carries "
+                    "one), so the statement stands on its own; the "
+                    "read-back measures the forces at the starting geometry."),
+                where=where))
+        return issues
+    disagree = "warn" if already_relaxed else "info"
+    rec_engine = str(rec.get("engine") or "?")
+
+    def _ev(x) -> str:
+        """A measured force in eV/Å, readable at both ends of the range:
+        four decimals down to half a milli-eV/Å, an exponent below that.
+        A tolerance prints as the person typed it (``:g``)."""
+        x = float(x)
+        return f"{x:.4f}" if x >= 5e-4 else f"{x:.1e}"
+    if rec["geometry_sha256"] != struct.geometry_fingerprint():
+        issues.append(Issue(
+            severity=disagree,
+            message=(
+                f"This structure carries a relaxation record ({rec_engine}, "
+                f"{rec.get('n_steps', '?')} geometry step(s)), but for a "
+                f"different geometry -- another frame of that run, or edited "
+                f"since -- so it does not vouch for these coordinates."
+                + ("  The statement that the structure is relaxed stands on "
+                   "its own; the read-back measures it." if already_relaxed
+                   else "")),
+            where=where))
+        return issues
+    # -- the level of theory: the engine, then the recorded contract ------
+    if rec_engine.lower() != str(engine).lower():
+        issues.append(Issue(
+            severity=disagree,
+            message=(
+                f"This structure was relaxed on {rec_engine}; this is a "
+                f"{engine} calculation -- a different level of theory, so "
+                f"the geometry is not a stationary point here."
+                + ("  Untick the box so the ladder relaxes it, or keep the "
+                   "statement knowing the frequencies will be off."
+                   if already_relaxed else
+                   "  The ladder relaxes it at this level first.")),
+            where=where))
+    else:
+        cal = info.get("calculation")
+        recorded = (cal.get("contract") if isinstance(cal, dict) else None) or {}
+        differing = []
+        for key, mine in (level or {}).items():
+            theirs = recorded.get(key)
+            if theirs is None or mine is None:
+                continue
+            same = (str(theirs).strip().lower() == str(mine).strip().lower()
+                    if isinstance(theirs, str) or isinstance(mine, str)
+                    else abs(float(theirs) - float(mine)) <= 1e-9 * max(
+                        1.0, abs(float(mine))))
+            if not same:
+                differing.append(f"{key}: relaxed with {theirs}, this run {mine}")
+        if differing:
+            issues.append(Issue(
+                severity=disagree,
+                message=(
+                    "This structure was relaxed at a different level of "
+                    "theory than this calculation runs (" + "; ".join(differing)
+                    + "), so its geometry is not a stationary point here."
+                    + ("  Untick the box so the ladder relaxes it at this "
+                       "level, or keep the statement knowing the frequencies "
+                       "will be off." if already_relaxed else
+                       "  The ladder relaxes it at this level first.")),
+                where=where))
+    # -- the largest remaining force against THIS calculation's tolerance --
+    f_free = rec.get("max_force_free_ev_ang")
+    f_all = rec.get("max_force_ev_ang")
+    judged = f_free if f_free is not None else f_all
+    rec_tol = rec.get("force_tolerance_ev_ang")
+    who = (f"relaxed on {rec_engine}"
+           + (f" to {float(rec_tol):g} eV/Å" if rec_tol is not None else "")
+           + f" in {rec.get('n_steps', '?')} geometry step(s)")
+    if judged is None:
+        issues.append(Issue(severity="info", where=where,
+                            message=f"This structure was {who}; the record "
+                                    f"carries no final force to judge."))
+    elif force_tolerance_ev_ang is None:
+        issues.append(Issue(severity="info", where=where,
+                            message=f"This structure was {who}; the largest "
+                                    f"force left on the atoms it moved is "
+                                    f"{_ev(judged)} eV/Å."))
+    elif float(judged) <= float(force_tolerance_ev_ang):
+        issues.append(Issue(
+            severity="info", where=where,
+            message=(f"This structure was {who}; the largest force left on "
+                     f"the atoms it moved is {_ev(judged)} eV/Å, within "
+                     f"this calculation's tolerance of "
+                     f"{float(force_tolerance_ev_ang):g} eV/Å."
+                     + ("" if already_relaxed else
+                        "  The record already meets this calculation's "
+                        "criterion: tick the box to skip the relaxation."))))
+    else:
+        issues.append(Issue(
+            severity=disagree, where=where,
+            message=(f"This structure was {who}, but the largest force left "
+                     f"on the atoms it moved is {_ev(judged)} eV/Å, "
+                     f"above this calculation's tolerance of "
+                     f"{float(force_tolerance_ev_ang):g} eV/Å."
+                     + ("  The frequencies will be off unless it is relaxed "
+                        "further: untick the box so the ladder relaxes it, "
+                        "or relax at this tolerance and hand the result over."
+                        if already_relaxed else
+                        "  The ladder's relaxation tightens it."))))
+    # -- the held set ----------------------------------------------------
+    held_then = sorted(int(i) for i in (rec.get("held_atom_idxs") or []))
+    held_now = sorted(int(i) for i in (struct.frozen_atoms or []))
+    if held_then != held_now:
+        issues.append(Issue(
+            severity=disagree, where=where,
+            message=(f"The relaxation held atom(s) {held_then}; this "
+                     f"calculation holds {held_now}.  The free atoms are not "
+                     f"the same set, so the geometry is not stationary for "
+                     f"this calculation's free atoms."
+                     + ("  Untick the box so the ladder relaxes this set, or "
+                        "keep the statement knowing that." if already_relaxed
+                        else "  The ladder relaxes this set first."))))
+    return issues
+

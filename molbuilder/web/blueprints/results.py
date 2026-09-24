@@ -113,15 +113,16 @@ def partial_spectra_inspector():
 
 @bp.route("/api/results/contract", methods=["GET"])
 def api_results_contract():
-    """The electronic contract recorded by the deck beside a structure.
+    """What the run directory beside a structure records about it.
 
     ``?path=`` names a structure file (or its directory), tree-relative;
-    the answer is the ``info.calculation`` key of the block that
-    directory answers for itself, or ``null`` when there is none (no
-    deck, several decks, a deck stating nothing).  The Results tab's
-    structure inspector calls this after a load and records the answer
-    through the viewer's ``data.info`` door, so an export carries it
-    (`archive/2026-09-01-structure-info-plan.md` I5).
+    the answer carries the two keys of the block that directory answers
+    for itself -- ``calculation``, the electronic contract its deck
+    states, and ``relaxation``, what the run did to the geometry it left
+    (`model/parse.md` § 5b, § 5b.1) -- each ``null`` when there is nothing
+    to say.  The Results tab's structure inspector calls this after a load
+    and records each answer through the viewer's ``data.info`` door, so an
+    export carries them (`archive/2026-09-01-structure-info-plan.md` I5).
 
     It asks ``run_info_for_dir`` -- the ONE composer of "what does this
     directory say about itself" -- rather than the ``contract_of``
@@ -143,7 +144,8 @@ def api_results_contract():
         return jsonify({"ok": False, "error": exc.message}), exc.status
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
     info = run_info_for_dir(directory) or {}
-    return jsonify({"ok": True, "calculation": info.get("calculation")})
+    return jsonify({"ok": True, "calculation": info.get("calculation"),
+                    "relaxation": info.get("relaxation")})
 
 
 @bp.route("/api/results/dir", methods=["GET"])

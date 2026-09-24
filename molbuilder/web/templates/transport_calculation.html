@@ -21,11 +21,7 @@
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
-<body data-sidebars="projects" data-schema-label-layout="reviewed"
-      data-content-links="accent">
-{#- `data-schema-label-layout` opts THIS page into the reviewed label
-    rules in `lib/form-schema.css` (its own banner says what each one
-    fixes and why the other two form tabs are left alone). -#}
+<body data-sidebars="projects" data-content-links="accent">
 
 {% set active_tab = "transport-calculation" %}
 {% include "_app_header.html" %}

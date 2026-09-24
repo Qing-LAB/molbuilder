@@ -18,6 +18,8 @@ order + the four currently-registered inspectors + dispatch JS.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -774,6 +776,27 @@ class TestTheContractEndpoint:
         assert out["ok"] is True
         assert out["calculation"]["engine"] == "siesta"
         assert out["calculation"]["contract"]["basis_size"] == "SZ"
+
+    def test_a_finished_relaxation_answers_its_record_too(self, isolated):
+        """The same door answers `relaxation` beside `calculation`
+        (`model/parse.md` § 5b.1) -- what the structure inspector records
+        so a pair exported from a finished relaxation carries it.  The
+        measured H2 relaxation under `tests/fixtures/siesta_relax`, copied
+        whole into the isolated root so its `calcdir.json` still points at
+        its description."""
+        import shutil
+        root, client = isolated
+        src = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax")
+        shutil.copytree(src, root / "F")
+        run = root / "F" / "01_relax" / "run-0"
+        (run / "chain.xyz").write_text("2\n\nH 5 5 5\nH 5 5 5.774583\n")
+        out = client.get("/api/results/contract?path="
+                         + str(run / "chain.xyz")).get_json()
+        assert out["ok"] is True
+        assert out["calculation"]["contract"]["basis_size"] == "DZP"
+        assert out["relaxation"]["engine"] == "siesta"
+        assert out["relaxation"]["converged"] is True
+        assert out["relaxation"]["held_atom_idxs"] == [0]
 
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.

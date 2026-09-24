@@ -1352,6 +1352,25 @@ class Structure:
     def n_residues(self) -> int:
         return len(set(self.residue_ids)) if self.residue_ids else 0
 
+    def geometry_fingerprint(self) -> str:
+        """``sha256:`` over the elements and the positions rounded to a
+        millionth of an ångström -- what a record about THESE coordinates
+        pins itself to (`model/parse.md` § 5b.1).
+
+        Not :attr:`structure_hash`, which is the sidecar's pin over the
+        written document's bytes and changes with a formatting choice; this
+        is a fact about the geometry alone, so the run's parser and a pair
+        loaded back from disk agree on it.  Labels, cell and metadata are
+        deliberately left out: a record vouches for where the atoms are.
+        """
+        import hashlib as _hashlib
+        pos = np.asarray(self.positions, dtype=float).reshape(-1, 3)
+        lines = [f"{str(el)} {round(float(x), 6):.6f} {round(float(y), 6):.6f} "
+                 f"{round(float(z), 6):.6f}"
+                 for el, (x, y, z) in zip(self.elements, pos)]
+        return "sha256:" + _hashlib.sha256(
+            "\n".join(lines).encode("utf-8")).hexdigest()
+
     @property
     def formula(self) -> str:
         """The element counts as one string — ``C6H4S2``, elements sorted.

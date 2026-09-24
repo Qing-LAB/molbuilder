@@ -119,27 +119,31 @@ def test_a_prepped_stage_that_has_not_run_is_still_a_run_directory(tmp_path):
 def test_openable_is_not_active(tmp_path):
     """§ 5.1's two questions, separated by the case that separates them.
 
-    A run in progress: the finished `.out` of an earlier attempt sits beside
-    the molwatch log being written right now.
+    A PySCF run in progress: the concluded stdout of an earlier attempt sits
+    beside the molwatch log the current attempt is writing right now.  (On
+    SIESTA the two coincide -- its stdout IS its live channel, § 5.5 -- so
+    the separation shows on the engine whose stdout no parser claims.)
 
     * `active` -- *whose run-state is the status* -- considers RESULT files
-      only, so the unconcluded log does not vote and the `.out` answers.
+      only, so the unconcluded log does not vote and the stdout answers.
     * `openable` -- *what a viewer should load* -- prefers the live log,
       because that is the run somebody opened the tab to watch.
 
     Answering one with the other is wrong in both directions: a viewer sent
-    to the `.out` watches a finished run while the live one scrolls past, and
+    to the stdout watches a finished run while the live one scrolls past, and
     a status taken from the log reports "running" for ever on a directory
     whose result is already on disk (`running-a-job.md` § 4: a log with no
     conclusion footer is not a result).
     """
-    from support.junction import job_run_dir
-    run = job_run_dir(tmp_path)
+    from support.junction import run_dir
+    run = run_dir(tmp_path, label="junction")
+    done = run / "junction_01_coarse-run0.pyscf.log"
+    done.write_text("PySCF stdout\nJob complete in 12.3 s\n", encoding="utf-8")
     log = _live_molwatch(run, "junction_01_coarse.molwatch.log")
 
     got = parse_dir(run)
 
-    assert pathlib.Path(got.active).name.endswith(".out"), (
+    assert pathlib.Path(got.active).name == done.name, (
         f"an unconcluded log voted for the status: {got.active}")
     assert pathlib.Path(got.openable).name == log.name, (
         f"the viewer was sent to a finished result: {got.openable}")
@@ -324,3 +328,21 @@ def test_the_door_never_offers_a_file_the_registry_refuses(tmp_path):
     assert got is None, (
         f"offered {pathlib.Path(got).name!r}, which no parser claims:\n  "
         + "\n  ".join(attempts))
+
+
+def test_the_engines_own_output_opens_before_the_seeded_progress_log():
+    """`model/parse.md` § 5.5: within a kind, the stdout roles a parser
+    claims are offered before the seeded progress log.  Measured fixture,
+    `tests/fixtures/siesta_relax/01_relax/run-0`: a SIESTA relaxation whose
+    molwatch log is the 607-byte seed prep wrote (one `initial_preview`
+    block, nothing ever appended) beside the 30 KB `.out` holding the
+    whole relaxation.  Until 2026-09-24 the door offered the seed."""
+    from molbuilder.parse.dirs import openable_in
+    from molbuilder.runfiles import result_roles
+    run = (pathlib.Path(__file__).resolve().parents[2] / "fixtures"
+           / "siesta_relax" / "01_relax" / "run-0")
+    chosen, _trail = openable_in(str(run))
+    assert chosen is not None and chosen.endswith("-run0.out"), (chosen, _trail)
+    roles = result_roles("optimization")
+    assert roles.index(".out") < roles.index(".molwatch.log"), roles
+

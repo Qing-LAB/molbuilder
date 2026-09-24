@@ -1013,13 +1013,21 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
       every phase boundary and it carries its own `phase_*` flags, so it is
       the live view AND the final result — there is no moment when it is the
       wrong file to open.
+    * a ``"stdout"`` role is the engine's own account, and it speaks whether
+      or not the run has ended (§ 5.5).  For SIESTA it IS the trajectory --
+      the `.out` every geometry step is printed into -- and a parser claims
+      it; PySCF's `.pyscf.log` no parser claims, so the door skips it.
     * a ``"progress"`` role is the engine-neutral live channel every run has.
-      For an optimization that is the whole answer; for a vibration it is a
-      stub (measured 2026-09-18 on a CO2 spectrum run: one `initial_preview`
-      block and a footer, because a spectrum has no geometry sequence).
+      It is SEEDED at prep, so it speaks only once the run writes into it:
+      PySCF's deck does, SIESTA's never does (measured 2026-09-24 on every
+      SIESTA relaxation in the fixture project: a 613-byte seed holding one
+      `initial_preview` block beside a 34 KB `.out`), and a spectrum run
+      leaves it a stub either way (measured 2026-09-18 on a CO2 run).  So it
+      comes AFTER the stdout roles -- offered first, the seed outranked the
+      real result, which is the trap § 5.5 names.
 
     ``calculation`` unknown — a directory molbuilder did not write, or one
-    whose `task.json` predates the key — answers with the progress roles
+    whose `task.json` predates the key — answers with the output roles
     alone, and the caller falls back to searching.
 
     **This is not a preference order to tune.**  Whichever file the
@@ -1029,9 +1037,11 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     """
     named = [a.role for a in WRITTEN
              if calculation and a.calculation == calculation]
+    spoken = [a.role for a in WRITTEN
+              if a.output == "stdout" and a.role not in named]
     live = [a.role for a in WRITTEN
             if a.output == "progress" and a.role not in named]
-    return tuple(named + live)
+    return tuple(named + spoken + live)
 
 
 def engine_of_role(role: str) -> Optional[str]:

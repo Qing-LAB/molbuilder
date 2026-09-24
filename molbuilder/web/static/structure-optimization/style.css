@@ -43,30 +43,18 @@ header code {
 #generate-card .tabs {
     margin-bottom: var(--space-sm2);
 }
+/* ARRANGEMENT ONLY (ui-contract.md § 9): how far apart the fieldsets sit on
+ * this page.  Their border, inset, legend and label layout are the form
+ * module's (`lib/form-schema.css`); this sheet restated them until
+ * 2026-09-24 -- a block-flow label with an 8em inline caption, a softer
+ * border, a larger legend -- so the same field rendered differently here
+ * and on the Spectrum tab (measured: a checkbox glued to its caption with
+ * the badge on the next line, against the grid row every other form page
+ * draws). */
 #generate-card fieldset {
     margin: var(--space-lg) 0;
-    padding: var(--space-sm2) var(--space-md) var(--space-md);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
 }
 #generate-card fieldset:first-of-type { margin-top: 0.4rem; }
-#generate-card legend {
-    padding: 0 var(--space-sm);
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--text-base);
-}
-#generate-card label {
-    display: block;
-    margin: var(--space-sm) 0;
-    line-height: 1.4;
-    font-size: var(--text-base);
-}
-#generate-card label > span:first-child {
-    display: inline-block;
-    min-width: 8em;
-    color: var(--text-secondary);
-}
 #generate-card .hint,
 #generate-card p.hint {
     margin: var(--space-sm) 0 var(--space-sm2);

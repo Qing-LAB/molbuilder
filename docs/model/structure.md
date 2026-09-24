@@ -204,6 +204,13 @@ the geometry ops, `to_dict`/`from_dict`, the sidecar codec. A caller who
 wants it gone states that; a rebuild that simply did not list the field
 is a **defect**, not a default.
 
+Two clusters ship today, both recorded by the Results tab from the run
+directory ([`model/parse.md` § 5b, § 5b.1](?doc=model/parse.md)):
+`calculation`, the level of theory the deck stated, and `relaxation`, what
+the run did to the geometry it left — with a fingerprint of that geometry
+(`Structure.geometry_fingerprint()`), so a consumer can tell whether the
+coordinates it holds are the ones the record describes.
+
 Why the distinction is load-bearing rather than tidy: a structure whose
 recorded contract vanished cannot be told apart from one that never had
 one. The warning that says *"the mesh cutoff and transverse k-mesh below

@@ -18,12 +18,18 @@ category: it rides ``installMolecule`` in and ``exportFile`` out already
 (§ 8.4a), so a key added here reaches the viewer, the Metadata pane and
 the exported ``.molstruct.json`` pair without another line changing.
 
-Today one key:
+Two keys:
 
 * ``calculation`` — the electronic contract the directory's deck records
   (``parse.contract.contract_of``), in the field names
   ``TransportConfig`` speaks, so a cited pair fills a transport config
   1:1 (`transport-design.md` § 4.1b).
+* ``relaxation`` — what the run did to the geometry it left
+  (``parse.contract.relaxation_of``, `model/parse.md` § 5b.1): its force
+  tolerance, the largest force left on the atoms it moved, the held set
+  and a fingerprint of the final geometry, so a structure exported from a
+  finished relaxation can be checked against its own record when it is
+  stated relaxed (`engines/vibration.md` § 2.2).
 
 Callers:
   * ``web/blueprints/watch.py::_run_metadata`` — the block every
@@ -55,7 +61,7 @@ def run_info_for_dir(
     """
     if not directory:
         return None
-    from molbuilder.parse.contract import contract_of
+    from molbuilder.parse.contract import contract_of, relaxation_of
 
     out: Dict[str, Any] = {}
     try:
@@ -64,4 +70,10 @@ def run_info_for_dir(
         calculation = None
     if calculation is not None:
         out["calculation"] = calculation
+    try:
+        relaxation = relaxation_of(directory)
+    except Exception:                                       # noqa: BLE001
+        relaxation = None
+    if relaxation is not None:
+        out["relaxation"] = relaxation
     return out or None

@@ -49,6 +49,130 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     return None
 
 
+def contract_fields_of(cfg) -> Dict[str, Any]:
+    """The level of theory a config is ABOUT TO RUN, in the recorded
+    contract's own field names -- the other half of :func:`_siesta_contract`,
+    kept beside it so the two spellings of one vocabulary cannot drift.  A
+    consumer comparing a structure's ``info.calculation`` against the
+    calculation it is being handed to compares this dict field by field.
+    Only fields the config class has appear; an engine with no recorded
+    contract (PySCF today) answers ``{}``.
+    """
+    pairs = (("basis_size", "basis_size"),
+             ("energy_shift_ry", "energy_shift"),
+             ("xc_functional", "xc_functional"),
+             ("xc_authors", "xc_authors"),
+             ("siesta_mesh_cutoff_ry", "mesh_cutoff"),
+             ("electronic_temperature_k", "electronic_temperature"))
+    out: Dict[str, Any] = {}
+    for key, attr in pairs:
+        if hasattr(cfg, attr) and getattr(cfg, attr) is not None:
+            out[key] = getattr(cfg, attr)
+    return out
+
+
+def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
+    """The run's own ``max_force_tol_eV_per_A`` out of a parsed
+    ``convergence_targets`` block -- flat (SIESTA's echo, a single-stage
+    molwatch header) or nested one level by stage (a staged molwatch
+    header, `parse.engines.molwatch.parse_convergence_line`).  One stage
+    nested is the run's; several is a header this run did not write alone,
+    and the answer is ``None`` rather than a pick."""
+    if not isinstance(targets, dict):
+        return None
+    flat = targets.get("max_force_tol_eV_per_A")
+    if isinstance(flat, (int, float)):
+        return float(flat)
+    nested = [v for k, v in targets.items()
+              if k != "source" and isinstance(v, dict)]
+    if len(nested) == 1:
+        v = nested[0].get("max_force_tol_eV_per_A")
+        return float(v) if isinstance(v, (int, float)) else None
+    return None
+
+
+def relaxation_of(directory) -> Optional[Dict[str, Any]]:
+    """The relaxation record -- what the run in *directory* did to the
+    geometry it left -- or ``None`` (`model/parse.md` § 5b.1).
+
+    Shape (the ``info.relaxation`` block)::
+
+        {"engine", "source", "n_steps", "force_tolerance_ev_ang",
+         "max_force_ev_ang", "max_force_free_ev_ang", "held_atom_idxs",
+         "converged", "run_state", "geometry_sha256"}
+
+    Read through the doors the Results tab opens a run with
+    (`dirs.openable_in`, the registry's `detect`), so the record describes
+    the file a person would be looking at.  A run that relaxed nothing --
+    a force-constant run, a single point, a seed nothing wrote into --
+    echoes no force tolerance and has no record; a directory with no
+    openable output, or one that does not parse, is ``None``, never a
+    guess.  The forces are the last step that reported any: the largest
+    atomic force over every atom and over the atoms the run moved (the
+    held set excluded, from that step's per-atom forces; the engine's own
+    per-atom line when the step carries no per-atom block).  ``converged``
+    is the moved atoms' largest force within the run's tolerance, ``None``
+    when either number is missing.  ``geometry_sha256`` is the LAST
+    frame's :meth:`Structure.geometry_fingerprint`, so a consumer can tell
+    whether the coordinates in front of it are the ones this record is
+    about.
+    """
+    import numpy as np
+    directory = Path(directory)
+    if not directory.is_dir():
+        return None
+    from .dirs import openable_in
+    from .registry import detect
+    try:
+        path, _trail = openable_in(str(directory))
+        if not path:
+            return None
+        traj = detect(Path(path)).parse(path)
+    except Exception:                                       # noqa: BLE001
+        return None
+    frames = [fr for fr in getattr(traj, "frames", []) if fr.structure is not None]
+    if not frames:
+        return None
+    info = getattr(traj, "runtime_info", None) or {}
+    tol = _force_tolerance_of(info.get("convergence_targets"))
+    if tol is None:
+        return None
+    held = sorted(int(i) for i in (info.get("frozen_atoms") or []))
+    with_forces = [fr for fr in frames
+                   if fr.forces is not None or fr.max_force is not None]
+    max_all = max_free = None
+    if with_forces:
+        fr = with_forces[-1]
+        if fr.forces is not None:
+            mags = np.linalg.norm(np.asarray(fr.forces, dtype=float)
+                                  .reshape(-1, 3), axis=1)
+            max_all = float(mags.max()) if mags.size else None
+            free = [i for i in range(len(mags)) if i not in set(held)]
+            max_free = float(mags[free].max()) if free else None
+        else:
+            max_all = (float(fr.max_force) if fr.max_force is not None
+                       else None)
+            max_free = (float(fr.max_force_constrained)
+                        if fr.max_force_constrained is not None else None)
+    if max_all is None and max_free is None:
+        return None
+    judged = max_free if max_free is not None else max_all
+    last = frames[-1]
+    return {
+        "engine": engine_of(directory),
+        "source": Path(path).name,
+        "n_steps": int(last.step_index if last.step_index is not None
+                       else len(frames) - 1),
+        "force_tolerance_ev_ang": tol,
+        "max_force_ev_ang": max_all,
+        "max_force_free_ev_ang": max_free,
+        "held_atom_idxs": held,
+        "converged": (bool(judged <= tol) if judged is not None else None),
+        "run_state": str(getattr(traj, "run_state", "") or ""),
+        "geometry_sha256": last.structure.geometry_fingerprint(),
+    }
+
+
 def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
     from .fdf import parse_fdf_params
     try:

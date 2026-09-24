@@ -890,6 +890,16 @@ spectrum run's viewer to a molwatch log holding one `initial_preview` block
 (measured on a CO2 spectrum run: 1340 bytes, header + one block + footer — a
 spectrum has no geometry sequence to log).
 
+**And within a kind, the engine's own output is offered before the seeded
+progress log** (`result_roles`: the roles naming the calculation, then the
+`stdout` roles a parser claims, then the `progress` roles). The seed is
+written at prep and speaks only once the run writes into it — PySCF's deck
+does, SIESTA's never does *(measured 2026-09-24 on every SIESTA relaxation in
+the fixture project: a 613-byte seed holding one `initial_preview` block
+beside a 34 KB `.out` with the whole relaxation in it, and the door offered
+the seed)*. PySCF's stdout no parser claims, so for a PySCF run the progress
+log is still what opens.
+
 **The door never offers a file `detect()` refuses.** That is this section's
 two questions applied to one answer: *what is a run's output* is the
 catalogue's, *what can a person open* is the registry's. Until 2026-09-18 the
@@ -952,6 +962,42 @@ less than no answer.
 > already has, and a missing contract block is an ordinary state, not a
 > failure. A refusal would make every un-recordable directory an error at a
 > layer that is only ever adding detail.
+
+### 5b.1 The relaxation record — what the run says about its final geometry
+
+`contract.relaxation_of(directory)` reads back **what the run did to the
+geometry it left** — the `info.relaxation` block:
+
+| key | what it is |
+|---|---|
+| `engine` · `source` | which engine ran (`engine_of`), and the output file the numbers were read from |
+| `n_steps` | the geometry steps the run took (the last frame's step index) |
+| `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
+| `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the largest atomic force over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `constrained` line when the step carries no per-atom block) |
+| `held_atom_idxs` | the atoms the run held, 0-based in the run's own atom order (`runtime_info.frozen_atoms`) |
+| `converged` | the moved atoms' largest force within the run's tolerance; `null` when either number is missing |
+| `run_state` | how the run ended (§ 2b) |
+| `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the elements and the positions rounded to a millionth of an ångström — so a consumer can tell whether the coordinates in front of it are the ones this record is about |
+
+**One openable output, or `None`** — the same rule as § 5b, read through the
+doors the Results tab opens a run with (`dirs.openable_in`, the registry's
+`detect`), so the record describes the file a person would be looking at.
+A run that relaxed nothing — a force-constant run, a single point, a seed
+nothing wrote into — echoes no force tolerance and has **no record**; no
+openable output, or one that does not parse, is `None`, never a guess.
+
+The composer (`dirs/run_info.py`) puts it beside `calculation`; the Results
+tab's structure inspector records both into the viewer's `info` store, so a
+pair exported from a finished relaxation carries them
+([`web/molview.md` § 8.4a](?doc=web/molview.md)). **The consumer that asked
+for it** is the vibration kind ([`engines/vibration.md` § 2.2](?doc=engines/vibration.md)):
+a structure stated relaxed is checked against its own record —
+`validation/sidecar.py::check_relaxation_record`, the fingerprint first, then
+the engine and the recorded contract (`contract_fields_of(cfg)` puts the
+calculation about to run in the same vocabulary), then the largest remaining
+force against *that calculation's* tolerance, then the held set. *(Built
+2026-09-24; user direction: "if the info meta data is present, we should
+display it and check against tolerance of calculation.")*
 
 ## 5a. Sibling upgrade — when a second file sharpens the first
 

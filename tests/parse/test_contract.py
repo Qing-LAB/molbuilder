@@ -6,6 +6,8 @@ REFUSAL, `transport.md` § 3.1 -- there you are citing the directory on
 purpose; here the caller is enriching a result it already has.)"""
 from __future__ import annotations
 
+from pathlib import Path
+
 from molbuilder.parse.contract import contract_of
 
 _DECK = """SystemLabel Relax
@@ -182,4 +184,52 @@ def test_molwatch_is_a_format_and_is_refused_as_an_engine(tmp_path):
     (tmp_path / "j.molwatch.log").write_text("# engine: molwatch\n")
     assert engine_of(tmp_path) == "unknown"
 
+
+# --------------------------------------------------------------------- #
+#  The relaxation record (model/parse.md § 5b.1) -- measured fixture     #
+# --------------------------------------------------------------------- #
+
+_RELAX = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_relax"
+
+
+def test_a_finished_siesta_relaxation_answers_its_record():
+    """`tests/fixtures/siesta_relax`: H2 with the first atom held, relaxed
+    on SIESTA 5.4.2 through the jobset road (Broyden to 0.01 eV/Å, four
+    geometry steps; the `.out` says so).  The record reads the run's own
+    tolerance, the last reported forces over every atom and over the one
+    moved atom, the held set, the verdict, and pins itself to the final
+    geometry."""
+    from molbuilder.parse.contract import relaxation_of
+    from molbuilder.structure import Structure
+
+    rec = relaxation_of(_RELAX / "01_relax" / "run-0")
+    assert rec is not None
+    assert rec["engine"] == "siesta"
+    assert rec["source"].endswith(".out")
+    assert rec["n_steps"] == 4
+    assert rec["force_tolerance_ev_ang"] == 0.01
+    # the last step's `siesta: Atomic forces` block: the held atom carries
+    # the constraint force, the moved one is what SIESTA judged
+    assert abs(rec["max_force_ev_ang"] - 0.004887) < 2e-6
+    assert abs(rec["max_force_free_ev_ang"] - 0.001042) < 2e-6
+    assert rec["held_atom_idxs"] == [0]
+    assert rec["converged"] is True
+    assert rec["run_state"] == "ended"
+    # the fingerprint is the FINAL geometry's -- the coordinates the run
+    # printed last, not the input's
+    final = Structure(elements=["H", "H"],
+                      positions=[[5.0, 5.0, 5.0], [5.0, 5.0, 5.774583]])
+    assert rec["geometry_sha256"] == final.geometry_fingerprint()
+    start = Structure(elements=["H", "H"],
+                      positions=[[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]])
+    assert rec["geometry_sha256"] != start.geometry_fingerprint()
+
+
+def test_a_run_that_relaxed_nothing_has_no_record():
+    """A force-constant run echoes no force tolerance and moves nothing on
+    purpose (`tests/fixtures/siesta_fc`); a directory with only a deck has
+    no run.  Neither has a record -- `None`, never a guess."""
+    from molbuilder.parse.contract import relaxation_of
+    fc = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_fc"
+    assert relaxation_of(fc) is None
 

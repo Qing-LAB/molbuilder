@@ -440,6 +440,20 @@ def spectra_render_checks(struct: Structure,
             where="structure.regions",
         ))
 
+    # THE STRUCTURE'S OWN EVIDENCE beside the statement (vibration.md § 2.2):
+    # the record a finished relaxation left on the pair, judged against
+    # this calculation's `geom_gmax` -- in eV/Å, the record's unit -- and
+    # its engine (no recorded contract exists for PySCF decks yet, so the
+    # level of theory is compared by engine alone).
+    from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE as _EV_ANG_PER_EH_BOHR
+    from .sidecar import check_relaxation_record
+    _gmax = getattr(cfg, "geom_gmax", None)
+    issues.extend(check_relaxation_record(
+        struct, engine="pyscf",
+        already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
+        force_tolerance_ev_ang=(float(_gmax) * _EV_ANG_PER_EH_BOHR
+                                if _gmax is not None else None)))
+
     # Pattern B -- THE one home (validation/sidecar.py, U5): region
     # labels this run does not consume are named; the reserved frozen
     # label is excluded (the relaxation constrains it, the Hessian mask
@@ -699,6 +713,16 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
                 f"calculation's force tolerance ({_tol_text}) and reports "
                 f"the verdict with the modes."),
             where="config.already_relaxed"))
+    # THE STRUCTURE'S OWN EVIDENCE beside the statement (vibration.md § 2.2):
+    # the record a finished relaxation left on the pair, judged against
+    # THIS calculation's tolerance and level of theory.
+    from ..parse.contract import contract_fields_of
+    from .sidecar import check_relaxation_record
+    issues.extend(check_relaxation_record(
+        struct, engine="siesta",
+        already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
+        force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
+        level=contract_fields_of(cfg)))
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(
         struct, engine="SIESTA vibration"))

@@ -1587,8 +1587,9 @@ honest empty state when nothing is recorded.
 **The pane displays; the API mutates.**  Which keys exist is the HOST
 tabs' business, through the one door set (`viewer.data.info` — § 9.3):
 the Results tab records the finished run's electronic contract
-(`info.calculation`), a future tab records whatever describes its
-structure.  A person reads the metadata here; nothing on this page
+(`info.calculation`) and what the run did to the geometry it left
+(`info.relaxation`, [`model/parse.md` § 5b.1](?doc=model/parse.md)), a
+future tab records whatever describes its structure.  A person reads the metadata here; nothing on this page
 writes it.
 
 **`info` is not core data.**  § 9.4's one question — *does this change

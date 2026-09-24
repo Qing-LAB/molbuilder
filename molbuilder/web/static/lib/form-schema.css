@@ -47,6 +47,14 @@ fieldset label {
     font-size: var(--text-sm);
     color: var(--text-secondary);
     min-width: 0;
+    /* Cross-axis START: stretch is right for the input and wrong for the
+     * caption, the badge and the help disclosure -- a stretched badge drew
+     * a 341px bordered box under a 349px label and read as a second field
+     * (measured on the transport form, 2026-09-15). */
+    align-items: flex-start;
+}
+fieldset label > .schema-field-text {
+    line-height: var(--line-snug);
 }
 
 /* Optional per-section description (`{"description": "..."}` on a
@@ -67,6 +75,11 @@ fieldset label > select {
     max-width: none;
     min-width: 0;
 }
+fieldset label > input,
+fieldset label > select,
+fieldset label > .schema-int-triple {
+    align-self: stretch;          /* the control still fills its column */
+}
 /* Checkboxes: native rendering at a comfortable 16px so the
  * affordance reads unambiguously as "you can click this".  Without
  * explicit sizing browsers fall back to the system default (~13 px
@@ -81,15 +94,29 @@ fieldset label > input[type="checkbox"] {
     cursor: pointer;
 }
 fieldset label:has(> input[type="checkbox"]) {
-    flex-direction: row;
+    /* TWO COLUMNS: the box in column one, everything else -- caption,
+     * engine-key badge, help disclosure, the findings about this field --
+     * stacked under each other in column two.  One flex line shared by
+     * all of them was measured twice: on the transport form a caption
+     * wrapped to three lines beside a broken badge (2026-09-15), and on
+     * the Spectrum tab a finding appended beside the `already_relaxed`
+     * box was squeezed to 11px wide and ran 3400px tall, one letter per
+     * line, with the whole card behind it (2026-09-24). */
+    display: grid;
+    grid-template-columns: auto 1fr;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs) var(--space-sm);
     cursor: pointer;
     /* Checkbox-style labels get padding so the whole row is a
      * comfortable click target, not just the 16 px box. */
     padding: var(--space-xs) 2px;
     border-radius: var(--radius-sm);
     transition: background 100ms ease;
+}
+fieldset label:has(> input[type="checkbox"]) > :not(input[type="checkbox"]) {
+    grid-column: 2;
+    justify-self: start;
+    min-width: 0;
 }
 fieldset label:has(> input[type="checkbox"]):hover {
     background: var(--bg-input-focus, rgba(255, 255, 255, 0.04));
@@ -293,11 +320,15 @@ fieldset select:disabled {
 .schema-field.is-advanced {
     opacity: 0.85;
 }
-.schema-field.is-advanced:not(.schema-field-checkbox)::before {
+/* The marker is a mark on the caption's first word, not an item of the
+ * label's column layout: as a ::before on the label it drew "•" alone on
+ * the line above the caption (measured seven times on one form). */
+.schema-field.is-advanced:not(.schema-field-checkbox) > .schema-field-text::before {
     content: "•";
     color: var(--accent);
     margin-right: var(--space-xs);
     font-weight: 700;
+    opacity: 0.6;
     opacity: 0.6;
 }
 
@@ -326,7 +357,13 @@ fieldset select:disabled {
      * out under nowrap.  Allow breaks anywhere instead so a 60-char
      * badge wraps cleanly inside the 220px-min grid cell. */
     overflow-wrap: anywhere;
-    word-break: break-word;
+    /* `break-word` hyphenated keywords early -- `TS.Elecs.Bul` / `k` on a
+     * checkbox row -- and a keyword a reader is meant to look up in the
+     * engine's manual must not be broken for tidiness; overflow-wrap still
+     * catches the genuinely unbreakable case. */
+    word-break: normal;
+    max-width: 100%;
+    align-self: flex-start;
     vertical-align: baseline;
     /* inline-block so the badge wraps as a unit rather than the
      * children separating awkwardly on narrow viewports. */
@@ -636,98 +673,27 @@ fieldset select:disabled {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- * THE TRANSPORT TAB'S LABEL LAYOUT — opt-in, and opt-in for a reason
+ * ONE LABEL LAYOUT FOR EVERY FORM PAGE
  *
  * Six rendering defects were measured on the transport form on 2026-09-15
- * and fixed here.  Every one of them exists on /structure-optimization and
- * /spectrum-calculation too, because this sheet is shared — and those two
- * tabs are NOT changed, because I have not read what they need and the
- * rule is that a tab's UI follows that tab's calculation (user,
- * 2026-09-15: *"you should not change others when you did not even
- * read what the others is about"*).
- *
- * So the page opts in: `transport_calculation.html` carries
- * `data-schema-label-layout="reviewed"` on <body>, and every rule below is
- * keyed off it.  A page that does not set it renders exactly as before —
- * the declarations above this banner are untouched.  When someone reviews
- * the other two forms, the attribute goes and these rules move up.
- *
- * This lives in the MODULE's own sheet, not in `transport/style.css`:
- * `ui-contract.md` § 1 — a module owns its CSS, and a page sheet may not
- * name module classes.  The page contributes one attribute; the module
- * decides what it means.  Same shape as `data-sidebars-hidden`.
- *
- * What each rule fixes, measured:
- *   1. the engine-key badge rendered 341px wide inside a 349px label —
- *      a bordered box under the real input, read as a second field (21/21);
- *   2. `word-break: break-word` hyphenated keywords early, so a checkbox
- *      row showed `TS.Elecs.Bul` / `k` — a keyword a reader is meant to
- *      look up in the SIESTA manual must not be broken for tidiness;
- *   3. the `is-advanced` marker was a ::before on a COLUMN flex container,
- *      so it drew "•" alone on the line above the caption, seven times;
- *   4. a checkbox row was one flex line shared by box + caption + badge +
- *      help, so "Use the electrode's own bulk Hamiltonian" took three
- *      lines beside a broken badge;
- *   5. bordered fieldsets in one card row ended at different heights;
- *   6. prose ran the full content column, ~150 characters a line.
+ * and fixed behind a per-page body attribute, because the other two form
+ * tabs had not been read.  They were read on 2026-09-24 (user: check every
+ * element, card and panel for consistent use of the CSS system) and showed
+ * the same defects plus one of their own -- a finding beside a checkbox
+ * squeezed into an 11px column -- so the attribute is gone and each rule
+ * stands where it belongs: the label column above, the checkbox grid, the
+ * caption's marker, the badge's wrapping, and the two below.  A page
+ * contributes no attribute; the module owns the layout (`ui-contract.md`
+ * § 1).
  * ═══════════════════════════════════════════════════════════════════════ */
 
-body[data-schema-label-layout="reviewed"] fieldset label {
-    /* (1) cross-axis START: stretch is right for the input and wrong for
-     * the caption, the badge and the help disclosure. */
-    align-items: flex-start;
-}
-body[data-schema-label-layout="reviewed"] fieldset label > input,
-body[data-schema-label-layout="reviewed"] fieldset label > select,
-body[data-schema-label-layout="reviewed"] fieldset label > .schema-int-triple {
-    align-self: stretch;          /* the control still fills its column */
-}
-body[data-schema-label-layout="reviewed"] fieldset label > .schema-field-text {
-    line-height: var(--line-snug);
-}
-body[data-schema-label-layout="reviewed"] .schema-engine-key {
-    align-self: flex-start;       /* (1) */
-    max-width: 100%;
-    word-break: normal;           /* (2) — overflow-wrap still catches the
-                                   * genuinely unbreakable case */
-}
-/* (3) the marker belongs to the caption, where it is a mark on a word
- * rather than a list item.  Checkboxes keep the dim only: on a row the
- * bullet would land between the box and its text, which is the
- * dot-beside-a-box the 2026-06-12 report was about. */
-body[data-schema-label-layout="reviewed"]
-  .schema-field.is-advanced:not(.schema-field-checkbox)::before {
-    content: none;
-}
-body[data-schema-label-layout="reviewed"]
-  .schema-field.is-advanced:not(.schema-field-checkbox)
-  > .schema-field-text::before {
-    content: "•";
-    color: var(--accent);
-    margin-right: var(--space-xs);
-    font-weight: 700;
-    opacity: 0.6;
-}
-/* (4) two columns: the box in column one, everything else stacked under
- * the caption in column two. */
-body[data-schema-label-layout="reviewed"]
-  fieldset label:has(> input[type="checkbox"]) {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: var(--space-xs) var(--space-sm);
-}
-body[data-schema-label-layout="reviewed"]
-  fieldset label:has(> input[type="checkbox"]) > :not(input[type="checkbox"]) {
-    grid-column: 2;
-    justify-self: start;
-}
-/* (5) a row of bordered boxes is one band, not a ragged edge. */
-body[data-schema-label-layout="reviewed"] .param-grid > .workflow-group {
+/* A row of bordered boxes is one band, not a ragged edge. */
+.param-grid > .workflow-group {
     align-items: stretch;
 }
-/* (6) prose obeys the measure. */
-body[data-schema-label-layout="reviewed"] fieldset .schema-section-desc,
-body[data-schema-label-layout="reviewed"] .workflow-group-subtitle {
+/* Prose obeys the measure: a description ran the full content column, about
+ * 150 characters a line. */
+fieldset .schema-section-desc,
+.workflow-group-subtitle {
     max-width: var(--measure-prose);
 }

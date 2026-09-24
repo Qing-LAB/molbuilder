@@ -392,19 +392,35 @@ _MIN_MOLWATCH = ("# molwatch trajectory log v1\n"
 
 
 def test_the_watch_resolver_finds_a_molwatch_log_first(tmp_path):
-    """The progress channel answers for a run that names no product of its own.
+    """The progress channel answers for a run whose engine's stdout no parser
+    claims -- PySCF's `.pyscf.log` (`model/parse.md` § 5.5).
 
     *This trio followed the chain out of `web/blueprints/watch.py` into
     `parse.dirs.rundir.openable_in` on 2026-09-18 (§ 5c step 2).*  The chain
     became a delegation the same day: the CALCULATION decides, and an
-    optimization -- which names no product -- is opened at its trajectory.
+    optimization -- which names no product -- is opened at its trajectory,
+    which for a PySCF run is the log its deck writes step by step.
     """
+    from molbuilder.parse.dirs import openable_in
+    (tmp_path / "bdt.molwatch.log").write_text(
+        _MIN_MOLWATCH.replace("engine: siesta", "engine: pyscf"), encoding="utf-8")
+    (tmp_path / "bdt-run0.pyscf.log").write_text("PySCF stdout\n", encoding="utf-8")
+    chosen, attempts = openable_in(str(tmp_path))
+    assert chosen is not None and chosen.endswith("bdt.molwatch.log"), attempts
+    assert any("molwatch" in a for a in attempts)
+
+
+def test_the_engines_own_output_outranks_the_seed_it_never_writes_into(tmp_path):
+    """SIESTA prints every geometry step into its stdout and never writes the
+    molwatch log prep seeded, so beside a `.out` the seed is a stub and the
+    `.out` is the trajectory (`model/parse.md` § 5.5; measured 2026-09-24 on
+    every SIESTA relaxation in the fixture project -- a 613-byte seed beside
+    a 34 KB `.out`, and the door offered the seed)."""
     from molbuilder.parse.dirs import openable_in
     (tmp_path / "bdt.molwatch.log").write_text(_MIN_MOLWATCH, encoding="utf-8")
     (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
     chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.molwatch.log"), attempts
-    assert any("molwatch" in a for a in attempts)
+    assert chosen is not None and chosen.endswith("bdt.out"), attempts
 
 
 def test_the_watch_resolver_falls_through_to_engine_stdout(tmp_path):
