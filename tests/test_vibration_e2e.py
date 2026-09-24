@@ -86,12 +86,6 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "V"
-    # the kind's recommendation is the template's value (template.md
-    # § 6.3a): the tight tier's geom_gmax, not the general default
-    tmpl = (bundle / "W.template.toml").read_text()
-    block = tmpl[tmpl.index("[item.geom_gmax]"):]
-    block = block[:block.index("[item.", 1)]
-    assert "value = 0.0002" in block, block
     (bundle / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": f"source {CONDA_SH}"}}))

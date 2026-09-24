@@ -1336,7 +1336,8 @@ def api_task_setup_handover():
         # The KIND rides the hand-over (absent = optimization, the same
         # absent-is-a-state rule task.json itself uses) -- the receiving
         # tab writes it into task.json and proposes the kind's own ladder
-        # (one `freq` stage for vibration) instead of the tier default.
+        # (for a vibration, `relax` then `freq` on SIESTA unless the box says
+        # relaxed, `freq` alone on PySCF) instead of the tier default.
         handover["calculation"] = calculation
 
     return jsonify({

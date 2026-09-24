@@ -141,11 +141,13 @@ def test_the_reference_forces_are_read_from_the_run_and_stationarity_is_judged(t
     (a measured fixture, not the road: the road's own run is the e2e test),
     then with a criterion the same forces cannot meet."""
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    from molbuilder.parse.engines.siesta import SiestaParser
     from molbuilder.parse.engines.siesta_fc import (fc_block_asymmetry,
                                                     read_fc,
-                                                    reference_forces_from_out)
+                                                    reference_frame_of)
     from molbuilder.spectra.from_siesta import spectra_results_from_fc
-    f = reference_forces_from_out(FIXTURES / "siesta_fc" / "h2_fc.out")
+    f = np.asarray(reference_frame_of(SiestaParser.parse(
+        str(FIXTURES / "siesta_fc" / "h2_fc.out"))).forces, dtype=float)
     # the deck's order: the held atom first, the free one second
     assert abs(f[0, 2] - (-0.003787)) < 1e-9 and abs(f[1, 2] - (-0.000057)) < 1e-9
     fc = read_fc(FIXTURES / "siesta_fc" / "h2_relaxed.FC")
@@ -231,7 +233,13 @@ _RELAX_RUN = FIXTURES / "siesta_relax" / "01_relax" / "run-0"
 def _relaxed_h2_with_record(*, shift_z: float = 0.0):
     """The geometry the measured relaxation left (held atom first, as the
     run had it), carrying the record the run directory answers for
-    itself -- the pair the Results tab would export."""
+    itself -- the pair the Results tab would export.
+
+    WHY API-LEVEL: the record table's rows (vibration.md § 2.2) are verdicts
+    of the gate on a structure's metadata, and the metadata comes from the
+    measured fixture `tests/fixtures/siesta_relax` through the composer the
+    Results tab uses -- no engine runs and nothing is invented.  The road
+    that produced the fixture is the SIESTA e2e test."""
     from molbuilder.parse.dirs.run_info import run_info_for_dir
     s = Structure(elements=["H", "H"],
                   positions=np.array([[5.0, 5.0, 5.0],
@@ -245,12 +253,12 @@ def _relaxed_h2_with_record(*, shift_z: float = 0.0):
 
 def _record_findings(struct, cfg):
     from molbuilder.validation import validate
-    # the record's findings open with the structure or the record; the
-    # statement's own finding opens with "You stated" / "The structure is"
+    # everything the gate says on the box's card except the statement's own
+    # finding (the ticked warning / the unticked info of § 5.8)
     return [i for i in validate(struct, cfg, calculation="vibration")
             if i.where == "config.already_relaxed"
-            and i.message.startswith(("This structure", "No relaxation record",
-                                      "The relaxation held"))]
+            and not i.message.startswith(("You stated",
+                                          "The structure is not stated"))]
 
 
 def test_a_matching_record_answers_the_ticked_box_with_its_numbers(
@@ -271,6 +279,9 @@ def test_a_matching_record_answers_the_ticked_box_with_its_numbers(
 
 def test_a_record_looser_than_this_calculation_warns_when_ticked(
         in_tree_psml):
+    """The record's largest force above THIS calculation's tolerance: a
+    warning when ticked, information when unticked (the record table,
+    rows 3 and 5; measured fixture, see `_relaxed_h2_with_record`)."""
     s = _relaxed_h2_with_record()
     cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
                        already_relaxed=True, relax_force_tol=0.0005)
@@ -314,15 +325,20 @@ def test_a_record_at_another_level_of_theory_warns(in_tree_psml):
 
 
 def test_a_good_record_under_an_unticked_box_offers_the_skip(in_tree_psml):
+    """Unticked with a record that already meets the criterion: the info
+    line offers the skip (the record table, row 4; measured fixture)."""
     s = _relaxed_h2_with_record()
     cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
                        already_relaxed=False, relax_force_tol=0.01)
     found = _record_findings(s, cfg)
     assert len(found) == 1 and found[0].severity == "info", found
-    assert "tick the box to skip the relaxation" in found[0].message
+    assert "the box may be ticked and the relaxation skipped" in found[0].message
 
 
 def test_no_record_under_a_ticked_box_is_accepted_with_a_hint(in_tree_psml):
+    """Ticked with no record: accepted, with the hint that the statement
+    stands on its own (the record table, row 1; the fixture's structure
+    with its metadata stripped)."""
     s = _relaxed_h2_with_record()
     s.apply_info_dict(None)
     cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,

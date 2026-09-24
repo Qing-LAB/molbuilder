@@ -173,22 +173,6 @@ def reference_frame_of(trajectory, *, name: str = "the output"):
                      f"its first step")
 
 
-def reference_frame_from_out(path):
-    """:func:`reference_frame_of` for a file: one parse, through the one
-    SIESTA output parser."""
-    from .siesta import SiestaParser
-    return reference_frame_of(SiestaParser.parse(str(path)),
-                              name=Path(path).name)
-
-
-def reference_forces_from_out(path) -> np.ndarray:
-    """The forces at the UNDISPLACED geometry of a force-constant run, in
-    eV/Å, shape ``(n_atoms, 3)`` in the deck's atom order -- the forces half
-    of :func:`reference_frame_from_out`."""
-    return np.asarray(reference_frame_from_out(path).forces, dtype=float)
-
-
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",
            "fc_block_asymmetry", "reference_frame_of",
-           "reference_frame_from_out", "reference_forces_from_out",
            "EV_PER_ANG2_TO_HARTREE_PER_BOHR2"]

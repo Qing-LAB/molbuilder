@@ -319,6 +319,13 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "the force-constant rung's one-line deck header -- `_stage_science`'s "
         "job for a run that moves nothing, DERIVED from the same facts the "
         "FC block is rendered from"),
+    "stage_stdout": (
+        None, "molbuilder/jobset/materialize.py",
+        "the newest of ONE stage's engine outputs in an attempt directory, "
+        "found by the stage's own token through `runfiles.find` -- the "
+        "observing side, shared by `prep` (the geometry a `relax` stage "
+        "left) and `summarize` (a force-constant run's reference step), so a "
+        "flat bundle answers with this stage's file and never a neighbour's"),
     "_stage_science": (
         None, "molbuilder/siesta/input.py",
         "the deck's one-line stage comment, DERIVED from the config being "

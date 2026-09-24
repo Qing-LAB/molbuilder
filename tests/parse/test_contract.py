@@ -213,6 +213,7 @@ def test_a_finished_siesta_relaxation_answers_its_record():
     assert abs(rec["max_force_ev_ang"] - 0.004887) < 2e-6
     assert abs(rec["max_force_free_ev_ang"] - 0.001042) < 2e-6
     assert rec["held_atom_idxs"] == [0]
+    assert rec["held_atom_keys"] == ["H 5.000000 5.000000 5.000000"]
     assert rec["converged"] is True
     assert rec["run_state"] == "ended"
     # the fingerprint is the FINAL geometry's -- the coordinates the run
@@ -220,15 +221,18 @@ def test_a_finished_siesta_relaxation_answers_its_record():
     final = Structure(elements=["H", "H"],
                       positions=[[5.0, 5.0, 5.0], [5.0, 5.0, 5.774583]])
     assert rec["geometry_sha256"] == final.geometry_fingerprint()
-    start = Structure(elements=["H", "H"],
-                      positions=[[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]])
-    assert rec["geometry_sha256"] != start.geometry_fingerprint()
+    # the same atoms listed the other way round -- a deck's held-first copy
+    # -- fingerprint the same (§ 5b.1), so the gate can judge that copy
+    swapped = Structure(elements=["H", "H"],
+                        positions=[[5.0, 5.0, 5.774583], [5.0, 5.0, 5.0]])
+    assert swapped.geometry_fingerprint() == rec["geometry_sha256"]
 
 
 def test_a_run_that_relaxed_nothing_has_no_record():
     """A force-constant run echoes no force tolerance and moves nothing on
-    purpose (`tests/fixtures/siesta_fc`); a directory with only a deck has
-    no run.  Neither has a record -- `None`, never a guess."""
+    purpose (`tests/fixtures/siesta_fc`): no record -- `None`, never a
+    guess.  (A directory with only a deck is pinned by
+    `test_structure_info_bridge.py`.)"""
     from molbuilder.parse.contract import relaxation_of
     fc = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_fc"
     assert relaxation_of(fc) is None

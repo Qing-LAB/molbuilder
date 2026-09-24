@@ -415,18 +415,11 @@ def test_the_engines_own_output_outranks_the_seed_it_never_writes_into(tmp_path)
     molwatch log prep seeded, so beside a `.out` the seed is a stub and the
     `.out` is the trajectory (`model/parse.md` § 5.5; measured 2026-09-24 on
     every SIESTA relaxation in the fixture project -- a 613-byte seed beside
-    a 34 KB `.out`, and the door offered the seed)."""
+    a 34 KB `.out`, and the door offered the seed).  A lone `.out` with no
+    progress log and no readable deck is the same rule's easier case and is
+    covered by this one."""
     from molbuilder.parse.dirs import openable_in
     (tmp_path / "bdt.molwatch.log").write_text(_MIN_MOLWATCH, encoding="utf-8")
-    (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
-    chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.out"), attempts
-
-
-def test_the_watch_resolver_falls_through_to_engine_stdout(tmp_path):
-    """No progress log and no readable deck: the engine's stdout, which for
-    SIESTA is itself a trajectory source and so a thing a parser claims."""
-    from molbuilder.parse.dirs import openable_in
     (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
     chosen, attempts = openable_in(str(tmp_path))
     assert chosen is not None and chosen.endswith("bdt.out"), attempts

@@ -329,7 +329,6 @@ fieldset select:disabled {
     margin-right: var(--space-xs);
     font-weight: 700;
     opacity: 0.6;
-    opacity: 0.6;
 }
 
 /* ---- Engine-key badge ----

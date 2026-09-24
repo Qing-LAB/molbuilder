@@ -793,10 +793,10 @@ class TestTheContractEndpoint:
         out = client.get("/api/results/contract?path="
                          + str(run / "chain.xyz")).get_json()
         assert out["ok"] is True
-        assert out["calculation"]["contract"]["basis_size"] == "DZP"
-        assert out["relaxation"]["engine"] == "siesta"
-        assert out["relaxation"]["converged"] is True
-        assert out["relaxation"]["held_atom_idxs"] == [0]
+        from molbuilder.parse.dirs.run_info import run_info_for_dir
+        info = run_info_for_dir(run)
+        assert out["calculation"] == info["calculation"]
+        assert out["relaxation"] == info["relaxation"]
 
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.

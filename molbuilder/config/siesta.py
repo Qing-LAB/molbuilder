@@ -684,10 +684,11 @@ class SiestaConfig:
         "range": (0.005, 0.2),
         "tier":  "advanced",
     })
-    # THE PERSON'S ASSERTION THAT THE STRUCTURE IS RELAXED -- on this engine
-    # the vibration kind's precondition itself (`engines/vibration.md` § 2.2):
-    # the force-constant run cannot relax, the gate refuses while it is
-    # unmade, and the read-back answers it with the reference-step forces.
+    # THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md` § 2.2): unticked,
+    # the ladder relaxes first (a `relax` stage before `freq`); ticked, the
+    # force constants are taken at the geometry as given and the read-back
+    # answers the statement with the reference-step forces.  Never a
+    # refusal.
     already_relaxed: bool = field(default=False, metadata={
         "category": ("procedure",),
         "section": "Vibration",
@@ -698,7 +699,7 @@ class SiestaConfig:
         # the deck (template.md § 6 -- the `restart` precedent); the gate
         # and the read-back are what consume it.
         "item_kind": "produce",
-        "engine_key": "(molbuilder: the relaxation is skipped on PySCF, asserted on SIESTA)",
+        "engine_key": "(molbuilder: no engine keyword -- the ladder or the deck decides)",
     })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),

@@ -718,7 +718,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     with (`engines/vibration.md` § 5.2a): the sorted copy as given, and no
     cell of its own, when the ladder holds no `relax` stage; the coordinates
     that stage relaxed to, in the cell it ran in, when it does -- read from
-    its latest concluded attempt through the one SIESTA output parser.  The
+    its newest attempt, which must have concluded, through the one SIESTA
+    output parser.  The
     cell travels because the deck otherwise re-derives one around the new
     bounding box and shifts the atoms into it, and a relaxed geometry moved
     against the real-space grid is not stationary on that grid any more.
@@ -752,55 +753,54 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"and says whether the statement held.")
         return struct, None
     from ..paths import Shape
-    from ..paths import attempt_dir as _adir
-    from ..paths import attempts_in as _ain
-    from ..runfiles import find as _rf_find
-    from ..runfiles import stdout_roles
-    from .materialize import attempt_concluded
+    from .materialize import attempt_concluded, run_dir, stage_stdout
     token = token_for(task, relax.name)
     container = base / Shape.named(task.shape).stage_dir(token)
     stem = _rf_stem(task.label, token)
     run_first = (f"molbuilder jobset prep run {relax.name} && "
                  f"molbuilder jobset launch run {relax.name}")
-    # Newest first; a flat bundle keeps no attempts and IS the attempt.
-    candidates = ([_adir(container, n) for n in reversed(_ain(container))]
-                  or [container])
-    concluded = [d for d in candidates
-                 if attempt_concluded(d, stem) is not None]
-    if not concluded:
+    # THE NEWEST ATTEMPT, and it must have concluded: a `relax` re-launched
+    # to tighten is the geometry the person means, so an older concluded
+    # attempt never stands in for one still running.
+    attempt = run_dir(container)
+    if attempt_concluded(attempt, stem) is None:
         raise PrepError(
             f"the `{VIBRATION_FREQ_STAGE}` stage takes its geometry from the "
-            f"`{relax.name}` stage, which has no concluded attempt -- it was "
-            f"never launched, is still running, or was force-stopped (the "
-            f"last two look identical on disk; project-layout.md 1.6).  Let "
-            f"it finish, or run it first --\n    {run_first}")
-    attempt = concluded[0]
-    outs = [p for role in stdout_roles("siesta")
-            for p, _rf in _rf_find(attempt, task.label, role=role, stage=token)]
-    if not outs:
+            f"`{relax.name}` stage, whose newest attempt has not concluded -- "
+            f"it was never launched, is still running, or was force-stopped "
+            f"(the last two look identical on disk; project-layout.md 1.6).  "
+            f"Let it finish, or run it first --\n    {run_first}")
+    out = stage_stdout(attempt, task.label, token, str(task.engine))
+    if out is None:
         raise PrepError(
             f"{attempt.relative_to(base)} concluded without the engine's "
             f"output for `{relax.name}`; there is no geometry to read.  "
             f"Re-run it --\n    {run_first}")
     from ..parse.engines.siesta import SiestaParser
-    traj = SiestaParser.parse(str(outs[-1]))
+    from ..parse.errors import ParseError
+    try:
+        traj = SiestaParser.parse(str(out))
+    except ParseError as e:
+        raise PrepError(
+            f"{out.relative_to(base)} could not be read as a SIESTA run: {e}.  "
+            f"Re-run the `{relax.name}` stage --\n    {run_first}") from e
     frames = [fr for fr in traj.frames if fr.structure is not None]
     if not frames:
         raise PrepError(
-            f"{outs[-1].name} holds no coordinate block: the `{relax.name}` "
+            f"{out.name} holds no coordinate block: the `{relax.name}` "
             f"run never reached its first geometry.  Re-run it --\n"
             f"    {run_first}")
     last = frames[-1]
     if list(last.structure.elements) != list(struct.elements):
         raise PrepError(
-            f"{outs[-1].name} describes {last.structure.formula} in an order "
+            f"{out.name} describes {last.structure.formula} in an order "
             f"that is not this calculation's sorted copy ({struct.formula}): "
             f"the `{relax.name}` stage ran a different structure.  Re-run "
             f"it --\n    {run_first}")
     cell = last.lattice if last.lattice is not None else traj.lattice
     if log is not None:
         log.step(f"the geometry the `{VIBRATION_FREQ_STAGE}` stage measures at")
-        log.received(str(outs[-1].relative_to(base)),
+        log.received(str(out.relative_to(base)),
                      f"{len(frames)} geometry step(s); the last is written as "
                      f"the deck's coordinates, in that run's cell")
     return (struct.replace(positions=np.asarray(last.structure.positions,

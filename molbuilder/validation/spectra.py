@@ -622,10 +622,12 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
 
     What holds on both engines is said once here and in
     `spectra_render_checks` by the same words: how many whole-body
-    motions survive the freeze, from the one derivation.  What is this
-    route's own: at least one free atom to nudge, and that nothing is
-    relaxed here -- the input geometry is the stationary point, so a
-    person cites a relaxed structure or accepts § 4's consequence.
+    motions survive the freeze, from the one derivation, and the
+    structure's own relaxation record read against this calculation.  What
+    is this route's own: at least one free atom to nudge, and the two
+    states of the person's box -- unticked the ladder's `relax` stage runs
+    first, ticked the force constants are taken at the geometry as given
+    and the read-back measures it (`engines/vibration.md` § 2.2, § 5.8).
     """
     issues: List[Issue] = []
     n = int(struct.n_atoms)

@@ -970,14 +970,14 @@ geometry it left** — the `info.relaxation` block:
 
 | key | what it is |
 |---|---|
-| `engine` · `source` | which engine ran (`engine_of`), and the output file the numbers were read from |
+| `engine` · `source` | which engine ran (`engine_of`; `null` when the directory declares none), and the output file the numbers were read from |
 | `n_steps` | the geometry steps the run took (the last frame's step index) |
 | `force_tolerance_ev_ang` | the run's **own** criterion, as the engine echoed it — `convergence_targets.max_force_tol_eV_per_A`, flat (SIESTA's `redata:` echo, a single-stage molwatch header) or nested one level by stage (a staged molwatch header; one stage is the run's, several is `None`) |
-| `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the largest atomic force over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `constrained` line when the step carries no per-atom block) |
-| `held_atom_idxs` | the atoms the run held, 0-based in the run's own atom order (`runtime_info.frozen_atoms`) |
-| `converged` | the moved atoms' largest force within the run's tolerance; `null` when either number is missing |
+| `max_force_ev_ang` · `max_force_free_ev_ang` | the last step that reported forces: the **largest absolute Cartesian component** over every atom, and over the atoms the run **moved** — the held set excluded, from that step's per-atom forces (the engine's own `Max` / `Max … constrained` lines, which are that same component, when the step carries no per-atom block). The component, not a per-atom norm: it is what SIESTA's `MD.MaxForceTol` tests and what both read-backs judge by (V1.30); a norm would call a run the engine converged "not converged" by up to √3 |
+| `held_atom_idxs` · `held_atom_keys` | the atoms the run held: 0-based indices in the run's own atom order (`runtime_info.frozen_atoms`), and the same atoms as their `Structure.geometry_lines()` — element and rounded position — which is how a consumer compares held sets, because a deck's copy may list the atoms in another order |
+| `converged` | the moved atoms' largest component within the run's tolerance (when a run held nothing the two figures are one figure). A run whose last step reports no force at all has no record |
 | `run_state` | how the run ended (§ 2b) |
-| `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the elements and the positions rounded to a millionth of an ångström — so a consumer can tell whether the coordinates in front of it are the ones this record is about |
+| `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the **sorted** `geometry_lines()` (element and position rounded to a millionth of an ångström, negative zero folded), so it is the same whatever order a copy lists the atoms in — so a consumer can tell whether the coordinates in front of it are the ones this record is about. A rigid shift is not folded in: a pair exported from a run carries the run's cell, and no deck shifts a structure that states one |
 
 **One openable output, or `None`** — the same rule as § 5b, read through the
 doors the Results tab opens a run with (`dirs.openable_in`, the registry's

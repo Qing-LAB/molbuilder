@@ -57,6 +57,15 @@ _FROM_DECK = {
 #: spelling.  The k-grid is the seventh and goes through the same
 #: :func:`_apply_kgrid` as the deck's.
 #:
+#: The record's field names against ``SiestaConfig``'s -- the ONE table,
+#: kept beside `_siesta_contract` in `parse/contract.py` (which writes the
+#: record in those names) so the writer and this reader cannot drift.
+from molbuilder.parse.contract import RECORD_TO_SIESTA_FIELD as _FROM_RECORD
+
+#: The same six, arriving from a RECORD instead of a deck -> the catalogue's
+#: spelling.  The k-grid is the seventh and goes through the same
+#: :func:`_apply_kgrid` as the deck's.
+#:
 #: `parse/contract.py::_siesta_contract` reads the very same `FdfParams` this
 #: module does and writes the block in ``TransportConfig``'s field names, so
 #: this table is `_FROM_DECK` with its left column respelled -- of the seven

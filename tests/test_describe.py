@@ -364,3 +364,42 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
     assert (tree / "P" / "optimization" / "calc" / "H.psml").exists(), (
         "the bare name must resolve against the tree and the pseudo "
         "must travel with the calculation")
+
+
+@pytest.mark.parametrize("engine, ladder", [("siesta", ["relax", "freq"]),
+                                            ("pyscf", ["freq"])])
+def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box(
+        tmp_path, monkeypatch, engine, ladder):
+    """`template.md` § 6.3a: `jobset init` writes a kind's recommended value
+    as the item's `value` AND `default`, for every item the catalogue
+    recommends for that kind -- so the vibration template starts tight.
+    `vibration.md` § 2.2 / § 5.2a: the ladder is read from the box a fresh
+    description carries (unticked): `relax` then `freq` on SIESTA, `freq`
+    alone on PySCF.  No engine runs: `init` describes."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.template import catalogue, find_template, recommended_for, select
+
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text("2\n\nH 0 0 0\nH 0 0 0.74\n")
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    res = CliRunner().invoke(jobset_group, [
+        "init", "--structure", "P/structure/h2.xyz", "--bundle", "P/frequency/V",
+        "--engine", engine, "--shape", "hierarchical",
+        "--calculation", "vibration", "--name", "V"])
+    assert res.exit_code == 0, res.output
+    bundle = tree / "P" / "frequency" / "V"
+    assert [s.name for s in read_task(bundle / "task.json").stages] == ladder
+
+    written = {it.name: it for it in select(read_template(
+        find_template(bundle).read_text()))}
+    recommended = {it.name: recommended_for(it, "vibration")
+                   for it in select(catalogue(), engine=engine)
+                   if recommended_for(it, "vibration") is not None}
+    assert recommended, "the catalogue recommends nothing for this kind"
+    for name, rec in recommended.items():
+        assert written[name].value == rec and written[name].default == rec, (
+            name, written[name].value, written[name].default, rec)
+

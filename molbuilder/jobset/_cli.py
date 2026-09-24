@@ -2807,8 +2807,9 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             from ..parse.engines.siesta_fc import reference_frame_of
             ver = ""
             f_ref = None
-            outs = sorted(where.glob("*.out"),
-                          key=lambda q: q.stat().st_mtime)
+            from .materialize import stage_stdout
+            _out = stage_stdout(where, _tt.label, token, "siesta")
+            outs = [_out] if _out is not None else []
             if outs:
                 # ONE parse of the run's output: the engine's build from the
                 # parser's header probes (not a regex over the file's head)
@@ -2842,6 +2843,21 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                     _pos_in[list(perm.sorted_to_original)] = _pos_s
                     sorted_struct = sorted_struct.replace(positions=_pos_s)
                     struct = struct.replace(positions=_pos_in)
+            # THE LADDER'S OWN RELAXATION, when the description asked for one
+            # (vibration.md § 2.2 unticked, § 5.2a): the `relax` stage's
+            # record, read the way the Results tab reads it, so the artifact
+            # says the relaxation ran and how many steps it took rather than
+            # "not requested".
+            _ladder_rec = None
+            from ..pyscf.stages import VIBRATION_RELAX_STAGE
+            _relax = next((s for s in _tt.stages
+                           if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
+            if _relax is not None:
+                from ..parse.contract import relaxation_of
+                from ..paths import Shape as _Shape
+                _rtok = token_for(_tt, _relax.name)
+                _ladder_rec = relaxation_of(
+                    run_dir(base / _Shape.named(_tt.shape).stage_dir(_rtok)))
             try:
                 res = spectra_results_from_fc(
                     struct, sorted_struct, perm, fc, label=_tt.label,
@@ -2850,7 +2866,8 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                             "stage": stage},
                     reference_forces_ev_ang=f_ref,
                     force_criterion_ev_ang=crit,
-                    already_relaxed=asserted)
+                    already_relaxed=asserted,
+                    ladder_relaxation=_ladder_rec)
             except ValueError as e:
                 raise click.ClickException(str(e))
             out = where / f"{_tt.label}.spectra.json"

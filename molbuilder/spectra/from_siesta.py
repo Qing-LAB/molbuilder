@@ -83,7 +83,9 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
                             timestamp: Optional[str] = None,
                             reference_forces_ev_ang: Optional[np.ndarray] = None,
                             force_criterion_ev_ang: Optional[float] = None,
-                            already_relaxed: bool = False) -> SpectraResults:
+                            already_relaxed: bool = False,
+                            ladder_relaxation: Optional[dict] = None
+                            ) -> SpectraResults:
     """The artifact for a finished force-constant run.
 
     ``struct`` is the structure the calculation is OF, in INPUT order;
@@ -91,15 +93,20 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
     ``permutation`` the record read back beside the calculation
     (`transport.sort.read_permutation`); ``fc_path`` the ``.FC`` the run
     left.  ``reference_forces_ev_ang`` are the forces SIESTA evaluated at
-    the undisplaced geometry (its FC step 0, `siesta_fc.reference_forces_from_out`),
+    the undisplaced geometry (its FC step 0, `siesta_fc.reference_frame_of`),
     in the SORTED order like everything the run wrote; with them and
-    ``force_criterion_ev_ang`` -- today the catalogue's recommended
-    `relax_force_tol`, since the tolerance the person's own relaxation
-    used does not travel with the structure yet (plan V1.28) -- the
+    ``force_criterion_ev_ang`` -- this description's own `relax_force_tol`,
+    resolved for the stage the way `prep` resolves it -- the
     artifact's ``relaxation`` block judges stationarity as the largest
     absolute force COMPONENT over the free atoms (R5 on this route,
     `engines/vibration.md` § 5.5).
     ``already_relaxed`` is the person's assertion, carried as such.
+    ``ladder_relaxation`` is the `relax` stage's record
+    (`parse.contract.relaxation_of`) when the description's ladder relaxed
+    first (`engines/vibration.md` § 2.2, § 5.2a): the block then says the
+    relaxation ran and how many steps it took, and ``phase_relaxation`` is
+    complete; without it the phase is `not requested` -- the
+    force-constant run itself relaxes nothing.
     """
     n = len(sorted_struct.elements)
     if len(struct.elements) != n or permutation.n_atoms != n:
@@ -237,8 +244,11 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
                            f"stage runs, or relax elsewhere at this level of "
                            f"theory and hand the result over -- or keep this "
                            f"run knowing that")
-    relaxation = {"enabled": False, "already_relaxed": bool(already_relaxed),
-                  "n_steps": 0, "max_force_eh_bohr": max_free_eh,
+    _ladder = ladder_relaxation if isinstance(ladder_relaxation, dict) else None
+    relaxation = {"enabled": _ladder is not None,
+                  "already_relaxed": bool(already_relaxed),
+                  "n_steps": (int(_ladder.get("n_steps") or 0) if _ladder else 0),
+                  "max_force_eh_bohr": max_free_eh,
                   "max_force_all_atoms_eh_bohr": max_all_eh,
                   "converged": converged, "warning": warning}
 
@@ -268,13 +278,16 @@ def spectra_results_from_fc(struct: Structure, sorted_struct: Structure,
         config=dict(config or {}),
         methods_text=methods,
         bibliography_keys=extract_citation_keys(methods),
-        # The frequencies are this route's whole answer; the strengths, the
-        # probe and a relaxation were never asked of it, and the flag says so
+        # The frequencies are this route's whole answer; the strengths and
+        # the probe were never asked of it, and the flag says so
         # (`engines/vibration.md` § 4.9) rather than reporting them done.
+        # The relaxation was asked of the LADDER when the box was unticked
+        # -- its `relax` stage's record is what says so here.
         phase_frequencies=PHASE_COMPLETE,
         phase_raman=PHASE_NOT_REQUESTED,
         phase_es=PHASE_NOT_REQUESTED,
-        phase_relaxation=PHASE_NOT_REQUESTED,
+        phase_relaxation=(PHASE_COMPLETE if _ladder is not None
+                          else PHASE_NOT_REQUESTED),
         relaxation=relaxation,
         thermo=thermo,
         removed_motions={"count": n_rigid,

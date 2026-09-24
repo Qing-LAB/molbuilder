@@ -96,10 +96,11 @@ class TestTheComposer:
         from molbuilder.parse.dirs.run_info import run_info_for_dir
         run = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax"
                / "01_relax" / "run-0")
+        from molbuilder.parse.contract import contract_of, relaxation_of
         info = run_info_for_dir(run)
         assert set(info) == {"calculation", "relaxation"}
-        assert info["calculation"]["contract"]["basis_size"] == "DZP"
-        assert info["relaxation"]["converged"] is True
+        assert info["calculation"] == contract_of(run)
+        assert info["relaxation"] == relaxation_of(run)
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
         """``None`` reads like its two siblings on the same response

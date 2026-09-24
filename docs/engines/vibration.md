@@ -809,7 +809,9 @@ are the reader's clock:
 
 ```text
 phase_relaxation   empty → running (step count, max force ticking) → complete   (complete by assertion under already_relaxed;
-                                                                                 `not requested` on SIESTA, whose route relaxes nothing)
+                                                                                 on SIESTA `complete` when the ladder's `relax` stage ran — its
+                                                                                 record gives `n_steps` — and `not requested` when the box was
+                                                                                 ticked: the force-constant run itself relaxes nothing)
 phase_frequencies  empty → running → complete
 phase_raman        empty → running → complete      (`not requested` from the first write when the description
                                                     asked for no Raman sweep, and on SIESTA, whose route has none)
@@ -965,9 +967,13 @@ optimization deck for a stage named `relax` inside the vibration kind.
 
 **The relaxed geometry travels as coordinates, not as a restart file.** When
 `prep` prepares `freq` and the ladder holds a `relax` stage, it reads the
-relaxed geometry from that stage's latest concluded attempt — the last
-coordinate block of the stage's own output, through the one SIESTA output
-parser, in the sorted order both decks share, **and the cell that run used**
+relaxed geometry from that stage's **newest attempt, which must have
+concluded** (a `relax` re-launched to tighten is the geometry the person
+means, so an older concluded attempt never stands in for one still running)
+— the last coordinate block of the stage's own output, through the one SIESTA
+output parser (`jobset/materialize.py::stage_stdout` finds it by the stage's
+own token, so a flat bundle answers with this stage's file), in the sorted
+order both decks share, **and the cell that run used**
 — and writes it as the force-constant deck's coordinates, in that cell
 (`jobset/prep.py::_vibration_stage_geometry`). The output rather than
 `<label>.XV`, because on the flat shape both stages share one `.XV` and the
@@ -985,6 +991,15 @@ and the ladder holds no enabled `relax` stage**: the box says *relax first*
 and the ladder holds nothing that would, so the description contradicts
 itself, and the refusal names the two ways out (add the stage, or state the
 structure relaxed) rather than measuring at a geometry nobody chose.
+
+**The ladder is the order; the box decides what is proposed and what is
+recorded.** `init` and the hand-over read the box to propose the ladder
+(§ 2.2). Once described, a ladder that holds an enabled `relax` stage runs
+it whatever the box says, and `freq` takes its geometry — a person who ticks
+the box after describing removes or disables the stage, and the Task setup
+tab is where that is done. The box's other job is the record: the artifact
+carries `already_relaxed` as stated, and the read-back's verdict is what
+answers it.
 
 **And the read-back reads the geometry the force constants belong to**: the
 first frame of the force-constant run's output (its FC step 0, through the
@@ -1096,7 +1111,7 @@ the free atom reported as atom 0.
 **What the read-back judges (built 2026-09-24).** Stationarity: SIESTA
 evaluates the undisplaced geometry as its FC step 0 before the first nudge,
 and its forces are the first `siesta: Atomic forces` block of the run's
-output. `summarize` reads them (`parse/engines/siesta_fc.py::reference_forces_from_out`)
+output. `summarize` reads them (`parse/engines/siesta_fc.py::reference_frame_of`, one parse of the run's output for the version, the geometry and the forces)
 and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
 atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
 against **this description's own `relax_force_tol`** — the item is on the
@@ -1242,7 +1257,7 @@ by name.
 | `removed_motions.{count, patterns}` | both | what the harmonic analysis removed before diagonalising: the count and the orthonormal Cartesian patterns over the free atoms; `len(modes) = 3·n_free − count` by construction |
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
 | `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
-| `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9); the SIESTA writer writes `complete` for the frequencies and `not requested` for the other three |
+| `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9); the SIESTA writer writes `complete` for the frequencies, `not requested` for Raman and the probe, and for the relaxation `complete` when the ladder's `relax` stage ran (its record's `n_steps` in `relaxation.n_steps`, `enabled` true) or `not requested` when the box was ticked |
 | `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled: false`, `already_relaxed` as the person's assertion (true once made — the gate refuses the run otherwise, § 5.8), the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline (T, P) with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |

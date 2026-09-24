@@ -49,23 +49,33 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     return None
 
 
+#: The recorded contract's field names against ``SiestaConfig``'s -- ONE
+#: table, read by :func:`contract_fields_of` here and by the transport
+#: citation fill (`transport/citation_defaults.py`), so the two cannot
+#: disagree about which attribute a record's key is.  Only two spellings
+#: differ; the table is written out because both vocabularies are facts
+#: about classes, not derivable from each other.
+RECORD_TO_SIESTA_FIELD: Dict[str, str] = {
+    "basis_size":               "basis_size",
+    "siesta_mesh_cutoff_ry":    "mesh_cutoff",
+    "energy_shift_ry":          "pao_energy_shift",
+    "electronic_temperature_k": "electronic_temperature",
+    "xc_functional":            "xc_functional",
+    "xc_authors":               "xc_authors",
+}
+
+
 def contract_fields_of(cfg) -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the recorded
     contract's own field names -- the other half of :func:`_siesta_contract`,
-    kept beside it so the two spellings of one vocabulary cannot drift.  A
-    consumer comparing a structure's ``info.calculation`` against the
-    calculation it is being handed to compares this dict field by field.
-    Only fields the config class has appear; an engine with no recorded
-    contract (PySCF today) answers ``{}``.
+    through :data:`RECORD_TO_SIESTA_FIELD`.  A consumer comparing a
+    structure's ``info.calculation`` against the calculation it is being
+    handed to compares this dict field by field.  Only fields the config
+    class has appear; an engine with no recorded contract (PySCF today)
+    answers ``{}``.
     """
-    pairs = (("basis_size", "basis_size"),
-             ("energy_shift_ry", "energy_shift"),
-             ("xc_functional", "xc_functional"),
-             ("xc_authors", "xc_authors"),
-             ("siesta_mesh_cutoff_ry", "mesh_cutoff"),
-             ("electronic_temperature_k", "electronic_temperature"))
     out: Dict[str, Any] = {}
-    for key, attr in pairs:
+    for key, attr in RECORD_TO_SIESTA_FIELD.items():
         if hasattr(cfg, attr) and getattr(cfg, attr) is not None:
             out[key] = getattr(cfg, attr)
     return out
@@ -99,23 +109,27 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
 
         {"engine", "source", "n_steps", "force_tolerance_ev_ang",
          "max_force_ev_ang", "max_force_free_ev_ang", "held_atom_idxs",
-         "converged", "run_state", "geometry_sha256"}
+         "held_atom_keys", "converged", "run_state", "geometry_sha256"}
 
     Read through the doors the Results tab opens a run with
     (`dirs.openable_in`, the registry's `detect`), so the record describes
     the file a person would be looking at.  A run that relaxed nothing --
     a force-constant run, a single point, a seed nothing wrote into --
     echoes no force tolerance and has no record; a directory with no
-    openable output, or one that does not parse, is ``None``, never a
-    guess.  The forces are the last step that reported any: the largest
-    atomic force over every atom and over the atoms the run moved (the
-    held set excluded, from that step's per-atom forces; the engine's own
-    per-atom line when the step carries no per-atom block).  ``converged``
-    is the moved atoms' largest force within the run's tolerance, ``None``
-    when either number is missing.  ``geometry_sha256`` is the LAST
-    frame's :meth:`Structure.geometry_fingerprint`, so a consumer can tell
+    openable output, or one that does not parse, or one whose last
+    reported forces are missing, is ``None``, never a guess.  The forces
+    are the last step that reported any, judged as the engines judge them:
+    the largest absolute Cartesian COMPONENT, over every atom and over the
+    atoms the run moved (the held set excluded), from that step's per-atom
+    forces -- or the engine's own ``Max`` lines when the step carries no
+    per-atom block, which on SIESTA are that same component.  ``converged``
+    is the moved atoms' figure within the run's tolerance; when a run held
+    nothing the two figures are one.  ``geometry_sha256`` is the LAST
+    frame's :meth:`Structure.geometry_fingerprint` and ``held_atom_keys``
+    the held atoms' :meth:`Structure.geometry_lines`, so a consumer can tell
     whether the coordinates in front of it are the ones this record is
-    about.
+    about, whatever order it lists them in.  ``engine`` is ``None`` when the
+    directory does not declare one.
     """
     import numpy as np
     directory = Path(directory)
@@ -144,11 +158,16 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
     if with_forces:
         fr = with_forces[-1]
         if fr.forces is not None:
-            mags = np.linalg.norm(np.asarray(fr.forces, dtype=float)
-                                  .reshape(-1, 3), axis=1)
-            max_all = float(mags.max()) if mags.size else None
-            free = [i for i in range(len(mags)) if i not in set(held)]
-            max_free = float(mags[free].max()) if free else None
+            # THE ENGINES' OWN CONVENTION: the largest absolute Cartesian
+            # component per atom -- what SIESTA's `Max` line prints and
+            # `MD.MaxForceTol` tests, and the rule both read-backs judge by
+            # (`engines/vibration.md` § 2.2, V1.30).  A per-atom norm would
+            # call a run the engine converged "not converged" by up to √3.
+            comp = np.abs(np.asarray(fr.forces, dtype=float)
+                          .reshape(-1, 3)).max(axis=1)
+            max_all = float(comp.max()) if comp.size else None
+            free = [i for i in range(len(comp)) if i not in set(held)]
+            max_free = float(comp[free].max()) if free else None
         else:
             max_all = (float(fr.max_force) if fr.max_force is not None
                        else None)
@@ -158,8 +177,10 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
         return None
     judged = max_free if max_free is not None else max_all
     last = frames[-1]
+    lines = last.structure.geometry_lines()
+    eng = engine_of(directory)
     return {
-        "engine": engine_of(directory),
+        "engine": (eng if eng and eng != "unknown" else None),
         "source": Path(path).name,
         "n_steps": int(last.step_index if last.step_index is not None
                        else len(frames) - 1),
@@ -167,7 +188,8 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
         "max_force_ev_ang": max_all,
         "max_force_free_ev_ang": max_free,
         "held_atom_idxs": held,
-        "converged": (bool(judged <= tol) if judged is not None else None),
+        "held_atom_keys": sorted(lines[i] for i in held if i < len(lines)),
+        "converged": bool(judged <= tol),
         "run_state": str(getattr(traj, "run_state", "") or ""),
         "geometry_sha256": last.structure.geometry_fingerprint(),
     }

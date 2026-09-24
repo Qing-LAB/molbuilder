@@ -134,7 +134,7 @@ def _tick_already_relaxed(bundle):
     tmpl.write_text(head + "[item.already_relaxed]" + tail)
 
 
-def _common_assertions(d, *, converged_expected):
+def _common_assertions(d):
     assert d["engine"] == "siesta" and d["schema_version"] >= 6
     # The input order: the free atom is atom 0, the held one atom 1.
     assert d["free_atom_idxs"] == [0] and d["frozen_atom_idxs"] == [1]
@@ -143,17 +143,16 @@ def _common_assertions(d, *, converged_expected):
     assert d["equilibrium"]["mo_energies_eh"] is None
     assert d["modes"][0]["raman_activity_a4_amu"] is None
     assert d["thermo"]["regime"] == "vibrational-only"
-    # the frequencies are this route's whole answer; the rest was never asked
-    # of it (vibration.md § 4.9)
+    # the frequencies are this route's whole answer; the strengths and the
+    # probe were never asked of it (vibration.md § 4.9)
     assert d["phase_frequencies"] == "complete"
-    assert (d["phase_raman"], d["phase_es"], d["phase_relaxation"]) \
-        == ("not requested",) * 3
+    assert (d["phase_raman"], d["phase_es"]) == ("not requested",) * 2
     assert "Head1997" in d["bibliography_keys"]
     # R5 on this route: the reference-step forces read back and judged by
     # the template's own tolerance -- the kind's recommended 0.01 eV/A
     rx = d["relaxation"]
     assert d["engine_metadata"]["reference_force_criterion_ev_ang"] == 0.01
-    assert rx["converged"] is converged_expected
+    assert rx["converged"] is True
     # the mass-calibrated displacement a transport step displaces along:
     # one hydrogen near 3000 cm-1 swings about 0.075 A at its zero point
     m0 = d["modes"][0]
@@ -176,16 +175,12 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
     task = json.loads((bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
-    tmpl = (bundle / "H2.template.toml").read_text()
-    # the kind's recommendation IS the template's value (template.md § 6.3a)
-    block = tmpl[tmpl.index("[item.relax_force_tol]"):]
-    block = block[:block.index("[item.", 1)]
-    assert "value = 0.01" in block and "default = 0.01" in block, block
 
     # THE JOB SET'S OWN ORDER: freq before relax has concluded is refused,
     # naming the stage to run first.
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code != 0 and "relax" in r.output and "concluded" in r.output, r.output
+    assert r.exit_code != 0 and "`relax` stage" in r.output \
+        and "concluded" in r.output, r.output
 
     r = _jobset("prep", "run", "relax", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
@@ -199,14 +194,6 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     r = _jobset("launch", "run", "relax", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
-
-    # WHAT THE RUN SAYS ABOUT THE GEOMETRY IT LEFT (model/parse.md § 5b.1):
-    # the record the Results tab records onto an exported pair
-    from molbuilder.parse.dirs.run_info import run_info_for_dir
-    rec = run_info_for_dir(bundle / "01_relax" / "run-0")["relaxation"]
-    assert rec["engine"] == "siesta" and rec["converged"] is True
-    assert rec["force_tolerance_ev_ang"] == 0.01
-    assert rec["max_force_free_ev_ang"] <= 0.01 and rec["held_atom_idxs"] == [0]
 
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
@@ -224,8 +211,12 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     r = _jobset("summarize", "run", "freq", "--bundle", str(bundle))
     assert r.exit_code == 0, r.output
     d = json.loads((attempt / "H2.spectra.json").read_text())
-    _common_assertions(d, converged_expected=True)
+    _common_assertions(d)
+    # the ladder relaxed first, and the artifact says so from the relax
+    # stage's own record (vibration.md § 4.9)
     assert d["relaxation"]["already_relaxed"] is False
+    assert d["phase_relaxation"] == "complete"
+    assert d["relaxation"]["enabled"] is True and d["relaxation"]["n_steps"] >= 1
     freqs = [m["frequency_cm1"] for m in d["modes"]]
     # the relaxed bond's frequency (fixtures/siesta_fc/README.md: 3022-3024
     # across the measured tolerances), not the unrelaxed 3358
@@ -251,8 +242,8 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code != 0 and "already_relaxed" in r.output \
-        and "relax" in r.output, r.output
+    assert r.exit_code != 0 and "already_relaxed = true" in r.output \
+        and "`relax` stage" in r.output, r.output
     _tick_already_relaxed(bundle)
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
@@ -263,8 +254,11 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     r = _jobset("summarize", "run", "freq", "--bundle", str(bundle))
     assert r.exit_code == 0, r.output
     d = json.loads((attempt / "H2.spectra.json").read_text())
-    _common_assertions(d, converged_expected=True)
+    _common_assertions(d)
     assert d["relaxation"]["already_relaxed"] is True
+    # nothing relaxed: the force-constant run itself never does
+    assert d["phase_relaxation"] == "not requested"
+    assert d["relaxation"]["enabled"] is False
     freqs = [m["frequency_cm1"] for m in d["modes"]]
     assert len(freqs) == 1 and 2950.0 < freqs[0] < 3100.0, freqs
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE

@@ -829,7 +829,7 @@ How each engine implements the idea, in this tool:
 | step | PySCF route | SIESTA route |
 |---|---|---|
 | where the held set comes from | `frozen_atoms` in the structure's own sidecar, set in the viewer — never a form field (`vibration.md` § 2.3) | the same fact, the same file |
-| the constrained relaxation | Phase 0: geomeTRIC with a `$freeze` file naming the held atoms; the gate judges the largest force **over the free atoms** (R5); `already_relaxed` skips the optimiser and still checks | the vibration run relaxes nothing: the person relaxes first with an **optimization** calculation that holds the same set (`Geometry.Constraints`) and hands the relaxed pair over |
+| the constrained relaxation | Phase 0: geomeTRIC with a `$freeze` file naming the held atoms; the gate judges the largest force **over the free atoms** (R5); `already_relaxed` skips the optimiser and still checks | the ladder relaxes first when the box is unticked — a `relax` stage, an ordinary SIESTA relaxation holding the same set (`Geometry.Constraints`), then `freq` at the geometry it left (`vibration.md` § 5.2a); ticked, the force constants are taken at the geometry as given and the reference-step forces are read back and judged |
 | the partial Hessian | `hess_elec(atmlst = A) + hess_nuc(atmlst = A) + D3[A, A]` on a plain mean field — the block is computed, never sliced from a full one; what shrinks and what does not is read from PySCF's source (`vibration.md` § 4.4) | a sorted copy, held atoms first, so the free atoms are one contiguous `FC.First..FC.Last` range; the held atoms in `Geometry.Constraints`; six whole-system SCFs per free atom; the permutation recorded beside the calculation and undone at read-back (`vibration.md` § 5.2–5.5) |
 | the cross terms | every free–free pair, in the block | every free–free pair: a displaced coordinate's column holds the force on *every* atom, and the free rows are kept |
 | what a held atom still does | enters every SCF, every derivative integral and the dispersion sum; feels `−H_FA u_A` and cannot answer | enters every SCF; its force rows are written to the `.FC` file and never read |
@@ -864,7 +864,10 @@ optimiser is skipped and the deck checks the gradient instead, warning above
 believed, by the same rule the SIESTA read-back applies to `relax_force_tol`
 (one rule for both routes, V1.30, closed 2026-09-24; it was ten times the
 criterion before). geomeTRIC's own `gmax` is a per-atom norm, so the deck's
-component test is the stricter reading of the same number.
+component test is the looser reading of the same number (a component never
+exceeds the vector it belongs to, by up to √3) — chosen knowingly for
+V1.30, because the component is what SIESTA's own convergence test reads and
+one rule on both routes was the ruling.
 
 **B — the Hessian, analytically.** *Discussion:* the orbital response
 `∂C/∂R_i` from coupled-perturbed equations gives `∂²E/∂R_i∂R_j` for the
@@ -969,18 +972,18 @@ flowchart LR
 **A — construct and relax.** *Discussion:* partition the atoms into frozen
 substrate, active substrate and molecule; every atom in the same periodic DFT
 calculation; relax with `ΔR_F = 0`, the deep layers at bulk positions; after
-it, `F_A ≈ 0` while `F_F` need not vanish. *Tool:* the vibration kind relaxes
-nothing (`vibration.md` § 2.2), so this is two calculations — an optimization
-that holds the set, then the vibration on the relaxed pair. **What the tool does, and what it measured, 2026-09-24:** `already_relaxed`
-is offered on this engine too as the precondition the person asserts — refused at the gate while unmade, since
-the run has no relaxation to fall back on — and the read-back reads the
-forces SIESTA evaluated at its FC step 0 into the artifact and judges the
-largest component on the free atoms against the description's own
-`relax_force_tol` — 0.01 eV/Å at the kind's recommendation; the tolerance a
-relaxation made elsewhere used does not travel with the structure yet, V1.28
-— (R5 on both routes; `vibration.md` § 5.5). And since the same day the
-relaxation is the person's explicit choice on this engine too: unticked, the
-ladder relaxes first (`vibration.md` § 5.2a); ticked, the read-back measures. The H₂ fixture at the experimental 0.741 Å, sent through the whole
+it, `F_A ≈ 0` while `F_F` need not vanish. *Tool:* the relaxation is the
+person's explicit choice (`vibration.md` § 2.2): with the box unticked the
+description's ladder is `relax` then `freq` — an ordinary SIESTA relaxation
+holding the set, then the force constants at the geometry it left, in the
+cell it ran in (§ 5.2a) — and with it ticked `freq` alone measures at the
+geometry as given. **What the tool measured, 2026-09-24:** the read-back
+reads the forces SIESTA evaluated at its FC step 0 into the artifact and
+judges the largest component on the free atoms against the description's
+own `relax_force_tol` — 0.01 eV/Å at the kind's recommendation — (R5 on both
+routes; `vibration.md` § 5.5); a structure exported from a finished
+relaxation carries that run's record, and the gate reads it against the
+calculation about to run (`vibration.md` § 2.2, the record table). The H₂ fixture at the experimental 0.741 Å, sent through the whole
 road before that judgement existed, carried **1.27 eV/Å** on its reference
 step with nothing said and reported **3358 cm⁻¹**; relaxed through an
 optimization calculation to 0.02 eV/Å and exported from the Results tab as a
@@ -1168,7 +1171,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along `±Q_ν` and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
 | `R(Q_ν) = R₀ + Q_ν e_ν` with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement `A`; the held atoms unchanged; the conversion to the discussion's `∂ε/∂Q_ν` and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
-| on SIESTA, relax with `ΔR_F = 0` first; `F_A ≈ 0`, `F_F` need not vanish | **the same, as two calculations**, and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
+| on SIESTA, relax with `ΔR_F = 0` first; `F_A ≈ 0`, `F_F` need not vanish | **the same, as two stages of one calculation** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one `±δ` pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
 | converge δ: `ΔF ≫ σ_F`, `H(δ) ≈ H(δ/2)`, `H_ij ≈ H_ji`, `ω(δ) ≈ ω(δ/2)` | **in part**: the range and the noise-floor note are on the item; the ladder is describable and was run (§ 4b.6 C); the asymmetry is recorded; the comparison across stages is by hand (V1.23) |
 | mode-displaced structures on SIESTA for `PDOS(E, Q)`, `ε_r(Q)`, `Γ(Q)`, `Δρ(r, Q)`, `T(E, Q)` | **not built**; the displacement arithmetic and the pair writer exist, and the amplitude rule is stated (`vibration.md` § 5.6, level one) |
@@ -1192,10 +1195,10 @@ designed as one each and need a decision.
 
 | | what | why it is owed | rule or section |
 |---|---|---|---|
-| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the description's own `relax_force_tol` (a relaxation made elsewhere does not carry its tolerance yet, V1.28); `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
+| ~~V1.21~~ | **built 2026-09-24** — the forces at FC step 0 are read into `relaxation.max_force_eh_bohr` over the free atoms and judged against the description's own `relax_force_tol`; `already_relaxed` is asked on SIESTA | R5 held on one route only; measured 1.27 eV/Å with nothing said (§ 4b.6 A) | R5 |
 | ~~V1.22~~ | **built 2026-09-24** — `engine_metadata.fc_asymmetry_max_ev_ang2`; no warning threshold yet | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
 | ~~V1.30~~ | **built 2026-09-24** — one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own tolerance (`geom_gmax` on PySCF, `relax_force_tol` on SIESTA), a plain warning above it | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
-| V1.28 | **the structure carries its relaxation record** — engine, level of theory, criterion, achieved force, the held set, the run — in its sidecar, written at the Results tab's export and by the PySCF deck's pair; the Spectrum tab and the gate read it to suggest `already_relaxed` and to say when the level of theory differs (needs a design and a yes) | the assertion is today the person's memory of a run the tree already holds | § 4b.6 A |
+| ~~V1.28~~ | **built 2026-09-24** — `info.relaxation` beside `info.calculation` on a pair exported from the Results tab (`model/parse.md` § 5b.1): engine, the run's tolerance, the largest remaining force component, the held atoms, the geometry's fingerprint; both kinds' gates read it against the calculation about to run (`vibration.md` § 2.2, the record table). The PySCF deck's own pair recording it is V1.31 | the assertion was the person's memory of a run the tree already held | § 4b.6 A |
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
 | V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | the ladder is describable today; the comparison is by hand | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
