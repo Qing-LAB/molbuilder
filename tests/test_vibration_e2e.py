@@ -403,6 +403,10 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert th["regime"] == "vibrational-only"
     assert th["n_modes"] == 3 and th["n_rigid_removed"] == 3
     assert th["n_imag_excluded"] == 0
+    # The reduced calculation, stated: second derivatives for the two free
+    # atoms only.
+    assert d["hessian_scope"] == "free" and d["n_atoms_in_hessian"] == 2
+    assert d["hessian_density_fit"] is False
     # The run wrapper states the constraint in its own header, read back
     # off the deck: one fact, one spelling across the process boundary.
     attempt = bundle / "01_freq" / "run-0"
@@ -423,3 +427,48 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
             v = np.asarray(pat) * sqm[:, None]
             v /= np.linalg.norm(v)
             assert abs(float((L * v).sum())) < 1e-6
+
+
+def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
+    """§ 10's owed check.  The reduced calculation asks PySCF for second
+    derivatives of the free atoms only.  It must give exactly the free-free
+    block of the compute-everything Hessian -- with and without a
+    dispersion correction, whose Hessian term is full-size and has to be
+    cut to the free atoms by hand -- and it must come back numbered by
+    position in the list, which is why the deck places it by index."""
+    script = tmp_path / "partial_hessian.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})\n"
+        "import numpy as np\n"
+        "from pyscf import gto, scf, dft\n"
+        "from molbuilder.pyscf.vibration_emitters import dipole_derivatives\n"
+        "CASES = [\n"
+        "  ('water-rhf', 'O 0 0 0.119; H 0 0.757 -0.477; H 0 -0.757 -0.477', 'sto-3g', None, [1, 2]),\n"
+        "  ('nh3-b3lyp-d3bj', 'N 0 0 0; H 0.8 0 0; H 0 1 0; H 0 0 1.2', '6-31G', 'B3LYP-D3BJ', [0, 1]),\n"
+        "]\n"
+        "for name, atom, basis, xc, free in CASES:\n"
+        "    mol = gto.M(atom=atom, basis=basis, verbose=0)\n"
+        "    mf = (dft.RKS(mol, xc=xc) if xc else scf.RHF(mol)).run()\n"
+        "    full = np.asarray(mf.Hessian().kernel())\n"
+        "    reduced, dmu, route = dipole_derivatives(mf, free, True)\n"
+        "    held = [i for i in range(mol.natm) if i not in free]\n"
+        "    drift = float(np.max(np.abs(reduced[np.ix_(free, free)] - full[np.ix_(free, free)])))\n"
+        "    zeros = float(np.max(np.abs(reduced[held])))\n"
+        "    print('RESULT', name, route, drift, zeros, dmu is None)\n",
+        encoding="utf-8")
+    out = subprocess.run(
+        ["bash", "-lc",
+         f"source {CONDA_SH} && conda activate molbuilder-pySCF "
+         f"&& python {script}"],
+        capture_output=True, text=True, timeout=1800)
+    rows = [ln.split() for ln in out.stdout.splitlines() if ln.startswith("RESULT")]
+    assert len(rows) == 2, f"probe produced {len(rows)} rows:\n{out.stdout}\n{out.stderr[-3000:]}"
+    for _, name, route, drift, zeros, dmu_none in rows:
+        # HF: the block IS the block.  DFT: the partial list omits the held
+        # atoms' grid-weight response -- measured 1.45e-5 Hartree/Bohr^2 on
+        # this system, about 0.05 cm^-1 on a stretch; pinned at that scale
+        # so a real disagreement (1e-3 and up) cannot hide behind it.
+        assert float(drift) < (1e-7 if name.endswith("rhf") else 5e-5), (name, drift)
+        assert float(zeros) == 0.0, (name, zeros)
+        assert route == "finite-difference" and dmu_none == "True", (name, route)

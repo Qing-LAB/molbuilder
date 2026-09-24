@@ -615,6 +615,17 @@ class SpectraResults:
     #: to see the difference between 3 N_free and len(modes) finds it here.
     #: Empty on a file written before the block existed.
     removed_motions:           Dict[str, Any] = field(default_factory=dict)
+    #: v6: what the Hessian covered -- "free" (second derivatives for the
+    #: free atoms only; atoms are held) or "all" (every atom; nothing held)
+    #: -- and how many atoms that was.  A reader comparing two runs' costs
+    #: or Methods paragraphs needs it stated, not inferred from the frozen
+    #: list.  "" on a file written before the field existed.
+    hessian_scope:             str = ""
+    n_atoms_in_hessian:        Optional[int] = None
+    #: v6: whether the Hessian itself was density fitted.  The SCF may be
+    #: while the Hessian is not (the free-atom route), and a Methods
+    #: paragraph has to say which.  None on a file written before the field.
+    hessian_density_fit:       Optional[bool] = None
 
     # Equilibrium geometry -- element symbols + Cartesian positions
     # in Å.  Optional in the wire format (older results from
@@ -841,6 +852,11 @@ class SpectraResults:
             "relaxation":           dict(self.relaxation),
             "thermo":               dict(self.thermo),
             "removed_motions":      dict(self.removed_motions),
+            "hessian_scope":        str(self.hessian_scope),
+            "n_atoms_in_hessian":   (None if self.n_atoms_in_hessian is None
+                                     else int(self.n_atoms_in_hessian)),
+            "hessian_density_fit":  (None if self.hessian_density_fit is None
+                                     else bool(self.hessian_density_fit)),
             "ir_route":             str(self.ir_route),
             "ir_fd_step_ang":       (None if self.ir_fd_step_ang is None
                                      else float(self.ir_fd_step_ang)),
@@ -910,6 +926,11 @@ class SpectraResults:
             relaxation           = dict(d.get("relaxation") or {}),
             thermo               = dict(d.get("thermo") or {}),
             removed_motions      = dict(d.get("removed_motions") or {}),
+            hessian_scope        = str(d.get("hessian_scope", "")),
+            n_atoms_in_hessian   = (None if d.get("n_atoms_in_hessian") is None
+                                    else int(d["n_atoms_in_hessian"])),
+            hessian_density_fit  = (None if d.get("hessian_density_fit") is None
+                                    else bool(d["hessian_density_fit"])),
             ir_route             = str(d.get("ir_route", "")),
             ir_fd_step_ang       = (None if d.get("ir_fd_step_ang") is None
                                     else float(d["ir_fd_step_ang"])),

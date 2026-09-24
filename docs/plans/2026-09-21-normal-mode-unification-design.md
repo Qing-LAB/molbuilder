@@ -868,6 +868,24 @@ accept that list. So today: the cost saving *or* analytic infrared, not both.
 **Decided (user, 2026-09-21): an option in the run setup**, with the run stating
 which way it went. The default is still to pick — § 12.
 
+**Built 2026-09-23, and what the check found.** With atoms held the deck
+computes `hess_elec(atmlst=free) + hess_nuc(atmlst=free)` plus the
+dispersion block cut to the free atoms (`kernel(atmlst=)` cannot be used:
+its dispersion term is full-size), on a **plain mean field**, because
+PySCF 2.14's density-fitted Hessian fails on a partial list
+(`pyscf/df/hessian/rhf.py:216`, a shape mismatch). The artifact records
+`hessian_scope`, `n_atoms_in_hessian` and `hessian_density_fit`. The owed
+check against compute-everything-and-slice: **Hartree–Fock blocks agree to
+1e-8 Hartree/Bohr²; DFT blocks to 7.5e-6 at grid level 4 (1.5e-5 at level
+3)**, the difference entirely in the coupled-perturbed response part (the
+static part agrees to 6e-14), unchanged by the solver's cycle cap; PySCF's
+response tolerance scales with the number of atoms in a batch
+(`rhf.py:330`), so the full calculation converges its response more loosely
+than the partial one. About 0.03 cm⁻¹ on a stretch. No option was added:
+holding atoms is what asks for the reduced calculation, and infrared with
+held atoms goes by finite differences over the free atoms, the same
+numbers by the other route.
+
 **SIESTA has the same choice in a different shape**, and it is § 8.2: nudging
 only the free atoms is where its saving comes from, and taking that saving is
 what forces the contiguity question. Note that this choice does **not** exist for
@@ -1352,15 +1370,13 @@ out of the emitters into real callables (§ 16.1), make the MO block optional
 (§ 16.4), and retire the two Raman-ranked selectors (`web/spectra.md`
 § 9a.1). Doing this after the SIESTA arm means doing it twice.
 
-**Step 4a — the free-atom Hessian, the opt-in § 10 decided.** A catalogue
-item for the Hessian's scope (`all` atoms, today's default; `free` atoms —
-PySCF's `atmlst`, the Q-Chem saving), the artifact recording which ran
-(`hessian_scope`, beside `ir_route`), the infrared route forced to
-finite differences when the scope is `free` (the analytic route takes no
-atom list), and § 10's owed check: the `free`-scope block against
-compute-everything-and-slice, on the tier-3 systems, to numerical noise —
-because the result is numbered by position in the list passed, not by the
-atom's own index.
+**Step 4a — the free-atom Hessian — BUILT 2026-09-23** (§ 10 has the
+measurements). With atoms held the Hessian is over the free atoms only;
+the artifact says so (`hessian_scope`, `n_atoms_in_hessian`,
+`hessian_density_fit`); infrared goes by finite differences over the free
+atoms; the block-versus-slice check runs in `tests/test_vibration_e2e.py`
+with and without a dispersion correction. Still owed: the timing on a
+large system (R8), and GPU with a partial list.
 
 **Step 5 — the SIESTA arm**, which is now: the siesta base, minus the
 relaxation driver, plus the FC surface, plus a `vibra` rung — the same sentence

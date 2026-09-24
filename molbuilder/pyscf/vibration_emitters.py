@@ -427,7 +427,9 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
 
     Returns ``(hessian, dmu_dr, route)``:
 
-    * ``hessian`` -- Hartree/Bohr^2, shape (n_atoms, n_atoms, 3, 3).  The
+    * ``hessian`` -- Hartree/Bohr^2, shape (n_atoms, n_atoms, 3, 3).
+      **With atoms held, only the free atoms' blocks are computed** (see
+      below); the held atoms' rows are zero and are never read.  The
       SAME Hessian the no-IR path produces -- asking for IR must not
       move the frequencies.  That is established by CONSTRUCTION, not
       by sampling: ``Hessian.kernel()`` is ``hess_elec + hess_nuc``
@@ -462,12 +464,46 @@ def dipole_derivatives(mf, free_atom_idxs, want_ir):
     The unit conversion is the one thing a reader cannot check by
     eye: upstream returns d(mu)/d(R) in atomic units per Bohr, and the
     deck's projection wants Debye per Angstrom.
+
+    THE REDUCED CALCULATION, which is what holding atoms is FOR.  With
+    atoms held, second derivatives are computed for the free atoms only:
+    PySCF's ``atmlst`` reaches the coupled-perturbed solve -- the expensive
+    step -- so its cost scales with the free atoms rather than with all
+    of them, while the held atoms still shape the energy through the
+    self-consistent field (the block is the free-free block of the TRUE
+    Hessian, Besley's partial Hessian).  ``kernel(atmlst=...)`` cannot be
+    used for it: the dispersion term it adds is full-size, so the three
+    pieces are summed here and the dispersion block is cut to the free
+    atoms.  The result is numbered by position in the list passed, so it
+    is placed back into a full-size table by index.  The analytic
+    dipole-derivative route takes no atom list, so infrared with held
+    atoms is by finite differences over the free atoms -- the same
+    numbers, more SCFs.  **The mean field handed in must not be density
+    fitted**: PySCF's density-fitted Hessian class takes no atom list (its
+    three-centre contraction fails on one), so the deck builds a plain
+    mean field for this route and the run states that the Hessian ran
+    without density fitting.  Measured against compute-everything-and-slice
+    (design § 10): Hartree-Fock blocks agree to 1e-8 Hartree/Bohr^2; DFT
+    blocks to 1.5e-5, the held atoms' grid-weight response that the partial
+    list omits -- about 0.05 cm^-1 on a stretch.
     """
     import numpy as _np
 
     # The elementary charge expressed in D/A -- the nuclear term
     # de[a] = Z_a * I is a point charge, so the factor must be e.
     _AU_BOHR_TO_DEBYE_ANG = _DEBYE_E_ANGSTROM
+
+    _n_atoms = int(mf.mol.natm)
+    _free = [int(i) for i in free_atom_idxs]
+    if len(_free) < _n_atoms:
+        _hobj = mf.Hessian()
+        _block = (_np.asarray(_hobj.hess_elec(atmlst=_free))
+                  + _np.asarray(_hobj.hess_nuc(mf.mol, atmlst=_free)))
+        if mf.do_disp():
+            _block = _block + _np.asarray(_hobj.get_dispersion())[_free][:, _free]
+        _full = _np.zeros((_n_atoms, _n_atoms, 3, 3))
+        _full[_np.ix_(_free, _free)] = _block
+        return _full, None, ("finite-difference" if want_ir else "none")
 
     def _infrared_class(infrared, mf_):
         """Upstream splits by reference, and so must we.
@@ -1081,10 +1117,29 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# point for free, so the analytic route would buy nothing: the")
     out.append("# 6N SCFs are already being spent on dalpha/dR.  That is the whole")
     out.append("# rule for which route runs.")
-    out.append("_WANT_ANALYTIC_IR = COMPUTE_IR and not COMPUTE_RAMAN")
+    out.append("# ...and only with every atom free: the analytic route takes no atom")
+    out.append("# list, and with atoms held the Hessian is computed for the free atoms")
+    out.append("# only (the reduced calculation -- see dipole_derivatives).")
+    out.append("_WANT_ANALYTIC_IR = COMPUTE_IR and not COMPUTE_RAMAN and N_FREE == N_ATOMS")
+    out.append("# The reduced route runs on a plain mean field: PySCF's density-fitted")
+    out.append("# Hessian class takes no atom list.  One extra SCF, then a Hessian over")
+    out.append("# the free atoms only.  With nothing held the mean field is the SCF's own.")
+    out.append("HESSIAN_DENSITY_FIT = bool(DENSITY_FIT) and N_FREE == N_ATOMS")
+    out.append("if N_FREE < N_ATOMS and DENSITY_FIT:")
+    out.append("    print('  rebuilding mf without density fitting for the free-atom Hessian')")
+    out.append("    _mf_for_hess = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
+    out.append("                                force_cpu=(not _GPU_HAS_HESSIAN))")
     out.append("_HESS_RAW, DMU_DR, IR_ROUTE = dipole_derivatives(")
     out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR)")
     out.append("HESS = _as_numpy(_HESS_RAW)")
+    out.append("# What the Hessian covered, recorded for the reader and the Methods text:")
+    out.append("# 'free' -- second derivatives for the free atoms only (atoms are held);")
+    out.append("# 'all'  -- every atom (nothing held; the free molecule).")
+    out.append("HESSIAN_SCOPE = 'free' if N_FREE < N_ATOMS else 'all'")
+    out.append("state['hessian_scope'] = HESSIAN_SCOPE")
+    out.append("state['n_atoms_in_hessian'] = int(N_FREE)")
+    out.append("state['hessian_density_fit'] = HESSIAN_DENSITY_FIT")
+    out.append("print(f'  Hessian scope: {HESSIAN_SCOPE} ({N_FREE} of {N_ATOMS} atoms)')")
     out.append("if COMPUTE_IR and not _WANT_ANALYTIC_IR:")
     out.append("    IR_ROUTE = 'finite-difference'   # the Raman loop supplies it")
     out.append("state['ir_route'] = IR_ROUTE")
@@ -1773,13 +1828,26 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # one derivation, and the artifact records it), and this function is
     # handed `cfg` alone.
     frozen = list(getattr(cfg, "frozen_indices", []) or [])
-    parts.append(
-        f"The harmonic Hessian was obtained analytically via "
-        f"`{hessian_module}`; its block over the free atoms was "
-        f"mass-weighted and diagonalized after projecting out the "
-        f"whole-body motions the geometry permits (the number removed "
-        f"is recorded with the results)."
-    )
+    if frozen:
+        parts.append(
+            f"Analytic second derivatives were computed via "
+            f"`{hessian_module}` for the free atoms only (PySCF's "
+            f"`atmlst`), the held atoms entering through the "
+            f"self-consistent field -- partial Hessian vibrational "
+            f"analysis [Head1997, LiJensen2002], with the block taken "
+            f"from the full adsorbate-plus-environment energy [Besley2008] "
+            f"as in Q-Chem's implementation [QChemPHVA]; the partial "
+            f"Hessian was mass-weighted and diagonalized after projecting "
+            f"out the whole-body motions the held geometry permits "
+            f"[Ghysels2008] (the number removed is recorded with the "
+            f"results)."
+        )
+    else:
+        parts.append(
+            f"The harmonic Hessian was obtained analytically via "
+            f"`{hessian_module}`, mass-weighted and diagonalized after "
+            f"projecting out the whole-body motions of the free molecule."
+        )
     if frozen:
         # THE FROZEN SET, SAID OUT LOUD: freezing is the user's own
         # choice, and what it means must be explicit.  This paragraph is
@@ -1788,12 +1856,12 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
         parts.append(
             f"{len(frozen)} atom(s) (0-based indices {sorted(frozen)}) "
             f"were held fixed throughout: the geometry relaxation "
-            f"constrained them (geomeTRIC `$freeze`) and the Hessian "
-            f"block excludes them, so the reported frequencies are those "
-            f"of the free atoms moving in the static field of the fixed "
-            f"ones.  Thermochemistry is vibrational-only (an anchored "
-            f"system has no gas-phase translational or rotational "
-            f"partition function)."
+            f"constrained them (geomeTRIC `$freeze`) and no second "
+            f"derivative was taken with respect to them, so the reported "
+            f"frequencies are those of the free atoms moving in the "
+            f"static field of the fixed ones.  Thermochemistry is "
+            f"vibrational-only (an anchored system has no gas-phase "
+            f"translational or rotational partition function)."
         )
 
     # Raman path: α is analytic (CPHF) at each displaced point; the
@@ -1818,8 +1886,12 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # prose above) so a non-Raman run's Methods never mentions Raman.
     if cfg.density_fit:
         df_note = (
-            f"Density fitting (RIJK) was used for the SCF and analytic "
-            f"Hessian; the auxiliary basis was selected automatically by "
+            f"Density fitting (RIJK) was used for the SCF"
+            + (" and analytic Hessian" if not frozen else
+               "; the free-atom Hessian was evaluated without it, on a "
+               "plain mean field at the same geometry, because PySCF's "
+               "density-fitted Hessian takes no atom list")
+            + f"; the auxiliary basis was selected automatically by "
             f"PySCF for the production {cfg.basis} basis."
         )
         if cfg.compute_raman:

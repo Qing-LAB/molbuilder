@@ -262,28 +262,25 @@ def spectra_render_checks(struct: Structure,
         # element/residue vocabulary went with `SpectraConfig`
         # (2026-08-22) -- the region store holds indices, and that is
         # what the deck writes into the constraints file.
-        # A COST CLAIM IS A MEASUREMENT (science/normal-modes.md R8).  What
-        # freezing saves TODAY: the Raman and finite-difference infrared loops
-        # run over the free atoms only (6 displaced SCFs per free atom).  What
-        # it does not save: the analytic Hessian, which the deck computes for
-        # every atom and slices afterwards -- measured 10.6 s free against
-        # 10.1 s with 2 of 14 held (design § 10).  The free-atom Hessian is
-        # the design's opt-in and is not built; until it is, this says only
-        # what is true.
+        # A COST CLAIM IS A MEASUREMENT (science/normal-modes.md R8).  With
+        # atoms held, the deck takes second derivatives for the free atoms
+        # only (PySCF's atmlst reaches the coupled-perturbed solve) and runs
+        # the Raman and finite-difference infrared loops over them only; the
+        # held atoms still enter through the SCF, which stays a whole-system
+        # SCF.  The measured numbers are in the design's § 10.
         n_free_estimate = max(0, n_atoms - len(cfg.frozen_indices))
         if n_free_estimate > 30 and not cfg.frozen_indices:
             issues.append(Issue(
                 severity="warn",
                 message=(
                     f"This structure has {n_atoms} atoms, none of them "
-                    f"frozen.  The Raman finite-difference step runs 6 "
-                    f"displaced SCFs per free atom, so freezing a slab, "
-                    f"surface or other anchor you do not need to vibrate "
-                    f"cuts that loop in proportion.  The analytic Hessian "
-                    f"itself is computed for every atom either way (its "
-                    f"held rows are removed afterwards), so freezing does "
-                    f"not shorten it.  Ignore this if the whole system "
-                    f"needs to vibrate."
+                    f"frozen.  Second derivatives and the Raman "
+                    f"finite-difference loop (6 displaced SCFs per free "
+                    f"atom) are taken for the free atoms only, so freezing "
+                    f"a slab, surface or other anchor you do not need to "
+                    f"vibrate scales both down in proportion; each SCF "
+                    f"still covers the whole system.  Ignore this if the "
+                    f"whole system needs to vibrate."
                 ),
                 where="config.frozen_indices",
             ))
