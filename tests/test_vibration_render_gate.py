@@ -357,8 +357,14 @@ def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
     EMPTY verdict, which every surface reads as 'checked, nothing
     found'.  It is refused by name -- and the same config through the
     same door is an ordinary optimization gate."""
-    from molbuilder.config.siesta import SiestaConfig
+    import dataclasses
+
     from molbuilder.validation import validate
+
+    @dataclasses.dataclass
+    class OtherEngineConfig:
+        basis: str = "x"
+
     with pytest.raises(TypeError, match="vibration kind has no science"):
-        validate(_water(), SiestaConfig(), calculation="vibration")
-    assert isinstance(validate(_water(), SiestaConfig()), list)
+        validate(_water(), OtherEngineConfig(), calculation="vibration")
+    assert isinstance(validate(_water(), OtherEngineConfig()), list)

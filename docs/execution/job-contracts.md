@@ -1669,10 +1669,17 @@ be **written into a deck**, not to be matched against a directory.
 the file's rows would be the drifting second listing this whole section
 exists to retire).  Illustratively: the geometry/density/history trio the
 carry cares about, the inventory-only rows (Wannier, Z-matrix,
-eigenvalues, wavefunctions, …), and transport's `.TSHS`/`.TSDE` in their
+eigenvalues, wavefunctions, …), transport's `.TSHS`/`.TSDE` in their
 own section (the device stage's own H lands in `<label>.TS.HSX` — SIESTA
 5.x, inventory-only: produced and read by tbtrans via the deck's `TBT.HS`
-line, never carried forward).  SIESTA reads these itself when the matching `MD.UseSave*` /
+line, never carried forward), and the force-constant run's `.FC`/`.FCC`
+under `[vibration]`, inventory-only *(2026-09-23)*.  **One base row means
+something different under that section**: an FC run writes its *last
+displacement* to `.XV` (measured), not a geometry to continue from, and
+the vocabulary cannot withhold a base row per section — so the
+force-constant deck writes `MD.UseSaveXV .false.` whatever the description
+says and reads only the density (`siesta/vibration_deck.py::start_state_lines`;
+the catalogue offers `restart` to optimizations only).  SIESTA reads these itself when the matching `MD.UseSave*` /
 `DM.UseSaveDM` flags are set — the file's `honoured_by` column, checked
 by the § 4.2a agreement test.
 
@@ -1995,7 +2002,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, the run's declared condition), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Pipeline log | `<label>_<token>.<engine>.<flat\|hierarchical>.pipeline.log` — beside this prep's `STAGE-PLAN.md` (bundle root for a run, the stage's `bench/` container for a sweep). **Written only when `prep --pipeline-log` asks**, and with it on every generated artifact is byte-identical. What each step RECEIVED, DECIDED and PRODUCED, so *where did this value come from* is answered by reading one file rather than re-running ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) | *(text; `in` / `⊕` / `out` in the first column, banner per step — W14)* | `pipeline_log.py` | `⊕ <name> <value> <- <source>` is the row that carries it |
 | Slot provenance | `slot-provenance.json` at the transport calculation's root — which attempt the composed junction came from, with content hashes; part of the § 4.1 travelling copy (`transport-design.md`). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — on a form-A citation those may live in a `.molstruct.json` beside the deck, which is in none of the other slots and is the file the label rename rewrites | `molbuilder/slot-provenance@1` | `transport/compose.py` | `slot`, `citation`, `form`, `files` (name → sha256), `evidence` |
-| Atom permutation | `atom-permutation.json` beside it — the categorical sort, recorded, so every downstream index (forces, Mulliken, the 1-based numbers in the files) maps back to the relaxation's identities (`transport-design.md` § 4.1a) | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`) | `original_to_sorted`, `sorted_to_original` |
+| Atom permutation | `atom-permutation.json` beside it — the sort the deck was rendered from, recorded, so every downstream index (forces, Mulliken, a mode's rows, the 1-based numbers in the files) maps back to the input's identities (`model/overview.md` § 2.2). Two kinds write it: a transport composite (the categorical order, `transport-design.md` § 4.1a) and a SIESTA vibration (the `held-first` order, so the free atoms are one FC range); `key` names which. One writer and one reader — `write_permutation` / `read_permutation` — and the vibration's `summarize run` is the first reader that inverts it | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`, `write_permutation`) | `original_to_sorted`, `sorted_to_original`, `key` |
 | Transport result | `<label>.transport.json` at the calculation root — T(E) per bias point, the I–V table (the CURRENT is TBtrans's own printed integral, parsed, never recomputed), and the provenance naming the citation + the permutation record; `summarize run` writes it, asynchronously like the bench reader (a point not yet run reads as `pending`) | `molbuilder/transport-result@1` | `transport/record.py` | `label`, `points[]` (`bias_v`, `energy_ev`, `transmission`, `conductance_g0`, `current_a`, `attempt`), `iv`, `provenance`, `pending` |
 | Run status | *(served, not written to disk)* | **none — the answer carries no version** | `parse/dirs/job.py` | `state`, `detail`, `last_change_at`, `active_source`. *Listed as “Decoded run” with a bare-int `schema_version` until 2026-09-05: `run_status` returns four keys and none of them is a version, so a consumer writing a version check against this row finds nothing to check* |
 

@@ -403,10 +403,15 @@ class ModeData:
         #                    normalisation that v1 build had.
         if "eigenvector_canonical" in d:
             ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
-            ev_disp  = np.asarray(
-                d.get("eigenvector_display", d.get("eigenvector_free")),
-                dtype=float,
-            )
+            _disp = d.get("eigenvector_display", d.get("eigenvector_free"))
+            if _disp is None:
+                # DERIVED (`web/spectra.md` § 9b): the canonical vector
+                # rescaled per mode so max|L| = 1 -- what the animation
+                # draws.  An engine writes the science form; this is ours.
+                _peak = float(np.max(np.abs(ev_canon))) if ev_canon.size else 0.0
+                ev_disp = ev_canon / _peak if _peak > 0 else ev_canon.copy()
+            else:
+                ev_disp = np.asarray(_disp, dtype=float)
         else:
             ev_free  = np.asarray(d["eigenvector_free"], dtype=float)
             ev_canon = ev_free
@@ -544,9 +549,13 @@ class SpectraResults:
     frozen_atom_idxs:      List[int]              # 0-based
 
     # Reference SCF + MO spectrum at the input (un-displaced) geometry.
-    equilibrium_scf_eh:        float
-    equilibrium_mo_energies_eh: np.ndarray       # ALL MOs (not the window subset)
-    equilibrium_homo_idx:      int               # index into the array above
+    # OPTIONAL as a block (`web/spectra.md` § 9b.3): a molecular-orbital
+    # spectrum is PySCF's; SIESTA's force-constant route has a total energy
+    # it does not report here and no HOMO to name.  ``None`` is "this engine
+    # has none", never a fabricated orbital 0.  The three travel together.
+    equilibrium_scf_eh:        Optional[float]
+    equilibrium_mo_energies_eh: Optional[np.ndarray]  # ALL MOs (not the window subset)
+    equilibrium_homo_idx:      Optional[int]      # index into the array above
 
     modes:                     List[ModeData]    # sorted by frequency ascending
 
@@ -675,22 +684,36 @@ class SpectraResults:
         at __post_init__ catches the bug at the construction site
         rather than when the UI hits the inconsistency rendering.
         """
-        # Equilibrium MO array.
-        self.equilibrium_mo_energies_eh = _reject_complex_then_asarray(
-            self.equilibrium_mo_energies_eh,
-            field="SpectraResults.equilibrium_mo_energies_eh",
-        )
-        if self.equilibrium_mo_energies_eh.ndim != 1:
+        # Equilibrium block -- present whole, or absent whole.  A null in
+        # one slot of a block the other slots fill is a broken file, not an
+        # engine that has none: the energy is the reference every displaced
+        # SCF is measured against, and a None there fails a hundred lines
+        # later inside a subtraction.
+        _eq = (self.equilibrium_scf_eh, self.equilibrium_mo_energies_eh,
+               self.equilibrium_homo_idx)
+        _absent = [v is None for v in _eq]
+        if any(_absent) and not all(_absent):
             raise ValueError(
-                f"SpectraResults.equilibrium_mo_energies_eh must be 1-D; "
-                f"got shape {self.equilibrium_mo_energies_eh.shape}"
+                "SpectraResults: the equilibrium block (scf_energy_eh, "
+                "mo_energies_eh, homo_idx) travels whole or not at all; "
+                f"absent = {dict(zip(('scf_energy_eh', 'mo_energies_eh', 'homo_idx'), _absent))}")
+        if self.equilibrium_mo_energies_eh is not None:
+            self.equilibrium_mo_energies_eh = _reject_complex_then_asarray(
+                self.equilibrium_mo_energies_eh,
+                field="SpectraResults.equilibrium_mo_energies_eh",
             )
-        n_mos = self.equilibrium_mo_energies_eh.size
-        if not 0 <= self.equilibrium_homo_idx < n_mos:
-            raise ValueError(
-                f"SpectraResults.equilibrium_homo_idx={self.equilibrium_homo_idx} "
-                f"out of range [0, {n_mos})"
-            )
+            if self.equilibrium_mo_energies_eh.ndim != 1:
+                raise ValueError(
+                    f"SpectraResults.equilibrium_mo_energies_eh must be 1-D; "
+                    f"got shape {self.equilibrium_mo_energies_eh.shape}"
+                )
+            n_mos = self.equilibrium_mo_energies_eh.size
+            if (self.equilibrium_homo_idx is None
+                    or not 0 <= self.equilibrium_homo_idx < n_mos):
+                raise ValueError(
+                    f"SpectraResults.equilibrium_homo_idx="
+                    f"{self.equilibrium_homo_idx} out of range [0, {n_mos})"
+                )
         # Free + fixed atom partition.
         free_set   = set(int(i) for i in self.free_atom_idxs)
         frozen_set = set(int(i) for i in self.frozen_atom_idxs)
@@ -821,9 +844,12 @@ class SpectraResults:
             "frozen_atom_idxs":      [int(i) for i in self.frozen_atom_idxs],
 
             "equilibrium": {
-                "scf_energy_eh":     float(self.equilibrium_scf_eh),
-                "mo_energies_eh":    self.equilibrium_mo_energies_eh.tolist(),
-                "homo_idx":          int(self.equilibrium_homo_idx),
+                "scf_energy_eh":     (None if self.equilibrium_scf_eh is None
+                                      else float(self.equilibrium_scf_eh)),
+                "mo_energies_eh":    (None if self.equilibrium_mo_energies_eh is None
+                                      else self.equilibrium_mo_energies_eh.tolist()),
+                "homo_idx":          (None if self.equilibrium_homo_idx is None
+                                      else int(self.equilibrium_homo_idx)),
                 # Optional geometry; emitted only when present so
                 # older readers ignore the missing keys cleanly.
                 **({"elements":      [str(e) for e in self.equilibrium_elements]}
@@ -896,9 +922,12 @@ class SpectraResults:
             free_atom_idxs       = [int(i) for i in d["free_atom_idxs"]],
             frozen_atom_idxs      = [int(i) for i in d["frozen_atom_idxs"]],
 
-            equilibrium_scf_eh         = float(eq["scf_energy_eh"]),
-            equilibrium_mo_energies_eh = np.asarray(eq["mo_energies_eh"], dtype=float),
-            equilibrium_homo_idx       = int(eq["homo_idx"]),
+            equilibrium_scf_eh         = (None if eq.get("scf_energy_eh") is None
+                                          else float(eq["scf_energy_eh"])),
+            equilibrium_mo_energies_eh = (None if eq.get("mo_energies_eh") is None
+                                          else np.asarray(eq["mo_energies_eh"], dtype=float)),
+            equilibrium_homo_idx       = (None if eq.get("homo_idx") is None
+                                          else int(eq["homo_idx"])),
 
             # Optional geometry (added late in the schema; older
             # JSON files don't have these keys, so .get() with None

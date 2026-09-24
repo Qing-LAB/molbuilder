@@ -921,6 +921,22 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     # ---- 3. render the deck(s) ----------------------------------------- #
     struct = _structure_for(task, base)
+    # A KIND THAT NEEDS THE ATOMS IN AN ORDER THE INPUT DOES NOT HAVE sorts a
+    # COPY here, records the permutation beside the calculation, and renders
+    # from the copy (`model/overview.md` § 2.2).  The vibration kind on SIESTA
+    # is one: the force-constant run nudges one contiguous range, so the free
+    # atoms go last under the 'held-first' key.  The record is what the
+    # return leg (`jobset summarize run`) inverts; the input order never
+    # reaches the engine and the sorted order never reaches a person.
+    if task.calculation == "vibration" and str(task.engine) == "siesta":
+        from ..transport.sort import sort_by, write_permutation
+        _sorted = sort_by(struct, "held-first")
+        _perm_path = write_permutation(base, _sorted)
+        struct = _sorted.structure
+        if log is not None:
+            log.step("the atom order the engine needs")
+            log.produced("atom-permutation.json",
+                         f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is

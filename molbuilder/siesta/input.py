@@ -759,12 +759,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token)
-    if calculation != "optimization":
+    if calculation not in ("optimization", "vibration"):
         raise ValueError(
-            f"SIESTA renders 'optimization' and 'transport'; it has no "
-            f"{calculation!r} deck.  The vibration kind is PySCF-first "
-            f"(spectra-migration plan § 2 -- the engine-agnostic shape "
-            f"admits a SIESTA arm later).")
+            f"SIESTA renders 'optimization', 'vibration' and 'transport'; "
+            f"it has no {calculation!r} deck.")
+    # THE VIBRATION KIND on this engine is the force-constant run: the
+    # optimisation deck's sections minus the geometry section, plus the FC
+    # block and its one item (`siesta/vibration_deck.py`).  A render
+    # argument, like the stage token -- the seam stays one per engine.
+    _vibration = calculation == "vibration"
     # WHAT THIS DECK WRITES is not collected here.  It is read off the
     # LAYOUT below by the framework, which is the only reading that can
     # close the check gate's loop: a list this writer kept would say what
@@ -1016,9 +1019,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # The blocks fill in the rest as they render -- the block size, the
     # k-parallel default -- and the syntax door and the record blocks read
     # the same dict.  ONE channel, not one argument list per reader.
-    _derived: dict = {**_spin_facts(cfg),
-                      **_parallel_facts(cfg),
-                      **(_relaxation_facts(cfg) or {})}
+    if _vibration:
+        from . import vibration_deck as _vib_deck
+        _derived: dict = {**_spin_facts(cfg),
+                          **_parallel_facts(cfg),
+                          "fc": _vib_deck.fc_facts(struct, cfg)}
+    else:
+        _derived = {**_spin_facts(cfg),
+                    **_parallel_facts(cfg),
+                    **(_relaxation_facts(cfg) or {})}
 
     def _deck_line(param):
         # ONE channel: whatever this deck has worked out so far.  The door
@@ -1037,6 +1046,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # instead of finished text (`script-preparation.md` § 4.3).
     spec = _sc.DeckSpec(
         engine="siesta",
+        # The kind the deck is for: the parameter set is the catalogue
+        # narrowed to it, so a vibration deck sees the force-constant item
+        # and no relaxation one (`engines/template.md` § 6.3).
+        calculation=calculation,
         layout=(
             _sc.Block("system, structure and constraints",
                       lambda s, c: _science(s, c)),
@@ -1060,6 +1073,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                    is_md=_derived["is_md"],
                    is_nose=_derived["relax_kind"] == "NOSE"),)
               if _derived.get("relax_kind") else ()),
+            *((_layout.FC_SECTION,
+               _sc.Block("the force-constant run",
+                         lambda s, c: _vib_deck.fc_block(s, c, _derived)))
+              if _derived.get("fc") else ()),
             _sc.Block("after the geometry settings",
                       lambda s, c: _after_geometry(s, c)),
             _layout.OUTPUT_SECTION,
@@ -1197,7 +1214,9 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# the modules first, and nothing cleans up if the job is "
                 "killed.")
             if stage_token:
-                out.append(f"# Stage {stage_token} -- {_stage_science(cfg)}")
+                out.append(f"# Stage {stage_token} -- "
+                           + (_vib_deck.stage_science(cfg, _derived)
+                              if _derived.get("fc") else _stage_science(cfg)))
                 # WHAT THIS STAGE ACTUALLY DOES WITH THE PREVIOUS ONE'S STATE.
                 # This said "SIESTA reads .XV / .DM from the previous stage"
                 # unconditionally, on every staged deck -- including one whose own
@@ -1395,6 +1414,24 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         than a layout of three rows.
         """
         out: List[str] = []
+
+        if _vibration:
+            # A force-constant run's start state is the KIND's, not the
+            # description's: the density is read, the geometry never is,
+            # because the run leaves its last displacement in .XV
+            # (`vibration_deck.start_state_lines` says why, measured).
+            if v: out += [
+                "",
+                "# Start from: the converged density under this SystemLabel is",
+                "# read when present (the first displacement's SCF starts from",
+                "# it).  The geometry (.XV) is NEVER read: a force-constant run",
+                "# writes its last displacement there, not a stationary point.",
+                "# Fixed by the kind -- the description's `restart` is not",
+                "# consulted here.",
+            ]
+            out += _vib_deck.start_state_lines(cfg)
+            out.append("")
+            return "\n".join(out)
 
         # ---- the restart group, whole, from its declaration ---------------
         # ONE field decides it (`restart`) and ONE object declares its members

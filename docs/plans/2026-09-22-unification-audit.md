@@ -1691,6 +1691,9 @@ vibrations with three motions removed. What the walk found beside that:*
 | U5 | Results tab, the relaxation chip; the artifact key | *"max \|F\| 5.6e-5 Eh/Å"* — the number is Eh/Bohr; the key is named `max_force_eh_a` and the viewer prints Å. Documented in `web/spectra.md` § 9b; the rename is owed with the viewer | held (`web/`); the key name is the deck's |
 | U6 | Results tab | `removed_motions` (schema 6) has no surface yet: the viewer shows 3 modes and "Free / frozen 2 / 1" but does not say what was taken out | held (`web/`); owed to W21's viewer |
 | U7 | Spectrum tab, hand-over notice | `[cell.vacuum_defaulted]` advises 8 Å of vacuum for a gas-phase PySCF run that has no box | cosmetic; the notice is right for SIESTA and speaks for both |
+| U8 | `web/blueprints/build.py:1191`; the Spectrum tab's engine list | the hand-over gate admits PySCF only for a vibration, while the CLI road (`jobset init --engine siesta --calculation vibration`) has been open since 2026-09-23 — the tab cannot send a SIESTA vibration to Task setup | held (`web/`); the refusal text to copy is `jobset/_cli.py`'s |
+| U9 | Results tab, a SIESTA `.spectra.json` | `equilibrium.scf_energy_eh` / `mo_energies_eh` / `homo_idx` are `null` and every intensity is `null` (schema 6, `web/spectra.md` § 9b.3); the MO panel, the strength lanes and the change fingerprint must draw *not computed*, not fail on a null | held (`web/`); the file shape is measured by `tests/test_siesta_vibration_e2e.py` |
+| U10 | `transport/compose.py:1082`, `:1175` | writes the permutation record through its own `write_json(… sidecar())` and reads it back with `json.loads` — a second writer and a hand reader beside the one pair `write_permutation` / `read_permutation`; and it calls `categorical_sort` directly, so its record carries no `key` | held (`transport/`); switch to `sort_by(struct, "transport")` + the pair |
 
 
 ## 2. Documentation: one policy, not forty-four edits

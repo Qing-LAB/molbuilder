@@ -346,22 +346,23 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     imports at call time, same cycle-avoidance as the engine
     validators above."""
     from ..config.pyscf import PySCFConfig
-    if not isinstance(cfg, PySCFConfig):
-        # The kind's science is written per engine, and an engine this
-        # dispatch does not name has NO science here -- a gap to refuse,
-        # never an empty verdict: an empty list reads as "checked, nothing
-        # found" on every surface, which is the silent skip
-        # science/validation.md F4 forbids.  A second engine's vibration
-        # checks register in this dispatch; until they do, a deck of that
-        # engine must not pass this gate looking validated.
-        raise TypeError(
-            f"the vibration kind has no science for {type(cfg).__name__}: "
-            f"its checks are written for PySCFConfig, and a config class "
-            f"with no checks cannot pass this gate as validated "
-            f"(science/validation.md F4)")
-    from ..pyscf.vibration_deck import science_view
-    from .spectra import spectra_render_checks
-    return list(spectra_render_checks(struct, science_view(cfg, struct)))
+    if isinstance(cfg, PySCFConfig):
+        from ..pyscf.vibration_deck import science_view
+        from .spectra import spectra_render_checks
+        return list(spectra_render_checks(struct, science_view(cfg, struct)))
+    from ..config.siesta import SiestaConfig
+    if isinstance(cfg, SiestaConfig):
+        from .spectra import siesta_vibration_checks
+        return list(siesta_vibration_checks(struct, cfg))
+    # The kind's science is written per engine, and an engine this dispatch
+    # does not name has NO science here -- a gap to refuse, never an empty
+    # verdict: an empty list reads as "checked, nothing found" on every
+    # surface, which is the silent skip science/validation.md F4 forbids.
+    raise TypeError(
+        f"the vibration kind has no science for {type(cfg).__name__}: "
+        f"its checks are written for PySCFConfig and SiestaConfig, and a "
+        f"config class with no checks cannot pass this gate as validated "
+        f"(science/validation.md F4)")
 
 
 #: Below this the lead's transport sampling is called thin (I9).  It is the

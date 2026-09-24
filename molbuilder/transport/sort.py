@@ -136,16 +136,100 @@ class SortResult:
     #: convention note.  Carried, never raised: the caller decides
     #: where a warning belongs on its surface.
     notes: Tuple[str, ...] = ()
+    #: WHICH sort produced this copy -- a name from ``SORT_KEYS``, so the
+    #: record says what was done and a reader can tell a transport order
+    #: from a held-first one.  Empty only for a result built by hand.
+    key: str = ""
 
     def sidecar(self) -> dict:
         """The recorded permutation — what maps every downstream index
         (forces, Mulliken, PDOS, the 1-based numbers in the files) back
         to the relaxation's identities."""
-        return {
+        out = {
             "schema": PERMUTATION_SCHEMA,
             "original_to_sorted": list(self.original_to_sorted),
             "sorted_to_original": list(self.sorted_to_original),
         }
+        if self.key:
+            out["key"] = self.key
+        return out
+
+
+#: The record's file name beside a calculation (`job-contracts.md` § 6.1).
+PERMUTATION_FILE = "atom-permutation.json"
+
+
+@dataclass(frozen=True)
+class Permutation:
+    """A recorded permutation, read back -- the return leg of § 2.2.
+
+    ``sorted_to_original[j]`` is the input index of the atom at sorted
+    position ``j``; ``original_to_sorted[i]`` where input atom ``i`` went.
+    Everything a reader of a sorted run needs goes through these two
+    methods, so no reader inverts by hand.
+    """
+    original_to_sorted: Tuple[int, ...]
+    sorted_to_original: Tuple[int, ...]
+    #: the key the record names (``""`` on a record written before keys
+    #: were recorded)
+    key: str = ""
+
+    @property
+    def n_atoms(self) -> int:
+        return len(self.sorted_to_original)
+
+    def original_of(self, sorted_indices) -> List[int]:
+        """The input indices of atoms named by sorted position, in the
+        order given."""
+        return [int(self.sorted_to_original[int(j)]) for j in sorted_indices]
+
+    def rows_to_input_order(self, rows, sorted_indices):
+        """Per-atom rows that stand in ``sorted_indices`` order (a subset
+        of the sorted copy), reordered so they follow the INPUT order of
+        those same atoms.  Returns ``(rows_in_input_order,
+        input_indices_ascending)``."""
+        orig = self.original_of(sorted_indices)
+        order = np.argsort(orig)
+        arr = np.asarray(rows)
+        return arr[..., order, :] if arr.ndim >= 2 else arr[order], \
+            [orig[k] for k in order]
+
+
+def write_permutation(directory, result: SortResult) -> "Path":
+    """Record the permutation beside the calculation -- both directions,
+    the schema, one file (`model/overview.md` § 2.2: recorded once)."""
+    import json
+    from pathlib import Path
+    out = Path(directory) / PERMUTATION_FILE
+    out.write_text(json.dumps(result.sidecar(), indent=2) + "\n",
+                   encoding="utf-8")
+    return out
+
+
+def read_permutation(directory) -> Permutation:
+    """The recorded permutation, or a refusal naming the file: a sorted
+    run with no record is a run whose numbers cannot be returned."""
+    import json
+    from pathlib import Path
+    p = Path(directory) / PERMUTATION_FILE
+    if not p.is_file():
+        raise SortError(
+            f"no {PERMUTATION_FILE} beside {Path(directory)}: the run was "
+            f"written from a sorted copy and its per-atom results cannot "
+            f"be put back in the input order without the record")
+    d = json.loads(p.read_text(encoding="utf-8"))
+    if d.get("schema") != PERMUTATION_SCHEMA:
+        raise SortError(f"{p}: schema {d.get('schema')!r} is not "
+                        f"{PERMUTATION_SCHEMA!r}")
+    o2s = tuple(int(i) for i in d["original_to_sorted"])
+    s2o = tuple(int(i) for i in d["sorted_to_original"])
+    n = len(s2o)
+    if sorted(s2o) != list(range(n)) or len(o2s) != n or any(
+            s2o[o2s[i]] != i for i in range(n)):
+        raise SortError(f"{p}: the two directions are not inverse "
+                        f"bijections over {n} atoms")
+    return Permutation(original_to_sorted=o2s, sorted_to_original=s2o,
+                       key=str(d.get("key", "") or ""))
 
 
 def _atom_word(struct: Structure, i: int) -> str:
@@ -294,9 +378,65 @@ def categorical_sort(struct: Structure) -> SortResult:
 
     order = (buf_lo + _layer_major(lo) + by[REGION_BRIDGE]
              + _layer_major(hi) + buf_hi)
+    return apply_order(struct, order, notes)
 
+
+#: THE KEYS, by name -- what a calculation needs done to the atom order.
+#: A kind asks ``sort_by(struct, "transport")`` or ``sort_by(struct,
+#: "held-first")``; the name travels into the record so the return leg
+#: knows which order it is undoing.  A new need is a new entry here, over
+#: the same ``apply_order``, never a second machine.
+SORT_KEYS = {
+    "transport":  lambda s: categorical_sort(s),
+    "held-first": lambda s: free_contiguous_sort(s),
+}
+
+
+def sort_by(struct: Structure, key: str) -> SortResult:
+    """The one entry every kind sorts through: the named key's order,
+    the shared machinery, and the key's name stamped on the result."""
+    try:
+        fn = SORT_KEYS[key]
+    except KeyError:
+        raise SortError(f"no sort key named {key!r}; the keys are "
+                        f"{', '.join(sorted(SORT_KEYS))}") from None
+    res = fn(struct)
+    return SortResult(structure=res.structure,
+                      original_to_sorted=res.original_to_sorted,
+                      sorted_to_original=res.sorted_to_original,
+                      notes=res.notes, key=key)
+
+
+def free_contiguous_sort(struct: Structure) -> SortResult:
+    """The second key: held atoms first, free atoms last, each in the
+    input's own relative order -- `model/overview.md` § 2.2.
+
+    SIESTA's force-constant run nudges atoms *A through B* (`FC.First` /
+    `FC.Last`) and cannot take a scattered free set; molbuilder's held set
+    is whatever a person ticked.  So the copy the deck renders from puts
+    every held atom before every free one, and the free range is the
+    tail: ``FC.First = n_held + 1``, ``FC.Last = n``.  Nothing held means
+    the identity order, recorded all the same -- the record is what a
+    reader inverts, and an absent record is a question.
+    """
+    n = len(struct.elements)
+    held = sorted(int(i) for i in (struct.frozen_atoms or []))
+    held_set = set(held)
+    free = [i for i in range(n) if i not in held_set]
+    return apply_order(struct, held + free, ())
+
+
+def apply_order(struct: Structure, order: List[int],
+                notes: Tuple[str, ...] = ()) -> SortResult:
+    """The machinery every sort key shares: check the order is a bijection,
+    move every per-atom field with its atom, record both directions.
+
+    ``order[j]`` is the ORIGINAL index of the atom that sits at ``j`` in
+    the copy.  A key computes an order; this is what turns it into a
+    structure and a record, so two keys cannot remap differently.
+    """
     # The bijection check (user: "make sure nothing is missed") -- done
-    # mechanically even though the construction above cannot fail it:
+    # mechanically even though a key's construction cannot fail it:
     # this is the guard that outlives refactors.
     n = len(struct.elements)
     if sorted(order) != list(range(n)):
@@ -305,6 +445,7 @@ def categorical_sort(struct: Structure) -> SortResult:
             f"atoms -- nothing was written.")
 
     old_to_new = {old: new for new, old in enumerate(order)}
+    pos = np.asarray(struct.positions, dtype=float)
 
     def _take(seq):
         return None if seq is None else [seq[i] for i in order]

@@ -1045,6 +1045,17 @@ catalogue rows and its own `.bands`/`.vectors` parser. *(One string-table
 inference, marked: a string table is not a parse tree. Settled by running
 `vibra` against a molbuilder deck and reading the `recoor:` echo.)*
 
+**Settled by running it (2026-09-23): there is no `vibra` rung.** `vibra`
+was run against a molbuilder deck and its `recoor` refused the coordinate
+block twice (*"not enough values in Coords line"* after the format was
+changed to one it names). Nothing it computes lies outside the one path, so
+the `.FC` file is read on the host and the modes come out of
+`spectra/normal_modes.py` (§ 7.5; § 18 step 5). The second key is built —
+`sort_by(struct, "held-first")` over the shared `apply_order`, the key
+recorded in `atom-permutation.json` — and the composition of two
+permutations (a junction sorted for TranSIESTA *and* for FC contiguity)
+stays open: no calculation asks for both today.
+
 ### 14.3 § 5.1 reads an output split as an engine split
 
 `frequency/` vs `spectrum/` is real (`projects.py:376-388`) but it is a
@@ -1378,14 +1389,32 @@ atoms; the block-versus-slice check runs in `tests/test_vibration_e2e.py`
 with and without a dispersion correction. Still owed: the timing on a
 large system (R8), and GPU with a partial list.
 
-**Step 5 — the SIESTA arm**, which is now: the siesta base, minus the
-relaxation driver, plus the FC surface, plus a `vibra` rung — the same sentence
-`engines/transport.md` § 3.3 uses for transport, which Part I does not cite
-and should. Its expensive piece is the `vibra` rung (§ 14.2), not the reorder.
-It needs a fifth `check_rules` rule — the FC range, inverse-permuted, equals
-the free set — because transport already measured what the alternative costs:
-*"an off-by-one in a contiguous atom range computes transmission through the
-wrong region and converges."*
+**Step 5 — the SIESTA arm — BUILT 2026-09-23**, and not as written above:
+there is **no `vibra` rung**. The siesta base minus the relaxation driver
+plus the FC surface is the deck (`siesta/vibration_deck.py`,
+`spec_for(calculation="vibration")`: one item, `fc_displacement`, and one
+block, `MD.TypeOfRun FC` + `FC.First`/`FC.Last` over the free range); the
+run leaves `<label>.FC`; and the modes are derived **on the host** by
+`jobset summarize run <stage>` through the same functions the PySCF deck
+carries as source (`spectra/from_siesta.py` → `vibrational_modes`,
+`vibrational_thermo`). `vibra` was tried on the measurement and its own
+coordinate reader refused an ordinary deck (§ 19); nothing it does is
+outside the one path. The `.FC` units are **measured eV/Å²** (§ 19 item
+5 closed) and `.FCC` is `.FC` with the held rows zeroed (item 2 closed).
+The reorder is the contract's: `prep` sorts a copy with the `held-first`
+key (`transport/sort.py`: `sort_by`, the shared `apply_order`,
+`write_permutation`), records `atom-permutation.json` with the key beside
+the calculation, and the derivation reads it back and puts every per-atom
+row in the input order (`Permutation.rows_to_input_order`). The check the
+paragraph above asked for is in the deck writer: a copy whose free atoms
+are not one trailing run is refused by name. Measured end to end on this
+workstation (`tests/test_siesta_vibration_e2e.py`): H2 with the held atom
+LAST in the input, `init --engine siesta --calculation vibration` → `prep`
+→ `launch` → `summarize run` → one mode, two motions removed, the free atom
+reported as atom 0. **Owed**: the Spectrum tab's engine list and the
+hand-over gate (`web/blueprints/build.py:1191`, held) still admit PySCF
+only; the thermochemistry headline (T, P) is PySCF's items, so the SIESTA
+derivation sums at 298.15 K / 1 atm and says so.
 
 **Unchanged and still right:** unification before SIESTA (a second engine on a
 two-branch shape gives four branches), and water-with-the-oxygen-held as the
@@ -1400,8 +1429,10 @@ spurious, and the two loudest IR bands among them.
    feature, designed as one if ever wanted. The deck says so with
    `SuperCell_N = 1` and a single-point `BandLines`; R3 in
    `science/normal-modes.md` now reads *at q = Γ*.
-2. **`.FC` or `C.FC`** (step 0.5). One run settles it — a measurement, not a
-   decision; owed before any SIESTA deck work.
+2. ~~**`.FC` or `C.FC`**~~ — **MEASURED 2026-09-23** (`tests/fixtures/siesta_fc`):
+   the constrained file is `<label>.FCC`, and it is `.FC` with the held
+   atoms' force rows zeroed; the free block is identical. The reader takes
+   `.FC` and slices.
 3. **What a frequencies-only spectrum looks like in the tab** — **ruled**
    *(user, 2026-09-23)*: lines at the mode positions, no heights, and the file
    says what is absent; `web/spectra.md` § 9b.3 is the rule's home. The rug
@@ -1415,9 +1446,11 @@ spurious, and the two loudest IR bands among them.
 4. **Whether `vibra`'s eigenvectors are mass-weighted or plain Cartesian.**
    § 9.1 already flags this as the 1823×-class risk. Unestablished, and it
    must be settled before any SIESTA mode reaches the viewer.
-5. **`.FC` numeric units** (outside knowledge says eV/Å², unverified) — the
-   conversion constant has one home and it is written for Hartree/Bohr²/amu.
-   A measurement, owed with item 2.
+5. ~~**`.FC` numeric units**~~ — **MEASURED 2026-09-23: eV/Å²**. Two
+   single points displaced by hand give −ΔF/2Δ = 41.713 eV/Å² for the H2
+   stretch; the file's two sides average to 41.713. `vibra`'s own reader
+   (`recoor`) refused the deck's coordinate block twice, which is one more
+   reason the modes are derived by molbuilder and not by `vibra`.
 
 **Decided 2026-09-23, so they are not re-asked:** the activity classifier as
 built (`spectra/activity.py`) is the rule, and `web/spectra.md` § 9b is its

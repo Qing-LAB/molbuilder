@@ -629,11 +629,12 @@ def init_cmd(structure, bundle: str, shape: str,
             # ONE freq stage, PySCF first.  A --stage-strategy names the
             # optimization ladder's tiers, which grade nothing here.
             from ..pyscf.stages import vibration_stages
-            if engine != "pyscf":
+            if engine not in ("pyscf", "siesta"):
                 raise click.ClickException(
-                    f"calculation 'vibration' is PySCF-first (the plan's "
-                    f"engine-agnostic shape admits others later); engine "
-                    f"{engine!r} has no vibration deck yet.")
+                    f"calculation 'vibration' runs on pyscf (analytic "
+                    f"Hessian, intensities) or siesta (force constants, "
+                    f"frequencies and mode shapes only); engine "
+                    f"{engine!r} has no vibration deck.")
             if stage_strategy:
                 raise click.ClickException(
                     "--stage-strategy names the optimization ladder's "
@@ -2705,12 +2706,87 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                     out=str(out), points=len(rec["points"]),
                     pending=len(rec.get("pending", ())))
             return
+        if (_tt is not None and _tt.calculation == "vibration"
+                and str(_tt.engine) == "siesta"):
+            # THE FORCE-CONSTANT RUN'S DELIVERABLE (science/normal-modes.md
+            # 4a.6): SIESTA left <label>.FC in the attempt; the modes are
+            # derived HERE, on the host, through the same path the PySCF
+            # deck runs, and written beside it as <label>.spectra.json -- the
+            # one artifact both engines share.  The atoms went to the engine
+            # in the sorted order prep recorded; the record is read back and
+            # every per-atom number is put in the input order before it is
+            # written (model/overview.md 2.2).
+            import re as _re
+
+            from .. import __version__ as _mb_version
+            from ..sidecars.spectra import dump_spectra_json
+            from ..spectra.from_siesta import spectra_results_from_fc
+            from ..transport.sort import apply_order, read_permutation
+            from .materialize import run_dir
+            from .prep import _structure_for, token_for
+            base = _P(bundle)
+            if stage is None:
+                raise click.ClickException(
+                    "which stage's force constants? name it: "
+                    f"{', '.join(s.name for s in _tt.stages)}.")
+            if stage not in [s.name for s in _tt.stages]:
+                raise click.ClickException(
+                    f"no stage named {stage!r}; the ladder is "
+                    f"{', '.join(s.name for s in _tt.stages)}.")
+            token = token_for(_tt, stage)
+            container = base / token if token and (base / token).is_dir() else base
+            where = run_dir(container)
+            fc = where / f"{_tt.label}.FC"
+            if not fc.is_file():
+                raise click.ClickException(
+                    f"no {fc.name} in {where}: the force-constant run has "
+                    f"not finished there (`jobset status`).")
+            try:
+                struct = _structure_for(_tt, base)
+                perm = read_permutation(base)
+                sorted_struct = apply_order(
+                    struct, list(perm.sorted_to_original)).structure
+            except Exception as e:                       # noqa: BLE001
+                # A CLI boundary: the record's refusals (SortError) and a
+                # structure that cannot be read both end as the message.
+                raise click.ClickException(str(e))
+            ver = ""
+            outs = sorted(where.glob("*.out"),
+                          key=lambda q: q.stat().st_mtime)
+            if outs:
+                head = "\n".join(outs[-1].read_text(
+                    encoding="utf-8", errors="replace").splitlines()[:40])
+                m = _re.search(r"Version\s*:\s*(\S+)", head)
+                ver = m.group(1) if m else ""
+            try:
+                res = spectra_results_from_fc(
+                    struct, sorted_struct, perm, fc, label=_tt.label,
+                    engine_version=ver, molbuilder_version=str(_mb_version),
+                    config={"engine": "siesta", "calculation": "vibration",
+                            "stage": stage})
+            except ValueError as e:
+                raise click.ClickException(str(e))
+            out = where / f"{_tt.label}.spectra.json"
+            dump_spectra_json(res, out)
+            n_rm = res.removed_motions["count"]
+            click.echo(f"{len(res.modes)} mode(s) from {fc.name}; "
+                       f"{n_rm} whole-body motion(s) removed before "
+                       f"diagonalising; scope {res.hessian_scope} "
+                       f"({res.n_atoms_in_hessian} of {res.n_atoms_total} "
+                       f"atoms)")
+            click.echo(f"-> {out}")
+            _ledger(base, "summarize", "vibration-modes",
+                    out=str(out), modes=len(res.modes), removed=n_rm,
+                    permutation_key=perm.key)
+            return
         raise click.ClickException(
             "summarize reads a BENCH sweep's measurements.  A run's own "
             "outputs are the calculation's results -- `jobset status` and "
             "the Watch tab are their readers (job-system.md § 5.3).  "
-            "(The one exception is the transport composite, whose "
-            "`summarize run` writes <label>.transport.json.)")
+            "(The exceptions are the transport composite, whose "
+            "`summarize run` writes <label>.transport.json, and a SIESTA "
+            "vibration, whose `summarize run <stage>` derives the modes "
+            "from the force-constant file into <label>.spectra.json.)")
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,

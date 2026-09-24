@@ -206,4 +206,29 @@ def vibrational_modes(hessian, masses, positions, held, axis_kind, cell=None):
     return lam, L_cart, patterns
 
 
-__all__ = ["rigid_motions", "vibrational_modes"]
+def vibrational_thermo(freqs_cm1, temperature_K, kb_eh_per_k, eh_per_cm1):
+    """The harmonic vibrational sums at one temperature: ``(zpe, u_vib, s_vib)``
+    in Hartree, Hartree and Hartree/K.
+
+    Over the frequencies given -- every one a vibration, none imaginary:
+    the caller has already removed the whole-body motions (R3) and left
+    out an imaginary mode, which has no partition function.  The two
+    constants are passed in because this function travels into a deck as
+    source text and may read no module-level name; the caller takes them
+    from the one home (``constants.py``).  ``T <= 0`` or no frequencies
+    give three zeros.
+    """
+    import numpy as _np
+    w = _np.asarray(freqs_cm1, dtype=float).reshape(-1) * float(eh_per_cm1)
+    T = float(temperature_K)
+    if w.size == 0 or T <= 0.0:
+        return 0.0, 0.0, 0.0
+    x = _np.clip(w / (float(kb_eh_per_k) * T), 1e-12, 700.0)
+    zpe = float(0.5 * w.sum())
+    u = float((w / (_np.exp(x) - 1.0)).sum())
+    s = float(float(kb_eh_per_k) * ((x / (_np.exp(x) - 1.0)
+                                     - _np.log1p(-_np.exp(-x))).sum()))
+    return zpe, u, s
+
+
+__all__ = ["rigid_motions", "vibrational_modes", "vibrational_thermo"]

@@ -32,7 +32,9 @@ _SIESTA_INVENTORY = (".XV", ".DM",
                      ".MD.nc", ".MD", ".MDE", ".ANI",
                      ".LWF", ".ZM", ".Bonds", ".PARTIAL",
                      ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
-                     ".CG", ".TSHS", ".TSDE")
+                     ".CG", ".TSHS", ".TSDE",
+                     # the force-constant run's product and its constrained twin
+                     ".FC", ".FCC")
 
 #: pyscf/warm-files.toml, same rule.
 _PYSCF_INVENTORY = (".chk", "_optimized.xyz", "_geom_optim.xyz",

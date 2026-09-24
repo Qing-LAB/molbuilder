@@ -542,6 +542,26 @@ small correction; for a molecule on a metal surface, where the substrate screens
 and the interface carries much of the charge transfer, it is not small. The
 number is computed; how much it means is the reader's judgement.
 
+### 4a.5b The SIESTA route, as built *(2026-09-23)*
+
+SIESTA computes the force constants by central differences of its analytic
+forces: `MD.TypeOfRun FC` nudges each atom of one contiguous range
+(`FC.First`..`FC.Last`) by `FC.Displacement` (default 0.04 Bohr) along x, y
+and z, both ways, and writes `<SystemLabel>.FC` in **eV/Å²** (measured
+against two single points displaced by hand: 41.713 both ways). The held
+atoms sit in `Geometry.Constraints` outside the range, so no force constant
+is taken with respect to them — the same partial Hessian as § 3, obtained by
+nudging instead of differentiating, at 6 force evaluations per free atom,
+each a whole-system SCF. The run leaves its *last displacement* in
+`<SystemLabel>.XV` (measured), so the deck tells SIESTA not to read that
+file back and takes only the density. Because the range must be contiguous, `prep` renders
+the deck from a copy sorted held-first and records the permutation
+(`model/overview.md` § 2.2); `jobset summarize run <stage>` reads `.FC` back,
+puts the free block through the same projection and diagonalisation the
+PySCF deck runs (`spectra/normal_modes.py`), inverts the permutation, and
+writes the one artifact. Intensities are not computed (§ 4a.6); the
+thermochemistry is the vibrational sums only.
+
 ### 4a.6 SIESTA: not offered, and why that is a statement about this tool
 
 The SIESTA path (§ 3.1a, and the design document) computes **frequencies and

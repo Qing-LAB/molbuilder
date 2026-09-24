@@ -48,6 +48,14 @@ OUTPUT_SECTION = Section(
      "write_md_xmol", "write_hs"),
 )
 
+#: The force-constant run's one parameter (the vibration kind on this
+#: engine).  The run type and the atom range are structural text derived
+#: from the structure -- `siesta/vibration_deck.py` -- not items.
+FC_SECTION = Section(
+    "Force constants",
+    ("fc_displacement",),
+)
+
 #: The free-energy criterion and the switch that arms it.  **Two items, one
 #: decision**: the tolerance alone does nothing -- SIESTA loads it either way
 #: and installs it as a criterion only when the switch is on -- so molbuilder
@@ -173,6 +181,7 @@ _UNIT = {
     "md_target_temperature":  "K",
     "md_length_timestep":     "fs",
     "electronic_temperature": "K",
+    "fc_displacement":        "Bohr",
 }
 
 #: Items whose keyword is padded so a related pair reads as a column.

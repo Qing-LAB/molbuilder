@@ -601,6 +601,82 @@ def spectra_render_checks(struct: Structure,
     return issues
 
 
+def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
+    """The vibration kind's science on SIESTA -- the force-constant run.
+
+    What holds on both engines is said once here and in
+    `spectra_render_checks` by the same words: how many whole-body
+    motions survive the freeze, from the one derivation.  What is this
+    route's own: at least one free atom to nudge, and that nothing is
+    relaxed here -- the input geometry is the stationary point, so a
+    person cites a relaxed structure or accepts § 4's consequence.
+    """
+    issues: List[Issue] = []
+    n = int(struct.n_atoms)
+    held = sorted(int(i) for i in (struct.frozen_atoms or []))
+    bad = [i for i in held if not 0 <= i < n]
+    if bad:
+        issues.append(Issue(
+            severity="error",
+            message=(f"the frozen set names atom index(es) {bad}, outside "
+                     f"this structure's {n} atoms (0-based)."),
+            where="structure.regions"))
+        return issues
+    n_free = n - len(held)
+    if n_free == 0:
+        issues.append(Issue(
+            severity="error",
+            message=("every atom is held: a force-constant run needs at "
+                     "least one free atom to nudge."),
+            where="structure.regions"))
+        return issues
+    if held:
+        from ..spectra.normal_modes import rigid_motions
+        n_rigid = len(rigid_motions(
+            struct.positions, held,
+            getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+            cell=getattr(struct, "cell", None)))
+        if n_rigid:
+            issues.append(Issue(
+                severity="info",
+                message=(
+                    f"Holding {len(held)} atom(s) leaves {n_rigid} "
+                    f"whole-body motion(s) of the free atoms that cost no "
+                    f"energy (a turn about the held atoms).  They are not "
+                    f"vibrations: they are removed before diagonalising, "
+                    f"so {3 * n_free - n_rigid} modes will be reported, "
+                    f"not {3 * n_free}, and the count removed is recorded "
+                    f"with the results."),
+                where="structure.regions"))
+        issues.append(Issue(
+            severity="info",
+            message=(
+                f"{len(held)} atom(s) (indices {held}) are held: they sit "
+                f"in Geometry.Constraints outside the FC.First..FC.Last "
+                f"range, so no force constant is taken with respect to "
+                f"them and the run nudges the {n_free} free atom(s) only "
+                f"(6 force evaluations per free atom, each a whole-system "
+                f"SCF).  Frequencies are those of the free atoms moving in "
+                f"the static field of the held ones; thermochemistry is "
+                f"vibrational-only.  Intensities are not computed on this "
+                f"route."),
+            where="structure.regions"))
+    issues.append(Issue(
+        severity="info",
+        message=(
+            "The force-constant run relaxes nothing: the input geometry is "
+            "taken as the stationary point.  Cite a relaxed structure -- "
+            "off a minimum the free atoms' residual forces put curvature "
+            "into motions that are not vibrations (science/normal-modes.md "
+            "4), which the projection removes but the real modes still "
+            "shift."),
+        where="structure.positions"))
+    from .sidecar import check_unconsumed_region_labels
+    issues.extend(check_unconsumed_region_labels(
+        struct, engine="SIESTA vibration"))
+    return issues
+
+
 # The GPU advisory helper -- RECOVERED 2026-08-21.  The P3 move took
 # render_checks' body but left this classmethod behind in the deleted
 # engine file; the surviving `cls._gpu_capability_advisories()` call was

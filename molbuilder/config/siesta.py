@@ -670,6 +670,20 @@ class SiestaConfig:
         "range": (0.001, 0.5),
         "tier":  "advanced",
     })
+    # ----- The vibration kind on this engine: the force-constant run. -----
+    # ONE knob.  Which atoms are nudged is the structure's (the free atoms,
+    # sorted into one run by prep -- siesta/vibration_deck.py), and the run
+    # type is fixed by the kind; only the nudge size is a person's choice.
+    fc_displacement: float = field(default=0.04, metadata={
+        "category": ("accuracy",),
+        "section": "Vibration",
+        "workflow_group": "stage",
+        "label": "Force-constant displacement", "unit": "Bohr",
+        "engine_key":  'FC.Displacement',
+        "id_suffix": "fc-displ",
+        "range": (0.005, 0.2),
+        "tier":  "advanced",
+    })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),
         "section": "Compute & budget",

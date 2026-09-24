@@ -104,3 +104,25 @@ suffix = ".TSDE"                # the NEGF density -- THE warm state of a
                                 # keyword involved -- same class as the
                                 # accumulative records above.
 carry  = "when-continuing"
+
+# ---- vibration: the force-constant run --------------------------------
+# The run nudges the free atoms and writes the force constants; nothing it
+# leaves is a state a later attempt resumes from -- SIESTA restarts an FC
+# run at FC.First every time -- so both rows are inventory-only.
+#
+# THE BASE `.XV` ROW DOES NOT MEAN HERE WHAT IT MEANS FOR A RELAXATION.  An
+# FC run writes its LAST DISPLACEMENT to <SystemLabel>.XV (measured: the
+# last free atom sits FC.Displacement off the input along z after the
+# run), not a geometry to continue from.  The vocabulary cannot withhold a
+# base row per section, so the deck declines it instead: the force-
+# constant deck writes `MD.UseSaveXV .false.` whatever the description
+# says (siesta/vibration_deck.py::start_state_lines), and a carried `.XV`
+# is a copied file the engine is told not to read.
+
+[[vibration.file]]
+suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT
+                                # of the run, read on the host by
+                                # parse/engines/siesta_fc.py
+
+[[vibration.file]]
+suffix = ".FCC"                 # the same with the held atoms' rows zeroed

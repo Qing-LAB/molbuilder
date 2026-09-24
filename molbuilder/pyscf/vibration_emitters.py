@@ -619,7 +619,7 @@ def _emit_normal_mode_rules() -> List[str]:
     import inspect
     from ..spectra import normal_modes as _nm
     out: List[str] = []
-    for fn in (_nm.rigid_motions, _nm.vibrational_modes):
+    for fn in (_nm.rigid_motions, _nm.vibrational_modes, _nm.vibrational_thermo):
         out += [ln.rstrip() for ln in inspect.getsource(fn).splitlines()]
         out.append("")
     return out
@@ -859,13 +859,13 @@ def _emit_initial_state() -> List[str]:
     out.append("# and edited a coordinate -- the spectrum no longer applies).")
     out.append("# The hash is provenance / audit data; no production code")
     out.append("# enforces it today.")
-    out.append("import hashlib")
-    out.append("_xyz_lines = [f'{N_ATOMS}', f'{JOB}']")
-    out.append("for _el, (_x, _y, _z) in zip(ELEMENTS, [(a[1], a[2], a[3]) for a in ATOMS]):")
-    out.append("    _xyz_lines.append(f'{_el:<3s} {_x:14.8f} {_y:14.8f} {_z:14.8f}')")
-    out.append("STRUCTURE_HASH = 'sha256:' + hashlib.sha256(")
-    out.append("    '\\n'.join(_xyz_lines).encode('utf-8')")
-    out.append(").hexdigest()")
+    # ONE spelling of the hash, spliced from the artifact writer's home so
+    # the SIESTA derivation and this deck cannot compute two different ones.
+    import inspect as _inspect
+    from ..sidecars.spectra import structure_hash_text as _sht
+    out += [ln.rstrip() for ln in _inspect.getsource(_sht).splitlines()]
+    out.append("STRUCTURE_HASH = structure_hash_text(")
+    out.append("    N_ATOMS, JOB, ELEMENTS, [(a[1], a[2], a[3]) for a in ATOMS])")
     out.append("")
     out.append("# Read pyscf's installed version from packaging metadata --")
     out.append("# more reliable than getattr(pyscf, '__version__') because")

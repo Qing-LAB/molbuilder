@@ -419,7 +419,12 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
-Results tab) is what fills the chart.
+Results tab) is what fills the chart. **On SIESTA the run writes
+`<label>.FC` instead**, and `molbuilder jobset summarize run <stage>` derives
+the modes from it on the host and writes the same `.spectra.json` beside the
+run (`science/normal-modes.md` § 4a.5b). *(The tab's engine list and the
+hand-over gate still admit PySCF only — `web/blueprints/build.py`, held; the
+CLI road `jobset init --engine siesta --calculation vibration` is open.)*
 
 ## 6. The API door
 
@@ -686,17 +691,23 @@ that cannot request it:
 **What changes for the file.** The table above has a *PySCF reports* column;
 a second engine adds its own. The block `equilibrium.scf_energy_eh` /
 `mo_energies_eh` / `homo_idx` is PySCF's — a periodic engine has a Fermi
-level, not a HOMO — and **becomes optional** (design § 16.2, step 4 of § 18,
-before the SIESTA arm). What SIESTA supplies per mode is `frequency_cm1` and
-`eigenvector_canonical`, once its convention is established (design § 19.4);
-`eigenvector_display` is molbuilder's own per-mode rescale of it, derived,
-never supplied — yet today's reader refuses a mode carrying only the
-canonical form (`results.py`, the `eigenvector_display` shape check), which
-is step 4's to fix beside the MO block. Two more places say the opposite of
-*absent* and have to stop: the run-level phase flags have no *not requested*
-state, so a run that asked for no strengths writes `phase_raman = 'complete'`
-(`vibration_deck.py`); and the viewer's change fingerprint reads a
-`phase_ir` key nothing writes.
+level, not a HOMO — and **is optional, whole or not at all** *(built
+2026-09-23, schema 6)*: the three keys travel together, `null` in all three
+is *this engine has none*, `null` in one is a broken file (`results.py`
+refuses it at construction). What SIESTA supplies per mode is
+`frequency_cm1` and `eigenvector_canonical`, in the same Σm|L|² = 1
+convention, because both engines' modes come out of the one derivation
+(`spectra/normal_modes.py`; design § 19.4 closed); `eigenvector_display` is
+molbuilder's own per-mode rescale, and the reader derives it when a file
+carries only the canonical form. The SIESTA file (`spectra/from_siesta.py`,
+written by `jobset summarize run <stage>`) has `ir_intensity_km_mol` and
+`raman_activity_a4_amu` `null` on every mode, `equilibrium.*` `null`,
+`thermo.regime = 'vibrational-only'` at the stated T and P, `ir_route =
+'none'`, and `engine_metadata` naming the `.FC` file, its displacement and
+the 1-based range. Two places still say the opposite of *absent* and have to
+stop: the run-level phase flags have no *not requested* state, so a run that
+asked for no strengths writes `phase_raman = 'complete'` (both writers); and
+the viewer's change fingerprint reads a `phase_ir` key nothing writes.
 `presenters.md`'s *PySCF spectrum* label names the engine and will be wrong
 the day it is not.
 

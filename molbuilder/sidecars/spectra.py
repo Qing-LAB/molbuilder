@@ -77,6 +77,19 @@ class SpectraJsonFieldError(SpectraJsonError):
 # --------------------------------------------------------------------- #
 
 
+def structure_hash_text(n_atoms, label, elements, positions_ang):
+    """The ``structure_hash`` an artifact carries: ``sha256:`` over the
+    lines ``n_atoms``, ``label`` and one ``'<el:<3s> <x:14.8f> <y> <z>'``
+    per atom, joined by newlines, UTF-8.  Self-contained so the PySCF
+    deck can carry it as source; the SIESTA derivation calls it here.
+    """
+    import hashlib as _hashlib
+    lines = [f"{int(n_atoms)}", f"{label}"]
+    for el, (x, y, z) in zip(elements, positions_ang):
+        lines.append(f"{str(el):<3s} {float(x):14.8f} {float(y):14.8f} {float(z):14.8f}")
+    return "sha256:" + _hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 def dump_spectra_json(results: SpectraResults,
                       path: Union[str, "os.PathLike[str]"],
                       *,
@@ -189,6 +202,7 @@ def parse_spectra_json_dict(d):
 
 
 __all__ = [
+    "structure_hash_text",
     "dump_spectra_json",
     "parse_spectra_json",
     "parse_spectra_json_dict",

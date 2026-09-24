@@ -489,6 +489,28 @@ That engine default of 0.2 Bohr is 0.106 Å; this catalogue starts at 0.05 Å, a
 Symptom of a cap set too large: max force oscillates rather than descends (e.g. 0.09 -> 0.44 -> 0.13 -> 0.31 -> ...). Halve the cap.
 """
 
+[item.fc_displacement]
+kind = "engine"
+category = ["accuracy"]
+engines = ["siesta"]
+anchor = "FC.Displacement"
+engine_key = "FC.Displacement"
+manual = "SIESTA 5.4.2 §7.5 'Phonon calculations' (FC.First, FC.Last, FC.Displacement)"
+calculations = ["vibration"]
+type = "float"
+value = 0.04
+default = 0.04
+unit = "Bohr"
+range = [0.005, 0.2]
+group = "stage"
+label = "Force-constant displacement"
+tier = "advanced"
+help = """
+How far each free atom is nudged, in Bohr, along x, y and z both ways, to measure the force constants by central differences -- SIESTA's own default is 0.04 Bohr (about 0.02 Å).
+Smaller nudges follow the harmonic curvature more closely but push the force difference toward the SCF's noise floor (tighten DM.Tolerance if you go below 0.02 Bohr); larger ones pick up anharmonic terms.  The run nudges the FREE atoms only: the held atoms are written into Geometry.Constraints and sit outside the FC.First..FC.Last range, so holding atoms reduces the run in proportion (6 force evaluations per free atom, each a whole-system SCF).
+The force constants land in <SystemLabel>.FC in eV/Å²; molbuilder turns them into modes on the host (`jobset summarize run <stage>`), through the same projection and diagonalisation the PySCF route runs.  Infrared and Raman intensities are not computed on this route (science/normal-modes.md 4a.6).
+"""
+
 [item.continue_retries]
 kind = "wrapper"
 category = ["execution"]
@@ -579,9 +601,13 @@ Ignored by CG / Broyden / FIRE geometry relaxation, which do not integrate time.
 kind = "deck"
 category = ["convergence", "execution"]
 engines = ["siesta", "pyscf"]
-# The vibration deck neither reads nor writes deck-level restart state
-# (it always recomputes from its own relaxation, or your already_relaxed
-# assertion); showing the knob there was a shown-but-unread parameter.
+# The vibration decks do not consult this field.  PySCF's neither reads
+# nor writes deck-level restart state (it recomputes from its own
+# relaxation, or your already_relaxed assertion); SIESTA's force-constant
+# deck fixes its own start state by the kind -- the density is read when
+# present, the geometry never, because an FC run leaves its last
+# displacement in .XV (siesta/vibration_deck.py::start_state_lines).
+# Showing the knob there would be a shown-but-unread parameter.
 calculations = ["optimization"]
 expands = ["DM.UseSaveDM", "MD.UseSaveXV", "MD.UseSaveCG"]
 engine_key = "(molbuilder: one field, one mechanism per engine -- SIESTA expands it to DM.UseSaveDM / MD.UseSaveXV / MD.UseSaveCG; PySCF emits control flow that reads <JOB>.chk and <JOB>_optimized.xyz.  Not a single engine key on either)"
