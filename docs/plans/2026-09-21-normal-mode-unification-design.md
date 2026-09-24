@@ -1,6 +1,6 @@
 # Vibrations with held atoms — the design
 
-**Role:** design — **Option A chosen** (user, 2026-09-21); the SIESTA half and two smaller questions remain open
+**Role:** design — **Option A chosen** (user, 2026-09-21). § 18 is the order of work, **started 2026-09-23** at step 0; § 19 is what is still open, and what was decided that day
 **Domain:** science · engines · web
 **Started:** 2026-09-21 · **SIESTA half added** 2026-09-21
 **The science it rests on:** [`science/normal-modes.md`](?doc=science/normal-modes.md)
@@ -138,8 +138,15 @@ So:
 | the system | whole-body motions that cost nothing |
 |---|---|
 | isolated molecule | 3 slides + 3 turns = **6** *(5 if straight)* |
-| anything periodic | 3 slides = **3** |
-| periodic **with any atom held** | **0** — sliding would move the held atom |
+| periodic along **one** axis — a wire | 3 slides + the turn about that axis = **4** |
+| periodic along two or three axes — a slab, a crystal | 3 slides = **3** |
+| any periodic system **with any atom held** | **0** — sliding would move the held atom |
+
+The rows are consequences; the rule behind them has no cases (§ 18 step 2): a
+turn survives only if it maps every lattice vector onto itself — the
+antisymmetric generators `A` with `A·a = 0` for every lattice vector `a`, which
+is three of them with no lattice, one for a wire's single axis, none for a slab
+or a crystal. Written as a table it got the wire wrong.
 
 **The consequence for the junction work is a happy one.** A slab with its lower
 layers frozen is the last row: **nothing** needs removing, and the spurious-mode
@@ -249,12 +256,12 @@ The right shape is the other way round:
 | a gold electrode | must be faked as a finite cluster | its natural home |
 | lands in | `spectrum/` | `frequency/` |
 
-**That last row is not a new invention.** The project's own directory layout has
-said this since it was written: `frequency/` is described as *"Vibrational
-frequency calculations (Hessian + harmonic thermochemistry) … to confirm minima
-… and compute ZPE / U / H / G / S"*, and `spectrum/` as *"Vibrational
-spectroscopy runs (Raman, IR)"*. The split the user is asking for is the split
-the tool already believes in. Only the code never caught up.
+**That last row is a storage vocabulary, not an engine rule** (§ 14.3).
+`frequency/` and `spectrum/` are two of the nine topics a person picks a folder
+from, split by *what is computed* — frequencies and thermochemistry against
+intensities — and nothing derives a topic from an engine: a PySCF run with
+both intensity flags off belongs in `frequency/` by that description. The row
+says where a typical run of each engine lands, not where a mechanism puts it.
 
 ### 5.2 Why SIESTA for the junction — the real argument
 
@@ -458,7 +465,9 @@ never what is done with them.
 ### 7.2 The leftover-motions step, in words
 
 > 1. Write down the whole-body motions that cost this system nothing. For a
->    molecule: three slides and three turns. For anything periodic: three slides.
+>    molecule: three slides and three turns. For a periodic system: three
+>    slides, plus the one turn about the axis of a wire; none for a slab or a
+>    crystal (§ 3.3).
 >    These come from the atom positions alone — no chemistry, no bond list,
 >    nothing the user supplies.
 > 2. Throw away any combination that **would move a held atom**.
@@ -488,12 +497,13 @@ the three-in-a-row case and now the periodic case all fall out of it.
 ```text
 INPUT   positions of all atoms
         which atoms are held        (may be empty)
-        is the system periodic?     (from the structure's own axes)
+        the structure's axis kinds  (per axis: periodic · isolated · transport)
         the curvature table over the free atoms   (from either engine)
 
 STEP 1  build the whole-body patterns this system is allowed
-          - isolated : 3 slides + 3 turns
-          - periodic : 3 slides
+          - 3 slides, always
+          - the turns whose generator maps every lattice vector onto itself:
+            3 with no lattice, 1 for a wire, 0 for a slab or a crystal
 STEP 2  keep only combinations that leave every held atom exactly in place
           - nothing held        -> all survive
           - a slab held         -> none survive
@@ -534,12 +544,14 @@ A filter that works by luck is not a filter.
 **The new piece.** One function, one job:
 
 ```text
-    rigid_motions(positions, held_atoms, periodic)  ->  the patterns to remove
+    rigid_motions(positions, held_atoms, axis_kind)  ->  the patterns to remove
 ```
 
 Its length is `n_rigid`. It knows no engine, no config and no file format — it
 takes numbers and returns numbers, which is what makes it testable without a
-quantum chemistry calculation at all.
+quantum chemistry calculation at all. It takes the structure's `axis_kind`,
+never the boolean `pbc()` (§ 18 step 2): the boolean cannot say which axis
+repeats, and the surviving turns depend on exactly that.
 
 **One constraint on where it can live.** The projection happens *inside the
 generated deck*, at run time, so this function has to travel into the deck the
@@ -680,7 +692,9 @@ of every atom you want to move.
 Those nudges **are not a vibration** — they are measuring probes. The vibration
 comes afterwards, when the table is mass-weighted and solved.
 
-Verified against the SIESTA binary in our own environment:
+Verified against the manual-derived keyword table in
+`tests/validation/test_siesta.py` (§ 14.1: `strings` on the binary cannot settle
+a keyword):
 
 | what | keyword | note |
 |---|---|---|
@@ -725,17 +739,23 @@ Three ways out:
 | **reorder** | write the `.fdf` with atoms permuted so the free ones are consecutive, and map results back | invisible to the user; needs the permutation to be a first-class fact, not a local trick |
 | **over-nudge** | nudge the smallest range covering every free atom and discard the extra | simple, and wastes exactly the compute the feature exists to save |
 
-**Reorder is the right answer, and it has a designated home already — but not the one this section named.** *(Corrected 2026-09-22; the paragraph below said `engine_atom_index.py`. See § 14.2.)*
-`engine_atom_index.py` exists precisely for this and says so: *"the single,
-explicit point where a 0-based identity becomes an engine's atom number …
-Nothing else in the codebase may apply a bare `i + 1` OR `n − 1` to an atom
-index."* A SIESTA reordering is one more named convention in that module.
+**Reorder is the right answer, and it has a designated home already:
+`transport/sort.py`** (§ 14.2). That module is `(Structure) -> (sorted
+Structure, permutation)`, pure, both directions recorded, every index-carrying
+field remapped through one map, a bijection check before it returns, and a
+registered `atom-permutation.json`. What SIESTA needs is a **second sort key**
+— free-versus-held instead of the four partition labels — over that machinery.
+`engine_atom_index.py` is not the home: it is an affine offset table with no
+per-structure state, and a permutation would break its invariant.
 
-**But it must be decided deliberately, because reordering is not free.** The
-transport path identifies electrodes by atom label, results come back numbered
-by the engine's order, and the viewer draws displacements per atom. Every one of
-those crosses the permutation. This is the SIESTA counterpart of the PySCF
-question in § 10, and it is the single largest piece of work in the SIESTA half.
+**And what a reorder may do is now a contract** — `model/overview.md` § 2.2
+*(user, 2026-09-23)*: the program sorts a COPY at prep, records the permutation
+both ways beside it, and every per-atom number that comes back is inverted
+before a person sees it; the person's interfaces speak the input order; a
+structure sorted for two reasons carries **one composed permutation, recorded
+once**. The transport path, the results and the viewer all cross the
+permutation, and that contract is what each of them reads. It is not the
+largest piece of the SIESTA half; § 14.2 names that piece — the `vibra` rung.
 
 ---
 
@@ -851,7 +871,7 @@ SIESTA the cheap route is simply the right one, once reordering is solved.
 | removing a motion at a not-perfectly-relaxed geometry | legitimate, and what PySCF already does for free molecules: whole-body motions are known not to be vibrations, so any energy along them is an artefact |
 | over-removing, as Vester & Olsen warn | structurally impossible here — § 3.5. A motion is removed only if it leaves **every** held atom exactly in place |
 | PySCF's atom-list Hessian is untested upstream | check against compute-everything-and-slice on a small molecule first |
-| SIESTA reordering corrupts atom identity | route it through `engine_atom_index.py`, which exists for this and forbids anyone else doing it; round-trip test: structure → fdf → parsed results → original numbering |
+| SIESTA reordering corrupts atom identity | `transport/sort.py`'s machinery with a second sort key (§ 14.2), under `model/overview.md` § 2.2's rule; round-trip test: structure → fdf → parsed results → original numbering |
 | the mode-pattern normalisation convention differs between engines | establish it per engine **before** any displacement is built on it — § 9.1 |
 | SIESTA keyword spellings differ across versions | read from the shipped binary, as § 8.1 was. Re-check on any SIESTA upgrade |
 
@@ -879,19 +899,17 @@ SIESTA the cheap route is simply the right one, once reordering is solved.
    exists** (§ 5a). The real risk is that the rank rule is ahead of every
    published implementation, so nobody else's testing covers it — which is why
    § 7.6 puts the weight there.
-2. **The default for the cost/infrared option** (§ 10) — cheap frequencies with
-   nudged infrared, or full price with analytic infrared? Analytic is today's
-   behaviour, so keeping it changes nothing for existing users; the cheap route
-   is what anyone freezing a slab will want.
-3. **The SIESTA contiguity answer** (§ 8.2) — refuse, reorder, or over-nudge.
-   Reorder is recommended and is the largest piece of work in the SIESTA half.
-4. **Sequencing** — is the SIESTA engine part of this work, or does the
-   unification land first and SIESTA follow on top of it? *(The unification is a
-   precondition either way: adding a second engine to the two-branch shape of
-   § 4 gives four branches.)*
-5. **Whether to measure the stationarity false alarm first** (§ 3.6, row two).
-   Derived from reading, not yet run; a relax-with-sulfurs-held followed by a
-   frequency run at that geometry would show it — about a minute of compute.
+2. ~~**The default for the cost/infrared option**~~ — **DECIDED 2026-09-23:
+   analytic stays the default.** It is today's behaviour, so nothing changes
+   for existing runs; the cheap route (the free-atom `atmlst` Hessian with
+   nudged infrared) is the opt-in, and the run states which way it went.
+3. ~~**The SIESTA contiguity answer**~~ — **DECIDED: reorder**, through
+   `transport/sort.py`'s machinery with a second sort key (§ 14.2), under the
+   atom-index contract of `model/overview.md` § 2.2 (user, 2026-09-23).
+4. ~~**Sequencing**~~ — **DECIDED: the unification lands first**, SIESTA on
+   top of it (§ 18). Two branches plus an engine is four branches.
+5. ~~**Whether to measure the stationarity false alarm first**~~ —
+   **MEASURED 2026-09-22**, § 15.2: four of five held cases warn falsely.
 
 ---
 
@@ -1256,13 +1274,14 @@ and because two of these were the strongest candidates for a silent error.
 things around them, all of them cheap and all of them things this review
 found.
 
-**Step 0 — two two-line changes, before anything.**
- a. Make `_validate_vibration_kind`'s non-PySCF guard **`raise`**, not
-    `return []`. Today the premise is true; after the SIESTA arm it is a
-    silent no-op. Doing it now converts a future silent failure into a loud
-    one; doing it later means doing it in response to a bug.
- b. Fix § 8.1's keyword row and § 8.2's permutation home in Part I — done
-    above, so nothing is implemented from the wrong map.
+**Step 0 — two two-line changes, before anything. Both done 2026-09-23.**
+ a. `_validate_vibration_kind`'s non-PySCF guard **raises** (`TypeError`,
+    naming the class and F4), not `return []`. Today the premise is true;
+    after the SIESTA arm an empty verdict would have been a silent no-op
+    that every surface reads as *checked, nothing found*. Pinned through
+    `validate()` in `tests/test_vibration_render_gate.py`.
+ b. § 8.1's keyword row and § 8.2's permutation home in Part I — corrected
+    in place, so nothing is implemented from the wrong map.
 
 **Step 0.5 — one measurement, before any SIESTA deck work.** SIESTA writes
 **two** force-constant files: `<label>.FC` and `<label>C.FC`, the second
@@ -1274,16 +1293,16 @@ converging. One 3-atom FC run with one constrained atom settles it. Minutes of
 compute, and it decides whether the SIESTA path reads `.FC` and slices, or
 reads `C.FC` and trusts.
 
-**Step 1-2 unchanged** — build `rigid_motions` from § 3.1's rank; prove it
-reproduces PySCF on free molecules **as a gate**. Two additions from § 15:
-it must take `axis_kind` (not `pbc()`), and § 3.1a's two-row table wants
-replacing with the case-free statement — the admissible rotation generators
-are the antisymmetric `A` with `A·a = 0` for every lattice vector, giving
-dimension 3, 1, 0, 0 for periodic dimension 0, 1, 2, 3. The table as written
-gets a 1-D periodic wire wrong, and writing a table into code is what § 3.1
-forbids.
+**Step 1-2 unchanged — THE NEXT STEP** — build `rigid_motions` from § 3.1's
+rank; prove it reproduces PySCF on free molecules **as a gate**. Two
+additions from § 15: it must take `axis_kind` (not `pbc()`), and § 3.1a's
+two-row table is replaced by the case-free statement *(done in the contract
+2026-09-23)* — the admissible rotation generators are the antisymmetric `A`
+with `A·a = 0` for every lattice vector, giving dimension 3, 1, 0, 0 for
+periodic dimension 0, 1, 2, 3. The table as written got a 1-D periodic wire
+wrong, and writing a table into code is what § 3.1 forbids.
 
-**Step 2.5 — draw the Γ-versus-dispersion line in the contract.** SIESTA's FC
+**Step 2.5 — draw the Γ-versus-dispersion line in the contract — RULED Γ-only, § 19.** SIESTA's FC
 path is a **phonon dispersion** calculation: force constants over a supercell
 → `D(q)` → frequencies along a path in reciprocal space. PySCF's is one mode
 list at one geometry. `n_rigid` is a **Γ-only** quantity — at q ≠ 0 the
@@ -1301,8 +1320,9 @@ free energy, and steps 1-2 are exactly what fixes it.
 
 **Step 4 — the API shape, before the SIESTA arm.** Lift the array-only physics
 out of the emitters into real callables (§ 16.1), make the MO block optional
-(§ 16.2), add a `raman_route`, and give the reader an unknown-key gate
-(§ 16.4). Doing this after the SIESTA arm means doing it twice.
+(§ 16.2), add a `raman_route`, give the reader an unknown-key gate
+(§ 16.4), and retire the two Raman-ranked selectors (`web/spectra.md`
+§ 9a.1). Doing this after the SIESTA arm means doing it twice.
 
 **Step 5 — the SIESTA arm**, which is now: the siesta base, minus the
 relaxation driver, plus the FC surface, plus a `vibra` rung — the same sentence
@@ -1320,8 +1340,14 @@ spurious, and the two loudest IR bands among them.
 
 ## 19. Still open, and needing a decision rather than work
 
-1. **Γ-only or dispersion** (step 2.5). Blocks the schema.
-2. **`.FC` or `C.FC`** (step 0.5). One run settles it.
+1. **Γ-only or dispersion** — **RULED 2026-09-23: Γ-only.** The transport use
+   displaces along a mode at one geometry, `n_rigid` is a Γ quantity, and a flat
+   mode list is what the artifact carries; a phonon dispersion is a different
+   feature, designed as one if ever wanted. The deck says so with
+   `SuperCell_N = 1` and a single-point `BandLines`; R3 in
+   `science/normal-modes.md` now reads *at q = Γ*.
+2. **`.FC` or `C.FC`** (step 0.5). One run settles it — a measurement, not a
+   decision; owed before any SIESTA deck work.
 3. **What a frequencies-only spectrum looks like in the tab** — **ruled**
    *(user, 2026-09-23)*: lines at the mode positions, no heights, and the file
    says what is absent; `web/spectra.md` § 9b.3 is the rule's home. The rug
@@ -1337,3 +1363,12 @@ spurious, and the two loudest IR bands among them.
    must be settled before any SIESTA mode reaches the viewer.
 5. **`.FC` numeric units** (outside knowledge says eV/Å², unverified) — the
    conversion constant has one home and it is written for Hartree/Bohr²/amu.
+   A measurement, owed with item 2.
+
+**Decided 2026-09-23, so they are not re-asked:** the activity classifier as
+built (`spectra/activity.py`) is the rule, and `web/spectra.md` § 9b is its
+home; `top_n` and `threshold` are retired (`web/spectra.md` § 9a.1, at step 4 with the rest of the API shape); the
+cost/infrared default stays analytic (§ 13); the reorder goes through the sort
+machinery with a second key (§ 13); and a structure sorted for two reasons
+carries one composed permutation (`model/overview.md` § 2.2) — how it is
+composed is step 5's to build, that it is one is settled.

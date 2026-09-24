@@ -348,3 +348,17 @@ def test_the_dft_trio_has_one_spelling_per_deck():
     # (tightened at the U6 close).
     hf = _render(PySCFConfig(method="RHF"))
     assert "_mb_configure_dft" not in hf
+
+
+def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():
+    """A check is never skipped in silence (science/validation.md F4).
+    The vibration kind's science is written for PySCFConfig; a
+    SiestaConfig described as a vibration must not come back with an
+    EMPTY verdict, which every surface reads as 'checked, nothing
+    found'.  It is refused by name -- and the same config through the
+    same door is an ordinary optimization gate."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.validation import validate
+    with pytest.raises(TypeError, match="vibration kind has no science"):
+        validate(_water(), SiestaConfig(), calculation="vibration")
+    assert isinstance(validate(_water(), SiestaConfig()), list)

@@ -32,7 +32,7 @@ almost every row here.
 | **the mass tables disagreed** | held-atom runs used whole mass numbers (H = 1), free runs used real masses (H = 1.008). Frequencies off ~15 cm⁻¹; **infrared intensities 1823× wrong**, because the standard prefactor assumes one convention and the code fed it the other | with both sulfurs held, ring C–H stretches now match the free run to **0.001 cm⁻¹** and their intensities to **0.2 %** |
 | **runs wrote bare `.xyz` files** | `_initial.xyz` / `_optimized.xyz` were written with no companion JSON, so a run's geometry carried no labels, no cell, no identity | the run now writes the pair; `frozen_atoms: [6, 7]` survives into the output, and molbuilder's own codec reads it back |
 
-Both are uncommitted at the time of writing. Full non-e2e suite after them:
+Both committed 2026-09-22 (`ebc91917`, `7854e47a`). Full non-e2e suite after them:
 **9426 passed, 3 skipped, 6 xfailed.**
 
 ---
@@ -79,7 +79,7 @@ cal mol⁻¹ K⁻¹** of entropy — about **3.8 kcal/mol** in the free energy a
 reported mode is a vibration, the filter has nothing to protect against and is
 deleted. A filter that works by luck is not a filter.
 
-### 2.3 "Is this geometry relaxed?" asks about the wrong atoms — *derived, not yet measured*
+### 2.3 "Is this geometry relaxed?" asks about the wrong atoms — *measured 2026-09-22*
 
 **What happens.** When a user asserts a geometry is already relaxed, the deck
 checks it by taking the largest force **over every atom, including the held
@@ -94,10 +94,11 @@ that is perfectly correct for the atoms that can actually move.
 **Where.** `pyscf/vibration_deck.py::_vib_gradient_check` —
 `np.abs(_g0).max()` over all atoms.
 
-**Status.** Read from the code path; **not reproduced**. Our runs froze at the
-unconstrained minimum, where all forces vanish, so it never fired. Reproducing
-it costs about a minute: relax with the sulfurs held, then a frequency run at
-that geometry.
+**Status.** **Measured** (design § 15.2): water with O and one H held, relaxed
+to the deck's own gmax, reads a max force of 3.35e-02 Eh/Bohr over all atoms
+against 7.01e-05 on the free atoms; CO₂ with both O held reads 7.2e-02 against
+3.9e-14. Four of five held cases produce the false warning, and it reaches the
+web UI through `relaxation.warning`.
 
 **The rule it should follow.** The forces must vanish on the atoms that
 *vibrate*. And a related rule worth writing down while we are here: **the set
@@ -253,13 +254,9 @@ only because they happened to carry labels.
 
 ## 6. Decisions outstanding
 
-1. **The cost-versus-analytic-infrared default** (§ 2.4). Analytic is today's
-   behaviour, so keeping it changes nothing for existing users; the cheap route
-   is what anyone freezing a slab will want.
-2. **Sequencing.** Does the SIESTA engine get built now or after the
-   unification? Recommendation: after — adding a second engine to today's
-   two-branch code gives four branches to keep in step.
-3. **Whether to measure § 2.3** before acting on it — about a minute of compute.
+All three decided on 2026-09-23 (design § 13, § 19): the cost-versus-analytic
+default **stays analytic**, the cheap route is the opt-in; the SIESTA engine
+lands **after** the unification; § 2.3 was **measured** on 2026-09-22.
 
 ---
 

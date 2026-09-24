@@ -208,9 +208,9 @@ rule is a rank, and it has no branches:
 
 > Let **G** be the matrix whose columns are the whole-body motions **this
 > system's energy is invariant under** (§ 3.1a decides which): three
-> translations — the same unit vector repeated on every atom — and, for an
-> isolated system only, three rotations, where the rotation column `a`, on atom
-> `i`, is
+> translations — the same unit vector repeated on every atom — and the
+> rotations the lattice permits: three with no lattice, one for a wire, none for
+> a slab or a crystal, where the rotation column `a`, on atom `i`, is
 >
 > ```text
 >     g_rot[a] |_i  =  ê_a × (R_i - R_c)
@@ -234,13 +234,24 @@ modelled — has fewer:
   the same way — a different structure, a different energy. There is no
   rotational invariance to exploit, and **no rotational null vectors to remove**.
 
-So `G` has **six columns for an isolated system and three for a periodic one**,
-and the table of § 3.2 gains two rows:
+**The rule has no cases** *(stated case-free 2026-09-23; a two-row table stood
+here and got a wire wrong)*: a rotation generator is an antisymmetric matrix
+`A`, and the rotation is a symmetry of the energy only if it maps every lattice
+vector onto itself — `A·a = 0` for every lattice vector `a` of a `periodic`
+axis. The space of such `A` has dimension **3, 1, 0, 0** for **0, 1, 2, 3**
+periodic axes: no lattice leaves all three turns; a wire keeps the turn about its
+own axis; a slab or a crystal keeps none. Translations are always three. So `G`
+has six columns for an isolated system, four for a wire, three for a slab or a
+crystal — and the table of § 3 gains these rows:
 
 | the system | held atoms | `n_rigid` |
 |---|---|---|
-| periodic | none | **3** |
-| periodic | **any at all** | **0** — translation would move a held atom |
+| periodic along one axis (a wire) | none | **4** |
+| periodic along two or three axes | none | **3** |
+| periodic, any number of axes | **any at all** | **0** — translation would move a held atom |
+
+Which axes are `periodic` is the structure's own `axis_kind`, per axis — never
+the boolean `pbc()`, which cannot say *which* axis repeats.
 
 **The junction case falls out as zero.** A slab with its lower layers held is the
 second row: nothing survives, nothing is removed, and the spurious-mode problem
@@ -628,9 +639,13 @@ rank of § 3.1. No call site re-derives it, tabulates it, or branches on
 every system. The free-molecule `3N − 6` / `3N − 5` is this formula with `F`
 empty, not a separate case.
 
-**R3 — Project, then diagonalise.** Both paths remove the surviving whole-body
-motions from the Hessian *before* diagonalising. The frozen path and the free
-path differ in which motions survive, never in whether the removal happens.
+**R3 — Project, then diagonalise, at the Γ point.** Both paths remove the
+surviving whole-body motions from the Hessian *before* diagonalising. The
+frozen path and the free path differ in which motions survive, never in whether
+the removal happens. **At q = Γ only** *(ruled 2026-09-23)*: `n_rigid` is a
+property of one geometry, and a phonon dispersion `D(q ≠ 0)` carries real
+curvature along its acoustic branches that this rule must not remove — the
+SIESTA path is Γ-only by design, and a dispersion is a different feature.
 
 **R4 — What is reported is what is left.** Every mode in the results is a
 vibration. A spectrum, a mode animation and a thermochemistry sum all read the
@@ -680,10 +695,11 @@ For a structure with held atoms:
 | CO₂ | — | 5 | straight, with no linearity flag anywhere |
 | a lone atom | — | 3 | an atom does not vibrate |
 | water | O | **3** | half of six reported numbers are not vibrations |
-| CO₂ | both O | **0** | ⚠ the table of § 3.2 says 1 |
+| CO₂ | both O | **0** | ⚠ the table of § 3 says 1 |
 | acetylene | both C | **0** | ⚠ the same trap, all four atoms on the axis |
 | NH₃ | three H | 0 | three anchors not in a row pin everything |
-| periodic slab | — / any | 3 / 0 | § 3.1a |
+| periodic slab or crystal | — / any | 3 / 0 | § 3.1a |
+| periodic wire (one axis) | — | **4** | § 3.1a — the turn about the wire's own axis survives |
 | two waters 20 Å apart | one of them | **0** | **the over-removal guard** — nothing is projected, and the free molecule keeps its six soft modes. A rule that removed them here would be committing the published error of § 3.5 |
 
 Point 3 is the assertion worth having: it states the physical property rather

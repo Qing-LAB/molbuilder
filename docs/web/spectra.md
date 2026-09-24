@@ -18,10 +18,11 @@ produces the `.spectra.json`.
 > spectra migration's P3.) The *viewing* half — the presenter, the chart,
 > the mode table — is unchanged.
 
-The spectra surface computes a **Raman vibrational spectrum** for a molecule and
-then shows it as an interactive chart: a stick spectrum of frequencies, a
-sortable table of the vibrational modes, and — when you click a peak — a **3D
-animation of that normal mode**. You reach it two ways, but it is the same code
+The spectra surface computes a **vibrational spectrum** for a molecule —
+frequencies and mode shapes, and on PySCF the infrared and Raman strengths
+beside them (§ 9b.3) — and then shows it as an interactive chart: two stacked
+panels of sticks over one frequency axis, a sortable table of the vibrational
+modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
 both times.
 
 ## 1. Two surfaces, one engine
@@ -497,7 +498,8 @@ frequencies are those of the free atoms moving in the field of the fixed ones.
 **How many vibrations that leaves is not `3N−6`, and it is not free either.**
 Freezing removes the whole-body motions that would move a frozen atom — and
 leaves the ones that would not. Two frozen atoms still let the rest of the
-molecule turn about the line through them; one frozen atom leaves all three
+molecule turn about the line through them — unless the surviving turn moves no
+free atom, as with both oxygens of CO₂ held; one frozen atom leaves all three
 rotations about it; three non-collinear frozen atoms leave nothing. Those
 leftovers are not vibrations and must not reach a spectrum or a thermochemistry
 sum. **[`science/normal-modes.md`](?doc=science/normal-modes.md) owns that
@@ -564,11 +566,10 @@ answers:
 |---|---|
 | `skip` | none |
 | `all` | every mode |
-| `top_n` | the `es_top_n` strongest by Raman activity |
-| `threshold` | every mode above `es_threshold` Raman activity |
 | `explicit` | exactly the indices you list |
+| ~~`top_n`~~ · ~~`threshold`~~ | **retired** *(decided 2026-09-23)*. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths (§ 9b.3) they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters (8 SCFs for CO₂). *The code still carries both — the config field and its catalogue rows, `spectra/selection.py`, `spectra/methods.py`, `validation/spectra.py`, the emitter's ranking in `pyscf/vibration_emitters.py`, and the tab's lock map in `lib/spectra/core.js` — and retires them at step 4 of the design's § 18, with the rest of the API shape.* |
 
-**The frequency window filters the first four and is IGNORED by `explicit`** —
+**The frequency window filters `skip` and `all` and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
 dropped it would answer a question you did not ask.
 
@@ -615,6 +616,11 @@ wrong, and is the only part its tests can meaningfully guard.**
 | `modes[].ir_intensity_km_mol` | `mf.dip_moment` at displaced geometries → `DMU_DR` | **DERIVED** — `dμ/dQ = einsum('kai,ka->i', DMU_DR, L_canonical)`, then `42.2561 · |dμ/dQ|²` | km/mol |
 | `modes[].raman_activity_a4_amu` | polarizability, in **atomic units (Bohr³)** | **DERIVED** — Placzek scalar, then one global `(Bohr/Å)⁶ ≈ 0.02197` conversion so the stored value is genuine Å⁴/amu, comparable to Gaussian/ORCA | Å⁴/amu |
 | `modes[].amplitude_ang` | — | molbuilder's own display choice (§ 4.1) | Å |
+| `modes[].eigenvector_display` | — | **DERIVED** — the canonical vector rescaled per mode so `max|L_k| = 1`, the animation's input (§ 4.1). Today's reader requires both forms; § 9b.3 says which an engine supplies | dimensionless |
+| `modes[].has_imag` | the sign of the eigenvalue | a negative wavenumber is reported as imaginary and drawn in red at its negative frequency (§ 2) | — |
+| `modes[].ir_active` · `raman_active` · `activity_class` | — | **DERIVED at every serialisation, never stored** (`spectra/activity.py` through `SpectraResults._modes_with_activity`). A mode whose channel was not computed is `partial`. Otherwise, per channel: divide every mode by the channel's strongest, sort on a log scale, and cut at the widest gap between neighbours when that gap is at least two decades wide and sits below a thousandth of the peak; when the channel will not separate itself, cut at a millionth of the peak; and a channel whose strongest value is under an absolute floor (1e-3 km/mol · 1e-3 Å⁴/amu) has no band at all, so every mode is inactive. **This is the rule** *(built 2026-09-11, confirmed as the rule 2026-09-23)*: it is asked of the data because where the residue sits is a property of the calculation — measured cuts ranged 2.6e-6 to 1.5e-4 across four real runs — while the separation is a property of the symmetry. Pinned on the real CO₂ numbers by `tests/spectra/test_activity.py` | class · bool |
+| `ir_route` · `ir_fd_step_ang` | which dμ/dR route ran, and its step | recorded once per run (`science/normal-modes.md` § 4a.3). **`raman_route` does not exist** and is owed (design § 15.7) | — |
+| `thermo` | PySCF's `thermo.thermo` at the headline (T, P); the deck's own temperature grid | the deck computes, the viewer draws (§ 3). The grid is vibrational-only and the headline full RRHO under one `note` — design § 15.3 | — |
 | `electronic_structure.mo_energies_*_eh` | `mf.mo_energy` at ±displaced geometries | non-finite dropped | Hartree |
 
 ### 9b.1 Two rules this table exists to enforce
