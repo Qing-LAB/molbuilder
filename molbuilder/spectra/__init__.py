@@ -15,7 +15,13 @@ through the ordinary ``spec_for`` seam, composing the emitters in
 ``molbuilder.pyscf.vibration_emitters``.  Every module in this
 package serves the ARTIFACT: ``results`` (the ``.spectra.json``
 shape), ``selection`` (which modes get per-mode ES), ``methods``
-(the Methods paragraph the deck header carries).
+(the Methods paragraph the deck header carries) -- and the two
+engine-agnostic derivations every engine's artifact rests on:
+``activity`` (which modes are active in a channel) and ``normal_modes``
+(which whole-body motions a vibration removes, and the one path that
+removes them; ``docs/science/normal-modes.md``).  The first runs on the
+host at serialisation; the second is spliced into a deck as source text,
+so it may not lean on a module-scope name.
 """
 
 # NO CONFIG RE-EXPORT.  A spectra calculation is described by `PySCFConfig`;

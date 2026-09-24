@@ -284,3 +284,85 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
             f"{xc} density_fit={df}: asking for IR moved the Hessian by "
             f"{float(drift):.2e} Hartree/Bohr^2")
     assert len(rows) == 4, "every functional x density-fitting combination"
+
+
+def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
+    """The gate of the unification design (§ 7.5 step 2): before the deck
+    is touched, the one path -- `spectra.normal_modes.vibrational_modes`,
+    nothing held -- must reproduce PySCF's own `harmonic_analysis` on
+    free molecules to numerical noise.  Four systems, each for a reason:
+    water (the ordinary case), CO2 (five motions removed, not six, with
+    no linearity flag anywhere), HF (one mode, nothing to hide behind),
+    methane (degenerate modes -- eigenvalues must agree, eigenvectors
+    need not).
+
+    The two functions travel into the probe as SOURCE TEXT, the way the
+    deck will carry them, so a module-scope name either one leaned on
+    would fail here as a NameError rather than on the queue.
+    """
+    import inspect
+
+    from molbuilder.constants import CM1_PER_SQRT_HARTREE_BOHR2_AMU
+    from molbuilder.spectra import normal_modes as _nm
+
+    script = tmp_path / "rank_gate.py"
+    script.write_text(
+        "import json\n"
+        "import numpy as np\n"
+        "from pyscf import gto, scf\n"
+        "from pyscf.hessian import thermo\n"
+        + inspect.getsource(_nm.rigid_motions) + "\n"
+        + inspect.getsource(_nm.vibrational_modes) + "\n"
+        "SYSTEMS = {\n"
+        " 'water': 'O 0 0 0.119; H 0 0.757 -0.477; H 0 -0.757 -0.477',\n"
+        " 'co2': 'O 0 0 -1.16; C 0 0 0; O 0 0 1.16',\n"
+        " 'hf': 'H 0 0 0; F 0 0 0.92',\n"
+        " 'methane': ('C 0 0 0; H 0.629 0.629 0.629; H -0.629 -0.629 0.629;'\n"
+        "             ' H -0.629 0.629 -0.629; H 0.629 -0.629 -0.629'),\n"
+        "}\n"
+        "for name, atom in SYSTEMS.items():\n"
+        "    mol = gto.M(atom=atom, basis='sto-3g', verbose=0)\n"
+        "    mf = scf.RHF(mol).run()\n"
+        "    hess = np.asarray(mf.Hessian().kernel())\n"
+        "    mass = np.asarray(mol.atom_mass_list(isotope_avg=True), dtype=float)\n"
+        "    ref = thermo.harmonic_analysis(mol, hess, mass=mass)\n"
+        "    lam, modes, pats = vibrational_modes(\n"
+        "        hess, mass, mol.atom_coords(unit='Angstrom'), [],\n"
+        "        ('isolated', 'isolated', 'isolated'))\n"
+        "    ref_lam = np.asarray(ref['force_const_au'], dtype=float)\n"
+        "    ref_w = ref['freq_wavenumber']\n"
+        "    ref_cm1 = [float(w.real) if abs(getattr(w, 'imag', 0.0)) == 0\n"
+        "               else -abs(float(w.imag)) for w in ref_w]\n"
+        "    # mode overlap in the mass metric, ref mode i against ours, for\n"
+        "    # the non-degenerate systems\n"
+        "    ref_modes = np.asarray(ref['norm_mode'], dtype=float)\n"
+        "    overlaps = []\n"
+        "    for i in range(len(ref_lam)):\n"
+        "        best = max(abs(float((mass[:, None] * ref_modes[i] * L).sum()))\n"
+        "                   for L in modes)\n"
+        "        overlaps.append(best)\n"
+        "    print('RESULT', json.dumps({'name': name, 'n_ref': int(len(ref_lam)),\n"
+        "          'n_ours': int(len(lam)), 'n_rigid': int(len(pats)),\n"
+        "          'ref': sorted(ref_lam.tolist()), 'ours': sorted(lam.tolist()),\n"
+        "          'ref_cm1': sorted(ref_cm1), 'overlaps': overlaps}))\n",
+        encoding="utf-8")
+    out = subprocess.run(
+        ["bash", "-lc",
+         f"source {CONDA_SH} && conda activate molbuilder-pySCF "
+         f"&& python {script}"],
+        capture_output=True, text=True, timeout=1800)
+    rows = [json.loads(ln[len("RESULT "):]) for ln in out.stdout.splitlines()
+            if ln.startswith("RESULT ")]
+    assert len(rows) == 4, f"probe produced {len(rows)} rows:\n{out.stdout}\n{out.stderr[-3000:]}"
+    expected_modes = {"water": 3, "co2": 4, "hf": 1, "methane": 9}
+    import numpy as np
+    for r in rows:
+        name = r["name"]
+        assert r["n_ref"] == r["n_ours"] == expected_modes[name], (name, r["n_ref"], r["n_ours"])
+        assert r["n_rigid"] == 3 * {"water": 3, "co2": 3, "hf": 2, "methane": 5}[name] - expected_modes[name]
+        ref, ours = np.asarray(r["ref"]), np.asarray(r["ours"])
+        assert np.allclose(ours, ref, rtol=1e-8, atol=1e-13), (name, ours - ref)
+        ours_cm1 = np.sign(ours) * np.sqrt(np.abs(ours)) * CM1_PER_SQRT_HARTREE_BOHR2_AMU
+        assert np.allclose(ours_cm1, np.asarray(r["ref_cm1"]), atol=1e-4), (name, ours_cm1, r["ref_cm1"])
+        if name in ("water", "hf"):
+            assert all(abs(o - 1.0) < 1e-6 for o in r["overlaps"]), (name, r["overlaps"])

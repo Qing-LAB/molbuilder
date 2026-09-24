@@ -544,14 +544,24 @@ A filter that works by luck is not a filter.
 **The new piece.** One function, one job:
 
 ```text
-    rigid_motions(positions, held_atoms, axis_kind)  ->  the patterns to remove
+    rigid_motions(positions, held_atoms, axis_kind, cell)  ->  the patterns to remove
+    vibrational_modes(hessian, masses, positions, held_atoms, axis_kind, cell)
+                                              ->  eigenvalues, modes, the patterns
 ```
 
 Its length is `n_rigid`. It knows no engine, no config and no file format — it
 takes numbers and returns numbers, which is what makes it testable without a
 quantum chemistry calculation at all. It takes the structure's `axis_kind`,
 never the boolean `pbc()` (§ 18 step 2): the boolean cannot say which axis
-repeats, and the surviving turns depend on exactly that.
+repeats, and the surviving turns depend on exactly that — and it takes the
+lattice **vectors** too, because a wire's one surviving turn is about that
+vector's direction, not about a Cartesian axis. **Built 2026-09-23** as
+`molbuilder/spectra/normal_modes.py`: the second function is the one path —
+the free-free block of the true Hessian, mass-weighted, diagonalised in the
+complement of the removed motions, so exactly `3·N_free − n_rigid` modes come
+out and nothing removed can come back (R2-R4 by construction). Both are
+self-contained for splicing, and the gate carried them into the PySCF
+environment as source text.
 
 **One constraint on where it can live.** The projection happens *inside the
 generated deck*, at run time, so this function has to travel into the deck the
@@ -564,8 +574,8 @@ not travel. This is not hypothetical; it is the bug that was fixed on
 
 | # | step | done when |
 |---|---|---|
-| 1 | build `rigid_motions` + its tier-1 tests | every row of § 7.6 tier 1 passes, no engine involved |
-| 2 | **the gate**: prove it reproduces PySCF on free molecules | tier 2 matches to numerical noise |
+| 1 | build `rigid_motions` + its tier-1 tests — **done 2026-09-23** | every row of § 7.6 tier 1 passes, no engine involved (`tests/spectra/test_normal_modes.py`, 40 tests; three mutations each turn the right rows red) |
+| 2 | **the gate**: prove it reproduces PySCF on free molecules — **passed 2026-09-23** | tier 2 matches to numerical noise (`tests/test_vibration_e2e.py::test_the_rank_rule_reproduces_pyscf_on_free_molecules`: water, CO₂, HF, methane at RHF/STO-3G; eigenvalues to 1e-8 relative, wavenumbers to 1e-4 cm⁻¹, water's and HF's mode vectors to 1e-6 in the mass metric) |
 | 3 | replace the deck's two-branch analysis with the single path | tier 3 passes |
 | 4 | point the three counting sites at the produced mode list | the Methods paragraph and the run agree by construction |
 | 5 | narrow the stationarity check to the free atoms | a constrained minimum stops raising a false alarm |
@@ -1293,8 +1303,9 @@ converging. One 3-atom FC run with one constrained atom settles it. Minutes of
 compute, and it decides whether the SIESTA path reads `.FC` and slices, or
 reads `C.FC` and trusts.
 
-**Step 1-2 unchanged — THE NEXT STEP** — build `rigid_motions` from § 3.1's
-rank; prove it reproduces PySCF on free molecules **as a gate**. Two
+**Step 1-2 — DONE 2026-09-23** (§ 7.5's table has the evidence) — build
+`rigid_motions` from § 3.1's rank; prove it reproduces PySCF on free molecules
+**as a gate**. **Step 3 is next.** Two
 additions from § 15: it must take `axis_kind` (not `pbc()`), and § 3.1a's
 two-row table is replaced by the case-free statement *(done in the contract
 2026-09-23)* — the admissible rotation generators are the antisymmetric `A`

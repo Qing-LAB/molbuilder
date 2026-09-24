@@ -251,7 +251,18 @@ crystal — and the table of § 3 gains these rows:
 | periodic, any number of axes | **any at all** | **0** — translation would move a held atom |
 
 Which axes are `periodic` is the structure's own `axis_kind`, per axis — never
-the boolean `pbc()`, which cannot say *which* axis repeats.
+the boolean `pbc()`, which cannot say *which* axis repeats. An axis that
+continues (`transport`) binds a turn exactly as a repeating one does.
+
+**What "moves nothing" means, since a rank needs a tolerance.** A surviving
+motion is dropped when its root-sum-square displacement of the atoms in
+question, per unit motion, is below **10⁻³ Å**: a molecule bent by numerical
+noise is straight, and a molecule bent by a tenth of an Ångström is not. A
+tolerance of a millionth would hand a real bend to the projection on a
+geometry converged to ordinary criteria; PySCF's own linearity test sits at a
+moment of inertia of 5·10⁻⁶ amu·Å², the same order of off-axis distance for a
+light atom. The one home is `spectra/normal_modes.py`, and the four-molecule
+gate of the design's § 7.6 tier 2 is what pins it against PySCF.
 
 **The junction case falls out as zero.** A slab with its lower layers held is the
 second row: nothing survives, nothing is removed, and the spurious-mode problem
