@@ -446,7 +446,24 @@ def api_transport_describe() -> Any:
                                      f"marks `shared` for transport"}), 400
     from molbuilder.transport.citation_defaults import citation_answers
     _answers = citation_answers(cited.path)
-    _chosen = {k: v for k, v in shared_chosen.items() if v is not None}
+    # THE PANEL'S VALUES, through the door every SIESTA form goes through
+    # (`_shared.siesta_config_from_params`): coerced to each field's
+    # declared type, so a number typed as text and a comma-typed tuple mean
+    # what they mean everywhere.  A BLANK is not chosen (§ 3.8.3) and is
+    # left out, never written as an empty string -- measured 2026-09-24:
+    # a blank species order reached the template as '' and `prep` refused
+    # the file by name.
+    from ._shared import siesta_config_from_params
+    _typed_shared = {k: v for k, v in shared_chosen.items()
+                     if v is not None and v != ""}
+    try:
+        _panel_cfg = siesta_config_from_params(_typed_shared)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"the shared panel carries a value its "
+                                 f"field cannot take: {exc}"}), 400
+    _chosen = {k: getattr(_panel_cfg, k) for k in _typed_shared
+               if getattr(_panel_cfg, k, None) is not None}
     _unanswered = sorted(
         it.name for it in _T.select(_cat, engine="siesta", citation=True)
         if "transport" in it.citation

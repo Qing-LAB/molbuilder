@@ -20,6 +20,7 @@ contracts.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import math
 import re
 import typing
@@ -1332,6 +1333,23 @@ def config_from_params(cls, params: Dict[str, Any],
         # for parse-failure as for validator-failure.
         kwargs[k] = coerce_to_field_type(f, v, hints)
     return cls(**kwargs)
+
+
+def siesta_config_from_params(params: Dict[str, Any]):
+    """A ``SiestaConfig`` from a form's payload, keyed by catalogue names,
+    each value coerced to its field's declared type (R5).  ONE home for
+    the three doors that take a SIESTA form -- the Build hand-over, the
+    Structure-optimization hand-over and the transport describe door's
+    shared panel -- so a blank, a comma-typed tuple and a number typed as
+    text mean the same thing on every tab."""
+    from molbuilder.config.siesta import SiestaConfig
+    return config_from_params(SiestaConfig, params, _siesta_hints())
+
+
+@functools.lru_cache(maxsize=1)
+def _siesta_hints() -> Dict[str, Any]:
+    from molbuilder.config.siesta import SiestaConfig
+    return typing.get_type_hints(SiestaConfig)
 
 
 class PeriodicityRefused(Exception):

@@ -41,67 +41,58 @@ const WORKSPACE_TAG = "transport";
      * developer-readable message via the status line so the page
      * doesn't fail silently.
      */
-    function _fetchAndRender(formContainer, formSchema) {
-        /* THE PER-RUNG FORM (engines/transport.md 3.8.2): every transport
-         * item that is not shared, role-fixed or the machine's; its
-         * values are override bags, routed to the rung that owns each.
-         * The shared description is the panel above it, never here. */
-        var url = SCHEMA_URL + "?surface=rung";
+    /**
+     * ONE fetch for BOTH surfaces (engines/transport.md 3.8.2): the
+     * catalogue narrowed to the kind, split by the markers on the
+     * server.  `surface` is "rung" -- the per-rung form, whose values
+     * are override bags -- or "shared" -- the panel that edits the
+     * template, whose values are the citation's answers, so it carries
+     * the junction and is rendered again whenever the junction changes.
+     * Resolves to the answer body; renders an error paragraph and
+     * resolves to null on failure so the page never fails silently.
+     */
+    function _fetchSurface(surface, host, formSchema) {
+        var url = SCHEMA_URL + "?surface=" + surface
+            + (surface === "shared" && _junction
+               ? "&junction=" + encodeURIComponent(_junction) : "");
         return root.fetch(url)
             .then(function (r) {
                 return r.json().then(function (body) {
                     if (!r.ok || !body.ok) {
-                        throw new Error(body.error
-                            || "schema fetch failed");
+                        throw new Error(body.error || "schema fetch failed");
                     }
-                    return body.schema;
+                    return body;
                 });
             })
-            .then(function (schema) {
-                while (formContainer.firstChild) {
-                    formContainer.removeChild(formContainer.firstChild);
-                }
-                formSchema.renderForm(formContainer, schema);
-                _restoreFormValues(formContainer, schema, formSchema);
-                _wirePersistence(formContainer, schema, formSchema);
-                // Cached for the Send handler's changed-fields
-                // diff -- one fetch per page life.
-                _cachedSchema = schema;
-                _setStatus("Form loaded ("
-                    + schema.sections.reduce(function (n, s) {
-                        return n + (s.fields ? s.fields.length : 0);
-                    }, 0)
-                    + " fields).");
+            .then(function (body) {
+                while (host.firstChild) host.removeChild(host.firstChild);
+                formSchema.renderForm(host, body.schema);
+                return body;
             })
             .catch(function (e) {
-                _renderErrorParagraph(
-                    formContainer,
-                    "Could not load the transport form schema: "
-                    + (e && e.message ? e.message : String(e))
-                );
-                _setStatus("schema error");
+                _renderErrorParagraph(host,
+                    "Could not load the " + surface + " form: "
+                    + (e && e.message ? e.message : String(e)));
+                return null;
             });
     }
 
-    /**
-     * Render a single ``<p class="error" role="alert">`` with
-     * ``textContent`` so any message (including unsanitised
-     * server error strings) renders as literal text instead of
-     * HTML.  Pinned by tests/test_xss_audit.py — any
-     * ``.innerHTML = "..."`` in a hot path is a XSS sink waiting
-     * for a network response with HTML-looking error text.
-     */
-    function _renderErrorParagraph(container, message) {
-        while (container.firstChild) {
-            container.removeChild(container.firstChild);
-        }
-        var p = document.createElement("p");
-        // "status error" -- the shared severity vocabulary
-        // (page-shell.css); a bare "error" class has no rule anywhere.
-        p.className = "status error";
-        p.setAttribute("role", "alert");
-        p.textContent = message;
-        container.appendChild(p);
+    /* The per-rung form: rendered once per page life, its values kept
+     * across a reload (session storage), its CHANGED fields the
+     * overrides the description carries. */
+    function _fetchAndRender(formContainer, formSchema) {
+        return _fetchSurface("rung", formContainer, formSchema)
+            .then(function (body) {
+                if (!body) return;
+                _restoreFormValues(formContainer, body.schema, formSchema);
+                _wirePersistence(formContainer, body.schema, formSchema);
+                _cachedSchema = body.schema;
+                _setStatus("Form loaded ("
+                    + body.schema.sections.reduce(function (n, s) {
+                        return n + (s.fields ? s.fields.length : 0);
+                    }, 0)
+                    + " fields).");
+            });
     }
 
     function _restoreFormValues(container, schema, formSchema) {
@@ -671,48 +662,27 @@ const WORKSPACE_TAG = "transport";
     function _fetchAndRenderShared(formSchema) {
         var host = _$("transport-shared-container");
         if (!host || !formSchema) return Promise.resolve();
-        var url = SCHEMA_URL + "?surface=shared"
-            + (_junction ? "&junction=" + encodeURIComponent(_junction) : "");
-        return root.fetch(url)
-            .then(function (r) {
-                return r.json().then(function (body) {
-                    if (!r.ok || !body.ok) {
-                        throw new Error(body.error || "schema fetch failed");
-                    }
-                    return body;
-                });
-            })
-            .then(function (body) {
-                while (host.firstChild) host.removeChild(host.firstChild);
-                formSchema.renderForm(host, body.schema);
-                _sharedSchema = body.schema;
-                var line = _$("transport-shared-source");
-                if (line) {
-                    var src = body.source || {kind: "none", name: ""};
-                    line.textContent = !_junction
-                        ? "No junction cited yet: these are the catalogue's "
-                          + "starting values."
-                        : src.kind === "deck"
-                        ? "Values from the run you cited (" + src.name + ").  "
-                          + "Change any of them; a change applies to all five "
-                          + "rungs at once."
-                        : src.kind === "record"
-                        ? "Values recorded with the structure you cited"
-                          + (src.name ? " (" + src.name + ")" : "") + ".  "
-                          + "Change any of them; a change applies to all five "
-                          + "rungs at once."
-                        : "The citation carries no deck and no record, so it "
-                          + "answers none of these.  A blank field is not "
-                          + "chosen: the template records no value for it and "
-                          + "prep falls back to the catalogue's default until "
-                          + "you choose.";
-                }
-            })
-            .catch(function (e) {
-                _renderErrorParagraph(host,
-                    "Could not load the shared panel: "
-                    + (e && e.message ? e.message : String(e)));
-            });
+        return _fetchSurface("shared", host, formSchema).then(function (body) {
+            if (!body) return;
+            _sharedSchema = body.schema;
+            var line = _$("transport-shared-source");
+            if (!line) return;
+            var src = body.source || {kind: "none", name: ""};
+            line.textContent = !_junction
+                ? "No junction cited yet: these are the catalogue's starting "
+                  + "values."
+                : src.kind === "deck"
+                ? "Values from the run you cited (" + src.name + ").  Change "
+                  + "any of them; a change applies to all five rungs at once."
+                : src.kind === "record"
+                ? "Values recorded with the structure you cited"
+                  + (src.name ? " (" + src.name + ")" : "") + ".  Change any "
+                  + "of them; a change applies to all five rungs at once."
+                : "The citation carries no deck and no record, so it answers "
+                  + "none of these.  A blank field is not chosen: the "
+                  + "template records no value for it and prep falls back to "
+                  + "the catalogue's default until you choose.";
+        });
     }
 
     /* What the shared panel says now -- every field, not only the changed

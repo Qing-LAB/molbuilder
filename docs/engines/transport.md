@@ -1895,7 +1895,7 @@ markers the catalogue carries, never by a list a blueprint keeps:
 | `calculations` | not a parameter of this kind | — | — |
 | `allocation` | the scheduler answers at prep | no | no |
 | `role` | the rung's own identity; a choice with one correct answer | no | no |
-| `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials) answer themselves | **no** |
+| `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials) answer themselves; the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
 | `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
 | `stages` | only these rungs may own it | — | routed to those rungs |
 

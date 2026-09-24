@@ -1094,14 +1094,15 @@ def api_build_preflight():
 # --------------------------------------------------------------------- #
 
 
-_SIESTA_HINTS = typing.get_type_hints(SiestaConfig)
 _PYSCF_HINTS  = typing.get_type_hints(PySCFConfig)
 
 
 def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
     """Build a SiestaConfig from a JSON params dict, with per-field
-    type coercion (R5)."""
-    return _config_from_params(SiestaConfig, params, _SIESTA_HINTS)
+    type coercion (R5) -- the one door in `_shared`, which the transport
+    describe door's shared panel reads through too."""
+    from ._shared import siesta_config_from_params
+    return siesta_config_from_params(params)
 
 
 def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
