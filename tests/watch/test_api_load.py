@@ -335,16 +335,13 @@ _MOLWATCH_HEAD = (
 )
 
 
-def test_load_directory_picks_molwatch_log_first(client, tmp_path):
-    """A directory with a .molwatch.log resolves to that file even if a
-    .out file is also present (the protocol prefers .molwatch.log)."""
-    (tmp_path / "my-job.molwatch.log").write_text(_MOLWATCH_HEAD)
-    (tmp_path / "my-job.out").write_text(_SIESTA_HEAD)
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["resolved_from"] == str(tmp_path)
-    assert body["path"].endswith("my-job.molwatch.log")
+# `test_load_directory_picks_molwatch_log_first` RETIRED 2026-09-25.  It
+# pinned "the protocol prefers .molwatch.log", which `model/parse.md` § 5.5
+# withdrew on 2026-09-24 (`0f914577`): SIESTA never writes into the log prep
+# seeds -- a 613-byte `initial_preview` beside a 34 KB `.out` -- so offered
+# first, the seed outranked the run's own result.  The engine's own output now
+# opens first, pinned where this door asks (`openable_in`):
+# `tests/parse/dirs/test_rundir.py::test_the_engines_own_output_opens_before_the_seeded_progress_log`.
 
 
 def test_load_directory_falls_back_to_fdf_system_label(client, tmp_path):

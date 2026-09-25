@@ -203,7 +203,13 @@ INNERHTML_ALLOWLIST = {
     # the code — same patterns, same safety story).  Most use
     # escapeHtml (now auto-accepted by the heuristic above); a
     # few are static status messages with no dynamic content.
-    ("lib/spectra/core.js", "formContainer.innerHTML"),
+    # The engine forms' "form-schema.js not loaded" notice -- a static literal,
+    # written into each host since `dccac2f3` (2026-09-24) made one strip serve
+    # both tabs.  Re-derived from `formContainer.innerHTML`, the single
+    # container's name before: the same site, and the same safety story.  Keyed
+    # on the notice's own text, so it exempts that site and no later one; its
+    # sibling (`Could not load form schema`) passes `escapeHtml` and needs none.
+    ("lib/spectra/core.js", "form-schema.js not loaded"),
     ("lib/spectra/core.js", "esBarDiagram.innerHTML"),
     ("lib/spectra/core.js", "modeViewer.innerHTML"),
     ("lib/spectra/core.js", "spectrumChart.innerHTML"),

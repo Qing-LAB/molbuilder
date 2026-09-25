@@ -59,7 +59,7 @@ class TestFieldMetadata:
             assert "section" in f.metadata, f"{f.name}: missing section"
             assert "label"   in f.metadata, f"{f.name}: missing label"
 
-    def test_every_field_the_form_offers_has_help(self):
+    def test_every_field_the_form_offers_has_help(self, web_client):
         """A knob must not ship undocumented -- asserted where the user READS it.
 
         This checked `f.metadata["help"]` until 2026-09-16, which was the
@@ -71,11 +71,23 @@ class TestFieldMetadata:
 
         What matters is the property, not where it is stored: everything the
         form offers arrives carrying help.
+
+        And the FORM is what the tab is served.  Since 2026-09-24 that is the
+        catalogue narrowed to the kind (`engines/transport.md` § 3.8.0), asked
+        through `/api/transport/schema` -- the shared panel and one tab per
+        rung.  This read `dataclass_to_form_schema(TransportConfig)`, which no
+        production code calls, and which still offered `engine`: the panel
+        § 3.8.8 says nothing renders, left without help once its catalogue row
+        retired (`671abe43`).  So it asks the route the tab asks.
         """
-        from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-        schema = dataclass_to_form_schema(TransportConfig, "t")
-        offered = [f for s in schema.get("sections", [])
-                   for f in s.get("fields", [])]
+        from molbuilder.transport.stages import TRANSPORT_STAGES
+        offered = []
+        for query in (["surface=shared"]
+                      + [f"surface=rung&rung={r}" for r in TRANSPORT_STAGES]):
+            r = web_client.get(f"/api/transport/schema?{query}")
+            assert r.status_code == 200, (query, r.get_json())
+            offered += [f for s in r.get_json()["schema"].get("sections", [])
+                        for f in s.get("fields", [])]
         assert offered, "no fields served -- this test would pass vacuously"
         for f in offered:
             assert len(f.get("help", "")) > 10, (
