@@ -283,11 +283,12 @@ no one is allowed to act on.)
 
 ## 6.0 The engine offset — ONE placement rule, for every engine *(user, 2026-09-25)*
 
-*Decided in conversation on 2026-09-25. **Partly built** (2026-09-25): the rule
-and the hand-off gate (`cell.py`), every emitter (SIESTA, the five transport
-rungs, PySCF, the molwatch preview) and each deck's record. Not yet built: the
-stated offset (below) and the gate's containment and warnings (check 3); the
-readers, the wire and MolView; and the retirement of `cell_origin`. The scope and the
+*Decided in conversation on 2026-09-25. **Partly built** (2026-09-25): the rule,
+the hand-off gate with its containment (`cell.py`), every emitter (SIESTA, the
+five transport rungs, PySCF, the molwatch preview), each deck's record, and the
+stated offset in memory. Not yet committed: the retirement of `cell_origin`,
+the readers, the wire and MolView (plan § 5q.6, P1 and P3). Not yet built: the
+transport face-gap warning (check 2). The scope and the
 order of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
 clause this section supersedes says so at its own site, and is deleted with the
