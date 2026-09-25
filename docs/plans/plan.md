@@ -3363,7 +3363,7 @@ edit; *transport clearance along c* in the transport kind validator
 | **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, the SIESTA and PySCF vibration ladders, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it; the vibration `freq` deck writes the relax output unchanged (a stated `0`); an atom beyond a periodic face is a warning in the report |
 | **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output. The fixture is `claude-vib-ui/optimization/au333bdt-loose`, a real flush run — it must be drawn **flush** |
 | **T3** | export from Results → reload | coordinates + offset is what the engine had: an automatic run whose atoms did not move reloads with the rule giving zero; an assigned run reloads with an assigned zero |
-| **T4** | `prep device` on the fixture | clearance at both faces along c; the lead's and the device's L blocks agree (risk **R1**) |
+| **T4** | `prep device` on the fixture | every atom inside the cell along c; a face gap below the lead's `d/2` is warned, not refused (risk **R1**) |
 | **T5** | the rule itself, API-level on a measured fixture — the docstring says so | the hexagonal junction's `[6.3684, 3.746, 18.5325]`. A Cartesian implementation fails it (x-extent 10.093 > \|a\| 8.651); a re-wrapping one fails it (the 2.399 > 2.355 cut) |
 
 Each is mutation-tested: break the rule, watch it fail. T1 also pins a rule
@@ -3468,16 +3468,16 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
 
 ### 5q.7 Risks
 
-* **R1 — the device's gaps against the lead's** *(reframed 2026-09-25 by the
-  structure review)*. A different rigid shift between lead and device is not
-  what TranSIESTA checks: it asked for a 1.1773 Å half-gap while the leads it
-  had just run sat flush in their own cells. The condition inferred from that
-  is per face and an inequality — the device's gap at each face ≥ the lead's
-  `d/2` (contract § 6.0, check 2). The fixture passes by 0.23 mÅ a face
-  (1.1775 vs 1.17725, because `c` was typed 37.065 against span + spacing
-  37.0645); a `c` typed 0.5 mÅ short would fail both. T4 asserts ≥ at both
-  faces of both electrodes, and only the P5 device run confirms the exact
-  condition and its tolerance.
+* **R1 — the device's gaps against the lead's** *(reframed twice, 2026-09-25)*.
+  What TranSIESTA requires is containment — every atom inside the cell (its
+  own words, contract § 6.0, *Why centring*); `d/2` at each face is what its
+  recipe recommends, and centring gives it. So the 0.23 mÅ by which the
+  device's half-gap (1.1775) exceeds the lead's (1.17725) — `c` typed 37.065
+  against span + spacing 37.0645 — is irrelevant to the requirement: either
+  way every atom is more than a full ångström inside the cell. A lead and
+  device placed by different rigid shifts is not what TranSIESTA checks (the
+  leads ran flush in their own cells). T4 asserts containment and the `d/2`
+  warning; only the P5 device run shows TranSIESTA accepting it.
 * **R5 — the record is load-bearing before anything reads it.** `same_calculation`
   masks only volatile fields, so any change to the ENGINE-OFFSET block's text
   (a key added, the format bumped) makes every concluded rung "not the same

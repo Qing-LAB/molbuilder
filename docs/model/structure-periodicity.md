@@ -338,6 +338,25 @@ reader derives anything, and **placement no longer depends on the axis kind**.
 The kinds keep their other jobs — how big a box nobody typed is (§ 4), and what
 the physics treats as periodic, isolated or transport — and lose this one.
 
+**Why centring — robustness, not an engine's requirement** *(user, 2026-09-25:
+"it is more for robustness, not really a requirement by the engines")*. What
+the engines require is CONTAINMENT: every atom inside the cell. TranSIESTA says
+so in its own words — *"Device atomic coordinates are not inside unit-cell.
+This is a requirement for bias calculations as the Poisson equation cannot be
+correctly handled due to inconsistencies with the grid and atomic coordinates"*,
+and *"Electrode: L lies outside the unit-cell"*, which stopped the 2026-09-25
+device before its SCF. Where inside the atoms sit is not physics: along a
+periodic axis a rigid shift changes nothing but SIESTA's meV-level egg-box
+ripple (R3), and a junction's physics is its cell length `c` — span plus one
+layer spacing, so the two electrodes' outer layers meet across the boundary as
+bulk does (`science/junction-cell.md` § 6.1) — not how that one gap is split
+between the two faces. Centring is chosen because it puts every atom as far
+from every face as the cell allows, so no rounding error can carry one out: the
+2026-09-25 refusal was a flush electrode, zero margin, pushed 16 fm outside by
+a corner stored to three decimals. And it is the placement TranSIESTA's own
+recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
+*"Electrode inter-layer distance"*).
+
 | | |
 |---|---|
 | **design coordinates** | the `.xyz`: the author's intent. No engine step rewrites them |
@@ -368,7 +387,7 @@ that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
 On that junction the rule gives `engine_offset = [6.3684, 3.746, 18.5325]` Å.
 The engine then sees z = 1.1775 … 35.8875 in `c = 37.065`, with equal fractional
 margins on every axis (a 0.0555 / 0.0555, b 0.0555 / 0.0555, c 0.0318 / 0.0318)
-— the z half-gap TranSIESTA itself asked for (1.1773) — and the offset
+— the z half-gap TranSIESTA's own recipe gives (1.1773) — and the offset
 recomputed on those engine coordinates is `[0, 0, 0]`.
 
 **A stated offset — an origin the person assigns, and an engine's own.** The
@@ -478,16 +497,16 @@ that block's.
    not their span: an atom outside the box along a non-periodic lattice
    vector is named on the Cell page, and the edit stands (*A stated
    offset*); check 3 refuses the deck.
-2. **A transport rung has clearance along its transport axis** — the transport
-   kind validator refuses a rung whose atoms touch a face along `c`, saying that
-   a junction's gap is one layer spacing (`science/junction-cell.md` § 6.1).
-   This is the refusal that should have come from molbuilder before the
-   2026-09-25 device deck reached TranSIESTA. The condition is per face and an
-   inequality: at each face the device's gap is at least the lead's `d/2`,
-   half the electrode's interlayer spacing. TranSIESTA asked for a 1.1773 Å
-   half-gap while the leads it had just run sat flush in their own cells, so a
-   different rigid shift between lead and device is not what it checks. The
-   spacing is the electrode model's, known where the rung is composed.
+2. **A transport rung's gaps along its transport axis** — an atom OUTSIDE the
+   cell is refused (check 3): that is TranSIESTA's requirement, above, and the
+   refusal that should have come from molbuilder before the 2026-09-25 device
+   deck reached TranSIESTA. A gap at a face below the lead's `d/2` — half the
+   electrode's interlayer spacing — is WARNED, not refused: it is legal, the
+   placement TranSIESTA's recipe recommends is `d/2`, and a smaller margin is
+   the fragile state that failed. The leads TranSIESTA had just run sat flush in
+   their own cells, so a different rigid shift between lead and device is not
+   what it checks. The spacing is the electrode model's, known where the rung is
+   composed.
 
 3. **Placed at the hand-off** — the deck renderer (`script_emit.render_deck`)
    runs `cell.require_placed` on the frame every spec carries, and a spec that
