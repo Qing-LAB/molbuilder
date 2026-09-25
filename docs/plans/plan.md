@@ -3395,7 +3395,7 @@ inventory at the end of phase 4, not by a lint test.
 | `validation/siesta.py:802–803` | a containment check that ignores the corner — `inv(cell)` on raw positions; the owner says inside, the check says outside (the audit's § 1.6) | P1 |
 | `periodicity_gate.py:385,422,592`, `_shared.py:156` | user-facing error text citing a `§ 3c` that no longer exists | P1 / P3 |
 | `siesta/input.py` | hand translation (`:871`); validators get a re-derived struct (`:990`) | P2 |
-| `siesta/input.py` `_wrap_into_cell` (`:295`, `:948–956`) | the `wrap_into_cell` knob fractional-wraps atoms into a user-supplied cell — the re-wrapping contract § 6.0 forbids. Missed by the first inventory; the audit's § 8 named it an origin-rule site | P2 — **retired 2026-09-25**: the knob, its catalogue row, its validator check, the wrap branch and the tests that pinned it |
+| `siesta/input.py` `_wrap_into_cell` (`:295`, `:948–956`) | the `wrap_into_cell` knob fractional-wraps atoms into a user-supplied cell — the re-wrapping contract § 6.0 forbids. Missed by the first inventory; the audit's § 8 named it an origin-rule site | P2 — **retired 2026-09-25**: the knob, its catalogue row, its validator check, the wrap branch and the tests that pinned it. A template written before then still names the item with a value, and `prep` refuses it like any unknown name until the block is deleted — kept so *(user, 2026-09-25: "retiring this unused item is correct and should be refused")*; a read-and-ignore rule was tried and reverted |
 | `transport/transiesta.py` | a second hand translation (`:401–404`) | P2 |
 | `pyscf/input.py` | coordinates verbatim into `gto.M` (`:137`, `:547`) | P2 |
 | `script_emit.py` | the metadata block writer/reader; + the record's | P2 |

@@ -1157,24 +1157,6 @@ _REQUIRED_ITEM_KEYS = ("kind", "category", "type", "help")
 _KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
 
 
-#: Items a template ON DISK may carry that this build no longer declares --
-#: name -> when it went, and why ignoring it loses nothing.  ACCEPTED AND
-#: IGNORED wherever a template is read, never refused: the file is not wrong,
-#: it is older.  An UNKNOWN item is still refused (U16) -- a typo or a rename
-#: is a value the person believes they set -- which is the line the sidecar's
-#: ``structure.RETIRED_METADATA_KEYS`` draws, for the same reason.  Dropped
-#: here, at the one parse, so every reader of a template gives one answer.
-RETIRED_ITEMS: Dict[str, str] = {
-    "wrap_into_cell": (
-        "2026-09-25: where the atoms sit is the engine offset, one rule for "
-        "every engine (model/structure-periodicity.md § 6.0), and the re-wrap "
-        "this switched is gone for everyone -- so its value, true by default, "
-        "set nothing any build still does.  Every SIESTA template written "
-        "before then carries it with a value, and refusing it made each of "
-        "those calculations un-preppable (17 on the development machine)."),
-}
-
-
 def read_template(text: str) -> Template:
     """Parse a template, refusing rather than guessing.
 
@@ -1212,8 +1194,7 @@ def read_template(text: str) -> Template:
         _refuse(f"'item' must be a table of items, got "
                 f"{type(table).__name__}")
 
-    items = tuple(_item_from(name, body) for name, body in table.items()
-                  if name not in RETIRED_ITEMS)
+    items = tuple(_item_from(name, body) for name, body in table.items())
     # § 5: the ``type`` "types what a reader must check, which a parser
     # cannot know".  Until the U-program follow-up (2026-08-12) NO reader
     # checked: a hand-edit could put the string "three hundred" into a
