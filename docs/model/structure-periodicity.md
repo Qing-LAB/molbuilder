@@ -283,8 +283,11 @@ no one is allowed to act on.)
 
 ## 6.0 The engine offset — ONE placement rule, for every engine *(user, 2026-09-25)*
 
-*Decided in conversation on 2026-09-25. **Not built** — the scope and the order
-of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
+*Decided in conversation on 2026-09-25. **Partly built** (2026-09-25): the rule
+and the hand-off gate (`cell.py`), every emitter (SIESTA, the five transport
+rungs, PySCF, the molwatch preview) and each deck's record. The readers, the
+wire, MolView and the retirement of `cell_origin` are not. The scope and the
+order of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
 clause this section supersedes says so at its own site, and is deleted with the
 code it describes.*
@@ -296,6 +299,14 @@ code it describes.*
 > fractional coordinates. It is **computed** from the resolved cell and the
 > position of every atom, and from nothing else. It is never stored as an input
 > and never chosen.
+
+> **The invariant is coordinates + offset** *(user, 2026-09-25)*. A design file's
+> coordinates plus its offset ARE the coordinates the engine gets. **At the
+> hand-off to an engine the offset is zero** — the correction has been applied —
+> and the deck renderer refuses coordinates that still carry one
+> (`cell.require_placed`). Nothing else is claimed zero: a file saved after a
+> relaxation holds atoms the engine moved, and its offset is whatever the rule
+> then says.
 
 *(User: "always adjust it before sending to siesta or other engines that the
 coordinates of all atoms are centered inside the cell … the original xyz would
@@ -327,7 +338,7 @@ the physics treats as periodic, isolated or transport — and lose this one.
 | **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
 | **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the computed value's negative; for engine coordinates, `(0,0,0)` |
 | **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame and are drawn verbatim (§ 6.1 clause 5). Recomputing would redraw an older flush run centred, which is the misleading picture itself |
-| **a structure saved from an engine's output** | its offset recomputes to 0 by itself, because the rule is idempotent on centred coordinates (measured below). Nothing can be applied twice, and a result from a run made before this rule is centred at its next emission rather than refused |
+| **a structure saved from an engine's output** | carries the engine's coordinates; the invariant holds as for any file, coordinates + its own offset. Taken straight from a deck, the rule on them gives zero — it is idempotent on what it centred (measured below) — so nothing is applied twice; after a relaxation moved atoms it gives whatever it then gives, and a result from a run made before this rule is centred at its next emission rather than refused |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
 that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
@@ -341,6 +352,12 @@ that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
   (**2.399 Å**) are wider than the seam (**2.355 Å**), so the edge would land
   between the gold and the sulfur. Translating the atoms as authored keeps the
   device whole.
+
+* **Frozen atoms move with the rest** *(user, 2026-09-25)*. Frozen is a
+  constraint on the CALCULATION: the engine holds a frozen atom where it sits
+  in the unit cell while the others move (the deck names it by index). It says
+  nothing about where a structure sits while it is built, so the offset places
+  a frozen atom exactly as it places every other.
 
 On that junction the rule gives `engine_offset = [6.3684, 3.746, 18.5325]` Å.
 The engine then sees z = 1.1775 … 35.8875 in `c = 37.065`, with equal fractional
@@ -356,8 +373,13 @@ frame set — `engines/transport.md` § 2a.9) and a multi-frame pair would carry
 "frame shift" that is not per frame; over `cell_origin` or any "corner",
 because those name a *position of the box* (clause 2b) and this is a
 *displacement of the atoms*; and over `structure_offset`, which says whose it
-is but not relative to what. **One name in every home**: the computed value,
-each deck's record, the wire field.
+is but not relative to what. **Two quantities, two names**, so the invariant can
+be written without ambiguity: `engine_offset(struct)` is a structure's OWN
+offset — nonzero for design coordinates, zero at the hand-off — and
+`applied_offset` is the correction a frame or a deck's record states was added.
+`design + applied_offset == deck coordinates`, and `engine_offset` of those is
+zero. One name for both invited a reader to add a deck's recorded correction to
+coordinates that already include it.
 
 **The operations — one module, and nothing else translates.**
 `molbuilder/cell.py` is already *"the ONE place a box is worked out, and the ONE
@@ -370,13 +392,15 @@ place it is judged"*. It was not in fact, because the two emitters bypassed it �
 | `engine_offset(struct)` | the rule | the two below |
 | `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
 | `engine_frame(cell, positions) → EngineFrame` | the same record for coordinates that ARE an engine's, the offset `0` stated | every reader of engine output — the Results door, the transport citation's `.XV`, the Results and CLI exports |
-| `EngineFrame.box_corner` | `−engine_offset` | every payload that tells a viewer where to draw |
+| `EngineFrame.box_corner` | `−applied_offset` | every payload that tells a viewer where to draw |
+| `require_placed(frame)` | refuses coordinates that still carry an offset — zero at the hand-off | the deck renderer, before it writes a line |
 | `resolve(struct) → ResolvedCell` | the box and its judgement, now carrying `engine_offset` and `box_corner` | the periodicity gate, the validators |
 
 **The record — engine-neutral, beside the coordinates it labels.** Every deck
 molbuilder writes (SIESTA `.fdf`, PySCF `.py`) carries a `molbuilder
-engine-offset` block: the cell, the offset applied and the axis kinds, in
-neutral terms. It is the provenance clause 5 promised, and it is what a reader
+engine-offset` block: the cell, the correction applied (`applied_offset`) and
+the axis kinds, in neutral terms, written at the precision of the coordinates
+beside it (8 decimals). It is the provenance clause 5 promised, and it is what a reader
 of a run asks, so the Results tab no longer searches for a `.source` pair to
 learn the axis kinds. It is a **sibling** of the `atom-metadata` block, not a
 key inside it: that block is the sidecar's shape and is written only when there
@@ -386,15 +410,24 @@ that block's.
 
 **The checks.**
 
-1. **The atoms fit** — their fractional span is `< 1` along every lattice
-   vector. When it is not, no offset can put them inside, and the edit is
-   refused naming the axis. This replaces the containment regimes of § 6.1
+1. **The atoms fit** — their fractional span is `< 1` along every
+   NON-periodic lattice vector. When it is not, no offset can put them inside,
+   and the edit is refused naming the axis. Along a periodic vector a wider
+   span is legal: the atoms beyond the cell are images the engine wraps — and
+   requiring containment there is what made real crystals unopenable until
+   2026-07-29. The placement rule itself stays blind to the axis kind; only
+   this check reads it. This replaces the containment regimes of § 6.1
    clause 4.
 2. **A transport rung has clearance along its transport axis** — the transport
    kind validator refuses a rung whose atoms touch a face along `c`, saying that
    a junction's gap is one layer spacing (`science/junction-cell.md` § 6.1).
    This is the refusal that should have come from molbuilder before the
    2026-09-25 device deck reached TranSIESTA.
+
+3. **Zero at the hand-off** — the deck renderer (`script_emit.render_deck`)
+   runs `cell.require_placed` on the frame every spec carries, and refuses a
+   deck whose coordinates still carry an offset. Every emitter places through
+   `cell.to_engine`, so it can only fire on one that did not.
 
 **A frame set gets one offset.** The frames of a multi-frame pair share one cell
 and identical electrode atoms (`engines/transport.md` § 2a.9). The offset is

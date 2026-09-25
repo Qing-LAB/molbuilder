@@ -331,6 +331,7 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     molwatch's MolwatchLogParser, exposing the initial geometry as
     frame 0 with null energy and empty forces.  This is the cross-repo
     contract: molbuilder writes, molwatch reads."""
+    from molbuilder.cell import to_engine
     from molbuilder.parse.engines.molwatch import MolwatchLogParser
 
     s = Structure(
@@ -343,8 +344,12 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     assert MolwatchLogParser.can_parse(str(p))
     result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
     assert len(result["frames"]) == 1
-    assert result["frames"][0] == [["H", 0.0, 0.0, 0.0],
-                                   ["H", 0.74, 0.0, 0.0]]
+    # What was written is the ENGINE's frame, like every step after it
+    # (`model/structure-periodicity.md` § 6.0), at the log's 8 decimals.
+    frame0 = result["frames"][0]
+    assert [a[0] for a in frame0] == ["H", "H"]
+    np.testing.assert_allclose([a[1:] for a in frame0],
+                               to_engine(s).positions, atol=1e-8)
     assert result["energies"] == [None]
     assert result["max_forces"] == [None]
     assert result["forces"] == [[]]

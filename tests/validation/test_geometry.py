@@ -404,39 +404,6 @@ def test_all_gamma_in_vacuum_no_warn(water_struct):
 
 
 
-# --------------------------------------------------------------------- #
-#  SIESTA: wrap_into_cell                                               #
-# --------------------------------------------------------------------- #
-
-
-def test_atoms_outside_unit_cell_with_no_wrap_is_warn():
-    """Atoms outside [0,1) fractional with wrap_into_cell=False -- the
-    visualiser will draw them in a neighbour cell."""
-    s = Structure(
-        elements=["O", "H"],
-        positions=np.array([[15.0, 5.0, 5.0], [16.0, 5.0, 5.0]]),
-    )
-    cell = _vacuum_cell(10.0)    # atoms at x=15 are outside [0, 10)
-    cfg = SiestaConfig(wrap_into_cell=False)
-    issues = validate(s, cfg, cell=cell)
-    wrap = [i for i in issues if i.where == "config.wrap_into_cell"]
-    assert len(wrap) == 1
-    assert wrap[0].severity == "warn"
-
-
-
-def test_atoms_inside_with_no_wrap_no_warn(water_struct):
-    cell = _vacuum_cell(30.0)
-    cfg = SiestaConfig(wrap_into_cell=False)
-    # Shift water into the box so all atoms sit in [0, 30).
-    s = Structure(
-        elements=water_struct.elements,
-        positions=water_struct.positions + np.array([15.0, 15.0, 15.0]),
-    )
-    issues = validate(s, cfg, cell=cell)
-    assert [i for i in issues if i.where == "config.wrap_into_cell"] == []
-
-
 class TestImageDistanceOnlyCrossesVacuum:
     """The image-distance check measures ARTEFACTS, so it may only step along
     isolated (vacuum) axes.

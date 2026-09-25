@@ -292,67 +292,6 @@ def _block_size_bounds(n_atoms: int,
 # transport emitter came to have a third.  Callers ask `chemistry` directly.
 
 
-def _wrap_into_cell(positions: np.ndarray, cell: np.ndarray
-                    ) -> Tuple[np.ndarray, int]:
-    """Fold atoms so their fractional coordinates sit in [0, 1).
-
-    Treats ``cell`` as a (3, 3) matrix whose ROWS are the lattice
-    vectors a, b, c -- i.e. a Cartesian position P satisfies
-    ``P = (u, v, w) @ cell`` for some fractional triple (u, v, w).
-
-    Returns ``(wrapped_positions, n_wrapped_atoms)`` so callers can
-    print a useful note in the FDF.  Atoms whose original fractional
-    coordinates lie within 1e-9 of an integer (i.e. essentially on the
-    cell face -- either just inside the cell at frac ~ 0.9999... or
-    just outside at frac ~ 1.0 + 1e-12) are wrapped if needed but NOT
-    counted as moved.  Their motion is numerical-precision noise, not
-    a meaningful position change.
-
-    Algorithm
-    ---------
-    The 2026-05-28 audit caught the pre-existing
-    ``floor(fractional + 1e-9)`` form doing the OPPOSITE of its
-    docstring: it wrapped frac = 0.9999999999 (in the cell) to
-    -1e-10 (outside the cell, counted as moved) while leaving
-    frac = -1e-10 (outside the cell) at -1e-10 (still outside, NOT
-    counted).  Both wrong.  The clean fix is to (a) do a standard
-    ``floor`` wrap so EVERY atom lands cleanly in [0, 1), and (b)
-    decide separately whether to *count* the wrap as a move.
-    """
-    inv = np.linalg.inv(cell)
-    fractional = positions @ inv
-    # Standard wrap into [0, 1).  No tolerance hack here -- every
-    # atom lands cleanly inside the cell.
-    wrapped = fractional - np.floor(fractional)
-    # Signed fractional displacement caused by the wrap.
-    delta = wrapped - fractional
-    # A "real" wrap moved the atom by > 1e-6 in fractional space.
-    # Anything smaller is round-off (no atom geometry actually
-    # depended on the wrap).
-    big_move = np.any(np.abs(delta) > 1e-6, axis=1)
-    # Atoms whose ORIGINAL fractional was within 1e-9 of an integer
-    # (~0, ~1, ~2, ...) were sitting essentially on a cell face.
-    # The wrap may have shifted them visibly (e.g. frac = -1e-10
-    # -> wrapped = 1 - 1e-10, a delta of ~1) but the motion is
-    # purely numerical noise, not a meaningful translation.  Exclude
-    # them from the count so the user-facing notice doesn't lie.
-    on_boundary = np.any(
-        np.abs(fractional - np.round(fractional)) < 1e-9, axis=1
-    )
-    moved_mask = big_move & ~on_boundary
-    n_moved = int(moved_mask.sum())
-    new_positions = wrapped @ cell
-    # Round-trip preservation: when the wrap was a no-op in
-    # fractional space (atom was already inside), restore the
-    # ORIGINAL Cartesian so 1e-12 matrix-product drift doesn't
-    # appear in the FDF.  GATED ON big_move, not moved_mask --
-    # boundary atoms that genuinely DID wrap (frac ~ 1.0 + 1e-12)
-    # need to keep their post-wrap Cartesian, otherwise we'd
-    # silently re-place them outside the cell.
-    new_positions[~big_move] = positions[~big_move]
-    return new_positions, n_moved
-
-
 def find_psml(element: str, lib: Path) -> Optional[Path]:
     """Locate a pseudopotential file for `element` in a flat lib folder."""
     for name in (f"{element}.psml", f"{element.lower()}.psml",
@@ -734,17 +673,17 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                calculation: str = "optimization") -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
 
-    If ``cell`` is None (default), the vacuum cell is derived from the STRUCTURE
-    -- ``struct.resolve_cell()`` (isolated axes = ``bbox + 2*vacuum``) -- and the
-    atoms are translated by ``-struct.resolve_cell_origin()`` so the molecule sits
-    centred with ``vacuum`` of clearance on every isolated face.  Vacuum comes
-    with the structure (``Structure.vacuum``, per-side gap), the single source of
-    truth for lattice/vacuum (structure-periodicity.md); there is no cell_padding.
-    A thin-vacuum isolated system is WARNED about (never mutated).
+    The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
+    structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
+    vacuum box (isolated axes ``bbox + 2*vacuum``) for one nobody typed.  Vacuum
+    comes with the structure (``Structure.vacuum``, per-side gap); a thin-vacuum
+    isolated system is WARNED about, never mutated.
 
-    Pass an explicit ``(3, 3) cell`` (Angstrom, row vectors) to override -- in that
-    case atom coordinates are passed through unchanged, since a user-supplied cell
-    typically goes with a known atom frame (e.g. crystallographic positions).
+    Whichever box it is, the atoms are placed by ONE rule
+    (`model/structure-periodicity.md` § 6.0): the design coordinates plus
+    ``cell.engine_offset``, which centres their span inside the box along each
+    lattice vector -- never wrapped atom by atom, never left where they were
+    authored -- and the deck states the offset it applied.
     """
     if calculation == "transport":
         # The kind is a RENDER ARGUMENT, like the stage token: the seam
@@ -803,33 +742,17 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"{list(species_index)!r}"
             )
 
-    # Cell + atom positioning.
-    #
-    # Two cases:
-    #
-    #   (1) No cell provided -> derive the vacuum box from the STRUCTURE.
-    #       struct.resolve_cell() sizes isolated axes as (extent + 2*vacuum);
-    #       translate atoms by -struct.resolve_cell_origin() so the molecule sits
-    #       centred with `vacuum` clearance on every isolated face -- atoms fall
-    #       in [vacuum, size - vacuum], always inside the cell, no wrapping.
-    #       Vacuum is the structure's, not a config knob (structure-periodicity.md).
-    #
-    #   (2) Cell provided -> periodic system (slab, crystal, junction).
-    #       Trust the cell, but check whether atoms fall inside.  If
-    #       any are outside [0, 1) in fractional coordinates and
-    #       `wrap_into_cell` is True (default), fold them back via
-    #       fractional arithmetic.  This is what every PBC-aware
-    #       structure tool does (ASE's `wrap`, VASP's POSCAR Direct,
-    #       3DNA's fiber output, etc.) and avoids surprises in the
-    #       SIESTA mesh and in the post-relaxation visualisation.
+    # The box first, then ONE placement for either box (§ 6.0, below the two
+    # branches).  The branches decide only which box and check that it is a
+    # real one.  They used to place the atoms too, two ways: a derived box
+    # translated them by `-resolve_cell_origin()`, and a passed-in cell wrapped
+    # each atom into [0, 1) -- which cuts a device at its widest gap, and the
+    # 2026-09-25 junction's widest gap was its Au-S contact, not its seam.
     positions = np.asarray(struct.positions, dtype=float)
     if cell is None:
-        # Derive the vacuum box from the STRUCTURE -- the single source of truth
-        # for lattice/vacuum (structure-periodicity.md).  resolve_cell() sizes
-        # isolated axes as bbox + 2*vacuum; resolve_cell_origin() is the box's low
-        # corner (bbox_min - vacuum), so translating atoms by -origin centres the
-        # molecule with `vacuum` of clearance on every isolated face (exactly what
-        # the Modify-tab display shows).  There is no more cfg.cell_padding /
+        # The structure's own box -- the single source of truth for lattice and
+        # vacuum (structure-periodicity.md): its stated cell, or resolve_cell()'s
+        # bbox + 2*vacuum on isolated axes.  There is no cfg.cell_padding /
         # center_in_vacuum -- vacuum comes with the structure.
         cell = struct.resolve_cell()
         if cell is None:
@@ -868,9 +791,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"define that length. Set an explicit unit cell for that "
                 f"direction (Modify -> Cell tab), or correct the axis kind. The "
                 f"geometry is never changed for you.")
-        origin = struct.resolve_cell_origin()
-        if origin is not None:
-            positions = positions - np.asarray(origin, dtype=float)
         # Vacuum adequacy is checked by the VALIDATOR
         # (validation/siesta.py:_check_siesta_vacuum_adequacy), which the
         # report(validate(...)) call below runs -- so the finding reaches the
@@ -897,14 +817,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # guards the middle one (`if rc.defaulted_axes and not rc.is_manual`,
         # "a molecule in a hand-typed 30 A box would be told the box came from
         # a 3 A default"); the emitter had no such guard.  And the atoms are
-        # not centred -- they are translated by `-resolve_cell_origin()`
-        # (§ 6 clause 3), which on an imported crystal is no shift at all.
+        # not centred -- they were translated by `-resolve_cell_origin()`,
+        # which on an imported crystal was no shift at all.  Since § 6.0 they
+        # ARE centred, and the placement below says so with the number.
         _manual = struct.cell is not None
-        _shift = ("atoms unmoved (the box already sits at the origin)"
-                  if origin is None else
-                  "atoms translated by "
-                  + str(tuple(round(-float(v), 2)
-                              for v in np.asarray(origin))))
         cell_note = (
             "# (" + ("cell stated on the structure"
                      if _manual else "vacuum cell derived from the structure")
@@ -915,7 +831,6 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             + (f"; no vacuum was set, so the default {_DEFAULT_GAP_TEXT} "
                f"was used on isolated axes {_defaulted}"
                if _defaulted and not _manual else "")
-            + f"; {_shift})"
         )
     else:
         cell = np.asarray(cell, dtype=float).reshape(3, 3)
@@ -945,15 +860,19 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"A), coplanar vectors, or a typo.  Inspect the "
                 f"lattice vectors."
             )
-        if cfg.wrap_into_cell:
-            positions, n_wrapped = _wrap_into_cell(positions, cell)
-            cell_note = (
-                "# (using user-supplied lattice;"
-                + (f" {n_wrapped} atom(s) wrapped into the unit cell)"
-                   if n_wrapped else " all atoms already inside the cell)")
-            )
-        else:
-            cell_note = "# (using user-supplied lattice; wrap_into_cell=False)"
+        cell_note = "# (using the lattice supplied by the caller"
+
+    # THE ONE PLACEMENT (`model/structure-periodicity.md` § 6.0): the design
+    # coordinates plus the engine offset, which centres the atoms' span inside
+    # the box along each lattice vector.  Whichever box was decided above, the
+    # atoms are placed by this and by nothing else -- no hand translation, no
+    # per-atom wrap.  The deck states the offset it applied.
+    from molbuilder.cell import to_engine as _to_engine
+    _frame = _to_engine(struct, box=cell)
+    positions = _frame.positions
+    cell_note += ("; atoms placed by the engine offset "
+                  + str(tuple(round(float(v), 4) for v in _frame.applied_offset))
+                  + " A, centred in the cell)")
 
     # ---------- pre-emission validation ----------
     # By now `cell` and `positions` are final; run the validation pass
@@ -979,8 +898,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # ones added after today (`model/structure.md` § 2.2a).
     #
     # AND THE CORNER IS RESTATED, because the coordinates changed frame.
-    # `positions` was shifted by `-resolve_cell_origin()` above, so these
-    # atoms are in SIESTA's frame with the box at the world origin -- while
+    # `positions` was placed by the engine offset above, so these atoms are
+    # in SIESTA's frame with the box at the world origin -- while
     # `struct.cell_origin` still measures the frame they came FROM.  Carrying
     # it put the validators a whole corner away from the atoms they judge:
     # measured, a junction with a stored corner reported `atoms_outside` with
@@ -1046,6 +965,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # instead of finished text (`script-preparation.md` § 4.3).
     spec = _sc.DeckSpec(
         engine="siesta",
+        engine_frame=_frame,
         # The kind the deck is for: the parameter set is the catalogue
         # narrowed to it, so a vibration deck sees the force-constant item
         # and no relaxation one (`engines/template.md` § 6.3).

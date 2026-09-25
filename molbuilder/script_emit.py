@@ -77,6 +77,8 @@ BLOCK_HEADER        = "header"
 BLOCK_PROVENANCE    = "provenance"
 BLOCK_BENCH_MARKS   = "bench-marks"
 BLOCK_ATOM_METADATA = "atom-metadata"
+#: Where a deck's atoms were placed (`model/structure-periodicity.md` § 6.0).
+BLOCK_ENGINE_OFFSET = "engine-offset"
 BLOCK_USER_CUSTOM   = "user-custom"
 #: The parameters the ENGINE actually holds, recorded into the run log at
 #: startup.  Shared between engines on purpose: the deck says what was asked
@@ -521,6 +523,38 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
     out.append(f"# format: molstruct-json/v{_SCHEMA_VERSION}")
     out.extend(f"# {line}" for line in _compact_json_lines(payload))
     out.append(end_marker(BLOCK_ATOM_METADATA))
+    return "\n".join(out)
+
+
+def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
+    """The ENGINE-OFFSET block: where this deck's atoms were placed, in
+    neutral terms (`model/structure-periodicity.md` § 6.0) -- the cell, the
+    correction added to the design coordinates (``applied_offset``), and the
+    axis kinds.  The coordinates the deck writes carry no offset of their own:
+    design + applied_offset == these, the invariant.
+
+    Written for EVERY deck, labelled or not.  ATOM-METADATA is the sidecar's
+    shape and is emitted only when there are labels; this is a fact about the
+    emission -- the provenance § 6.1 clause 5 promised and no code wrote until
+    2026-09-25 -- and it is what a reader of the run asks instead of deriving a
+    corner of its own.
+    """
+    # AT THE PRECISION OF THE COORDINATES BESIDE IT -- the geometry block's 8
+    # decimals -- and never -0.0.  A re-prep that reloads the composed junction
+    # moves the tenth digit (2.849999999902925 then 2.8499999999983694,
+    # measured 2026-09-25), and full precision made the gate's "same
+    # calculation" refuse a re-prepped seed whose coordinates were identical.
+    def _num(v):
+        return round(float(v), 8) + 0.0
+    payload: Dict[str, Any] = {
+        "applied_offset": [_num(v) for v in frame.applied_offset],
+        "cell": [[_num(x) for x in row] for row in frame.cell],
+        "axis_kind": [str(k) for k in axis_kind],
+    }
+    out: List[str] = [begin_marker(BLOCK_ENGINE_OFFSET),
+                      "# format: molbuilder-engine-offset/v1"]
+    out.extend(f"# {line}" for line in _compact_json_lines(payload))
+    out.append(end_marker(BLOCK_ENGINE_OFFSET))
     return "\n".join(out)
 
 
@@ -1115,6 +1149,11 @@ class DeckSpec:
     note_lead: Callable = lambda param: ()
     #: Recorded in ATOM-METADATA as the producer.
     created_by: str = "molbuilder"
+    #: The frame this deck's atoms were placed with (`cell.to_engine`,
+    #: `model/structure-periodicity.md` § 6.0).  Computed ONCE by the spec's
+    #: builder and read by both its coordinate block and the ENGINE-OFFSET
+    #: record, so the record states exactly what was written.
+    engine_frame: Optional[Any] = None
 
 
 class RenderedDeck(str):
@@ -1402,6 +1441,17 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     if atoms:
         record.append(atoms)
         in_record.append("ATOM-METADATA")
+    if spec.engine_frame is not None:
+        # ZERO AT THE HAND-OFF (user, 2026-09-25): the coordinates this deck
+        # writes must carry no offset -- the correction applied -- or the deck
+        # refuses.  Every emitter places through `cell.to_engine`, so this can
+        # only fire on one that did not.
+        from .cell import require_placed as _require_placed
+        _require_placed(spec.engine_frame)
+        record.append(emit_engine_offset(
+            spec.engine_frame,
+            getattr(struct, "axis_kind", None) or ("isolated",) * 3))
+        in_record.append("ENGINE-OFFSET")
 
     text = (science + "\n\n" + emit_user_custom_placeholder()
             + "\n\n" + machine_record_banner()
@@ -1417,6 +1467,8 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         if "ATOM-METADATA" not in in_record:
             log.note("ATOM-METADATA: nothing — this structure carries no "
                      "regions or annotations")
+        if "ENGINE-OFFSET" not in in_record:
+            log.note("ENGINE-OFFSET: nothing — this deck places no atoms")
         log.produced("deck", f"{len(text.splitlines())} lines, "
                              f"{len(emitted)} recorded for the gate")
     return RenderedDeck(text=text, emitted=tuple(emitted),
@@ -1891,9 +1943,10 @@ def _brace_delta(line: str) -> int:
     return depth
 
 
-def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
-    """Find the ATOM-METADATA block in ``text`` and return its JSON
-    payload as a dict.
+def _extract_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
+    """Find the molbuilder block ``name`` in ``text`` and return its JSON
+    payload as a dict -- the ONE reader for every JSON-payload block
+    (ATOM-METADATA, ENGINE-OFFSET), so their parsing cannot drift.
 
     Returns ``None`` when:
       * No ATOM-METADATA block is present.
@@ -1909,7 +1962,7 @@ def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
         m = MARKER_RE.match(line)
         if not m:
             continue
-        if m.group(1) != BLOCK_ATOM_METADATA:
+        if m.group(1) != name:
             continue
         if m.group(2) == "BEGIN":
             begin_idx = i
@@ -1952,6 +2005,19 @@ def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
         return json.loads("\n".join(json_lines))
     except json.JSONDecodeError:
         return None
+
+
+def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
+    """The ATOM-METADATA block's payload; ``None`` when absent or broken."""
+    return _extract_json_block(text, BLOCK_ATOM_METADATA)
+
+
+def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
+    """The ENGINE-OFFSET block's payload -- ``{applied_offset, cell,
+    axis_kind}`` -- or ``None`` for a deck written before § 6.0.  The deck's
+    own coordinates carry no offset; ``applied_offset`` is the correction that
+    was added to the design's to produce them."""
+    return _extract_json_block(text, BLOCK_ENGINE_OFFSET)
 
 
 # ---- from parse/scripts/bench_marks.py ----

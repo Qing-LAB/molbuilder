@@ -636,17 +636,31 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         assert kg and "8 0 0 0.5" in kg.group(1), kg and kg.group(1)
         assert "MeshCutoff 350.0 Ry" in deck
 
-        # the ATOMS, row by row, against the .xyz the hand-over wrote
+        # the ATOMS, row by row, against the pair the hand-over wrote: the same
+        # atoms in the same order, placed by the one rule
+        # (`model/structure-periodicity.md` § 6.0) -- the design coordinates
+        # plus the engine offset -- and the deck's own record states that
+        # offset.  Until 2026-09-25 this compared them EQUAL, because a slab
+        # authored at the origin was written untranslated; now "nothing lost"
+        # means one translation for every atom, and the one the deck says.
+        import numpy as _np
+        from molbuilder import cell as _cell
+        from molbuilder.script_emit import extract_engine_offset
+        from molbuilder.workingcopy_structure import StructureCodec
         blk = re.search(r"%block AtomicCoordinatesAndAtomicSpecies(.*?)%endblock",
                         deck, re.S)
-        fdf = [ln.split() for ln in blk.group(1).strip().splitlines()]
-        xyz = [ln.split() for ln
-               in (d / over["structure"]["source"]).read_text().splitlines()[2:]
-               if ln.strip()]
-        assert len(fdf) == len(xyz) == 3
-        for a, b in zip(fdf, xyz):
-            assert max(abs(float(x) - float(y))
-                       for x, y in zip(a[:3], b[1:4])) < 1e-4, (a, b)
+        fdf = _np.array([[float(v) for v in ln.split()[:3]]
+                         for ln in blk.group(1).strip().splitlines()])
+        design = StructureCodec().load(d / over["structure"]["source"])
+        assert fdf.shape == (3, 3)
+        offset = _cell.engine_offset(design)
+        assert _np.allclose(fdf, design.positions + offset, atol=1e-6), (
+            fdf, design.positions, offset)
+        record = extract_engine_offset(deck)
+        assert record is not None, "the deck does not say where it put the atoms"
+        assert _np.allclose(record["applied_offset"], offset, atol=1e-7), record
+        # ...and at the hand-off the offset is ZERO: the correction applied.
+        _cell.require_placed(_cell.engine_frame(_np.asarray(cell), fdf))
     finally:
         pass    # tmp_path removes the tree
 

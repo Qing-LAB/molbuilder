@@ -117,7 +117,12 @@ def write_initial_preview(
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     elements = list(struct.elements)
-    positions = struct.positions  # (N, 3) array-like in Angstrom
+    # THE ENGINE'S FRAME, like every step the run writes after it
+    # (`model/structure-periodicity.md` § 6.0).  Step 0 was the design
+    # coordinates while the deck beside it was placed, so the log jumped by
+    # the whole offset between step 0 and step 1 (45 Å, measured 2026-09-22).
+    from ..cell import to_engine
+    positions = to_engine(struct).positions  # (N, 3), Angstrom
     n = len(elements)
     now_epoch = time.time()
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%S",

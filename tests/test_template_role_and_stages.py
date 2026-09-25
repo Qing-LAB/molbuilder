@@ -57,7 +57,7 @@ class TestRole:
         correct answer.
         """
         assert {i.name for i in T.select(cat, engine="siesta", role=True)} == {
-            "solution_method", "wrap_into_cell", "ts_hs_save"}
+            "solution_method", "ts_hs_save", "bias_voltage_v"}
 
     def test_a_role_item_is_not_offered_as_a_column(self, cat):
         """The reader that makes the declaration bite.

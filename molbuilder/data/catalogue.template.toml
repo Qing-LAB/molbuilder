@@ -640,28 +640,6 @@ Which files that means is the engine's own: SIESTA reads .XV / .DM / .CG, PySCF 
 Continuing is the default because a run you start in a folder that already holds a result is a run you started after looking at that result. To keep the old state, save it first with `molbuilder checkpoint save` -- the launcher warns before a clean run overwrites anything and stops unless you pass --force.
 """
 
-[item.wrap_into_cell]
-# role: wrapping can reorder atoms, and TranSIESTA identifies each electrode by a CONTIGUOUS atom range.
-role = ["transport"]
-kind = "produce"
-category = ["procedure"]
-engines = ["siesta"]
-engine_key = "(molbuilder: pre-emission positioning)"
-type = "bool"
-value = true
-default = true
-group = "profile"
-label = "Wrap atoms into cell"
-help = """
-Move any atom that sits outside the cell box back inside it, by shifting it a whole number of cell vectors.
-
-molbuilder does this, not SIESTA.  It rewrites the coordinates that get written into the .fdf, so what you see in the deck is what ran.  In a periodic crystal it changes nothing physical: shifting an atom by a whole lattice vector lands it on an identical position, so the energy and forces are the same.  It just keeps the numbers tidy and comparable between runs.
-
-Turn it off for a MOLECULE that straddles a cell face -- one molecule in a vacuum box, or a slab with an adsorbate near an edge.  Wrapping moves only the atoms that stuck out, so the molecule is split: half at one edge of the box, half at the opposite edge.  The physics is still right for a periodic calculation, but the structure looks torn in the viewer, and anything that measures geometry directly from the coordinates (bond lengths, a centre of mass, an RMSD against another frame) reads the box-crossing distance instead of the real one.
-
-It has no effect when the cell was built from the structure itself: that path already centres the atoms in the box, so nothing is outside to fold back.
-"""
-
 [item.verbose_comments]
 kind = "produce"
 category = ["procedure"]

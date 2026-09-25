@@ -1176,7 +1176,8 @@ class TestTheGather:
     """`gather_transport_inputs` — the § 4.2 DAG's inputs, copied in at
     prep with three gates per input (P5)."""
 
-    def test_a_re_prepped_seed_still_satisfies_the_device(self, calc):
+    def test_a_re_prepped_seed_still_satisfies_the_device(self, calc,
+                                                          monkeypatch):
         """THE DAG GATE ASKS "same calculation", NOT "same bytes".
 
         A deck that renders through the framework carries a `generated-at`
@@ -1194,6 +1195,17 @@ class TestTheGather:
         Contract: `engines/transport.md` § 4.2 (the DAG) + `script_emit.
         same_calculation`.
         """
+        # THE CLOCK TICKS BETWEEN THE TWO PREPS, by construction.  The stamp
+        # has one-second resolution, so two preps inside one second wrote
+        # byte-identical decks and the vacuity guard below failed on a fast
+        # run -- read off `script_emit.generated_at_now`, 2026-09-25.  The
+        # premise is a REWRITTEN RECORD, so the test states one.
+        import itertools
+        from molbuilder import script_emit as _se
+        _tick = itertools.count()
+        monkeypatch.setattr(
+            _se, "generated_at_now",
+            lambda: f"2026-09-25T00:00:{next(_tick) % 60:02d}-07:00")
         prep_calculation(calc, "seed")
         prep_calculation(calc, "electrode_L")
         prep_calculation(calc, "electrode_R")

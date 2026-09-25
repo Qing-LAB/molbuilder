@@ -1092,7 +1092,12 @@ Exposing these as controls would offer a choice with one correct answer.
 | *the device's transport-axis k* | `%block kgrid_Monkhorst_Pack` | Fixed at 1 — that axis is the open boundary and is not sampled. A violation is refused | 2 |
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
 | `system_label` | `SystemLabel` | The stage's identity, and the stem the next stage's reference is built from | 1 |
-| `wrap_into_cell` | — | **Off.** TranSIESTA identifies each electrode by a contiguous atom *range*; wrapping can reorder atoms and make the lead ranges name the wrong ones | 2 |
+| `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's deck carries its own (§ 2a.10) | 1 |
+
+*(`wrap_into_cell` left this table on 2026-09-25, with the knob: no atom is
+wrapped any more. Every rung's atoms are placed by the engine offset
+(`model/structure-periodicity.md` § 6.0), a rigid translation that cannot
+reorder a lead's range, so what this row protected is now structural.)*
 
 #### Class E — Machine · per stage · changes no answer
 

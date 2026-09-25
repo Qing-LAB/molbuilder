@@ -46,9 +46,6 @@ _NOT_IN_THE_DECK = {
         "calculation, not what the deck says",
     ("siesta", "psml_lib"):
         "names WHERE pseudopotentials are found; a deck never carries a host path",
-    ("siesta", "wrap_into_cell"):
-        "acts on the STRUCTURE before the deck is written; a molecule already "
-        "inside its cell has nothing to wrap",
     ("siesta", "write_molwatch_log"):
         "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
         "`prep._seed_trajectory_log` and `convert()` skip seeding "

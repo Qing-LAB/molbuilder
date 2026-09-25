@@ -119,7 +119,7 @@ def rung_of(stage_token: Optional[str]) -> str:
 #  The layouts, as tables.                                              #
 # ===================================================================== #
 
-def _negf_layout(derived):
+def _negf_layout(derived, frame):
     """The device and transmission rungs — an open-boundary NEGF deck.
 
     One layout serves both, and **that is not the old "same bytes" claim
@@ -140,7 +140,7 @@ def _negf_layout(derived):
     return (
         _sc.Block("identity and what this rung computes", _emit_negf_header),
         _sc.Block("cell, coordinates and region metadata",
-                  _emit_geometry_block),
+                  _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
         _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
@@ -243,7 +243,7 @@ def _legacy_view(cfg):
     return TransportConfig(engine="transiesta", **kw)
 
 
-def _electrode_layout(derived):
+def _electrode_layout(derived, frame):
     """An electrode rung: a genuinely periodic BULK calculation.
 
     Read down it and the difference from the seed is three lines — and each
@@ -263,7 +263,7 @@ def _electrode_layout(derived):
     """
     return (
         _sc.Block("identity and what this lead is for", _emit_electrode_header),
-        _sc.Block("cell and coordinates", _emit_geometry_block),
+        _sc.Block("cell and coordinates", _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
         _sc.Block("the k-mesh — transverse shared, transport axis DENSE",
@@ -372,7 +372,7 @@ def _emit_electrode_outputs(struct, cfg) -> str:
     ])
 
 
-def _seed_layout(derived):
+def _seed_layout(derived, frame):
     """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
@@ -385,7 +385,7 @@ def _seed_layout(derived):
     """
     return (
         _sc.Block("identity and the seed's purpose", _emit_seed_header),
-        _sc.Block("cell, coordinates and region metadata", _emit_geometry_block),
+        _sc.Block("cell, coordinates and region metadata", _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
         _sc.Block("the transverse k-mesh (kz forced to 1)", _emit_kgrid_block),
@@ -424,7 +424,13 @@ def _emit_seed_header(struct, cfg) -> str:
     ])
 
 
-def _emit_geometry_block(struct, cfg) -> str:
+def _geometry_block(frame):
+    """The coordinate Block for a deck whose atoms were placed with ``frame``
+    -- the frame the spec records (`model/structure-periodicity.md` § 6.0)."""
+    return lambda struct, cfg: _emit_geometry_block(struct, cfg, frame)
+
+
+def _emit_geometry_block(struct, cfg, frame=None) -> str:
     """Cell + coordinates + the region/annotation metadata.
 
     Lifted whole: no parameter models a coordinate table, which is what
@@ -444,7 +450,7 @@ def _emit_geometry_block(struct, cfg) -> str:
     # and this block writes `ChemicalSpeciesLabel`.  It was received and
     # dropped here, which is the whole of why `species_order` reached every
     # SIESTA deck and no transport deck (`model/chemistry.md` § 3a).
-    return "\n".join(_emit_geometry(struct, cfg=cfg))
+    return "\n".join(_emit_geometry(struct, cfg=cfg, frame=frame))
 
 
 def _emit_restart_group(struct, cfg) -> str:
@@ -596,11 +602,14 @@ def transport_spec(struct: Structure, cfg, *,
     # three keys below, so it could not fire.  It was the last text describing
     # a migration this module has finished.
     derived = _derived_for(struct, cfg)
+    from .transiesta import engine_frame_for
+    frame = engine_frame_for(struct)
     layout = {"seed": _seed_layout,
               "electrode": _electrode_layout,
-              "negf": _negf_layout}[shape](derived)
+              "negf": _negf_layout}[shape](derived, frame)
     return _sc.DeckSpec(
         engine="siesta",
+        engine_frame=frame,
         calculation="transport",
         layout=layout,
         line=_sl.line(derived),

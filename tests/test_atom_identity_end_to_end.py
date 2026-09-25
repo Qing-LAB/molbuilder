@@ -18,9 +18,10 @@ def _distinct_struct():
     # on a DIFFERENT CARBON and stays chemically plausible, which is the failure
     # that is silent.
     #
-    # Explicit large cell so render_fdf emits coords as-is (a cell-less struct is
-    # auto-boxed + uniformly shifted -- identity-preserving but it would move the
-    # absolute coords we assert on).
+    # Every engine gets these atoms placed by the engine offset
+    # (`model/structure-periodicity.md` § 6.0) -- ONE uniform shift, whatever
+    # the box.  Identity is the ORDER, invariant to that shift, so both tests
+    # below derive the shift from atom 0 and check every line against it.
     els = ["C", "C", "N", "C", "O"]
     pos = np.array([[float(i), float(2 * i), float(3 * i)] for i in range(5)])
     return Structure(elements=els, positions=pos,
@@ -109,6 +110,12 @@ def test_pyscf_frozen_maps_to_correct_physical_atom():
         f"expected 5 atom lines in the generated script, got {len(atoms)} -- "
         f"if this is 0 the coordinate FORMAT changed and `_ATOM` no longer "
         f"matches; that is a parse miss, not an identity error")
+    # The same uniform shift as the .fdf above: derive it from atom 0, then
+    # verify EVERY script line is the internal atom at that index.
+    shift = atoms[0][1] - s.positions[0]
+    for j, (el, xyz) in enumerate(atoms):
+        assert el == s.elements[j] and np.allclose(xyz - shift, s.positions[j]), (
+            f"atom order not preserved at script atom line {j+1}")
     m = re.search(r"xyz ([\d,]+)", script)
     assert m, "geomeTRIC $freeze xyz line not found"
     frozen_1based = {int(x) for x in m.group(1).split(",")}
@@ -116,9 +123,9 @@ def test_pyscf_frozen_maps_to_correct_physical_atom():
         eng = eai.geometric_atom_index(i)         # 0-based -> geomeTRIC 1-based
         assert eng in frozen_1based, f"internal atom {i} not frozen"
         el, xyz = atoms[eng - 1]
-        assert el == s.elements[i] and np.allclose(xyz, s.positions[i]), (
-            f"geomeTRIC freezes atom {eng} ({el} at {xyz}) but internal atom "
-            f"{i} is {s.elements[i]} at {s.positions[i]} -- WRONG PHYSICAL ATOM")
+        assert el == s.elements[i] and np.allclose(xyz - shift, s.positions[i]), (
+            f"geomeTRIC freezes atom {eng} ({el} at {xyz - shift}) but internal "
+            f"atom {i} is {s.elements[i]} at {s.positions[i]} -- WRONG PHYSICAL ATOM")
 
 
 # ─────────────────── the sidecar ↔ selection leg ────────────────────────────

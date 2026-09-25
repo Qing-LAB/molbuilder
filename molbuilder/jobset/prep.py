@@ -1717,6 +1717,21 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     f"folder (transport-design.md 4.1).")
             composed = compose_junction(citation, tree_root=root)
             write_compose_record(base, composed)
+            # RENDER FROM THE RECORD, on this prep as on every later one.  The
+            # fresh composition is the cited `.XV` at full float precision;
+            # the record is the codec's text of it, and every later prep --
+            # the other rungs, a re-prep -- reads the record.  Rendering this
+            # one from the fresh copy gave two preps of the SAME calculation
+            # two sets of numbers ~1e-10 apart (measured 2026-09-25 on the
+            # ENGINE-OFFSET record), and the gather's `same_calculation`
+            # compares them as text: a value near a rounding boundary then
+            # flips, and a good seed is refused.  One source, not rounding luck.
+            composed = load_compose_record(base, citation=citation,
+                                           tree_root=root, why=why)
+            if composed is None:
+                raise PrepError(
+                    f"the composed junction was written and could not be "
+                    f"read back: {why[-1] if why else 'no reason given'}")
     except (ComposeError, SortError) as exc:
         raise PrepError(str(exc)) from exc
 

@@ -1535,7 +1535,10 @@ def test_siesta_form_schema_matches_documented_layout():
         ("method",      6),
         ("accuracy",    7),
         ("convergence", 4),
-        ("procedure",  16),
+        # 16 -> 15 on 2026-09-25: `wrap_into_cell` retired.  Where the atoms
+        # sit is one rule, the engine offset (`model/structure-periodicity.md`
+        # § 6.0), and a per-atom wrap can cut a device at its widest gap.
+        ("procedure",  15),
         # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
         # use_gpu moved to the staging surface.  They are bench axes
         # measured on the machine, not parameters typed beside the physics.
@@ -1669,7 +1672,7 @@ def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     starting with ``(molbuilder`` so the JS engineKeyBadge() picks
     the dashed-border italic visual variant.  Without this the
     user might search the SIESTA / PySCF manual for a keyword
-    molbuilder invented (e.g. verbose_comments, wrap_into_cell)."""
+    molbuilder invented (e.g. verbose_comments)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder import template as T
 

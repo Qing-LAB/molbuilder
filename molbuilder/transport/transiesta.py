@@ -243,8 +243,8 @@ def axis_vacuum(cell: np.ndarray,
 _VACUUM_FLAG_ANG = 5.0
 
 
-def _lattice_block(struct: Structure,
-                   cell: Optional[np.ndarray]) -> List[str]:
+def _lattice_block(struct: Structure, cell: np.ndarray, *,
+                   fabricated: bool = False) -> List[str]:
     """Emit the LatticeVectors block.
 
     If ``cell`` is provided (the structure's real lattice — hexagonal,
@@ -252,10 +252,11 @@ def _lattice_block(struct: Structure,
     vacuum is reported with a warning when an axis declared periodic
     leaves large empty space or the transport axis (c) has vacuum.
 
-    If ``cell`` is None there is no lattice to preserve, so an
-    orthorhombic vacuum box is fabricated from atom extents — a model
-    of an ISOLATED cluster, flagged loudly because it is wrong for a
-    periodic surface electrode (the hex Au(111) case).
+    ``fabricated`` says the structure stated no lattice, so ``cell`` is the
+    orthorhombic vacuum box :func:`_emit_geometry` built from atom extents — a
+    model of an ISOLATED cluster, flagged loudly because it is wrong for a
+    periodic surface electrode (the hex Au(111) case).  It is written at the
+    precision the atoms were placed against, never rounded.
 
     **THIS ARM IS FOR AN ISOLATED ELECTRODE, AND IT IS A REAL CASE**
     (user, 2026-09-23).  A nanowire or chain lead is periodic along
@@ -276,8 +277,8 @@ def _lattice_block(struct: Structure,
     which was reverted.  The sentence is about the OTHER case.)*
     """
     lines = ["LatticeConstant        1.0 Ang"]
-    if cell is not None:
-        cell = np.asarray(cell, dtype=float)
+    cell = np.asarray(cell, dtype=float)
+    if not fabricated:
         # THE KIND, NOT THE BOOLEAN.  This read `struct.pbc`, which flattens
         # `transport` and `periodic` to the same True -- so the per-axis line
         # below labelled every transport axis "periodic", and the warning
@@ -327,7 +328,6 @@ def _lattice_block(struct: Structure,
             lines.append(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}")
         lines.append("%endblock LatticeVectors")
     else:
-        a, b, c = _compute_cell_from_extents(struct)
         lines += [
             "# WARNING: no lattice on the structure — an orthorhombic",
             "# VACUUM BOX was derived from the atom extents: each ISOLATED",
@@ -338,17 +338,32 @@ def _lattice_block(struct: Structure,
             "# real Au(111) lead, supply the structure's hexagonal cell",
             "# (set Structure.cell / the molstruct sidecar's 'cell').",
             "%block LatticeVectors",
-            f"  {a:7.3f}    0.000    0.000",
-            f"    0.000  {b:7.3f}    0.000",
-            f"    0.000    0.000  {c:7.3f}",
+            *(f"  {v[0]:14.8f} {v[1]:14.8f} {v[2]:14.8f}" for v in cell),
             "%endblock LatticeVectors",
         ]
     return lines
 
 
+def engine_frame_for(struct: Structure, cell: Optional[np.ndarray] = None):
+    """The frame a transport rung's atoms are placed with -- ONE box decision
+    and ONE placement (`model/structure-periodicity.md` § 6.0).
+
+    The box is ``cell`` when given, else the structure's own, else -- an
+    isolated lead that states none -- the vacuum box
+    :func:`_compute_cell_from_extents` sizes with transport's own default.
+    ``deck.py`` computes it once per deck and hands the same frame to the
+    coordinate block and to the deck's ENGINE-OFFSET record."""
+    from ..cell import to_engine
+    if cell is None and struct.cell is None:
+        box = np.diag(_compute_cell_from_extents(struct))
+    else:
+        box = np.asarray(cell if cell is not None else struct.cell, dtype=float)
+    return to_engine(struct, box=box)
+
+
 def _emit_geometry(struct: Structure,
                    cell: Optional[np.ndarray] = None,
-                   cfg=None) -> List[str]:
+                   cfg=None, frame=None) -> List[str]:
     """Lattice + AtomicCoordinates blocks.
 
     The lattice comes from ``cell`` (or ``struct.cell``) when present —
@@ -357,12 +372,14 @@ def _emit_geometry(struct: Structure,
     orthorhombic vacuum box (an isolated-cluster model), with a loud
     warning.
 
-    Coordinates are emitted in the ENGINE frame (structure-periodicity.md
-    § 6.1 clause 5): SIESTA anchors the cell at (0,0,0), so atoms are
-    shifted by ``-resolve_cell_origin()`` — the SAME convention
-    ``render_fdf`` applies.  Emitting the cell at zero with world-frame
-    coordinates mistranslated a junction by its origin (review finding
-    2026-07-29: far-face atoms wrapped into the leads).
+    Coordinates are emitted in the ENGINE frame by the one placement rule
+    (`model/structure-periodicity.md` § 6.0): the design coordinates plus
+    ``cell.engine_offset``, which centres the atoms in the box -- the rule
+    every emitter takes, so a lead, the device and a relaxation cannot place
+    their atoms differently.  Until 2026-09-25 this block subtracted
+    ``resolve_cell_origin()`` by hand, and a junction anchored at its lowest
+    atom reached TranSIESTA flush against its face: *"Electrode: L lies
+    outside the unit-cell."*
     """
     from ..chemistry import atomic_number
     # ONE SPECIES RULE, AND ONE OVERRIDE, SHARED WITH THE SIESTA EMITTER
@@ -398,11 +415,13 @@ def _emit_geometry(struct: Structure,
             f"species has to appear in it -- or leave it unset and the "
             f"default rule orders them (model/chemistry.md 3a)")
 
-    resolved_cell = cell if cell is not None else struct.cell
-    origin = (struct.resolve_cell_origin()
-              if resolved_cell is not None else None)
-    positions = (struct.positions - np.asarray(origin, dtype=float)
-                 if origin is not None else struct.positions)
+    # THE BOX, THEN ONE PLACEMENT (`engine_frame_for`).  A deck passes the
+    # frame it records; a direct call gets the same answer computed here.  The
+    # fabricated box used to take the atoms untranslated: a box at the origin
+    # around coordinates that were not.
+    fabricated = cell is None and struct.cell is None
+    if frame is None:
+        frame = engine_frame_for(struct, cell)
 
     lines: List[str] = ["# --- Geometry ---", ""]
     lines.append(f"NumberOfAtoms          {struct.n_atoms}")
@@ -417,11 +436,11 @@ def _emit_geometry(struct: Structure,
         lines.append(f"  {species_idx[sp]:>3}  {z:>3}  {sp}")
     lines.append("%endblock ChemicalSpeciesLabel")
     lines.append("")
-    lines.extend(_lattice_block(struct, resolved_cell))
+    lines.extend(_lattice_block(struct, frame.cell, fabricated=fabricated))
     lines.append("")
     lines.append("AtomicCoordinatesFormat        Ang")
     lines.append("%block AtomicCoordinatesAndAtomicSpecies")
-    for el, (x, y, z) in zip(struct.elements, positions):
+    for el, (x, y, z) in zip(struct.elements, frame.positions):
         lines.append(
             f"  {x:14.8f} {y:14.8f} {z:14.8f}  {species_idx[el]}"
         )

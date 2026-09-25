@@ -809,24 +809,4 @@ def _validate_siesta(struct: Structure, cfg,
                 "geometry.dipole",
             ))
 
-    # Atoms outside [0, 1) fractional coords with wrap_into_cell=False
-    # mean the visualiser will see the molecule in the neighbour cell.
-    if not cfg.wrap_into_cell and len(struct.positions) > 0:
-        try:
-            inv  = np.linalg.inv(cell)
-            frac = struct.positions @ inv
-            outside = np.any((frac < 0) | (frac >= 1), axis=1)
-            n_out = int(outside.sum())
-            if n_out > 0:
-                issues.append(Issue(
-                    "warn",
-                    f"{n_out} of {len(struct.positions)} atoms have "
-                    f"fractional coords outside [0, 1) but wrap_into_cell "
-                    f"= False; visualisations will show the molecule in "
-                    f"the neighbour cell",
-                    "config.wrap_into_cell",
-                ))
-        except np.linalg.LinAlgError:
-            pass   # Singular cell -- already flagged by determinant check
-
     return issues

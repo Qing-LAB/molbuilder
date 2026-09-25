@@ -665,25 +665,35 @@ def test_the_atoms_move_rigidly_so_a_device_is_never_cut():
                                atol=1e-12)
 
 
-def test_the_offset_of_coordinates_it_already_centred_is_zero():
-    """Idempotent -- so a structure saved from an engine's output carries a
-    zero offset without anyone setting it, and nothing is shifted twice."""
-    frame = cellmod.to_engine(_junction_like())
-    again = Structure(elements=["Au", "Au", "S", "S"],
-                      positions=frame.positions, cell=frame.cell)
-    np.testing.assert_allclose(cellmod.engine_offset(again), 0.0, atol=1e-9)
+def test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none():
+    """User, 2026-09-25: *"the invariable is coordinate+offset"* -- the design
+    coordinates plus their offset ARE the coordinates the engine gets -- and at
+    that hand-off *"offset should be zero … the correction should have been
+    applied"*.  Nothing here claims a saved file's offset is zero: a relaxation
+    moves atoms, and their offset is whatever the rule then says."""
+    s = _junction_like()
+    frame = cellmod.to_engine(s)
+    np.testing.assert_allclose(s.positions + cellmod.engine_offset(s),
+                               frame.positions, atol=1e-12)
+    np.testing.assert_allclose(frame.applied_offset, cellmod.engine_offset(s),
+                               atol=1e-12)
+    cellmod.require_placed(frame)                     # zero at the hand-off
+    unplaced = cellmod.EngineFrame(cell=frame.cell, positions=s.positions,
+                                   applied_offset=np.zeros(3))
+    with pytest.raises(ValueError, match="still carry an offset"):
+        cellmod.require_placed(unplaced)
 
 
-def test_an_engines_own_output_is_shown_verbatim_at_offset_zero():
-    """Stated, not recomputed.  Coordinates an engine wrote flush against a
-    face -- as every deck did before this rule -- are drawn flush, with the box
-    at the origin; recomputing would draw them centred, a box the engine never
-    had."""
+def test_an_engines_own_output_is_shown_as_the_engine_had_it():
+    """Nothing applied: coordinates + offset is what the engine had.  An
+    engine that wrote its atoms flush against a face -- as every deck did
+    before this rule -- is drawn flush, the box at the origin; applying the
+    rule to them would draw them centred, a box the engine never had."""
     s = _junction_like()
     flush = s.positions - s.positions.min(axis=0)
     frame = cellmod.engine_frame(_HEX, flush)
-    np.testing.assert_array_equal(frame.positions, flush)
-    np.testing.assert_array_equal(frame.engine_offset, 0.0)
+    np.testing.assert_array_equal(frame.positions + frame.applied_offset, flush)
+    np.testing.assert_array_equal(frame.box_corner, -frame.applied_offset)
     np.testing.assert_array_equal(frame.box_corner, 0.0)
     rule = cellmod.engine_offset(Structure(elements=list(s.elements),
                                            positions=flush, cell=_HEX.copy()))

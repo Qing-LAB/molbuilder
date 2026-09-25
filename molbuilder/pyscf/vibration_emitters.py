@@ -713,7 +713,7 @@ def _emit_atomic_writer() -> List[str]:
 
 
 def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
-                    stage_token: str = "") -> List[str]:
+                    stage_token: str = "", *, positions) -> List[str]:
     """gto.M(...) molecule construction.  The atom geometry is
     inlined as a Python list-of-lists rather than a multi-line
     string so a user can scroll the script and read coordinates
@@ -729,7 +729,7 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
     out.append("")
     # Format the atoms as a list of [element, x, y, z].
     out.append("ATOMS = [")
-    for el, (x, y, z) in zip(struct.elements, struct.positions):
+    for el, (x, y, z) in zip(struct.elements, positions):
         out.append(f"    ({el!r:>4s}, {x:14.8f}, {y:14.8f}, {z:14.8f}),")
     out.append("]")
     out.append("")

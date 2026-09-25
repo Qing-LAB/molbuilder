@@ -500,10 +500,12 @@ class EngineFrame:
     there.
 
     ``positions`` are in the engine's frame -- the cell's corner at (0,0,0).
-    ``engine_offset`` is what was ADDED to the coordinates this frame was made
-    from: the rule's answer for design coordinates (:func:`to_engine`), and
-    zero, stated, for coordinates that already are an engine's
-    (:func:`engine_frame`).
+    ``applied_offset`` is the correction ADDED to the coordinates this frame
+    was made from: the rule's answer for design coordinates
+    (:func:`to_engine`), and zero for coordinates that already are an
+    engine's (:func:`engine_frame`).  The invariant is coordinates + offset:
+    ``source + applied_offset == positions``, and the positions themselves
+    carry no offset -- :func:`require_placed` checks exactly that.
     """
 
     #: 3×3, rows are the lattice vectors, Å.
@@ -511,17 +513,17 @@ class EngineFrame:
     #: n×3, Å, in the engine's frame.
     positions: np.ndarray
     #: 3, Å.
-    engine_offset: np.ndarray
+    applied_offset: np.ndarray
 
     @property
     def box_corner(self) -> np.ndarray:
         """Where a viewer showing the SOURCE coordinates draws the box.
 
-        ``−engine_offset``: for design coordinates the box sits there, and for
-        an engine's own output the offset is zero, so the box sits at the
+        ``−applied_offset``: for design coordinates the box sits there, and for
+        an engine's own output nothing was applied, so the box sits at the
         origin.  One definition answers both, which is why no viewer computes
         a corner of its own."""
-        return -self.engine_offset
+        return -self.applied_offset
 
 
 def _lattice(struct: Structure, box: Optional[np.ndarray]) -> np.ndarray:
@@ -557,13 +559,41 @@ def engine_offset(struct: Structure, *,
     """
     if struct.n_atoms == 0:
         return np.zeros(3)
-    lattice = _lattice(struct, box)
-    frac = _fractional(struct, lattice, np.zeros(3))
-    if frac is None:
+    return _centring(_lattice(struct, box), struct.positions.astype(float))
+
+
+def _centring(lattice: np.ndarray, positions: np.ndarray) -> np.ndarray:
+    """The rule on raw arrays: the translation centring the fractional span of
+    ``positions`` along each row of ``lattice``."""
+    if len(positions) == 0:
+        return np.zeros(3)
+    try:
+        frac = np.linalg.solve(lattice.T, positions.T).T
+    except np.linalg.LinAlgError:
         raise ValueError("the cell is singular, so no atom can be placed in "
                          "it -- a lattice needs three independent vectors")
     lo, hi = frac.min(axis=0), frac.max(axis=0)
     return (0.5 - (lo + hi) / 2.0) @ lattice
+
+
+#: How far from zero the offset left on handed-off coordinates may be, in Å:
+#: float round-off only.  A real miss is the size of a vacuum gap.
+PLACED_TOL_ANG = 1e-6
+
+
+def require_placed(frame: "EngineFrame") -> None:
+    """At the hand-off to an engine the offset is ZERO -- the correction has
+    been applied (user, 2026-09-25).  Raises ``ValueError`` naming what is
+    left when the coordinates still carry one: they reached the engine without
+    passing through :func:`to_engine`, which is the one door."""
+    left = _centring(frame.cell, frame.positions)
+    if float(np.linalg.norm(left)) > PLACED_TOL_ANG:
+        raise ValueError(
+            "the atoms handed to the engine still carry an offset of "
+            + str(tuple(round(float(v), 6) for v in left))
+            + " Å: they were not placed by cell.to_engine "
+            "(model/structure-periodicity.md § 6.0), so the engine would see "
+            "them where nobody put them")
 
 
 def to_engine(struct: Structure, *,
@@ -578,20 +608,20 @@ def to_engine(struct: Structure, *,
     offset = engine_offset(struct, box=lattice)
     return EngineFrame(cell=lattice,
                        positions=struct.positions.astype(float) + offset,
-                       engine_offset=offset)
+                       applied_offset=offset)
 
 
 def engine_frame(cell, positions) -> EngineFrame:
     """The record for coordinates that ARE an engine's -- a run's output.
 
-    The offset is STATED as zero and never recomputed: these are the engine's
-    own frame, shown verbatim (§ 6.1 clause 5).  Recomputing would redraw a run
-    made before the rule -- which the engine had flush against a face -- as
-    though it had been centred, which is the picture that misled on
-    2026-09-25."""
+    Nothing is applied: coordinates + offset is what the engine had, so they
+    are shown verbatim, the box at the origin (§ 6.1 clause 5).  Recomputing
+    the rule on them would redraw a run made before it -- which the engine had
+    flush against a face -- as though it had been centred, the picture that
+    misled on 2026-09-25."""
     return EngineFrame(cell=np.array(cell, dtype=float).reshape(3, 3),
                        positions=np.array(positions, dtype=float).reshape(-1, 3),
-                       engine_offset=np.zeros(3))
+                       applied_offset=np.zeros(3))
 
 
 # --------------------------------------------------------------------- #

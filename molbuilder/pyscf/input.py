@@ -133,10 +133,14 @@ from molbuilder.constants import (
 # --------------------------------------------------------------------- #
 
 
-def _atoms_block(struct: Structure, indent: str = "    ") -> str:
-    """Format atoms as PySCF's multi-line `atom=` string (Angstrom)."""
+def _atoms_block(struct: Structure, positions, indent: str = "    ") -> str:
+    """Format atoms as PySCF's multi-line `atom=` string (Angstrom).
+
+    ``positions`` are the engine's (`cell.to_engine`, § 6.0 of
+    `model/structure-periodicity.md`), never the design coordinates: every
+    engine is handed the same placement, and the deck records it."""
     lines = []
-    for el, (x, y, z) in zip(struct.elements, struct.positions):
+    for el, (x, y, z) in zip(struct.elements, positions):
         lines.append(f"{indent}{el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}")
     return "\n".join(lines)
 
@@ -195,6 +199,10 @@ def spec_for(struct: Structure,
     script's internals are not re-suffixed*, not *the token is discarded*.
     """
     cfg = config or PySCFConfig()
+    # THE ONE PLACEMENT, computed once: the atom literal writes these
+    # positions and the deck's ENGINE-OFFSET record states the same frame.
+    from ..cell import to_engine as _to_engine
+    _frame = _to_engine(struct)
     charge = _resolve_charge(struct, cfg)
     method_class = cfg.method.upper()
     if method_class not in ("RKS", "UKS", "RHF", "UHF"):
@@ -505,7 +513,7 @@ def spec_for(struct: Structure,
         # an empty file.  A parse failure (malformed XYZ) falls through to
         # the literal -- we never silently feed garbage to gto.M().
         out.append("_atom_block = '''")
-        out.append(_atoms_block(struct))
+        out.append(_atoms_block(struct, _frame.positions))
         out.append("'''")
         # THE READ IS GATED ON ``restart``, and on nothing else (`run-identity.md`
         # § 4 rule 2).  The geometry this reads is the PREVIOUS rung's, so no flag
@@ -971,6 +979,7 @@ def spec_for(struct: Structure,
     # half of roadmap P4 that phase 1 did not close.
     spec = _sc.DeckSpec(
         engine="pyscf",
+        engine_frame=_frame,
         layout=(_sc.Block("system, molecule and the mean field", _science_a),
                 _layout.DFT_SECTION,
                 _sc.Block("solvent and the SCF preamble", _science_b),

@@ -143,7 +143,6 @@ states the *why* so the thresholds don't drift silently.
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
 | net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (all `kgrid == 1`) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
-| atom outside `[0, 1)` fractional coords with `wrap_into_cell=False` | warn | atom sits in a neighbour cell; visualisations look broken (`siesta.py:576`) |
 
 ### k-point sampling (`siesta.py`, `cfg.kgrid`)
 | Check | Severity | Why |

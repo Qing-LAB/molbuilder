@@ -599,6 +599,11 @@ def vibration_spec(struct: Structure, cfg, *,
     """The vibration calculation's DeckSpec — the seam's answer for
     ``calculation = 'vibration'`` (PySCF first; the shape admits others)."""
     view = VibrationConfigView(cfg, struct)
+    # THE ONE PLACEMENT, computed once (`model/structure-periodicity.md`
+    # § 6.0): the molecule block writes these positions and the deck's
+    # ENGINE-OFFSET record states the same frame.
+    from ..cell import to_engine as _to_engine
+    _frame = _to_engine(struct)
 
     def _vib_deck(struct_, cfg_) -> str:
         # THE COMPOSITION MIRRORS THE OLD GENERATOR'S (render_spectra_script
@@ -683,7 +688,8 @@ def vibration_spec(struct: Structure, cfg, *,
         else:
             out.append("    _dft = None")
         out += _emit_atomic_writer()
-        out += _emit_build_mol(struct, view, stage_token=stage_token or "")
+        out += _emit_build_mol(struct, view, stage_token=stage_token or "",
+                               positions=_frame.positions)
         # Category 3 (integration plan): the standalone-geometry writer
         # and the live-watch emitter ride the same homes the
         # optimization deck uses -- emit_save_helper and
@@ -735,6 +741,7 @@ def vibration_spec(struct: Structure, cfg, *,
     return _sc.DeckSpec(
         engine="pyscf",
         calculation="vibration",
+        engine_frame=_frame,
         layout=(_sc.Block("the vibration deck (lifted emitters + the "
                           "relaxation/thermo/IR blocks)", _vib_deck),),
         # The engine's own line/provenance answers, shared with the

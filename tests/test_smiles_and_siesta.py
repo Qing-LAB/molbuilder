@@ -316,7 +316,7 @@ def test_the_cell_volume_gate_refuses_below_one_angstrom_cubed_per_atom(
     # written to catch it (2026-09-09).  It also keeps the box long in x,
     # so the atoms fit and `cell.unfittable` cannot mask this gate.
     cell = np.diag([volume, 1.0, 1.0])
-    cfg = SiestaConfig(relax_type="none", wrap_into_cell=False)
+    cfg = SiestaConfig(relax_type="none")
 
     try:
         render_fdf(s, cfg, cell=cell)
@@ -342,7 +342,7 @@ def test_a_cell_the_gate_allows_renders_all_the_way_through():
     from molbuilder.structure import Structure
     s = Structure(elements=["C"], positions=np.zeros((1, 3)),
                   title="one", vacuum=(12.0, 12.0, 12.0))
-    fdf = render_fdf(s, SiestaConfig(relax_type="none", wrap_into_cell=False),
+    fdf = render_fdf(s, SiestaConfig(relax_type="none"),
                      cell=np.eye(3) * 1.2 ** (1.0 / 3.0))
     assert "BlockSize" in fdf, "render must produce a real FDF"
 
@@ -368,72 +368,6 @@ def test_the_volume_refusal_says_what_to_look_at():
     assert "10 atom" in msg, msg
     assert "10.0 A^3" in msg or "= 1 A^3 per atom" in msg, msg
     assert "nm" in msg or "coplanar" in msg, msg
-
-
-def test_wrap_into_cell_boundary_handling():
-    """The 2026-05-28 audit found ``_wrap_into_cell`` did the opposite
-    of its docstring: it wrapped frac=0.9999999999 to -1e-10 (outside
-    cell, counted as moved) while leaving frac=-1e-10 at -1e-10
-    (still outside, not counted).
-
-    Contract pinned here:
-      * Every atom lands in [0, 1) fractional after the wrap.
-      * Atoms within 1e-9 of the cell boundary are NOT counted as
-        moved (numerical noise, not a real translation).
-      * Atoms genuinely outside the cell ARE counted as moved.
-    """
-    import numpy as np
-    from molbuilder.siesta.input import _wrap_into_cell
-
-    cell = np.eye(3) * 10.0     # 10 A cubic cell -- fractional = cart/10.
-
-    # Case 1: atom at frac=0.9999999999 (in cell, noise near boundary).
-    # Old code: wrapped to -1e-9 (OUT of cell), counted as moved.
-    # New code: stays at 9.999999999 A, NOT counted.
-    p = np.array([[9.999999999, 5.0, 5.0]])
-    new, n = _wrap_into_cell(p, cell)
-    assert n == 0, "frac~0.9999... is on-boundary noise, not a move"
-    assert np.allclose(new, p), \
-        f"on-boundary atom should keep original Cartesian, got {new}"
-
-    # Case 2: atom at frac=-1e-11 (just outside in -x).
-    # Old code: wrapped = -1e-11 (still outside), not counted.
-    # New code: cleanly wraps to ~10 A (inside cell), boundary so
-    # not counted as a real motion.
-    p = np.array([[-1e-10, 5.0, 5.0]])
-    new, n = _wrap_into_cell(p, cell)
-    assert n == 0, "frac~-eps is on-boundary noise, not a move"
-    # Cleanly inside [0, 10): the x coord should be in [0, 10).
-    frac_x = new[0, 0] / 10.0
-    assert 0.0 <= frac_x < 1.0, (
-        f"after wrap atom must be in cell; got frac_x={frac_x}"
-    )
-
-    # Case 3: atom at frac=1.0 + 1e-11 (just outside in +x).
-    # Old code: wrapped to ~+1e-11 (inside cell), but counted as
-    # moved by ~1.0 (wrong -- it was boundary noise).
-    # New code: cleanly wraps to ~0 + 1e-10 A, NOT counted.
-    p = np.array([[10.0 + 1e-10, 5.0, 5.0]])
-    new, n = _wrap_into_cell(p, cell)
-    assert n == 0, "frac~1+eps is on-boundary noise, not a move"
-    frac_x = new[0, 0] / 10.0
-    assert 0.0 <= frac_x < 1.0, (
-        f"after wrap atom must be in cell; got frac_x={frac_x}"
-    )
-
-    # Case 4: a GENUINE wrap (frac = 1.5).  Must wrap to 0.5 and be
-    # counted.
-    p = np.array([[15.0, 5.0, 5.0]])
-    new, n = _wrap_into_cell(p, cell)
-    assert n == 1, "genuine out-of-cell atom must be counted as moved"
-    assert np.isclose(new[0, 0], 5.0), \
-        f"frac=1.5 must wrap to frac=0.5 (cart=5.0); got {new[0,0]}"
-
-    # Case 5: atom genuinely inside (frac=0.5) -- no motion, no count.
-    p = np.array([[5.0, 5.0, 5.0]])
-    new, n = _wrap_into_cell(p, cell)
-    assert n == 0
-    assert np.allclose(new, p)
 
 
 def test_ranks_alone_do_not_put_a_blocksize_in_the_deck():

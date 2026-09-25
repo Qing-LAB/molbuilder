@@ -98,11 +98,18 @@ def test_default_render_compiles(h2o):
 
 
 def test_atom_block_format(h2o):
+    """One row per atom: the element, then three coordinates to 8 decimals.
+
+    The values are the PLACED ones -- the design coordinates plus the engine
+    offset (`model/structure-periodicity.md` § 6.0); coordinates + offset is
+    the invariant.  This asserted the design coordinates themselves until
+    2026-09-25, when every engine began receiving the atoms centred."""
+    from molbuilder import cell as cellmod
     text = render_script(h2o, PySCFConfig(verbose_comments=False))
-    assert re.search(r"^\s*O\s+0\.00000000\s+0\.00000000\s+0\.00000000",
-                     text, re.M)
-    assert re.search(r"^\s*H\s+0\.95700000\s+0\.00000000\s+0\.00000000",
-                     text, re.M)
+    placed = h2o.positions + cellmod.engine_offset(h2o)
+    for el, (x, y, z) in zip(h2o.elements, placed):
+        assert re.search(rf"^\s*{el}\s+{x:.8f}\s+{y:.8f}\s+{z:.8f}\s*$",
+                         text, re.M), (el, x, y, z)
 
 
 def test_geometric_optparams_accepts_pyscf_optimize_kwargs():

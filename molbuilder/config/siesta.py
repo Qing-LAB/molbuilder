@@ -848,34 +848,15 @@ class SiestaConfig:
     # Their absence is the proof; SIESTA_RESTART_GROUP below is what
     # replaced them.
 
-    # Atom positioning relative to the cell:
-    #   wrap_into_cell -- when an explicit cell is given (e.g. read from
-    #                     a periodic XYZ), fold atoms whose fractional
-    #                     coordinates fall outside [0, 1) back into the
-    #                     unit cell.  Has no effect on auto-vacuum cells
-    #                     because the centring step already places atoms
-    #                     inside the box.
-    #   center_in_vacuum -- for the auto-vacuum case, place the structure
-    #                     so its bounding-box midpoint sits at the cell
-    #                     centre (default).  Disable to keep raw input
-    #                     coordinates (useful when several runs share a
-    #                     reference frame).
     # Output + positioning flags (2026-06-13): all of these are set
     # once per project and don't change between stages — tag them as
     # workflow_group="profile" so they fold into the Run profile card
     # alongside SystemLabel / pseudo / spin.  Kills the "Output &
     # positioning" section as a separate untagged surface (the user
     # was hunting for these knobs at the bottom of the form).
-    wrap_into_cell: bool = field(default=True, metadata={
-        "category": ("procedure",),
-        "section": "Output & positioning",
-        "item_kind":  "produce",
-        "workflow_group": "profile",
-        "label": "Wrap atoms into cell",
-        "engine_key":  '(molbuilder: pre-emission positioning)',
-    })
-    # (center_in_vacuum removed: centring is intrinsic to the structure-derived
-    # vacuum box -- render_fdf centres the molecule via resolve_cell_origin.)
+    # (center_in_vacuum and wrap_into_cell removed: where the atoms sit in the
+    # cell is one rule, the engine offset -- structure-periodicity.md § 6.0 --
+    # and a per-atom wrap can cut a device at its widest gap.)
 
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,
