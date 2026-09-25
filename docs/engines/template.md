@@ -1766,6 +1766,16 @@ Three things are **not** items, each excluded by a rule that already exists:
 the loud version of that is the only one that gets fixed: whatever writes a
 template refuses rather than omitting the item.
 
+**An item this build no longer declares is either unknown or retired, and the
+two are read differently** *(2026-09-25)*. Unknown — a typo, a rename — is a
+value the person believes they set, and the reader refuses it by name (U16).
+Retired is an item molbuilder wrote and has stopped writing: the file is not
+wrong, it is older, so `read_template` accepts it and ignores it
+(`template.RETIRED_ITEMS`, each entry saying why ignoring it loses nothing).
+`wrap_into_cell` is the first: every SIESTA template written before its
+retirement carries it with a value, and refusing it made those calculations
+un-preppable.
+
 > **There is no slot for a keyword molbuilder does not model, and that is the
 > premise rather than an omission.** A template is built from what molbuilder
 > *knows*: every parameter the schema declares, each validated, each with what we

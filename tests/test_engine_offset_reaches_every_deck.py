@@ -54,10 +54,11 @@ def _water():
                      vacuum=(5.0, 5.0, 5.0))
 
 
-def _prep(root, struct, cfg, stages, engine):
+def _prep(root, struct, cfg, stages, engine, before_prep=None):
     """Describe, then `jobset prep run` the first rung; the deck's text.
     ``root`` is the per-test projects tree (`isolated_projects_root`): `prep`
-    reads a calculation only from inside the tree."""
+    reads a calculation only from inside the tree.  ``before_prep(dest)``
+    edits the described calculation first, as a file on disk may differ."""
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
     # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
     # default box -- a different structure from the one described.
@@ -79,6 +80,8 @@ def _prep(root, struct, cfg, stages, engine):
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4)
                     ).to_json() + "\n")
+    if before_prep is not None:
+        before_prep(dest)
     stage = stages[0].name
     r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
                                           str(dest), "--no-sbatch"])
@@ -183,3 +186,50 @@ def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():
     with pytest.raises(ValueError, match="still carry an offset"):
         render_deck(dataclasses.replace(spec, engine_frame=unplaced),
                     struct, cfg)
+
+
+#: `[item.wrap_into_cell]` as the writer emitted it before 2026-09-25 --
+#: copied from `projects/claude-vib-ui/optimization/au333bdt-loose`'s template.
+_RETIRED_WRAP_ITEM = '''
+[item.wrap_into_cell]
+kind = "produce"
+category = ["procedure"]
+engine_key = "(molbuilder: pre-emission positioning)"
+type = "bool"
+value = true
+default = true
+role = ["transport"]
+group = "profile"
+label = "Wrap atoms into cell"
+help = """
+Move any atom that sits outside the cell box back inside it.
+"""
+'''
+
+
+def test_a_template_written_before_wrap_into_cell_retired_still_preps(
+        isolated_projects_root):
+    """A calculation described before `wrap_into_cell` retired still preps.
+
+    GOAL: every SIESTA template written before 2026-09-25 carries that item
+    with a value -- 17 on the development machine that day, four under
+    `projects/Au-BDT-Au` -- and the reader refused it as a name the schema
+    does not declare, so each of those calculations stopped prepping (found by
+    an independent review of the retirement).  CONTRACT: `engines/template.md`
+    § 7 -- a RETIRED item is accepted and ignored; an unknown one is refused.
+
+    The item block is a measured fixture, copied from a real template.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import default_siesta_stages
+
+    def add_the_retired_item(dest):
+        tpl = next(dest.glob("*.template.toml"))
+        tpl.write_text(tpl.read_text() + _RETIRED_WRAP_ITEM)
+
+    _dest, _stage, text = _prep(isolated_projects_root, _slab(),
+                                SiestaConfig(system_label="JOB"),
+                                default_siesta_stages("publishable"), "siesta",
+                                before_prep=add_the_retired_item)
+    assert "%block AtomicCoordinatesAndAtomicSpecies" in text
+
