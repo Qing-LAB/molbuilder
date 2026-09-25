@@ -113,7 +113,7 @@ the same day, with what it turned out to be.
 | ↳ | ~~**V1.28**~~ | **DONE 2026-09-24** — the record is a cluster of the structure's `info` store, `info.relaxation` (`model/parse.md` § 5b.1: engine, the run's force tolerance, the largest force left on the moved atoms, the held set, the final geometry's fingerprint), composed by `run_info_for_dir` beside `info.calculation` and recorded by the Results tab's structure inspector; both kinds' gates read it on the box's card (`validation/sidecar.py::check_relaxation_record`): absent and ticked is accepted with a hint, present is checked against this calculation's tolerance, level of theory and held set, never a refusal. Found on the way and fixed: `result_roles` offered the seeded molwatch log before SIESTA's `.out`, so every SIESTA relaxation opened its 613-byte seed on the Results tab. Was: **The structure carries its relaxation record** (needs a design and a yes) | `vibration.md` § 2.2, § 10; `model/parse.md` § 5b.1 | done |
 | ↳ | **V1.31** | **The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`**: the deck knows its criteria, its convergence and its held set when it writes the pair; the spliced pair writer would compute the fingerprint the same way (`Structure.geometry_fingerprint`, spliced like `structure_hash_text`). Until then a PySCF-relaxed structure carries the record only when exported from the Results tab | `vibration.md` § 2.2, § 10 | open |
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `_afterRunLines` spell `relax`/`freq` and the box rule by hand) while Python owns it (`pyscf/stages.py::vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the after-run line should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open |
-| **W33** | structure / engines / web | **THE ENGINE OFFSET — one placement rule for every engine** *(user, 2026-09-25: "always adjust it before sending to siesta or other engines that the coordinates of all atoms are centered inside the cell"; "we don't have to have special logic to treat isolated, periodic, transport axis_info differently")*. Every engine receives the design coordinates + `engine_offset` with the cell at the origin; the offset is computed from the cell and every atom (the fractional span centred, never re-wrapped), recorded in every deck, and stated 0 for an engine's own output, so the Results tab draws what the engine had. Retires `cell_origin`, the derive-on-null corner and its per-axis rules, the manual origin, and the two hand translations. Found by the fake-junction ladder: a TranSIESTA device refused on a flush corner, a Results box the engine never had, the molwatch step-0 jump (audit X4) | `model/structure-periodicity.md` § 6.0 · § 5q | **P0 done 2026-09-25** (contract + plan); **P2 done 2026-09-25** — every emitter through `to_engine`, each deck's ENGINE-OFFSET record, the hand-off gate, T1 + T5 mutation-tested; P1's rule is in (`cell.py`), its retirement of `cell_origin` open; P3–P5 open; the fake-junction ladder is paused at rung 4 until P5 |
+| **W33** | structure / engines / web | **THE ENGINE OFFSET — one placement rule for every engine** *(user, 2026-09-25: "always adjust it before sending to siesta or other engines that the coordinates of all atoms are centered inside the cell"; "we don't have to have special logic to treat isolated, periodic, transport axis_info differently")*. Every engine receives the design coordinates + `engine_offset` with the cell at the origin; the offset is computed from the cell and every atom (the fractional span centred, never re-wrapped), recorded in every deck, and stated 0 for an engine's own output, so the Results tab draws what the engine had. Retires `cell_origin` (an origin the person assigns is kept, stored as the offset), the derive-on-null corner and its per-axis rules, calibrate, and the two hand translations. Found by the fake-junction ladder: a TranSIESTA device refused on a flush corner, a Results box the engine never had, the molwatch step-0 jump (audit X4) | `model/structure-periodicity.md` § 6.0 · § 5q | **P0 done 2026-09-25** (contract + plan); **P2 done 2026-09-25** — every emitter through `to_engine`, each deck's ENGINE-OFFSET record, the hand-off gate, T1 + T5 mutation-tested; P1's rule is in (`cell.py`), its retirement of `cell_origin` open; P3–P5 open; **D1–D5 settled 2026-09-25** (§ 5q.8); the fake-junction ladder is paused at rung 4 until P5 |
 | **W32** | engines / structure | **THE FRAME AXIS — a frame set is one multi-frame pair** *(user, 2026-09-24: "allow multi-frame … which shares the same .json file so meta data and labels are shared, checking of atom number and others can still be gated")*. The contract is `engines/transport.md` § 2a.9 (the set, the per-frame checks, `f000` the base) and `model/structure-molstruct.md` § 6.1 (one sidecar, many frames; a reader that does not ask for frames gets frame 0). **Nothing new is invented**: the codec already writes and reads the pair, and every existing door keeps working because it sees frame 0. **Order of work:** ① the contract — **done 2026-09-24**; ② the citation door classifies a multi-frame pair and checks the four per-frame promises, naming the frame; ③ `prep`: the device and the transmission carry the frame level (`f###`), the seed and the leads do not, the gather runs per frame, one bias for the group (§ 2a.9's ruling); ④ the generator from a spectra file (V1.25) — the vibration side's half; ⑤ Results: the family of curves and what is derived across it (§ 2a.9's deliverable, § 2a.12). **Gate:** ② and ③ land after the single-frame ladder has run end to end once (the run W30's status calls for) — a frame axis on a ladder that has never produced a curve would be measured against nothing | `engines/transport.md` § 2a.9, § 2a.11 · `model/structure-molstruct.md` § 6.1 | **① done 2026-09-24**; ② – ⑤ open |
 | **W31** | front end | **Task setup's stage table offers the optimization tiers on transport rungs**: every rung's row carries the `preset… coarse / medium / tight` select, which applies `SIESTA_STAGE_PRESETS` (relaxation-driver values) to a rung whose role is fixed and whose items the `stages` marker routes. Found driving the transport road 2026-09-24. The control is offered only where every field of the tier may be a column of this kind — the columns route's own membership rule (`web/task-setup.md` § 9); the per-rung columns for transport are the rung's own items | `web/task-setup.md` § 9, `engines/transport.md` § 3.8.2 | **done 2026-09-24** — `/api/task-setup/presets` takes the kind and answers an empty menu for transport; the page draws none |
 | ↳ | ~~**V1.29**~~ | **DONE 2026-09-24** — the mass-calibrated displacement per mode in the result: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang` (`Q_zp · L_canonical`), derived at every serialisation, `null` for an imaginary mode — what the vibration-coupled transport step displaces along (user, 2026-09-24) | `vibration.md` § 6.3, § 6.6 | done |
@@ -3305,22 +3305,22 @@ where it was applied.
 
 | | today | becomes |
 |---|---|---|
-| `Structure.cell_origin` | a stored field (`structure.py:132` `METADATA_FIELDS`, the check `:585`, to/from dict `:896`/`:979`, copy `:1979`, the view block `:1078–1095`, the periodicity blocks `:2140`, `:2255`) | **removed** |
+| `Structure.cell_origin` | a stored field (`structure.py:132` `METADATA_FIELDS`, the check `:585`, to/from dict `:896`/`:979`, copy `:1979`, the view block `:1078–1095`, the periodicity blocks `:2140`, `:2255`) | **replaced** by `Structure.engine_offset` — absent means the rule; present only when the person assigned the origin (contract § 6.0, **D1**) |
 | the corner derivers | `resolve_cell_origin` `:679`, `expected_cell_corner` `:780`, `_derived_corner_under_explicit_cell` `:840` | **removed**. `resolve_cell` and `effective_vacuum` stay: they size a box nobody typed |
-| `cell.py` | composes box + corner, and `ResolvedCell` carries `origin_is_user_owned`, `corner_was_derived`, `contains_at_world_origin` and two fractional projections | **gains** `engine_offset`, `EngineFrame`, `to_engine`, `engine_frame` (contract § 6.0); `ResolvedCell` carries `engine_offset` / `box_corner`, and the three origin fields and the second projection **go** |
-| `periodicity_gate.py` | the `cell_origin` op (`:370–:624`), `BLOCK_KEYS`, the manual-origin regime and its notices | the op, the key and the regime **go**; the gate has two box states (typed, derived), not four |
-| `modify.py` | the electrode builder states the flush corner (`:872–:902`); `calibrate_to_cell` (`:1137–:1170`) | the builder states **no** origin; calibrate per decision **D3** |
+| `cell.py` | composes box + corner, and `ResolvedCell` carries `origin_is_user_owned`, `corner_was_derived`, `contains_at_world_origin` and two fractional projections | **gains** `engine_offset`, `EngineFrame`, `to_engine`, `engine_frame` (contract § 6.0); `ResolvedCell` carries `engine_offset` / `box_corner`, and the three origin fields and the second projection **go**; `EngineFrame` states whether its offset was assigned |
+| `periodicity_gate.py` | the `cell_origin` op (`:370–:624`), `BLOCK_KEYS`, the manual-origin regime and its notices | the op becomes `box_corner` (assign on a typed cell, or clear back to the rule), `BLOCK_KEYS` with it; the manual-origin regime becomes the assigned offset; the gate has three box states — derived, typed, typed with an assigned origin — not four |
+| `modify.py` | the electrode builder states the flush corner (`:872–:902`); `calibrate_to_cell` (`:1137–:1170`) | the builder states **no** origin; `calibrate_to_cell` **retired** (**D3**) |
 | a frame set | — | **one** offset, from frame 0, for every frame (contract § 6.0) |
 
 ### 5q.2 File access
 
 | file | today | becomes |
 |---|---|---|
-| `.molstruct.json` sidecar — `sidecars/molstruct.py` (writer), `parse/sidecars/molstruct.py` (reader) | schema v9, carries `cell_origin` | **v10**, without it. The writer writes v10; the reader accepts v9 and ignores its `cell_origin`, as `model/structure.md` § 2.2 already rules for a removed key (**D2**). `engine_offset` is never stored in a sidecar |
-| every deck molbuilder writes (SIESTA `.fdf`, PySCF `.py`) | an `atom-metadata` block only when there are labels; no placement record | + a **`molbuilder engine-offset` block** for every deck (cell, offset applied, axis kinds). One writer beside `script_emit.emit_atom_metadata`, one reader beside `_extract_atom_metadata_dict` |
+| `.molstruct.json` sidecar — `sidecars/molstruct.py` (writer), `parse/sidecars/molstruct.py` (reader) | schema v9, carries `cell_origin` | **v10**: `cell_origin` is replaced by `engine_offset`, written only when the person assigned the origin. The writer writes v10; the reader accepts v9 and ignores its `cell_origin`, as `model/structure.md` § 2.2 already rules for a removed key (**D2**) — a v9 corner may be the electrode builder's flush one, the placement that failed |
+| every deck molbuilder writes (SIESTA `.fdf`, PySCF `.py`) | an `atom-metadata` block only when there are labels; no placement record | + a **`molbuilder engine-offset` block** for every deck (cell, offset applied, whether it was assigned, axis kinds). One writer beside `script_emit.emit_atom_metadata`, one reader beside `_extract_atom_metadata_dict` |
 | engine output (`.XV`, `.out`, `.STRUCT_OUT`, `.ANI`, `.MD`, the PySCF logs) | read as bare coordinates plus a lattice | read into `engine_frame()`, offset 0 stated |
 | the molwatch log (`trajectory_log/format.py` ← `jobset/prep.py`; the audit's § 1.18) | step 0 written in the design frame | step 0 written from `to_engine()` — closes that finding |
-| exports — the Results export, and `cli.py:1163–1174` (`.XV` → pair) | set `cell_origin = None`, which then derives | engine coordinates + cell, v10, through `engine_frame()` |
+| exports — the Results export, and `cli.py:1163–1174` (`.XV` → pair) | set `cell_origin = None`, which then derives | engine coordinates + cell, v10, through `engine_frame()`; a run whose offset was assigned is saved with an assigned offset of zero (contract § 6.0) |
 | transport artifacts | form A composes the `.XV` with `cell_origin: None` (`compose.py:623`) and derives | the `.XV` through `engine_frame()`, each rung through `to_engine()`. `atom-permutation.json` and `slot-provenance.json` are unaffected (indices, provenance) |
 
 ### 5q.3 Protocol agreement — the wire
@@ -3342,9 +3342,13 @@ where it was applied.
   offset, read-only), `model.js:898`. The browser never computes a corner, which
   `structure-periodicity.md` § 6.2 already requires — this keeps it true.
 * **The Cell page** (`modify/periodicity.js`, `templates/modify.html`): the
-  origin inputs and the Reset-origin button go (**D1**); the offset is shown.
-  `demo.js:270` commits a `cell_origin` op and goes with them.
-* `/api/modify/calibrate` (`web/blueprints/modify.py:656–675`) follows **D3**.
+  origin group stays and assigns the box's origin — three numbers, or *Use
+  selection* — and *Derive it* becomes *Automatic* (**D1**); the offset is shown,
+  computed or assigned. `demo.js:270` commits a `cell_origin` op and moves to
+  `box_corner`.
+* `/api/modify/calibrate` (`web/blueprints/modify.py:656–675`) is **retired**
+  (**D3**), with the `calibrate` op in `lib/molview/model-jobs.js` and
+  `modify.calibrate_to_cell`.
 
 ### 5q.4 Validation
 
@@ -3356,9 +3360,9 @@ edit; *transport clearance along c* in the transport kind validator
 
 | | what it drives | what it asserts |
 |---|---|---|
-| **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset |
+| **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it |
 | **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output. The fixture is `claude-vib-ui/optimization/au333bdt-loose`, a real flush run — it must be drawn **flush** |
-| **T3** | export from Results → reload | `engine_offset = 0` (idempotent) |
+| **T3** | export from Results → reload | coordinates + offset is what the engine had: an automatic run whose atoms did not move reloads with the rule giving zero; an assigned run reloads with an assigned zero |
 | **T4** | `prep device` on the fixture | clearance at both faces along c; the lead's and the device's L blocks agree (risk **R1**) |
 | **T5** | the rule itself, API-level on a measured fixture — the docstring says so | the hexagonal junction's `[6.3684, 3.746, 18.5325]`. A Cartesian implementation fails it (x-extent 10.093 > \|a\| 8.651); a re-wrapping one fails it (the 2.399 > 2.355 cut) |
 
@@ -3386,7 +3390,7 @@ inventory at the end of phase 4, not by a lint test.
 | `cell.py` | composes box + corner (`:186`, `:208`, `:234`) | P1 |
 | `periodicity_gate.py` | the Cell-page door, the origin op and regime | P1 |
 | `sidecars/molstruct.py`, `parse/sidecars/molstruct.py` | schema v9 | P1 |
-| `modify.py` | builder's flush corner; `calibrate_to_cell` | P1 |
+| `modify.py` | builder's flush corner; `calibrate_to_cell` (retired, **D3**) | P1 |
 | `cell.py` `_contains`, the three `_CONTAIN_EPS` / `_EPS` | containment re-implemented beside `Structure.cell_contains_atoms` (A1.13's containment half) | P1 |
 | `validation/siesta.py:802–803` | a containment check that ignores the corner — `inv(cell)` on raw positions; the owner says inside, the check says outside (the audit's § 1.6) | P1 |
 | `periodicity_gate.py:385,422,592`, `_shared.py:156` | user-facing error text citing a `§ 3c` that no longer exists | P1 / P3 |
@@ -3401,9 +3405,9 @@ inventory at the end of phase 4, not by a lint test.
 | `web/blueprints/watch.py` | the Results periodicity block | P3 |
 | `web/blueprints/_shared.py` | the payload's periodicity block | P3 |
 | `web/blueprints/build.py` | the periodicity door's origin op | P3 |
-| `web/blueprints/modify.py` | `/api/modify/calibrate` | P3 |
-| `lib/molview/render-engine.js`, `model-jobs.js`, `ui.js`, `model.js`, `demo.js` | draw / choose / show / commit an origin | P3 |
-| `modify/periodicity.js`, `templates/modify.html` | the origin inputs, Reset-origin | P3 |
+| `web/blueprints/modify.py` | `/api/modify/calibrate` — retired (**D3**) | P3 |
+| `lib/molview/render-engine.js`, `model-jobs.js`, `ui.js`, `model.js`, `demo.js` | draw / choose / show / commit an origin; `model-jobs.js`'s `calibrate` op (retired, **D3**) | P3 |
+| `modify/periodicity.js`, `templates/modify.html` | the origin group — kept, re-founded on the assigned offset (**D1**) | P3 |
 | `validation/__init__.py` | no transport clearance rule | P4 |
 | `transport/sort.py`, `config/siesta.py` | comments naming the old field | P4 |
 
@@ -3469,22 +3473,41 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
 
 ### 5q.8 Decisions
 
-* **D1 — the manual origin: retired.** Settled by the rule itself — the offset
-  is *"never chosen"*; the user: *"always automatically calculated based on the
-  cell unit and all the atoms"*.
+* **D1 — the origin: the rule, unless the person assigns it** *(user,
+  2026-09-25, revising the first answer: "we should add one that can allow
+  user to explicitly assign the origin of the cell box as the user desire (for
+  further modificaiton convenience etc). this could be handled by just write
+  the -origin to the frame_offset such that the next treatment of the file will
+  force the 0,0,0 to be the user specified position")*. The Cell page's origin
+  group stays, on a typed cell only, and stores the offset; its rules are the
+  contract's (§ 6.0, *An origin the person assigns*). The first answer —
+  *"always automatically calculated based on the cell unit and all the atoms"*
+  — is still what happens wherever the person assigns nothing.
 * **D2 — existing sidecars: already the rule, not a decision.** `model/structure.md`
   § 2.2 (*To remove one*): an old sidecar that still carries a removed key loads
   fine, because `apply_metadata_dict` ignores unknown keys. The writer writes
   v10; the xyz is untouched.
-* **D3 — calibrate** *(proposed)*: keep it as *apply `engine_offset` to the
-  stored coordinates* — the explicit save-in-engine-frame, after which the
-  offset is 0. *Calibrated-then-emit ≡ emit* still holds and pins the rule.
-* **D4 — calculation pages** *(proposed)*: show the design coordinates with the
-  box at `−engine_offset` — the same geometry the engine gets, in the numbers
-  the person authored — rather than engine coordinates.
-* **D5 — the Results tab's axis kinds** *(proposed)*: those recorded in the
-  deck, i.e. what molbuilder asked for, rather than SIESTA's own treatment
-  (periodic on all three axes, always).
+* **D3 — calibrate: retired** *(user, 2026-09-25: "we can retire the
+  calibrate button")*. The `calibrate` op, `/api/modify/calibrate`,
+  `modify.calibrate_to_cell` and their tests go in P3. What calibrate was
+  for — a structure saved with its box where the person wants it — is D1's
+  assigned origin.
+* **D4 — every viewer draws the structure's own coordinates** *(user,
+  2026-09-25: "the 3d viewer should just follow what coordinate is in the
+  structure, and draw the cell box with the offset in mind (start from
+  -offset). i don't believe the 3d viewer should do the job of translation.
+  the siesta receives the correct result because the script generator/engine
+  will do the correct thing to gate and translate the coordinate to siesta.
+  while the 3d viewer sees the result it would see what siesta see and print
+  so there is no inconsistency issues")*. A calculation page shows the design
+  coordinates with the box at `−engine_offset`; the Results tab shows the
+  engine's, with the box at `(0,0,0)`. No viewer translates.
+* **D5 — the Results tab's axis kinds are the structure's** *(user,
+  2026-09-25: "we should show the axis_info as in structure. siesta is always
+  periodic, true, but the isolate axis get our additional gate of vacuum
+  surrounding them and that shows in the cell box too")*: read from the
+  deck's record, which carries them as the structure had them when the deck
+  was written.
 
 ---
 
