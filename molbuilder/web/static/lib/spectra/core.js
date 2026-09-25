@@ -709,10 +709,9 @@
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) {
             for (const host of Object.values(els.form)) {
-                if (host) host.innerHTML =
-                    `<p class="status error">form-schema.js not loaded; check
-                    that <code>lib/form-schema.js</code> appears before this
-                    script in the template.</p>`;
+                showNotice(host, "form-schema.js not loaded; check that "
+                           + "lib/form-schema.js appears before this script "
+                           + "in the template.", "error");
             }
             return;
         }
@@ -2252,10 +2251,13 @@
             if (typeof Plotly !== "undefined") {
                 try { Plotly.purge(els.esBarDiagram); } catch (_) {}
             }
-            els.esBarDiagram.innerHTML =
-                `<p class="status muted">No electronic-structure data for this
-                mode.<br>Re-run with es_mode_selection covering this mode (or
-                pick 'all') to see HOMO/LUMO drift here.</p>`;
+            // `.status` keeps newlines (white-space: pre-line), so the "\n"
+            // breaks the line where the <br> did.
+            showNotice(els.esBarDiagram,
+                       "No electronic-structure data for this mode.\n"
+                       + "Re-run with es_mode_selection covering this mode "
+                       + "(or pick 'all') to see HOMO/LUMO drift here.",
+                       "muted");
             els.esSummary.innerHTML = "";
             return;
         }

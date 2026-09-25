@@ -366,18 +366,21 @@ The security policy (owned by the server — see
 - **Inline `<script>` is banned** — `script-src 'self'` has no `unsafe-inline`.
   All behavior lives in linked `.js` files; no `<script>` blocks, no `onclick=`
   attributes. If an XSS payload ever landed, the CSP would block it.
-- **Markup comes only from the source, or from one of four producers**
-  *(2026-09-25)*. Anything that parses a string as HTML — `innerHTML`,
-  `outerHTML`, `srcdoc`, `insertAdjacentHTML`, `document.write` and their kin
-  — is given an empty string or **one literal** written in the source. Text
-  that varies at run time — a file name, a server's `error`, an exception's
-  message — is set with `textContent` on an element built with
-  `createElement`, however harmless it looks today. HTML made at run time
-  enters only through the four producers `tests/test_xss_audit.py` counts:
-  markdown through DOMPurify (`lib/markdown-render.js`, used by the editor
-  preview and the Documents tab), mermaid's SVG, and the server's
-  `/partials/*` inspectors. A fifth is a design decision, not a line in that
-  table. The CSP stops an injected script from running; this rule stops the
+- **Markup comes only from the source, or from four counted writes**
+  *(2026-09-25)*. In first-party JS (`vendor/` bundles excepted), the three
+  properties that parse HTML — `innerHTML`, `outerHTML`, `srcdoc` — are given
+  an empty string or **one literal** written in the source; the methods that
+  parse it — `insertAdjacentHTML`, `document.write`, `createContextualFragment`,
+  `DOMParser.parseFromString` and kin — are not used at all. Text that varies
+  at run time — a file name, a server's `error`, an exception's message — is
+  set with `textContent` on an element built with `createElement`, however
+  harmless it looks today. HTML made at run time enters at four writes, one
+  per file, that `tests/test_xss_audit.py` counts: the markdown editor's
+  preview (`lib/inspectors/markdown.js`) and the Documents tab
+  (`documents/page.js`), both through `lib/markdown-render.js`'s DOMPurify;
+  mermaid's SVG (`lib/markdown-render.js`); and the server's `/partials/*`
+  inspectors (`lib/inspectors/_partial_inspector_factory.js`). A fifth is a
+  design decision, not a line in that table. The CSP stops an injected script from running; this rule stops the
   injection — three sites broke it until 2026-09-25, each passing a runtime
   message into `innerHTML`.
 
@@ -472,8 +475,10 @@ before concluding anything.
   this way for months (`modify/style.css`'s op-tab strip, "bleed to card edges",
   found 2026-08-30 and pinned by `test_css_negated_var_is_calc`).
 - Behavior → a linked `.js` file; never an inline `<script>` or `onclick=`.
-- Text into the page → `textContent` on a `createElement`ed node; `innerHTML`
-  only ever gets `""` or one fixed literal (§ 7).
+- Text into the page → `textContent` on a `createElement`ed node; outside
+  § 7's four producers, `innerHTML` only ever gets `""` or one fixed literal.
+- A message in a `.status` element keeps its newlines (`white-space:
+  pre-line`): a line break in the source text is a line break on screen.
 - A page sheet that repeats a shared selector → **read its properties** (§ 5).
   Position is composition and stays; `color` / `font-size` is a second owner
   and goes.

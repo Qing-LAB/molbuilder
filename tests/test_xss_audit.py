@@ -1,5 +1,6 @@
 """Nothing a person, a file or a server supplies is parsed as markup, or run as
-code, by the JavaScript the app serves.
+code, by the JavaScript the app serves -- except through the counted
+PRODUCERS below.
 
 GOAL -- the failure these catch: a runtime string reaching a DOM API that
 parses HTML, or one that runs code.  The markup half has been measured: on
@@ -18,6 +19,7 @@ bundles served verbatim, whose provenance is ``static/vendor/README.md``.
 """
 from __future__ import annotations
 
+import bisect
 import re
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple
@@ -47,21 +49,28 @@ def _all_js_files() -> list[Path]:
 # fragment of itself; ``+=`` and ``$("x").innerHTML`` were not seen at all; and
 # the stripper had no regex state, so a quote inside ``/["']/g`` opened a
 # "string", a real ``//`` in the next string was then taken for a comment, and
-# the code after it was dropped.  Here a string, a template literal (with its
-# ``${...}``), a comment and a regex literal are each ONE token, so what
-# follows an ``=`` is known exactly.
+# the code after it was dropped.  Here a string, a template literal, a comment
+# and a regex literal are each ONE token, so what follows an ``=`` is known
+# exactly -- and the expression inside a template's ``${...}`` is read by the
+# SAME scanner.  A second one without regex state stood here for a day, and a
+# review found it lost its place at `lib/tree-picker.js:112` (a regex inside
+# ``${}``), reading the next 140 lines as a string (2026-09-25).
 
 class _Tok(NamedTuple):
-    kind: str        # ident | num | str | tmpl | regex | punct | comment
+    kind: str            # ident | num | str | tmpl | regex | punct | comment
     text: str
-    start: int       # offset in the source
-    line: int        # the 1-based line it starts on
+    start: int           # offset in the source
+    line: int            # the 1-based line it starts on
+    closed: bool = True  # a str / tmpl / regex / block comment found its end
 
 
 #: After one of these words a ``/`` opens a regex literal, not a division.
 _REGEX_AFTER_WORD = frozenset({
     "return", "typeof", "instanceof", "in", "of", "new", "delete", "void",
     "throw", "case", "do", "else", "yield", "await"})
+
+#: The statements whose ``(...)`` a regex literal may follow: ``if (x) /re/``.
+_CONTROL_WORDS = frozenset({"if", "while", "for", "with"})
 
 #: Longest first, so ``===`` is one token and never ``==`` then ``=``.
 _PUNCT = sorted(
@@ -71,58 +80,48 @@ _PUNCT = sorted(
     key=len, reverse=True)
 
 
-def _quoted_end(src: str, i: int) -> int:
-    """Past the ``'...'`` or ``"..."`` string that opens at ``i``."""
+def _regex_ok(last: Optional[_Tok], owner: Optional[str]) -> bool:
+    """Does a ``/`` read after ``last`` open a regex literal?  ``owner`` is the
+    word before the ``(`` that ``last`` closes, when ``last`` is ``)``."""
+    if last is None:
+        return True
+    if last.kind == "ident":
+        return last.text in _REGEX_AFTER_WORD
+    if last.kind != "punct":
+        return False                     # after a value: a division
+    if last.text == ")":
+        return owner in _CONTROL_WORDS   # `if (x) /re/`, but `(a) / b`
+    # After `]` or a postfix `++`/`--` a value has just ended.  After any
+    # other punctuation -- `}` included, which ends a statement far more
+    # often than an object that anybody then divides -- one is starting.
+    return last.text not in ("]", "++", "--")
+
+
+def _quoted_end(src: str, i: int) -> Tuple[int, bool]:
+    """Past the ``'...'`` / ``"..."`` string opening at ``i``, and whether it
+    closed (a raw newline ends an unterminated one)."""
     q, j, n = src[i], i + 1, len(src)
-    while j < n and src[j] != q and src[j] != "\n":
-        j += 2 if src[j] == "\\" else 1
-    return min(j + 1, n)
-
-
-def _template_end(src: str, i: int) -> int:
-    """Past the template literal that opens at ``i``, across its ``${...}``."""
-    j, n = i + 1, len(src)
     while j < n:
-        if src[j] == "\\":
+        c = src[j]
+        if c == "\\":
             j += 2
-        elif src[j] == "`":
-            return j + 1
-        elif src.startswith("${", j):
-            j = _braces_end(src, j + 2)
+        elif c == q:
+            return j + 1, True
+        elif c == "\n":
+            return j, False
         else:
             j += 1
-    return n
+    return n, False
 
 
-def _braces_end(src: str, j: int) -> int:
-    """Past the ``}`` that closes a ``${`` opened just before ``j``."""
-    depth, n = 1, len(src)
+def _regex_end(src: str, i: int) -> Tuple[int, bool]:
+    """Past the ``/.../flags`` literal opening at ``i``, and whether it closed.
+    A ``/`` inside a character class does not close it."""
+    j, n, in_class = i + 1, len(src), False
     while j < n:
         c = src[j]
-        if c in "'\"":
-            j = _quoted_end(src, j)
-        elif c == "`":
-            j = _template_end(src, j)
-        elif src.startswith("//", j):
-            e = src.find("\n", j)
-            j = n if e == -1 else e
-        elif src.startswith("/*", j):
-            e = src.find("*/", j + 2)
-            j = n if e == -1 else e + 2
-        else:
-            depth += (c == "{") - (c == "}")
-            j += 1
-            if depth == 0:
-                return j
-    return n
-
-
-def _regex_end(src: str, i: int) -> int:
-    """Past the ``/.../flags`` literal that opens at ``i``.  A ``/`` inside a
-    character class does not close it."""
-    j, n, in_class = i + 1, len(src), False
-    while j < n and src[j] != "\n":
-        c = src[j]
+        if c == "\n":
+            return j, False
         if c == "\\":
             j += 2
             continue
@@ -134,58 +133,111 @@ def _regex_end(src: str, i: int) -> int:
             j += 1
             while j < n and (src[j].isalnum() or src[j] in "_$"):
                 j += 1
-            return j
+            return j, True
         j += 1
-    return j
+    return n, False
+
+
+class _Reader:
+    """One pass over ``src``.  The expression inside a template's ``${...}`` is
+    read by this same scanner, so the regex-or-division decision is made in
+    one place, and a sink inside an interpolation is seen like any other."""
+
+    def __init__(self, src: str):
+        self.src, self.n = src, len(src)
+        self.toks: List[_Tok] = []
+        self._newlines = [k for k, c in enumerate(src) if c == "\n"]
+
+    def _line(self, i: int) -> int:
+        return bisect.bisect_left(self._newlines, i) + 1
+
+    def scan(self, i: int, inside: bool = False) -> int:
+        """Read from ``i``.  ``inside``: stop past the ``}`` that closes the
+        ``${`` this scan was opened for, and return where that is."""
+        src, n = self.src, self.n
+        depth, last, owner = 0, None, None
+        opened: List[Optional[str]] = []      # the word before each open `(`
+        while i < n:
+            c = src[i]
+            if c.isspace():
+                i += 1
+                continue
+            closed = True
+            if c == "`":
+                slot = len(self.toks)
+                self.toks.append(None)        # the template goes BEFORE its parts
+                j, closed = self._template(i)
+                tok = _Tok("tmpl", src[i:j], i, self._line(i), closed)
+                self.toks[slot] = tok
+                last, owner, i = tok, None, j
+                continue
+            if src.startswith("//", i):
+                e = src.find("\n", i)
+                j, kind = (n if e == -1 else e), "comment"
+            elif src.startswith("/*", i):
+                e = src.find("*/", i + 2)
+                j, kind, closed = (n if e == -1 else e + 2), "comment", e != -1
+            elif c in "'\"":
+                (j, closed), kind = _quoted_end(src, i), "str"
+            elif c == "/" and _regex_ok(last, owner):
+                (j, closed), kind = _regex_end(src, i), "regex"
+            elif c.isalpha() or c in "_$":
+                j = i + 1
+                while j < n and (src[j].isalnum() or src[j] in "_$"):
+                    j += 1
+                kind = "ident"
+            elif c.isdigit():
+                j = i + 1
+                while j < n and (src[j].isalnum() or src[j] in "._"):
+                    j += 1
+                kind = "num"
+            else:
+                op = next((p for p in _PUNCT if src.startswith(p, i)), c)
+                j, kind = i + len(op), "punct"
+                if inside and op == "}":
+                    if depth == 0:
+                        return j              # the `}` of `${`: not the expression's
+                    depth -= 1
+                elif inside and op == "{":
+                    depth += 1
+            tok = _Tok(kind, src[i:j], i, self._line(i), closed)
+            self.toks.append(tok)
+            if kind != "comment":
+                if tok.text == "(":
+                    opened.append(last.text if last is not None
+                                  and last.kind == "ident" else None)
+                    owner = None
+                elif tok.text == ")":
+                    owner = opened.pop() if opened else None
+                else:
+                    owner = None
+                last = tok
+            i = j
+        return n
+
+    def _template(self, i: int) -> Tuple[int, bool]:
+        """Past the template literal opening at ``i``, and whether it closed;
+        each ``${...}`` in it is read by :meth:`scan`."""
+        src, n = self.src, self.n
+        j = i + 1
+        while j < n:
+            if src[j] == "\\":
+                j += 2
+            elif src[j] == "`":
+                return j + 1, True
+            elif src.startswith("${", j):
+                j = self.scan(j + 2, inside=True)
+            else:
+                j += 1
+        return n, False
 
 
 def _tokens(src: str) -> List[_Tok]:
     """``src`` as tokens, comments included -- ``_strip_js_comments`` needs
     to know where they are."""
-    toks: List[_Tok] = []
-    i, n, line = 0, len(src), 1
-    last: Optional[_Tok] = None          # the last token that is not a comment
-    while i < n:
-        c = src[i]
-        if c.isspace():
-            line += c == "\n"
-            i += 1
-            continue
-        if src.startswith("//", i):
-            e = src.find("\n", i)
-            j, kind = (n if e == -1 else e), "comment"
-        elif src.startswith("/*", i):
-            e = src.find("*/", i + 2)
-            j, kind = (n if e == -1 else e + 2), "comment"
-        elif c in "'\"":
-            j, kind = _quoted_end(src, i), "str"
-        elif c == "`":
-            j, kind = _template_end(src, i), "tmpl"
-        elif c == "/" and (
-                last is None
-                or (last.kind == "punct" and last.text not in (")", "]", "}"))
-                or (last.kind == "ident" and last.text in _REGEX_AFTER_WORD)):
-            j, kind = _regex_end(src, i), "regex"
-        elif c.isalpha() or c in "_$":
-            j = i + 1
-            while j < n and (src[j].isalnum() or src[j] in "_$"):
-                j += 1
-            kind = "ident"
-        elif c.isdigit():
-            j = i + 1
-            while j < n and (src[j].isalnum() or src[j] in "._"):
-                j += 1
-            kind = "num"
-        else:
-            op = next((p for p in _PUNCT if src.startswith(p, i)), c)
-            j, kind = i + len(op), "punct"
-        tok = _Tok(kind, src[i:j], i, line)
-        toks.append(tok)
-        if kind != "comment":
-            last = tok
-        line += src.count("\n", i, j)
-        i = j
-    return toks
+    reader = _Reader(src)
+    reader.scan(0)
+    return reader.toks
 
 
 def _strip_js_comments(src: str) -> str:
@@ -208,14 +260,20 @@ def _strip_js_comments(src: str) -> str:
 #: Properties that parse what is assigned to them as HTML.
 _HTML_PROPERTIES = frozenset({"innerHTML", "outerHTML", "srcdoc"})
 
-#: Methods that parse an argument as HTML.
+#: Methods that parse an argument as HTML -- refused whatever they are given.
 _HTML_METHODS = frozenset({"insertAdjacentHTML", "createContextualFragment",
                            "parseFromString", "setHTMLUnsafe",
                            "parseHTMLUnsafe"})
 
+#: The documents whose ``write`` / ``writeln`` parse what they are given.
+_DOCUMENTS = frozenset({"document", "contentDocument", "ownerDocument"})
+
 #: What may follow the one legal value: the statement, or the expression
 #: holding it, ends there.
 _VALUE_ENDS = frozenset({";", "}", ")", ","})
+
+#: The operators that end in ``=`` and compare rather than assign.
+_COMPARISONS = frozenset({"==", "===", "!=", "!==", "<=", ">="})
 
 
 def _is_literal(t: Optional[_Tok]) -> bool:
@@ -227,39 +285,59 @@ def _is_literal(t: Optional[_Tok]) -> bool:
 
 def html_writes(src: str) -> List[Tuple[int, str]]:
     """Every place ``src`` hands markup to a DOM API that parses it, as
-    ``(line, what)`` -- except the one legal form, ``= <one literal>``."""
+    ``(line, what)`` -- except the one legal form: a property given one
+    literal, as ``= "..."`` or as an object key's value."""
     toks = [t for t in _tokens(src) if t.kind != "comment"]
 
     def at(k: int) -> Optional[_Tok]:
         return toks[k] if 0 <= k < len(toks) else None
 
+    def one_literal(k: int) -> bool:
+        end = at(k + 1)
+        return _is_literal(at(k)) and (end is None or end.text in _VALUE_ENDS)
+
     found: List[Tuple[int, str]] = []
     for k, t in enumerate(toks):
         prev, nxt = at(k - 1), at(k + 1)
         dotted = prev is not None and prev.text in (".", "?.")
-        # `x.innerHTML = ...`, and `x["innerHTML"] = ...`
-        if t.kind == "ident" and t.text in _HTML_PROPERTIES and dotted:
-            name, op_at = t.text, k + 1
-        elif (t.kind == "str" and t.text[1:-1] in _HTML_PROPERTIES
-              and prev is not None and prev.text == "["
-              and nxt is not None and nxt.text == "]"):
-            name, op_at = t.text[1:-1], k + 2
-        else:
-            name, op_at = None, -1
-        if name is not None:
-            op, value, end = at(op_at), at(op_at + 1), at(op_at + 2)
-            if op is None or op.text not in ("=", "+="):
-                continue                           # read, or compared
-            if (op.text == "=" and _is_literal(value)
-                    and (end is None or end.text in _VALUE_ENDS)):
+        name = (t.text if t.kind == "ident"
+                else t.text[1:-1] if t.kind == "str" else None)
+        if name in _HTML_PROPERTIES:
+            # `x.innerHTML = ...`, and `x["innerHTML"] = ...`
+            if ((t.kind == "ident" and dotted)
+                    or (t.kind == "str" and prev is not None
+                        and prev.text == "[" and nxt is not None
+                        and nxt.text == "]")):
+                op_at = k + 1 if t.kind == "ident" else k + 2
+                op = at(op_at)
+                if (op is None or not op.text.endswith("=")
+                        or op.text in _COMPARISONS):
+                    continue                       # read, or compared
+                if not (op.text == "=" and one_literal(op_at + 1)):
+                    found.append((t.line, f"{name} {op.text}"))
                 continue
-            found.append((t.line, f"{name} {op.text}"))
-        elif t.kind == "ident" and nxt is not None and nxt.text == "(":
-            if t.text in _HTML_METHODS and dotted:
-                found.append((t.line, t.text + "()"))
-            elif (t.text in ("write", "writeln") and dotted
-                  and (at(k - 2) or t).text == "document"):
-                found.append((t.line, "document." + t.text + "()"))
+            # `{ innerHTML: ... }` -- an object for Object.assign and kin
+            if (prev is not None and prev.text in ("{", ",")
+                    and nxt is not None and nxt.text == ":"):
+                if not one_literal(k + 2):
+                    found.append((t.line, f"{name}:"))
+                continue
+        if t.kind != "ident" or nxt is None or nxt.text != "(" or not dotted:
+            continue
+        if t.text in _HTML_METHODS:
+            found.append((t.line, t.text + "()"))
+        elif t.text in ("write", "writeln") and at(k - 2) is not None \
+                and at(k - 2).text in _DOCUMENTS:
+            found.append((t.line, f"{at(k - 2).text}.{t.text}()"))
+        elif t.text == "setAttribute":
+            arg, comma = at(k + 2), at(k + 3)
+            if (arg is not None and arg.kind == "str"
+                    and arg.text[1:-1] == "srcdoc"
+                    and comma is not None and comma.text == ","):
+                close = at(k + 5)
+                if not (_is_literal(at(k + 4)) and close is not None
+                        and close.text == ")"):
+                    found.append((t.line, 'setAttribute("srcdoc")'))
     return found
 
 
@@ -267,7 +345,10 @@ def html_writes(src: str) -> List[Tuple[int, str]]:
 #: (writes, why).  THE COUNT IS PART OF THE ALLOWANCE, as in
 #: `test_one_door_reads_a_structure.py`: a second write in one of these files
 #: has not inherited the first one's reason, and a file whose write is gone
-#: fails too, so an allowance cannot outlive its argument.
+#: fails too, so an allowance cannot outlive its argument.  It counts WRITES,
+#: not what they write -- ``renderEl.innerHTML = r.text`` in `documents/page.js`
+#: would keep the count at 1 -- which is what a count can say; a producer door
+#: that takes the INPUT rather than HTML is what would close that.
 PRODUCERS: Dict[str, Tuple[int, str]] = {
     "lib/markdown-render.js": (
         1, "a mermaid diagram's SVG, rendered with securityLevel 'strict' "
@@ -299,7 +380,13 @@ def test_markup_is_written_only_from_literals(rel):
     """
     path = STATIC_ROOT / rel
     assert path.is_file(), f"PRODUCERS names {rel}, which is not a file"
-    found = html_writes(path.read_text(encoding="utf-8"))
+    src = path.read_text(encoding="utf-8")
+    # A reader that loses its place hides the rest of the file from every lint
+    # here, and an unclosed string, template, regex or comment is what a lost
+    # place looks like -- so it fails, rather than passing what follows.
+    lost = [(t.line, t.kind) for t in _tokens(src) if not t.closed]
+    assert not lost, f"{rel}: the reader lost its place at {lost}"
+    found = html_writes(src)
     allowed, why = PRODUCERS.get(rel, (0, ""))
     assert len(found) == allowed, (
         f"{rel}: {len(found)} place(s) hand markup to a DOM API "
@@ -339,6 +426,22 @@ CASES = [
     # the sink after it vanished.
     ('const re = /["\']/g; const u = "http://x"; el.innerHTML = name;', 1),
     ('x = a / b; el.innerHTML = name; y = c / d;', 1),
+    ('x = 1e-3 / y; el.innerHTML = name;', 1),
+    ('x = (a) / b; el.innerHTML = name;', 1),
+    ('i++ / n; el.innerHTML = name;', 1),
+    ('if (ok) /["\']/.test(s); el.innerHTML = name;', 1),
+    ('function f() {}\n/["\']/.test(s); el.innerHTML = name;', 1),
+    # The form that derailed the reader's first interpolation scanner.
+    (r'''const q = `[a="${p.replace(/"/g, '\\"')}"]`; el.innerHTML = name;''', 1),
+    ('const t = `a ${`b ${c}`} d`; el.innerHTML = name;', 1),
+    ('`${el.innerHTML = name}`;', 1),
+    ('const s = "open\nel.innerHTML = name;', 1),
+    ('if (el?.innerHTML === "") show();', 0),
+    ('Object.assign(el, { innerHTML: name });', 1),
+    ('Object.assign(el, { className: "x", innerHTML: "" });', 0),
+    ('frame.setAttribute("srcdoc", name);', 1),
+    ('el.innerHTML ||= name;', 1),
+    ('frame.contentDocument.write(name);', 1),
 ]
 
 
