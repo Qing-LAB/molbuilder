@@ -284,7 +284,7 @@ no one is allowed to act on.)
 ## 6.0 The engine offset — ONE placement rule, for every engine *(user, 2026-09-25)*
 
 *Decided in conversation on 2026-09-25. **Not built** — the scope and the order
-of work are [`plans/2026-09-25-engine-offset.md`](?doc=plans/2026-09-25-engine-offset.md).
+of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
 clause this section supersedes says so at its own site, and is deleted with the
 code it describes.*
@@ -1118,7 +1118,7 @@ block). The MolView module never parses — the host supplies the resolved cell.
 
 **Decided 2026-09-25, not built:** § 6.0 — the engine offset, one placement
 rule for every engine, recorded in every deck; the scope and the phases are
-[`plans/2026-09-25-engine-offset.md`](?doc=plans/2026-09-25-engine-offset.md).
+[`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 
 **Shipped:** the `Structure` fields + `resolve_cell`/`resolve_cell_origin`; the
 electrode builder's capture-at-construction (`cell` + `axis_kind`); `render_fdf`

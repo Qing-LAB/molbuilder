@@ -1713,15 +1713,23 @@ Five obligations, each naming the reader it binds.
   (`siesta/input.py:497`), `Spin.Fix` / `Spin.Total` (`:1449`); and
   `TBT.Verbosity` reaches every transport deck from a field no catalogue row
   declares ([`transport.md`](?doc=engines/transport.md) § 2a.13);
+* the spin treatment itself reaches SIESTA by silence: no deck writes `Spin`
+  (measured 2026-09-24, on every transport rung);
 * the per-parameter trace (`config_rows`) is written only when a person passes
   `jobset prep --pipeline-log` on the CLI; the browser road writes none
   (`plan.md` W20). Obligation 5 holds on one road of two.
 
-**Three mechanism choices are open and are the user's**
-([`plans/2026-09-22-unification-audit.md`](?doc=plans/2026-09-22-unification-audit.md)
-§ 6): the source key on an item and its vocabulary; whether the deck's
-PROVENANCE block grows the per-parameter table or a file beside the deck
-carries it; and the form of the deck's *not set* line.
+**Three mechanism choices are open and are the user's**, each with the
+proposal the 2026-09-22 structure-API audit made:
+
+| the choice | proposed |
+|---|---|
+| the source key on a template item, and its vocabulary | `source`, one of `cited` · `record` · `person` · `default`, written by `init` and the describe door and read by every surface |
+| where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck |
+| the deck's *not set* line for an `optional` item at `None` | a comment naming the engine default that applies |
+
+The browser road's missing pipeline log (`plan.md` W20) is obligation 5's and
+needs plumbing, not a decision.
 
 ---
 

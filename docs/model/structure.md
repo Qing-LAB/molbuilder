@@ -153,7 +153,12 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
   objects (those live only in-memory; see `structure-annotations.md`).
 - `apply_metadata_dict` is **full-replace**: an absent key resets that field
   to its default (absent `cell` → non-periodic; absent `regions` → none). It
-  re-runs `__post_init__`, so validation is single-sourced.
+  re-runs `__post_init__`, so validation is single-sourced. A caller holding
+  only part of the block — `transport/compose.py` applying a sidecar over a
+  `.XV`, `script_emit.apply_atom_metadata` for a deck's label block —
+  **completes the block before applying it**, never patches the result; there
+  is no partial door, and full-replace is what keeps *an absent key resets*
+  legible.
 - **NOT in scope** (they sit *around* the contract): `selection_rules` (a
   sidecar-only pass-through) and the sidecar **envelope** (`schema_version` /
   `n_atoms_total` / `structure_hash` / `created_by` / `created_at`) — see
@@ -560,8 +565,8 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > comparing this contract against the code would have concluded the guard was
 > missing and restored it, re-creating the unopenable-and-unfixable file that
 > removal was for. Both now describe what the code does. *(The write ORDER
-> itself is scheduled to change -- see `plans/2026-09-22-unification-audit.md`
-> § 1.1a: both halves rendered and staged before either rename.)*
+> itself is scheduled to change -- `plans/plan.md` V1.10: both halves rendered
+> and staged before either rename.)*
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes
 > translation goes through the codec, and every adapter has exactly one door.*

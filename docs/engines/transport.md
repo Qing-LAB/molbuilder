@@ -2004,6 +2004,13 @@ reaches the engine by omission. The line above said *"SIESTA's own default
 applies"* until 2026-09-24 — the reading from before § 6.6, left standing by
 the consolidation that wrote this section the same day.
 
+**A structure that states no settings is the citer's to fill** *(user,
+2026-09-24: "when user choose a file that does not contain any reasonable
+values, it's user's responsibility to understand that transport calculation
+will be useless. contract is clear, workflow is clear")*. The unfilled rows
+take the documented default, marked, as above; no surface designs around a
+person who leaves the shared panel empty.
+
 ---
 
 #### 3.8.4 Checking — the decks that will actually run
@@ -2050,7 +2057,7 @@ six scattered versions could not do.
 | the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `role`, `allocation` and staging items kept off it by their markers |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
-| a value nobody chose is shown as not chosen | **the template side is built, on both roads (2026-09-24)** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text`. `prep` then fills it with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but **marks nothing**, so the deck cannot say the value was nobody's choice, and the file records no source (obligation 2). The marking mechanism is the open choice under § 6.6 (`plans/2026-09-22-unification-audit.md` § 6 item 10) |
+| a value nobody chose is shown as not chosen | **the template side is built, on both roads (2026-09-24)** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text`. `prep` then fills it with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but **marks nothing**, so the deck cannot say the value was nobody's choice, and the file records no source (obligation 2). The marking mechanism is the open choice under `template.md` § 6.6, where the three proposals are |
 | the deck viewer | ❌ not built |
 | `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |

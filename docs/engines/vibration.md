@@ -31,9 +31,9 @@ checks run in). **Open items:** row **V1** of
 > and the audit are archived (`archive/2026-09-24-normal-mode-unification-design.md`,
 > `archive/2026-09-24-vibration-audit.md`) as the record of how the decisions
 > were reached; every decision, measurement and open item they held is here
-> or in the plan. Nothing decided there is re-decided here. The structure-API
-> audit (`plans/2026-09-22-unification-audit.md`, still live) holds the UI walk
-> of 2026-09-23 whose spectrum rows are registered under V1. One ordering rule
+> or in the plan. Nothing decided there is re-decided here. The spectrum rows
+> of the 2026-09-23 UI walk are registered under V1 in `plans/plan.md`. One
+> ordering rule
 > of the design was knowingly broken: its step 4 (the API shape) was to land
 > before the SIESTA arm, and part of it landed after — the cost is the second
 > pass V1.0 and V1.6 name.
@@ -1600,7 +1600,7 @@ nothing is in that state as of 2026-09-24.
 | `temperature_K` and `pressure_atm` reachable on SIESTA | **owed** | § 5.5 sums at 298.15 K, 1 atm and says so |
 | the Methods paragraph reads the effective level of theory (`cfg.method`), and a functional or dispersion set under Hartree–Fock is advised against | **owed** | § 4.10 — a Hartree–Fock run's write-up names B3LYP-D3BJ |
 | the structure identity: two hashes (geometry, broad), minted at the three gates and carried, the job name out of it | **owed** — ruled 2026-09-22 | § 4.3; the run-written pair already hashes its bytes |
-| the pair writer renders both halves (`pair()` returns text, the deck splices the codec's own JSON) | **owed** — ruled 2026-09-23 | § 1.1a of the structure-API audit, `plans/2026-09-22-unification-audit.md`; the deck's sidecar writer is its third serialiser |
+| the pair writer renders both halves (`pair()` returns text, the deck splices the codec's own JSON) | **owed** — ruled 2026-09-23 | `plans/plan.md` V1.10; the deck's sidecar writer is its third serialiser |
 | the reduced Hessian with a GPU mean field | **untested** | § 4.4 |
 | a composed permutation for a structure sorted for two reasons | **owed** — no caller yet | § 5.2 |
 | `transport/compose.py` writes and reads its record through the one pair and stamps its key | **owed** | § 5.2, I7 |
