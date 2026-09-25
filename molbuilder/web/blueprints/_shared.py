@@ -962,8 +962,15 @@ def _control_for(item) -> str:
 def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                              calculation: str = "optimization",
                              surface: Optional[str] = None,
+                             rung: Optional[str] = None,
                              ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
+
+    ``rung`` narrows the ``"rung"`` surface to ONE rung's tab
+    (`engines/transport.md` § 3.8.2a): the items whose `stages` declaration
+    names that rung, plus the items declaring no rung, which any rung may
+    set for itself.  Every field carries its ``stages`` so a surface can
+    tell the rung's own items from the ones it merely may set.
 
     ``surface`` is a composite kind's second axis (`engines/transport.md`
     § 3.8.2): ``"shared"`` is the panel that edits the TEMPLATE -- every item
@@ -1031,10 +1038,22 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     elif surface is not None:
         raise ValueError(f"surface must be 'shared', 'rung' or None, "
                          f"not {surface!r}")
+    if rung is not None:
+        if surface != "rung":
+            raise ValueError("a rung narrows the 'rung' surface only")
+        # THE RUNG'S TAB: its own items, and the ones any rung may set --
+        # never another rung's (those are on that rung's tab) and never a
+        # shared one (the panel above).
+        items = [it for it in items if not it.stages or rung in it.stages]
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
-        by_category.setdefault(panel, []).append(_item_to_field(it, id_prefix))
+        field = _item_to_field(it, id_prefix)
+        # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
+        # the fact a rung's tab folds its cards by, and the stage table
+        # disables cells by.
+        field["stages"] = list(it.stages)
+        by_category.setdefault(panel, []).append(field)
 
     sections = [{"name": cat, "title": cat.capitalize(),
                  "fields": by_category[cat]}

@@ -51,10 +51,11 @@ const WORKSPACE_TAG = "transport";
      * Resolves to the answer body; renders an error paragraph and
      * resolves to null on failure so the page never fails silently.
      */
-    function _fetchSurface(surface, host, formSchema) {
+    function _fetchSurface(surface, host, formSchema, rung, renderOpts) {
         var url = SCHEMA_URL + "?surface=" + surface
             + (surface === "shared" && _junction
-               ? "&junction=" + encodeURIComponent(_junction) : "");
+               ? "&junction=" + encodeURIComponent(_junction) : "")
+            + (rung ? "&rung=" + encodeURIComponent(rung) : "");
         return root.fetch(url)
             .then(function (r) {
                 return r.json().then(function (body) {
@@ -66,7 +67,7 @@ const WORKSPACE_TAG = "transport";
             })
             .then(function (body) {
                 while (host.firstChild) host.removeChild(host.firstChild);
-                formSchema.renderForm(host, body.schema);
+                formSchema.renderForm(host, body.schema, renderOpts || {});
                 return body;
             })
             .catch(function (e) {
@@ -77,27 +78,113 @@ const WORKSPACE_TAG = "transport";
             });
     }
 
-    /* The per-rung form: rendered once per page life, its values kept
-     * across a reload (session storage), its CHANGED fields the
-     * overrides the description carries. */
+    function _el(tag, attrs) {
+        var n = root.document.createElement(tag);
+        Object.keys(attrs || {}).forEach(function (k) {
+            if (attrs[k] !== null && attrs[k] !== undefined) {
+                n.setAttribute(k, attrs[k]);
+            }
+        });
+        for (var i = 2; i < arguments.length; i++) {
+            var kid = arguments[i];
+            if (kid === null || kid === undefined) continue;
+            n.appendChild(typeof kid === "string"
+                          ? root.document.createTextNode(kid) : kid);
+        }
+        return n;
+    }
+
+    /* A card starts FOLDED when none of its fields is this rung's OWN
+     * (its `stages` names the rung); the SCF, output and runtime cards
+     * are one click away, the rung's own physics is what the eye lands
+     * on (transport.md 3.8.2a). */
+    function _foldedUnlessOwned(role, fields) {
+        return !fields.some(function (f) {
+            return f.stages && f.stages.length;
+        });
+    }
+
+    /* THE PER-RUNG FORM IS A TAB PER RUNG (transport.md 3.8.2a): the
+     * server answers the rung list -- name, ladder index, one-line note
+     * -- and one schema per rung; a tab holds that rung's own items and
+     * the ones any rung may set, each written into THAT rung's bag.  Its
+     * values are kept across a reload (session storage, per rung), its
+     * CHANGED fields are the bags the description carries. */
     function _fetchAndRender(formContainer, formSchema) {
-        return _fetchSurface("rung", formContainer, formSchema)
+        return root.fetch(SCHEMA_URL + "?surface=rung")
+            .then(function (r) { return r.json(); })
             .then(function (body) {
-                if (!body) return;
-                _restoreFormValues(formContainer, body.schema, formSchema);
-                _wirePersistence(formContainer, body.schema, formSchema);
-                _cachedSchema = body.schema;
-                _setStatus("Form loaded ("
-                    + body.schema.sections.reduce(function (n, s) {
-                        return n + (s.fields ? s.fields.length : 0);
-                    }, 0)
-                    + " fields).");
+                if (!body || !body.ok) {
+                    throw new Error((body && body.error) || "schema fetch failed");
+                }
+                var rungs = body.rungs || [];
+                // A REBUILD KEEPS THE TAB the person is on (the form is
+                // rebuilt when the junction changes): read the active rung
+                // off the strip being replaced, fall back to the first.
+                var was = formContainer.querySelector(".tab-btn.active");
+                var keep = (was && was.dataset.tab) || (rungs[0] && rungs[0].name);
+                while (formContainer.firstChild) {
+                    formContainer.removeChild(formContainer.firstChild);
+                }
+                var strip = _el("div", { "class": "tabs", role: "tablist",
+                                         "aria-label": "Rung",
+                                         id: "transport-rung-tabs" });
+                var panels = [];
+                rungs.forEach(function (r) {
+                    var pid = "transport-rung-panel-" + r.name;
+                    var word = r.name.replace("_", " ");
+                    strip.appendChild(_el("button", {
+                        type: "button", "class": "tab-btn", role: "tab",
+                        "data-tab": r.name, "aria-controls": pid,
+                        "aria-selected": "false" }, r.index + " \u00b7 " + word));
+                    var host = _el("div", { "class": "param-grid" });
+                    var panel = _el("div", { "class": "tab-panel", id: pid,
+                                             role: "tabpanel", hidden: "" },
+                        _el("p", { "class": "hint transport-rung-note" },
+                            _el("strong", null, r.index + ". " + word + " \u2014 "),
+                            r.note),
+                        host);
+                    panels.push({ rung: r.name, panel: panel, host: host });
+                });
+                formContainer.appendChild(strip);
+                panels.forEach(function (p) { formContainer.appendChild(p.panel); });
+                var ts = root.molbuilder && root.molbuilder.tabStrip;
+                if (ts && rungs.length) {
+                    var api = ts.mount(strip, {});
+                    if (!api.select(keep)) api.select(rungs[0].name);
+                }
+                return Promise.all(panels.map(function (p) {
+                    return _fetchSurface("rung", p.host, formSchema, p.rung,
+                                         { foldable: true,
+                                           folded: _foldedUnlessOwned })
+                        .then(function (b) {
+                            if (!b) return 0;
+                            _rungSchemas[p.rung] = b.schema;
+                            _rungHosts[p.rung] = p.host;
+                            _restoreFormValues(p.host, b.schema, formSchema, p.rung);
+                            _wirePersistence(p.host, b.schema, formSchema, p.rung);
+                            return b.schema.sections.reduce(function (n, s) {
+                                return n + (s.fields ? s.fields.length : 0);
+                            }, 0);
+                        });
+                })).then(function (counts) {
+                    _setStatus("Form loaded ("
+                        + counts.reduce(function (a, b) { return a + b; }, 0)
+                        + " settings over " + rungs.length + " rungs).");
+                });
+            })
+            .catch(function (e) {
+                _renderErrorParagraph(formContainer,
+                    "Could not load the rung forms: "
+                    + (e && e.message ? e.message : String(e)));
             });
     }
 
-    function _restoreFormValues(container, schema, formSchema) {
+    function _formKey(rung) { return rung ? FORM_KEY + ":" + rung : FORM_KEY; }
+
+    function _restoreFormValues(container, schema, formSchema, rung) {
         var raw;
-        try { raw = root.sessionStorage.getItem(FORM_KEY); }
+        try { raw = root.sessionStorage.getItem(_formKey(rung)); }
         catch (_) { return; }
         if (!raw) return;
         var saved;
@@ -127,13 +214,13 @@ const WORKSPACE_TAG = "transport";
         }
     }
 
-    function _wirePersistence(container, schema, formSchema) {
+    function _wirePersistence(container, schema, formSchema, rung) {
         var debounceHandle = null;
         function persist() {
             try {
                 var values = formSchema.collectForm(container, schema);
                 root.sessionStorage.setItem(
-                    FORM_KEY, JSON.stringify(values));
+                    _formKey(rung), JSON.stringify(values));
             } catch (_) {
                 // Best-effort — quota / collectForm validation
                 // failure shouldn't break the form's interactive
@@ -583,17 +670,21 @@ const WORKSPACE_TAG = "transport";
      *  which owns the typed comparison incl. the 300-vs-"300" trap).
      *  An untouched form sends nothing; an invalid one answers null so
      *  the caller says so instead of silently dropping fields. */
-    function _changedFields(formContainer) {
+    /* {rung: {item: value}} -- each rung's CHANGED fields, its own bag;
+     * a rung with nothing changed sends no bag.  `null` when a panel holds
+     * an invalid value: the caller says so. */
+    function _changedByRung() {
         var fs = root.molbuilder && root.molbuilder.formSchema;
-        if (!fs || !_cachedSchema
-                || typeof fs.diffFromDefaults !== "function") {
-            return {};
-        }
+        if (!fs || typeof fs.diffFromDefaults !== "function") return {};
+        var bags = {};
         try {
-            var out = {};
-            fs.diffFromDefaults(formContainer, _cachedSchema)
-                .forEach(function (d) { out[d.name] = d.current; });
-            return out;
+            Object.keys(_rungHosts).forEach(function (rung) {
+                var bag = {};
+                fs.diffFromDefaults(_rungHosts[rung], _rungSchemas[rung])
+                    .forEach(function (d) { bag[d.name] = d.current; });
+                if (Object.keys(bag).length) bags[rung] = bag;
+            });
+            return bags;
         } catch (e) { return null; }      // invalid form: the caller says so
     }
 
@@ -614,9 +705,9 @@ const WORKSPACE_TAG = "transport";
                     + "e.g. 0.0,0.2");
                 return;
             }
-            var overrides = _changedFields(formContainer);
-            if (overrides === null) {
-                _setSendStatus("Form has invalid values — fix them "
+            var bags = _changedByRung();
+            if (bags === null) {
+                _setSendStatus("A rung's form has invalid values — fix them "
                     + "and retry.");
                 return;
             }
@@ -640,16 +731,16 @@ const WORKSPACE_TAG = "transport";
                 calculation: "transport",
                 junction: _junction,
                 bias: bias,
-                overrides: overrides,
+                stages: bags,
                 shared: shared,
             });
         });
     }
 
-    // Cache the schema so the Generate handler doesn't have to
-    // re-fetch on every click; populated by _fetchAndRender on
-    // first load.
-    var _cachedSchema = null;
+    // Each rung's schema and panel host, populated by _fetchAndRender, so
+    // the Describe handler diffs every rung's panel without re-fetching.
+    var _rungSchemas = {};
+    var _rungHosts = {};
     var _sharedSchema = null;      // the shared panel's, by _fetchAndRenderShared
 
     /* THE SHARED PANEL (engines/transport.md 3.8.2): the items the

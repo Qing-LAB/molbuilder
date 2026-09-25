@@ -233,54 +233,80 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
             for r in rules_for("siesta", "transport", base_dir) if r.carry]
 
 
-def route_overrides(overrides) -> dict:
-    """``{name: value}`` → ``{rung: {name: value}}`` — **which rung owns each**.
+#: What each rung computes and hands on -- the ONE-LINE NOTE a surface puts
+#: beside the rung's name (`engines/transport.md` § 2a.3 "the results that
+#: propagate", § 6.1; the tab strip of § 3.8.2a).  The index a surface shows
+#: is the rung's position in TRANSPORT_STAGES, one-based.
+RUNG_NOTES = {
+    "seed": ("A closed periodic SCF of the whole junction.  It writes the "
+             "density every later rung starts from -- a starting guess, "
+             "never truth; skipping it costs the device iterations, not "
+             "correctness."),
+    "electrode_L": ("The left lead as a bulk crystal, sampled densely along "
+                    "the transport axis.  It writes the Hamiltonian the "
+                    "device folds in as the left self-energy -- read as "
+                    "truth."),
+    "electrode_R": ("The right lead, likewise.  Two lead runs even when the "
+                    "leads are identical, so the record stays auditable."),
+    "device": ("The open-boundary NEGF SCF of the junction between the two "
+               "leads, at the bias.  It writes the converged Hamiltonian "
+               "the transmission reads -- one per bias point."),
+    "transmission": ("T(E) over the energy window, from that Hamiltonian.  "
+                     "Nothing consumes its output, so tuning the window "
+                     "re-runs seconds, never an NEGF cycle."),
+}
 
-    `engines/template.md` § 6.4's `stages` declaration, read: an item that
-    names the rungs which may carry their own value for it is routed to
-    those rungs, and one that names none is left where a flat surface put it.
 
-    **This is the fix for the defect that started the programme.** Every
-    override went onto the ``device`` rung, whatever it was — so a person who
-    set the transmission's energy window had it written into the deck
-    ``siesta`` runs, where the keyword is inert, and *not* into the deck
-    ``tbtrans`` runs, which is the one that computes T(E). No error, no
-    warning: you asked for ±3 eV and got the default. Routing by the
-    declaration is what makes that structurally impossible rather than
-    remembered.
+def foreign_overrides(bags) -> list:
+    """Every ``(rung, item, owners)`` where *bags* gives a rung a value for
+    an item the catalogue's ``stages`` declaration does not let it own
+    (`engines/template.md` § 6.4: *"only these rungs may; it is not that
+    rung's business anywhere else"*).
 
-    **An item declaring no rungs stays on the device**, and that is a
-    holding position rather than an answer. Those are the shared SCF
-    controls — any rung may legitimately own one — and a flat form cannot
-    say which was meant. The per-stage surface (TR7) is where the question
-    becomes askable; until then the device is the rung a person tuning a
-    transport calculation is overwhelmingly thinking about, and it is the
-    behaviour that was there before.
+    **The one door for that rule**, asked by the describe door before a
+    description is written and by `prep` before a deck is -- so a
+    description written on any road (the tab, the stage table, the CLI, a
+    hand edit) meets the same refusal.  *bags* maps a rung name to its
+    override mapping, the shape ``task.stages`` carries.  An item declaring
+    no rungs is any rung's and is never foreign.
     """
     from ..template import catalogue, select
 
-    owner: dict = {}
-    for it in select(catalogue(), engine="siesta"):
-        if it.stages:
-            owner[it.name] = tuple(it.stages)
-    out: dict = {}
-    for name, value in dict(overrides or {}).items():
-        for rung in owner.get(name, ("device",)):
-            out.setdefault(rung, {})[name] = value
+    owner = {it.name: tuple(it.stages)
+             for it in select(catalogue(), engine="siesta") if it.stages}
+    out: list = []
+    for rung, bag in dict(bags or {}).items():
+        for name in sorted(dict(bag or {})):
+            if name in owner and rung not in owner[name]:
+                out.append((rung, name, owner[name]))
     return out
 
 
-def stages_for_transport(overrides=None):
+def stages_for_transport(bags=None):
     """The composite's five rungs as ``Stage`` objects, each carrying the
-    overrides that are ITS OWN.
+    overrides that are ITS OWN -- *bags* maps a rung name to that rung's
+    mapping, and a rung not named gets an empty bag.
 
     One door, so the two construction sites -- `jobset init` and the web
-    hand-over -- cannot place a person's values differently.
+    describe door -- cannot build the ladder differently.  A rung this
+    ladder does not have is refused by name.
+
+    **Ownership is not decided here.**  Until 2026-09-24 this took ONE flat
+    mapping and routed it by the `stages` declaration, parking an item that
+    declared no rung on the device -- the holding position the per-stage
+    surface (TR7) was to replace.  The per-rung form now asks the question
+    per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already
+    placed, and :func:`foreign_overrides` is the check both doors ask.
     """
     from ..task import Stage
 
-    routed = route_overrides(overrides)
-    return [Stage(name=n, enabled=True, overrides=routed.get(n, {}))
+    bags = dict(bags or {})
+    unknown = sorted(set(bags) - set(TRANSPORT_STAGES))
+    if unknown:
+        raise ValueError(
+            f"no such rung {', '.join(map(repr, unknown))} -- a transport "
+            f"ladder's rungs are {', '.join(TRANSPORT_STAGES)}.")
+    return [Stage(name=n, enabled=True, overrides=dict(bags.get(n) or {}))
             for n in TRANSPORT_STAGES]
 
 

@@ -262,8 +262,10 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
     makes that structurally impossible rather than something to remember.
     """
 
-    def _describe_with(self, root, overrides):
-        """A description built the way the web hand-over builds one."""
+    def _describe_with(self, root, bags):
+        """A description built the way the describe door builds one: per-rung
+        bags, the shape `task.stages` carries (`engines/transport.md`
+        § 3.8.2a)."""
         from molbuilder.task import Task, derive_run, write_task
         from molbuilder.transport.stages import stages_for_transport
         from molbuilder import template as _T
@@ -276,8 +278,8 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
             run=derive_run("T", _CITE, stage_names=_STAGES),
             structure=None, calculation="transport",
             slots={"junction": _CITE}, bias=(),
-            varies=tuple(sorted(overrides)),
-            stages=tuple(stages_for_transport(overrides))))
+            varies=tuple(sorted({n for b in bags.values() for n in b})),
+            stages=tuple(stages_for_transport(bags))))
         (dest / ".molbuilder.json").write_text(json.dumps(
             {"script_generation": {"activation": "conda activate"}}))
         (dest / "T.template.toml").write_text(_T.template_with_values(
@@ -289,7 +291,8 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
         """THE ORIGINAL DEFECT, as something that can fail."""
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct())
-        dest = self._describe_with(root, {"transmission_emin_ev": -3.0})
+        dest = self._describe_with(
+            root, {"transmission": {"transmission_emin_ev": -3.0}})
         prep_calculation(dest, "transmission")
         deck = (dest / "05_transmission"
                 / "T_05_transmission.fdf").read_text()
@@ -304,11 +307,14 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
 
     def test_a_lead_parameter_reaches_BOTH_leads(self, tmp_path):
         """`electrode_kz` declares two owning rungs, and a junction has two
-        leads.  Routing to one would leave the other at the default, with
-        the two self-energies built on different Fermi-level resolutions."""
+        leads.  Each lead's tab sets it for that lead (§ 3.8.2a: the rung is
+        the person's answer, nothing routes), and each lead's deck carries
+        it -- one left at the default would build its self-energy on a
+        different Fermi-level resolution."""
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct())
-        dest = self._describe_with(root, {"electrode_kz": 80})
+        dest = self._describe_with(root, {"electrode_L": {"electrode_kz": 80},
+                                          "electrode_R": {"electrode_kz": 80}})
         for rung, tok in (("electrode_L", "02_electrode_L"),
                           ("electrode_R", "03_electrode_R")):
             prep_calculation(dest, rung)
@@ -323,7 +329,8 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
         it was the only place it landed."""
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct())
-        dest = self._describe_with(root, {"transmission_emin_ev": -3.0})
+        dest = self._describe_with(
+            root, {"transmission": {"transmission_emin_ev": -3.0}})
         from molbuilder.task import read_task
         stages = {s.name: dict(s.overrides)
                   for s in read_task(dest / "task.json").stages}

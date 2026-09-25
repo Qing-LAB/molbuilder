@@ -1921,7 +1921,7 @@ two panels and they are not the same kind of thing:
 |---|---|---|
 | what it edits | the **template** | a rung's **override bag** |
 | what belongs on it | every value binding all five rungs — Class A (§ 2a.3) | Class C, the values a rung owns alone |
-| how many | **one**, for the calculation | one per rung |
+| how many | **one**, for the calculation | one per rung — a tab each, on one card (§ 3.8.2a) |
 | the warning it carries | *changing this rebuilds all five stages* | none needed |
 | what it must never offer as a control | a rung-local value | **a shared value** — offering one is a control `prep` refuses. On this tab the shared panel directly above it is where every shared value is shown, so the form carries no second copy (§ 3.8.9) |
 
@@ -1957,6 +1957,25 @@ carries no second echo of the shared values on this page.
 
 The organisation of each panel is `web/form-schema.md` § 1.3's two axes and
 is not chosen here: `group` is the outer card, `category` the legend inside.
+
+#### 3.8.2a The per-rung form is a TAB PER RUNG, and its cards fold *(user, 2026-09-24)*
+
+*(User: "use foldable cards, tabs etc to logically separate and organize the
+items"; "use clear titles and notes and index numbers to let the user see the
+flow and logical between those sections to understand how to setup in the
+correct order".)*
+
+| | why |
+|---|---|
+| **One tab per rung**, in ladder order, numbered `1 · seed` … `5 · transmission`. The strip is `lib/tab-strip.js`'s, the switcher the engine strips already use | the person answers *which rung* by choosing the tab. A value typed there is that rung's own override bag; nothing routes |
+| **Each tab opens with one line** on what the rung computes and what it hands on — `transport/stages.py::RUNG_NOTES`, served by the schema route | the flow § 6.1 draws, read at the point of setting |
+| **A tab offers** the items the rung owns (`stages` names it) and the items any rung may set (no `stages`) | never another rung's item — that is on its own tab — and never a shared one — that is card 2 |
+| **Inside a tab the group cards fold** (`renderForm`'s `foldable` option, `form-schema.md` § 1.3): a card holding an item the rung OWNS opens; a card holding only any-rung items starts folded, its summary naming the count | the rung's own physics is what the eye lands on; the SCF, output and runtime cards are there, one click away |
+| **The describe door takes per-rung bags** — `stages: {rung: {item: value}}`, the shape `task.stages` carries — and refuses a bag naming an item the rung does not own, through the one door `prep` refuses from (`transport/stages.py::foreign_overrides`) | the flat `overrides` mapping, and the router that parked an unowned item on the device (the holding position TR8 left, TR7's surface was to replace), are gone |
+
+The numbered cards and the tab strip read as one order: **1 cite the junction
+→ 2 the shared description, once → 3 check the chemistry → 4 each rung, on
+its tab → 5 describe.**
 
 ---
 
@@ -2041,6 +2060,7 @@ six scattered versions could not do.
 | a value nobody chose is MARKED as such in the deck, and the file records each value's source | ❌ **not built** — `template.md` § 6.6 obligations 4 and 2; the mechanism is the open choice under § 6.6 |
 | the device deck carries only what `siesta` reads | ❓ **to measure** — § 2a.7 ruling 2 says the device deck has no reason to carry `TBT.*`; the device deck rendered today carries the `TBT.Contour` block (a test asserted it until 2026-09-24). Inert for `siesta`; whether it stays is a deck-layout question, not this surface's |
 | one panel per engine (§ 3.8.8) | ❌ **not built** |
+| the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
 
 ---
 
@@ -2135,9 +2155,9 @@ door's question.
 
 | door | `shared` — binds every rung | `stages` — which rungs own it | `role` — the rung decides | `citation` — who defaults it | `allocation` — the scheduler |
 |---|---|---|---|---|---|
-| the per-rung form (`catalogue_to_form_schema(surface="rung")`) | ✅ kept off | — (routed at describe) | ✅ kept off | — | ✅ kept off |
+| the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ kept off | — | ✅ kept off |
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, source named | ✅ kept off |
-| the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ routes each override to its owner (`route_overrides`) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
+| the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`foreign_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | — (the rung's `spec_for` decides) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |

@@ -107,6 +107,15 @@ is what [`template.md`](?doc=engines/template.md) § 6.2 exists for.
 reported bug — the stage selector silently rewrote budget and system fields.
 Keeping `group` as the outer axis keeps that fix.
 
+**Folding is the caller's choice, drawn here** *(2026-09-24)*.
+`renderForm(container, schema, {foldable, folded})` draws each outer card as
+a `<details>` whose header is its `<summary>`, with the count of settings it
+holds, and `folded(role, fields)` says which start closed. The transport tab
+folds per rung — a card holding none of the rung's own items starts closed
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.2a); the Build tab
+passes nothing and keeps its open cards. The sheet owns the two states and
+decides nothing about which cards fold.
+
 This said *"and are not touched"* until 2026-08-15, by which point three had
 been added: `output`, `staging` and `setup`. The sentence meant *the mechanism
 is not changed*, and that is still true — cards are still chosen by `group`,

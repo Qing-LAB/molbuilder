@@ -479,10 +479,18 @@
     const WORKFLOW_GROUP_ORDER = ["setup", "profile", "stage", "budget",
                                   "output"];
 
-    function renderForm(container, schema) {
+    function renderForm(container, schema, opts) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.renderForm: bad container/schema");
         }
+        // FOLDABLE CARDS are the CALLER's choice (form-schema.md § 1.3):
+        // `opts.foldable` draws each workflow-group card as a <details>
+        // whose header is its <summary>, and `opts.folded(role, fields)`
+        // says which start closed.  The Build tab passes nothing and gets
+        // the open <section> cards it always had; the transport tab folds
+        // per rung (transport.md § 3.8.2a).
+        opts = opts || {};
+        const foldable = !!opts.foldable;
         // Fresh render -> schema and DOM are presumed to match, so
         // clear the stale-warning cache.  Any actual mismatch on
         // the next collectForm will re-warn.
@@ -552,13 +560,33 @@
             const sectMap = tagged[role];
             if (sectMap.size === 0) continue;
             const meta = WORKFLOW_GROUP_META[role];
-            const card = el("section",
+            const fieldsInCard = [];
+            for (const fs_ of sectMap.values()) fieldsInCard.push(...fs_);
+            const folded = foldable && typeof opts.folded === "function"
+                && !!opts.folded(role, fieldsInCard);
+            const card = el(foldable ? "details" : "section",
                 { class: "workflow-group workflow-group--" + role });
-            const header = el("header", { class: "workflow-group-header" });
+            if (foldable) card.open = !folded;
+            const header = el(foldable ? "summary" : "header",
+                              { class: "workflow-group-header" });
             header.appendChild(el("h3",
                 { class: "workflow-group-title" }, meta.title));
+            if (foldable) {
+                // A folded card still says how much it holds.
+                header.appendChild(el("span",
+                    { class: "workflow-group-count" },
+                    fieldsInCard.length + (fieldsInCard.length === 1
+                                           ? " setting" : " settings")));
+            }
             card.appendChild(header);
-            card.appendChild(el(
+            // A <details> lays its content out in its own slot, so the
+            // card's grid cannot reach the fieldsets through it: a
+            // foldable card puts everything but the summary in ONE body
+            // element, and the body carries the grid (form-schema.css).
+            const body = foldable
+                ? el("div", { class: "workflow-group-body" }) : card;
+            if (foldable) card.appendChild(body);
+            body.appendChild(el(
                 "p",
                 { class: "workflow-group-subtitle" },
                 meta.subtitle,
@@ -596,7 +624,7 @@
                 for (const f of fields) {
                     fs.appendChild(renderField(f));
                 }
-                card.appendChild(fs);
+                body.appendChild(fs);
             }
             // Per-card issues panel — appended at the bottom of the
             // card so validator findings tagged with this workflow-
@@ -605,7 +633,7 @@
             // until ``renderIssues`` populates it; tagged with the
             // role so the JS render path can find it via
             // ``[data-workflow-group="<role>"]``.
-            card.appendChild(el(
+            body.appendChild(el(
                 "ul",
                 { "class":                "issues-panel card-issues",
                   "data-workflow-group":  role,

@@ -11,7 +11,7 @@
  *   * lib/spectra/core.js               -- engine pyscf, calculation vibration
  *   * lib/transport/core.js             -- engine siesta, calculation
  *     transport (P7b): NO structure/params -- `junction` (the citation),
- *     `bias` (volts, 0.0 first) and `overrides` (transport-only knobs)
+ *     `bias` (volts, 0.0 first) and `stages` (per-rung override bags)
  *     ride instead, and the answer is ONE file (floor 2 = task.json
  *     alone; transport-design.md 4.1)
  *
@@ -32,7 +32,7 @@
  *     calculation,  // optional; omitted or "optimization" sends none
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
- *     overrides,    // transport only: {catalogue item: value}, a rung's own
+ *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
  *     shared,       // transport only: {catalogue item: value}, the shared panel
  *   })
  */
@@ -170,7 +170,7 @@
         if (isTransport) {
             req.junction  = o.junction;
             req.bias      = o.bias || [0.0];
-            req.overrides = o.overrides || {};
+            req.stages    = o.stages || {};      // {rung: {item: value}}
             req.shared    = o.shared || {};
         } else {
             req.structure = structure;

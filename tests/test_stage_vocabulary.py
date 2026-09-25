@@ -370,13 +370,14 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "builds the composite's five rungs as task.Stage objects with each "
         "rung's OWN overrides -- mechanism 11 like `default_siesta_stages`, "
         "producing the design's own stages rather than being a way of "
-        "expressing one.  What it adds over a bare tuple is ROUTING: "
-        "`route_overrides` asks the catalogue which rungs may own each item "
-        "(`stages = [...]`, template.md 6.4) and puts a person's value "
-        "there.  Every override went onto the `device` rung until "
-        "2026-09-16, whatever it was, so a transmission energy window was "
-        "written into the deck siesta runs -- where the keyword is inert -- "
-        "and not into the deck tbtrans runs, silently"),
+        "expressing one.  It takes PER-RUNG BAGS (`{rung: {item: value}}`, "
+        "the shape task.stages carries) since 2026-09-24: the per-rung form "
+        "is a tab per rung (transport.md 3.8.2a), so the rung is the "
+        "person's answer.  Until then it routed one flat mapping by the "
+        "catalogue's `stages` declaration and parked an item declaring no "
+        "rung on the device -- and until 2026-09-16 EVERY override went "
+        "onto the device, so a transmission energy window was written into "
+        "the deck siesta runs, where the keyword is inert, silently"),
     # `render_stage_deck` row deleted 2026-09-17 with the function -- the
     # second transport deck writer, left with no caller once the whole ladder
     # joined the framework's pipeline on 2026-09-16.

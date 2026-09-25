@@ -8,7 +8,9 @@
  *           is a module with one door).
  * Owns:     which button is active and which panel is shown.  Nothing else —
  *           what a tab does on a change is the tab's (``onChange``).
- * Called by: /structure-optimization and /spectrum-calculation at mount.
+ * Called by: /structure-optimization and /spectrum-calculation at mount,
+ *           and /transport-calculation for card 4's rung strip
+ *           (engines/transport.md § 3.8.2a).
  * Markup it reads: a strip element holding ``.tab-btn[data-tab][aria-controls]``
  *           buttons; each ``aria-controls`` names the id of the panel it shows.
  *

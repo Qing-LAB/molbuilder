@@ -1108,7 +1108,7 @@ def test_transport_describe_answers_the_finished_description(web_client, isolate
         r = web_client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T",
             junction=_T_CITE, bias=[0.0, 0.2],
-            overrides={"transmission_n_points": 101}))
+            stages={"transmission": {"transmission_n_points": 101}}))
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert out["ok"] is True
@@ -1294,7 +1294,7 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolat
         r = web_client.post("/api/transport/describe", json=dict(
             engine="siesta", name="T",
             junction=_T_CITE, bias=[0.0],
-            overrides={"basis_size": "DZP"}))
+            stages={"device": {"basis_size": "DZP"}}))
         assert r.status_code == 400
         msg = r.get_json()["error"]
         # THE REASON CHANGED, THE REFUSAL DID NOT.  It said "the citation's
@@ -1313,6 +1313,25 @@ def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolat
         pass    # tmp_path removes the tree
 
 
+def test_transport_describe_refuses_a_rungs_value_on_another_rung(
+        web_client, isolated_projects_root):
+    """`engines/transport.md` § 3.8.2a: a rung's tab writes that rung's
+    bag, and a bag naming an item the rung does not own is refused by the
+    same door `prep` refuses from (`foreign_overrides`), naming the rung
+    that owns it.  A transmission window on the seed, for one."""
+    _cited_junction(isolated_projects_root)
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
+        stages={"seed": {"transmission_n_points": 101}}))
+    assert r.status_code == 400
+    msg = r.get_json()["error"]
+    assert "transmission" in msg and "'seed'" in msg, msg
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
+        stages={"lead": {}}))
+    assert r.status_code == 400 and "no such rung" in r.get_json()["error"]
+
+
 def test_transport_describe_writes_the_shared_panels_values_into_the_template(
         web_client, isolated_projects_root):
     """`engines/transport.md` § 3.8.2: the shared panel edits the TEMPLATE
@@ -1323,7 +1342,7 @@ def test_transport_describe_writes_the_shared_panels_values_into_the_template(
     _cited_junction(isolated_projects_root)
     r = web_client.post("/api/transport/describe", json=dict(
         engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        overrides={}, shared={"mesh_cutoff": "450", "spin_treatment": "polarized",
+        stages={}, shared={"mesh_cutoff": "450", "spin_treatment": "polarized",
                               "species_order": ""}))
     assert r.status_code == 200, r.get_json()
     tmpl = next(f["text"] for f in r.get_json()["files"]
@@ -1338,7 +1357,7 @@ def test_transport_describe_writes_the_shared_panels_values_into_the_template(
     read_template(tmpl)
     r = web_client.post("/api/transport/describe", json=dict(
         engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        overrides={}, shared={"transmission_n_points": 7}))
+        stages={}, shared={"transmission_n_points": 7}))
     assert r.status_code == 400
     assert "not a shared value" in r.get_json()["error"]
 

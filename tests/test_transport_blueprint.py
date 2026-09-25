@@ -51,6 +51,35 @@ class TestTransportSchemaEndpoint:
             f"the actual engine keyword string otherwise)."
         )
 
+    def test_a_rungs_tab_offers_its_own_items_and_what_any_rung_may_set(self, web):
+        """`engines/transport.md` § 3.8.2a: the per-rung form is a tab per
+        rung.  `?surface=rung&rung=<name>` answers that tab -- the items
+        whose `stages` names the rung, plus the items declaring no rung --
+        and never another rung's; every field carries its `stages` so the
+        tab can fold the cards that hold none of the rung's own.  The
+        un-narrowed answer carries the rung list the strip is built from:
+        name, one-based ladder index, one-line note."""
+        from molbuilder.transport.stages import RUNG_NOTES, TRANSPORT_STAGES
+        body = web.get("/api/transport/schema?surface=rung").get_json()
+        assert [r["name"] for r in body["rungs"]] == list(TRANSPORT_STAGES)
+        assert [r["index"] for r in body["rungs"]] == [1, 2, 3, 4, 5]
+        assert all(r["note"] == RUNG_NOTES[r["name"]] and r["note"]
+                   for r in body["rungs"])
+        seed = web.get("/api/transport/schema?surface=rung&rung=seed").get_json()
+        assert seed["ok"] and seed["rung"] == "seed"
+        fields = [f for s in seed["schema"]["sections"] for f in s["fields"]]
+        assert fields and all("stages" in f for f in fields)
+        assert all(not f["stages"] or "seed" in f["stages"] for f in fields), (
+            [f["name"] for f in fields if f["stages"] and "seed" not in f["stages"]])
+        names = {f["name"] for f in fields}
+        assert "transmission_n_points" not in names and "dm_tolerance" in names
+        tr = web.get("/api/transport/schema?surface=rung&rung=transmission").get_json()
+        tr_names = {f["name"] for s in tr["schema"]["sections"] for f in s["fields"]}
+        assert {"transmission_n_points", "tbt_k_grid", "dm_tolerance"} <= tr_names
+        assert "electrode_kz" not in tr_names
+        r = web.get("/api/transport/schema?surface=rung&rung=lead")
+        assert r.status_code == 400 and "rung must name" in r.get_json()["error"]
+
     def test_the_rung_surface_never_offers_a_shared_value(self, web):
         """`engines/transport.md` § 3.8.2: the per-rung form edits a rung's
         override bag and never offers a value that binds every rung -- the

@@ -352,6 +352,7 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.citation_defaults import (
         transport_template_text)
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
+                                             foreign_overrides,
                                              resolvable_override_names,
                                              stages_for_transport)
     _RESOLVABLE = resolvable_override_names()
@@ -374,10 +375,23 @@ def api_transport_describe() -> Any:
         return jsonify({"ok": False,
                         "error": f"bias must be a list of volts, "
                                  f"got {bias_raw!r}"}), 400
-    overrides = body.get("overrides") or {}
-    if not isinstance(overrides, dict):
+    # PER-RUNG BAGS, the shape `task.stages` carries (`engines/transport.md`
+    # § 3.8.2a): a rung's tab writes that rung's bag, so the rung is the
+    # person's answer and nothing here routes.  Until 2026-09-24 this took
+    # one flat mapping and parked what declared no rung on the device.
+    bags = body.get("stages") or {}
+    if (not isinstance(bags, dict)
+            or not all(isinstance(v, dict) for v in bags.values())):
         return jsonify({"ok": False,
-                        "error": "overrides must be an object"}), 400
+                        "error": "stages must be an object of "
+                                 "rung -> {parameter: value}"}), 400
+    _unknown_rungs = sorted(set(bags) - set(TRANSPORT_STAGES))
+    if _unknown_rungs:
+        return jsonify({"ok": False,
+                        "error": f"no such rung "
+                                 f"{', '.join(map(repr, _unknown_rungs))}: "
+                                 f"a transport ladder's rungs are "
+                                 f"{', '.join(TRANSPORT_STAGES)}"}), 400
     shared_chosen = body.get("shared") or {}
     if not isinstance(shared_chosen, dict):
         return jsonify({"ok": False,
@@ -402,7 +416,7 @@ def api_transport_describe() -> Any:
                    if "transport" in it.role}
     # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
     # listed (`stages.resolvable_override_names`).
-    for _name in overrides:
+    for _rung, _name in [(r, n) for r, b in bags.items() for n in b]:
         if _name not in _RESOLVABLE:
             return jsonify({"ok": False,
                             "error": f"{_name!r} is not a parameter this "
@@ -437,6 +451,17 @@ def api_transport_describe() -> Any:
                                      f"once; it was filled in from the run "
                                      f"you cited, and it is yours to "
                                      f"change."}), 400
+    # A RUNG'S VALUE ON A RUNG THAT DOES NOT OWN IT -- the one door prep
+    # asks too, so the tab and the cluster refuse alike.
+    _foreign = foreign_overrides(bags)
+    if _foreign:
+        _rung, _name, _owners = _foreign[0]
+        return jsonify({"ok": False,
+                        "error": f"{_name!r} belongs to "
+                                 f"{' / '.join(_owners)}, not to "
+                                 f"{_rung!r} -- set it on that rung's tab "
+                                 f"(engines/template.md 6.4, the `stages` "
+                                 f"declaration)"}), 400
     for _name in shared_chosen:
         if _name not in _shared_names:
             return jsonify({"ok": False,
@@ -471,7 +496,7 @@ def api_transport_describe() -> Any:
             slots={"junction": citation}, bias=bias,
             # the stages.md 6.2 rule holds here too: an override names
             # a PROMOTED field, and `varies` is the promotion
-            varies=tuple(sorted(overrides)),
+            varies=tuple(sorted({n for b in bags.values() for n in b})),
             # ROUTED TO THE RUNG THAT OWNS EACH ONE (`engines/template.md`
             # § 6.4's `stages` declaration).  Every override went onto the
             # `device` rung until 2026-09-16, whatever it was -- so a
@@ -479,7 +504,7 @@ def api_transport_describe() -> Any:
             # where the keyword is inert, and not into the deck `tbtrans`
             # runs, which is the one that computes T(E).  Silently: you
             # asked for ±3 eV and got the default.
-            stages=tuple(stages_for_transport(overrides)))
+            stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -542,7 +567,8 @@ def api_transport_schema() -> Any:
     from molbuilder.projects import projects_root
     from molbuilder.transport.citation_defaults import citation_answers
     from molbuilder.transport.compose import ComposeError, resolve_citation
-    from molbuilder.transport.stages import resolvable_override_names
+    from molbuilder.transport.stages import (RUNG_NOTES, TRANSPORT_STAGES,
+                                             resolvable_override_names)
     from molbuilder import template as _T
 
     surface = str(request.args.get("surface") or "rung")
@@ -550,10 +576,24 @@ def api_transport_schema() -> Any:
         return jsonify({"ok": False,
                         "error": f"surface must be 'rung' or 'shared', "
                                  f"not {surface!r}"}), 400
+    # ONE RUNG'S TAB (§ 3.8.2a): `&rung=<name>` narrows the rung surface to
+    # the items that rung owns plus the ones any rung may set.  Without it
+    # the answer is every rung item at once, and it carries the rung list
+    # -- name, ladder index, one-line note -- the tab strip is built from.
+    rung = str(request.args.get("rung") or "") or None
+    if rung is not None and (surface != "rung"
+                             or rung not in TRANSPORT_STAGES):
+        return jsonify({"ok": False,
+                        "error": f"rung must name one of "
+                                 f"{', '.join(TRANSPORT_STAGES)} on the "
+                                 f"rung surface, not {rung!r}"}), 400
     schema = catalogue_to_form_schema("siesta", "t", calculation="transport",
-                                      surface=surface)
+                                      surface=surface, rung=rung)
     response: Dict[str, Any] = {"ok": True, "surface": surface}
     if surface == "rung":
+        response["rung"] = rung
+        response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}
+                             for i, n in enumerate(TRANSPORT_STAGES, start=1)]
         # AND EVERY CONTROL PREP CANNOT RESOLVE: a control the describe door
         # is guaranteed to reject is not a control (measured 2026-09-16).
         _resolvable = resolvable_override_names()

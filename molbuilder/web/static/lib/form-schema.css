@@ -231,6 +231,66 @@ fieldset select:disabled {
     grid-column: 1 / -1;
 }
 
+/* ---- A FOLDABLE card (renderForm's `foldable` option) ----------------
+ *
+ * A <details> whose header is the <summary>: the same grid, the same
+ * header, plus a disclosure marker and the count of settings it holds, so
+ * a folded card still says what it is and how much is inside.  WHICH
+ * cards start folded is the caller's rule (`opts.folded`); this sheet
+ * draws the two states and decides nothing (form-schema.md § 1.3).
+ */
+/* The card itself is a block; its BODY is the grid the open card tiles
+ * its fieldsets in -- the same tracks as an unfoldable card. */
+.param-grid > details.workflow-group { display: block; }
+details.workflow-group > .workflow-group-body {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-col-min), 100%), 1fr));
+    gap: var(--space-md);
+    align-items: start;
+}
+details.workflow-group > .workflow-group-body > .workflow-group-subtitle,
+details.workflow-group > .workflow-group-body > .issues-panel {
+    grid-column: 1 / -1;
+}
+details.workflow-group > .workflow-group-body > fieldset.schema-section {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fit, minmax(min(var(--param-field-min), 100%), 1fr));
+    gap: 0 var(--space-md);
+    align-content: start;
+}
+details.workflow-group > .workflow-group-body > fieldset.schema-section > legend,
+details.workflow-group > .workflow-group-body > fieldset.schema-section > .schema-section-desc {
+    grid-column: 1 / -1;
+}
+details.workflow-group > summary.workflow-group-header {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;                /* a chip or a long title wraps, never overflows */
+    align-items: baseline;
+    gap: var(--space-sm);
+}
+details.workflow-group > summary.workflow-group-header::-webkit-details-marker {
+    display: none;
+}
+details.workflow-group > summary.workflow-group-header::before {
+    content: "\25B8";                  /* ▸ */
+    color: var(--text-muted);
+    transition: transform 0.12s ease;
+}
+details.workflow-group[open] > summary.workflow-group-header::before {
+    transform: rotate(90deg);
+}
+.workflow-group-count {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-weight: normal;
+}
+
 /* A fieldset inside a card tiles its own fields, for the same reason one
  * level up: a legend group of 8 short numbers is 8 rows otherwise. */
 .workflow-group > fieldset.schema-section {

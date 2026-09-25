@@ -166,21 +166,14 @@
       chain job, each starting from the one before it.
     </p>
     <p class="hint">
-      Everything below is a knob this calculation actually has, ordered
-      the way you decide them: <em>what</em> is computed (the energy
-      window and its k-sampling), <em>how sharply</em> (broadening),
-      <em>what gets written</em> (outputs), then the machinery (the
-      density contour, the leads) and the shell.  The grey tag under
-      each field is the exact fdf keyword it writes, so a setting can
-      be looked up in the SIESTA manual by name; <em>help</em> expands
-      the reasoning and the citation.
-    </p>
-    <p class="hint">
-      <strong>Basis, functional, mesh and the rest of the shared
-      description are not here.</strong>  They bind every rung, so they
-      are set once on step 2; a value given to one rung here would let the
-      device disagree with its own leads, and the describe door refuses
-      it by name.
+      <strong>One tab per rung, in the order they run.</strong>  Pick a
+      rung; its tab opens with what that rung computes and hands on, then
+      its own settings first and the shared SCF, output and runtime cards
+      folded beneath.  A value typed on a tab is that rung's alone.  Basis,
+      functional, mesh and the rest of step 2 are not here: they bind every
+      rung, and a per-rung value for one is refused by name.  The grey tag
+      under a field is the fdf keyword it writes; <em>help</em> expands the
+      reasoning.
     </p>
     <p class="hint">
       Reference —
@@ -189,7 +182,9 @@
       § 3.3 every parameter and what it writes, § 0.2 the three k-grid
       axes, § 0.4 the four things that must agree.
     </p>
-    <div id="transport-form-container" class="param-grid">
+    {#- the host of card 4's rung strip and its panels (3.8.2a); each
+        panel holds its own .param-grid, so the host is not one -#}
+    <div id="transport-form-container">
       <p class="muted">Loading form schema&hellip;</p>
     </div>
   </section>
@@ -262,6 +257,9 @@
 <script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+{#- the rung strip of card 4 (engines/transport.md 3.8.2a) -- the same
+    switcher the engine strips use -#}
+<script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>
 {# lib/task-handover.js supplies the destination guards + the file-layer
    write; the transport branch posts to /api/transport/describe and does
    NOT navigate (user ruling 2026-08-29) #}
