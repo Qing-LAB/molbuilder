@@ -46,6 +46,10 @@ file.
 (`structure.py`) and serialize through the one metadata codec
 (`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`).
 
+> **`cell_origin` is superseded by § 6.0** *(decided 2026-09-25, not built)*:
+> the field goes, and placement is `engine_offset`, computed from the cell and
+> the atoms. The row above describes the code until phase 1 of the plan lands.
+
 ### 2.0a One periodicity field, and a boolean accessor *(user, 2026-09-22)*
 
 **`axis_kind` is the only periodicity state a `Structure` holds.** There was
@@ -253,6 +257,11 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 | Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
+> **Superseded by § 6.0** *(decided 2026-09-25, not built)*: the
+> `resolve_cell_origin()` row and the Emit row's translation go — every
+> emitter asks `cell.to_engine`, and the electrode builder states no origin.
+> The rows describe the code until phases 1–2 land.
+
 The electrode builder is *told* which lattice constant to use — `fcc_lattice.json`
 carries `a_experimental` / `a_pbe`, and a value measured off the user's own
 relaxed bulk run can be typed in beside them — and the captured cell is built
@@ -272,7 +281,138 @@ no one is allowed to act on.)
 
 ---
 
+## 6.0 The engine offset — ONE placement rule, for every engine *(user, 2026-09-25)*
+
+*Decided in conversation on 2026-09-25. **Not built** — the scope and the order
+of work are [`plans/2026-09-25-engine-offset.md`](?doc=plans/2026-09-25-engine-offset.md).
+Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
+clause this section supersedes says so at its own site, and is deleted with the
+code it describes.*
+
+> **The rule.** Every engine receives the design coordinates plus
+> **`engine_offset`**, with the cell's corner at `(0,0,0)`. `engine_offset` is
+> the rigid translation that **centres the atoms' span — as authored, never
+> re-wrapped — inside the cell along each lattice vector**, measured in
+> fractional coordinates. It is **computed** from the resolved cell and the
+> position of every atom, and from nothing else. It is never stored as an input
+> and never chosen.
+
+*(User: "always adjust it before sending to siesta or other engines that the
+coordinates of all atoms are centered inside the cell … the original xyz would
+not need to be changed by their coordinate — because they contain the design
+intention"; "in this way, we don't have to have special logic to treat
+isolated, periodic, transport axis_info differently"; "engine neutral too, so
+that this can be translated between different engines, explicitly".)*
+
+**What it replaces, and why one rule is enough.** Placement used to be a stored
+corner (`cell_origin`, § 6) or, when none was stored, a corner each reader
+*derived* (clause 2a) by a rule that depends on the axis kind — `bbox_min −
+vacuum` on an isolated axis, `bbox_min` on a transport one, `0` on a periodic
+one. On 2026-09-25 that gave one structure two boxes. The deck placed a junction
+flush against its bottom face — the electrode builder anchors there by design
+(`modify.py`: *"the padding opens at the TOP"*) — and TranSIESTA refused it
+(*"Electrode: L lies outside the unit-cell"*; the lowest atom sat 16 fm below
+the face, the stored corner being `−17.355` against an atom at `−17.355016`).
+The Results tab, sent no corner and no axis kinds — it searched the run
+directory for a `.source` pair that a ladder keeps at its root — derived an
+isolated-axis corner and drew the atoms centred, which the engine never had.
+With the offset computed by one rule and recorded where it was applied, no
+reader derives anything, and **placement no longer depends on the axis kind**.
+The kinds keep their other jobs — how big a box nobody typed is (§ 4), and what
+the physics treats as periodic, isolated or transport — and lose this one.
+
+| | |
+|---|---|
+| **design coordinates** | the `.xyz`: the author's intent. No engine step rewrites them |
+| **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
+| **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the computed value's negative; for engine coordinates, `(0,0,0)` |
+| **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame and are drawn verbatim (§ 6.1 clause 5). Recomputing would redraw an older flush run centred, which is the misleading picture itself |
+| **a structure saved from an engine's output** | its offset recomputes to 0 by itself, because the rule is idempotent on centred coordinates (measured below). Nothing can be applied twice, and a result from a run made before this rule is centred at its next emission rather than refused |
+
+**Why fractional, and why never re-wrapped** — both measured on the junction
+that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
+
+* **Fractional.** Its in-plane cell is hexagonal (`b = (4.326, 7.492, 0)`), so
+  the slab's Cartesian x-extent is **10.093 Å against |a| = 8.651 Å**. A
+  Cartesian bounding box cannot say what "centred" means on a skewed axis; the
+  fractional span along each lattice vector can, for any cell.
+* **Never re-wrapped.** The tempting rule for a periodic axis — put the cell
+  edge in the widest gap — cuts this junction: its Au–S contact gaps
+  (**2.399 Å**) are wider than the seam (**2.355 Å**), so the edge would land
+  between the gold and the sulfur. Translating the atoms as authored keeps the
+  device whole.
+
+On that junction the rule gives `engine_offset = [6.3684, 3.746, 18.5325]` Å.
+The engine then sees z = 1.1775 … 35.8875 in `c = 37.065`, with equal fractional
+margins on every axis (a 0.0555 / 0.0555, b 0.0555 / 0.0555, c 0.0318 / 0.0318)
+— the z half-gap TranSIESTA itself asked for (1.1773) — and the offset
+recomputed on those engine coordinates is `[0, 0, 0]`.
+
+**The name.** `engine_offset` — *how far these coordinates are from the ones the
+engine gets*, so `0` reads as *these are engine coordinates*. Chosen over
+`frame_shift`, this document's name for the stamp clause 5 promised and no code
+ever wrote, because "frame" already means a trajectory frame here (frame 0, a
+frame set — `engines/transport.md` § 2a.9) and a multi-frame pair would carry a
+"frame shift" that is not per frame; over `cell_origin` or any "corner",
+because those name a *position of the box* (clause 2b) and this is a
+*displacement of the atoms*; and over `structure_offset`, which says whose it
+is but not relative to what. **One name in every home**: the computed value,
+each deck's record, the wire field.
+
+**The operations — one module, and nothing else translates.**
+`molbuilder/cell.py` is already *"the ONE place a box is worked out, and the ONE
+place it is judged"*. It was not in fact, because the two emitters bypassed it —
+`siesta/input.py` and `transport/transiesta.py` each subtract
+`resolve_cell_origin()` by hand.
+
+| operation | answers | its only callers |
+|---|---|---|
+| `engine_offset(struct)` | the rule | the two below |
+| `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
+| `engine_frame(cell, positions) → EngineFrame` | the same record for coordinates that ARE an engine's, the offset `0` stated | every reader of engine output — the Results door, the transport citation's `.XV`, the Results and CLI exports |
+| `EngineFrame.box_corner` | `−engine_offset` | every payload that tells a viewer where to draw |
+| `resolve(struct) → ResolvedCell` | the box and its judgement, now carrying `engine_offset` and `box_corner` | the periodicity gate, the validators |
+
+**The record — engine-neutral, beside the coordinates it labels.** Every deck
+molbuilder writes (SIESTA `.fdf`, PySCF `.py`) carries a `molbuilder
+engine-offset` block: the cell, the offset applied and the axis kinds, in
+neutral terms. It is the provenance clause 5 promised, and it is what a reader
+of a run asks, so the Results tab no longer searches for a `.source` pair to
+learn the axis kinds. It is a **sibling** of the `atom-metadata` block, not a
+key inside it: that block is the sidecar's shape and is written only when there
+are labels (`script_emit.emit_atom_metadata`), while this one is a fact about
+the emission and is written for every deck. One writer and one reader, beside
+that block's.
+
+**The checks.**
+
+1. **The atoms fit** — their fractional span is `< 1` along every lattice
+   vector. When it is not, no offset can put them inside, and the edit is
+   refused naming the axis. This replaces the containment regimes of § 6.1
+   clause 4.
+2. **A transport rung has clearance along its transport axis** — the transport
+   kind validator refuses a rung whose atoms touch a face along `c`, saying that
+   a junction's gap is one layer spacing (`science/junction-cell.md` § 6.1).
+   This is the refusal that should have come from molbuilder before the
+   2026-09-25 device deck reached TranSIESTA.
+
+**A frame set gets one offset.** The frames of a multi-frame pair share one cell
+and identical electrode atoms (`engines/transport.md` § 2a.9). The offset is
+computed from frame 0 and applied to every frame, so no electrode atom moves
+between frames in the engine's coordinates either.
+
+---
+
 ## 6. Cell origin + calibration — an explicit cell that wraps off-origin atoms
+
+> **SUPERSEDED by § 6.0** *(decided 2026-09-25, not built)*. The problem
+> stated below is real, and § 6.0 solves it without a stored corner: the box
+> is drawn at `−engine_offset` of the design coordinates, so it still wraps
+> atoms that straddle the origin without moving them. Clause 2b's principle —
+> an origin is a label on the coordinates beside it — stands, and is why an
+> engine's output has its offset stated as 0 rather than carried over. This
+> section still describes the running code and is deleted with it (plan
+> phase 4).
 
 **The problem.** Building a tunnelling junction, the natural workflow pins the
 molecule at the world origin and grows structure around it (centre at
@@ -371,6 +511,13 @@ derived isolated axis), so the vacuum control reads "not applicable".
 
 ## 6.1 The frame contract (v2, decided 2026-07-29) — one gate, a state table, no silent frames
 
+> **Partly superseded by § 6.0** *(decided 2026-09-25, not built)*: clause 4's
+> origin rows and containment regimes go — placement is computed, so there is
+> no user-owned or derived corner left to judge, and "the atoms fit" is one
+> check. Clause 5 is built by § 6.0: its stamp is each deck's `engine-offset`
+> record (`frame_shift` was never written or read by any code). Clauses 1–3
+> stand.
+
 Six clauses, agreed with the project owner; every periodicity change conforms
 to these or is a bug:
 
@@ -450,6 +597,9 @@ to these or is a bug:
    the same confusion: *a minimum box length is not a vacuum.*
 
 ## 6.1a The decision matrices — how the box is made, and what is said about it
+
+> **Table A's "Low corner" column and the corner rules are superseded by § 6.0**
+> *(decided 2026-09-25, not built)*. Its box-length column stands.
 
 Two questions, two tables. Everything on the Cell page is one or the other.
 
@@ -623,6 +773,12 @@ thin. On a typed box `cell.image_distance` is the check that means anything.
 
 ## 6.2 The unified periodicity door (v3 — the regime model)
 
+> **Partly superseded by § 6.0** *(decided 2026-09-25, not built)*: the
+> `cell_origin` op, the manual-origin regime and *"respects an existing origin
+> first"* go, and the response carries `engine_offset` and `box_corner` in
+> place of `resolved_cell_origin`. *"Python owns every metadata change; the JS
+> only calls"* stands, and is what keeps the offset in one place.
+
 **Python owns every metadata change; the JS only calls.** One endpoint —
 `POST /api/structure/periodicity`, body `{data, op, payload}` — serves every
 Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
@@ -660,6 +816,11 @@ never saved back — and the **Results** tab is engine-frame by construction
 (parser-fed from run artifacts, § 6.1 clause 5).
 
 ## 7. Frontend surface (JS / user) — display vs edit
+
+> **The Cell page's origin is superseded by § 6.0** *(decided 2026-09-25, not
+> built)*: the page shows the engine offset, read-only. The origin inputs and
+> the Reset-origin button go with the stored origin, since the offset is never
+> chosen.
 
 Two coupled views of one `(cell, cell_origin, axis_kind, vacuum)`, with a
 strict split between showing and writing.
@@ -954,6 +1115,10 @@ block). The MolView module never parses — the host supplies the resolved cell.
 ---
 
 ## 9. Status
+
+**Decided 2026-09-25, not built:** § 6.0 — the engine offset, one placement
+rule for every engine, recorded in every deck; the scope and the phases are
+[`plans/2026-09-25-engine-offset.md`](?doc=plans/2026-09-25-engine-offset.md).
 
 **Shipped:** the `Structure` fields + `resolve_cell`/`resolve_cell_origin`; the
 electrode builder's capture-at-construction (`cell` + `axis_kind`); `render_fdf`
