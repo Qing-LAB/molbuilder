@@ -485,6 +485,116 @@ def resolve_and_check(struct: Structure, *,
 
 
 # --------------------------------------------------------------------- #
+#  The engine offset -- ONE placement rule, for every engine            #
+#                                                                       #
+#  Contract: docs/model/structure-periodicity.md § 6.0.  Every engine   #
+#  is handed the design coordinates plus ``engine_offset`` with the     #
+#  cell's corner at (0,0,0); a reader of an engine's own output states  #
+#  the offset as zero.  Nothing else translates atoms.                  #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class EngineFrame:
+    """The coordinates an engine is handed, and the one number that put them
+    there.
+
+    ``positions`` are in the engine's frame -- the cell's corner at (0,0,0).
+    ``engine_offset`` is what was ADDED to the coordinates this frame was made
+    from: the rule's answer for design coordinates (:func:`to_engine`), and
+    zero, stated, for coordinates that already are an engine's
+    (:func:`engine_frame`).
+    """
+
+    #: 3×3, rows are the lattice vectors, Å.
+    cell: np.ndarray
+    #: n×3, Å, in the engine's frame.
+    positions: np.ndarray
+    #: 3, Å.
+    engine_offset: np.ndarray
+
+    @property
+    def box_corner(self) -> np.ndarray:
+        """Where a viewer showing the SOURCE coordinates draws the box.
+
+        ``−engine_offset``: for design coordinates the box sits there, and for
+        an engine's own output the offset is zero, so the box sits at the
+        origin.  One definition answers both, which is why no viewer computes
+        a corner of its own."""
+        return -self.engine_offset
+
+
+def _lattice(struct: Structure, box: Optional[np.ndarray]) -> np.ndarray:
+    """The cell the atoms are placed in: ``box`` when a generator passes one,
+    else the structure's resolved cell."""
+    raw = box if box is not None else struct.resolve_cell()
+    if raw is None:
+        raise ValueError("there is no cell to place the atoms in: the "
+                         "structure is empty and states none")
+    return np.asarray(raw, dtype=float).reshape(3, 3)
+
+
+def engine_offset(struct: Structure, *,
+                  box: Optional[np.ndarray] = None) -> np.ndarray:
+    """THE placement rule: the rigid translation that centres the atoms' span
+    -- as authored, never re-wrapped -- inside the cell along each lattice
+    vector.
+
+    **Fractional**, because on a skewed cell a Cartesian bounding box is wider
+    than the lattice vector it lies along -- the junction that surfaced this
+    (2026-09-25) spans 10.093 Å in x against |a| = 8.651 Å -- and cannot say
+    what "centred" means.  **Never re-wrapped**, because the widest gap along
+    an axis need not be the seam: that junction's Au–S contacts (2.399 Å) are
+    wider than its seam (2.355 Å), so cutting at the widest gap would put the
+    molecule on the cell face.  Translating the atoms as authored keeps a
+    device whole.
+
+    Computed from the cell and every atom's position and from nothing else --
+    no axis kind, no vacuum, no label -- so it needs no stored input and cannot
+    go stale.  Idempotent: on coordinates it has already centred it returns
+    zero, which is why a structure saved from an engine's output needs no
+    special case.  ``box`` overrides the resolved cell, as in :func:`resolve`.
+    """
+    if struct.n_atoms == 0:
+        return np.zeros(3)
+    lattice = _lattice(struct, box)
+    frac = _fractional(struct, lattice, np.zeros(3))
+    if frac is None:
+        raise ValueError("the cell is singular, so no atom can be placed in "
+                         "it -- a lattice needs three independent vectors")
+    lo, hi = frac.min(axis=0), frac.max(axis=0)
+    return (0.5 - (lo + hi) / 2.0) @ lattice
+
+
+def to_engine(struct: Structure, *,
+              box: Optional[np.ndarray] = None) -> EngineFrame:
+    """What every engine is handed: the design coordinates plus
+    :func:`engine_offset`, the cell's corner at (0,0,0).
+
+    The one door an emitter takes.  The design coordinates are the author's
+    intent and are never changed: this returns new positions and leaves
+    ``struct`` alone."""
+    lattice = _lattice(struct, box)
+    offset = engine_offset(struct, box=lattice)
+    return EngineFrame(cell=lattice,
+                       positions=struct.positions.astype(float) + offset,
+                       engine_offset=offset)
+
+
+def engine_frame(cell, positions) -> EngineFrame:
+    """The record for coordinates that ARE an engine's -- a run's output.
+
+    The offset is STATED as zero and never recomputed: these are the engine's
+    own frame, shown verbatim (§ 6.1 clause 5).  Recomputing would redraw a run
+    made before the rule -- which the engine had flush against a face -- as
+    though it had been centred, which is the picture that misled on
+    2026-09-25."""
+    return EngineFrame(cell=np.array(cell, dtype=float).reshape(3, 3),
+                       positions=np.array(positions, dtype=float).reshape(-1, 3),
+                       engine_offset=np.zeros(3))
+
+
+# --------------------------------------------------------------------- #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
 #  Contract: docs/science/junction-cell.md § 5.  One caller --          #

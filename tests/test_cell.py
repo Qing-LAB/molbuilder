@@ -596,3 +596,107 @@ class TestInterplanarSpacingIsDerivedNotTabulated:
         for bad in (0.0, -1.0, float("nan")):
             with pytest.raises(ValueError, match="positive length"):
                 cellmod.interplanar_spacing("fcc", "111", bad)
+
+
+# --------------------------------------------------------------------- #
+#  The engine offset -- structure-periodicity.md § 6.0                  #
+#                                                                       #
+#  API-level, on a measured fixture: the arithmetic every emitter and   #
+#  every viewer depends on.  The decks it produces are pinned through   #
+#  the road by the prep tests.                                          #
+# --------------------------------------------------------------------- #
+
+#: The 2026-09-25 junction's cell: hexagonal in-plane, so a Cartesian
+#: bounding box is wider than a lattice vector.
+_HEX = np.array([[8.651, 0.0, 0.0],
+                 [4.326, 7.492, 0.0],
+                 [0.0, 0.0, 37.065]])
+
+
+def _junction_like(axis_kind=("periodic", "periodic", "transport")):
+    """Four atoms carrying the properties measured on that junction.
+
+    In-plane the fractional spans run 0 … 0.95 while the Cartesian x-extent is
+    9.516 Å -- wider than |a| = 8.651 Å -- and the set is lopsided, so the
+    Cartesian box's centre (x = 4.758) is not the fractional span's (x =
+    6.164): a Cartesian rule leaves the atoms off-centre along a.  Along c the
+    leads sit 2.355 Å apart across the seam and the contacts are 2.399 Å --
+    wider than the seam, as on the real junction -- and the widest gap of all
+    is the device's middle, so a rule that re-wraps at the widest gap cuts the
+    device in two.  The two leads are frozen, as a relaxation's are.
+    """
+    frac_ab = np.array([[0.0, 0.0], [0.95, 0.3], [0.05, 0.95], [0.5, 0.5]])
+    xy = frac_ab @ _HEX[:2, :2]
+    z = np.array([-17.355, 17.355, -14.956, 14.956])
+    return Structure(elements=["Au", "Au", "S", "S"],
+                     positions=np.column_stack([xy, z]),
+                     cell=_HEX.copy(), axis_kind=axis_kind,
+                     frozen_atoms=[0, 1])
+
+
+def _fractional_of(frame):
+    return np.linalg.solve(frame.cell.T, frame.positions.T).T
+
+
+def test_the_engine_gets_every_atom_centred_along_every_lattice_vector():
+    """Equal margins on both faces of every axis, measured along the lattice
+    vectors -- not a Cartesian box, which on this cell says nothing about the
+    skewed axis."""
+    frac = _fractional_of(cellmod.to_engine(_junction_like()))
+    near, far = frac.min(axis=0), 1.0 - frac.max(axis=0)
+    assert np.all(near > 0), near
+    np.testing.assert_allclose(near, far, atol=1e-9)
+
+
+def test_the_atoms_move_rigidly_so_a_device_is_never_cut():
+    """One translation for every atom, the frozen ones included.
+
+    Re-wrapping at the widest gap would give the far lead a whole lattice
+    vector more than the near one and put the cell face through the device.
+    And frozen is a constraint on the CALCULATION: the engine holds a frozen
+    atom where it sits in the unit cell while the others move (the deck names
+    it by index).  It says nothing about where a structure sits while it is
+    built, so the offset places a frozen atom in the cell exactly as it places
+    every other (user, 2026-09-25)."""
+    s = _junction_like()
+    assert s.frozen_atoms, "the fixture must freeze its leads"
+    moved = cellmod.to_engine(s).positions - s.positions
+    np.testing.assert_allclose(moved, np.broadcast_to(moved[0], moved.shape),
+                               atol=1e-12)
+
+
+def test_the_offset_of_coordinates_it_already_centred_is_zero():
+    """Idempotent -- so a structure saved from an engine's output carries a
+    zero offset without anyone setting it, and nothing is shifted twice."""
+    frame = cellmod.to_engine(_junction_like())
+    again = Structure(elements=["Au", "Au", "S", "S"],
+                      positions=frame.positions, cell=frame.cell)
+    np.testing.assert_allclose(cellmod.engine_offset(again), 0.0, atol=1e-9)
+
+
+def test_an_engines_own_output_is_shown_verbatim_at_offset_zero():
+    """Stated, not recomputed.  Coordinates an engine wrote flush against a
+    face -- as every deck did before this rule -- are drawn flush, with the box
+    at the origin; recomputing would draw them centred, a box the engine never
+    had."""
+    s = _junction_like()
+    flush = s.positions - s.positions.min(axis=0)
+    frame = cellmod.engine_frame(_HEX, flush)
+    np.testing.assert_array_equal(frame.positions, flush)
+    np.testing.assert_array_equal(frame.engine_offset, 0.0)
+    np.testing.assert_array_equal(frame.box_corner, 0.0)
+    rule = cellmod.engine_offset(Structure(elements=list(s.elements),
+                                           positions=flush, cell=_HEX.copy()))
+    assert np.linalg.norm(rule) > 1.0, "the fixture must be one the rule would move"
+
+
+def test_where_the_atoms_go_does_not_depend_on_the_axis_kind():
+    """The user's point: *"we don't have to have special logic to treat
+    isolated, periodic, transport axis_info differently."*  The kinds size a
+    box nobody typed; they do not place the atoms in a box that is given."""
+    offsets = [cellmod.engine_offset(_junction_like(kinds)) for kinds in (
+        ("periodic", "periodic", "transport"),
+        ("isolated", "isolated", "isolated"),
+        ("periodic", "periodic", "periodic"))]
+    for other in offsets[1:]:
+        np.testing.assert_allclose(other, offsets[0], atol=1e-12)
