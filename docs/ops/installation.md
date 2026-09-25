@@ -28,7 +28,7 @@ flowchart TD
   HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · (gpu4pyscf)"]
   HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
   HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
-  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib<br/>(optional)"]
+  HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl<br/>(optional)"]
 ```
 
 The dotted edge is the notebook tab, and it is the only one: the notebook env
@@ -324,7 +324,7 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel` and the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It deliberately holds no science backend (no ase / sisl / rdkit / pyscf): those would be a second copy to keep in step, and this is an env for *reading* what a calculation wrote, not for running one. **Opt-in**, like the GPU env: `bootstrap` does not install it |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and, since 2026-09-24, the file-level science libraries `ase` and `sisl` — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce and writes what they consume — a frame set in extended-XYZ, a SIESTA output — and is not a second place to run one (`web/jupyter.md` § 7). **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **pyberny** | `molbuilder-pySCF` | **manual / optional** — unmaintained; the conda recipe omits it |
 | **X3DNA (3DNA)** | host-external | **manual** — restricted licence; you extract it and export `X3DNA` + `PATH` yourself |

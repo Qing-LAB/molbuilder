@@ -2634,12 +2634,26 @@ _SIESTA_GPU = Recipe(
 # `pyzmq`, `tornado` and six more -- into `molbuilder-pySCF`, whose one job is
 # running pySCF reproducibly.  **A job env stays a job env.**
 #
-# What this env deliberately does NOT carry is the SCIENCE backends -- no ase,
-# sisl, rdkit or pyscf.  Those would be a second copy to keep in step with the
-# first, and the day the two drift a notebook stops reproducing what a
-# calculation does, silently (`installation.md` 1, the per-backend isolation
-# rule).  This is an ANALYSIS env: it reads what a calculation wrote and plots
-# it.  It is not a second place to run one.
+# What this env carries of SCIENCE is the FILE-LEVEL libraries and nothing
+# that runs a calculation (user ruling 2026-09-24, revising the 2026-09-14
+# one that kept every science package out).  **A notebook has to read the
+# MD and trajectory formats calculations produce** -- extended-XYZ, ASE's
+# own .traj, plain xyz, pdb, cif, and the engine outputs ase's readers
+# cover -- and `ase` is that reader; `sisl` is the same for what SIESTA and
+# TBtrans write (.TSHS, .TBT.nc, .bands, .EIG, .PDOS).  One consequence is
+# the frame set (`docs/engines/transport.md` 2a.9): a series of displaced
+# structures for transport is one multi-frame extended-XYZ document sharing
+# one sidecar, and the bare-metal way to make one -- from a spectrum's normal
+# modes, or from anything -- is a notebook with ase in it.  Tools, an API and
+# a web surface for such perturbations come later; this is the floor.
+#
+# What it still does NOT carry is a CALCULATION ENGINE -- no pyscf, no
+# siesta, no rdkit.  Running one from a notebook would be a second place to
+# run a calculation, off the record, and that half of the 2026-09-14 ruling
+# stands.  The cost the earlier ruling named -- a second `ase` that can drift
+# from the host env's -- is real and is NOT checked by the audit; both are
+# bare conda-forge specs solved on the same channel, and the extended-XYZ
+# format is stable, so the exposure is bounded, not zero.
 #
 # The kernel is registered by nothing: `ipykernel` installs its own `python3`
 # kernelspec into this env's prefix, and the server runs in the same prefix,
@@ -2679,6 +2693,11 @@ _JUPYTER = Recipe(
         # recipe for why the stack is here and not reached for in another
         # env.
         "numpy", "scipy", "pandas", "matplotlib",
+        # THE FILE-LEVEL SCIENCE LIBRARIES (user, 2026-09-24; the block
+        # above): ase reads the MD and trajectory formats a notebook meets
+        # and writes the extended-XYZ a frame set is made of; sisl reads
+        # the files SIESTA and TBtrans write.  Not engines.
+        "ase", "sisl",
         # git: uniform across every env -- see the _HOST recipe for why it is
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",
@@ -2686,7 +2705,7 @@ _JUPYTER = Recipe(
     verify_argv=("bash", "-c",
                  "set -e; jupyter lab --version; "
                  "python -c \"import jupyter_server, ipykernel, numpy, "
-                 "scipy, pandas, matplotlib; "
+                 "scipy, pandas, matplotlib, ase, sisl; "
                  "print('jupyternb OK')\""),
     verify_expect_contains="jupyternb OK",
     system_preconditions=(

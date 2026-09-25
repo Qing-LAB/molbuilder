@@ -526,13 +526,30 @@ JupyterLab server, the `ipykernel` a cell runs on, and the analysis stack —
 `numpy`, `scipy`, `pandas`, `matplotlib`. Jupyter is installed, activated and
 runs here. **No other env carries notebook tooling.**
 
-It deliberately holds no science backend — no `ase`, `sisl`, `rdkit` or
-`pyscf`. Those would be a second copy to keep in step with the first, and the
-day the two drift a notebook stops reproducing what a calculation does,
-silently. This env *reads* what a calculation wrote and plots it; it is not a
-second place to run one.
+**And, since 2026-09-24, the file-level science libraries: `ase` and
+`sisl`** *(user ruling, revising the one below)*. **A notebook has to read
+the MD and trajectory formats calculations produce** — extended-XYZ, ASE's
+own `.traj`, plain xyz, pdb, cif, and the engine outputs ASE's readers cover
+— and `ase` is that reader; `sisl` is the same for what SIESTA and TBtrans
+write. One consequence is the frame set
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.9): a series of
+displaced structures for transport is one multi-frame extended-XYZ document
+sharing one sidecar, and the bare-metal way to make one — from a spectrum's
+normal modes, or from anything — is a notebook with `ase` in it. Tools, an
+API and a web surface for such perturbations come later; this is the floor
+they stand on.
 
-*(That is the user's design, stated 2026-09-14. The earlier text here — the
+**It still holds no calculation engine** — no `pyscf`, `siesta` or `rdkit`.
+Running one from a notebook would be a second place to run a calculation,
+off the record. That half of the 2026-09-14 ruling stands. The cost that
+ruling named — a second `ase` that can drift from the host env's — is real
+and is **not checked** by the audit: both are bare conda-forge specs solved
+on the same channel, and the extended-XYZ format is stable, so the exposure
+is bounded, not zero.
+
+*(The 2026-09-14 design said: no science backend at all — `ase`, `sisl`,
+`rdkit`, `pyscf` — because a second copy drifts and a notebook then stops
+reproducing what a calculation does. The earlier text before that — the
 stack in the host env, each calculation env offering itself as a kernel — was
 mine and was wrong: to be a kernel an env must carry `ipykernel`, which drags
 `debugpy`, `ipython`, `jupyter_client`, `pyzmq`, `tornado` and six more into an
