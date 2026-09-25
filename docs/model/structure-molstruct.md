@@ -311,6 +311,30 @@ Engine generators load the sidecar through `apply_to_structure`, not these
 file-ops endpoints, so the sidecar-as-source-of-truth contract is unaffected by
 a rename.
 
+### 6.1 One sidecar, many frames *(user, 2026-09-24)*
+
+A coordinate document may hold **several frames** — the codec writes a frame
+range as one extended-XYZ document (`structure.md` § 5.1, `pair(frames=)`),
+and ASE reads every frame of one back. **The pair stays one sidecar**: the
+per-atom facts (labels, frozen set, identity columns), the periodicity and the
+`info` store apply to **every** frame, because a frame is the same atoms, in
+the same order, moved. A frame carries coordinates and a cell and nothing
+else; a frame that restates a label would be a second source for it.
+
+| a reader that… | gets |
+|---|---|
+| asks for a structure (`load(path)`) | **frame 0**, with the sidecar applied — today's behaviour, unchanged |
+| asks for the frames (`load(path, frames_out=[…])`) | every frame, in file order, each with the same sidecar applied |
+
+This is what makes a multi-frame pair a legal input everywhere a structure is
+one, and a **frame set** where a door is frame-aware:
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.9 defines the
+transport frame group as exactly this pair — frame 0 the base, frames 1…N the
+displacements, the rule that made them recorded in `info` when known. The
+axis kinds are the sidecar's (the extended-XYZ `pbc=` flag is boolean and
+cannot carry them, the unification audit's X2 ①), which is one more reason
+the frames do not travel without it.
+
 ---
 
 ## 7. What this file's metadata drives (pointer)

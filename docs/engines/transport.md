@@ -594,9 +594,10 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 
 ### 2a.9 The structure input, and the frame axis — making room, not building
 
-*Added 2026-09-16 at the user's direction. The frame axis is **not** being
+*Added 2026-09-16 at the user's direction. The frame axis is **not yet**
 built; what is settled here is what today's contract must say so that adding it
-later needs no rework.*
+later needs no rework — and, since 2026-09-24, **what a frame set IS**: one
+multi-frame structure pair (below).*
 
 **Transport's input is a structure, and the contract should say so plainly.**
 Today that structure is a relaxed junction. In future it will also be a **group
@@ -701,13 +702,42 @@ approximation**, it is legitimate and standard, and it is **not** a finite-bias
 NEGF result. Where a deliverable is computed that way it must say so, or a
 reader will take an approximation for the real thing.
 
-#### What makes a set citable
+#### What makes a set citable — ONE PAIR, many frames *(user, 2026-09-24)*
 
-Today transport cites one finished attempt; a group cites a **set**. The
-condition should be stated when the capability is built, and will be: one shared
-base structure, an electrode region identical across every frame, and the
-displacement rule recorded beside the frames — so a result can always say what
-it was a displacement *of*.
+> **A frame set is a multi-frame extended-XYZ document with its one sidecar.**
+> Frame 0 is the base — the optimised junction, which is what every reader
+> takes today when it asks for a structure — and frames 1…N are the
+> displacements. The labels, the frozen set, the species and the recorded
+> contract live in the one sidecar and apply to every frame; a frame is
+> coordinates and a cell, nothing else.
+
+Nothing new is invented for it. The structure codec already writes a frame
+range as one extended-XYZ document beside one sidecar and reads every frame
+back in file order (`model/structure.md` § 5.1, `pair(frames=)` /
+`load(frames_out=)`); MolView's *Export → Data* already writes that pair for
+a frame range; a reader that does not ask for frames reopens the file as its
+first frame. So a multi-frame pair is a legal citation for every door that
+exists — it is the base — and a frame-aware door sees the set. That is what
+makes the axis addable without rework.
+
+| the condition, checked per frame at the citation door, naming the frame | why |
+|---|---|
+| the same atom count, in the input order, as frame 0 | the sidecar's per-atom facts are indices |
+| the same species, in the same order | the seed's density and the leads' Hamiltonians are indexed by orbital |
+| **the same cell as frame 0** — a frame stating another is refused | the leads must tile one cell for every frame (I6, § 2a.9 above) |
+| **no electrode atom moved**, to the coordinate tolerance the sort uses | the exact-sharing gate: the lead Hamiltonian is truth |
+
+**The frame token is the file position**: `f000` is the base and runs too —
+the undisplaced reference every displaced curve is compared against — and
+`f001`… follow in file order, so a curve can always say which frame it is.
+
+**The rule is recorded in the sidecar when it is known.** A frame set written
+by the built-in mode rule records, in the pair's `info`, the vibration run it
+read, the mode and the amplitudes; one written by the person's own script
+records the script's name; one assembled by hand records nothing, and the
+calculation's record then says *frames supplied as files, rule not recorded*.
+Nothing is refused for that — what the displacement means is the person's
+(§ 3.1 puts the third citation case the same way).
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -719,6 +749,16 @@ of their own** that takes the base structure and writes the frames; then the
 script is the rule, it is recorded beside the frames exactly as a built-in
 rule would be, and the person takes over the responsibility a built-in rule
 would have carried.
+
+**What either one writes is the multi-frame pair above** — the base as frame
+0, the displaced geometries after it, one sidecar shared — through the codec's
+own writer (or ASE's extended-XYZ writer, which is the same format). So the
+frame set is the **interface between the vibration work and transport**: the
+vibration side's generator (`plan.md` V1.25) writes it from a spectra file
+for one mode at the zero-point amplitude and its thermal growth (`vibration.md`
+§ 5.6; the per-mode `zero_point_displacement_ang` is in the result since
+2026-09-24), a person's script writes the same file from anything, and
+transport reads one shape and knows nothing about modes.
 
 **What that responsibility is, stated as a contract, because every part of
 it is checkable.** Every frame the rule produces, whoever wrote it:
@@ -745,9 +785,11 @@ gives is the electrode one, and that one is checked.
 **One job, one more axis.** `task.json` already names the axes a calculation
 varies over (`varies`; today the bias). A frame group is that with a second
 axis: the device and the transmission carry the frame level, the seed and the
-leads do not, and § 2a.11's tree says so without a new mechanism. **For now
-the input is one structure**; this section fixes what a group must look like
-so that adding the generator later changes nothing above it.
+leads do not, and § 2a.11's tree says so without a new mechanism. **The axis is
+declared by the citation itself**: a pair holding one frame is today's
+calculation, a pair holding more is a frame group, and the description may
+name which frames run (all, by default). Nothing above this section changes
+when the frame-aware doors are built.
 
 #### What this changes about the deliverable
 
@@ -900,7 +942,9 @@ case of the axis rule, not a special case of the layout.
 ```
 
 The absence of a level *is* the statement that the result is shared. Nobody has
-to be told; the tree says it.
+to be told; the tree says it. `f000` is the base itself — the undisplaced
+reference curve — and the frame token is the frame's position in the cited
+multi-frame pair (§ 2a.9).
 
 #### Attempts, and what is never overwritten
 
