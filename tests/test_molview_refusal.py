@@ -29,13 +29,22 @@ REPO = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO / "molbuilder" / "web" / "static" / "lib" / "molview"
 MODEL = MODULE_DIR / "model.js"
 
-#: The gate's own words for a cell that cannot exist. The point of quoting a
-#: REAL sentence rather than "nope" is that this one tells the reader what to do,
-#: and that is the whole of what § 6.9 is protecting.
-GATE_SENTENCE = (
-    "A left-handed cell (determinant -64.00) cannot be used. "
-    "Swap two lattice vectors or negate one."
-)
+def _gate_sentence() -> str:
+    """The gate's own words for a cell that cannot exist -- produced by the one
+    checker, so they stay the gate's when its wording changes (a copy typed here
+    had already drifted from it).  The point of quoting a REAL sentence rather
+    than "nope" is that this one tells the reader what to do, and that is the
+    whole of what § 6.9 is protecting."""
+    import numpy as np
+    from molbuilder.cell import resolve_and_check
+    from molbuilder.structure import Structure
+    mirrored = Structure(elements=["H"], positions=[[1.0, 1.0, 1.0]],
+                         cell=np.diag([-4.0, 4.0, 4.0]))
+    return next(i.message for i in resolve_and_check(mirrored)[1]
+                if i.where == "cell.left_handed")
+
+
+GATE_SENTENCE = _gate_sentence()
 
 SERVER = """
 globalThis.__requests   = [];
@@ -149,7 +158,7 @@ def test_the_status_code_is_not_the_message():
     )
     assert "400" not in out["message"], (
         "the status code reached the caller instead of the reason")
-    assert "swap two lattice vectors" in out["message"].lower()
+    assert out["message"] == GATE_SENTENCE, "the reason did not arrive whole"
 
 
 def test_every_changing_door_reports_a_refusal_the_same_way():
@@ -170,7 +179,7 @@ def test_every_changing_door_reports_a_refusal_the_same_way():
             { text: "1\\n\\nH 0 0 0\\n", filename: "y.xyz" }));
         const op      = await outcome(() => m.applyOp("translate", { dx: 1 }));
         const cell    = await outcome(() => m.commitPeriodicityOp(
-            "cell_origin", [1, 2, 3]));
+            "box_corner", [1, 2, 3]));
         console.log(JSON.stringify({ install, op, cell }));
         """ % json.dumps(GATE_SENTENCE)
     )

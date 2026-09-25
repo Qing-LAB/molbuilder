@@ -326,8 +326,8 @@ export function sceneFor(periodicity) {
      * about. */
     const used = effectiveCell(periodicity);
     const lattice = isLattice(used.cell) ? used.cell : null;
-    const origin = (Array.isArray(used.cell_origin) && used.cell_origin.length === 3)
-        ? used.cell_origin : [0, 0, 0];
+    const origin = (Array.isArray(used.box_corner) && used.box_corner.length === 3)
+        ? used.box_corner : [0, 0, 0];
 
     /* TWO TRIADS, AND THEY CO-EXIST.
      *

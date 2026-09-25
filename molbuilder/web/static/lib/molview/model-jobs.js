@@ -233,8 +233,8 @@ export function structureFromServer(payload) {
             elements:    elements,
             annotations: annotations,
             /* THE PERIODICITY BLOCK, CARRIED VERBATIM (§ 6.2). Its field
-             * names are the server's — `cell`, `cell_origin`, `axis_kind`,
-             * `vacuum`, and the `resolved_*` answers beside them — and they stay
+             * names are the server's — `cell`, `engine_offset`, `axis_kind`,
+             * `vacuum`, and the resolved answers beside them — and they stay
              * the server's the whole way through this module.
              *
              * It used to be renamed here to `{lattice, origin, …}`, and the
@@ -320,7 +320,9 @@ export function effectiveCell(periodicity) {
     const per = periodicity || {};
     return {
         cell:        per.resolved_cell        || per.cell        || null,
-        cell_origin: per.resolved_cell_origin || per.cell_origin || null,
+        // WHERE THE BOX IS DRAWN, as the server placed it (§ 6.0): never
+        // worked out here.
+        box_corner:  per.box_corner || null,
         axis_kind:   per.axis_kind || null,
         vacuum:      per.resolved_vacuum      || per.vacuum      || null,
     };
@@ -454,7 +456,7 @@ export function structureForServer(structure, positions) {
         metadata: {
             regions:     groupByLabel(structure.annotations),
             cell:        clone(per.cell),
-            cell_origin: clone(per.cell_origin),
+            engine_offset: clone(per.engine_offset),
             axis_kind:   clone(per.axis_kind),
             vacuum:      clone(per.vacuum),
         },

@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+import pytest
 from click.testing import CliRunner
 
 from molbuilder import cell as cellmod
@@ -56,12 +57,14 @@ def _water():
 
 
 def _prep(root, struct, cfg, stages, engine, *, stage=None,
-          calculation="optimization", name="JOB", before_prep=None):
+          calculation="optimization", name="JOB", before_prep=None,
+          refused=False):
     """Describe, then `jobset prep run` one rung (the first unless ``stage``
     names another); the deck's text.  ``root`` is the per-test projects tree
     (`isolated_projects_root`): `prep` reads a calculation only from inside
     the tree.  ``before_prep(dest)`` puts on disk what an earlier rung left --
-    a finished attempt -- before the prep that reads it."""
+    a finished attempt -- before the prep that reads it.  ``refused`` expects
+    prep to refuse, and returns what it said in place of the deck."""
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
     # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
     # default box -- a different structure from the one described.
@@ -89,6 +92,9 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     stage = stage or stages[0].name
     r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
                                           str(dest), "--no-sbatch"])
+    if refused:
+        assert r.exit_code != 0, r.output
+        return dest, stage, r.output
     assert r.exit_code == 0, r.output
     suffix = ".fdf" if engine == "siesta" else ".py"
     deck = next(next(dest.glob(f"*_{stage}")).glob(f"*{suffix}"))
@@ -114,6 +120,10 @@ def _assert_placed(design, written, text):
     record = extract_engine_offset(text)
     assert record is not None, "the deck carries no ENGINE-OFFSET record"
     np.testing.assert_allclose(record["applied_offset"], offset, atol=1e-7)
+    # And the viewer draws what the deck says (plan § 5q.8 D4): the structure's
+    # own view puts the box at minus the offset this deck applied.
+    np.testing.assert_allclose(design.to_wire()["periodicity"]["box_corner"],
+                               -np.asarray(record["applied_offset"]), atol=1e-7)
     cell = np.asarray(record["cell"], dtype=float)
     np.testing.assert_allclose(cell, design.resolve_cell(), atol=1e-7)
     cellmod.require_placed(cellmod.engine_frame(cell, written),
@@ -167,6 +177,84 @@ def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
     design = _design(dest)
     assert tuple(design.vacuum) == (5.0, 5.0, 5.0), "the vacuum reached prep"
     _assert_placed(design, written, text)
+
+
+def _engine(engine):
+    """A description's config and ladder, per engine."""
+    if engine == "siesta":
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.siesta.stages import default_siesta_stages
+        return SiestaConfig(system_label="JOB"), default_siesta_stages("publishable")
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.pyscf.stages import default_pyscf_stages
+    return PySCFConfig(job_name="JOB"), default_pyscf_stages("publishable")
+
+
+def _written(engine, text):
+    """The coordinates a deck writes, in Å."""
+    if engine == "siesta":
+        block = re.search(r"%block AtomicCoordinatesAndAtomicSpecies\n(.*?)%endblock",
+                          text, re.S).group(1)
+        return np.array([[float(v) for v in r[:3]] for r in _rows(block)])
+    block = re.search(r"_atom_block = '''\n(.*?)'''", text, re.S).group(1)
+    return np.array([[float(v) for v in r[1:4]] for r in _rows(block)])
+
+
+def _assigned(corner):
+    """Water in a typed 10 Å box, its origin assigned at ``corner`` through the
+    Cell page's own op (`periodicity_gate.apply_edit`, ``box_corner``)."""
+    from molbuilder.periodicity_gate import apply_edit
+    typed = Structure(elements=["O", "H", "H"], positions=_water().positions,
+                      cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3)
+    out, _ = apply_edit(typed, "box_corner", list(corner))
+    return typed, out
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_an_assigned_origin_places_the_deck_at_design_minus_it(
+        isolated_projects_root, engine):
+    """T1's assigned-origin clause (plan § 5q.4): on a typed cell with an origin
+    the person assigned at P, the deck writes the design coordinates minus P --
+    not the rule's centring -- and its record says the offset was stated.
+
+    CONTRACT: `model/structure-periodicity.md` § 6.0, *A stated offset* (D1).
+    """
+    P = np.array([-3.0, -3.0, -3.0])
+    typed, assigned = _assigned(P)
+    assert not np.allclose(-P, cellmod.engine_offset(typed)), (
+        "the fixture must be one the rule would place elsewhere")
+    cfg, stages = _engine(engine)
+    dest, _stage, text = _prep(isolated_projects_root, assigned, cfg, stages,
+                               engine)
+    design = _design(dest)
+    np.testing.assert_allclose(design.engine_offset, -P)    # the pair carried it
+    np.testing.assert_allclose(_written(engine, text), design.positions - P,
+                               atol=1e-7)
+    record = extract_engine_offset(text)
+    assert record["stated"] is True, record
+    np.testing.assert_allclose(record["applied_offset"], -P, atol=1e-7)
+    np.testing.assert_allclose(design.to_wire()["periodicity"]["box_corner"],
+                               P, atol=1e-7)          # the viewer's box is there
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
+        isolated_projects_root, engine):
+    """The same box with its origin assigned at (1, 1, 1): the oxygen, at the
+    design origin, would land at (-1, -1, -1) -- outside along every lattice
+    vector, all three isolated.  The deck is refused, and prep says why and
+    which atoms, in a sentence rather than a traceback.
+
+    CONTRACT: `model/structure-periodicity.md` § 6.0, check 3 (an origin that
+    leaves an atom outside is refused naming it); `workflow.md` § 9
+    (a gate refuses with the reason, never a stack trace).
+    """
+    _typed, assigned = _assigned([1.0, 1.0, 1.0])
+    cfg, stages = _engine(engine)
+    _dest, _stage, said = _prep(isolated_projects_root, assigned, cfg, stages,
+                                engine, refused=True)
+    assert "outside the cell" in said, said
+    assert "atom(s) 0" in said, said
 
 
 def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():

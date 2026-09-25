@@ -14,6 +14,7 @@ frozen-atom indices that XYZ can't represent.  We pin three contracts:
 from __future__ import annotations
 
 import json as _json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -539,12 +540,14 @@ class TestApplyToStructure:
 
 class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
-    schemas this build accepts: {7, 8, 9} since 2026-08-29.  v8 only ADDED
+    schemas this build accepts: {7, 8, 9, 10} since 2026-09-25.  v8 only ADDED
     the optional identity columns and v9 only added the optional `info`
     block, so a v7 or v8 file reads whole (an absent addition IS its
-    default, which is exactly what the older version meant); everything
-    older stores the same facts in DIFFERENT places (v3's top-level frozen
-    atoms) and is refused rather than silently coerced."""
+    default, which is exactly what the older version meant); v10 retired
+    `cell_origin` -- read and ignored, `TestARetiredKeyPassesEveryGate` -- and
+    added the optional `engine_offset`, absent meaning the rule.  Everything
+    older than v7 stores the same facts in DIFFERENT places (v3's top-level
+    frozen atoms) and is refused rather than silently coerced."""
 
     @pytest.mark.parametrize("version, why", [
         (2, "v2 kept a `fixed_atoms` key"),
@@ -573,8 +576,9 @@ class TestSchemaVersioning:
             payload["schema_version"] = version
         p = tmp_path / "old.molstruct.json"
         p.write_text(_json.dumps(payload))
-        with pytest.raises(msj.MolstructJsonError,
-                           match=r"reads versions \[7, 8, 9\] only"):
+        # The set is `READABLE_VERSIONS`' to state; the message names it.
+        with pytest.raises(msj.MolstructJsonError, match=re.escape(
+                f"reads versions {sorted(msj.READABLE_VERSIONS)} only")):
             msj.load(p)
 
     def test_a_v7_file_reads_whole_under_v8(self, tmp_path):
@@ -869,28 +873,14 @@ class TestInfoBlock:
                         info={"bad": object()})
 
 
-class TestARetiredKeyIsAcceptedNotRefused:
-    """PINS: a sidecar this project WROTE must keep opening after a field
-    is retired from the format.
+class TestAnUnknownKeyIsRefused:
+    """The complement of `TestARetiredKeyPassesEveryGate` below: a key this
+    project RETIRED is tolerated, a key it never wrote is refused.
 
-    `pbc` left `METADATA_FIELDS` on 2026-09-22 -- it was the boolean view
-    of `axis_kind` and could never disagree with it. Every `.molstruct.json`
-    written before that carries the key, because `metadata_to_dict` emitted
-    it on every earlier build.
-
-    THREE gates refuse an unrecognised key, and they must agree:
-    `parse.sidecars.molstruct.load_text` (first, while the payload is
-    whole), `sidecars.molstruct.apply_to_structure`, and
-    `apply_metadata_dict` (last, onto the Structure). The retirement was
-    written into the last one only, so an old sidecar failed at the first
-    and never reached it. Both halves of the 2026-09-22 merge found this
-    independently and each saw a different part of its extent.
-
-    THE MUTATION THIS CATCHES: drop `pbc` from `RETIRED_METADATA_KEYS` and
-    nothing else in the suite notices, because every fixture writes a
-    current-format file. The damage lands only on files a user already has
-    -- which is exactly the failure a test suite built from fresh fixtures
-    is blind to.
+    `test_a_sidecar_written_before_the_retirement_still_loads` and
+    `test_the_retired_key_is_no_longer_written` stood here for `pbc` alone and
+    were RETIRED 2026-09-25 into that class, which checks all three gates --
+    tolerated, never applied, dropped on rewrite -- for every retired key.
     """
 
     @staticmethod
@@ -902,35 +892,6 @@ class TestARetiredKeyIsAcceptedNotRefused:
                                              [0.0, 0.0, 1.2]]),
                          cell=np.diag([9.0, 9.0, 14.0]),
                          axis_kind=("periodic", "periodic", "transport"))
-
-    def test_a_sidecar_written_before_the_retirement_still_loads(self, tmp_path):
-        """The old shape: `pbc` beside `axis_kind`, as this project wrote it
-        for every pair up to schema 9."""
-        import json
-        from molbuilder.workingcopy_structure import StructureCodec
-        xyz = tmp_path / "j.xyz"
-        StructureCodec().write(self._current(), xyz)
-        side = tmp_path / "j.molstruct.json"
-        payload = json.loads(side.read_text())
-        payload["pbc"] = [True, True, True]      # what the old writer emitted
-        side.write_text(json.dumps(payload))
-
-        back = StructureCodec().load(xyz)        # must not raise
-        assert back.axis_kind == ("periodic", "periodic", "transport"), (
-            "the retired key was read instead of ignored -- `transport` "
-            "cannot survive a boolean")
-        assert back.pbc() == (True, True, True)
-
-    def test_the_retired_key_is_no_longer_written(self, tmp_path):
-        """The other half: accepting it on read must not mean emitting it
-        again on write, or the duplicate comes back through the round trip."""
-        import json
-        from molbuilder.workingcopy_structure import StructureCodec
-        xyz = tmp_path / "j.xyz"
-        StructureCodec().write(self._current(), xyz)
-        payload = json.loads((tmp_path / "j.molstruct.json").read_text())
-        assert "pbc" not in payload
-        assert payload["axis_kind"] == ["periodic", "periodic", "transport"]
 
     def test_a_key_that_was_never_ours_is_still_refused(self, tmp_path):
         """RETIRED is not the same as UNKNOWN, and the difference is the
@@ -970,8 +931,14 @@ class TestARetiredKeyPassesEveryGate:
     never applied, dropped on rewrite.  Three separate stray-key checks, in
     two modules, can each refuse one -- and a retirement written into some of
     them and not others leaves a file readable by one door and refused by
-    another.  Both keys retired so far reached only part of the set, which is
-    why this iterates instead of naming them.
+    another.  Both keys retired before `cell_origin` reached only part of the
+    set, which is why this iterates instead of naming them.
+
+    NEVER APPLIED is checked against the same file without the key: the
+    structure must come back identical.  For `cell_origin` that is decision
+    D2 (plan § 5q; `structure-molstruct.md`, *v10*) -- a v9 corner is not
+    migrated into a stated `engine_offset`, because v9 cannot tell a corner
+    somebody typed from one the code wrote.
 
     So this iterates the RETIRED_* tuples rather than naming keys.  A key
     retired tomorrow is covered the moment it is declared, and a key with no
@@ -988,7 +955,8 @@ class TestARetiredKeyPassesEveryGate:
 
     #: A type-appropriate value per retired key.  A retirement that forgets
     #: to add one is a FAILURE, not a silent pass -- see the assert below.
-    SAMPLES = {"pbc": [True, True, False], "title": "a name only the sidecar knows"}
+    SAMPLES = {"pbc": [True, True, False], "cell_origin": [1.0, 2.0, 3.0],
+               "title": "a name only the sidecar knows"}
 
     def _payload(self, key, n=2):
         return {"schema_version": 9, "n_atoms_total": n,
@@ -1042,10 +1010,19 @@ class TestARetiredKeyPassesEveryGate:
                 json.dumps(payload))
             codec = StructureCodec()
             reopened = codec.load(stem)        # tolerated, not refused
+            # ...and never applied: the same pair without the key reads back
+            # as the same structure.
+            bare = tmp_path / f"{key}-bare.xyz"
+            bare.write_text(stem.read_text())
+            (tmp_path / f"{key}-bare.molstruct.json").write_text(json.dumps(
+                {k: v for k, v in payload.items() if k != key}))
+            assert reopened.to_dict() == codec.load(bare).to_dict(), \
+                f"the retired {key!r} was applied to the structure it was read into"
             codec.write(reopened, stem)        # and rewritten without it
             rewritten = json.loads(
                 (tmp_path / f"{key}-pair.molstruct.json").read_text())
             assert key not in rewritten, \
                 f"gate 3 persisted {key!r} again; a retired key does not survive"
+            assert rewritten["schema_version"] == molstruct.SCHEMA_VERSION
             assert rewritten.get("regions") == {"L": [0]}, \
                 f"the rewrite dropped the rest of the sidecar with {key!r}"

@@ -52,7 +52,7 @@ def _normalised_dict(
     regions: Optional[Dict[str, List[int]]] = None,
     selection_rules: Optional[Dict[str, Any]] = None,
     cell: Optional[Any] = None,
-    cell_origin: Optional[Any] = None,
+    engine_offset: Optional[Any] = None,
     axis_kind: Optional[Any] = None,
     vacuum: Optional[Any] = None,
     annotations: Optional[Dict[str, Any]] = None,
@@ -91,7 +91,7 @@ def _normalised_dict(
     fields = structure_fields_via_dataclass(n_atoms_total, {
         "regions":      regions,
         "cell":         cell,
-        "cell_origin":  cell_origin,
+        "engine_offset": engine_offset,
         "axis_kind":    axis_kind,
         "vacuum":       vacuum,
         "annotations":  annotations,
@@ -185,7 +185,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             f"added only the OPTIONAL identity columns, so a v7 file reads "
             f"whole; older versions do not).\n"
             f"Older sidecars are NOT read: they store the same facts in "
-            f"different places (before v{SCHEMA_VERSION}, frozen atoms sat in a "
+            f"different places (before v7, frozen atoms sat in a "
             f"top-level 'frozen_atoms' key rather than in 'regions'), so reading "
             f"one would silently drop what it cannot map.\n"
             f"Re-export it: open the structure in Modify and save it, which "
@@ -254,7 +254,7 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             regions         = data.get("regions"),
             selection_rules = data.get("selection_rules"),
             cell            = data.get("cell"),
-            cell_origin     = data.get("cell_origin"),
+            engine_offset   = data.get("engine_offset"),
             axis_kind       = data.get("axis_kind"),
             vacuum          = data.get("vacuum"),
             annotations     = data.get("annotations"),

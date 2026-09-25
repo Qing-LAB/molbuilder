@@ -527,8 +527,8 @@ def api_modify_rotate():
 
     ``center`` picks what the axis passes through -- ``"origin"``
     (default) or ``"centroid"``.  ``indices`` turns ONLY those atoms,
-    about their own centroid, leaving the box where it is; omitted, the
-    whole structure turns and the box turns with it.
+    about their own centroid; omitted, the whole structure turns.  The box
+    stays where it is either way (moving atoms only moves atoms).
 
     Useful for redirecting a tilted molecule's azimuth after an
     ``orient`` op with non-zero angle (e.g. spin a tilt from the
@@ -552,8 +552,8 @@ def api_modify_rotate():
             f"center must be 'origin' or 'centroid'; got {center!r}",
             400,
         )
-    # `indices` -> turn ONLY those atoms about their own centroid, box
-    # untouched.  Absent -> the whole structure turns and the box turns with it.
+    # `indices` -> turn ONLY those atoms about their own centroid.  Absent ->
+    # the whole structure turns.  The box is untouched either way.
     indices = body.get("indices")
     if indices is not None and not isinstance(indices, list):
         return _err("'indices' must be a list of atom indices", 400)
@@ -581,16 +581,15 @@ def api_modify_translate():
       origin.  WHOSE centroid is decided by ``indices``, exactly as
       it is for a ``{dx, dy, dz}`` translate: with a group, that
       group's own centroid moves to the origin and only those atoms
-      move; without one, the whole structure's centroid does and the
-      box travels with it.  Useful after adding electrode slabs
+      move; without one, the whole structure's centroid does, and the
+      box stays where it is.  Useful after adding electrode slabs
       shifts the structure off-axis: re-anchoring the centroid
       makes mouse-zoom feel sane and aligns subsequent slab ops
       against a predictable origin.
     * ``{dx, dy, dz}`` (Å) -- translate EVERY atom by the given
-      vector.  Each component defaults to 0.  The box goes with them:
-      a rigid translation moves ``cell_origin`` by the same vector
-      (``Structure.affine``), so the structure sits in the cell
-      exactly as it did before and containment cannot change.
+      vector.  Each component defaults to 0.  The box stays where it
+      is (user, 2026-09-25: "moving atoms only moves atoms"), and an
+      atom the move takes outside it is named in the answer.
     * ``{dx, dy, dz, indices: [...]}`` -- move ONLY those atoms.  The
       box is NOT moved, because only part of what it contains did.
       This is the mode that can put atoms outside an explicit cell,
@@ -605,8 +604,9 @@ def api_modify_translate():
         struct = _struct_from_body(body)
     except ValueError as exc:
         return _err(str(exc), 400)
-    # `indices` -> move ONLY those atoms, box untouched.  Absent (or empty) ->
-    # the whole structure moves rigidly and the box goes with it.  The route
+    # `indices` -> move ONLY those atoms.  Absent (or empty) -> every atom
+    # moves.  The box is untouched either way (moving atoms only moves atoms).
+    # The route
     # takes the atoms so the caller sends the WHOLE structure either way
     # (molview.md § 11.7: one path in, one path out).
     #

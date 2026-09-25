@@ -129,7 +129,7 @@ class TestTheDerivedCopyIsACopy:
             elements=["C", "H"], positions=np.array([[0.0, 0.0, 0.0],
                                                      [0.0, 0.0, 1.1]]),
             cell=np.diag([8.0, 8.0, 8.0]),
-            cell_origin=np.array([-1.0, -1.0, -1.0]),
+            engine_offset=np.array([1.0, 1.0, 1.0]),
             info={"calculation": {"contract": {"mesh_cutoff_ry": 400}}})
 
     def test_writing_to_the_derived_copy_does_not_reach_the_source(
@@ -137,11 +137,11 @@ class TestTheDerivedCopyIsACopy:
         out = carrying.replace(title="derived")
         out.positions[0, 0] = 7.0
         out.cell[0, 0] = 99.0
-        out.cell_origin[0] = 5.0
+        out.engine_offset[0] = 5.0
         out.info["calculation"]["contract"]["mesh_cutoff_ry"] = 1
         assert carrying.positions[0, 0] == 0.0
         assert carrying.cell[0, 0] == 8.0
-        assert carrying.cell_origin[0] == -1.0
+        assert carrying.engine_offset[0] == 1.0
         assert (carrying.info["calculation"]["contract"]["mesh_cutoff_ry"]
                 == 400), "the nested info dict was shared, not copied"
 
@@ -150,7 +150,8 @@ class TestTheDerivedCopyIsACopy:
         rebuild forgot."""
         out = carrying.replace(positions=carrying.positions + 1.0)
         assert out.info["calculation"]["contract"]["mesh_cutoff_ry"] == 400
-        assert out.cell_origin is not None, "the corner went with it"
+        assert out.engine_offset is not None and np.allclose(
+            out.engine_offset, [1.0, 1.0, 1.0]), "the stated offset went with it"
 
     def test_a_strip_is_something_a_caller_says(self, carrying):
         assert carrying.replace(info={}).info == {}
@@ -201,7 +202,7 @@ def test_replace_carries_every_field_the_dataclass_declares():
         atom_names=["C1", "O1"], residue_ids=[7, 7],
         residue_names=["LIG", "LIG"], chain_ids=["B", "B"],
         title="every field non-default",
-        cell=np.diag([11.0, 12.0, 13.0]), cell_origin=[0.5, 1.5, 2.5],
+        cell=np.diag([11.0, 12.0, 13.0]), engine_offset=[-0.5, -1.5, -2.5],
         axis_kind=("periodic", "isolated", "transport"),
         vacuum=(1.0, 2.0, 0.0),
         regions={"lead": [0], FROZEN_LABEL: [1]},

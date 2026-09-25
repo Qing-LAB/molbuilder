@@ -705,24 +705,30 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     assert per["axis_kind"] == periodicity["axis_kind"], "rotate dropped axis_kind"
     assert per["vacuum"] == periodicity["vacuum"], "rotate dropped vacuum"
     assert "kgrid" not in per, "rotate should not echo k-grid (not geometry)"
+    # Nobody assigned an origin, and a move does not assign one: the rule
+    # places the box around the atoms where they now are
+    # (`model/structure-periodicity.md` § 6.0).
+    assert per["engine_offset"] is None, (
+        "rotate stored an origin nobody assigned", per["engine_offset"])
 
 
-def test_modify_op_round_trips_cell_origin(web_client):
-    """A rigid whole-structure ROTATION carries the cell_origin corner verbatim:
-    moving atoms only moves atoms (user, 2026-09-25).  It must not DROP it either
-    (the box would jump).  Goes with `cell_origin` itself (plan § 5q, P1)."""
+def test_modify_op_keeps_an_assigned_origin(web_client):
+    """A rigid whole-structure ROTATION leaves an assigned origin as it was:
+    moving atoms only moves atoms (user, 2026-09-25).  It must not DROP it
+    either -- the box would jump to wherever the rule puts it."""
     import numpy as np
     periodicity = {
         "cell": [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 12.0]],
-        "cell_origin": [-2.0, -2.0, -6.0],
+        "engine_offset": [2.0, 2.0, 6.0],
         "axis_kind": ["periodic", "periodic", "transport"],
     }
     r = web_client.post("/api/modify/rotate", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 15})
     per = r.get_json()["periodicity"]
-    assert per["cell_origin"] is not None, "rotate dropped cell_origin"
-    assert np.allclose(per["cell_origin"], periodicity["cell_origin"]), \
-        "rotate moved the cell_origin corner: moving atoms only moves atoms"
+    assert per["engine_offset"] is not None, "rotate dropped the assigned origin"
+    assert np.allclose(per["engine_offset"], periodicity["engine_offset"]), \
+        "rotate moved the assigned origin: moving atoms only moves atoms"
+    assert np.allclose(per["box_corner"], [-2.0, -2.0, -6.0]), per["box_corner"]
 
 
 # `test_modify_calibrate_moves_atoms_into_the_cell` RETIRED 2026-09-25, with
@@ -1130,14 +1136,14 @@ def test_modify_translate_recenter_of_a_group_leaves_the_box(web_client):
     § 2.3)."""
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
-        "cell_origin": [-5.0, -5.0, -10.0],
+        "engine_offset": [5.0, 5.0, 10.0],
         "axis_kind": ["periodic", "periodic", "transport"],
     }
     r = web_client.post("/api/modify/translate", json={
         "structure": _env_per(_LINEAR_XYZ, periodicity),
         "recenter": True, "indices": [0, 1]}).get_json()
     assert r["ok"] is True, r
-    assert r["periodicity"]["cell_origin"] == periodicity["cell_origin"], \
+    assert r["periodicity"]["engine_offset"] == periodicity["engine_offset"], \
         "centring a GROUP must leave the box where it is"
 
 
@@ -1145,21 +1151,20 @@ def test_modify_translate_recenter_of_everything_leaves_the_box(web_client):
     """The other half of the same rule, on the WHOLE-structure path (nothing
     selected, through ``Structure.affine``): the atoms move and the box stays
     where it is -- *"leave the cell alone, moving atoms only moves atoms"*
-    (user, 2026-09-25).  Until then this path took the box along.  Goes with
-    ``cell_origin`` itself (plan § 5q, P1)."""
+    (user, 2026-09-25).  Until then this path took the box along."""
     import numpy as np
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
-        "cell_origin": [-5.0, -5.0, -10.0],
+        "engine_offset": [5.0, 5.0, 10.0],
         "axis_kind": ["periodic", "periodic", "transport"],
     }
     r = web_client.post("/api/modify/translate", json={
         "structure": _env_per(_LINEAR_XYZ, periodicity),
         "recenter": True}).get_json()
     assert r["ok"] is True, r
-    assert np.allclose(r["periodicity"]["cell_origin"],
-                       periodicity["cell_origin"]), \
-        r["periodicity"]["cell_origin"]
+    assert np.allclose(r["periodicity"]["engine_offset"],
+                       periodicity["engine_offset"]), \
+        r["periodicity"]["engine_offset"]
 
 
 def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):

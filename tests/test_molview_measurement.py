@@ -49,8 +49,10 @@ globalThis.fetch = async function (route, init) {
         atoms: [0, 1, 2, 3].map((i) => ({
             index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
         n_atoms: 4,
-        periodicity: { cell: null, cell_origin: null,
-                       axis_kind: ["free", "free", "free"], vacuum: null },
+        // No box: nothing here is about the cell (molview.md § 6.2, `null`
+        // when the structure has none).  This carried a retired origin key and
+        // an axis kind ("free") that is not one.
+        periodicity: null,
     }) };
 };
 """
@@ -487,8 +489,10 @@ globalThis.fetch = async function (route, init) {
         atoms: [0, 1, 2, 3].map((i) => ({
             index: i, element: "C", x: i, y: 0, z: 0, regions: [] })),
         n_atoms: 4,
-        periodicity: { cell: null, cell_origin: null,
-                       axis_kind: ["free", "free", "free"], vacuum: null },
+        // No box: nothing here is about the cell (molview.md § 6.2, `null`
+        // when the structure has none).  This carried a retired origin key and
+        // an axis kind ("free") that is not one.
+        periodicity: null,
     }) };
 };
 """

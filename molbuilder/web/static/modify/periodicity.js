@@ -561,25 +561,28 @@ export function init(viewer) {
          * gate, in a sentence, on Apply. */
         // § 6.2 v3: no calibrate button — emission translates implicitly.
 
-        // § 3c: the cell origin -- the low corner the box is drawn from.  Shows the
-        // corner the box is actually drawn from; editing it sets an explicit
-        // cell_origin.  cell_origin is ONLY meaningful with an explicit cell (the
-        // dataclass drops it otherwise), so the group is enabled only there -- with a
-        // bbox+vacuum cell the corner is auto and there is nothing to override.
+        // § 6.0: the box's origin -- the corner it is drawn from, the server's
+        // `box_corner`.  Typing it assigns the origin (stored as the offset);
+        // blank is Automatic, the atoms centred.  Only on a typed cell -- a box
+        // sized from the vacuum stays centred, so the group is enabled only there.
         {
-            /* BLANK MEANS DERIVE, and the derived value is shown as the
-             * PLACEHOLDER rather than as content.  Filling the boxes with it
-             * -- which is what happened before -- made "no origin stated" and
-             * "this exact origin stated" look identical, so pressing Apply
-             * turned a derived corner into a fixed one nobody had asked for.
-             * The corner the box is actually drawn from is still on screen;
-             * it is just not pretending to be your input. */
-            var ov = used.cell_origin || [0, 0, 0];
+            /* BLANK MEANS AUTOMATIC, and the corner the rule placed the box
+             * at is shown as the PLACEHOLDER rather than as content.  Filling
+             * the boxes with it made "no origin set" and "this exact origin
+             * set" look identical, so pressing Apply turned the automatic
+             * corner into an assigned one nobody had asked for.  The corner
+             * the box is drawn from is still on screen; it is just not
+             * pretending to be your input. */
+            var ov = used.box_corner || [0, 0, 0];
             ["pv-org-a", "pv-org-b", "pv-org-c"].forEach(function (id, i) {
                 var f = $(id);
                 if (!f) return;
                 f.placeholder = String(round(ov[i] || 0));
-                setIdle(f, rawOrigin === null ? "" : round(rawOrigin[i] || 0));
+                /* AN ASSIGNED ORIGIN IS SHOWN IN FULL, because Apply re-sends
+                 * what the box holds: a value rounded for display came back as
+                 * a different origin on every Apply -- up to 5e-4 Å off, where
+                 * the deck's containment is 1e-6 Å (§ 6.0). */
+                setIdle(f, rawOrigin === null ? "" : String(rawOrigin[i] || 0));
             });
             tag("pv-org-tag", rawOrigin === null);
         }
@@ -666,19 +669,19 @@ export function init(viewer) {
                 ? null
                 : [num("pv-vac-a", 0), num("pv-vac-b", 0), num("pv-vac-c", 0)],
             cell: explicit ? stagedCell() : null,
-            cell_origin: null,
+            box_corner: null,
         };
         if (explicit) {
-            /* AN EMPTY BOX IS "DERIVE THE CORNER", not zero.  All three have
-             * to be typed for the origin to be a statement -- a half-typed
-             * corner is not a corner, and reading the blanks as 0 would move
-             * the box to a place nobody chose. */
+            /* AN EMPTY BOX IS "AUTOMATIC", not zero.  All three have to be
+             * typed for the origin to be a statement -- a half-typed corner is
+             * not a corner, and reading the blanks as 0 would move the box to a
+             * place nobody chose. */
             var typed = ["pv-org-a", "pv-org-b", "pv-org-c"].map(function (id) {
                 var el = $(id);
                 return el && String(el.value).trim() !== "" ? Number(el.value) : null;
             });
             if (typed.every(function (v) { return v !== null && isFinite(v); })) {
-                payload.cell_origin = typed;
+                payload.box_corner = typed;
             }
         }
         return commitOp("block", payload);
@@ -703,11 +706,11 @@ export function init(viewer) {
             }
             refresh();
         });
-        // Blank the three origin boxes -- "derive the corner" said as a
-        // gesture, since the way to say it is to type nothing and there is
-        // otherwise no way to get BACK to nothing once something is typed.
-        var orgDerive = $("pv-org-derive");
-        if (orgDerive) orgDerive.addEventListener("click", function () {
+        // Blank the three origin boxes -- "Automatic" said as a gesture, since
+        // the way to say it is to type nothing and there is otherwise no way
+        // to get BACK to nothing once something is typed.
+        var orgAuto = $("pv-org-auto");
+        if (orgAuto) orgAuto.addEventListener("click", function () {
             ["pv-org-a", "pv-org-b", "pv-org-c"].forEach(function (id) {
                 var el = $(id);
                 if (el) el.value = "";
@@ -803,9 +806,13 @@ export function init(viewer) {
              * at all — the user asked for exactly this value — and
              * `setStagedRow` above already writes directly, so going the other
              * way would make the two gestures differ for no reason. */
+            // THE ATOM'S OWN POSITION, unrounded: an origin set on the atom that
+            // bounds the structure must put it ON the face, not 1.6e-5 Å past it
+            // -- the rounding that made TranSIESTA refuse the 2026-09-25
+            // device (model/structure-periodicity.md § 6.0).
             ["a", "b", "c"].forEach(function (ax, i) {
                 var box = $("pv-org-" + ax);
-                if (box) box.value = round(pos[0][i]);
+                if (box) box.value = String(pos[0][i]);
             });
         });
 

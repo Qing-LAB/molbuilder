@@ -5,6 +5,7 @@ here: it's a reciprocal-space sampling knob on SiestaConfig / TransportConfig.
 import numpy as np
 import pytest
 
+from molbuilder import cell as cellmod
 from molbuilder.structure import Structure
 
 
@@ -165,7 +166,11 @@ class TestElectrodeCaptureCell:
 
     def test_a_built_slab_captures_cell_and_axis_kind(self):
         from molbuilder.modify import add_slab
-        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]])
+        # Built onto a structure with a typed box and an ASSIGNED origin, so
+        # that "the new box drops it" is something this test can see.
+        dev = Structure(elements=["S"], positions=[[0.0, 0.0, 0.0]],
+                        cell=np.eye(3) * 20.0, axis_kind=("isolated",) * 3,
+                        engine_offset=np.array([1.0, 2.0, 3.0]))
         out = add_slab(dev, "Au", "111", (2, 2, 3), start_z=2.4)
         assert out.cell is not None, "electrode cell must be captured, not discarded"
         assert out.axis_kind == ("periodic", "periodic", "transport")
@@ -173,9 +178,11 @@ class TestElectrodeCaptureCell:
         assert out.cell[2, 2] > 0.0
         # in-plane vectors are non-degenerate (hexagonal for fcc111)
         assert abs(float(np.linalg.det(out.cell))) > 1e-6
-        # § 3c: the captured cell WRAPS the atoms -- cell_origin = structure low corner.
-        assert out.cell_origin is not None
-        assert np.allclose(out.cell_origin, out.positions.min(axis=0))
+        # § 6.0: the builder states no origin, and its new box drops the one
+        # stated against the old -- the rule places the atoms, and the
+        # hand-off accepts them.
+        assert out.engine_offset is None, "the new box kept an origin set for the old one"
+        cellmod.require_placed(cellmod.to_engine(out), out.axis_kind)
 
     # ---- the z length: extent + ONE interlayer spacing ---------------- #
     #  science/junction-cell.md § 1.  This used to be the bare extent, and
@@ -252,13 +259,23 @@ def _parse_fdf_cell_coords(fdf):
     return cell, np.array(coords)
 
 
-class TestCellOriginAndCalibration:
-    """§ 3c: an explicit cell wraps off-origin atoms via cell_origin; the viewer box
-    and render_fdf stay consistent.  (Calibrate retired 2026-09-25, § 6.0.)"""
+class TestTheBuiltJunctionReachesTheEngine:
+    """`model/structure-periodicity.md` § 6.0: a junction the builder made --
+    atoms straddling the origin, `c` the atoms' own extent -- is placed by the
+    rule and accepted at the hand-off, and the deck's lattice is the cell the
+    builder captured.
+
+    `test_cell_origin_wraps_the_atoms` and `test_imported_crystal_no_shift`
+    stood here and were RETIRED 2026-09-25.  The first pinned the builder's
+    flush corner (`cell_origin == positions.min`) -- the placement TranSIESTA
+    refused, its lowest layer 1.6e-5 Å below the face; the second, that a
+    structure stating nothing was handed over unshifted, which § 6.0 retires:
+    only an engine's own output states 0 (`test_cell.py`, the `.XV` readers).
+    (Calibrate retired the same day.)"""
 
     def _junction(self):
         """Molecule pinned at the origin (2 anchors on z) + symmetric Au(111)
-        electrodes -- atoms straddle the origin, cell captured with cell_origin."""
+        electrodes -- atoms straddle the origin."""
         mol = Structure(elements=["S", "S"],
                         positions=[[0.0, 0.0, -2.0], [0.0, 0.0, 2.0]])
         # `center_indices=[0, 1]` used to say "midpoint of the two S atoms",
@@ -266,34 +283,23 @@ class TestCellOriginAndCalibration:
         # same junction, said outright instead of derived.
         return _two_slabs(mol, "Au", "111", (2, 2, 3), gap=6.0)
 
-    def test_cell_origin_wraps_the_atoms(self):
-        j = self._junction()
-        assert j.positions[:, 2].min() < 0.0, "junction should straddle the origin"
-        o = j.resolve_cell_origin()
-        assert o is not None and np.allclose(o, j.positions.min(axis=0))
-        # The box [o, o+cell] contains every atom on the transport (z) axis exactly.
-        cz = j.resolve_cell()[2, 2]
-        assert j.positions[:, 2].max() <= o[2] + cz + 1e-6
-
     def test_render_fdf_puts_device_inside_the_transport_cell(self):
-        """The viewer ≡ SIESTA invariant: render_fdf emits the atoms translated into
-        [0, cell) -- every device atom sits inside the transport (z) cell [0, Lz]."""
+        """Every device atom the deck writes is inside the transport cell
+        [0, Lz], to the hand-off's own tolerance (`cell.PLACED_TOL_ANG`,
+        1e-6 Å -- TranSIESTA refused an atom 1.6e-5 Å outside), and the emitted
+        lattice is the cell the builder captured.
+
+        What this adds to the gate inside `render_deck` is the builder's
+        junction itself, whose `c` equals its extent: centred, its outer
+        layers sit ON the faces, the case a looser tolerance hid.  It retires
+        into T1 once T1 has its transport rung (plan § 5q.6)."""
         from molbuilder.siesta import render_fdf
         from molbuilder.config.siesta import SiestaConfig
         j = self._junction()
         fdf = render_fdf(j, SiestaConfig(system_label="jx"))
         cell, coords = _parse_fdf_cell_coords(fdf)
-        # The emitted lattice IS the resolved (explicit) cell -- viewer & FDF agree.
         assert np.allclose(cell, j.resolve_cell(), atol=1e-4)
         # Transport z is orthogonal ([0,0,Lz]); every atom's z is inside [0, Lz].
         Lz = cell[2, 2]
-        assert coords[:, 2].min() >= -1e-4, "device atom below the transport cell"
-        assert coords[:, 2].max() <= Lz + 1e-4, "device atom above the transport cell"
-
-    def test_imported_crystal_no_shift(self):
-        """An explicit cell with NO cell_origin (imported crystal, atoms already in
-        [0,cell)) -> resolve_cell_origin None -> render_fdf does not shift."""
-        s = Structure(elements=["H"], positions=[[0.5, 0.5, 0.5]],
-                      cell=(np.eye(3) * 3).tolist())
-        assert s.cell_origin is None
-        assert s.resolve_cell_origin() is None
+        assert coords[:, 2].min() >= -1e-6, "device atom below the transport cell"
+        assert coords[:, 2].max() <= Lz + 1e-6, "device atom above the transport cell"

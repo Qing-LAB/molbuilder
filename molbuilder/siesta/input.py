@@ -897,18 +897,13 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # through the door carries every field nobody named, including the
     # ones added after today (`model/structure.md` § 2.2a).
     #
-    # AND THE CORNER IS RESTATED, because the coordinates changed frame.
-    # `positions` was placed by the engine offset above, so these atoms are
-    # in SIESTA's frame with the box at the world origin -- while
-    # `struct.cell_origin` still measures the frame they came FROM.  Carrying
-    # it put the validators a whole corner away from the atoms they judge:
-    # measured, a junction with a stored corner reported `atoms_outside` with
-    # a -19 A clearance along transport on a structure whose atoms sit
-    # perfectly inside their box.  An origin is a label on the coordinates
-    # beside it; reframe one and you restate the other in the same breath.
-    # ...and it STATES that origin, 0: these are the engine's coordinates, so
-    # nothing downstream may place them a second time (§ 6.0).
-    validation_struct = struct.replace(positions=positions, cell_origin=None,
+    # AND THE ORIGIN IS RESTATED, because the coordinates changed frame:
+    # `positions` was placed by the engine offset above, so these atoms are in
+    # SIESTA's frame with the box at the world origin, and the subject STATES
+    # that origin -- 0 -- with them.  Carrying the design structure's placement
+    # over would put the validators a whole offset away from the atoms they
+    # judge, and nothing downstream may place them a second time (§ 6.0).
+    validation_struct = struct.replace(positions=positions,
                                        engine_offset=np.zeros(3))
 
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it

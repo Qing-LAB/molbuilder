@@ -1,15 +1,18 @@
-"""The frame-contract gate — structure-periodicity.md § 6.1 (state table)
+"""The frame-contract gate — structure-periodicity.md § 6.0 (where the box
+sits: the rule, or an offset the structure states) + § 6.1 (what is stored)
 + § 6.2 v3 (the unified door's regime model).
 
 Python owns every periodicity-metadata change (the gate); the JS only
-calls.  These tests pin each state-table row, each op's v3 semantics, and
-the unified endpoint envelope.
+calls.  These tests pin the three box states -- derived, typed, typed with an
+assigned origin (plan § 5q.1) -- each op's semantics, and the unified
+endpoint envelope.
 """
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
+from molbuilder import cell as cellmod
 from molbuilder.structure import Structure
 from molbuilder.periodicity_gate import (
     OPS, apply_edit, validate_periodicity)
@@ -66,13 +69,14 @@ def _said(notices, where):
 
 
 class TestTheStateTable:
-    """PINS: docs/model/structure-periodicity.md § 6.1 — the state table, one
-    row per stored state.
+    """PINS: docs/model/structure-periodicity.md § 6.0 + § 6.1 — the three box
+    states: derived (nothing stored), a typed cell (the rule places the atoms),
+    and a typed cell with an origin the person assigned (stored as the offset
+    that puts the box there).
 
-    INVARIANT: for every (cell, cell_origin, containment) combination the gate
-    takes exactly the action § 6.1 tabulates — and since the 2026-07-29
-    "derive the corner" decision that action never REWRITES the truth: a
-    resolved corner is a view (clause 1), so the gate validates and reports.
+    INVARIANT: the gate never REWRITES the truth.  The rule's offset is a view
+    (§ 6.1 clause 1), an assigned one is the person's, and the gate validates
+    and reports.
 
     PREVENTS: the 2026-07 hemeC corruption class — a resolved cell materialised
     into ``cell`` with the origin dropped, which drew the box from (0,0,0) with
@@ -94,101 +98,72 @@ class TestTheStateTable:
         checked, notes = validate_periodicity(s)
         assert checked.cell is None and not notes    # row 1
 
-    def test_explicit_no_origin_containing_is_legal(self):
-        """Row 2: an explicit cell whose atoms already sit inside [0, cell) needs no
-        origin and earns no complaint.
+    def test_a_typed_cell_with_no_assigned_origin_stores_nothing_and_wraps_the_atoms(self):
+        """A typed cell and no origin -- the hemeC state, atoms far from the
+        world origin: the gate stores nothing, says nothing is wrong, and the
+        box the rule places wraps the atoms.
 
-        Catches the gate INVENTING a `cell_origin` for a state that does not need
-        one -- writing the resolved corner into the truth is exactly what clause 1
-        forbids, and it is what made a saved pair differ from the pair loaded.
+        Catches the gate INVENTING an origin -- writing the rule's offset into
+        the truth, which § 6.1 clause 1 forbids and which made a saved pair
+        differ from the pair loaded -- and a box drawn at (0,0,0) with the
+        molecule outside it, the 2026-07 hemeC symptom.
 
-        Contract: `model/structure-periodicity.md` § 6.1, state-table row 2.
+        Contract: `model/structure-periodicity.md` § 6.0 (absent means the
+        rule) + § 6.1 clause 1.  Replaces the row-2 / row-3 pair and the
+        reset-origin seam test, whose derived corner and op are retired.
         """
-        s = _mol(off=(1.0, 1.0, 1.0))
-        s.cell = np.eye(3) * 10.0
-        s.__post_init__()
-        checked, notes = validate_periodicity(s)
-        assert checked.cell_origin is None and not _problems(notes)   # row 2
-
-    def test_hemec_state_derives_the_corner_without_materialising_it(self):
-        """Row 3 — the 2026-07 hemeC corruption: explicit cell, no origin,
-        atoms far outside [0, cell).  The corner is DERIVED (a view), the
-        truth is left alone, and the box wraps the structure (2026-07-29
-        decision: no explicit origin means derive the corner)."""
         s = _mol()                                   # atoms near (10,10,10)
         s.cell = np.eye(3) * 7.0
         s.__post_init__()
-        out, notes = validate_periodicity(s)
-        assert out.cell_origin is None               # truth untouched
-        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
-        assert out.cell_contains_atoms(out.resolve_cell_origin())
-        assert notes and notes[0]["severity"] == "info"
+        checked, notes = validate_periodicity(s)
+        assert checked.engine_offset is None, "the rule's offset was stored"
+        assert not _problems(notes), notes
+        assert cellmod.resolve(checked).contains_atoms, (
+            "the box is not drawn round the atoms")
         # A notice says how loud it is, what it says, and WHAT IT IS ABOUT --
         # the subject is what decides where it is shown. What it must never
-        # carry is a key saying "and I changed something", because nothing here
-        # changes anything: that is the whole of clause 1, and a phantom dirty
-        # state is what a correction marker would produce.
+        # carry is a key saying "and I changed something", because nothing
+        # here changes anything: that is the whole of clause 1.
         assert all(set(n) == {"severity", "message", "where", "about"}
                    for n in notes), notes
         assert all(n["about"] == "cell" for n in notes), notes
 
-    def test_no_seam_materialises_a_resolved_corner(self):
-        """The invariant behind the 2026-07-29 decision: for ONE state
-        (explicit cell, no origin, atoms outside), the load/save gate and the
-        reset-origin op must agree — both leave cell_origin None and both
-        resolve the same wrapping corner.  Disagreement here was the bug."""
-        s = _mol()
-        s.cell = np.eye(3) * 7.0
-        s.__post_init__()
-        gated, _ = validate_periodicity(s)
-        reset, _ = apply_edit(s, "cell_origin", None)
-        assert gated.cell_origin is None and reset.cell_origin is None
-        assert np.allclose(gated.resolve_cell_origin(),
-                           reset.resolve_cell_origin())
-
-    def test_user_owned_origin_is_never_rewritten(self):
-        """Row 4: a corner the user typed, with the atoms inside it, survives the gate
-        byte for byte and draws no complaint.
-
-        Catches the gate re-deriving a corner it was given -- the user's stated
-        frame silently replaced by the wrapping one, which moves where SIESTA
-        thinks the molecule sits in its box.
-
-        Contract: `model/structure-periodicity.md` § 6.1, state-table row 4
-        (explicit origin, containing -> keep verbatim).
-        """
-        s = _mol(off=(1.0, 1.0, 1.0))
-        s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([0.5, 0.5, 0.5])
-        s.__post_init__()
-        checked, notes = validate_periodicity(s)
-        assert np.allclose(checked.cell_origin, [0.5, 0.5, 0.5])  # row 4
-        assert not _problems(notes)
+    # `test_hemec_state_derives_the_corner_without_materialising_it`,
+    # `test_no_seam_materialises_a_resolved_corner` and
+    # `test_user_owned_origin_is_never_rewritten` RETIRED 2026-09-25 with the
+    # derived corner and the `cell_origin` op (§ 6.0; plan § 5q.4).  The first
+    # two are the test above; the third read back an attribute it had set on
+    # the object itself, so it could not fail -- an assigned origin kept
+    # verbatim is the test below.
 
     def test_a_manual_origin_gets_the_same_answer_from_either_direction(self):
-        """Row 5 is ONE row.  A nonsense corner the user typed on the Cell page
-        and the same corner read back off disk are the same state, so they get
-        the same answer: kept verbatim, warned about, never auto-fixed.
+        """ONE state, one answer.  An origin the person assigned that leaves the
+        atoms outside, typed on the Cell page, and the same origin read back
+        off disk: kept verbatim, warned about (the edit stands), never
+        auto-fixed.  Assigning P stores -P (D1).
 
         This used to be two tests either side of a ``live_edit`` flag.  Both
         passed, which was the proof the flag selected nothing -- it was removed
         2026-08-02.  What the pair was really pinning is the equality below, so
         that is what this asserts.
-        """
-        s = _mol()
-        s.cell = np.eye(3) * 7.0
-        s.cell_origin = np.array([100.0, 100.0, 100.0])  # nonsense corner
-        s.__post_init__()
-        checked, notes = validate_periodicity(s)
-        assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
-        assert _problems(notes), notes
 
-        # The live half: the same corner set through the Cell-page door.
+        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*.
+        """
+        P = np.array([100.0, 100.0, 100.0])      # a corner nowhere near the atoms
+        stored = _mol()
+        stored.cell = np.eye(3) * 7.0
+        stored.engine_offset = -P
+        stored.__post_init__()
+        checked, notes = validate_periodicity(stored)
+        np.testing.assert_allclose(checked.engine_offset, -P)
+        assert _said(notes, "cell.atoms_outside"), _wheres(notes)
+
+        # The live half: the same corner assigned through the Cell-page door.
         live = _mol()
         live.cell = np.eye(3) * 7.0
         live.__post_init__()
-        typed, _ = apply_edit(live, "cell_origin", [100.0, 100.0, 100.0])
-        assert np.allclose(typed.cell_origin, [100.0, 100.0, 100.0])
+        typed, _ = apply_edit(live, "box_corner", P.tolist())
+        np.testing.assert_allclose(typed.engine_offset, -P)
         assert validate_periodicity(typed)[1] == notes
 
     def test_too_small_cell_is_a_hard_error(self):
@@ -258,9 +233,10 @@ class TestApplyEditV3:
 
     INVARIANT: an edit to an UPSTREAM parameter never silently contradicts
     downstream state — it resets it, loudly.  Editing vacuum or axis kinds
-    returns the box to the DERIVED regime; an explicit cell demotes vacuum to
-    reference-only; an explicit origin overrides the derived corner
-    ("origin first, then vacuum").  No op ever moves an atom: coordinate
+    returns the box to the DERIVED regime, and an assigned origin goes with the
+    typed cell; an explicit cell demotes vacuum to reference-only; an origin is
+    assigned on a typed cell only, and the edits that keep the cell keep it
+    (§ 6.0, *A stated offset*).  No op ever moves an atom: coordinate
     rewrites are a Modify op, not a periodicity edit.
     """
 
@@ -273,9 +249,10 @@ class TestApplyEditV3:
         the structure unchanged with status 200 tells the client its edit landed
         when nothing happened.
 
-        Contract: `model/structure-periodicity.md` § 6.2 (four ops, no calibrate;
-        emission translates implicitly, so there is nothing to bake). Commemorates
-        2026-07-29, when the door's docstring still advertised five.
+        Contract: `model/structure-periodicity.md` § 6.2 (the closed op set, no
+        calibrate; emission places the atoms, so there is nothing to bake --
+        § 6.0, D3). Commemorates 2026-07-29, when the door's docstring still
+        advertised it.
         """
         assert "calibrate" not in OPS
         with pytest.raises(ValueError, match="unknown periodicity op"):
@@ -294,10 +271,10 @@ class TestApplyEditV3:
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([0.5, 0.5, 0.5])
+        s.engine_offset = np.array([-0.5] * 3)       # an origin assigned
         s.__post_init__()
         out, notes = apply_edit(s, "vacuum", [3.0, 3.0, 3.0])
-        assert out.cell is None and out.cell_origin is None
+        assert out.cell is None and out.engine_offset is None
         assert out.vacuum == (3.0, 3.0, 3.0)
         assert any("DERIVED regime" in n["message"] for n in notes)
 
@@ -333,10 +310,11 @@ class TestApplyEditV3:
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
+        s.engine_offset = np.array([-0.5] * 3)       # an origin assigned
         s.__post_init__()
         out, notes = apply_edit(
             s, "axis_kind", ["isolated", "isolated", "isolated"])
-        assert out.cell is None and out.cell_origin is None
+        assert out.cell is None and out.engine_offset is None
         assert any("DERIVED regime" in n["message"] for n in notes)
         # A transport axis with zero structure extent would be a
         # degenerate derived box -> refused (its own pin below).
@@ -376,103 +354,68 @@ class TestApplyEditV3:
             apply_edit(_mol(), "axis_kind",
                        ["isolated", "isolated", "periodic"])
 
-    def test_cell_edit_respects_existing_origin_first(self):
-        """Typing a new cell keeps a `cell_origin` the user had already set: origin
-        first, then vacuum.
+    def test_cell_edit_keeps_an_assigned_origin(self):
+        """Typing a new cell keeps an origin the person had already assigned.
 
-        Catches a cell edit re-deriving the corner and discarding a stated one --
-        the user resizes the box and the molecule jumps inside it, which is the
-        visible symptom of the frame moving under the coordinates.
+        Catches a cell edit dropping a stated offset -- the user resizes the box
+        and it jumps back to the rule's place, the frame moving under the
+        coordinates without anyone asking.
 
-        Contract: `model/structure-periodicity.md` § 6.2, the "origin first, then
-        vacuum" precedence.
+        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*
+        (edits keep it).
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([0.5, 0.5, 0.5])
+        s.engine_offset = np.array([-0.5] * 3)
         s.__post_init__()
         out, _ = apply_edit(s, "cell", (np.eye(3) * 12.0).tolist())
-        assert np.allclose(out.cell_origin, [0.5, 0.5, 0.5])
+        np.testing.assert_allclose(out.engine_offset, [-0.5] * 3)
 
-    def test_cell_edit_without_origin_respects_vacuum(self):
-        """With no stored origin, a cell edit places the corner from the vacuum --
-        and places it as a VIEW, leaving `cell_origin` None.
-
-        Catches the second half of the 2026-07-29 decision: computing the right
-        corner and then WRITING it into the truth. That passes any test that only
-        checks where the box is, and breaks the one that matters -- a later
-        "reset origin" then has a stored value to undo, so the two seams drift.
-
-        Contract: `model/structure-periodicity.md` § 6.1 clause 1 (a resolved
-        corner is a view) + § 6.2.
-        """
-        s = _mol()                                   # atoms near (10,10,10)
-        out, notes = apply_edit(s, "cell", (np.eye(3) * 8.0).tolist())
-        # The corner honours the vacuum, but as a VIEW: the truth keeps no
-        # explicit origin, so a later reset has nothing to undo and the two
-        # seams cannot drift (2026-07-29).
-        assert out.cell_origin is None
-        assert np.allclose(out.resolve_cell_origin(), out.expected_cell_corner())
-        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
-        assert any("origin first, then vacuum" in n["message"]
-                   for n in notes)
+    # `test_cell_edit_without_origin_respects_vacuum` RETIRED 2026-09-25: it
+    # pinned "origin first, then vacuum" and the vacuum-derived corner
+    # (§ 6.0 retires both: a vacuum places nothing under a typed cell).  That
+    # nothing is stored for the rule's offset is the state-table test above.
 
     def test_cell_null_returns_to_derived(self):
         """`cell: null` is the way back to the derived regime, and it clears the
         origin with it.
 
-        Catches an orphaned `cell_origin`: a corner left behind after the cell it
-        was a corner OF is gone. That state is refused by the block op two classes
-        down, so leaving it reachable here makes the field-at-a-time path able to
-        build a structure the atomic path rejects.
+        Catches an orphaned assigned origin: an offset left behind after the
+        cell it placed is gone. That state is refused by the block op two
+        classes down, so leaving it reachable here makes the field-at-a-time
+        path able to build a structure the atomic path rejects.
 
-        Contract: `model/structure-periodicity.md` § 6.2.
+        Contract: `model/structure-periodicity.md` § 6.0 (an origin is assigned
+        on a typed cell only) + § 6.2.
         """
         s = _mol()
         s.cell = np.eye(3) * 10.0
+        s.engine_offset = np.array([-1.0] * 3)
         s.__post_init__()
         out, _ = apply_edit(s, "cell", None)
-        assert out.cell is None and out.cell_origin is None
+        assert out.cell is None and out.engine_offset is None
 
-    def test_origin_edit_warns_vacuum_not_respected(self):
-        """After setting an origin, the user is told their vacuum is inert.
+    # `test_origin_edit_warns_vacuum_not_respected` RETIRED 2026-09-25: a
+    # vacuum is inert because the cell is typed, not because of an origin, and
+    # `test_cell.py` pins that finding (`cell.vacuum_ignored`) where it is made.
 
-        RECEIPTS vs CONDITIONS (molview.md § 6.8).  ``apply_edit`` returns what
-        the edit DID; what is now TRUE of the result comes from the gate, which
-        the door runs on the result -- so this test asks the same two questions
-        in the same order the door does.  It matched a receipt sentence ("NOT
-        respected") until 2026-08-03, when that fact became a condition
-        (``cell.vacuum_ignored``) reported whenever it holds instead of only
-        when nothing else was wrong (§ 3c).
+    def test_automatic_clears_the_assigned_origin_to_none(self):
+        """*Automatic* stores None -- not the rule's offset.
+
+        Catches the reset writing back the offset the rule would compute. The
+        box would look identical and the state would be wrong: the pair on disk
+        would carry an origin the person never chose, and the box would stop
+        following the atoms.
+
+        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*
+        (*Automatic* clears it) + § 6.1 clause 1.
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
-        s.vacuum = (2.5, 2.5, 2.5)          # set, and about to be ignored
+        s.engine_offset = np.array([-0.5] * 3)
         s.__post_init__()
-        out, receipts = apply_edit(s, "cell_origin", [0.2, 0.2, 0.2])
-        assert np.allclose(out.cell_origin, [0.2, 0.2, 0.2])
-        assert _said(receipts, "cell.edit"), _wheres(receipts)
-        _checked, conditions = validate_periodicity(out)
-        assert _said(conditions, "cell.vacuum_ignored"), _wheres(conditions)
-
-    def test_reset_origin_clears_to_none(self):
-        """Resetting the origin stores None -- not the resolved corner -- and tells
-        the user they have their freedom back.
-
-        Catches the reset writing back the derived corner it just computed. The
-        box would look identical and the state would be wrong: a second reset
-        would then have nothing to do, and the pair on disk would carry an origin
-        the user never chose.
-
-        Contract: `model/structure-periodicity.md` § 6.1 clause 1 + § 6.2.
-        """
-        s = _mol(off=(1.0, 1.0, 1.0))
-        s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([0.5, 0.5, 0.5])
-        s.__post_init__()
-        out, notes = apply_edit(s, "cell_origin", None)
-        assert out.cell_origin is None
-        assert any("freedom back" in n["message"] for n in notes)
+        out, _ = apply_edit(s, "box_corner", None)
+        assert out.engine_offset is None
 
     def test_no_op_ever_moves_atoms(self):
         """SCIENCE. No periodicity op moves an atom -- across vacuum, cell, origin
@@ -492,9 +435,13 @@ class TestApplyEditV3:
         assert np.allclose(out.positions, s.positions)
         withcell, _ = apply_edit(s, "cell", (np.eye(3) * 9.0).tolist())
         assert np.allclose(withcell.positions, s.positions)
-        for op, payload in [("cell_origin", [7.0, 7.0, 7.0]),
-                            ("cell_origin", None),
-                            ("cell", None)]:
+        for op, payload in [("box_corner", [7.0, 7.0, 7.0]),
+                            ("box_corner", None),
+                            ("cell", None),
+                            ("block", {"cell": (np.eye(3) * 9.0).tolist(),
+                                       "box_corner": [1.0, 2.0, 3.0],
+                                       "axis_kind": ["isolated"] * 3,
+                                       "vacuum": None})]:
             out, _ = apply_edit(withcell, op, payload)
             assert np.allclose(out.positions, s.positions), op
 
@@ -534,7 +481,7 @@ class TestTheBlockOp:
         assert s.cell is None
         out, notes = apply_edit(s, "block", {
             "cell": [[10, 0, 0], [0, 10, 0], [0, 0, 20]],
-            "cell_origin": None,
+            "box_corner": None,
             "axis_kind": ["periodic", "periodic", "transport"],
             "vacuum": [5.0, 5.0, 0.0],
         })
@@ -549,12 +496,13 @@ class TestTheBlockOp:
         s = _mol()
         s.cell = np.diag([10.0, 10.0, 20.0])
         s.axis_kind = ("periodic", "periodic", "transport")
+        s.engine_offset = np.array([-1.0] * 3)       # an origin assigned
         s.__post_init__()
         out, notes = apply_edit(s, "block", {
-            "cell": None, "cell_origin": None,
+            "cell": None, "box_corner": None,
             "axis_kind": ["isolated"] * 3, "vacuum": [4.0, 4.0, 4.0],
         })
-        assert out.cell is None and out.cell_origin is None
+        assert out.cell is None and out.engine_offset is None
         assert out.axis_kind == ("isolated",) * 3
         assert out.vacuum == (4.0, 4.0, 4.0)
         assert any("derived" in n["message"] for n in notes), notes
@@ -564,34 +512,42 @@ class TestTheBlockOp:
         the fields arrived in."""
         with pytest.raises(ValueError, match="periodic axis needs an explicit cell"):
             apply_edit(_mol(), "block", {
-                "cell": None, "cell_origin": None,
+                "cell": None, "box_corner": None,
                 "axis_kind": ["periodic", "isolated", "isolated"],
                 "vacuum": None,
             })
 
-    def test_an_origin_without_a_cell_is_refused(self):
-        """`block` refuses an origin with no cell to be the corner of, naming why.
+    def test_an_origin_is_assigned_on_a_typed_cell_only(self):
+        """An origin is assigned on a typed cell and nowhere else, whichever
+        door asks -- and on a typed cell, the block's corner is stored as the
+        offset that puts the box there (P -> -P).
 
-        Catches the meaningless state slipping through the ATOMIC door: the
-        field-at-a-time ops cannot reach it (an origin edit needs a cell present),
-        so `block` is the one path that could build it in a single request and it
-        has to run the same pairing check on the RESULT.
+        Catches the meaningless state slipping through the ATOMIC door: `block`
+        is the one path that could build it in a single request, so it runs
+        the same pairing check on the RESULT.  The positive half is the Cell
+        page's own path: `modify/periodicity.js` sends the whole block.
 
-        Contract: `model/structure-periodicity.md` § 6.2 (the block op validates
-        the composed result, not the arrival order).
+        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*
+        (D1) + § 6.2 (the block op validates the composed result).
         """
-        with pytest.raises(ValueError, match="only meaningful with an explicit cell"):
+        with pytest.raises(ValueError, match="typed cell only"):
             apply_edit(_mol(), "block", {
-                "cell": None, "cell_origin": [0.0, 0.0, 0.0],
+                "cell": None, "box_corner": [0.0, 0.0, 0.0],
                 "axis_kind": ["isolated"] * 3, "vacuum": None,
             })
+        with pytest.raises(ValueError, match="typed cell only"):
+            apply_edit(_mol(), "box_corner", [0.0, 0.0, 0.0])
+        out, _ = apply_edit(_mol(), "block", {
+            "cell": (np.eye(3) * 9.0).tolist(), "box_corner": [1.0, 2.0, 3.0],
+            "axis_kind": ["isolated"] * 3, "vacuum": None})
+        np.testing.assert_allclose(out.engine_offset, [-1.0, -2.0, -3.0])
 
     def test_a_partial_block_is_refused_rather_than_half_applied(self):
         """A key this op does not know is a caller sending a shape it invented,
         and quietly ignoring it is how half a cell lands."""
         with pytest.raises(ValueError, match="unknown key"):
             apply_edit(_mol(), "block", {
-                "cell": None, "cell_origin": None,
+                "cell": None, "box_corner": None,
                 "axis_kind": ["isolated"] * 3, "vacuum": None,
                 "kgrid": [4, 4, 1],
             })
@@ -602,10 +558,10 @@ class TestTheBlockOp:
         """`block` runs the same check the field-at-a-time ops run -- once, on
         the result -- so nothing is enforced less because it arrived together.
         """
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="left-handed"):
             apply_edit(_mol(), "block", {
                 "cell": [[-4, 0, 0], [0, 4, 0], [0, 0, 4]],
-                "cell_origin": None,
+                "box_corner": None,
                 "axis_kind": ["isolated"] * 3, "vacuum": None,
             })
 
@@ -618,7 +574,7 @@ class TestTheBlockOp:
         s.vacuum = (7.0, 7.0, 7.0)
         s.__post_init__()
         out, _notes = apply_edit(s, "block", {
-            "cell": None, "cell_origin": None,
+            "cell": None, "box_corner": None,
             "axis_kind": ["isolated"] * 3, "vacuum": None,
         })
         assert out.vacuum is None
@@ -666,6 +622,7 @@ class TestPeriodicityDoor:
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0                    # manual state...
+        s.engine_offset = np.array([-1.0] * 3)       # ...with an origin assigned
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
             "structure": self._envelope(s), "op": "vacuum",
@@ -680,18 +637,21 @@ class TestPeriodicityDoor:
         # handed a cell block whose "as it will actually be used" half is
         # missing (molview.md § 9.3).
         assert per["resolved_cell"] is not None
-        assert "resolved_cell_origin" in per and "resolved_vacuum" in per
+        assert per["box_corner"] is not None and "resolved_vacuum" in per
+        # The reset takes the assigned origin with the typed cell (§ 6.0).
+        assert per["engine_offset"] is None
         assert any(n["severity"] == "warn" for n in j["notices"])
 
     def _explicit_box_structure(self):
-        """Three atoms in a row inside a box the USER typed: 4 A cube at the
-        world origin, all three axes isolated.  Manual, so no resolver
-        recomputes it -- what happens to it is only ever reported.
+        """Three atoms in a row inside a box the USER typed: a 4 A cube with its
+        origin assigned at the world origin, all three axes isolated.  Manual,
+        so no rule recomputes where it sits -- what happens to it is only ever
+        reported.
         """
         s = Structure(elements=["H", "H", "H"],
                       positions=np.array([[0.0, 0, 0], [1.0, 0, 0], [2.0, 0, 0]]))
         s.cell = np.eye(3) * 4.0
-        s.cell_origin = np.zeros(3)
+        s.engine_offset = np.zeros(3)
         s.axis_kind = ("isolated",) * 3
         s.__post_init__()
         return s
@@ -750,23 +710,23 @@ class TestPeriodicityDoor:
 
     def test_translating_the_whole_molecule_leaves_the_box_and_says_so(self,
                                                                        client):
-        """Every atom moved 50 Å: the box stays where the person put it, and the
-        atoms now outside it are named.
+        """Every atom moved 50 Å: a box whose origin the person ASSIGNED stays
+        where they put it, and the atoms now outside it are named.
 
         Until 2026-09-25 a whole-structure move carried the box along and there
         was nothing to report; the user retired that -- *"leave the cell alone,
         moving atoms only moves atoms"* (`model/structure-periodicity.md`
-        § 6.0).  The pair to the test above still holds: the warning depends on
-        the atoms moving RELATIVE to the box, and now a whole-molecule move is
-        such a move.
+        § 6.0).  Under *Automatic* the rule places the box around the atoms
+        wherever they now are, so this holds for an assigned origin only.
         """
         s = self._explicit_box_structure()
         r = client.post("/api/modify/translate", json={
             "structure": self._envelope(s), "dx": 50.0, "dy": 0.0, "dz": 0.0})
         assert r.status_code == 200
         body = r.get_json()
-        assert body["periodicity"]["cell_origin"] == [0.0, 0.0, 0.0], (
-            "the box moved with the atoms")
+        per = body["periodicity"]
+        assert per["engine_offset"] == [0.0, 0.0, 0.0] and \
+            per["box_corner"] == [0.0, 0.0, 0.0], "the box moved with the atoms"
         assert _said(body.get("notices"), "cell.atoms_outside"), (
             f"atoms left the box and nothing said so: "
             f"{_wheres(body.get('notices'))}")
@@ -783,16 +743,17 @@ class TestPeriodicityDoor:
         import numpy as np
         from molbuilder.structure import Structure
 
-        # A box that does NOT contain the structure: origin far from the atoms.
+        # A box that does NOT contain the structure: an origin assigned far
+        # from the atoms.
         s = Structure(elements=["H", "H"],
                       positions=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
         s.cell = np.eye(3) * 5.0
-        s.cell_origin = np.array([50.0, 50.0, 50.0])
+        s.engine_offset = np.array([-50.0, -50.0, -50.0])
         s.axis_kind = ("isolated",) * 3
         s.__post_init__()
 
         broken = client.post("/api/structure/periodicity", json={
-            "structure": self._envelope(s), "op": "cell_origin",
+            "structure": self._envelope(s), "op": "box_corner",
             "payload": [50.0, 50.0, 50.0]})
         assert broken.status_code == 200, broken.get_json()
         assert _said(broken.get_json()["notices"], "cell.atoms_outside"), (
@@ -801,7 +762,7 @@ class TestPeriodicityDoor:
 
         # Now FIX it — an origin that does contain the atoms.
         fixed = client.post("/api/structure/periodicity", json={
-            "structure": self._envelope(s), "op": "cell_origin",
+            "structure": self._envelope(s), "op": "box_corner",
             "payload": [-1.0, -2.0, -2.0]})
         assert fixed.status_code == 200, fixed.get_json()
         notices = fixed.get_json()["notices"]
@@ -820,12 +781,13 @@ class TestPeriodicityDoor:
 
         # The INCOMING structure already has a box that does not contain it --
         # so the incoming validation has something to say -- and the edit leaves
-        # it not containing, so the edit path has the same thing to say.
+        # it not containing (a `cell` edit keeps the assigned origin), so the
+        # edit path has the same thing to say.
         # The box runs 5..15 along x; an atom sits at x = 0.
         s = Structure(elements=["H", "H"],
                       positions=np.array([[0.0, 0.0, 0.0], [9.0, 0.0, 0.0]]))
         s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([5.0, 0.0, 0.0])
+        s.engine_offset = np.array([-5.0, 0.0, 0.0])
         s.axis_kind = ("isolated",) * 3
         s.__post_init__()
 
@@ -836,7 +798,7 @@ class TestPeriodicityDoor:
         notices = r.get_json()["notices"]
         containment = [n for n in notices
                        if n.get("where") == "cell.atoms_outside"]
-        assert len(containment) <= 1, (
+        assert len(containment) == 1, (
             f"the same condition was reported {len(containment)} times: "
             f"{_wheres(notices)}")
 
@@ -898,49 +860,64 @@ class TestLoaderGate:
     corner and the read seam did not, /api/build/load served a pair whose box
     MolView drew from the world origin while the Cell page showed the wrapping
     corner: one state, two answers (observed live on projects/hemeC-dithiol,
-    2026-07-29)."""
+    2026-07-29).  Where the box sits is now the rule's unless the structure
+    states an offset (§ 6.0), so the seams have one thing to agree on: nothing
+    is invented."""
 
-    def _write_pair_with_no_stored_corner(self, dirpath):
+    def _write_pair_with_no_stored_corner(self, dirpath, v9_corner=None):
         """A pair whose sidecar holds an explicit cell and NO origin, with the
-        atoms outside it at the world origin — the hemeC state, and a legal one
-        (row 3).  Written BY HAND rather than through ``write()`` so it reaches
-        the read seam exactly as a file on disk would."""
+        atoms outside it at the world origin — the hemeC state, and a legal one.
+        Written BY HAND rather than through ``write()`` so it reaches the read
+        seam exactly as a file on disk would.
+
+        ``v9_corner`` writes it as a v9 pair carrying that retired
+        ``cell_origin`` instead -- what the electrode builder stored flush
+        against the atoms, the placement TranSIESTA refused."""
         import json as _json
         from molbuilder.workingcopy_structure import StructureCodec
         s = _mol()                          # atoms near (10,10,10), vac 2.5
         s.cell = np.eye(3) * 7.0            # explicit cell, no origin,
         s.__post_init__()                   # atoms far outside [0, cell)
         made = StructureCodec().pair(s)
+        side = dict(made.sidecar)
+        if v9_corner is not None:
+            side["schema_version"] = 9
+            side.pop("engine_offset", None)
+            side["cell_origin"] = list(v9_corner)
         (dirpath / "m.xyz").write_text(made.document, encoding="utf-8")
         (dirpath / "m.molstruct.json").write_text(
-            _json.dumps(made.sidecar), encoding="utf-8")
+            _json.dumps(side), encoding="utf-8")
         return dirpath / "m.xyz"
 
-    def test_the_read_seam_invents_no_corner(self, tmp_path):
-        """The READ seam of the .xyz/.molstruct.json pair derives the wrapping corner
-        as a view and writes nothing into the sidecar's truth.
+    @pytest.mark.parametrize("v9_corner", [None, [10.0, 10.0, 10.0]],
+                             ids=["v10-automatic", "v9-with-a-retired-corner"])
+    def test_the_read_seam_invents_no_corner(self, tmp_path, v9_corner):
+        """The READ seam of the pair states nothing it did not read: no offset
+        is invented, and the box the rule places wraps the atoms.
 
         Catches the hemeC divergence at its source: while the read seam invented
         an origin (or refused to derive one), the same file gave two answers
         depending on which door opened it, and re-saving it changed a file the
-        user had not edited.
+        user had not edited.  And a v9 pair's `cell_origin` is RETIRED, not
+        migrated (D2): v9 cannot tell a corner somebody typed from the one the
+        electrode builder stored flush against the atoms.
 
         Contract: `model/structure-periodicity.md` § 6.1 clause 2 (ONE gate, both
-        seams). Commemorates projects/hemeC-dithiol, observed live 2026-07-29.
+        seams) + § 6.0; `structure-molstruct.md`, *v10*. Commemorates
+        projects/hemeC-dithiol, observed live 2026-07-29.
         """
         from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._write_pair_with_no_stored_corner(tmp_path)
+        xyz = self._write_pair_with_no_stored_corner(tmp_path, v9_corner)
         out = StructureCodec().read(xyz)
-        # The pair round-trips VERBATIM (no origin invented in the sidecar);
-        # the wrapping corner comes back as the resolved view.
-        assert out.cell_origin is None
-        assert np.allclose(out.resolve_cell_origin(), [7.5, 7.5, 7.5])
-        assert out.cell_contains_atoms(out.resolve_cell_origin())
+        assert out.engine_offset is None, "an offset was invented on the read"
+        assert cellmod.resolve(out).contains_atoms, (
+            "the box is not drawn round the atoms")
 
     def test_the_load_door_serves_the_derived_corner(
             self, tmp_path, monkeypatch):
-        """The same state, one layer out: `/api/build/load` serves the DERIVED corner
-        in `resolved_cell_origin`, so the browser draws the box where the file means.
+        """The same state, one layer out: `/api/build/load` serves the corner the rule
+        places the box at, in `box_corner`, so the browser draws the box where the
+        file means -- and states no offset, because the file states none.
 
         Catches the seam between the codec and the wire dropping the resolved half
         -- the exact live symptom of 2026-07-29, where MolView drew the box from
@@ -948,7 +925,7 @@ class TestLoaderGate:
         codec-level test above cannot see that; only the served payload can.
 
         Contract: `model/structure-periodicity.md` § 6.1 clause 2 + § 8.1 (where
-        the gate runs).
+        the gate runs); plan § 5q.3 (the wire).
         """
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
@@ -969,9 +946,11 @@ class TestLoaderGate:
             r = client.post("/api/build/load", json={"path": str(xyz)})
             assert r.status_code == 200, r.get_json()
             per = r.get_json()["periodicity"]
-            assert per["resolved_cell_origin"] is not None
-            assert np.allclose(per["resolved_cell_origin"],
-                               [7.5, 7.5, 7.5])
+            assert per["engine_offset"] is None
+            # Centred on the atoms (x 10..12, y and z at 10), stated as the
+            # atoms' own middle rather than as a literal corner.
+            np.testing.assert_allclose(
+                np.asarray(per["box_corner"]) + 3.5, [11.0, 10.0, 10.0])
         finally:
             set_capabilities(None)
 
@@ -983,58 +962,49 @@ class TestLoaderGate:
 
 class TestPeriodicAxesAreNeverContained:
     """PINS: docs/model/structure-periodicity.md § 2 (which axis an image
-    belongs to decides whether it is a defect) + § 6.1 (containment is required
-    along NON-PERIODIC axes only).
+    belongs to decides whether it is a defect) + § 6.0, check 1 (containment
+    is required along NON-PERIODIC axes only).
 
-    Along a periodic axis, atoms outside [0, cell) are periodic
-    images — legal.  Requiring containment there made real crystal and
-    junction files unopenable."""
+    Along a periodic axis, atoms past a face are periodic images — legal, and
+    WARNED (`cell.beyond_periodic_face`, user 2026-09-25: *"warning/error when
+    atoms are outside boundary for all cases"*).  Requiring containment there
+    made real crystal and junction files unopenable."""
 
-    def test_periodic_crystal_with_outside_atoms_is_legal(self):
-        """SCIENCE. Along a PERIODIC axis, atoms outside [0, cell) are periodic
-        images and are legal -- no warning, no error.
+    @pytest.mark.parametrize("kinds, refused", [
+        (("periodic",) * 3, False),
+        (("periodic", "periodic", "transport"), True)],
+        ids=["crystal", "junction"])
+    def test_a_span_wider_than_the_cell_is_legal_only_along_a_periodic_axis(
+            self, kinds, refused):
+        """SCIENCE. Two atoms 12 Å apart along c, in a 10 Å cell.  Along a
+        PERIODIC c that is an image the engine wraps -- legal, and warned; along
+        a TRANSPORT c it is a device longer than its box, refused naming c.
 
-        Catches the containment check being applied to periodic axes. It was, and
-        it made real crystal and junction files unopenable: a fractional
-        coordinate of -0.3 is the same atom as +0.7, so "outside the box" is not a
-        defect where the box repeats. Whether an image is a defect is decided by
-        the axis kind, nothing else.
+        Catches the containment check being applied to periodic axes -- it was,
+        and it made real crystal and junction files unopenable: a fractional
+        coordinate of -0.3 is the same atom as +0.7 where the box repeats -- and
+        the opposite failure, an axis that does not repeat judged as if it did.
+        Whether an atom outside is a defect is decided by the axis kind, nothing
+        else.
 
         Contract: `model/structure-periodicity.md` § 2 (the axis-kind table) +
-        § 6.1 (containment is required along NON-periodic axes only). Review
-        finding, 2026-07-29.
+        § 6.0, check 1. Review finding, 2026-07-29 (the crystal and junction
+        halves were two tests until 2026-09-25).
         """
-        s = _mol(off=(-3.0, 25.0, 1.0), vacuum=(0.0, 0.0, 0.0))
-        s.cell = np.eye(3) * 10.0
-        s.axis_kind = ("periodic", "periodic", "periodic")
-        s.__post_init__()
-        checked, notes = validate_periodicity(s)
-        assert checked.cell_origin is None and not _problems(notes)
+        s = Structure(elements=["H", "H"],
+                      positions=np.array([[0.0, 0, 0], [0.0, 0, 12.0]]),
+                      cell=np.eye(3) * 10.0, axis_kind=kinds)
+        if refused:
+            with pytest.raises(ValueError, match="along c"):
+                validate_periodicity(s)
+        else:
+            _, notes = validate_periodicity(s)
+            assert [(n["where"], n["severity"]) for n in _problems(notes)] == [
+                ("cell.beyond_periodic_face", "warn")], notes
 
-    def test_junction_periodic_periodic_transport_is_legal(self):
-        """The BDT/Au junction shape: periodic x/y, transport z; atoms
-        wrapped to negative fractionals along x/y must not trip the
-        gate; the transport axis is still judged, via the derived corner."""
-        s = _mol(off=(-3.0, -2.0, 10.0), vacuum=(0.0, 0.0, 0.0))
-        s.cell = np.diag([10.0, 10.0, 2.0])
-        s.axis_kind = ("periodic", "periodic", "transport")
-        s.__post_init__()
-        out, notes = validate_periodicity(s)
-        # x/y ignored (periodic); z extent 0 fits; the transport axis takes
-        # its corner from the DERIVED view (bbox_min), not a stored value.
-        assert out.cell_origin is None
-        assert out.cell_contains_atoms(out.resolve_cell_origin())
-
-    def test_stored_manual_origin_is_warned_never_rewritten(self):
-        """Row 5 stored half: a manual origin round-trips verbatim (the
-        silent flip on reload is the review finding)."""
-        s = _mol()
-        s.cell = np.eye(3) * 7.0
-        s.cell_origin = np.array([100.0, 100.0, 100.0])
-        s.__post_init__()
-        checked, notes = validate_periodicity(s)
-        assert np.allclose(checked.cell_origin, [100.0, 100.0, 100.0])
-        assert _problems(notes), notes
+    # `test_stored_manual_origin_is_warned_never_rewritten` RETIRED 2026-09-25:
+    # the stored half of `test_a_manual_origin_gets_the_same_answer_from_either_
+    # direction` above, which asserts it.
 
     def test_unfittable_cell_edit_is_refused_not_stored(self):
         """A cell the structure cannot fit is refused at the edit — a
@@ -1092,36 +1062,27 @@ class TestTabEmitContract:
             "H 10.0 10.0 10.0\n"
             "H 12.0 10.0 10.0\n")
 
-    def _lattice_and_coords(self, fdf: str):
-        lines = fdf.splitlines()
-        a = next(i for i, l in enumerate(lines)
-                 if "%block LatticeVectors" in l)
-        lat = [[float(x) for x in lines[a + r + 1].split()[:3]]
-               for r in range(3)]
-        b = next(i for i, l in enumerate(lines)
-                 if "%block AtomicCoordinatesAndAtomicSpecies" in l)
-        coords = []
-        for l in lines[b + 1:]:
-            if "%endblock" in l:
-                break
-            coords.append([float(x) for x in l.split()[:3]])
-        return np.array(lat), np.array(coords)
-
-
-
     def test_preflight_sees_what_generate_sees(self, client):
-        """A planar molecule with vacuum: preflight must NOT judge the
-        vacuum-0 phantom (it used to error/advise on a degenerate box)."""
+        """A planar molecule with vacuum: preflight must NOT judge the vacuum-0
+        phantom (it used to error on a degenerate box) -- it judges the body's
+        own 4 Å, which SIESTA's advice calls thin (§ 6.1a: under 8 Å per side
+        is advised against, not refused).
+
+        The assertion this replaced -- "Thin vacuum" absent or "4.0" absent --
+        could not fail: the message prints the gap as "4 Å"."""
         r = client.post("/api/build/preflight", json={
-            "structure": _env_per(self._XYZ, {"cell": None, "cell_origin": None,
+            "structure": _env_per(self._XYZ, {"cell": None,
                             "axis_kind": ["isolated"] * 3,
                             "vacuum": [4.0, 4.0, 4.0]}), "engine": "siesta",
             "params": {"system_label": "pin"},
         })
         assert r.status_code == 200, r.get_json()
-        texts = " ".join(i.get("message", "") for i in
-                         (r.get_json().get("issues") or []))
-        assert "Thin vacuum" not in texts or "4.0" not in texts
+        issues = r.get_json().get("issues") or []
+        wheres = {i["where"] for i in issues}
+        assert "cell.no_volume" not in wheres, wheres
+        assert not any(i["severity"] == "error" for i in issues), issues
+        assert "cell.vacuum_thin" in wheres, (
+            "the body's vacuum never reached the judge", wheres)
 
 
 
@@ -1211,15 +1172,16 @@ class TestTheLoadAnswerIsNotSilent:
     the answer reports, and the pair on disk is still what the user saved."""
 
     def test_the_load_answer_carries_what_the_gate_found(self, tmp_path, monkeypatch):
-        """A load of the hemeC-class pair reports what the gate found, at `info`, with
-        `about: cell` -- and with NO key claiming anything was corrected.
+        """A load of a pair whose assigned origin leaves the atoms outside the box
+        reports it (`cell.atoms_outside`), with `about: cell` -- serves the origin
+        as stored -- and carries NO key claiming anything was corrected.
 
         Catches two failures at once: a load that gates silently (the user is never
-        told a corner was derived for them, cell-plan.md 3f), and a load that
-        carries a correction marker for a change that never happened -- a phantom
-        dirty state that makes the session look edited and re-saves a file the user
-        did not touch. `about` is what puts the sentence on the Cell page rather
-        than above the atom list.
+        told the box no longer wraps the atoms, cell-plan.md 3f), and a load that
+        "fixes" the origin and carries a correction marker -- a phantom dirty state
+        that makes the session look edited and re-saves a file the user did not
+        touch. `about` is what puts the sentence on the Cell page rather than
+        above the atom list.
 
         Contract: `model/structure-periodicity.md` § 6.1 clause 6 + § 8.2 ("the
         report has to arrive"); `web/molview.md` § 6.8 for the notice shape.
@@ -1237,7 +1199,8 @@ class TestTheLoadAnswerIsNotSilent:
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
         s = _mol()
-        s.cell = np.eye(3) * 7.0        # the hemeC-class corrupted pair
+        s.cell = np.eye(3) * 7.0
+        s.engine_offset = np.array([-50.0, -50.0, -50.0])   # the corner at 50 Å
         s.__post_init__()
         made = StructureCodec().pair(s)
         (sdir / "m.xyz").write_text(made.document, encoding="utf-8")
@@ -1253,19 +1216,20 @@ class TestTheLoadAnswerIsNotSilent:
             assert r.status_code == 200
             j = r.get_json()
             notices = j.get("notices") or []
-            # The corner is DERIVED, so the load REPORTS it (info) and changes
-            # nothing -- and the shape says so: two keys, no third one claiming
-            # a correction, hence no phantom dirty state.
-            assert notices and notices[0]["severity"] == "info"
+            # The load REPORTS what is wrong and changes nothing -- and the
+            # shape says so: no key claiming a correction, hence no phantom
+            # dirty state.
+            assert _said(notices, "cell.atoms_outside"), _wheres(notices)
             assert all(set(n) == {"severity", "message", "where", "about"}
                        for n in notices), notices
             # ...and `about` is the SUBJECT, which is what puts the sentence on
             # the Cell page rather than above the atom list (molview.md § 6.8).
             assert all(n["about"] == "cell" for n in notices), notices
-            # The served model: no invented truth, the corner as a view.
+            # The served model: the origin as stored through the v10 pair,
+            # nothing corrected.
             per = j["periodicity"]
-            assert per.get("cell_origin") is None
-            assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
+            assert per["engine_offset"] == [-50.0] * 3, per["engine_offset"]
+            assert per["box_corner"] == [50.0] * 3, per["box_corner"]
         finally:
             set_capabilities(None)
 
@@ -1353,25 +1317,11 @@ class TestDoorHygieneAndRemainingOps:
         assert r.status_code == 400
         assert "periodic" in r.get_json()["error"]
 
-    def test_cell_op_anchors_origin_through_the_door(self, client):
-        """Through HTTP, a `cell` op leaves `cell_origin` null and returns the corner
-        only as `resolved_cell_origin`.
-
-        Catches the wire layer materialising what the gate deliberately left as a
-        view -- a serializer that fills `cell_origin` from the resolver would make
-        the browser send that corner back on the next save, turning a derived view
-        into stored truth one round-trip later.
-
-        Contract: `model/structure-periodicity.md` § 6.1 clause 1 + § 6.2.
-        """
-        r = client.post("/api/structure/periodicity", json={
-            "structure": self._envelope(_mol()), "op": "cell",
-            "payload": (np.eye(3) * 8.0).tolist()})
-        assert r.status_code == 200, r.get_json()
-        per = r.get_json()["periodicity"]
-        # Truth carries no invented origin; the view carries the corner.
-        assert per.get("cell_origin") is None
-        assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
+    # `test_cell_op_anchors_origin_through_the_door` RETIRED 2026-09-25: a thin
+    # caller of `to_wire`, whose first assertion (`.get("cell_origin") is None`)
+    # could not fail once the key was retired.  What the wire sends for the
+    # rule's box is `test_the_load_door_serves_the_derived_corner` and
+    # `test_the_wire_carries_unset_and_the_resolved_view`.
 
     def test_axis_kind_op_resets_to_derived_through_the_door(self, client):
         """The `axis_kind` op's reset survives the door: the answer carries
@@ -1393,80 +1343,38 @@ class TestDoorHygieneAndRemainingOps:
         assert r.get_json()["periodicity"]["cell"] is None
 
     def test_origin_reset_null_payload_through_the_door(self, client):
-        """A JSON `null` payload reaches the gate as "reset", not as a missing
-        argument.
+        """A JSON `null` payload reaches the gate as *Automatic*, and a MISSING
+        payload is a 400 rather than a silent clear.
 
         Catches the door treating `payload: null` as absent and skipping the op --
-        the reset button then does nothing, silently, with a 200. That is the one
-        op whose payload is legitimately null, so it is the one where "missing" and
-        "null" must not be conflated.
+        the Automatic button then does nothing, silently, with a 200 -- and the
+        converse, a dropped key read as a clear.  `box_corner` is an op whose
+        payload is legitimately null, so it is one where "missing" and "null"
+        must not be conflated.
 
-        Contract: `model/structure-periodicity.md` § 6.2 (`cell_origin: null`
-        returns the corner to derived).
+        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*
+        (*Automatic* clears it) + § 6.2; the door's docstring (a payload is
+        required, and may be null).
         """
         s = _mol(off=(1.0, 1.0, 1.0))
         s.cell = np.eye(3) * 10.0
-        s.cell_origin = np.array([0.5, 0.5, 0.5])
+        s.engine_offset = np.array([-0.5] * 3)
         s.__post_init__()
         r = client.post("/api/structure/periodicity", json={
-            "structure": self._envelope(s), "op": "cell_origin",
+            "structure": self._envelope(s), "op": "box_corner",
             "payload": None})
         assert r.status_code == 200, r.get_json()
-        assert r.get_json()["periodicity"]["cell_origin"] is None
+        assert r.get_json()["periodicity"]["engine_offset"] is None
+        missing = client.post("/api/structure/periodicity", json={
+            "structure": self._envelope(s), "op": "box_corner"})
+        assert missing.status_code == 400, missing.get_json()
 
 
-class TestDocMatchesTheDoor:
-    """PINS: the op set stays identical in all THREE places that state it —
-    ``periodicity_gate.OPS``, the § 6.2 table in
-    docs/model/structure-periodicity.md, and the door's own docstring.
-
-    INVARIANT: documentation and code cannot disagree about what the door
-    accepts.  The docstring once claimed FIVE ops, including a ``calibrate``
-    that had been deliberately removed (found 2026-07-29) -- this is the guard
-    so the three cannot rot apart again.
-    """
-
-    DOC = "docs/model/structure-periodicity.md"
-
-    def test_every_op_has_a_row_in_the_doc_table(self):
-        """Every op the door accepts has a row in the § 6.2 table.
-
-        Catches an op added to `OPS` and never written down -- a capability the
-        Cell page can call and no document describes, which is how the op set grew
-        a `calibrate` nobody could account for. Reads the op list from the code, so
-        it cannot go stale on its own.
-
-        Contract: `model/structure-periodicity.md` § 6.2 (the op table is the
-        stated surface).
-        """
-        import pathlib
-        text = pathlib.Path(self.DOC).read_text(encoding="utf-8")
-        for op in OPS:
-            assert f"| `{op}` |" in text, (
-                f"op {op!r} has no row in {self.DOC} § 6.2 — the door and the "
-                f"doc disagree")
-
-    # `test_the_doc_says_there_is_no_calibrate_button` RETIRED 2026-09-25: it
-    # matched one sentence of a document (its own docstring called it KNOWN
-    # WEAK), and calibrate itself is gone -- op, route and function -- so there
-    # is no design left for a document to write back into existence.
-
-    def test_the_door_docstring_names_the_real_op_set(self):
-        """The door's own docstring names every op in `OPS` and denies `calibrate`.
-
-        Catches the third statement of the op set rotting: `OPS`, the § 6.2 table
-        and the door's docstring must agree, and it was the DOCSTRING that was
-        wrong on 2026-07-29 -- it claimed five ops including one deliberately
-        removed, which is what a developer reads first.
-
-        Contract: `model/structure-periodicity.md` § 6.2.
-        """
-        from molbuilder.web.blueprints.build import api_periodicity
-        doc = api_periodicity.__doc__ or ""
-        for op in OPS:
-            assert f"``{op}``" in doc, (
-                f"the door's docstring does not name op {op!r}")
-        assert "NO ``calibrate`` op" in doc
+# `TestDocMatchesTheDoor` RETIRED 2026-09-25 -- its two tests pinned the TEXT
+# of a shipped document (§ 6.2's op table) and of the door's docstring
+# (`process/testing.md` § 3a: a test asserts behaviour, not prose).  The op set
+# lives in `periodicity_gate.OPS`; an unknown op is refused
+# (`test_unknown_op_is_a_400`); the documents are kept true by review.
 
 
 class TestTheDefaultVacuumGap:
@@ -1588,13 +1496,10 @@ class TestTheDefaultVacuumGap:
 
     # -- the box built from it ---------------------------------------------- #
 
-    def test_the_derived_box_stays_centred_on_the_structure(self):
-        """The corner must use the same effective vacuum, or the box grows on
-        one face only and the molecule sits off-centre."""
-        s = self._planar()
-        cell, origin = s.resolve_cell(), s.resolve_cell_origin()
-        lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
-        assert np.allclose((lo + hi) / 2.0, origin + np.diag(cell) / 2.0)
+    # `test_the_derived_box_stays_centred_on_the_structure` RETIRED 2026-09-25:
+    # it pinned the derived corner's use of the effective vacuum.  Every box
+    # is centred by the one rule now (§ 6.0), asserted of the wire below and
+    # of the rule itself in `test_cell.py`.
 
     # -- it is never silent -------------------------------------------------- #
 
@@ -1692,10 +1597,28 @@ class TestTheDefaultVacuumGap:
         """Clause 1 on the wire: `vacuum` is the truth the user typed -- or
         `null` -- and `resolved_vacuum` is the view the box was built from.  The
         Cell page needs both so a box built from a number nobody typed is never
-        a surprise."""
-        per = self._planar().to_wire()["periodicity"]
+        a surprise.
+
+        And the same for WHERE the box sits (plan § 5q.3, D4): `engine_offset`
+        is what the structure states -- `null` under Automatic -- and
+        `box_corner` is where the box is drawn, `-offset` of these coordinates:
+        centred on the atoms by the rule, or at the origin a person assigned."""
+        s = self._planar()
+        per = s.to_wire()["periodicity"]
         assert per["vacuum"] is None, "unset must travel as null, not [0,0,0]"
         assert per["resolved_vacuum"] == [3.0, 3.0, 3.0]
+        assert per["engine_offset"] is None
+        lo, hi = s.positions.min(axis=0), s.positions.max(axis=0)
+        np.testing.assert_allclose(
+            np.asarray(per["box_corner"]) + np.diag(per["resolved_cell"]) / 2.0,
+            (lo + hi) / 2.0, err_msg="the rule's box is not centred on the atoms")
+
+        assigned = Structure(elements=["H"], positions=np.zeros((1, 3)),
+                             cell=np.eye(3) * 10.0, axis_kind=("isolated",) * 3,
+                             engine_offset=np.array([1.0, 2.0, 3.0]))
+        tp = assigned.to_wire()["periodicity"]
+        assert tp["engine_offset"] == [1.0, 2.0, 3.0]
+        assert tp["box_corner"] == [-1.0, -2.0, -3.0]
 
     def test_a_stored_zero_means_a_deliberate_zero(self):
         """`None` and `[0,0,0]` are DIFFERENT and both are honoured.
@@ -1890,11 +1813,12 @@ class TestEveryOpIsChecked:
     }
 
     def _stranded(self):
-        """Atoms at x = 50..52 in a 4 A box the user typed at the origin."""
+        """Atoms at x = 50..52 in a 4 A box the user typed, its origin ASSIGNED
+        at the world origin -- so it stays there and the atoms are outside."""
         s = Structure(elements=["H", "H", "H"],
                       positions=np.array([[50.0, 0, 0], [51.0, 0, 0], [52.0, 0, 0]]))
         s.cell = np.eye(3) * 4.0
-        s.cell_origin = np.zeros(3)
+        s.engine_offset = np.zeros(3)
         s.axis_kind = ("isolated",) * 3
         s.__post_init__()
         return s
@@ -1955,9 +1879,10 @@ class TestEveryOpIsChecked:
 
     def test_the_check_reaches_the_user_when_it_has_something_to_say(self, client):
         """The companion to the test above: running the check is worth nothing
-        if its verdict is dropped between the validator and the wire.  A
-        partial translate strands a typed box, so this op has something to
-        say, and it has to arrive in ``notices``.
+        if its verdict is dropped between the validator and the wire.  A move
+        leaves a box whose origin was assigned where it is (D6), so these atoms
+        stay stranded outside it; the op has something to say, and it has to
+        arrive in ``notices``.
         """
         body = {"structure": self._stranded().to_dict(),
                 "dx": 1.0, "dy": 0.0, "dz": 0.0}

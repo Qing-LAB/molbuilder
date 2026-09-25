@@ -131,7 +131,7 @@ def _stated_periodicity(per: Any) -> Dict[str, Any]:
 
     UNKNOWN KEYS ARE IGNORED, and that is not an oversight.  The block arrives
     from `Structure.to_wire`, which sends the stated values BESIDE the server's
-    own derived answers (`resolved_cell`, `resolved_cell_origin`,
+    own derived answers (`resolved_cell`, `box_corner`,
     `resolved_vacuum`) so a page can show the box as it will be used -- and
     MolView keeps that block verbatim and hands the whole thing back.  Reading
     the names we set and leaving the rest is what makes that work.
@@ -154,10 +154,11 @@ def _stated_periodicity(per: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if per.get("cell") is not None:
         out["cell"] = per["cell"]
-    # cell_origin (§ 3c) rides with the cell so a modify op on an electrode
-    # junction doesn't drop the corner that makes the box wrap the atoms.
-    if per.get("cell_origin") is not None:
-        out["cell_origin"] = per["cell_origin"]
+    # The STATED offset rides with the cell (§ 6.0), so a modify op on a
+    # structure whose origin the person set does not drop it.  Raw, as stored:
+    # `box_corner` beside it is the server's view and is not read back.
+    if per.get("engine_offset") is not None:
+        out["engine_offset"] = per["engine_offset"]
     if per.get("axis_kind") is not None:
         out["axis_kind"] = tuple(per["axis_kind"])
     if per.get("vacuum") is not None:
@@ -370,7 +371,7 @@ def workspace_payload(
       :doc:`protocols/workspace-state` § 6).
     * ``lattice`` is always ``None`` here, and NOT because the structure
       has no cell -- it has one.  ``Structure`` grew ``cell`` /
-      ``cell_origin`` / ``axis_kind`` / ``vacuum``, and they travel in
+      ``engine_offset`` / ``axis_kind`` / ``vacuum``, and they travel in
       the ``periodicity`` block that :func:`structure_to_dict` takes
       from ``struct.to_wire()``, together with the resolved views.
       ``lattice`` is the older single-field spelling that no consumer
@@ -1410,7 +1411,7 @@ def apply_periodicity_only(struct, body):
     ``body["periodicity"]`` is the block :meth:`Structure.to_wire` sends, and
     it has TWO halves that read alike and behave nothing alike:
 
-      * ``cell`` / ``cell_origin`` / ``axis_kind`` / ``vacuum`` -- what the
+      * ``cell`` / ``engine_offset`` / ``axis_kind`` / ``vacuum`` -- what the
         caller STATED.  Applied verbatim.  An absent block means the
         Structure's own defaults (isolated, vacuum unset).
       * the ``resolved_*`` answers the server computed and sent back so a page

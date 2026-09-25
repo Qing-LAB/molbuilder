@@ -508,108 +508,76 @@ def test_the_cell_box_and_axes_are_not_per_frame_data():
     )
 
 
-def test_cell_geometry_arrives_even_while_the_cell_is_hidden():
-    """§ 10.3's callout: geometry is handed down unconditionally, even while the
-    cell is hidden; the visibility switch carries only a boolean.
+# `test_cell_geometry_arrives_even_while_the_cell_is_hidden` RETIRED 2026-09-25:
+# `sceneFor` takes no switches, so "every switch off" tested nothing here.  The
+# hidden-then-shown claim (§ 10.3's named failure) is asked where visibility
+# exists -- `test_molview_render_engine.py`
+# `test_a_cell_shown_after_a_hidden_load_is_drawn_at_the_servers_corner` -- and
+# its anchor and world-triad halves are asked below, of the server's own block.
 
-    "If geometry is gated behind the visibility switch, it only ever arrives
-    while the cell is already shown — so turning the cell ON AFTER A HIDDEN LOAD
-    draws the box from the world origin instead of the structure's corner."
-    """
-    out = _run(
-        """
-        // THE SERVER'S BLOCK, with the resolved values beside the raw ones as
-        // /api/build/load always sends them (§ 6.2) — not a hand-made block
-        // carrying only the raw half, which is a shape nothing produces.
-        const cell = { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [10, 10, 10],
-                       resolved_cell: [[4,0,0],[0,4,0],[0,0,4]],
-                       resolved_cell_origin: [10, 10, 10],
-                       axis_kind: ["periodic","periodic","periodic"],
-                       vacuum: [0,0,0], resolved_vacuum: [0,0,0] };
-        // Every switch off — the cell is hidden.
-        const scene = ENGINE.sceneFor(cell);
-        console.log(JSON.stringify({
-            box: scene.cellBox,
-            cellAxisStarts: scene.cellAxes.map(a => a.start),
-            cellAxisLabels: scene.cellAxes.map(a => a.label),
-            worldAxisStarts: scene.axes.map(a => a.start),
-            worldAxisLabels: scene.axes.map(a => a.label),
-        }));
-        """
-    )
-    assert out["box"] is not None, (
-        "the cell geometry was gated behind visibility — turning the cell on "
-        "after a hidden load would draw the box at the world origin"
-    )
-    assert out["box"]["origin"] == [10, 10, 10], (
-        "the anchor corner must be the structure's, not the world origin"
-    )
-    assert all(s == [10, 10, 10] for s in out["cellAxisStarts"]), (
-        f"the cell's axes must start at its corner: {out['cellAxisStarts']}"
-    )
-    assert out["cellAxisLabels"] == ["a", "b", "c"]
-    # And the world triad is still there beside it, at the world origin: the two
-    # answer different questions and a cell appearing does not retire one.
-    assert all(s == [0, 0, 0] for s in out["worldAxisStarts"]), (
-        f"the world triad must stay at the world origin: {out['worldAxisStarts']}"
-    )
-    assert out["worldAxisLabels"] == ["x", "y", "z"]
+
+def _wire_periodicity(struct) -> str:
+    """The periodicity block `/api/build/load` sends for ``struct`` -- produced by
+    `Structure.to_wire`, not typed here -- as JSON for the node snippet."""
+    return json.dumps(struct.to_wire()["periodicity"])
 
 
 def test_the_box_drawn_is_the_cell_the_structure_actually_uses():
     """§ 9.3: the cell a reader is given is "the cell as it will actually be
     used, with the defaults filled in for whatever the structure left unsaid, so
     it ALWAYS HAS AN ANSWER" — and § 5.2 says that answer has one home, so the
-    drawing and the Cell page cannot give different ones.
+    drawing and the Cell page cannot give different ones.  And where the box is
+    drawn is the server's `box_corner`, `-engine_offset` of the coordinates the
+    viewer holds (`model/structure-periodicity.md` § 6.0) -- never worked out
+    in the browser.
 
-    THE FIXTURE IS THE REAL THING. This is byte-for-byte the periodicity block
-    ``/api/build/load`` sends for a plain three-atom water `.xyz`: no explicit
-    cell, and the box the server worked out sitting beside it. That structure
-    still HAS a cell — it is the box a calculation runs in — and pressing "Show
-    unit cell" has to draw it.
-
-    Reading the raw `cell` alone made the box null for every structure nobody had
-    given an explicit cell to, which is every plain `.xyz`: the switch drew
-    nothing, the axes fell back to the Cartesian triad at the world origin, and
-    the Cell page said "Lattice: set" the whole time. Nothing failed, because a
-    missing cell is an ordinary answer — the same shape of defect as § 6.2's
-    `lattice` rename, one field over.
+    THE FIXTURE IS THE SERVER'S OWN BLOCK, from `Structure.to_wire`, for two
+    waters: one nobody gave a cell or an origin (Automatic -- the box the rule
+    puts around the atoms), and one with a typed 10 Å cell and an assigned
+    origin.  Hand-typed blocks here once carried names the server had stopped
+    sending, and every box was then drawn at the world origin with nothing
+    failing.  What is asserted is the scene handed to the drawing (§ 4), not
+    pixels.
     """
-    out = _run(
-        """
-        const fromServer = {
-            axis_kind: ["isolated","isolated","isolated"],
-            cell: null, cell_origin: null, vacuum: [0,0,0],
-            resolved_cell: [[7.196,0,0],[0,6.927,0],[0,0,6]],
-            resolved_cell_origin: [-3.239,-3,-3],
-            resolved_vacuum: [3,3,3],
-        };
-        const scene = ENGINE.sceneFor(fromServer);
-        console.log(JSON.stringify({
-            box:        scene.cellBox,
-            axisStarts: scene.cellAxes.map(a => a.start),
-            axisLabels: scene.cellAxes.map(a => a.label),
-        }));
-        """
-    )
-    assert out["box"] is not None, (
-        "a structure with no EXPLICIT cell still has one — the box the server "
-        "resolved — and 'Show unit cell' must draw it"
-    )
-    assert out["box"]["lattice"] == [[7.196, 0, 0], [0, 6.927, 0], [0, 0, 6]], (
-        f"the box drawn is not the cell the structure uses: {out['box']}"
-    )
-    assert out["box"]["origin"] == [-3.239, -3, -3], (
-        "the box must be anchored at the structure's corner so it wraps the "
-        f"atoms, not at the world origin: {out['box']}"
-    )
-    assert all(s == [-3.239, -3, -3] for s in out["axisStarts"]), (
-        f"the axes must start at the same corner: {out['axisStarts']}"
-    )
-    assert out["axisLabels"] == ["a", "b", "c"], (
-        "with a cell the triad follows the lattice vectors and is labelled a/b/c "
-        f"— falling back to x/y/z means the cell was not seen: {out['axisLabels']}"
-    )
+    import numpy as np
+    from molbuilder import cell as _cell
+    from molbuilder.structure import Structure
+
+    water = dict(elements=["O", "H", "H"],
+                 positions=[[0, 0, 0], [0.957, 0, 0], [-0.239, 0.927, 0]])
+    automatic = Structure(**water)
+    assigned = Structure(**water, cell=np.eye(3) * 10.0,
+                         engine_offset=[1.5, 2.0, 2.5])
+    for s in (automatic, assigned):
+        block = json.loads(_wire_periodicity(s))
+        assert "cell_origin" not in block, "the wire still sends a retired name"
+        out = _run(
+            f"""
+            const scene = ENGINE.sceneFor({_wire_periodicity(s)});
+            console.log(JSON.stringify({{
+                box:        scene.cellBox,
+                axisStarts: scene.cellAxes.map(a => a.start),
+                axisLabels: scene.cellAxes.map(a => a.label),
+                worldStarts: scene.axes.map(a => a.start),
+            }}));
+            """
+        )
+        corner = (-_cell.engine_offset(s)).tolist()
+        assert out["box"] is not None, (
+            "a structure with no EXPLICIT cell still has one — the box the "
+            "server resolved — and the scene must carry it")
+        assert np.allclose(out["box"]["lattice"], block["resolved_cell"]), out["box"]
+        assert np.allclose(out["box"]["origin"], block["box_corner"]), out["box"]
+        assert np.allclose(block["box_corner"], corner), (
+            "the corner sent is not -engine_offset", block["box_corner"], corner)
+        assert all(np.allclose(p, corner) for p in out["axisStarts"]), (
+            f"the cell's axes must start at its corner: {out['axisStarts']}")
+        assert out["axisLabels"] == ["a", "b", "c"]
+        # The world triad stays at the world origin beside it: the two answer
+        # different questions and a cell appearing does not retire one.
+        assert all(p == [0, 0, 0] for p in out["worldStarts"]), out["worldStarts"]
+    assert np.allclose(json.loads(_wire_periodicity(assigned))["box_corner"],
+                       [-1.5, -2.0, -2.5])
 
 
 def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
@@ -627,7 +595,7 @@ def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
         // is the situation the colours exist for.
         const scene = ENGINE.sceneFor({
             resolved_cell: [[5,0,0],[0,5,0],[0,0,5]],
-            resolved_cell_origin: [1,1,1] });
+            box_corner: [1,1,1] });
         console.log(JSON.stringify({
             abc: scene.cellAxes.map(a => a.color),
             xyz: scene.axes.map(a => a.color),
@@ -745,10 +713,10 @@ def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
     out = _run(
         """
         const raw = {
-            cell: null, cell_origin: null,
+            cell: null, engine_offset: null,
             axis_kind: ["isolated", "isolated", "isolated"], vacuum: [5, 5, 5],
             resolved_cell: [[9,0,0],[0,9,0],[0,0,9]],
-            resolved_cell_origin: [-4.5, -4.5, -4.5],
+            box_corner: [-4.5, -4.5, -4.5],
             resolved_vacuum: [5, 5, 5],
         };
         console.log(JSON.stringify({
@@ -759,29 +727,19 @@ def test_the_effective_cell_prefers_the_resolved_answer_over_the_raw_one():
     )
     assert out["derived"]["cell"] == [[9, 0, 0], [0, 9, 0], [0, 0, 9]], (
         "the resolved box must win over a null raw cell")
-    assert out["derived"]["cell_origin"] == [-4.5, -4.5, -4.5]
+    assert out["derived"]["box_corner"] == [-4.5, -4.5, -4.5]
     # NEVER null ITSELF, whatever it is handed -- § 9.3 says so explicitly, and
     # a caller that has to null-check the main way in has two shapes to handle.
     assert out["nothing"] is not None
-    assert set(out["nothing"]) == {"cell", "cell_origin", "axis_kind", "vacuum"}
+    assert set(out["nothing"]) == {"cell", "box_corner", "axis_kind", "vacuum"}
     assert all(v is None for v in out["nothing"].values())
 
 
-def test_an_explicit_cell_is_carried_when_the_server_resolved_nothing():
-    """`resolved_* || raw` -- an imported crystal whose atoms already sit inside
-    the box gets no resolved origin from the server, and the stored one is then
-    the answer rather than a hole."""
-    out = _run(
-        """
-        console.log(JSON.stringify(JOBS.effectiveCell({
-            cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [1, 1, 1],
-            axis_kind: ["periodic", "periodic", "periodic"], vacuum: [0, 0, 0],
-        })));
-        """
-    )
-    assert out["cell"] == [[4, 0, 0], [0, 4, 0], [0, 0, 4]]
-    assert out["cell_origin"] == [1, 1, 1]
-    assert out["axis_kind"] == ["periodic", "periodic", "periodic"]
+# `test_an_explicit_cell_is_carried_when_the_server_resolved_nothing` RETIRED
+# 2026-09-25.  It pinned a stored corner standing in when the server resolved
+# none -- the fallback D2 retired (plan § 5q.3: the browser never computes a
+# corner).  The server sends `box_corner` whenever there is a box, which the
+# test above asks of its real block.
 
 
 def test_the_axis_kinds_are_carried_verbatim_and_never_guessed():

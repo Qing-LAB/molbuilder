@@ -899,17 +899,15 @@
           </p>
         </fieldset>
 
-        {#- EXPLICIT ONLY -- the derived box computes its own corner (§ 3c). -#}
+        {#- TYPED CELL ONLY -- a box sized from the vacuum stays centred (§ 6.0). -#}
         <fieldset class="modify-op-block pv-explicit-only">
           <legend>Cell origin (Å) <span id="pv-org-tag" class="modify-cell-tag"></span></legend>
-          {#- § 3c: the low corner the EXPLICIT cell box is drawn from (an electrode
-              junction whose cell wraps off-origin atoms).  Editing moves the BOX, not
-              the atoms -- SIESTA gets the shift at generation (there is no calibrate
-              button).  Only meaningful with an
-              explicit cell; with a bounding-box cell the corner is auto (molecule bbox
-              - vacuum) and this group is disabled.  Clearing it (Reset origin to
-              default) does NOT move the box to (0,0,0): the corner is derived again
-              (§ 6.1, 2026-07-29). -#}
+          {#- § 6.0 (*A stated offset*): the corner the box is drawn from.  Setting
+              it moves the BOX, not the atoms, and the engine is handed the
+              coordinates minus it -- stored as the structure's offset.  Blank, or
+              Automatic, is the rule: the atoms centred in the cell.  Only with a
+              typed cell: a box sized from the vacuum keeps the vacuum a per-side
+              gap, so this group is disabled there. -#}
           <div class="modify-op-row">
             <input type="number" id="pv-org-a" class="modify-cell-num" step="0.1"
                    aria-label="cell origin x" />
@@ -924,13 +922,13 @@
             <button id="pv-org-from-selection" class="modify-ghost" type="button">
               Use selection
             </button>
-            <button id="pv-org-derive" class="modify-ghost" type="button"
-                    title="Leave the corner to be derived from the structure, rather than stating one.">
-              Derive it
+            <button id="pv-org-auto" class="modify-ghost" type="button"
+                    title="Clear the origin: the atoms are centred in the cell.">
+              Automatic
             </button>
           </div>
-          <p class="modify-op-hint">Blank means <b>derive the corner</b> — the box
-            wraps the structure rather than jumping to (0,&nbsp;0,&nbsp;0).</p>
+          <p class="modify-op-hint">Blank means <b>Automatic</b> — the atoms are
+            centred in the cell, which is also what the engine is handed.</p>
         </fieldset>
 
         {#- ============================================================ -#}

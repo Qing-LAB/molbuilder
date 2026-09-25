@@ -646,8 +646,8 @@ def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
 
 def test_one_picked_atom_becomes_the_cell_origin(page, flask_server,
                                                  labelled_xyz):
-    """§ 7: *Use selection* beside the origin boxes puts the box's low corner on
-    the selected atom.  Staged, like the other one."""
+    """§ 7: *Use selection* beside the origin boxes puts the corner the box is
+    drawn from on the selected atom.  Staged, like the other one."""
     _open(page, flask_server)
     _load(page, labelled_xyz)
     page.locator("#optab-btn-cell").click()
@@ -663,6 +663,58 @@ def test_one_picked_atom_becomes_the_cell_origin(page, flask_server,
     got = [float(page.locator(f"#pv-org-{ax}").input_value()) for ax in "abc"]
     assert abs(got[0] + 0.239) < 1e-3 and abs(got[1] - 0.927) < 1e-3 \
         and abs(got[2]) < 1e-3, got
+
+
+def _origin_row(page):
+    """MolView's Origin row, as it reads."""
+    return page.locator(
+        f"{_CARD} .molviewer-cell-readout dt:text-is('Origin') + dd").inner_text()
+
+
+def _apply_and_wait(page):
+    """Press Apply and wait for MolView's readout to show the answer."""
+    before = page.locator(f"{_CARD} .molviewer-cell-readout").inner_text()
+    page.locator("#pv-apply").click()
+    page.wait_for_function(
+        "(prev) => (document.querySelector("
+        "  '.molviewer-cell-readout')?.innerText || '') !== prev",
+        arg=before, timeout=_ACT_MS)
+
+
+def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
+        page, flask_server, labelled_xyz):
+    """`model/structure-periodicity.md` § 6.0, *A stated offset* (plan § 5q
+    D1): on a typed cell a person may assign the box's origin -- three numbers
+    -- and blank is Automatic, the atoms centred by the rule.  Both surfaces
+    say which: the editor's origin boxes with their "(default)" tag, and
+    MolView's Origin row (molview § 9.3, `getUnitCellOrigin`).  Automatic is a
+    gesture too, since once something is typed there is otherwise no way back
+    to nothing.
+    """
+    _open(page, flask_server)
+    _load(page, labelled_xyz)
+    page.locator("#optab-btn-cell").click()
+    _cell_explicit(page)
+    _apply_and_wait(page)                     # the molecule's box, now typed
+
+    org = [page.locator(f"#pv-org-{ax}") for ax in "abc"]
+    assert [b.input_value() for b in org] == ["", "", ""]
+    assert "default" in page.locator("#pv-org-tag").inner_text().lower()
+    assert "(default)" in _origin_row(page)
+
+    for b in org:
+        b.fill("-1")
+    _apply_and_wait(page)
+    assert [float(b.input_value()) for b in org] == [-1.0, -1.0, -1.0]
+    assert "default" not in page.locator("#pv-org-tag").inner_text().lower()
+    row = _origin_row(page)
+    assert row.startswith("-1.000, -1.000, -1.000") and "(default)" not in row, row
+
+    page.locator("#pv-org-auto").click()
+    _apply_and_wait(page)
+    assert [b.input_value() for b in org] == ["", "", ""]
+    assert "default" in page.locator("#pv-org-tag").inner_text().lower()
+    assert "(default)" in _origin_row(page)
 
 
 def test_the_panel_says_left_handed_before_the_server_refuses_it(

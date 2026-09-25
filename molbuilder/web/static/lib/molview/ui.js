@@ -2259,7 +2259,8 @@ function mountPanel(doc, card, model) {
      *   Lattice   default when there is no explicit `cell` -- the box shown is
      *             then bbox + 2*vacuum on each isolated axis, resolved server
      *             side (model/structure-periodicity.md § 4).
-     *   Origin    default when there is no explicit `cell_origin`.
+     *   Origin    default (Automatic) when the structure states no offset --
+     *             the box is then centred on the atoms (§ 6.0).
      *   Axes      default when unset OR every axis is `isolated` -- a fresh
      *             molecule loads all-isolated, and that is still the default
      *             configuration rather than a choice somebody made.
@@ -2377,8 +2378,8 @@ function mountPanel(doc, card, model) {
             Lattice: "The box the calculation runs in. Type one to fix it; "
                    + "leave it and it is worked out from the molecule, the "
                    + "vacuum and the axis kinds.",
-            Origin:  "Which corner the box starts at. Only meaningful once "
-                   + "you have typed a lattice.",
+            Origin:  "Where the box starts. Automatic centres it on the "
+                   + "atoms; on a typed lattice you can set it yourself.",
             Axes:    "periodic repeats forever · isolated is a molecule in a "
                    + "box · transport is a device length. Vacuum applies to "
                    + "isolated axes only.",
@@ -2394,7 +2395,7 @@ function mountPanel(doc, card, model) {
             // which tells a user their structure has a box and refuses to say
             // what it is -- on the page whose whole job is reporting it.
             ["Lattice", matrixText(cell.cell), !rawCell, false],
-            ["Origin",  vector(cell.cell_origin), !rawOrigin, false],
+            ["Origin",  vector(cell.box_corner), !rawOrigin, false],
             ["Axes",    Array.isArray(cell.axis_kind)
                             ? cell.axis_kind.join(" · ") : "—",
                         !rawAxes || isolatedEverywhere(rawAxes), false],

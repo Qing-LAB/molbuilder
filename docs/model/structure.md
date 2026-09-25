@@ -5,7 +5,7 @@
 **This is the master doc for the Structure aspect.** Its large facets live as
 sub-documents sharing the `structure-` filename prefix (so the hierarchy is
 visible in the name itself):
-- [`structure-periodicity.md`](?doc=model/structure-periodicity.md) — cell · cell_origin ·
+- [`structure-periodicity.md`](?doc=model/structure-periodicity.md) — cell · engine offset ·
   axis_kind · vacuum (the per-axis box behaviour; the boolean `pbc()` is an
   accessor for ASE/extxyz, not a field — `structure-periodicity.md` § 2.0a).
 - [`structure-annotations.md`](?doc=model/structure-annotations.md) — per-atom channel
@@ -103,7 +103,7 @@ Three methods on `Structure` (`structure.py`), all shipped:
 |---|---|---|
 | `to_dict()` → `dict` (`:574`) | The ONE canonical serializer: coordinates + per-atom columns + the full metadata block (via `metadata_to_dict()`). | **Yes** — `from_dict(s.to_dict())` reproduces `s` exactly. |
 | `from_dict(d)` → `Structure` (`:593`) | The ONE canonical deserializer: builds the object, then `apply_metadata_dict` (the same validator a fresh Structure runs). | inverse of `to_dict` |
-| `to_wire()` → `dict` (`:615`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`cell_origin`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`resolved_cell_origin` the client must not recompute) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
+| `to_wire()` → `dict` (`:615`) | A read-only view the web layer builds on: identity columns + a **flattened** `periodicity` block (raw `cell`/`engine_offset`/`axis_kind`/`vacuum` **plus** the server-resolved `resolved_cell`/`box_corner` the client must not recompute — `structure-periodicity.md` § 6.0) + `annotations`. It carries **no** `positions`, **no** flat `atoms` render list, and **no** legacy aliases. | No — a different, flatter view (not a superset of `to_dict`) |
 
 ```python
 # to_dict() — the loss-free round-trip unit; NOBODY else assembles this dict
@@ -145,7 +145,7 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 ```
 
 - **Scope** = the dataclass's own metadata fields: `regions`, `cell`,
-  `cell_origin`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
+  `engine_offset`, `axis_kind`, `vacuum`, `annotations`. (`regions` is the
   whole label store; a reserved label such as `frozen_atoms` is in it, so there
   is no field of its own to serialise — `structure-annotations.md` § 2.)
 - **Strict JSON** — the dict is lists/dicts/bools/floats. `annotations` are
@@ -174,10 +174,16 @@ save→load→apply round-trip test. You do **not** touch `to_dict`, the sidecar
 `to_dict`, or `apply_to_structure` — they read the field set from the two
 methods above, so they pick it up for free.
 
-**To remove one:** delete it from the dataclass + both methods. Old sidecars
-that still carry it load fine (`apply_metadata_dict` ignores unknown keys).
-Never leave a "read-but-never-write" half-migration — that is the drift this
-contract exists to prevent.
+**To remove one:** delete it from the dataclass + both methods, and add its
+name to `RETIRED_METADATA_KEYS` — only when ignoring it loses nothing, or by a
+recorded decision. THREE gates REFUSE a key they do not know, and every sidecar
+on disk carries the key, so without that line every old pair would be refused;
+with it the key is read and ignored, and no writer emits it again
+(`structure-molstruct.md` § 2, *Retired keys*). This said *"old sidecars load
+fine (`apply_metadata_dict` ignores unknown keys)"* until 2026-09-25, which the
+code has never done — found by review when `cell_origin` was retired. Never
+leave a "read-but-never-write" half-migration — that is the drift this contract
+exists to prevent.
 
 ### 2.2a `info` — metadata that travels
 
@@ -233,7 +239,7 @@ one is TAKEN FROM A STATED OWNER:
 
 | field | comes from | why |
 |---|---|---|
-| `cell`, `cell_origin` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
+| `cell`, `engine_offset` | the first input that **states a cell** | a lattice is the one thing an incoming fragment can supply that a cell-less canvas genuinely lacks. A slab's explicit 2.9 Å box is a real crystal; the molecule's derived vacuum box is not a competing statement, so there is nothing to override *(user, 2026-09-22)* |
 | `axis_kind`, `vacuum`, `info` | **the first input**, cell or no cell | these are facts OF THE CANVAS — what the person set in the Cell tab and the contract they recorded. They are equally true of a structure that states no lattice, so a fragment arriving with a box must not restate them |
 | everything atom-indexed | joined | `regions`, the annotation channels and the residue IDs are re-indexed and unioned — see `concat`. Residue re-indexing is conditional: `renumber_residues=True` (the default) renumbers, `False` concatenates the ids verbatim |
 | `title` | **neither input** — the caller's `title=` argument (§ 2.2c) | a merged structure is not either input, so `concat` takes the name from whoever asked for the merge. `Structure.concat([a, b])` with no `title=` yields `''`; `append_structure` passes the canvas's, which is why the seam this section is about keeps its name |
@@ -818,7 +824,7 @@ that would have caught `cell_origin → 0` at the source
 def _fully_populated_structure():
     s = Structure(elements=["C", "O"], positions=[[1.,2.,3.], [4.,5.,6.]])
     s.apply_metadata_dict({
-        "cell": [[10,0,0],[0,10,0],[0,0,10]], "cell_origin": [1.5,2.5,3.5],
+        "cell": [[10,0,0],[0,10,0],[0,0,10]], "engine_offset": [-0.5,-1.5,-2.5],
         "axis_kind": ["periodic","periodic","isolated"],
         "vacuum": [0.,0.,12.],
         # every label in one store, the reserved one included
@@ -829,17 +835,20 @@ def _fully_populated_structure():
     })
     return s
 
-# to_dict → from_dict preserves every field; to_wire carries resolved_cell_origin;
-# StructureCodec.write → read preserves metadata and writes the .molstruct.json pair.
+# to_dict → from_dict preserves every field; to_wire carries the stated offset
+# and the box_corner it puts the box at; StructureCodec.write → read preserves
+# metadata and writes the .molstruct.json pair.
 ```
 
-The end-to-end E2E fixture (`test_structure_inspector_measurement_e2e.py`)
-sets a non-zero `cell_origin` and asserts `molview.data` reports that origin
-after load → serialise → restore — pinning the field through the JS mirror,
-not just the Python codec.
+The browser half is pinned through the real translators, not a mirror of
+them: `test_structure_pair_one_generator.py` carries a pair -- a stated offset
+and none -- disk → `/api/build/load` → `structureFromServer` →
+`structureForServer` (executed under node) → `/api/structure/export` → disk,
+and `test_molview_e2e.py::test_the_cell_door_speaks_the_route_it_posts_to`
+drives the origin through the real periodicity route in a page.
 
 **Anti-patterns (rejected by reference to this doc):** hand-rolled structure
-repacks; raw-dict metadata access (`d["cell_origin"]`, `d.get("axis_kind")`) outside
+repacks; raw-dict metadata access (`d["engine_offset"]`, `d.get("axis_kind")`) outside
 the two codecs; a JS field whitelist for periodicity; a second file stack or a
 browser-authored sidecar. Named-key access lives in exactly one place per
 language.

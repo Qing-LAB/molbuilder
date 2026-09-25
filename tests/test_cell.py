@@ -188,16 +188,22 @@ class TestWhatIsChecked:
                        "cell.left_handed")
         assert found is not None and found.severity == "error"
 
-    def test_atoms_outside_a_user_owned_origin_is_a_warning(self):
-        s = _mol(cell=np.eye(3) * 20, axis_kind=ISOLATED)
-        s.cell_origin = np.array([50.0, 50.0, 50.0])
-        s.__post_init__()
+    def test_atoms_outside_an_assigned_origin_is_a_warning(self):
+        """An origin the person assigned that leaves the atoms outside is
+        WARNED -- the edit stands -- and the clearances say which side sticks
+        out.  Under the rule it cannot happen: the rule centres atoms that fit.
+
+        Contract: `model/structure-periodicity.md` § 6.0, check 1 (and check 3:
+        the deck is refused until they are inside)."""
+        s = _mol(cell=np.eye(3) * 20, axis_kind=ISOLATED,
+                 engine_offset=np.array([-50.0, -50.0, -50.0]))   # corner at 50 Å
         found = _by_id(s, "cell.atoms_outside")
         assert found is not None and found.severity == "warn"
-        # The clearances ride WITH the finding they are about.
-        # It must SHOW the clearances, whatever the wording: the axis letters
-        # and numbers with a sign, so a user can see which side sticks out.
-        assert "a " in found.message and "/" in found.message
+        rc = cellmod.resolve(s)
+        assert rc.offset_stated and rc.clearances[0][0] < 0, rc.clearances
+        assert _by_id(_mol(cell=np.eye(3) * 20, axis_kind=ISOLATED),
+                      "cell.atoms_outside") is None, (
+            "the rule left atoms that fit outside the box")
 
     def test_an_empty_structure_has_nothing_to_say(self):
         assert _wheres(Structure(elements=[], positions=np.zeros((0, 3)))) == []
@@ -388,17 +394,27 @@ class TestNothingIsWrittenBack:
         {},                                                   # unset vacuum
         {"vacuum": (5.0, 5.0, 0.0)},                          # a broken box
         {"cell": np.eye(3) * 30, "axis_kind": ISOLATED},      # manual regime
+        {"cell": np.eye(3) * 30, "axis_kind": ISOLATED,       # ...an origin
+         "engine_offset": np.array([1.0, 2.0, 3.0])},         #    assigned
     ])
     def test_resolving_and_checking_leaves_the_structure_alone(self, kw):
+        """And the wire view with it: `to_wire` resolves the same box and the
+        corner it is drawn at, and writes neither back (§ 6.0: absent means
+        the rule answers; a stated offset is never rewritten)."""
         s = _mol(**kw)
         before = (s.cell.copy() if s.cell is not None else None,
-                  s.cell_origin.copy() if s.cell_origin is not None else None,
+                  s.engine_offset.copy() if s.engine_offset is not None else None,
                   s.vacuum, s.axis_kind, s.positions.copy())
         cellmod.resolve_and_check(s)
+        s.to_wire()
         assert (s.cell is None) == (before[0] is None)
         if s.cell is not None:
             assert np.array_equal(s.cell, before[0])
-        assert (s.cell_origin is None) == (before[1] is None)
+        if before[1] is None:
+            assert s.engine_offset is None, (
+                "the rule's offset was written back as a stated one")
+        else:
+            assert np.array_equal(s.engine_offset, before[1])
         assert s.vacuum == before[2]
         assert s.axis_kind == before[3]
         assert np.array_equal(s.positions, before[4]), "coordinates moved"
@@ -662,10 +678,12 @@ def test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none(
     STATED offset -- an engine's own output handed on, a person's origin --
     need not centre the atoms, but no atom may sit outside the cell along a
     non-periodic vector; along a periodic one it is an image, warned about
-    where the deck is written, not refused here.
+    (check 1), not refused here.
 
-    API-level, on the measured fixture: no prep can hand the gate an
-    off-centre stated frame until an origin can be assigned (§ 6.0)."""
+    API-level, on the measured fixture: the frames are built by hand, to put
+    an atom exactly as far past a face as the 2026-09-25 miss, which no prep
+    produces on purpose.  An assigned origin through prep is
+    `test_engine_offset_reaches_every_deck.py`'s."""
     s = _junction_like()
     frame = cellmod.to_engine(s)
     np.testing.assert_allclose(s.positions + cellmod.engine_offset(s),
@@ -681,12 +699,45 @@ def test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none(
     cellmod.require_placed(cellmod.engine_frame(frame.cell, off_centre),
                            s.axis_kind)
     outside = frame.positions.copy()
-    outside[0, 2] = -1e-3                         # 1 mÅ below the c face
+    # 1.6e-5 Å below the c face: the miss TranSIESTA refused.  A fractional
+    # tolerance of 1e-6 is 3.7e-5 Å on this 37 Å cell and would let it by.
+    outside[0, 2] = -1.6e-5
     with pytest.raises(ValueError, match="outside the cell"):
         cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
                                ("periodic", "periodic", "transport"))
     cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
                            ("periodic", "periodic", "periodic"))
+
+
+@pytest.mark.parametrize("miss, outside", [(1.6e-5, True), (0.0, False)],
+                         ids=["past-the-face", "on-the-face"])
+def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
+    """An origin assigned so the lowest atom sits `miss` Å below the c face:
+    the Cell page names it (`cell.atoms_outside`) exactly when the deck refuses
+    it -- one tolerance, a distance (`cell.PLACED_TOL_ANG`) -- and an atom ON
+    the face passes both.
+
+    Catches the edit and the hand-off disagreeing: with a FRACTIONAL tolerance
+    the Cell page stayed silent about the 2026-09-25 miss, 1.6e-5 Å, while the
+    deck (and TranSIESTA) refused it.
+
+    Contract: `model/structure-periodicity.md` § 6.0, checks 1 and 3 ("named
+    on the Cell page … and the deck is refused")."""
+    s = _junction_like()
+    frame = cellmod.to_engine(s)
+    lo = int(np.argmin(frame.positions[:, 2]))
+    off = frame.applied_offset.copy()
+    off[2] -= frame.positions[lo, 2] + miss
+    assigned = s.replace(engine_offset=off)
+    named = _by_id(assigned, "cell.atoms_outside") is not None
+    try:
+        cellmod.require_placed(cellmod.to_engine(assigned), assigned.axis_kind)
+        refused = False
+    except ValueError as exc:
+        assert "outside the cell" in str(exc), exc
+        refused = True
+    assert (named, refused) == (outside, outside), (
+        f"Cell page named={named}, deck refused={refused}")
 
 
 def test_an_engines_own_output_is_shown_as_the_engine_had_it():

@@ -55,8 +55,9 @@ globalThis.__payload = function (atoms, extra) {
 };
 
 /* THE STAND-IN SPEAKS THE SERVER'S NAMES, not the module's (§ 13.1: a stand-in
- * "must obey THAT LEVEL's rules"). Its periodicity block is `{cell, cell_origin,
- * axis_kind, vacuum}` — what /api/build/load actually sends. It used to carry
+ * "must obey THAT LEVEL's rules"). Its periodicity block is `{cell, engine_offset,
+ * axis_kind, vacuum}` and, beside them, what the server resolved (`resolved_cell`,
+ * `box_corner`, `resolved_vacuum`) — what /api/build/load actually sends. It used to carry
  * `{lattice, origin}`, which is what the MODULE calls them, so the module's
  * inbound translation was tested against its own output and the cell was silently
  * null against the real server for every structure ever loaded. */
@@ -151,12 +152,14 @@ def test_no_read_at_all_can_be_written_through():
         // the test proves nothing.
         globalThis.__nextPayload = globalThis.__payload(
             [atomRow(0, "C", 0), atomRow(1, "O", 1)],
-            { periodicity: { cell: [[8,0,0],[0,8,0],[0,0,8]], cell_origin: [1,1,1],
+            { periodicity: { cell: [[8,0,0],[0,8,0],[0,0,8]], engine_offset: [1,1,1],
+                             box_corner: [-1,-1,-1],
                              axis_kind: ["periodic","periodic","isolated"],
                              vacuum: [0,0,12] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
         if (!m.getUnitCellInfo().cell) throw new Error("the fixture has no cell");
+        if (!m.getUnitCellOrigin()) throw new Error("the fixture has no assigned origin");
 
         const before = JSON.stringify({
             structure: m.getStructure(), coordinates: m.getCoordinates(),
@@ -249,7 +252,8 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor"] }),
             globalThis.__atomRow(1, "O", 1, { regions: ["frozen_atoms"], residue_name: "ALA" }),
-        ], { periodicity: { cell: [[4,0,0],[0,4,0],[0,0,4]], cell_origin: [1,1,1] } });
+        ], { periodicity: { cell: [[4,0,0],[0,4,0],[0,0,4]], engine_offset: [1,1,1],
+                            box_corner: [-1,-1,-1] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
 
@@ -260,7 +264,9 @@ def test_a_narrower_cut_cannot_disagree_with_the_main_way_in():
             elementsAgree: JSON.stringify(m.getElements()) === JSON.stringify(whole.elements),
             atomsAgree: m.getAtoms().map(a => a.element).join() === whole.elements.join(),
             cellAgree: JSON.stringify(m.getUnitCell()) === JSON.stringify(whole.periodicity.cell),
-            originAgree: JSON.stringify(m.getUnitCellOrigin()) === JSON.stringify(whole.periodicity.cell_origin),
+            // An ASSIGNED origin is read as the corner the server put the box
+            // at for it -- `box_corner`, never worked out here (§ 9.3).
+            originAgree: JSON.stringify(m.getUnitCellOrigin()) === JSON.stringify(whole.periodicity.box_corner),
             // The coordinate cuts, against the same one read. `getCoordinates`
             // is listed as a cut of `getStructure` (§ 9.3), so the whole has to
             // hold what it returns — it did not, and that was the hole.
@@ -312,15 +318,16 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     """
     out = _run(
         """
-        // The server's own block for a structure nobody gave a cell to: the raw
-        // field is empty and the box it worked out sits beside it.
+        // The server's own block for a structure nobody gave a cell or an
+        // origin to (Automatic): the raw fields are empty and the box it worked
+        // out sits beside them.
         globalThis.__nextPayload = globalThis.__payload(
             [globalThis.__atomRow(0, "O", 0), globalThis.__atomRow(1, "H", 1)],
             { periodicity: {
                 axis_kind: ["isolated","isolated","isolated"],
-                cell: null, cell_origin: null, vacuum: [0,0,0],
+                cell: null, engine_offset: null, vacuum: [0,0,0],
                 resolved_cell: [[7,0,0],[0,7,0],[0,0,6]],
-                resolved_cell_origin: [-3,-3,-3],
+                box_corner: [-3,-3,-3],
                 resolved_vacuum: [3,3,3] } });
         const m = createModel({});
         await m.installMolecule({ text: "x", filename: "x.xyz" });
@@ -331,11 +338,12 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
         console.log(JSON.stringify({
             panelCell:  panel.cell,
             drawnCell:  drawn.cellBox && drawn.cellBox.lattice,
-            panelOrigin: panel.cell_origin,
+            panelOrigin: panel.box_corner,
             drawnOrigin: drawn.cellBox && drawn.cellBox.origin,
             // The RAW reads still say what the structure itself states, which is
             // nothing — that is their job (§ 9.3) and it is not a disagreement.
             rawCell: m.getUnitCell(),
+            rawOrigin: m.getUnitCellOrigin(),
         }));
         """
     )
@@ -352,6 +360,10 @@ def test_the_cell_page_and_the_drawing_cannot_describe_different_structures():
     assert out["rawCell"] is None, (
         "the raw read must still report what the structure itself states — "
         "nothing — or it has stopped being the narrower cut § 9.3 describes"
+    )
+    assert out["rawOrigin"] is None, (
+        "Automatic states no origin: the box is drawn at the server's corner, "
+        "but nobody assigned one (§ 9.3, `getUnitCellOrigin`)"
     )
 
 
@@ -529,7 +541,7 @@ def test_the_reads_answer_nothing_when_nothing_is_loaded_except_the_counts():
             f"{name} answered with an empty structure instead of nothing: {value}"
         )
     assert out["frame"] is None
-    assert out["cellInfo"] == {"cell": None, "cell_origin": None,
+    assert out["cellInfo"] == {"cell": None, "box_corner": None,
                                "axis_kind": None, "vacuum": None}, (
         "the cell as it will be used must ALWAYS have an answer — an object with "
         f"empty fields, never nothing: {out['cellInfo']}"
@@ -1417,7 +1429,8 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
         globalThis.__nextPayload = globalThis.__payload([
             globalThis.__atomRow(0, "C", 0, { regions: ["anchor", "frozen_atoms"] }),
             globalThis.__atomRow(1, "O", 1, { regions: [] }),
-        ], { periodicity: { cell: [[6,0,0],[0,6,0],[0,0,6]], cell_origin: [1,1,1],
+        ], { periodicity: { cell: [[6,0,0],[0,6,0],[0,0,6]], engine_offset: [1,1,1],
+                            box_corner: [-1,-1,-1],
                             axis_kind: ["periodic","periodic","isolated"],
                             vacuum: [0,0,10] } });
         const m = createModel({});
@@ -1434,7 +1447,7 @@ def test_one_read_of_the_structure_holds_everything_a_request_needs():
             forces:    whole.forcesPerFrame,
             labels:    whole.annotations.map((a) => a.labels),
             cell:      whole.periodicity && whole.periodicity.cell,
-            origin:    whole.periodicity && whole.periodicity.cell_origin,
+            origin:    whole.periodicity && whole.periodicity.engine_offset,
         }));
         """
     )
@@ -2358,12 +2371,12 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
     """
     out = _run(_with_a_recorded_contract("""
         // The cell op round-trips too, so the stand-in must answer WITH a
-        // cell -- in the server's own names (`cell`, `cell_origin`,
+        // cell -- in the server's own names (`cell`, `engine_offset`,
         // `axis_kind`), not the module's -- AND with the record, because
         // `periodicity_gate.apply_edit` is what marks it outdated now and
         // this answer is the only thing the browser adopts.
         globalThis.__nextPayload = {ok: true, periodicity: {
-            cell: [[9,0,0],[0,9,0],[0,0,9]], cell_origin: [0,0,0],
+            cell: [[9,0,0],[0,9,0],[0,0,9]], engine_offset: null,
             axis_kind: ["periodic","periodic","periodic"]},
             info: {calculation: {engine: "siesta", source: "Relax.fdf",
                                  contract: {siesta_mesh_cutoff_ry: 275},

@@ -2,14 +2,15 @@
 (docs/model/structure.md).
 
 The one test that would have caught the recurring ``cell_origin -> 0`` bug at
-the source: build a Structure with EVERY metadata field set to a NON-default
-value (crucially a non-zero ``cell_origin``) and assert it survives each hop of
-the ONE codec unchanged:
+the source (that field is retired, 2026-09-25): build a Structure with EVERY
+metadata field set to a NON-default value (crucially a non-zero STATED
+``engine_offset``) and assert it survives each hop of the ONE codec unchanged:
 
   * ``Structure.from_dict(s.to_dict())``      -- the pure Python round-trip unit
   * ``Structure.read(s.write(path))``         -- the paired .xyz + .json file unit
   * ``s.to_wire()``                           -- the server->client view carries
-                                                 the server-resolved origin
+                                                 the stated offset and the
+                                                 box_corner the server resolved
 
 Nobody outside ``Structure`` names a metadata field, so pinning it here pins it
 everywhere the codec is used.
@@ -27,12 +28,11 @@ from molbuilder.workingcopy_structure import StructureCodec
 
 _META = {
     "cell":         [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
-    "cell_origin":  [0.5, 1.5, 2.5],          # <- NON-zero (and CONTAINING: a box
-                                           #    that does not wrap the atoms is
-                                           #    still round-tripped verbatim, but
-                                           #    it comes back with a warning, and
-                                           #    this fixture is about the pair, not
-                                           #    about the warning - 6.1 rows 2/4)
+    # A STATED offset: the origin (0.5, 1.5, 2.5) a person assigned, stored as
+    # -P (structure-periodicity.md § 6.0).  Still CONTAINING -- the engine gets
+    # (0.5, 0.5, 0.5) and (3.5, 3.5, 3.5) in the 10 A box -- because this
+    # fixture is about the pair, not about the warning an outside atom earns.
+    "engine_offset": [-0.5, -1.5, -2.5],
     "axis_kind":    ["periodic", "periodic", "isolated"],
     "vacuum":       [0.0, 0.0, 2.0],
     # ONE label store: the reserved label is a member, not a field beside it.
@@ -51,7 +51,7 @@ _META = {
 # every input -- and because it sat third, the loop stopped there and
 # `axis_kind`, `vacuum` and `regions` were no longer checked at all.  The
 # one test built to catch a field silently dropping could not have seen one.
-_METADATA_FIELDS = ("cell", "cell_origin", "axis_kind",
+_METADATA_FIELDS = ("cell", "engine_offset", "axis_kind",
                     "vacuum", "regions")
 
 
@@ -119,6 +119,13 @@ def test_read_write_pair_round_trip_preserves_all_metadata(tmp_path):
     assert (tmp_path / "m.molstruct.json").exists(), "sidecar half not written"
     r = StructureCodec().read(xyz)
     _assert_metadata_preserved(r, s)
+    # ON DISK, not only after a read: the stated offset is written as stated,
+    # and the retired corner never is (plan § 5q.8, D2: "make sure no old
+    # retired key is written again").
+    import json as _json
+    side = _json.loads((tmp_path / "m.molstruct.json").read_text())
+    assert "cell_origin" not in side
+    assert side["engine_offset"] == [-0.5, -1.5, -2.5]
 
 
 def test_write_plain_molecule_writes_no_sidecar(tmp_path):
@@ -153,57 +160,62 @@ def test_write_removes_stale_sidecar_when_metadata_cleared(tmp_path):
 #  § 5.3  Wire view carries the server-resolved origin                         #
 # --------------------------------------------------------------------------- #
 
-def test_to_wire_carries_raw_and_resolved_cell_origin():
+def test_to_wire_carries_the_stated_offset_and_the_box_corner():
+    """The wire sends the offset AS STATED -- raw, so a client echoes it back --
+    and where the box is drawn, resolved by the server: ``box_corner`` =
+    ``-engine_offset`` of these coordinates (`structure-periodicity.md` § 6.0;
+    plan § 5q.3, *the browser never computes a corner*)."""
     s = _fully_populated_structure()
     per = s.to_wire()["periodicity"]
-    # Raw stored corner survives (§ 3c).
-    assert per["cell_origin"] == [0.5, 1.5, 2.5]
-    # Explicit cell + cell_origin (junction) -> resolved origin IS the corner.
-    assert per["resolved_cell_origin"] == [0.5, 1.5, 2.5]
+    assert per["engine_offset"] == [-0.5, -1.5, -2.5]
+    assert per["box_corner"] == [0.5, 1.5, 2.5]
+    assert "cell_origin" not in per and "resolved_cell_origin" not in per
     assert per["resolved_cell"] == _META["cell"]
     assert per["axis_kind"] == ["periodic", "periodic", "isolated"]
     assert per["vacuum"] == [0.0, 0.0, 2.0]
 
 
-def test_to_wire_resolved_origin_none_for_world_origin_crystal():
-    """Explicit cell, NO cell_origin (imported crystal, atoms already in
-    [0,cell)) -> resolved origin is None (world origin, no shift)."""
+def test_to_wire_places_a_crystal_by_the_rule_not_at_the_world_origin():
+    """An explicit cell and no stated offset -- an imported crystal: the RULE
+    places it, the atom centred in the cell, so the box is drawn at
+    ``-engine_offset`` and not at the world origin.  Until 2026-09-25 this
+    case was special (atoms already in [0, cell) meant "no shift"); § 6.0 made
+    placement one rule, and this is the fixture that tells the two apart."""
     s = Structure(elements=["C"], positions=np.array([[0.5, 0.5, 0.5]]))
-    # A cell alone means periodic on every axis -- `__post_init__` derives
-    # `axis_kind` from its presence.  A `pbc` key stood here too and did
-    # nothing: it was the retired boolean view, accepted-and-ignored, so it
-    # said the same thing twice and would break this test if the retirement
-    # list were ever pruned, for a reason unrelated to what it checks.
     s.apply_metadata_dict({
         "cell": [[5.0, 0, 0], [0, 5.0, 0], [0, 0, 5.0]],
     })
     per = s.to_wire()["periodicity"]
-    assert per["cell_origin"] is None
-    assert per["resolved_cell_origin"] is None
+    assert per["engine_offset"] is None
+    assert np.allclose(per["box_corner"], [-2.0, -2.0, -2.0])
 
 
-def test_stored_pair_without_an_origin_resolves_the_corner_not_the_world(
-        tmp_path):
-    """The frame contract's read gate (structure-periodicity.md 6.1 row 3): a
-    stored pair whose explicit cell does NOT wrap its atoms round-trips
-    VERBATIM, and the wrapping corner comes back as the resolved VIEW -- the
-    box never jumps to the world origin, and no computed value is written into
-    the truth (2026-07-29 decision)."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-    s = Structure(elements=["H", "H"],
-                  positions=np.array([[10.0, 10.0, 10.0],
-                                      [12.0, 10.0, 10.0]]),
-                  vacuum=(2.5, 2.5, 2.5))
-    s.cell = np.eye(3) * 7.0            # atoms far outside [0, cell)
-    s.__post_init__()
-    codec = StructureCodec()
-    codec.write(s, tmp_path / "bad.xyz")
-    back = codec.read(tmp_path / "bad.xyz")
-    assert back.cell_origin is None                          # truth untouched
-    assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
-    assert back.cell_contains_atoms(back.resolve_cell_origin())
+def test_an_assigned_origin_survives_deleting_every_atom():
+    """Delete every atom of a structure whose origin the person assigned: the
+    offset stays -- an edit keeps it, and `delete_atoms` carries it -- and the
+    wire still says where the box is.  Sending no corner for an empty
+    structure showed it as Automatic, and the Cell page's next Apply sent that
+    back, clearing an origin nobody cleared (found in review, 2026-09-25).
+
+    Contract: `model/structure-periodicity.md` § 6.0, *A stated offset* (edits
+    keep it); plan § 5q.3 (the wire)."""
+    from molbuilder.modify import delete_atoms
+    s = Structure(elements=["C", "O"],
+                  positions=np.array([[0.0, 0, 0], [1.13, 0, 0]]),
+                  cell=np.eye(3) * 8.0, axis_kind=("isolated",) * 3,
+                  engine_offset=np.array([2.0, 3.0, 4.0]))
+    empty = delete_atoms(s, [0, 1])
+    assert empty.n_atoms == 0
+    per = empty.to_wire()["periodicity"]
+    assert per["engine_offset"] == [2.0, 3.0, 4.0]
+    assert per["box_corner"] == [-2.0, -3.0, -4.0]
+
+
+# `test_stored_pair_without_an_origin_resolves_the_corner_not_the_world`
+# RETIRED 2026-09-25: it pinned § 6.1 row 3's derived wrapping corner through
+# the deleted `cell_origin` / `resolve_cell_origin` / `cell_contains_atoms`.
+# What it protected -- the placement is a view, never written as truth -- is
+# held by the save-endpoint test below, on the same fixture, one layer up.
 
 
 def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
@@ -218,7 +230,7 @@ def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
     codec = StructureCodec()
     codec.write(s, tmp_path / "d.xyz")
     back = codec.read(tmp_path / "d.xyz")
-    assert back.cell is None and back.cell_origin is None
+    assert back.cell is None and back.engine_offset is None
     assert back.vacuum == (3.0, 3.0, 3.0)
 
 
@@ -234,15 +246,18 @@ def test_to_wire_derived_keeps_cell_null_and_resolves_view():
     assert per["cell"] is None
     assert np.allclose(np.diag(np.array(per["resolved_cell"])),
                        [7.0, 5.0, 5.0])
-    assert np.allclose(per["resolved_cell_origin"], [7.5, 7.5, 7.5])
+    assert per["engine_offset"] is None
+    assert np.allclose(per["box_corner"], [7.5, 7.5, 7.5])
 
 
 def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         tmp_path, monkeypatch):
-    """The SAVER half of the gate (§ 6.1 clause 2): a browser blob in the
-    hemeC-corrupted state passes through the gate on its way to disk, and the
-    written sidecar carries NO invented origin -- the corner is a view, so the
-    file that comes back resolves the wrapping corner (2026-07-29)."""
+    """The SAVER half of the gate (§ 6.1 clause 2): a browser blob whose typed
+    cell does not wrap its atoms passes the gate on its way to disk, and the
+    written sidecar states NO offset -- the rule's placement is a view, never
+    written as truth (2026-07-29), so the file that comes back is placed by the
+    rule: the atoms centred in the 7 Å cell (`structure-periodicity.md`
+    § 6.0), and the retired corner absent (D2)."""
     import json as _json
     import numpy as np
     import pytest as _pytest
@@ -275,9 +290,11 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
             "path": str(sdir / "m.xyz"), "structure": s.to_dict()})
         assert r.status_code == 200, r.get_json()
         side = _json.loads((sdir / "m.molstruct.json").read_text())
-        assert side.get("cell_origin") is None
+        assert "cell_origin" not in side
+        assert side["engine_offset"] is None
         back = StructureCodec().read(sdir / "m.xyz")
-        assert np.allclose(back.resolve_cell_origin(), [7.5, 7.5, 7.5])
+        from molbuilder import cell as _cell
+        assert np.allclose(_cell.resolve(back).corner, [7.5, 6.5, 6.5])
     finally:
         set_capabilities(None)
 
@@ -377,9 +394,9 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         ("vacuum",      [4.0, 4.0, 4.0]),
         ("axis_kind",   ["periodic", "periodic", "isolated"]),
         ("cell",        [[9., 0, 0], [0, 9., 0], [0, 0, 9.]]),
-        ("cell_origin", [1.0, 1.0, 1.0]),
+        ("box_corner",  [-1.0, -1.0, -1.0]),
         ("block",       {"cell": [[9., 0, 0], [0, 9., 0], [0, 0, 9.]],
-                         "cell_origin": None,
+                         "box_corner": None,
                          "axis_kind": ["periodic", "periodic", "periodic"],
                          "vacuum": None}),
     ])
@@ -487,7 +504,8 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
                          positions=np.array([[0., 0, 5.], [1.44, 1.44, 5.]]),
                          cell=np.diag([2.88, 2.88, 20.]),
                          axis_kind=("periodic", "periodic", "isolated"),
-                         vacuum=(0.0, 0.0, 0.0))
+                         vacuum=(0.0, 0.0, 0.0),
+                         engine_offset=np.array([1.0, 1.0, 5.0]))
         out = append_structure(canvas, slab)
         out = out[0] if isinstance(out, tuple) else out
         assert out.vacuum == (8.0, 8.0, 8.0), \
@@ -503,6 +521,10 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "the only lattice in play was not adopted at all"
         assert np.allclose(out.cell, np.diag([2.88, 2.88, 20.])), \
             f"the adopted lattice is not the slab's: {out.cell}"
+        # The offset comes WITH the cell it was stated against
+        # (`structure-periodicity.md` § 6.0, *A stated offset*).
+        assert out.engine_offset is not None and np.allclose(
+            out.engine_offset, [1.0, 1.0, 5.0]), out.engine_offset
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --

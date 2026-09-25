@@ -9,7 +9,7 @@ parameter, which is a `SiestaConfig` knob — **not** a periodicity field; see
 the note below).
 
 Periodicity describes **how the box around a structure behaves per axis** —
-the lattice `cell`, where that cell sits (`cell_origin`), whether each axis is
+the lattice `cell`, where the atoms sit in it (`engine_offset`, § 6.0), whether each axis is
 crystalline / isolated / a transport lead (`axis_kind`), and the isolation
 padding (`vacuum`). These are fields on the `Structure` dataclass; this doc is
 the source of truth for how the cell is **resolved, gated, persisted, and
@@ -37,18 +37,18 @@ file.
 | Field | Shape | Meaning | Default |
 |---|---|---|---|
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
-| `cell_origin` | 3 floats (Å) or `null` | world-space **low corner** an explicit `cell` emanates from; lets a cell wrap off-origin atoms without moving them (§ 6) | `null` = **derive the corner** (§ 6.1a), which is `(0,0,0)` only when the box at the world origin already holds every atom; **dropped unless `cell` is explicit** |
+| `engine_offset` | 3 floats (Å) or `null` | the offset the structure **states** (§ 6.0): an origin the person assigned at P, stored as `−P`, on a typed `cell` only; or an engine's own output, `[0, 0, 0]`. The box is drawn at `−engine_offset` of the coordinates beside it, and the engine gets those coordinates plus it | `null` = **the rule places the atoms**, centred in the cell (§ 6.0) |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | ~~`pbc`~~ | — | **NOT A FIELD** since 2026-09-22. The boolean view is the accessor `Structure.pbc()`, computed from `axis_kind` on demand (§ 2.0a) | — |
 | `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
 
-`cell`, `axis_kind`, `vacuum` and `cell_origin` all live on `Structure`
+`cell`, `engine_offset`, `axis_kind` and `vacuum` all live on `Structure`
 (`structure.py`) and serialize through the one metadata codec
 (`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`).
 
-> **`cell_origin` is superseded by § 6.0** *(decided 2026-09-25, not built)*:
-> the field goes, and placement is `engine_offset`, computed from the cell and
-> the atoms. The row above describes the code until phase 1 of the plan lands.
+> **`cell_origin` was retired on 2026-09-25** (sidecar v10; plan § 5q, D2):
+> a v7–v9 file that carries it is read with it ignored, and no writer emits it
+> again. Placement is `engine_offset`'s (§ 6.0).
 
 ### 2.0a One periodicity field, and a boolean accessor *(user, 2026-09-22)*
 
@@ -199,15 +199,15 @@ the box render and the fdf work on a blank molecule.
 | `cell` | `struct.cell is None` | `resolve_cell()` (§ 4) | `commitPeriodicityOp("cell", 3×3)` / import / capture → `struct.cell` wins verbatim |
 | `vacuum` | `null` (unset) | `effective_vacuum()` — **3 Å per side on each `isolated` axis** (§ 6.1); 0 on periodic / transport, where vacuum does not apply | `commitPeriodicityOp("vacuum", [x,y,z])` — used verbatim, however small. `null` clears it back to the default |
 | `axis_kind` | `isolated` on every axis (a fresh molecule is a vacuum box) | the one periodicity field; `pbc()` derives the booleans for ASE/extxyz only | `commitPeriodicityOp("axis_kind", [...])` |
-| `block` | — (not a field: it sets all four) | — | `commitPeriodicityOp("block", {cell, cell_origin, axis_kind, vacuum})` — the whole cell, checked once |
+| `block` | — (not a field: it sets all four) | — | `commitPeriodicityOp("block", {cell, box_corner, axis_kind, vacuum})` — the whole cell, checked once |
 
 **One door, five ops.** This column named `setUnitCell` / `setVacuum` /
 `setAxisKind` — three separate writers that were deleted in the MolView rework
 and replaced by a single `commitPeriodicityOp(op, payload)`, with `op` one of
-`vacuum · axis_kind · cell · cell_origin · block` (`periodicity_gate.OPS`, and
+`vacuum · axis_kind · cell · box_corner · block` (`periodicity_gate.OPS`, and
 the route validates against that same tuple). Four doors meant four things for
 the gate to stand in front of; one door means the check cannot be bypassed by
-picking a different setter. **For `cell` and `cell_origin` the payload is
+picking a different setter. **For `cell` and `box_corner` the payload is
 required even when it is `null`** — a dropped key must not be
 indistinguishable from an explicit "clear this".
 
@@ -249,18 +249,17 @@ masquerade as a user-chosen lattice and defeat the override hatch).
 
 | Concern | Home | Behavior |
 |---|---|---|
-| The fields + invariants | `structure.py` `__post_init__` | validate `cell`/`axis_kind`/`vacuum`/`cell_origin` (there is nothing to reconcile since `pbc` stopped being a second field — § 2.0a) |
+| The fields + invariants | `structure.py` `__post_init__` | validate `cell`/`engine_offset`/`axis_kind`/`vacuum` (there is nothing to reconcile since `pbc` stopped being a second field — § 2.0a) |
 | `resolve_cell()` | `structure.py:427` | § 4 — explicit wins, else per-axis |
-| `resolve_cell_origin()` | `structure.py:467` | § 6 — the box's low corner |
+| `engine_offset()` / `to_engine()` | `cell.py` | § 6.0 — where the atoms sit: the offset the structure states, else the rule's centring; the coordinates every engine gets |
 | **Capture at construction** | `modify.py` — `add_slab` through `_finish_slab`. That helper was extracted so **two** builders could share it; `add_electrode_slab` was the other and went on 2026-09-01, `add_symmetric_electrodes` before it | sets `Structure.cell` (in-plane lattice + the z length below) **and** `axis_kind=(periodic,periodic,transport)` (defined `:1043`, passed to the constructor `:1063`) — no more electrode discard |
 | **The captured z length** | `modify.py:843` (inside `_finish_slab`) | **the atoms' z extent, VERBATIM.** This row said `z_span + one interlayer spacing`, via `cell.bulk_z_period`, with a `pad_interlayer_gap=False` to opt out — none of which is live: [`science/junction-cell.md`](?doc=science/junction-cell.md) § 6 retired the padding on 2026-08-31 (`c` is measured and set, never invented), the flag and its argument went with the builder that wanted them, and `modify` does not call `bulk_z_period` at all. **The padding belongs to the LEAD, not to this box**, and lives in `transport.wizard.extract_electrode_model` — see [`science/junction-cell.md`](?doc=science/junction-cell.md) § 5 |
-| Emit | `siesta/input.py:render_fdf` | emits `LatticeVectors` from the resolved cell; translates atoms by `−resolve_cell_origin()` (`:413`) so SIESTA sees atoms in `[0,cell)` |
+| Emit | `siesta/input.py:render_fdf` (and every other deck) | emits `LatticeVectors` from the resolved cell and the coordinates `cell.to_engine` places — the design plus `engine_offset`; `script_emit.render_deck` refuses a frame with an atom outside along a non-periodic axis and writes the ENGINE-OFFSET record (§ 6.0) |
 | Transport | `transport/_cli.py:_load_device` | reads `struct.cell` (from the sidecar); a `--cell-fdf` argument, when given, **overrides** that cell (`:36-43` — point at an existing relaxed `.fdf`'s lattice); if neither exists it warns and the emitter fabricates a vacuum box |
 
-> **Superseded by § 6.0** *(decided 2026-09-25, not built)*: the
-> `resolve_cell_origin()` row and the Emit row's translation go — every
-> emitter asks `cell.to_engine`, and the electrode builder states no origin.
-> The rows describe the code until phases 1–2 land.
+> **Rewritten for § 6.0** *(2026-09-25)*: the `resolve_cell_origin()` row and
+> the Emit row's hand translation went with the code — every emitter asks
+> `cell.to_engine`, and the electrode builder states no origin.
 
 The electrode builder is *told* which lattice constant to use — `fcc_lattice.json`
 carries `a_experimental` / `a_pbe`, and a value measured off the user's own
@@ -283,16 +282,16 @@ no one is allowed to act on.)
 
 ## 6.0 The engine offset — ONE placement rule, for every engine *(user, 2026-09-25)*
 
-*Decided in conversation on 2026-09-25. **Partly built** (2026-09-25): the rule,
+*Decided in conversation on 2026-09-25, and **built** the same day: the rule,
 the hand-off gate with its containment (`cell.py`), every emitter (SIESTA, the
-five transport rungs, PySCF, the molwatch preview), each deck's record, and the
-stated offset in memory. Not yet committed: the retirement of `cell_origin`,
-the readers, the wire and MolView (plan § 5q.6, P1 and P3). Not yet built: the
-transport face-gap warning (check 2). The scope and the
-order of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
-Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
-clause this section supersedes says so at its own site, and is deleted with the
-code it describes.*
+five transport rungs, PySCF, the molwatch preview), each deck's record, the
+stated offset (`Structure.engine_offset`, sidecar v10), the retirement of
+`cell_origin`, the readers of engine output, the wire and MolView, and the Cell
+page's origin (plan § 5q.6, P1–P3). Not yet built: the transport face-gap
+warning (check 2). The scope and the order of work are
+[`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33). The clauses this section
+supersedes say so at their own site; they no longer describe the running code,
+and the phase-4 doc sweep deletes them.*
 
 > **The rule.** Every engine receives the design coordinates plus
 > **`engine_offset`**, with the cell's corner at `(0,0,0)`. `engine_offset` is
@@ -329,7 +328,7 @@ vacuum` on an isolated axis, `bbox_min` on a transport one, `0` on a periodic
 one. On 2026-09-25 that gave one structure two boxes. The deck placed a junction
 flush against its bottom face — the electrode builder anchors there by design
 (`modify.py`: *"the padding opens at the TOP"*) — and TranSIESTA refused it
-(*"Electrode: L lies outside the unit-cell"*; the lowest atom sat 16 fm below
+(*"Electrode: L lies outside the unit-cell"*; the lowest atom sat 1.6e-5 Å below
 the face, the stored corner being `−17.355` against an atom at `−17.355016`).
 The Results tab, sent no corner and no axis kinds — it searched the run
 directory for a `.source` pair that a ladder keeps at its root — derived an
@@ -353,7 +352,7 @@ layer spacing, so the two electrodes' outer layers meet across the boundary as
 bulk does (`science/junction-cell.md` § 6.1) — not how that one gap is split
 between the two faces. Centring is chosen because it puts every atom as far
 from every face as the cell allows, so no rounding error can carry one out: the
-2026-09-25 refusal was a flush electrode, zero margin, pushed 16 fm outside by
+2026-09-25 refusal was a flush electrode, zero margin, pushed 1.6e-5 Å outside by
 a corner stored to three decimals. And it is the placement TranSIESTA's own
 recipe gives (`AtomicCoordinatesOrigin 0 0 1.1773`: half its 2.3545 Å
 *"Electrode inter-layer distance"*).
@@ -515,8 +514,8 @@ that block's.
    whose atoms are not centred — every emitter places through `cell.to_engine`,
    so that can only fire on one that did not — and any frame with an atom
    outside the cell along a non-periodic lattice vector, to 1e-6 Å (TranSIESTA
-   refused an atom 16 fm outside; a fractional tolerance of 1e-6 is 37 fm on a
-   37 Å cell). The atoms beyond a periodic face go into the deck's report as
+   refused an atom 1.6e-5 Å outside; a fractional tolerance of 1e-6 is 3.7e-5 Å
+   on a 37 Å cell, and would have let it through). The atoms beyond a periodic face go into the deck's report as
    warnings (check 1). The tests hold every engine to it through prep *(user,
    2026-09-25: "test should validate the invariables, and then gate that the
    output of the script generator for all engines to correctly also have the
@@ -533,7 +532,7 @@ either.
 
 ## 6. Cell origin + calibration — an explicit cell that wraps off-origin atoms
 
-> **SUPERSEDED by § 6.0** *(decided 2026-09-25, not built)*. The problem
+> **SUPERSEDED by § 6.0** *(2026-09-25; the code it describes is retired)*. The problem
 > stated below is real, and § 6.0 solves it without a derived corner: the box
 > is drawn at `−engine_offset` of the design coordinates, so it still wraps
 > atoms that straddle the origin without moving them. An origin the person
@@ -542,8 +541,8 @@ either.
 > retire the calibrate button")*. Clause 2b's principle —
 > an origin is a label on the coordinates beside it — stands, and is why an
 > engine's output has its offset stated as 0 rather than carried over. This
-> section still describes the running code and is deleted with it (plan
-> phase 4).
+> section no longer describes the running code; the phase-4 doc sweep deletes
+> it.
 
 **The problem.** Building a tunnelling junction, the natural workflow pins the
 molecule at the world origin and grows structure around it (centre at
@@ -633,7 +632,7 @@ derived isolated axis), so the vacuum control reads "not applicable".
 
 ## 6.1 The frame contract (v2, decided 2026-07-29) — one gate, a state table, no silent frames
 
-> **Partly superseded by § 6.0** *(decided 2026-09-25, not built)*: clause 4's
+> **Partly superseded by § 6.0** *(2026-09-25, built)*: clause 4's
 > origin rows and containment regimes go — placement is computed, so there is
 > no user-owned or derived corner left to judge, and "the atoms fit" is one
 > check. Clause 5 is built by § 6.0: its stamp is each deck's `engine-offset`
@@ -645,8 +644,8 @@ to these or is a bug:
 
 1. **The truth is the pair — and only the pair.** The `.xyz` (coordinates in
    the world frame) + `.molstruct.json` (`axis_kind`, `vacuum`, and *only
-   user-explicit* `cell` / `cell_origin`) are the single source of truth.
-   `resolved_cell` / `resolved_cell_origin` / wire fields / UI displays /
+   user-explicit* `cell` / `engine_offset`) are the single source of truth.
+   `resolved_cell` / `box_corner` / wire fields / UI displays /
    engine inputs are **computed views** and are never written back into the
    truth. (A resolved cell materialised into `cell` with the origin dropped —
    the 2026-07 hemeC corruption — is the violation this clause forbids.)
@@ -720,7 +719,7 @@ to these or is a bug:
 ## 6.1a The decision matrices — how the box is made, and what is said about it
 
 > **Table A's "Low corner" column and the corner rules are superseded by § 6.0**
-> *(decided 2026-09-25, not built)*. Its box-length column stands.
+> *(2026-09-25, built)*. Its box-length column stands.
 
 Two questions, two tables. Everything on the Cell page is one or the other.
 
@@ -753,15 +752,11 @@ Two traps worth stating outright:
   hand-typed box that should be checked for containment needs its axes marked
   `isolated`.
 
-**Where the corner comes from, under an explicit cell** (`resolve_cell_origin`;
-the low corner the viewer draws from and the shift `render_fdf` applies):
-
-| State | Corner |
-|---|---|
-| You set a `cell_origin` | **yours**, verbatim, never rewritten — even if it does not contain the atoms (you are warned instead) |
-| No origin, box already contains the atoms where they sit | the **world origin** (`None`, no shift) — the imported-crystal case |
-| No origin, atoms outside | the **wrapping corner**, so the box encloses the structure instead of jumping to `(0,0,0)` |
-| No origin, cell fits the structure but not structure + vacuum | the structure **centred** in the box |
+**Where the box sits, under any cell**, is § 6.0's: the atoms centred by the
+rule, unless the structure states an offset — an origin the person assigned,
+kept verbatim and warned about if it leaves atoms outside (`cell.atoms_outside`),
+or an engine's own 0. The per-state corner table that stood here went with
+`resolve_cell_origin` (2026-09-25).
 
 **B. What is checked, and who hears it.** The verdict depends on **who is
 asking** — generating a script refuses a box it cannot compute in; loading or
@@ -779,8 +774,8 @@ the engine that knows them.
 |---|---|---|---|
 | No vacuum set; the default gap is sizing the box | `cell.vacuum_defaulted` | `info` | `info` |
 | A vacuum you set is inert, because you typed a cell | `cell.vacuum_ignored` | `info` | `info` |
-| The cell stores no origin, so the corner was worked out | `cell.corner_derived` | `info` | `info` |
-| Atoms outside the box (corner can still be moved) | `cell.atoms_outside` | `warn` | `warn` |
+| Atoms outside the box along a non-periodic axis, under an origin the person set (§ 6.0 — the rule's own placement cannot leave one; that is `cell.unfittable`) | `cell.atoms_outside` | `warn` | `warn`, and the deck is refused at the hand-off (§ 6.0, check 3) |
+| Atoms past a face along a PERIODIC axis — images the engine wraps (§ 6.0, check 1) | `cell.beyond_periodic_face` | `warn` | `warn` |
 | Box has **no volume** (`det ≈ 0`) | `cell.no_volume` | `warn` | **error — no script** |
 | Structure longer than the cell — no corner can fit it | `cell.unfittable` | `warn` | **error — no script** |
 | Left-handed cell (`det < 0`) | `cell.left_handed` | `warn` | **error — no script** |
@@ -842,21 +837,19 @@ reference-only there, so reporting it would be a number that never reaches the
 calculation — a molecule in a hand-typed 30 Å box would be told its vacuum is
 thin. On a typed box `cell.image_distance` is the check that means anything.
 
-   **"No explicit origin" means "derive the corner"** (decided 2026-07-29, after
-   the live pass on `projects/hemeC-dithiol`). The corner for row 3 used to be
-   *materialised* into `cell_origin` by the load/save gate, while the
+   **No stated offset means the rule places the box** (§ 6.0). On 2026-07-29,
+   after the live pass on `projects/hemeC-dithiol`, the corner for this state
+   was *materialised* into `cell_origin` by the load/save gate, while the
    reset-origin op (§ 6.2) left the same state alone and the viewer drew the box
    from `(0,0,0)` — one state, two answers, and a save-then-reload silently
-   changed what the user had been shown. The rule now lives in exactly one
-   place, `Structure.resolve_cell_origin` (with `expected_cell_corner` /
-   `cell_contains_atoms` beside it), and `periodicity_gate` delegates to it: the
-   gate **validates and reports**, it does not rewrite. `tests/
-   test_periodicity_gate.py::TestTheStateTable::
-   test_no_seam_materialises_a_resolved_corner` pins the agreement between the
-   two seams.
+   changed what the user had been shown. The placement lives in one place,
+   `cell.engine_offset`, and the gate **validates and reports**; it writes
+   nothing. `tests/test_periodicity_gate.py::TestTheStateTable::
+   test_a_typed_cell_with_no_assigned_origin_stores_nothing_and_wraps_the_atoms`
+   pins it.
 
    **Notices are part of the contract, not decoration.** Every notice is
-   `{level, message, where, about}` — those **four** keys, and no others.
+   `{severity, message, where, about}` — those **four** keys, and no others.
    `where` is the stable id (the same one `Issue` carries), because the
    conditions come from `cell.check` and a finding must be identifiable without
    reading its prose; `about` is the subject, which decides where it is shown.
@@ -894,33 +887,34 @@ thin. On a typed box `cell.image_distance` is the check that means anything.
 
 ## 6.2 The unified periodicity door (v3 — the regime model)
 
-> **Partly superseded by § 6.0** *(decided 2026-09-25, not built)*: the
-> `cell_origin` op, the manual-origin regime and *"respects an existing origin
-> first"* go, and the response carries `engine_offset` and `box_corner` in
-> place of `resolved_cell_origin`. *"Python owns every metadata change; the JS
-> only calls"* stands, and is what keeps the offset in one place.
+> **Rewritten for § 6.0** *(2026-09-25)*: the `cell_origin` op became
+> `box_corner`, the manual-origin regime the assigned offset, and the response
+> carries `engine_offset` and `box_corner` in place of `resolved_cell_origin`.
+> *"Python owns every metadata change; the JS only calls"* stands, and is what
+> keeps the offset in one place.
 
 **Python owns every metadata change; the JS only calls.** One endpoint —
-`POST /api/structure/periodicity`, body `{data, op, payload}` — serves every
+`POST /api/structure/periodicity`, body `{structure, op, payload}` — serves every
 Cell-page button; one module (`molbuilder/periodicity_gate.py`) owns
 `apply_edit(struct, op, payload) → (struct′, notices)` and the
 `validate_periodicity` core shared with `StructureCodec`. Uniform response:
-`{ok, blob, resolved_cell, resolved_cell_origin, notices[]}` — the client
-adopts the returned truth blob and renders the views; it never computes.
+`{ok, periodicity, info, notices[]}`, the periodicity block exactly as
+`/api/build/load` sends it — the client adopts it and renders the views; it
+never computes.
 
 **Two regimes, explicit transitions.** In the **derived** regime,
 `{structure size, vacuum, axis_kind} ⇒ {cell, origin}` are computed views.
 An explicit cell enters the **manual** regime: vacuum demotes to
-reference-only, and an explicit origin overrides the vacuum-derived corner
-(*origin first, then vacuum*). Editing an **upstream** parameter never
+reference-only, and the atoms are centred in it unless the person assigns the
+box's origin (§ 6.0). Editing an **upstream** parameter never
 silently contradicts downstream state — it resets it, loudly:
 
 | op | Contract behaviour (v3) |
 |---|---|
-| `vacuum` | **Resets to derived** (explicit cell + origin cleared; the boundary moves — the UI warns *before* committing). Refused while an axis is periodic (a bbox is not a lattice — make the axis isolated first or edit the cell). |
+| `vacuum` | **Resets to derived** (explicit cell + assigned origin cleared; the boundary moves — the UI warns *before* committing). Refused while an axis is periodic (a bbox is not a lattice — make the axis isolated first or edit the cell). |
 | `axis_kind` | Same reset-to-derived when the new kinds are non-periodic. Switching **to** periodic keeps an existing explicit cell (respected) or is refused when there is none. |
-| `cell` | Explicit (`det > 0`): **respects an existing origin first** (kept; containment-warned), else **respects vacuum** — no origin is stored and the corner stays derived at the expected corner, reported in the notice. `null` = back to derived (refused on a periodic axis). |
-| `cell_origin` | Accepted **as typed** + warning: *vacuum is not respected under a manual origin — only the unit-cell parameters are* (+ actual per-side clearances). `null` = the **Reset-origin-to-default** button: the override is cleared and the corner is **derived again**, so the box keeps wrapping the structure instead of jumping to `(0,0,0)`; the other parameters regain their freedom, and a vacuum / periodicity edit re-derives the whole box. |
+| `cell` | Explicit (`det > 0`): **keeps an assigned origin** (containment-warned); with none, the rule centres the atoms and nothing is stored. `null` = back to derived, and an assigned origin goes with the cell (refused on a periodic axis). |
+| `box_corner` | Assigns the box's origin at the corner typed or picked — stored as `engine_offset = −corner` — **on a typed cell only**. Kept as typed; an atom it leaves outside is warned (`cell.atoms_outside`) and refused at the deck (§ 6.0, check 3). `null` = **Automatic**: the offset is cleared and the rule centres the atoms again. |
 
 **There is no calibrate button.** Coordinate rewrites are not a periodicity
 edit: emission places the atoms where the engine gets them and records the
@@ -940,12 +934,13 @@ none computes or shows an engine-shifted copy.)*
 
 ## 7. Frontend surface (JS / user) — display vs edit
 
-> **The Cell page's origin is superseded by § 6.0** *(decided 2026-09-25, not
-> built)*: the page shows the engine offset, read-only. The origin inputs and
-> the Reset-origin button go with the stored origin, since the offset is never
-> chosen.
+> **The Cell page's origin is § 6.0's** *(decided 2026-09-25, D1)*: the origin
+> group sets the offset the structure STATES — three numbers, or one selected
+> atom, on a typed cell only — and blank, or *Automatic*, is the rule. The page
+> shows where the box is drawn, the server's `box_corner`; nothing in the
+> browser works a corner out.
 
-Two coupled views of one `(cell, cell_origin, axis_kind, vacuum)`, with a
+Two coupled views of one `(cell, engine_offset, axis_kind, vacuum)`, with a
 strict split between showing and writing.
 
 > **The one-onChange update contract (2026-07-29).** The canvas store's
@@ -1037,23 +1032,23 @@ volume first.
 
 ## 8. Persistence + the data-flow loop
 
-`cell`, `cell_origin`, `axis_kind`, and `vacuum` persist in the
+`cell`, `engine_offset`, `axis_kind`, and `vacuum` persist in the
 `.molstruct.json` sidecar (`pbc` is not written at all — § 2.0a; the envelope + schema are in
 `structure-molstruct.md`). **Schema v5 dropped the `kgrid` key** — periodicity
 carries no sampling parameter. Periodicity flows one way, read at each stage:
 
 ```mermaid
 flowchart TB
-    DS[".xyz + .molstruct.json<br/>(cell / cell_origin / axis_kind / vacuum)"]
+    DS[".xyz + .molstruct.json<br/>(cell / engine_offset / axis_kind / vacuum)"]
     GATE{{"validate_periodicity<br/>§ 6.1 table — CHECKS, never corrects"}}
-    MV["MolView: cell wireframe + box at resolved origin"]
-    FDF["fdf generator: LatticeVectors (from resolved cell),<br/>atoms translated by −resolve_cell_origin()"]
+    MV["MolView: cell wireframe + box at the server's box_corner"]
+    FDF["fdf generator: LatticeVectors (from resolved cell),<br/>atoms placed by cell.to_engine (+ ENGINE-OFFSET record)"]
     TR["transport: reads Structure.cell + axis_kind<br/>(--cell-fdf overrides if given)"]
     OUT[".fdf → run → SIESTA .out/.XV (cell)"]
     PARSE["parse/ → StructureResult.cell → back into a dataset"]
     DS --> GATE
     GATE -->|"structure unchanged"| MV
-    GATE -->|"notices {level, message, where, about}"| MV
+    GATE -->|"notices {severity, message, where, about}"| MV
     DS --> FDF
     DS --> TR
     FDF --> OUT --> PARSE --> DS
@@ -1070,7 +1065,7 @@ checks nothing.** The gate is server-side only, and it runs at seven points:
 | 2 | `_shared.ok_structure_response` | **every structure the server sends the browser**: `/api/build/load`, `/api/build/molecule`, and the eight `/api/modify/*` ops | notices ride out with the structure |
 | 3 | `/api/structure/periodicity` — before | a Cell-page edit arrives | notices **dropped** — they describe what arrived, not the result |
 | 4 | `/api/structure/periodicity` — after | the edit has been applied | notices **returned** — these describe the box the user now has |
-| 5 | `apply_edit`, `cell_origin` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
+| 5 | `apply_edit`, `box_corner` branch | inside the edit | used only to DECIDE whether a caveat is needed; its notices are not reported |
 | 6 | `/api/structure/export` | export | notices returned |
 | 7 | `_shared.periodicity_checked_for_emit` | a tab emits a job | the checked structure is what the emitter uses; its notices are dropped, and nothing on that path carries them (`molview.md` § 6.8) |
 
@@ -1239,15 +1234,15 @@ block). The MolView module never parses — the host supplies the resolved cell.
 
 ## 9. Status
 
-**Decided 2026-09-25, not built:** § 6.0 — the engine offset, one placement
-rule for every engine, recorded in every deck; the scope and the phases are
-[`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
+**Built 2026-09-25:** § 6.0 — the engine offset, one placement rule for every
+engine, recorded in every deck, and the offset a structure states; the scope
+and what is left are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 
-**Shipped:** the `Structure` fields + `resolve_cell`/`resolve_cell_origin`; the
-electrode builder's capture-at-construction (`cell` + `axis_kind`); `render_fdf`
-origin translation; the
-MolView Cell-page display + the Modify per-group editors; sidecar persistence
-of `cell`/`cell_origin`/`axis_kind`/`vacuum` (schema v5, `kgrid` dropped);
+**Shipped:** the `Structure` fields + `resolve_cell`; the
+electrode builder's capture-at-construction (`cell` + `axis_kind`); every
+deck's placement through `cell.to_engine`; the
+MolView Cell-page display + the Modify Cell editor; sidecar persistence
+of `cell`/`engine_offset`/`axis_kind`/`vacuum` (schema v10; v5 dropped `kgrid`);
 transport reading `struct.cell` (a `--cell-fdf` argument overrides it).
 
 **Not a periodicity concern (relocated):** the **k-grid** DFT sampling

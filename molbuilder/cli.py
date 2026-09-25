@@ -1157,21 +1157,16 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
                 f"{sidecar_path.name} sits beside the .XV but could not be "
                 f"applied: {exc}") from exc
         struct.cell = xv_cell
-        # AND THE CORNER DOES NOT TRAVEL.  `transport/compose.py` strips it
-        # for eighteen commented lines' worth of reason, and this function
-        # performs the SAME operation -- apply an authoring sidecar over
-        # coordinates read from a `.XV`.  A `cell_origin` is a label on the
-        # coordinates it was measured against (`structure-periodicity.md`
-        # § 6 clause 2b); these coordinates are SIESTA's own frame, which
-        # anchors the box at the origin.  Keeping it made `render_fdf` shift
-        # the atoms by `-cell_origin` a second time: measured 2026-09-22, an
-        # authoring corner of (49, 49, 49) over a `.XV` whose atoms sit at
-        # (1, 1, 1) emitted every atom at -48 Å, far outside a 10x10x20 box.
-        #
-        # STRIPPED, NOT ZEROED -- `null` means DERIVE the corner (clause 2a),
-        # and for a `.XV`, whose atoms are already inside [0, cell), the
-        # derivation answers "no shift".
-        struct.cell_origin = None
+        # THE ORIGIN IS SIESTA'S, SET WITH ITS COORDINATES: a `.XV` is the
+        # engine's own frame, the cell at (0,0,0), so the structure states an
+        # offset of 0 and its next deck applies nothing
+        # (`model/structure-periodicity.md` § 6.0).  An authoring sidecar's
+        # placement belonged to different coordinates and does not travel --
+        # measured 2026-09-22, an authoring corner of (49, 49, 49) carried
+        # over a `.XV` whose atoms sit at (1, 1, 1) emitted every atom at
+        # -48 Å.
+        import numpy as _np
+        struct.engine_offset = _np.zeros(3)
         # The `axis_kind` guard that stood here was DEAD.  It read
         # `if data.get("axis_kind") is None`, but `molstruct.load`
         # normalises the payload through a scratch `Structure`, and

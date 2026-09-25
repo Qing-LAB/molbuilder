@@ -108,15 +108,9 @@ def test_it_reaches_the_tab_before_generate():
     from molbuilder.web.app import create_app
 
     client = create_app(config={}).test_client()
-    envelope = {
-        "elements": ["Na", "Cl"],
-        "positions": [[0, 0, 0], [2.8, 0, 0]],
-        "metadata": {"regions": {},
-                     "cell": [[5.6, 0, 0], [0, 5.6, 0], [0, 0, 5.6]],
-                     "cell_origin": None,
-                     "axis_kind": ["periodic"] * 3,
-                     "vacuum": None},
-    }
+    # The structure's own canonical dict -- the envelope the browser sends --
+    # rather than one typed here, which had kept a retired key alive.
+    envelope = _struct(("periodic",) * 3).to_dict()
     r = client.post("/api/build/preflight",
                     json={"structure": envelope, "engine": "pyscf",
                           "params": {}})

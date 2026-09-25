@@ -1836,7 +1836,7 @@ fixed.**
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warns SIESTA "will refuse to start" — **still open**; the deck states the pseudopotential provenance itself as a stopgap. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and open-shell runs from the siesta validator against the run's REAL spin treatment instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
-| `validate_subject` is unanswered, so the gate judges a frame the deck does not express | `_emit_geometry` writes positions shifted by `-resolve_cell_origin()`; the gate validates the world-frame structure. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
+| `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
 | the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
 
@@ -2781,25 +2781,21 @@ sideways.
 | regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
 | regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
 | `axis_kind` | **stated at hop 2, never read from a file** | no cited file records it: the `.XV` carries the cell, the metadata block carries regions and annotations, and SIESTA has no such concept. I8 settles it — z is open, x and y are the transverse mesh. It is a fact of *being a transport calculation*, not something inherited from the relaxation |
-| `cell_origin` | **stripped at hop 2** | the `.XV` is SIESTA's own frame, anchored at the origin. A sidecar's `cell_origin` is the corner of a box drawn around *different* coordinates, and adopting it shifted junctions by their whole authoring corner |
+| `engine_offset` | **stated `0` at hop 2** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. An authoring sidecar's offset belonged to *different* coordinates and is not carried: a sidecar corner adopted here once shifted junctions by their whole authoring corner |
 
-#### Which door reads the box, and why they differ
+#### Where the box and the atoms come from
 
-`_emit_geometry` reads the two halves of the frame through **different doors**,
-which looks inconsistent and is not:
-
-```python
-resolved_cell = cell if cell is not None else struct.cell   # RAW
-origin = struct.resolve_cell_origin()                        # RESOLVED
-```
-
-The **origin** goes through `resolve_*` because `null` there is meaningful: it
-means *derive the corner* (`structure-periodicity.md` § 6 clause 2a), and for a
-`.XV` — whose atoms already sit inside the box — the derivation answers *no
-shift*. The **cell** is read raw because on this path it is always stated: hop 3
+`_emit_geometry` writes the frame `transiesta.engine_frame_for` returns — ONE
+box decision and ONE placement. The **cell** is read raw (the `cell` passed,
+else the structure's own), because on this path it is always stated: hop 3
 refuses a citation without one, and hop 7 always states one. There is nothing
 for `resolve_cell()` to derive, and if it ever did derive one the answer would
-be a padded box, which is the thing § 7 forbids.
+be a padded box, which is the thing § 7 forbids. The **atoms** are placed by
+`cell.to_engine` (`structure-periodicity.md` § 6.0): the junction states the
+`.XV`'s offset, 0 (hop 2), so the device deck writes the relaxed coordinates as
+the engine had them; a lead taken out at hop 7 states none, so the rule centres
+it in its own cell. Until 2026-09-25 this block subtracted
+`resolve_cell_origin()` by hand.
 
 ---
 

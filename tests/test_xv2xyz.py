@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 from click.testing import CliRunner
 
@@ -105,17 +106,24 @@ def test_xv2xyz_writes_the_pair(xv, tmp_path):
     assert out.read_text().splitlines()[0].strip() == "3"
 
 
-def test_xv2xyz_cell_reaches_the_siesta_reader(xv, tmp_path):
+def test_xv2xyz_cell_and_origin_reach_the_siesta_reader(xv, tmp_path):
     """The round trip that matters: what the deck generator reopens.
 
     This is the assertion the old `Lattice=` header existed to satisfy. It
     still holds with the header gone, because `_struct_from_file` reads the
     PAIR -- which is why deleting the header was safe rather than lucky.
+
+    THE ORIGIN TRAVELS WITH THE CELL. A `.XV` is SIESTA's own frame, the cell's
+    corner at (0,0,0), so its structure states an offset of 0
+    (`model/structure-periodicity.md` § 6.0, *A stated offset*), and the next
+    deck hands the engine the coordinates the run wrote -- not a re-centred
+    copy. The coordinates and their origin are set together.
     """
     out = tmp_path / "j.xyz"
     assert CliRunner().invoke(
         cli.cli, ["xv2xyz", str(xv), str(out)]).exit_code == 0
 
+    from molbuilder.cell import to_engine
     from molbuilder.siesta.input import _struct_from_file
     s, cell = _struct_from_file(str(out))
     assert s.n_atoms == 3
@@ -123,6 +131,10 @@ def test_xv2xyz_cell_reaches_the_siesta_reader(xv, tmp_path):
     assert cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
     # A lattice implies periodicity -- stated once, in `Structure`.
     assert s.axis_kind == ("periodic", "periodic", "periodic")
+    frame = to_engine(s)
+    assert frame.stated, "the pair lost the .XV's origin: the next deck re-centres it"
+    np.testing.assert_allclose(frame.positions, read_xv(xv).positions, atol=1e-6,
+                               err_msg="the engine would not get the run's coordinates")
 
 
 def test_xv2xyz_leaves_frozen_atoms_alone_without_the_flag(xv, tmp_path):
@@ -165,20 +177,28 @@ def test_xv2xyz_from_run_applies_the_sidecar_whole(xv, tmp_path):
     The AXIS KINDS are the point. A `.XV` cannot tell a bulk axis from a
     slab's vacuum from a junction's leads, and the three drive different
     physics: `validation/siesta.py` warns that k > 1 on a `transport` axis
-    "imposes a fake periodicity", and `resolve_cell_origin` puts a
-    transport axis's box corner at the atoms and a periodic one at zero.
-    Guessing `periodic` here silently disables the first and moves the box.
+    "imposes a fake periodicity", and the hand-off refuses an atom outside the
+    cell along a transport axis where it wraps one along a periodic axis
+    (`model/structure-periodicity.md` § 6.0, check 3). Guessing `periodic`
+    here silently disables both.
+
+    THE ONE THING NOT APPLIED IS THE SIDECAR's OFFSET. The authoring
+    structure's origin belonged to its own coordinates; the `.XV`'s are the
+    engine's, at offset 0. Carried over, an authoring corner of (49, 49, 49)
+    put every atom of a `.XV` at -48 Å (measured 2026-09-22).
     """
     (tmp_path / "j.fdf").write_text(_FDF)
+    from molbuilder.cell import to_engine
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
     # THROUGH THE DOOR, in the test too -- the sidecar beside `j.XV` is
     # written by the codec, not hand-packed here. A junction: periodic in
-    # plane, the leads along z.
+    # plane, the leads along z, its origin assigned at the atoms' corner.
     StructureCodec().write(
         Structure(elements=["C", "H", "Au"],
-                  positions=[[0, 0, 0], [1, 0, 0], [0, 2, 0]],
+                  positions=[[49, 49, 49], [50, 49, 49], [49, 51, 49]],
                   cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]],
+                  engine_offset=[-49.0, -49.0, -49.0],
                   axis_kind=("periodic", "periodic", "transport"),
                   regions={"L-electrode": [2]},
                   frozen_atoms=[1]),
@@ -196,3 +216,6 @@ def test_xv2xyz_from_run_applies_the_sidecar_whole(xv, tmp_path):
     # THE `.XV`'s CELL SURVIVES the apply: the sidecar's 9 A box does not
     # overrule the lattice the run actually ended on.
     assert got.cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
+    # And its origin: the engine gets the run's coordinates, where it put them.
+    np.testing.assert_allclose(to_engine(got).positions, read_xv(xv).positions,
+                               atol=1e-6, err_msg="the sidecar's origin was applied")

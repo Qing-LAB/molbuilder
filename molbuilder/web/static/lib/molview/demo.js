@@ -254,10 +254,9 @@ async function start() {
      * and the Cell page shows what the LAST answer said -- a notice set belongs
      * to one exchange and the next one replaces it (§ 6.8).
      *
-     * The second answer carries the condition ALONE, not both: the door adds
-     * its "cell_origin set" receipt only when the result has nothing wrong with
-     * it (periodicity_gate.py, the cell_origin branch), because the condition
-     * already says the same thing in the words that matter.
+     * The second answer carries its receipt ("origin set") beside the
+     * condition -- the box sits where the origin was set, and the atoms are not
+     * in it (periodicity_gate.py, the box_corner branch).
      *
      * Nothing is faked here: no message is written by the demo, and the demo
      * does not reach into the viewer to place one. It performs an edit a user
@@ -267,7 +266,7 @@ async function start() {
         try {
             await viewer.data.commitPeriodicityOp(
                 "cell", [[5, 0, 0], [0, 5, 0], [0, 0, 5]]);
-            await viewer.data.commitPeriodicityOp("cell_origin", [20, 20, 20]);
+            await viewer.data.commitPeriodicityOp("box_corner", [20, 20, 20]);
         } catch (err) {
             // The server refused one of the two. Its sentence says what to do
             // about it, so it is what goes on screen (§ 6.9).

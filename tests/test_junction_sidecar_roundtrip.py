@@ -215,7 +215,9 @@ def test_the_pair_is_written_at_the_current_schema_version(tmp_path, junction):
     target = tmp_path / "junction.xyz"
     StructureCodec().write(junction, target)
     payload = molstruct.load(molstruct.sidecar_path_for(target))
-    assert payload["schema_version"] == molstruct.SCHEMA_VERSION == 9
+    # The number is `SCHEMA_VERSION`'s to state; a literal here failed the
+    # day the schema moved on (v10, 2026-09-25) without anything being wrong.
+    assert payload["schema_version"] == molstruct.SCHEMA_VERSION
 
 
 # --------------------------------------------------------------------- #

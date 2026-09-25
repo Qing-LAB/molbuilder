@@ -13,13 +13,14 @@ WHY THIS MODULE EXISTS (decided 2026-08-03 — cell-plan.md § 6a).  Two jobs ha
 grown many hands, and the hands disagreed.
 
 **Working the box out** was spread over six methods on ``Structure`` that call
-each other -- ``resolve_cell_origin`` → ``expected_cell_corner`` →
-``effective_vacuum``, and ``resolve_cell`` → ``effective_vacuum`` again.  One
-box computed its effective vacuum three or four times, and a caller could enter
-at any of the six and get a partial view of the answer.  Those methods remain
-(they are the arithmetic, and ``Structure`` owns its own fields); what changes
-is that **nobody outside composes them any more** -- they compose here, once,
-into a :class:`ResolvedCell`.
+each other -- a corner resolver → its expected corner → ``effective_vacuum``,
+and ``resolve_cell`` → ``effective_vacuum`` again.  One box computed its
+effective vacuum three or four times, and a caller could enter at any of the
+six and get a partial view of the answer.  The box's size is still
+``Structure``'s arithmetic; **where it sits is the engine offset**
+(:func:`engine_offset`, 2026-09-25), and the corner resolvers are gone with the
+stored corner they served.  Nobody outside composes them: they compose here,
+once, into a :class:`ResolvedCell`.
 
 **Judging the box** was worse, because it was TWO systems.  The gate emitted
 ``{level, message, about}`` notices; the validators emitted ``Issue``s with a
@@ -54,7 +55,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .issues import Issue
+from .issues import Issue, ValidationError
 from .structure import Structure
 
 #: THE zero-volume threshold, in Å³.  One constant, where there were two.
@@ -67,10 +68,6 @@ from .structure import Structure
 #: ~1 -- so both values only ever catch true degeneracy.
 ZERO_VOLUME_TOL = 1e-6
 
-#: Containment tolerance in fractional coordinates: loose enough to forgive a
-#: round-tripped float, tight enough that "half the molecule outside" cannot
-#: pass.  Mirrors ``periodicity_gate._EPS``.
-_CONTAIN_EPS = 1e-6
 
 
 @dataclass(frozen=True)
@@ -88,10 +85,10 @@ class ResolvedCell:
 
     #: The 3×3 lattice the calculation will use, or None if unresolvable.
     box: Optional[np.ndarray]
-    #: The world-space low corner the box emanates from.  Never None when
-    #: ``box`` is set: the "no explicit origin" case is RESOLVED here rather
-    #: than handed on as an absence, which is what let two seams disagree
-    #: before (§ 6.1, "no explicit origin means derive the corner").
+    #: Where the box's corner sits in the structure's own coordinates:
+    #: ``-engine_offset`` -- the offset the structure states, or the rule's
+    #: (`model/structure-periodicity.md` § 6.0).  Never None when ``box`` is
+    #: set, so no reader works a corner out for itself.
     corner: Optional[np.ndarray]
     #: The per-side gap the box was actually built from -- what the user set,
     #: or the default where they set nothing.
@@ -115,10 +112,11 @@ class ResolvedCell:
     #: Set when the box could not be worked out; the reason, in the user's
     #: words.  :func:`check` promotes it to an error Issue.
     unresolvable: Optional[str] = None
-    #: True when the user stored a ``cell_origin`` of their own.  A user-owned
-    #: origin is never rewritten, and a box that misses its atoms under one is
-    #: reported differently from one under a corner we derived.
-    origin_is_user_owned: bool = False
+    #: True when the structure STATES its offset -- an origin the person
+    #: assigned, or an engine's own 0 -- rather than the rule placing it.  A
+    #: stated offset is never rewritten, so a box that misses its atoms under
+    #: one is the person's to move.
+    offset_stated: bool = False
     #: det(box) > 0.  A left-handed cell is not a representable state: SIESTA's
     #: reciprocal vectors come out mirrored.
     right_handed: bool = True
@@ -126,18 +124,12 @@ class ResolvedCell:
     #: cannot fit along them for ANY origin, so moving the corner cannot help.
     #: Distinct from ``contains_atoms``, which is about the corner it HAS.
     unfittable_axes: Tuple[int, ...] = ()
-    #: True when an explicit cell stores no origin, so the corner above was
-    #: worked out rather than stored.  Reported, never written back (§ 6.1).
-    corner_was_derived: bool = False
     #: Per-axis (near, far) gap in Å between the structure and the box faces.
     #: Negative means atoms poke out of that face.  Empty without a box.
     clearances: Tuple[Tuple[float, float], ...] = ()
-    #: Would the box contain the atoms if it sat at the WORLD origin?  This is
-    #: the imported-crystal test, and it is a different question from
-    #: ``contains_atoms``, which asks about the corner the box actually has.
-    #: True here means the corner is the world origin and nothing was worked
-    #: out, so there is nothing to disclose.
-    contains_at_world_origin: bool = True
+    #: PERIODIC axes along which an atom lies past a face once placed: legal --
+    #: an image the engine wraps -- and warned (§ 6.0, check 1).
+    beyond_periodic_axes: Tuple[int, ...] = ()
 
     @property
     def has_volume(self) -> bool:
@@ -183,7 +175,7 @@ def resolve(struct: Structure, *,
         axis_kind=kinds,                       # type: ignore[arg-type]
         regime=regime,
         defaulted_axes=defaulted,
-        origin_is_user_owned=struct.cell_origin is not None,
+        offset_stated=struct.engine_offset is not None,
     )
 
     if struct.n_atoms == 0:
@@ -205,35 +197,28 @@ def resolve(struct: Structure, *,
                             contains_atoms=True, unresolvable=str(exc),
                             **common)
 
-    corner = struct.resolve_cell_origin()
-    if corner is None:
-        corner = np.zeros(3, dtype=float)      # the world origin, resolved
-    else:
-        corner = np.asarray(corner, dtype=float)
+    # WHERE THE BOX SITS: at -engine_offset of these coordinates -- the offset
+    # the structure states, or the rule's (§ 6.0).  A singular box places
+    # nothing; `cell.no_volume` says so, and the corner is the origin's.
+    try:
+        corner = -engine_offset(struct, box=box)
+    except ValueError:
+        corner = np.zeros(3, dtype=float)
 
-    # TWO fractional projections, and only two: one from the corner this box
-    # actually has, one from the world origin.  Everything below derives from
-    # those, and the determinant is taken once.
-    #
-    # It was THREE, plus two determinants -- `_unfittable` projected at the
-    # world origin while `contains_at_world_origin` projected the same thing
-    # again, inside the module whose whole claim is that the box is worked out
-    # ONCE.  Solving a 3x3 per atom is cheap; a module that does not keep its
-    # own promise is not.
-    frac_at_corner = _fractional(struct, box, corner)
-    frac_at_origin = _fractional(struct, box, np.zeros(3))
+    # ONE fractional projection, from the corner this box has.  Containment,
+    # the span that decides fit (no corner changes it) and the clearances all
+    # derive from it, and the determinant is taken once.
+    frac = _fractional(struct, box, corner)
     det = float(np.linalg.det(box))
     return ResolvedCell(
         box=box,
         corner=corner,
         volume=abs(det),
-        contains_atoms=_contains(frac_at_corner, kinds),
+        contains_atoms=_contains(frac, kinds, box),
         right_handed=det > 0.0,
-        unfittable_axes=_unfittable(frac_at_origin, kinds),
-        corner_was_derived=(struct.cell is not None
-                            and struct.cell_origin is None),
-        clearances=_clearances(frac_at_corner, box),
-        contains_at_world_origin=_contains(frac_at_origin, kinds),
+        unfittable_axes=_unfittable(frac, kinds, box),
+        clearances=_clearances(frac, box),
+        beyond_periodic_axes=_beyond(frac, kinds, box),
         **common,
     )
 
@@ -256,8 +241,20 @@ def _fractional(struct: Structure, box: np.ndarray,
         return None
 
 
-def _contains(frac: Optional[np.ndarray], kinds: Sequence[str]) -> bool:
-    """Every atom inside ``[0, 1)`` along every NON-periodic axis.
+def _tolerances(box: np.ndarray) -> np.ndarray:
+    """The containment tolerance per lattice vector, as a FRACTION of it:
+    :data:`PLACED_TOL_ANG` Å, the hand-off gate's own.  One tolerance for the
+    edit and the deck, so an atom the deck refuses is named at the edit -- a
+    fractional 1e-6 was 3.7e-5 Å on a 37 Å cell, and TranSIESTA refused an atom
+    1.6e-5 Å outside (2026-09-25)."""
+    lens = np.linalg.norm(box, axis=1)
+    return np.where(lens > 0.0, PLACED_TOL_ANG / np.where(lens > 0.0, lens, 1.0),
+                    0.0)
+
+
+def _contains(frac: Optional[np.ndarray], kinds: Sequence[str],
+              box: np.ndarray) -> bool:
+    """Every atom inside ``[0, 1]`` along every NON-periodic axis.
 
     Along a periodic axis an atom outside the cell is a legitimate image the
     engine wraps, so containment is never required there (§ 2) — requiring it
@@ -265,17 +262,31 @@ def _contains(frac: Optional[np.ndarray], kinds: Sequence[str]) -> bool:
     """
     if frac is None:
         return False                            # singular box: nothing fits
+    tol = _tolerances(box)
     for i, kind in enumerate(kinds):
         if kind == "periodic":
             continue
-        if not (np.all(frac[:, i] >= -_CONTAIN_EPS)
-                and np.all(frac[:, i] <= 1.0 + _CONTAIN_EPS)):
+        if not (np.all(frac[:, i] >= -tol[i])
+                and np.all(frac[:, i] <= 1.0 + tol[i])):
             return False
     return True
 
 
-def _unfittable(frac: Optional[np.ndarray],
-                kinds: Sequence[str]) -> Tuple[int, ...]:
+def _beyond(frac: Optional[np.ndarray], kinds: Sequence[str],
+            box: np.ndarray) -> Tuple[int, ...]:
+    """PERIODIC axes along which some atom lies outside ``[0, 1]``: images the
+    engine wraps -- legal, and worth saying (§ 6.0, check 1)."""
+    if frac is None:
+        return ()
+    tol = _tolerances(box)
+    return tuple(
+        i for i, kind in enumerate(kinds)
+        if kind == "periodic"
+        and (np.any(frac[:, i] < -tol[i]) or np.any(frac[:, i] > 1.0 + tol[i])))
+
+
+def _unfittable(frac: Optional[np.ndarray], kinds: Sequence[str],
+                box: np.ndarray) -> Tuple[int, ...]:
     """Non-periodic axes the structure cannot fit along for ANY origin.
 
     The distinction from containment is the actionable one: a contained-ness
@@ -288,10 +299,11 @@ def _unfittable(frac: Optional[np.ndarray],
     """
     if frac is None:
         return ()
+    tol = _tolerances(box)
     return tuple(
         i for i, kind in enumerate(kinds)
         if kind != "periodic"
-        and float(frac[:, i].max() - frac[:, i].min()) > 1.0 + 2 * _CONTAIN_EPS
+        and float(frac[:, i].max() - frac[:, i].min()) > 1.0 + 2 * tol[i]
     )
 
 
@@ -422,44 +434,38 @@ def check(rc: ResolvedCell) -> List[Issue]:
     # ``unfittable`` already says the cell is too short, and says it better --
     # it names the axes and rules out moving the corner.  Repeating it as a
     # containment warning would be the same defect twice.
+    #
+    # With the rule placing the atoms, an atom outside along a non-periodic
+    # axis IS an unfittable axis -- centring leaves one outside only when the
+    # span is wider than the cell -- so what is left to say here is the STATED
+    # offset's: an origin that no longer wraps the atoms.  Warned, not
+    # refused, because the edit stands; the deck refuses (§ 6.0, check 3).
     if not rc.contains_atoms and rc.has_volume and not rc.unfittable_axes:
         gaps = ", ".join(f"{'abc'[i]} {n:.2f}/{f:.2f}"
                          for i, (n, f) in enumerate(rc.clearances))
-        if rc.origin_is_user_owned:
-            out.append(Issue(
-                "warn",
-                f"Some atoms are outside the box. Room to spare at each end, "
-                f"in Å — a negative number means atoms stick out that side: "
-                f"{gaps}. You typed both the cell and its corner, so neither "
-                f"is adjusted for you. Move the corner, make the cell bigger, "
-                f"or clear the corner and have it worked out for you.",
-                "cell.atoms_outside"))
-        else:
-            out.append(Issue(
-                "warn",
-                f"Some atoms are outside the box. Room to spare at each end, "
-                f"in Å — a negative number means atoms stick out that side: "
-                f"{gaps}. The corner was already placed to wrap the molecule "
-                f"as well as it can, so the cell itself is too small. Make it "
-                f"bigger, or clear it and have the box sized around the "
-                f"molecule.",
-                "cell.atoms_outside"))
-
-    # A CONDITION, not a complaint: the state is legal (§ 6.1 row 3) and
-    # nothing was written back.  It is said because the corner is a number the
-    # user never typed, and the box is drawn and emitted from it.
-    # Silent for the IMPORTED-CRYSTAL case (§ 6.1 row 2): the box already
-    # contains the atoms where they sit, so the corner IS the world origin and
-    # nothing was worked out.  Announcing a derivation that did not happen is
-    # noise on the commonest state a crystal file has.
-    if (rc.corner_was_derived and not rc.contains_at_world_origin
-            and rc.contains_atoms and rc.has_volume):
         out.append(Issue(
-            "info",
-            f"Your cell does not say where its corner sits, so it was placed "
-            f"at {np.round(rc.corner, 4).tolist()} to wrap the molecule. The "
-            f"molecule fits, and nothing you set was changed.",
-            "cell.corner_derived"))
+            "warn",
+            f"Some atoms are outside the box. Room to spare at each end, in "
+            f"Å — a negative number means atoms stick out that side: {gaps}. "
+            f"The box sits where its origin was set, and nothing moves it for "
+            f"you. Move the origin, or set it back to Automatic, or make the "
+            f"cell bigger. An input file is refused until every atom is "
+            f"inside.",
+            "cell.atoms_outside"))
+
+    # PAST A PERIODIC FACE: legal -- an image the engine wraps -- and said,
+    # now that every engine is handed placed coordinates (user, 2026-09-25:
+    # "we should now give warning/error when atoms are outside boundary for
+    # all cases").  A crystal written with whole molecules is the case.
+    if rc.beyond_periodic_axes and rc.has_volume:
+        where = ", ".join("abc"[i] for i in rc.beyond_periodic_axes)
+        out.append(Issue(
+            "warn",
+            f"Some atoms lie past a face of the cell along {where}, which is "
+            f"periodic: the engine treats them as images of atoms inside it. "
+            f"That is legal -- a crystal written with whole molecules crosses "
+            f"its faces -- but check it is what you meant.",
+            "cell.beyond_periodic_face"))
 
     return out
 
@@ -582,7 +588,8 @@ def atoms_outside(frame: "EngineFrame") -> Dict[int, List[int]]:
     engine gets (the cell at the origin), to :data:`PLACED_TOL_ANG` Å.
 
     The tolerance is a DISTANCE, never a fraction: TranSIESTA refused an atom
-    16 fm outside (2026-09-25), and a fractional 1e-6 is 37 fm on a 37 Å cell.
+    1.6e-5 Å outside (2026-09-25), and a fractional 1e-6 is 3.7e-5 Å on a 37 Å
+    cell.
     """
     if len(frame.positions) == 0:
         return {}
@@ -600,14 +607,19 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
     """At the hand-off the cell origin is (0,0,0) and every atom is inside
     the cell -- the correction applied (user, 2026-09-25: *"the siesta receives
     a cell origin at 0,0,0 always as it expects with all coordinates
-    corrected"*).  Raises ``ValueError`` when that is not so:
+    corrected"*).  Raises when that is not so:
 
-    * a COMPUTED frame whose atoms are not centred reached the engine without
-      :func:`to_engine`, the one door;
-    * any frame with an atom outside the cell along a NON-periodic lattice
-      vector would hand the engine an atom outside its box -- what TranSIESTA
-      refused.  Along a periodic vector an atom past a face is an image the
-      engine wraps, and is warned about, not refused (§ 6.0, check 1).
+    * ``ValueError`` -- a COMPUTED frame whose atoms are not centred reached
+      the engine without :func:`to_engine`, the one door.  A bug in an
+      emitter, and it should look like one;
+    * ``ValidationError`` (``cell.atoms_outside``, error) -- any frame with an
+      atom outside the cell along a NON-periodic lattice vector would hand the
+      engine an atom outside its box, what TranSIESTA refused.  A state of the
+      person's structure -- an origin they assigned -- so it is refused as a
+      finding, the class every prep door answers with its sentence
+      (`workflow.md` § 9); the Cell page warned of the same finding.  Along
+      a periodic vector an atom past a face is an image the engine wraps, and
+      is warned about, not refused (§ 6.0, check 1).
     """
     if not frame.stated:
         left = _centring(frame.cell, frame.positions)
@@ -627,11 +639,13 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
             f"{', '.join(str(k) for k in atoms[:8])}"
             f"{' …' if len(atoms) > 8 else ''}"
             for i, atoms in sorted(bad.items()))
-        raise ValueError(
+        raise ValidationError([Issue(
+            "error",
             f"atoms lie outside the cell after placement -- {where} (0-based). "
             f"Along a non-periodic axis the engine would get an atom outside "
             f"its box. Make the cell longer there, or move the origin you "
-            f"assigned (model/structure-periodicity.md § 6.0, check 3)")
+            f"assigned (model/structure-periodicity.md § 6.0, check 3)",
+            "cell.atoms_outside")])
 
 
 def to_engine(struct: Structure, *,

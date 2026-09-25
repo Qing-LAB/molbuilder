@@ -89,7 +89,13 @@ except ImportError:                  # pragma: no cover - Windows branch
 #: were free to relax; the run converged and was wrong.  A version gate that admits
 #: a version the code cannot honour is worse than no gate: it turns a loud failure
 #: into a quiet one.
-SCHEMA_VERSION = 9   # 9 (2026-08-29): + the OPTIONAL `info` block (the
+SCHEMA_VERSION = 10  # 10 (2026-09-25): `cell_origin` RETIRED -- read and
+#                      ignored, never written again (structure.
+#                      RETIRED_METADATA_KEYS; the user's decision, plan § 5q
+#                      D2) -- and the OPTIONAL stated `engine_offset` added
+#                      (null = the rule places the atoms;
+#                      model/structure-periodicity.md § 6.0).
+#                    9 (2026-08-29): + the OPTIONAL `info` block (the
 #                      free-form NON-structural store,
 #                      archive/2026-09-01-structure-info-plan.md -- additive; absent
 #                      means "nothing recorded", and it never enters
@@ -122,9 +128,15 @@ SCHEMA_VERSION = 9   # 9 (2026-08-29): + the OPTIONAL `info` block (the
 #: the run converged on a structure nobody asked for (2026-07-31).
 #:
 #: Each version in the set below is read by a test against a real file at
-#: that version (``tests/test_molstruct_json.py::TestSchemaVersioning``);
-#: adding a fourth without one is how the above happens again.
-READABLE_VERSIONS = frozenset({7, 8, 9})
+#: that version (``tests/test_molstruct_json.py::TestSchemaVersioning``, and
+#: v9 in ``TestARetiredKeyPassesEveryGate``); adding one without such a test is
+#: how the above happens again.
+#:
+#: v10 (2026-09-25) removed a key and added an optional one: a v7-v9 file's
+#: `cell_origin` is retired -- read and ignored, by decision (D2) -- and a
+#: missing `engine_offset` means the rule, which is what those files meant for
+#: every structure whose corner nobody typed.
+READABLE_VERSIONS = frozenset({7, 8, 9, 10})
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -348,7 +360,7 @@ def to_dict(
 
     ``fields`` is the metadata field dict -- the SAME shape
     :meth:`Structure.metadata_to_dict` produces (``regions`` / ``frozen_atoms``
-    / ``cell`` / ``cell_origin`` / ``axis_kind`` / ``vacuum`` /
+    / ``cell`` / ``engine_offset`` / ``axis_kind`` / ``vacuum`` /
     ``annotations``).  ``pbc`` was in this list until 2026-09-22 and is not a
     stored field any more -- see ``structure.RETIRED_METADATA_KEYS``.  STRICT type: ``annotations`` are JSON channel dicts, NOT
     ``AtomChannel`` objects -- serialise a live map with
@@ -429,8 +441,8 @@ def to_dict(
         "structure_hash":  structure_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
         # (metadata_to_dict, via structure_fields_via_dataclass): regions /
-        # frozen_atoms / cell / cell_origin / axis_kind / vacuum /
-        # annotations.  Spread -- NOT re-listed -- so a field added to the
+        # frozen_atoms / cell / engine_offset / axis_kind / vacuum /
+        # annotations -- and never a retired key.  Spread -- NOT re-listed -- so a field added to the
         # dataclass rides onto the sidecar automatically and this layer can no
         # longer drop or drift one (`model/structure.md` § 2.2: the ONE
         # serialization authority; add a key there and nowhere else).
@@ -587,7 +599,7 @@ def save(
 def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     """Apply a loaded sidecar payload's metadata onto ``struct`` IN PLACE.
 
-    Delegates the whole field set (regions / frozen_atoms / cell / cell_origin /
+    Delegates the whole field set (regions / frozen_atoms / cell / engine_offset /
     axis_kind / vacuum / annotations) to
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
     dict->struct authority (`model/structure.md` § 2.2).  Because the writer

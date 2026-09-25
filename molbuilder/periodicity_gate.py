@@ -12,50 +12,38 @@ here rewrites stored state.  The § 6.1 state table governs STORED state
 and what the user is told; ``apply_edit`` below governs LIVE edits per the
 § 6.2 v3 regime model:
 
-  DERIVED regime: {structure size, vacuum, axis_kind} => {cell, origin}
-  are computed views.  Editing vacuum / axis_kind RESETS to this regime
-  (explicit cell + origin cleared) -- the box boundary moves, and the
-  caller must warn the user BEFORE committing.
+  DERIVED regime: {structure size, vacuum, axis_kind} => the cell is a
+  computed view.  Editing vacuum / axis_kind RESETS to this regime
+  (explicit cell + assigned origin cleared) -- the box boundary moves, and
+  the caller must warn the user BEFORE committing.
 
-  MANUAL regime: an explicit cell demotes vacuum to reference-only; an
-  explicit origin overrides the vacuum-derived corner ("origin first,
-  then vacuum").  Upstream edits never silently contradict downstream
-  state -- they reset it, loudly.
+  MANUAL regime: an explicit cell demotes vacuum to reference-only; the
+  atoms are centred in it by the rule unless the person assigns the box's
+  origin (``box_corner``).  Upstream edits never silently contradict
+  downstream state -- they reset it, loudly.
 
   Nothing on the Cell page moves atoms.  The engine gets them placed at
   emission (model/structure-periodicity.md § 6.0).
 
-State table (§ 6.1, stored state; right-handed cells only, det > 0).  Every
-row ends in "legal" -- the gate reports, it does not repair:
+Three box states (plan § 5q.1; right-handed cells only, det > 0).  Every one
+is legal -- the gate reports, it does not repair:
 
-  | stored state                | contained? | action                       |
-  |-----------------------------|-----------|-------------------------------|
-  | no cell, no origin          |     —     | derived; vacuum authoritative |
-  | explicit cell, no origin    |    yes    | legal (imported crystal): the |
-  |                             |           | corner IS the world origin    |
-  | explicit cell, no origin    |    no     | legal: the corner is DERIVED  |
-  |                             |           | (wrapping/centred) + info     |
-  | explicit cell + origin      |    yes    | legal, user-owned, untouched  |
-  | explicit cell + origin      |    no     | user-owned in BOTH halves:    |
-  |                             |           | warn, never auto-fix          |
+  | stored state                 | what is said                              |
+  |------------------------------|-------------------------------------------|
+  | no cell                      | derived; vacuum authoritative             |
+  | explicit cell                | the rule centres the atoms; nothing to    |
+  |                              | store, `cell.unfittable` if they cannot fit |
+  | explicit cell + an origin    | the person's, kept verbatim; atoms it     |
+  | assigned                     | leaves outside are warned, never moved    |
 
-The corner respects the per-direction vacuum -- ``bbox_min − vacuum`` on
-isolated axes, ``bbox_min`` on transport, ``0`` on periodic -- and the rule
-lives ONCE, on ``Structure`` (``expected_cell_corner`` /
-``cell_contains_atoms``).  This module used to re-export both under second
-names; they were one-line delegates whose only callers were tests, so a
-reader had two names for one rule and no way to tell which was authoritative.
-Removed 2026-08-03; ask ``Structure``.
-
-NOTHING IS MATERIALISED (decided 2026-07-29).  "No explicit origin" means
-"derive the corner" — ``Structure.resolve_cell_origin`` answers it at every
-seam — so this module never writes a resolved corner into the truth.  The
-earlier behaviour DID (it healed ``cell_origin = expected_corner`` on load),
-and that disagreed with the reset-origin op, which left the same state
-alone: one state, two answers, and a save+reload silently changed what the
-user had been shown.  The rule now lives once, on ``Structure``
-(``expected_cell_corner`` / ``cell_contains_atoms``), and this module
-delegates to it.
+WHERE THE BOX SITS is the engine offset's (`model/structure-periodicity.md`
+§ 6.0): the rule centres the atoms in the cell unless the structure STATES an
+offset, and the person states one through ``box_corner`` -- the corner they
+type or pick, stored as ``engine_offset = −corner``, on a typed cell only.
+Nothing here derives a corner and nothing is materialised: what is stored is
+exactly what the person set, and absent means the rule (2026-09-25; the corner
+this module derived per axis kind, and the ``cell_origin`` it stored, are
+gone).
 
 Notices (the machine-readable half of the contract).  Every entry is
 ``{"severity", "message", "where", "about"}`` -- FOUR keys.  It was
@@ -90,19 +78,16 @@ import numpy as np
 from .issues import Issue
 from .structure import Structure
 
-# Containment tolerance (Angstrom-scale in fractional projections).  Loose
-# enough to forgive round-tripped floats, tight enough that "half the
-# molecule outside the box" can never pass.
-_EPS = 1e-6
 
-#: The four ops the unified door accepts (§ 6.2 v3).  ``cell_origin`` with a
-#: ``null`` payload is the "reset origin to default" button.
-OPS = ("vacuum", "axis_kind", "cell", "cell_origin", "block")
+#: The ops the unified door accepts (§ 6.2 v3).  ``box_corner`` assigns the
+#: box's origin (§ 6.0, *A stated offset*); with a ``null`` payload it is the
+#: *Automatic* button.
+OPS = ("vacuum", "axis_kind", "cell", "box_corner", "block")
 
 #: The keys ``block`` accepts, which are exactly § 6.2's cell -- the vectors,
 #: the anchor, how each axis is treated, how much vacuum an isolated axis gets.
 #: Named once so the door and its refusal cannot disagree about the set.
-BLOCK_KEYS = ("cell", "cell_origin", "axis_kind", "vacuum")
+BLOCK_KEYS = ("cell", "box_corner", "axis_kind", "vacuum")
 
 
 def _notice(level: str, message: str, where: str = "cell.edit") -> Dict[str, str]:
@@ -227,7 +212,7 @@ def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     is user-owned, warned about, and never auto-fixed -- from disk and from the
     Cell page alike, which is the property the round-trip depends on.
 
-    IT CORRECTS NOTHING, and must not.  Clause 1: `cell` / `cell_origin` hold
+    IT CORRECTS NOTHING, and must not.  Clause 1: `cell` / `engine_offset` hold
     only what the user set, and every resolved value is a VIEW that is never
     written back.  The struct comes out as it went in.
 
@@ -301,16 +286,16 @@ def _reset_to_derived(s: Structure, what: str,
                     f"degenerate (a '{kind}' axis whose structure extent is ~0, "
                     f"and vacuum does not apply to it). Keep an explicit cell "
                     f"for that direction.")
-    had_manual = s.cell is not None or s.cell_origin is not None
+    had_manual = s.cell is not None or s.engine_offset is not None
     s.cell = None
-    s.cell_origin = None
+    s.engine_offset = None          # an assigned origin goes with the cell
     if had_manual:
         notices.append(_notice(
             "warn",
             f"{what} changed → the box returned to the DERIVED regime: the "
-            "explicit cell and origin were reset, and the boundary is now "
-            "recomputed from the structure size + per-direction vacuum "
-            "(molecule centred on isolated axes)."))
+            "explicit cell and any origin you set were reset, and the box is "
+            "now the structure's size plus the per-direction vacuum, with "
+            "the atoms centred in it."))
 
 
 def _apply_block(s: Structure, payload: Any,
@@ -365,22 +350,23 @@ def _apply_block(s: Structure, payload: Any,
             "a periodic axis needs an explicit cell — a derived bounding box "
             "is not a lattice (§ 4)")
 
-    raw_origin = payload.get("cell_origin")
-    if raw_origin is None:
-        origin = None
+    raw_corner = payload.get("box_corner")
+    if raw_corner is None:
+        corner = None
     else:
         try:
-            origin = [float(x) for x in raw_origin]
+            corner = [float(x) for x in raw_corner]
         except (TypeError, ValueError):
-            raise ValueError("cell_origin must be 3 numbers (Å), or null "
-                             "to derive it") from None
-        if len(origin) != 3:
-            raise ValueError("cell_origin must be 3 numbers (Å), or null "
-                             "to derive it")
+            raise ValueError("the origin must be 3 numbers (Å), or null for "
+                             "Automatic") from None
+        if len(corner) != 3 or not np.all(np.isfinite(corner)):
+            raise ValueError("the origin must be 3 numbers (Å), or null for "
+                             "Automatic")
         if cell is None:
             raise ValueError(
-                "cell_origin is only meaningful with an explicit cell — the "
-                "derived box computes its own corner (§ 3c)")
+                "an origin is assigned on a typed cell only -- a box sized "
+                "from the vacuum stays centred, its vacuum a per-side gap "
+                "(model/structure-periodicity.md § 6.0)")
 
     raw_vac = payload.get("vacuum")
     if raw_vac is None:
@@ -396,8 +382,8 @@ def _apply_block(s: Structure, payload: Any,
                              "null to clear it")
 
     s.cell = cell
-    s.cell_origin = None if cell is None else (
-        None if origin is None else tuple(origin))
+    s.engine_offset = (None if cell is None or corner is None
+                       else -np.asarray(corner, dtype=float))
     s.axis_kind = kinds
     s.vacuum = None if vac is None else tuple(vac)
     s.__post_init__()
@@ -415,22 +401,11 @@ def _apply_block(s: Structure, payload: Any,
             "the box is derived: the structure's extent plus the vacuum on "
             "each side, centred on the structure. Vacuum is authoritative."))
     else:
-        # THE DERIVED CORNER IS NOT ALWAYS A NUMBER.  `resolve_cell_origin`
-        # answers None to mean THE WORLD ORIGIN, no shift -- the box already
-        # sits where the atoms are (structure.py § 3c) -- and
-        # `np.asarray(None, dtype=float)` is `nan`, so a sentence built without
-        # this branch reads "a derived corner at nan".
-        corner = None if origin is not None else s.resolve_cell_origin()
-        if origin is not None:
-            where = "the origin you set"
-        elif corner is None:
-            where = "the world origin"
-        else:
-            where = ("a derived corner at "
-                     + str(np.round(np.asarray(corner, dtype=float), 4).tolist()))
+        where = ("its corner at the origin you set" if corner is not None
+                 else "the atoms centred in it (Automatic)")
         notices.append(_notice(
             "info",
-            f"the box is the explicit cell, anchored at {where}. Vacuum "
+            f"the box is the explicit cell, with {where}. Vacuum "
             f"values are reference-only from now on (§ 6.1)."))
     return s
 
@@ -534,7 +509,7 @@ def apply_edit(struct: Structure, op: str,
                     "cannot clear the cell while an axis is periodic — a "
                     "derived bounding box is not a lattice (§ 4)")
             s.cell = None
-            s.cell_origin = None
+            s.engine_offset = None      # an assigned origin goes with the cell
             s.__post_init__()
             notices.append(_notice(
                 "info",
@@ -548,76 +523,51 @@ def apply_edit(struct: Structure, op: str,
             raise ValueError(
                 "cell must be a 3×3 matrix of numbers (Å)") from None
         s.cell = cell
-        if s.cell_origin is not None:
-            # v3 precedence: respect the existing explicit ORIGIN first.
-            s.__post_init__()
-            _refuse_on_error(s)
-            # RECEIPT ONLY. Whether the result contains the structure is a
-            # CONDITION, and conditions are answered once, by validate_periodicity
-            # on the result (molview.md § 6.8).  Saying it here too put the same
-            # fact in the answer twice, in two wordings.
-            notices.append(_notice(
-                "info",
-                "explicit cell set; the existing origin is respected. "
-                "Vacuum values are reference-only (§ 6.1)."))
-            return s, notices
-        # ... then respect the VACUUM: anchor at the expected corner.
-        # A cell the structure cannot fit for ANY origin is REFUSED, not
-        # stored — a stored-but-invalid cell locked every later door
-        # (review finding, 2026-07-29).
-        # No explicit origin: leave it unset — the corner is DERIVED from the
-        # structure + vacuum by ``resolve_cell_origin``, so the box wraps the
-        # structure without storing a computed value as truth (§ 6.1 clause 1).
-        s.__post_init__()
         # A cell the structure cannot fit for ANY origin is REFUSED, not
         # stored — a stored-but-invalid cell locked every later door (review
-        # finding, 2026-07-29).  Asked of the ONE checker now, so the rule and
-        # its wording live in a single place.
+        # finding, 2026-07-29).  Asked of the ONE checker, so the rule and its
+        # wording live in a single place.  An origin the person assigned is
+        # kept: it is theirs, and whether the atoms still fit is a CONDITION
+        # the door reports on the result (molview.md § 6.8).
+        s.__post_init__()
         _refuse_on_error(s)
         notices.append(_notice(
             "info",
-            "explicit cell set (origin first, then vacuum — § 6.2); no "
-            "explicit origin, so the corner stays DERIVED at "
-            f"{np.round(np.asarray(s.resolve_cell_origin(), dtype=float), 4).tolist()}"
-            " and the box wraps the structure. Vacuum values are "
-            "reference-only from now on."))
+            ("explicit cell set; the origin you set is kept. "
+             if s.engine_offset is not None else
+             "explicit cell set; the atoms are centred in it (Automatic). ")
+            + "Vacuum values are reference-only from now on (§ 6.1)."))
         return s, notices
 
-    # op == "cell_origin"
+    # op == "box_corner" -- the person assigns the box's origin, or clears it
+    # back to the rule (§ 6.0, *A stated offset*).
     if s.cell is None:
         raise ValueError(
-            "cell_origin is only meaningful with an explicit cell — "
-            "the derived box computes its own corner (§ 3c)")
+            "an origin is assigned on a typed cell only -- a box sized from "
+            "the vacuum stays centred, its vacuum a per-side gap "
+            "(model/structure-periodicity.md § 6.0)")
     if payload is None:
-        # "Reset origin to default": literal cell_origin = None.  The corner is
-        # then DERIVED again (structure + vacuum), so the box keeps wrapping the
-        # structure — it does NOT jump to (0,0,0).  Same rule the load seam
-        # applies to the same state (§ 6.1 row 3).
-        s.cell_origin = None
+        s.engine_offset = None
         s.__post_init__()
         notices.append(_notice(
             "info",
-            "cell_origin cleared — the box corner is DERIVED again at "
-            f"{np.round(np.asarray(s.resolve_cell_origin(), dtype=float), 4).tolist()}"
-            " (bbox_min − vacuum per isolated axis), so the box still wraps "
-            "the structure. The other parameters have their freedom back; a "
-            "vacuum / periodicity edit re-derives the whole box."))
+            "origin set back to Automatic: the atoms are centred in the cell "
+            "(model/structure-periodicity.md § 6.0)."))
         return s, notices
-    origin = [float(x) for x in payload]
-    if len(origin) != 3:
-        raise ValueError("cell_origin must be 3 floats (Å)")
-    s.cell_origin = np.asarray(origin, dtype=float)
+    try:
+        corner = [float(x) for x in payload]
+    except (TypeError, ValueError):
+        raise ValueError("the origin must be 3 numbers (Å)") from None
+    if len(corner) != 3 or not np.all(np.isfinite(corner)):
+        raise ValueError("the origin must be 3 numbers (Å)")
+    s.engine_offset = -np.asarray(corner, dtype=float)
     s.__post_init__()
-    # The validator DECIDES here; it does not report here. Its notices are
-    # CONDITIONS and the door answers those once, on the result (molview.md
-    # § 6.8) -- merging them in as well put the same containment warning in one
-    # answer twice, word for word.
-    s, conditions = validate_periodicity(s)
-    # A RECEIPT ONLY.  This used to append a warn behind `if not conditions:`
-    # -- so the sentence saying why your vacuum stopped mattering was dropped
-    # precisely when the box also had a problem (cell-plan.md § 3c).  That fact
-    # is a CONDITION now (``cell.vacuum_ignored``), reported on every hand-over
-    # whenever it is true, and the clearances ride with the containment finding
-    # that is about them.
-    notices.append(_notice("info", "cell_origin set."))
+    # The validator DECIDES here; it does not report here: whether the atoms
+    # are still inside is a CONDITION, answered once on the result.
+    s, _conditions = validate_periodicity(s)
+    notices.append(_notice(
+        "info",
+        f"origin set: the box's corner is at "
+        f"{np.round(np.asarray(corner), 4).tolist()} Å, and the engine is "
+        f"handed these coordinates minus it."))
     return s, notices

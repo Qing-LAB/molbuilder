@@ -221,11 +221,16 @@ def _run_periodicity_json(
 ) -> Optional[Dict[str, Any]]:
     """The run's periodicity, composed ON THE SERVER (2026-08-20).
 
-    Two facts from two places, merged where both are visible: the CELL from
-    the run's own output logs (the frames' real box -- ``data["lattice"]``),
-    and the AXIS KINDS / origin / vacuum from the run directory's
-    ``.source`` pair when one exists (job-contracts § 6.3: the structure the
-    calculation was prepped from, carrying the user's stated intent).
+    The CELL from the run's own output logs (the frames' real box --
+    ``data["lattice"]``); the AXIS KINDS from the run's own deck -- its
+    ENGINE-OFFSET record, the kinds as the structure had them when the deck
+    was written -- or, for a run made before the record, from the
+    ``.source`` pair (job-contracts § 6.3); and the ORIGIN the engine's:
+    these frames are its coordinates, so the block states an offset of 0 and
+    the box is drawn at their origin (`model/structure-periodicity.md`
+    § 6.0).  Until 2026-09-25 no origin was sent, the load door derived an
+    isolated-axis corner, and the Results tab drew atoms centred that the
+    engine had flush.
 
     Until this existed the browser composed ``{cell}`` alone, the axis
     kinds never reached the viewer, and an export from the Results tab
@@ -243,35 +248,43 @@ def _run_periodicity_json(
     lattice = (data or {}).get("lattice")
     if isinstance(lattice, list) and len(lattice) == 3:
         out["cell"] = lattice
-    try:
-        if search_dir:
-            # `.source.xyz` is the catalogue's role for *"the structure the
-            # calculation is of"*, so the catalogue finds it.
-            pairs = [str(p) for p in _by_role(search_dir, ".source.xyz")]
-            if pairs:
-                from pathlib import Path as _Path
+    # THE RUN'S OWN DECK SAYS WHAT THE ENGINE HAD: its ENGINE-OFFSET record
+    # carries the axis kinds as the structure had them when the deck was
+    # written (user, 2026-09-25: "we should show the axis_info as in
+    # structure"), and the cell it placed the atoms in.
+    from molbuilder.parse.dirs.atom_metadata import (
+        engine_offset_record_for_run_dir,
+    )
+    record = engine_offset_record_for_run_dir(search_dir)
+    if record:
+        out["axis_kind"] = [str(k) for k in record.get("axis_kind") or []]
+        if "cell" not in out and record.get("cell") is not None:
+            out["cell"] = record["cell"]
+    else:
+        # A RUN MADE BEFORE THE RECORD: the kinds from the `.source` pair, the
+        # catalogue's role for *"the structure the calculation is of"* -- and
+        # the frame-free facts only, the kinds and the vacuum.
+        try:
+            if search_dir:
+                pairs = [str(p) for p in _by_role(search_dir, ".source.xyz")]
+                if pairs:
+                    from pathlib import Path as _Path
 
-                from molbuilder.workingcopy_structure import StructureCodec
-                s = StructureCodec().read(_Path(pairs[0]))
-                # THE FRAME-FREE FACTS ONLY.  `axis_kind` and `vacuum` are
-                # true of the structure whatever frame its coordinates are
-                # written in, so they carry -- and the axis kinds are what
-                # this function was added to deliver.  `cell_origin` is NOT
-                # frame-free: it is the corner measured against the AUTHORING
-                # coordinates, and these frames are the run's, which stay in
-                # the engine frame (`structure-periodicity.md` § 6.1 clause
-                # 5).  Adopting it drew the Results box a whole corner off the
-                # atoms, and an export from that tab carried it into the next
-                # deck, where `render_fdf` shifted by it a SECOND time.
-                # Adopt-as-is is the legal re-entry, and it means no corner.
-                if s.axis_kind:
-                    out["axis_kind"] = list(s.axis_kind)
-                if s.vacuum is not None:
-                    out["vacuum"] = [float(v) for v in s.vacuum]
-                if "cell" not in out and s.cell is not None:
-                    out["cell"] = [[float(x) for x in row] for row in s.cell]
-    except Exception:                        # noqa: BLE001
-        pass
+                    from molbuilder.workingcopy_structure import StructureCodec
+                    s = StructureCodec().read(_Path(pairs[0]))
+                    if s.axis_kind:
+                        out["axis_kind"] = list(s.axis_kind)
+                    if s.vacuum is not None:
+                        out["vacuum"] = [float(v) for v in s.vacuum]
+                    if "cell" not in out and s.cell is not None:
+                        out["cell"] = [[float(x) for x in row] for row in s.cell]
+        except Exception:                        # noqa: BLE001
+            pass
+    # THESE COORDINATES ARE THE ENGINE'S, so they state its origin: 0, the
+    # box at the origin of the frames on screen (§ 6.0) -- drawn verbatim, and
+    # saved that way by an export, never re-centred.
+    if "cell" in out:
+        out["engine_offset"] = [0.0, 0.0, 0.0]
     return out or None
 
 
@@ -438,9 +451,10 @@ def _run_metadata(
         # apply_to_structure; None when the run carries no block.
         "atom_metadata": _atom_metadata_json(search_dir, data),
         # The run's periodicity (the cell from the output logs, the axis
-        # kinds from the run dir's .source pair).  The viewer passes it
-        # through verbatim -- guessing periodicity in the browser is the
-        # one thing the Cell rules refuse.
+        # kinds from the deck's ENGINE-OFFSET record -- the `.source` pair
+        # for a run made before it -- and the engine's origin, 0).  The
+        # viewer passes it through verbatim -- guessing periodicity in the
+        # browser is the one thing the Cell rules refuse.
         "periodicity":   _run_periodicity_json(search_dir, data),
         # What the run says ABOUT itself: today the electronic contract
         # its deck records, as `info.calculation`.  Rides installMolecule

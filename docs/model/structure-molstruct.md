@@ -38,7 +38,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
   "regions": {"L-electrode": [0], "frozen_atoms": [1]},
   "cell": [[10,0,0],[0,10,0],[0,0,10]],
-  "cell_origin": null,
+  "engine_offset": null,
   "axis_kind": ["periodic", "periodic", "isolated"],
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
@@ -73,12 +73,12 @@ of them and its sidecar is a v7 sidecar plus a version stamp.
 **per-atom** — it rides the atom list, one entry per atom, and survives
 atom edits because every edit layer carries it with its atom (`regions`
 membership, the identity columns, each channel's atom-indexed half) — or it
-is **system** — stored separately, whole (`cell`, `cell_origin`,
+is **system** — stored separately, whole (`cell`, `engine_offset`,
 `axis_kind`, `vacuum`, each channel's kind/color/fdf).  Everything
 in this file is one or the other, and every layer (the codec, the wire, the
 viewer's two translation doors) folds and unfolds along exactly that line.
 
-The **metadata fields** (`regions`, `cell`, `cell_origin`,
+The **metadata fields** (`regions`, `cell`, `engine_offset`,
 `axis_kind`, `vacuum`, `annotations`) are exactly the set `Structure`'s
 codec owns — they are **spread in, not re-listed** by the sidecar
 (`structure_fields_via_dataclass` round-trips them through a scratch `Structure`,
@@ -102,12 +102,23 @@ is `structure.md § 2.2`.
 
 ## 2. Schema versioning — a readable SET, strict about shape
 
-**Current schema: v9. The reader accepts {7, 8, 9} and nothing else.**
+**Current schema: v10. The reader accepts {7, 8, 9, 10} and nothing else.**
 
 ```python
-SCHEMA_VERSION    = 9                  # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9})
+SCHEMA_VERSION    = 10                 # sidecars/molstruct.py
+READABLE_VERSIONS = frozenset({7, 8, 9, 10})
 ```
+
+*(v10, 2026-09-25.)* `cell_origin` is **retired** — a v7–v9 file that carries
+it is read with it ignored, and no writer emits it again (user: *"your option
+(a) is fine, and when files are saved, make sure no old retired key is written
+again"*) — and the optional **`engine_offset`** is added: the offset the
+structure STATES (an origin the person assigned, or an engine's `0`), `null`
+meaning the rule places the atoms
+([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0). A
+corner a person typed by hand is assigned again on the Cell page; it was not
+migrated because v9 cannot tell a typed corner from the electrode builder's
+flush one, the placement TranSIESTA refused.
 
 *(Amended 2026-08-20 and again 2026-08-29, user rulings.)*  The
 strictness rule is about **where facts live**, not about the number:
@@ -122,8 +133,9 @@ version whose facts moved homes (v3's top-level frozen atoms) stays
 refused, with an error naming what changed and what to do — never
 partially read.
 
-**Retired keys.** A key the schema once wrote and no longer does — `pbc`
-(metadata) and `title` (identity) — is listed in `RETIRED_METADATA_KEYS` /
+**Retired keys.** A key the schema once wrote and no longer does — `pbc` and
+`cell_origin` (metadata; the second by decision, v10) and `title` (identity) —
+is listed in `RETIRED_METADATA_KEYS` /
 `RETIRED_IDENTITY_KEYS` (`structure.py`) and passes **three gates**: tolerated
 on read, so a file already on disk is not refused as carrying a stray key;
 never applied; dropped on rewrite, so the pair heals on its next save. Every
@@ -205,7 +217,8 @@ at any of them is refused, not upgraded.
 | v6 | `cell_origin` persisted |
 | v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
 | v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
-| **v9** | **current** *(2026-08-29)* — the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one |
+| v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one | **Still readable**
+| **v10** | **current** *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
 
 ### Changing the schema
 

@@ -578,7 +578,7 @@ def test_the_world_triad_and_the_cell_triad_are_on_screen_together():
         """
         const { engine, src } = wired(4, 1);
         src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
-                                      cell_origin: [1,1,1] };
+                                      box_corner: [1,1,1] };
         await engine.dataChanged();
 
         // Whatever reaches the drawing, by label — the arrows door carries the
@@ -705,7 +705,10 @@ def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
     written from the other side.
 
     So: it stays put across a played trajectory, and it moves for each of the two
-    things allowed to move it — a cell edit, and a new structure.
+    things allowed to move it — a cell edit, and a new structure.  The cell edit
+    here moves only the CORNER -- an origin assigned, the lattice unchanged
+    (`model/structure-periodicity.md` § 6.0) -- so a scene held past it would
+    draw the box at the old corner, the failure named above.
     """
     out = _run(
         """
@@ -720,7 +723,8 @@ def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
         // rides the cell switch beside the box it describes.
         src.switches.showCell = true;
         src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
-                                      cell_origin: [1,1,1] };
+                                      resolved_cell: [[8,0,0],[0,8,0],[0,0,8]],
+                                      engine_offset: null, box_corner: [1,1,1] };
         await engine.dataChanged();
 
         // Play the whole trajectory: the axes ride every swap (they share the
@@ -733,24 +737,27 @@ def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
             calls("setArrows").map(axesOf)).size;
         const whilePlaying = lastAxes();
 
-        // A CELL EDIT must move them.
+        // A CELL EDIT must move them: the same lattice, an origin assigned.
         globalThis.__embedCalls = [];
-        src.structure.periodicity = { cell: [[20,0,0],[0,20,0],[0,0,20]],
-                                      cell_origin: [5,5,5] };
+        src.structure.periodicity = { cell: [[8,0,0],[0,8,0],[0,0,8]],
+                                      resolved_cell: [[8,0,0],[0,8,0],[0,0,8]],
+                                      engine_offset: [-5,-5,-5], box_corner: [5,5,5] };
         engine.cellChanged();
         const afterCellEdit = lastAxes();
+        const cellEditStarts = JSON.parse(afterCellEdit).map(a => a.start);
 
         // A NEW STRUCTURE must move them too.
         globalThis.__embedCalls = [];
         src.structure = { elements: ["C","C","C","C"],
                           periodicity: { cell: [[3,0,0],[0,3,0],[0,0,3]],
-                                         cell_origin: [0,0,0] } };
+                                         resolved_cell: [[3,0,0],[0,3,0],[0,0,3]],
+                                         box_corner: [0,0,0] } };
         await engine.dataChanged();
         const afterNewStructure = lastAxes();
 
         console.log(JSON.stringify({
             perSwap, distinctWhilePlaying,
-            whilePlaying, afterCellEdit, afterNewStructure }));
+            whilePlaying, afterCellEdit, cellEditStarts, afterNewStructure }));
         """
     )
     assert out["perSwap"] == 400, (
@@ -764,9 +771,45 @@ def test_the_scene_is_worked_out_once_and_follows_the_cell_when_it_changes():
         "a cell edit left the axes at the old cell — the scene is being held "
         "past the one thing allowed to change it (§ 10.3)"
     )
+    assert out["cellEditStarts"] == [[5, 5, 5]] * 3, (
+        f"the cell's axes do not start at the new corner: {out['cellEditStarts']}"
+    )
     assert out["afterNewStructure"] and out["afterNewStructure"] != out["afterCellEdit"], (
         "a new structure left the axes at the previous structure's cell"
     )
+
+
+def test_a_cell_shown_after_a_hidden_load_is_drawn_at_the_servers_corner():
+    """§ 10.3's named failure: gate the geometry behind the visibility switch,
+    and "turning the cell ON AFTER A HIDDEN LOAD draws the box from the world
+    origin instead of the structure's corner".  The geometry travels whatever
+    the switch says; the switch decides only whether it is drawn.  The corner is
+    the server's `box_corner` (`model/structure-periodicity.md` § 6.0), read
+    and never worked out here.
+    """
+    out = _run(
+        """
+        const { engine, src } = wired(4, 1);
+        src.structure.periodicity = { cell: [[6,0,0],[0,6,0],[0,0,6]],
+                                      resolved_cell: [[6,0,0],[0,6,0],[0,0,6]],
+                                      engine_offset: [-3,-3,-3], box_corner: [3,3,3] };
+        await engine.dataChanged();             // loaded with the cell hidden
+        const hidden = calls("setCell").map(c => c.args[0]);
+
+        globalThis.__embedCalls = [];
+        src.switches.showCell = true;
+        engine.switchesChanged();               // and now shown
+        const c = calls("setCell");
+        console.log(JSON.stringify({
+            hidden, shown: c.length ? c[c.length - 1].args[0] : null }));
+        """
+    )
+    assert all(box is None for box in out["hidden"]), (
+        f"a hidden cell was drawn: {out['hidden']}")
+    assert out["shown"] == {"lattice": [[6, 0, 0], [0, 6, 0], [0, 0, 6]],
+                            "origin": [3, 3, 3]}, (
+        "the box shown after a hidden load is not at the server's corner: "
+        f"{out['shown']}")
 
 
 def test_the_engine_offers_no_read_of_the_data_or_the_frame():

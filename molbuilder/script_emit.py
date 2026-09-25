@@ -529,8 +529,9 @@ def emit_atom_metadata(regions: Dict[str, List[int]],
 def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
     """The ENGINE-OFFSET block: where this deck's atoms were placed, in
     neutral terms (`model/structure-periodicity.md` § 6.0) -- the cell, the
-    correction added to the design coordinates (``applied_offset``), and the
-    axis kinds.  The coordinates the deck writes carry no offset of their own:
+    correction added to the design coordinates (``applied_offset``), the axis
+    kinds, and whether that correction was the structure's own (``stated``) or
+    the rule's.  The coordinates the deck writes carry no offset of their own:
     design + applied_offset == these, the invariant.
 
     Written for EVERY deck, labelled or not.  ATOM-METADATA is the sidecar's
@@ -1455,23 +1456,12 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
             f"where its atoms were placed: a spec builder places through "
             f"cell.to_engine and hands the frame over "
             f"(model/structure-periodicity.md § 6.0)")
-    from .cell import atoms_outside as _atoms_outside
     from .cell import require_placed as _require_placed
-    from .issues import Issue as _Issue
     _kinds = tuple(getattr(struct, "axis_kind", None) or ("isolated",) * 3)
     _require_placed(spec.engine_frame, _kinds)
-    # What is left outside is along PERIODIC vectors only -- the gate refused
-    # the rest.  Legal, and said: the engine wraps them as images.
-    for _axis, _atoms in sorted(_atoms_outside(spec.engine_frame).items()):
-        _issues.append(_Issue(
-            "warn",
-            f"Atom(s) {', '.join(str(k) for k in _atoms[:8])}"
-            f"{' …' if len(_atoms) > 8 else ''} (0-based) lie past a face of "
-            f"the cell along {'abc'[_axis]}, which is periodic: the engine "
-            f"treats them as images of atoms inside it. That is legal -- a "
-            f"crystal written with whole molecules crosses its faces -- but "
-            f"check it is what you meant.",
-            "cell.beyond_periodic_face"))
+    # An atom past a PERIODIC face is not refused -- the engine wraps it as an
+    # image -- and `cell.check` has already said so in step 3.3, which is where
+    # a box is judged: once, not here again.
     record.append(emit_engine_offset(spec.engine_frame, _kinds))
     in_record.append("ENGINE-OFFSET")
 
@@ -2034,7 +2024,7 @@ def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
 
 def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
     """The ENGINE-OFFSET block's payload -- ``{applied_offset, cell,
-    axis_kind}`` -- or ``None`` for a deck written before § 6.0.  The deck's
+    axis_kind, stated}`` -- or ``None`` for a deck written before § 6.0.  The deck's
     own coordinates carry no offset; ``applied_offset`` is the correction that
     was added to the design's to produce them."""
     return _extract_json_block(text, BLOCK_ENGINE_OFFSET)
@@ -2247,8 +2237,8 @@ def apply_atom_metadata(struct: Any, payload: Dict[str, Any]) -> bool:
     #
     # It could not simply call that door, because `apply_metadata_dict` is a
     # FULL REPLACE and this block is a PARTIAL: it carries labels only, so
-    # handing it over as-is would reset `cell`, `vacuum` and `axis_kind` to
-    # their defaults.  So the block is completed from what the structure
+    # handing it over as-is would reset `cell`, a stated `engine_offset`,
+    # `vacuum` and `axis_kind` to their defaults.  So the block is completed from what the structure
     # already holds and the whole thing goes through -- the same
     # "complete the block, do not patch the result" shape `transport/
     # compose.py` uses where it applies a sidecar over a `.XV`.

@@ -443,9 +443,9 @@ def api_build_molecule():
 @bp.route("/api/structure/periodicity", methods=["POST"])
 def api_periodicity():
     """The unified periodicity door (structure-periodicity.md § 6.2): ONE
-    entry point for the FOUR Cell-page edits — ``vacuum`` / ``axis_kind`` /
-    ``cell`` / ``cell_origin`` (``periodicity_gate.OPS``) — through the
-    frame-contract gate.  There is deliberately NO ``calibrate`` op: moving
+    entry point for the Cell-page edits — ``vacuum`` / ``axis_kind`` /
+    ``cell`` / ``box_corner`` and ``block`` (``periodicity_gate.OPS``) —
+    through the frame-contract gate.  There is deliberately NO ``calibrate`` op: moving
     atoms is not a periodicity edit, and the engine gets them placed at
     emission (structure-periodicity.md § 6.0).
 
@@ -453,7 +453,7 @@ def api_periodicity():
     THE ENVELOPE every other structure door takes (web-api.md § 1), so a caller
     holding coordinates as numbers never writes a coordinate document to ask a
     question about them (molview.md § 11.7).  ``payload`` is required (may be
-    ``null``) for ``cell`` / ``cell_origin``, where ``null`` means "clear it" --
+    ``null``) for ``cell`` / ``box_corner``, where ``null`` means "clear it" --
     omitting the key is an error rather than a silent clear.
 
     This door used to take a ``{"data": {xyz, sidecar}}`` blob, which the one
@@ -463,20 +463,22 @@ def api_periodicity():
     ever made of it and the cell door had never once succeeded.
 
     Response: ``{ok, periodicity, notices}`` -- ``periodicity`` is the cell block
-    exactly as ``/api/build/load`` sends it (``cell`` / ``cell_origin`` /
-    ``axis_kind`` / ``vacuum`` plus the ``resolved_*`` views beside them), so the
+    exactly as ``/api/build/load`` sends it (``cell`` / ``engine_offset`` /
+    ``axis_kind`` / ``vacuum`` plus the resolved views beside them), so the
     client adopts it verbatim through the same path a load takes and there is one
     shape for the block rather than two.  ``notices`` is a list of
-    ``{level, message}`` for the Cell page (molview.md § 6.8).  There is no
+    ``{severity, message, where, about}`` for the Cell page (molview.md
+    § 6.8).  There is no
     "the gate changed this" marker and there should not be: clause 1 forbids the
     gate writing a resolved value back, so nothing is ever changed to mark.
 
-    ``op`` is one of ``vacuum`` / ``axis_kind`` / ``cell`` / ``cell_origin`` /
-    ``block``.  The first four set one field; ``block`` takes the WHOLE cell --
-    ``{cell, cell_origin, axis_kind, vacuum}`` -- and checks it once, which is
+    ``op`` is one of ``vacuum`` / ``axis_kind`` / ``cell`` / ``box_corner`` /
+    ``block``.  The first four set one field -- ``box_corner`` the origin the
+    person assigns, stored as the offset (§ 6.0); ``block`` takes the WHOLE
+    cell -- ``{cell, box_corner, axis_kind, vacuum}`` -- and checks it once, which is
     the only way to describe a change to two of them atomically (§ 6.2).
 
-    400 on: an unknown op, a missing payload for ``cell`` / ``cell_origin``, a
+    400 on: an unknown op, a missing payload for ``cell`` / ``box_corner``, a
     malformed envelope, and every contract violation the gate raises (a
     left-handed cell, a cell no origin could make fit, a degenerate derived
     box, a periodic axis with no explicit cell)."""
@@ -490,7 +492,7 @@ def api_periodicity():
         return jsonify({"ok": False,
                         "error": "missing or invalid 'structure' envelope "
                                  "(need {elements, positions, metadata})"}), 400
-    if op in ("cell", "cell_origin") and "payload" not in body:
+    if op in ("cell", "box_corner") and "payload" not in body:
         # For these ops a null payload is a DESTRUCTIVE action (clear /
         # reset) -- a dropped key must not be indistinguishable from an
         # explicit clear.
@@ -873,7 +875,7 @@ def api_build_load():
                             "error": f"atom_metadata: {exc}"}), 400
 
     # THE PERIODICITY THE CALLER STATED: ``body["periodicity"]`` =
-    # {cell, cell_origin, axis_kind, vacuum}, applied verbatim.
+    # {cell, engine_offset, axis_kind, vacuum}, applied verbatim.
     #
     # APPLIED, NOT JUDGED.  This is a LOAD, so a bad box is REPORTED with the
     # answer rather than refused -- the emitting doors (fdf / pyscf / preflight

@@ -129,7 +129,7 @@ FROZEN_LABEL = "frozen_atoms"
 #: than partly applied: a key this does not know is a fact the caller believes
 #: it stored, and silently dropping it is how a structure reaches a calculation
 #: missing labels nobody noticed were gone.
-METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
+METADATA_FIELDS = ("regions", "cell", "engine_offset", "axis_kind",
                    "vacuum", "annotations")
 
 #: Keys a sidecar ON DISK may carry that this build no longer stores.
@@ -164,7 +164,16 @@ METADATA_FIELDS = ("regions", "cell", "cell_origin", "axis_kind",
 #: code reaches it.  A retirement written into some gates and not others
 #: leaves the file readable by one door and refused by another, which is the
 #: failure this shared constant exists to make impossible.
-RETIRED_METADATA_KEYS = ("pbc",)
+#:
+#: ``cell_origin`` is the second, and it qualifies BY DECISION rather than by
+#: derivation (user, 2026-09-25: "your option (a) is fine, and when files are
+#: saved, make sure no old retired key is written again").  It stored a box
+#: corner; placement is now the engine offset, the rule's unless the structure
+#: states one (`model/structure-periodicity.md` § 6.0).  Ignoring it can lose
+#: a corner a person typed by hand, who assigns it again on the Cell page --
+#: chosen over migrating it because v9 cannot tell a typed corner from the
+#: electrode builder's flush one, the placement TranSIESTA refused.
+RETIRED_METADATA_KEYS = ("pbc", "cell_origin")
 
 #: Identity keys a sidecar ON DISK may carry that this build no longer writes.
 #: Same three gates as ``RETIRED_METADATA_KEYS``, for the same reason.
@@ -191,12 +200,6 @@ _EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
 IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
-#: Containment tolerance in FRACTIONAL units
-#: (``model/structure-periodicity.md`` § 6.1): loose enough to forgive a
-#: round-tripped float, tight enough that "half the molecule outside the box"
-#: can never pass.  Shared with periodicity_gate, which delegates containment
-#: to :meth:`Structure.cell_contains_atoms`.
-_CONTAIN_EPS = 1e-6
 
 #: The per-side gap a DERIVED box uses on an isolated axis when the user set no
 #: vacuum at all (``model/structure-periodicity.md`` § 6.1).
@@ -453,28 +456,13 @@ class Structure:
     # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Optional[Tuple[float, float, float]] = None
-    # World-space LOW CORNER an EXPLICIT ``cell`` emanates from (Angstrom).
-    # ``None`` does NOT mean "the corner is (0,0,0)" -- it means DERIVE the
-    # corner (structure-periodicity.md § 6 clause 2a), which answers "no
-    # shift" only when the box already at the origin holds every atom.  See
-    # ``resolve_cell_origin`` below for the three cases.  Editing convenience:
-    # an op that
-    # builds a cell AROUND off-origin atoms (e.g. add_slab, whose slabs
-    # straddle the origin) sets this to the structure's low corner so the cell WRAPS
-    # the atoms WITHOUT moving them -- the molecule/selection stays pinned where the
-    # user placed it.  SIESTA correctness is restored at generation: render_fdf
-    # translates atoms by -resolve_cell_origin() so they sit in [0, cell).
-    # ONLY meaningful with an explicit ``cell``; None for a derived cell (its
-    # origin is computed from atom extents) and for an imported crystal (atoms are
-    # already in [0, cell), so the cell sits at the world origin).
-    cell_origin:   Optional[np.ndarray]            = None
     # THE OFFSET THIS STRUCTURE STATES (Angstrom), or None -- then the rule
     # computes it (`model/structure-periodicity.md` § 6.0, *A stated
     # offset*).  Two things state one: an origin the person assigns, P, stored
     # as -P; and coordinates that came from an engine, which state 0 -- their
     # origin is the engine's, set together with them.  ``cell.to_engine``
-    # applies it as it stands, and nothing derives it.  Not yet persisted: the
-    # sidecar gains it with ``cell_origin``'s retirement (plan § 5q, D2).
+    # applies it as it stands, and nothing derives it; the sidecar carries it
+    # (``metadata_to_dict``), and ``None`` there means the rule.
     engine_offset: Optional[np.ndarray]            = None
     # Extensible per-atom annotations (model/structure-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
@@ -557,7 +545,7 @@ class Structure:
             # `periodicity_gate._refuse_on_error` rejects the value you type
             # and `validation.report` refuses to emit.  Every reader that
             # inverts the cell answers `None` rather than raising
-            # (`_frac_coords`, `cell._fractional`).
+            # (`cell._fractional`).
             self.cell = cell
         # ONE PERIODICITY FIELD.  ``axis_kind`` is it, and there is nothing to
         # reconcile: a second boolean field would be redundant by construction,
@@ -584,17 +572,6 @@ class Structure:
                     f"got {self.axis_kind!r}"
                 )
             self.axis_kind = ak
-        # cell_origin: the low corner an EXPLICIT cell emanates from
-        # (``model/structure-periodicity.md`` § 6).  Only
-        # meaningful WITH an explicit cell -- a derived cell computes its origin from
-        # atom extents (resolve_cell_origin), so a stray cell_origin without a cell is
-        # dropped to keep the field a faithful "explicit-cell offset from (0,0,0)".
-        if self.cell_origin is not None:
-            co = np.asarray(self.cell_origin, dtype=float).reshape(3)
-            if not np.all(np.isfinite(co)):
-                raise ValueError(
-                    "Structure.cell_origin must be 3 finite floats (Angstrom)")
-            self.cell_origin = co if self.cell is not None else None
         # A stated offset is kept whether or not the structure types a cell:
         # an engine's output states 0 against the cell the ENGINE used, which
         # the next deck is handed as its box.
@@ -605,7 +582,7 @@ class Structure:
                     "Structure.engine_offset must be 3 finite floats (Angstrom)")
             self.engine_offset = eo
         # Shape vacuum (per-side gap).  ``None`` MEANS THE STRUCTURE SAYS
-        # NOTHING -- the same "unset" its three siblings (cell, cell_origin,
+        # NOTHING -- the same "unset" its siblings (cell, engine_offset,
         # axis_kind) have always had, and the state the whole regime model
         # needs in order to tell "I want no gap" from "I never said" (see
         # ``model/structure-periodicity.md`` § 6.1).  Defaulting this field to
@@ -664,8 +641,8 @@ class Structure:
         ``bbox[i] + 2*vacuum[i]`` and the molecule sits centred with ``vacuum`` of
         clearance on both sides.  This matches the SIESTA FDF vacuum box
         (``render_fdf``: ``extent + 2*cell_padding``, centred) so the displayed
-        cell reflects what the calculation actually uses.  See
-        ``resolve_cell_origin`` for the box's low corner.
+        cell reflects what the calculation actually uses.  Where the box sits
+        is the engine offset's (``cell.engine_offset``, § 6.0).
 
         Assumes a block-orthogonal cell (per-axis diagonal); a general triclinic
         cell must arrive explicit.  Returns None for an empty structure.
@@ -691,46 +668,6 @@ class Structure:
             pad = 2.0 * self.effective_vacuum()[i] if kind == "isolated" else 0.0
             out[i, i] = float(extent[i]) + pad
         return out
-
-    def resolve_cell_origin(self) -> Optional[np.ndarray]:
-        """The low corner (Angstrom) the resolved cell emanates from
-        (``model/structure-periodicity.md`` § 6, clause 2a).
-
-        The consumer contract: the viewer draws the cell wireframe FROM this corner
-        (so the box wraps the structure), and ``render_fdf`` translates atoms by
-        ``-resolve_cell_origin()`` so SIESTA receives them inside ``[0, cell)`` with
-        the cell at ``(0,0,0)``.  Three cases (structure-periodicity.md § 6):
-
-          * EXPLICIT cell + ``cell_origin`` set (an electrode junction: the cell was
-            built AROUND off-origin atoms) -> ``cell_origin``.  The box wraps the
-            atoms where they are; generation shifts them into the cell.
-          * EXPLICIT cell, NO ``cell_origin`` -> the corner is **derived**, never
-            assumed to be the world origin
-            (``model/structure-periodicity.md`` § 6.1): ``None``
-            (= world origin, no shift) only when the box AT the world origin
-            already contains every atom along the non-periodic axes (an imported
-            crystal), otherwise the wrapping corner so the box encloses the
-            structure instead of jumping to ``(0,0,0)``.
-          * DERIVED (bbox) cell -> ``bbox_min - vacuum`` (isolated) / ``bbox_min``
-            (transport), so the molecule is centred with ``vacuum`` clearance/side.
-
-        "No explicit origin" therefore means "derive the corner" at EVERY seam,
-        and a derived corner is never materialised back into the truth (§ 6.1
-        clause 1).  The frame-contract gate validates this state; it does not
-        rewrite it.
-
-        Returns ``None`` for an empty structure (nothing to anchor)."""
-        if len(self.positions) == 0:
-            return None
-        if self.cell is None:
-            return self.expected_cell_corner()
-        if self.cell_origin is not None:
-            return self.cell_origin.astype(float)
-        return self._derived_corner_under_explicit_cell()
-
-    # -- the ONE definition of the derived corner + containment (§ 6.1) -- #
-    # periodicity_gate.expected_corner / contains_atoms delegate here so the
-    # rule cannot fork between the view and the gate.
 
     def effective_vacuum(self) -> Tuple[float, float, float]:
         """The per-side vacuum the DERIVED box actually uses (§ 6.1).
@@ -793,92 +730,6 @@ class Structure:
         eff = self.effective_vacuum()
         return [i for i in range(3) if eff[i] > 0.0]
 
-    def expected_cell_corner(self) -> np.ndarray:
-        """The low corner that wraps the structure honouring the per-direction
-        vacuum: ``bbox_min - vacuum`` on an isolated axis, ``bbox_min`` on a
-        transport axis, ``0`` on a periodic axis (the phase convention).
-
-        Uses the EFFECTIVE vacuum (§ 6.1 floor) so the corner and the cell
-        length agree — otherwise a floored axis would grow the box on both faces
-        while the corner stayed put, and the molecule would sit off-centre."""
-        out = np.zeros(3, dtype=float)
-        if len(self.positions) == 0:
-            return out
-        lo = self.positions.min(axis=0).astype(float)
-        eff = self.effective_vacuum()
-        for i, kind in enumerate(self.axis_kind):
-            if kind == "isolated":
-                out[i] = lo[i] - eff[i]
-            elif kind == "transport":
-                out[i] = lo[i]
-        return out
-
-    def _frac_coords(self, origin) -> Optional[np.ndarray]:
-        """Fractional coordinates relative to ``(origin, cell)``.  Triclinic-
-        safe: solves ``cell.T @ frac = pos - origin``.
-
-        ``None`` when the box is singular and nothing can be solved -- the
-        same answer, for the same reason, as ``cell._fractional`` (§ 8.2: a
-        structure may HOLD an unusable box so the Cell page can show it, so
-        every reader of one has to survive it)."""
-        rel = (self.positions.astype(float)
-               - np.asarray(origin, dtype=float).reshape(1, 3))
-        try:
-            return np.linalg.solve(
-                np.asarray(self.cell, dtype=float).T, rel.T).T
-        except np.linalg.LinAlgError:
-            return None
-
-    def cell_contains_atoms(self, origin=None) -> bool:
-        """True when every atom sits inside ``[origin, origin + cell)`` along
-        every NON-PERIODIC axis.  Along a periodic axis atoms outside the cell
-        are legitimate periodic images (the engine wraps them), so containment
-        is never required there.  ``origin=None`` = the world origin; trivially
-        True with no explicit cell or no atoms."""
-        if self.cell is None or len(self.positions) == 0:
-            return True
-        o = (np.zeros(3) if origin is None
-             else np.asarray(origin, dtype=float).reshape(3))
-        frac = self._frac_coords(o)
-        if frac is None:
-            # A singular box encloses nothing that can be checked.  Saying
-            # "contained" would be a claim; saying "not contained" is the
-            # honest answer and the one that keeps the corner derivable.
-            return False
-        for i, kind in enumerate(self.axis_kind):
-            if kind == "periodic":
-                continue
-            if not (np.all(frac[:, i] >= -_CONTAIN_EPS)
-                    and np.all(frac[:, i] <= 1.0 + _CONTAIN_EPS)):
-                return False
-        return True
-
-    def _derived_corner_under_explicit_cell(self) -> Optional[np.ndarray]:
-        """The corner for an explicit cell that stores no origin: the world
-        origin when the atoms are already inside it (imported crystal), else
-        the wrapping corner, else -- when the cell fits the structure but not
-        structure + vacuum -- the structure centred in the box."""
-        if self.cell_contains_atoms(None):
-            return None
-        corner = self.expected_cell_corner()
-        if self.cell_contains_atoms(corner):
-            return corner
-        frac = self._frac_coords(np.zeros(3))
-        if frac is None:
-            # Singular box: the centring below needs a fractional extent and
-            # there is none.  The wrapping corner still WRAPS, so answer with
-            # it rather than raising -- the box itself is what is wrong, and
-            # `cell.no_volume` is the finding that says so.
-            return corner
-        lens = np.linalg.norm(np.asarray(self.cell, dtype=float), axis=1)
-        lo = self.positions.min(axis=0).astype(float)
-        for i, kind in enumerate(self.axis_kind):
-            if kind == "periodic":
-                continue
-            ext = float(frac[:, i].max() - frac[:, i].min()) * lens[i]
-            corner[i] = lo[i] - max(0.0, lens[i] - ext) / 2.0
-        return corner
-
     # ------------------------------------------------------------------ #
     #  Sidecar-metadata contract -- the ONE get/set                       #
     #  (`model/structure.md` § 2.2)                                     #
@@ -909,8 +760,10 @@ class Structure:
             "regions":      {k: list(v)
                              for k, v in (self.regions or {}).items()},
             "cell":         self.cell.tolist() if self.cell is not None else None,
-            "cell_origin":  (self.cell_origin.tolist()
-                             if self.cell_origin is not None else None),
+            # The STATED offset (§ 6.0), None meaning the rule's.  Never
+            # `cell_origin`: that key is retired and no writer emits it again.
+            "engine_offset": (self.engine_offset.tolist()
+                              if self.engine_offset is not None else None),
             "axis_kind":    (list(self.axis_kind)
                              if self.axis_kind is not None else None),
             "vacuum":       ([float(x) for x in self.vacuum]
@@ -992,16 +845,17 @@ class Structure:
         self.regions      = dict(data.get("regions") or {})
         self.cell         = (np.asarray(data["cell"], dtype=float)
                              if data.get("cell") is not None else None)
-        self.cell_origin  = (np.asarray(data["cell_origin"], dtype=float)
-                             if data.get("cell_origin") is not None else None)
+        self.engine_offset = (np.asarray(data["engine_offset"], dtype=float)
+                              if data.get("engine_offset") is not None
+                              else None)
         self.axis_kind    = (tuple(str(k) for k in data["axis_kind"])
                              if data.get("axis_kind") is not None else None)
         self.vacuum       = _vacuum_from_stored(data.get("vacuum"))
         self.annotations  = annotations_from_json(data.get("annotations"))
-        # Re-run the dataclass invariants ONCE: cell 3x3 + non-singular, the
+        # Re-run the dataclass invariants ONCE: cell 3x3 of finite floats, the
         # ``axis_kind`` default and value check (nothing to reconcile: there
-        # is one periodicity field), cell_origin only-with-a-cell, and
-        # region/frozen/annotation indices in range.
+        # is one periodicity field), a stated offset of three finite
+        # floats, and region/frozen/annotation indices in range.
         self.__post_init__()
 
     # ------------------------------------------------------------------ #
@@ -1073,10 +927,10 @@ class Structure:
         """The read-only server->client view (``model/structure.md`` § 2.1 + § 4):
         the metadata-bearing portion of the wire response, assembled by
         Structure so no blueprint enumerates a field.  It is the identity
-        columns + the FULL ``periodicity`` block (the raw cell/origin PLUS the
-        server-resolved ``resolved_cell`` / ``resolved_cell_origin``, computed
-        HERE via the one resolver so they can never drift or drop) +
-        ``annotations``.
+        columns + the FULL ``periodicity`` block (the raw cell and stated
+        offset PLUS the server-resolved ``resolved_cell`` and ``box_corner``,
+        computed HERE through the one resolver and the one placement rule, so
+        they can never drift or drop) + ``annotations``.
 
         The web layer composes this with its own render/validation concerns
         (the flat ``atoms`` list, ``issues``, ``text``, ``extra``); it must NOT
@@ -1090,11 +944,22 @@ class Structure:
             resolved_cell = _rc.tolist() if _rc is not None else None
         except Exception:  # noqa: BLE001
             resolved_cell = None
-        try:
-            _ro = self.resolve_cell_origin()
-            resolved_origin = _ro.tolist() if _ro is not None else None
-        except Exception:  # noqa: BLE001
-            resolved_origin = None
+        # WHERE THE BOX IS DRAWN: at -engine_offset of these coordinates
+        # (`model/structure-periodicity.md` § 6.0) -- the offset the structure
+        # states, or the rule's.  Worked out here and never in the browser,
+        # which draws the coordinates it holds and moves no atom.
+        # A STATED offset is the corner whatever the atoms: an origin the
+        # person assigned stays theirs with every atom deleted, and sending no
+        # corner would show it as Automatic -- and clear it on the next Apply.
+        box_corner = None
+        if self.engine_offset is not None:
+            box_corner = (-np.asarray(self.engine_offset, dtype=float)).tolist()
+        elif resolved_cell is not None and self.n_atoms:
+            try:
+                from .cell import engine_offset as _engine_offset
+                box_corner = (-_engine_offset(self)).tolist()
+            except Exception:  # noqa: BLE001
+                box_corner = None
         return {
             "title":         self.title or "",
             "elements":      list(self.elements),
@@ -1105,10 +970,12 @@ class Structure:
             "n_residues":    self.n_residues,
             "periodicity": {
                 "cell":                 self.cell.tolist() if self.cell is not None else None,
-                "cell_origin":          (self.cell_origin.tolist()
-                                         if self.cell_origin is not None else None),
+                # The offset the structure STATES, as stored -- None means the
+                # rule places it.  Raw, so a client echoes it back unchanged.
+                "engine_offset":        (self.engine_offset.tolist()
+                                         if self.engine_offset is not None else None),
                 "resolved_cell":        resolved_cell,
-                "resolved_cell_origin": resolved_origin,
+                "box_corner":           box_corner,
                 "axis_kind":            (list(self.axis_kind)
                                          if self.axis_kind is not None else None),
                 "vacuum":               ([float(x) for x in self.vacuum]
@@ -1994,8 +1861,6 @@ class Structure:
         """
         return dict(
             cell        = (self.cell.copy() if self.cell is not None else None),
-            cell_origin = (self.cell_origin.copy()
-                           if self.cell_origin is not None else None),
             engine_offset = (self.engine_offset.copy()
                              if self.engine_offset is not None else None),
             axis_kind   = self.axis_kind,
@@ -2228,7 +2093,7 @@ class Structure:
                     annotations, remap_annotations(s.annotations, off))
             atom_offset += s.n_atoms
         # WHO SUPPLIES EACH NON-ATOM FIELD -- `model/structure.md` § 2.2b.
-        # The cell and its corner come from whoever STATES a cell, because a
+        # The cell and a stated offset come from whoever STATES a cell, because a
         # lattice is the one thing a fragment can supply that a cell-less
         # canvas lacks.  `axis_kind`, `vacuum` and `info` come from the first
         # input either way: they are facts OF the canvas, equally true of a
@@ -2248,7 +2113,6 @@ class Structure:
         if base is not None and base is not first:
             _box = base._carry_nonatom()
             lattice["cell"] = _box["cell"]
-            lattice["cell_origin"] = _box["cell_origin"]
             lattice["engine_offset"] = _box["engine_offset"]
         # `info` IS NOT THE LATTICE'S.  The recorded contract belongs to the
         # one being appended TO, which is the first, cell or no cell.

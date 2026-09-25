@@ -531,9 +531,13 @@ def labeled_citation_structure(cited: CitedDir):
     # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
     # on a junction that is periodic in-plane and open along z by design.
     try:
+        # ...and the `.XV` is the engine's frame, so it states an offset of 0
+        # on either label lane (§ 6.0): every rung composed from it applies
+        # nothing.
         struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
                            cell=cell,
-                           axis_kind=("periodic", "periodic", "transport"))
+                           axis_kind=("periodic", "periodic", "transport"),
+                           engine_offset=np.zeros(3))
     except ValueError as exc:
         # Live now that the cell goes through the constructor: `prep` catches
         # only ComposeError/SortError, so a bare ValueError would surface as
@@ -598,29 +602,20 @@ def labeled_citation_structure(cited: CitedDir):
         # (`engines/transport.md` § 5 I8), so both are stated here and the one
         # authority applies them together.
         #
-        # AND THE CORNER IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
-        # coordinates came from the `.XV` -- SIESTA's own frame, which anchors
-        # the cell at (0,0,0) -- while the sidecar's `cell_origin` is the
-        # low corner of the box the
-        # author drew around DIFFERENT coordinates.  A full replace adopts it,
-        # and `render_fdf` then shifts these atoms by `-cell_origin` a second
-        # time: a junction saved from `add_slab` came out translated by its
-        # whole authoring corner, far-face atoms wrapping into the leads.
-        # The cell above is a SHAPE and survives the change of frame; the
-        # origin does not, so it is stripped here -- explicitly, which is what
-        # `model/structure.md` § 2.2a asks of a field that does not travel.
-        #
-        # STRIPPED, NOT SET TO ZERO.  `null` does not mean "the corner is
-        # (0,0,0)" -- it means DERIVE it (`structure-periodicity.md` § 6
-        # clause 2a), and for a `.XV`, whose atoms are already inside
-        # [0, cell), the derivation answers "no shift".  If a relaxation
-        # drifted an atom outside the box the derivation wraps it back in,
-        # which is right and is what an explicit zero would have prevented.
+        # AND THE ORIGIN IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
+        # coordinates came from the `.XV` -- SIESTA's own frame, the cell at
+        # (0,0,0) -- so the structure states an offset of 0, set together with
+        # them, and every rung composed from it applies nothing
+        # (`model/structure-periodicity.md` § 6.0).  The cell above is a SHAPE
+        # and survives the change of frame; the authoring pair's placement
+        # belonged to different coordinates and does not travel -- a junction
+        # saved from `add_slab` once came out translated by its whole
+        # authoring corner, far-face atoms wrapping into the leads.
         apply_to_structure(struct, {
             **_side,
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
-            "cell_origin": None,
+            "engine_offset": [0.0, 0.0, 0.0],
             # STATED, NOT DEFAULTED.  This read `_side.get("axis_kind") or
             # [...]`, and the `or` could never fire: `load_sidecar`
             # normalises the payload through a scratch `Structure`, whose

@@ -895,7 +895,15 @@ export function createModel(opts) {
         // The RAW values — what the structure actually says, `null` where it says
         // nothing (§ 9.3: "the raw 3×3 or null").
         getUnitCell()       { return copy(structure && structure.periodicity && structure.periodicity.cell) || null; },
-        getUnitCellOrigin() { return copy(structure && structure.periodicity && structure.periodicity.cell_origin) || null; },
+        // The ASSIGNED origin -- the corner the person set -- or null for
+        // Automatic: the structure states an offset, and the server's
+        // `box_corner` is where that puts the box (§ 6.0).  Read, never
+        // computed here.
+        getUnitCellOrigin() {
+            const per = structure && structure.periodicity;
+            return (per && per.engine_offset != null)
+                ? (copy(per.box_corner) || null) : null;
+        },
         getAxisKind()       { return copy(structure && structure.periodicity && structure.periodicity.axis_kind) || null; },
         getVacuum()         { return copy(structure && structure.periodicity && structure.periodicity.vacuum) || null; },
 

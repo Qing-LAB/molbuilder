@@ -180,8 +180,13 @@ def read_xv_with_cell(path: Union[str, Path]):
         )
     cell = _cell_from(lines, p.name)
     elements, positions_ang = _atoms_from(lines, p.name)
+    # A `.XV` IS SIESTA'S OWN FRAME, the cell at the origin, so the structure
+    # it reads STATES that origin -- an offset of 0, set together with its
+    # coordinates (`model/structure-periodicity.md` § 6.0): the next deck
+    # applies nothing, and a viewer draws it as the engine had it.
     return Structure(elements=elements, positions=positions_ang,
-                     cell=cell, title=p.stem), cell
+                     cell=cell, title=p.stem,
+                     engine_offset=[0.0, 0.0, 0.0]), cell
 
 
 def _read_xv(path: Union[str, Path]) -> Structure:

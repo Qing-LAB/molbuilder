@@ -11,7 +11,8 @@ from the wire envelope (``_shared.struct_from_body``) and writes the pair via
 These tests pin:
   1. a BROWSER-shaped payload (no schema_version, empty hash) saved through the
      endpoint lands on disk as a VALID pair the load door reads back without error, with
-     the metadata (frozen / regions / off-origin cell) preserved;
+     the metadata (frozen / regions / an assigned origin) preserved --
+     ``test_a_saved_browser_payload_reads_back_whole``;
   2. the overwrite gate (409 -> needsOverwrite);
   3. path-traversal + bad-input guards return 400, never 500.
 """
@@ -47,10 +48,31 @@ def _browser_blob():
         "positions": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
         "metadata": {
             "regions":     {"anchor": [0], "frozen_atoms": [1]},
-            "cell":        [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
-            "cell_origin": [-3.0, -4.0, -5.0],
+            "cell":          [[10, 0, 0], [0, 10, 0], [0, 0, 10]],
+            # An origin the person assigned at (-3, -4, -5), stored as -P
+            # (structure-periodicity.md § 6.0, *A stated offset*).
+            "engine_offset": [3.0, 4.0, 5.0],
         },
     }
+
+
+def test_a_saved_browser_payload_reads_back_whole(web):
+    """Pin 1 of this file: what the browser hands the save door lands as a pair
+    the load door reads back WHOLE -- labels, the frozen set and the origin the
+    person assigned -- and the retired corner is never written (plan § 5q.8,
+    D2: "make sure no old retired key is written again")."""
+    import numpy as np
+    from molbuilder.workingcopy_structure import StructureCodec
+    path = web._root / "proj" / "whole.xyz"
+    r = web.post("/api/structure/save",
+                 json={"path": str(path), "structure": _browser_blob()})
+    assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
+    side = json.loads(path.with_suffix(".molstruct.json").read_text())
+    assert "cell_origin" not in side
+    back = StructureCodec().read(path)
+    assert back.frozen_atoms == [1] and back.regions["anchor"] == [0]
+    assert np.allclose(back.engine_offset, [3.0, 4.0, 5.0])
+    assert back.to_wire()["periodicity"]["box_corner"] == [-3.0, -4.0, -5.0]
 
 
 
@@ -91,7 +113,7 @@ _ENV = {
     "positions": [[0, 0, 0], [2, 2, 0]],
     "metadata": {"regions": {"bridge": [0]},
                  "cell": [[8, 0, 0], [0, 8, 0], [0, 0, 8]],
-                 "cell_origin": None, "axis_kind": None, "vacuum": None},
+                 "engine_offset": None, "axis_kind": None, "vacuum": None},
 }
 _FRAMES = [[[0, 0, 0], [2, 2, 0]],
            [[1, 0, 0], [3, 2, 0]],
@@ -204,12 +226,13 @@ def test_a_saves_notices_match_an_exports_for_the_same_structure(web):
             "elements": ["O"],
             "positions": [[1.0, 1.0, 1.0]],
             "metadata": {
-                # A box the atom sits OUTSIDE of (spans 4..12 per axis) with a
-                # user-owned corner: legal, kept, and WARNED about
-                # (cell.py "atoms_outside") -- so the doors have a verdict to
-                # disagree over if one of them stops asking the gate.
+                # A box the atom sits OUTSIDE of (spans 4..12 per axis) under
+                # an origin the person assigned at (4, 4, 4): legal, kept, and
+                # WARNED about (`cell.atoms_outside`, § 6.0 -- the edit stands)
+                # -- so the doors have a verdict to disagree over if one of
+                # them stops asking the gate.
                 "cell": [[8, 0, 0], [0, 8, 0], [0, 0, 8]],
-                "cell_origin": [4.0, 4.0, 4.0],
+                "engine_offset": [-4.0, -4.0, -4.0],
                 "axis_kind": ["isolated", "isolated", "isolated"],
             },
         },
@@ -220,5 +243,6 @@ def test_a_saves_notices_match_an_exports_for_the_same_structure(web):
                       json=dict(body,
                                 path=str(tmp_path / "warned.xyz"))).get_json()
     assert exp["ok"] and sav["ok"], (exp, sav)
-    assert exp["notices"], "precondition: the gate must have something to say"
+    assert any(n["where"] == "cell.atoms_outside" for n in exp["notices"]), \
+        "precondition: the gate must have something to say"
     assert sav["notices"] == exp["notices"]

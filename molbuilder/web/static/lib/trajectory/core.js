@@ -255,8 +255,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // file; cleared on a fresh load like path/label).
             atomMetadata: null,
             // The run's periodicity, COMPOSED ON THE SERVER (watch.py: the
-            // cell from the output logs, the axis kinds / origin / vacuum
-            // from the run dir's .source pair).  Passed to installMolecule
+            // cell from the output logs, the axis kinds from the run deck's
+            // ENGINE-OFFSET record, the engine's origin stated).  Passed to installMolecule
             // verbatim -- guessing periodicity in the browser is the one
             // thing the Cell rules refuse.  null = the run knows nothing.
             // Same per-file lifecycle as atomMetadata.
@@ -1070,8 +1070,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * from two places and travel as two fields.
      *
      * COMPOSED ON THE SERVER (watch.py::_run_periodicity_json, 2026-08-20):
-     * the cell from the output logs, the axis kinds / origin / vacuum from
-     * the run's own .source pair.  This tab passes the block through
+     * the cell from the output logs, the axis kinds from the run deck's
+     * ENGINE-OFFSET record (the `.source` pair for a run made before it), and
+     * the engine's origin stated, 0 (structure-periodicity.md § 6.0).  This
+     * tab passes the block through
      * verbatim -- guessing periodicity in the browser is the one thing the
      * Cell rules refuse (molview.md § 9.5).  (Until 2026-08-20 this composed
      * `{cell}` alone and a comment claimed the Structure's lattice-implies-

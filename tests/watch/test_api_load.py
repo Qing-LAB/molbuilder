@@ -9,6 +9,7 @@ parseable response and that uploaded files come back tagged
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -698,3 +699,87 @@ def test_two_parsers_claiming_one_file_is_a_clean_refusal(client, tmp_path):
     # assertion above passed because the route was broken for every file.
     ok = client.post("/api/watch/load", json={"path": str(p)}).get_json()
     assert ok["ok"] is True and ok["format"] == "siesta", ok
+
+
+# --------------------------------------------------------------------- #
+#  The Results door states what the engine had (plan § 5q, T2)          #
+# --------------------------------------------------------------------- #
+
+#: The measured H2 relaxation (its README says what each file pins).
+_RELAX_RUN = (Path(__file__).resolve().parents[1]
+              / "fixtures" / "siesta_relax" / "01_relax" / "run-0")
+
+
+def _the_run(tmp_path, *, record_kinds, source_kinds):
+    """The measured run, copied under ``tmp_path`` -- never read from
+    `projects/` (`process/testing.md` § 2a) -- with a `.source` pair beside it
+    stating ``source_kinds``, and, when ``record_kinds`` is given, the
+    ENGINE-OFFSET record a deck prepped today carries (this run's predates
+    it), written by the real emitter from the design it was prepped from."""
+    import shutil
+
+    import numpy as np
+
+    from molbuilder.cell import to_engine
+    from molbuilder.script_emit import emit_engine_offset
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    run = tmp_path / "01_relax" / "run-0"
+    shutil.copytree(_RELAX_RUN, run)
+    design = dict(elements=["H", "H"],
+                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
+                  cell=np.eye(3) * 10.0)
+    StructureCodec().write(Structure(**design, axis_kind=source_kinds),
+                           run / "H2.source.xyz")
+    if record_kinds is not None:
+        deck = next(run.glob("*.fdf"))
+        frame = to_engine(Structure(**design, axis_kind=record_kinds))
+        deck.write_text(deck.read_text() + "\n"
+                        + emit_engine_offset(frame, record_kinds) + "\n")
+    return run
+
+
+@pytest.mark.parametrize("has_record", [True, False],
+                         ids=["the-deck-record", "a-run-before-the-record"])
+def test_the_results_door_shows_the_engines_frame_and_the_structures_kinds(
+        client, tmp_path, has_record):
+    """A finished run opens with the coordinates the engine wrote, verbatim,
+    stating the engine's origin -- an offset of 0, the box at their origin --
+    and with the axis kinds the structure had: the deck record's (D5), or,
+    for a run made before the record, the `.source` pair's.  A reload of that
+    structure draws the box at the origin (D4): the viewer sees what the
+    engine saw.
+
+    Here the pair says `periodic` and the record `isolated`, so which one
+    answered is visible.
+
+    Contract: `model/structure-periodicity.md` § 6.0 (engine output states 0);
+    plan § 5q.3 (the Results door), § 5q.8 D4, D5.
+    """
+    import numpy as np
+
+    isolated, periodic = ["isolated"] * 3, ["periodic"] * 3
+    run = _the_run(tmp_path, record_kinds=isolated if has_record else None,
+                   source_kinds=periodic)
+    body = client.post("/api/watch/load", json={"path": str(run)}).get_json()
+    assert body["ok"] is True, body
+    kinds = isolated if has_record else periodic
+
+    per = body["periodicity"]
+    assert per["engine_offset"] == [0.0, 0.0, 0.0], per
+    assert per["axis_kind"] == kinds, per
+    meta = body["structure"]["metadata"]
+    assert meta["engine_offset"] == [0.0, 0.0, 0.0], meta
+    assert meta["axis_kind"] == kinds, meta
+    np.testing.assert_allclose(
+        body["structure"]["positions"],
+        [[float(v) for v in a[1:4]] for a in body["data"]["frames"][0]],
+        err_msg="the Results door moved the engine's coordinates")
+
+    again = client.post("/api/build/load",
+                        json={"structure": body["structure"]}).get_json()
+    assert again["ok"] is True, again
+    assert again["periodicity"]["box_corner"] == [0.0, 0.0, 0.0], (
+        "the viewer would draw a box the engine never had",
+        again["periodicity"])

@@ -99,4 +99,40 @@ def atom_metadata_json_for_run_dir(
     return None
 
 
-__all__ = ["atom_metadata_json_for_run_dir"]
+def engine_offset_record_for_run_dir(
+    run_dir: Union[str, Path, None]) -> Optional[dict]:
+    """The ENGINE-OFFSET record of a run directory's own deck -- where its
+    atoms were placed, the cell, the axis kinds -- or ``None``.
+
+    The sibling of :func:`atom_metadata_json_for_run_dir`, over the same
+    scripts found by the same roles: a record block in the deck the run was
+    prepped from, read through ``script_emit.extract_engine_offset``, its one
+    reader (`model/structure-periodicity.md` § 6.0).  The Results tab asks it
+    instead of searching the directory for a `.source` pair a ladder keeps at
+    its root -- the search that found nothing on 2026-09-25 and drew a box the
+    engine never had.  ``None`` for a run made before the record existed; never
+    raises.
+    """
+    if not run_dir:
+        return None
+    try:
+        d = Path(run_dir)
+        if not d.is_dir():
+            return None
+        from ...runfiles import find_by_role
+        scripts = find_by_role(d, ".fdf") + find_by_role(d, ".py")
+    except OSError:                                         # pragma: no cover
+        return None
+    from ...script_emit import extract_engine_offset
+    for script in scripts:
+        try:
+            text = script.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:                                    # pragma: no cover
+            continue
+        record = extract_engine_offset(text)
+        if record:
+            return record
+    return None
+
+
+__all__ = ["atom_metadata_json_for_run_dir", "engine_offset_record_for_run_dir"]

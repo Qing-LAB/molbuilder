@@ -500,11 +500,18 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
 
       - the door posted `{op, params, structure}`; the route reads
         `{data: {xyz, sidecar}, op, payload}` and answers 400 without it;
-      - the block that comes back is `{cell, cell_origin, …}` and the module read
-        `lattice` and `origin`, so the cell was null however the round trip went.
+      - the block that comes back is `{cell, engine_offset, box_corner, …}` and
+        the module read `lattice` and `origin`, so the cell was null however the
+        round trip went.
 
     § 13.1's rule about stand-ins is exactly this failure: one that "copies how
     the code happens to work" confirms behaviour that cannot happen.
+
+    AND THE ORIGIN, through the same door (`model/structure-periodicity.md`
+    § 6.0, *A stated offset*; molview § 9.3): with none assigned the box is
+    drawn where the server's rule puts it and the raw read says *Automatic*;
+    an assigned corner comes back as the corner and leaves as the offset that
+    puts it there; clearing it returns to the rule.
     """
     got = demo.evaluate(
         """async () => {
@@ -520,10 +527,10 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
 
             // Give it a cell through the one door, then read it back through
             // the one read (§ 9.3's main way in).
-            // The payload IS the value for that op — the route's four ops are
-            // vacuum / axis_kind / cell / cell_origin, each taking its own field
-            // directly. MolView carries it through and interprets none of it
-            // (§ 6.2).
+            // The payload IS the value for that op — the route's ops are
+            // vacuum / axis_kind / cell / box_corner / block, each taking its
+            // own field directly. MolView carries it through and interprets
+            // none of it (§ 6.2).
             const answer = await v.data.commitPeriodicityOp(
                 "cell", [[8,0,0],[0,8,0],[0,0,8]]);
             const info = v.data.getUnitCellInfo();   // the block's own names
@@ -531,10 +538,22 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
             // `exportFile()` "returns the structure as data and stops", and the
             // cell rides in its metadata under the names it arrived with (§ 6.2).
             const leaving = v.data.exportFile().structure;
+            // The three states of the origin, each read back the same three ways.
+            const origin = () => ({
+                corner:   v.data.getUnitCellInfo().box_corner,
+                assigned: v.data.getUnitCellOrigin(),
+                offset:   v.data.exportFile().structure.metadata.engine_offset,
+            });
+            const automatic = origin();
+            await v.data.commitPeriodicityOp("box_corner", [-1, -1, -1]);
+            const assigned = origin();
+            await v.data.commitPeriodicityOp("box_corner", null);
+            const cleared = origin();
             return {
                 answered: answer !== null,
                 cell:     info.cell,
                 exported: leaving.metadata.cell,
+                automatic, assigned, cleared,
             };
         }"""
     )
@@ -548,6 +567,14 @@ def test_the_cell_door_speaks_the_route_it_posts_to(demo):
         "the cell reached the viewer but not the sidecar, so a saved structure "
         f"would lose it: {got}"
     )
+    # Au at (0,0,0) and (2,2,0) in an 8 Å cube: the rule centres their span,
+    # so the box's corner is at (-3, -3, -4).
+    assert got["automatic"] == {"corner": [-3, -3, -4], "assigned": None,
+                                "offset": None}, got["automatic"]
+    assert got["assigned"] == {"corner": [-1, -1, -1], "assigned": [-1, -1, -1],
+                               "offset": [1, 1, 1]}, got["assigned"]
+    assert got["cleared"] == got["automatic"], (
+        f"clearing the origin did not return the box to the rule: {got['cleared']}")
 
 
 def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):

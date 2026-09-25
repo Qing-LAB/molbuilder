@@ -219,15 +219,28 @@ def test_a_response_carries_the_envelope_beside_todays_keys(client):
 
 def test_the_two_views_cannot_disagree_because_they_come_from_one_structure(client):
     """They are two views of one object, not two objects. Anything a reader can
-    compare between them must match."""
-    answer = client.post("/api/build/load",
-                         json={"text": "2\n\nC 0 0 0\nO 1 0 0\n",
-                               "filename": "x.xyz"}).get_json()
-    envelope = answer["structure"]
+    compare between them must match.
+
+    The offset is where they could part. The envelope carries the STATED
+    `engine_offset`, and the periodicity block echoes it raw beside
+    `box_corner`, the corner the server RESOLVED from it (`web-api.md`,
+    plan § 5q.3). The resolved corner belongs to the block alone: sent back in
+    an envelope it would read as an assigned origin, and a structure under
+    Automatic would come back pinned to the rule's corner
+    (`structure-periodicity.md` § 6.0).
+    """
+    answer = client.post("/api/build/load", json=_envelope(
+        cell=[[8.0, 0, 0], [0, 8.0, 0], [0, 0, 8.0]],
+        engine_offset=[1.0, 1.0, 1.0])).get_json()
+    assert answer["ok"] is True, answer
+    envelope, per = answer["structure"], answer["periodicity"]
 
     assert envelope["elements"] == answer["elements"]
-    assert envelope["metadata"]["cell"] == answer["periodicity"]["cell"]
-    assert envelope["metadata"]["cell_origin"] == answer["periodicity"]["cell_origin"]
+    assert envelope["metadata"]["cell"] == per["cell"]
+    assert envelope["metadata"]["engine_offset"] == per["engine_offset"] == [1.0, 1.0, 1.0]
+    assert per["box_corner"] == [-1.0, -1.0, -1.0]
+    assert "box_corner" not in envelope["metadata"], (
+        "the resolved corner rode the envelope, where it reads as an assigned origin")
     assert len(envelope["positions"]) == answer["n_atoms"]
 
 
@@ -483,33 +496,18 @@ def test_an_op_that_keeps_the_atom_count_returns_every_label_unchanged(client, o
     )
 
 
-@pytest.mark.parametrize("op,args", COUNT_PRESERVING, ids=[o for o, _ in COUNT_PRESERVING])
-def test_a_rigid_move_carries_the_box_with_the_atoms(client, op, args):
-    """The box goes WITH the atoms, it is not preserved verbatim. A rigid
-    rotation that left the lattice behind would describe a different crystal —
-    nothing moved relative to anything else, so the box must turn too. What is
-    invariant is the cell's SHAPE: same volume, same edge lengths."""
-    import numpy as np
-    answer = client.post(f"/api/modify/{op}", json=_labelled_body(**args)).get_json()
-
-    assert answer["ok"] is True, answer
-    cell = np.array(answer["periodicity"]["cell"], dtype=float)
-    assert cell is not None and cell.shape == (3, 3)
-    assert abs(abs(np.linalg.det(cell)) - 9.0 ** 3) < 1e-6, (
-        f"{op} changed the cell VOLUME: {cell.tolist()}"
-    )
-    np.testing.assert_allclose(sorted(np.linalg.norm(cell, axis=1)), [9.0] * 3,
-                               atol=1e-6, err_msg=f"{op} changed the cell's shape")
+# `test_a_rigid_move_carries_the_box_with_the_atoms` RETIRED 2026-09-25.  It
+# stated the design the user retired -- "leave the cell alone, moving atoms only
+# moves atoms" (`structure-periodicity.md` § 6.0, D6) -- and still passed,
+# because a box left verbatim has the volume and edges it asserted.  The box
+# staying put is pinned where the ops are: `test_modify.py`
+# `TestOpsPreservePeriodicity`, and on the route `test_web.py`
+# `test_modify_translate_recenter_of_*_leaves_the_box`.
 
 
 def test_moving_part_of_a_structure_is_an_argument_not_a_smaller_request(client):
     """§ 11.7: one path out — the whole structure goes, the whole structure comes
     back. A partial move names its atoms; it does not ship a smaller structure.
-
-    And the box STAYS: those atoms moved relative to the ones that did not, so a
-    lattice that followed them would stop describing the atoms it was drawn
-    around. That is the difference from a rigid move, and it is why these are two
-    operations rather than one with a flag.
     """
     body = _labelled_body(dx=1.0, dy=0.0, dz=0.0, indices=[0, 1])
     answer = client.post("/api/modify/translate", json=body).get_json()
@@ -517,9 +515,6 @@ def test_moving_part_of_a_structure_is_an_argument_not_a_smaller_request(client)
     assert answer["ok"] is True, answer
     xs = [p[0] for p in answer["structure"]["positions"]]
     assert xs == [1.0, 2.0, 0.0, 0.0], f"the wrong atoms moved: {xs}"
-    assert answer["periodicity"]["cell"] == [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]], (
-        "a partial move dragged the box with it"
-    )
     assert answer["structure"]["metadata"]["regions"] == {
         "L-electrode": [0, 1], "bridge": [2], "frozen_atoms": [3],
     }, "a partial move disturbed the labels"

@@ -260,111 +260,29 @@ def test_the_suffix_travels_with_the_pair_rather_than_being_re_derived():
         "extended XYZ is a superset of plain XYZ and shares its extension")
 
 
-def test_every_metadata_field_survives_the_whole_export_pipeline(tmp_path,
-                                                                 monkeypatch):
-    """The user's 2026-08-20 question ("is the pbc preserved?"), answered by
-    execution for EVERY field: a sidecar with mixed axis kinds (periodic,
-    periodic, isolated — so ``pbc`` is [T, T, F]), regions, an off-origin
-    cell and a vacuum goes disk → ``/api/build/load`` wire → the exact
-    envelope the browser's ``structureForServer`` builds from that wire →
-    ``/api/structure/export`` → sidecar again — and the two sidecars are
-    EQUAL apart from ``created_at`` (provenance) and the hash/version
-    envelope.  ``pbc`` itself never rides the wire: it is derived from
-    ``axis_kind`` by the one deserialiser, which is why preserving the
-    axis kinds preserves it.
-
-    KILL SITE, verified red: ``structure.py``'s ``apply_metadata_dict``
-    dropping ``axis_kind`` fails this test.  (The commit that introduced
-    the test named ``_stated_periodicity`` as the checked mutation — that
-    reader serves the modify-wire path, not this envelope, and mutating it
-    leaves this green; the record is corrected here.)
-    """
-    import json
-
-    from molbuilder import diagnostics
-    from molbuilder.structure import Structure
-    from molbuilder.web.app import create_app
-
-    # The picker-roots seam, the way every route test registers one.
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
-    )
-    monkeypatch.setattr(
-        type(caps), "file_picker_roots",
-        lambda self: ((tmp_path.resolve(), "projects"),),
-    )
-    diagnostics.set_capabilities(caps)
-
-    struct = Structure.from_dict({
-        "elements": ["O", "H", "H"],
-        "positions": [[0, 0, 0], [0.96, 0, 0], [0, 0.96, 0]],
-        "metadata": {
-            "regions": {"frozen": [0], "top": [1]},
-            "cell": [[5, 0, 0], [0, 5, 0], [0, 0, 30]],
-            "cell_origin": [0.5, 0.5, 0.5],
-            "axis_kind": ["periodic", "periodic", "isolated"],
-            "vacuum": [0, 0, 8],
-        },
-    })
-    StructureCodec().write(struct, tmp_path / "slab.xyz")
-    side_in = json.loads((tmp_path / "slab.molstruct.json").read_text())
-    assert side_in["axis_kind"] == ["periodic", "periodic", "isolated"], (
-        "precondition: mixed axes")
-
-    client = create_app(config={}).test_client()
-    wire = client.post("/api/build/load",
-                       json={"path": str(tmp_path / "slab.xyz")}).get_json()
-    assert wire.get("ok"), wire
-    per = wire["periodicity"]
-    assert per["axis_kind"] == ["periodic", "periodic", "isolated"], (
-        "the wire lost the axis kinds — everything downstream would too"
-    )
-
-    # The browser's envelope, exactly as structureForServer composes it
-    # (model-jobs.js): regions grouped from the per-atom rows, the
-    # periodicity fields copied by the server's own names.
-    atoms = wire["atoms"]
-    regions = {}
-    for a in atoms:
-        for name in a.get("regions", []):
-            regions.setdefault(name, []).append(a["index"])
-    out = client.post("/api/structure/export", json={
-        "structure": {
-            "elements": [a["element"] for a in atoms],
-            "positions": [[a["x"], a["y"], a["z"]] for a in atoms],
-            "metadata": {
-                "regions": regions,
-                "cell": per.get("cell"),
-                "cell_origin": per.get("cell_origin"),
-                "axis_kind": per.get("axis_kind"),
-                "vacuum": per.get("vacuum"),
-            },
-        },
-        "name": "slab",
-    }).get_json()
-    assert out["ok"], out
-    side_out = json.loads(next(f["text"] for f in out["files"]
-                               if f["name"].endswith(".json")))
-
-    volatile = {"created_at", "structure_hash", "schema_version"}
-    diffs = {k: (side_in.get(k), side_out.get(k))
-             for k in set(side_in) | set(side_out)
-             if k not in volatile and side_in.get(k) != side_out.get(k)}
-    assert diffs == {}, (
-        f"metadata changed crossing the pipeline: {diffs}"
-    )
-    assert side_out["axis_kind"] == ["periodic", "periodic", "isolated"]
+# `test_every_metadata_field_survives_the_whole_export_pipeline` RETIRED
+# 2026-09-25 into the test below.  It built the browser's envelope as a PYTHON
+# copy of `structureForServer`, which kept passing -- blind -- when that copy
+# drifted from the real JS (its `cell_origin` key had become a retired name the
+# server ignores).  The test below runs the real translators, and now carries
+# its fields: mixed axis kinds, a vacuum, and the stated offset both ways.
 
 
+@pytest.mark.parametrize("stated", [None, [1.0, 1.0, 1.0]],
+                         ids=["automatic", "assigned-origin"])
 def test_channels_survive_the_pipeline_through_the_real_translators(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, stated):
     """The 2026-08-20 widening, proven disk -> disk: a pair whose sidecar
-    carries per-atom annotation CHANNELS goes ``/api/build/load`` -> the
-    browser's REAL translations (``structureFromServer`` ->
-    ``structureForServer``, executed under node — not a Python mirror) ->
-    ``/api/structure/export`` -> sidecar again, EQUAL apart from
-    provenance.  Until the widening the fold never read the wire's
-    ``annotations`` block, so any trip through the viewer erased them.
+    carries per-atom annotation CHANNELS -- and mixed axis kinds, a vacuum,
+    and a stated offset or none -- goes ``/api/build/load`` -> the browser's
+    REAL translations (``structureFromServer`` -> ``structureForServer``,
+    executed under node — not a Python mirror) -> ``/api/structure/export``
+    -> sidecar again, EQUAL apart from provenance.  Until the widening the
+    fold never read the wire's ``annotations`` block, so any trip through the
+    viewer erased them.  The offset is the raw one the wire echoes; the
+    resolved ``box_corner`` beside it must never come back (plan § 5q.3), and
+    an Automatic pair must come back Automatic, not frozen at the rule's
+    corner (`structure-periodicity.md` § 6.0).
 
     KILL SITES, verified red at introduction: the fold skipping
     ``payload.annotations``; the unfold dropping a column.
@@ -393,7 +311,9 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
         "metadata": {
             "regions": {"frozen": [0]},
             "cell": [[5, 0, 0], [0, 5, 0], [0, 0, 30]],
+            "engine_offset": stated,
             "axis_kind": ["periodic", "periodic", "isolated"],
+            "vacuum": [0, 0, 8],
             "annotations": {
                 "spin_up": {"kind": "tag", "data": [0, 2],
                             "color": "#f00"},
@@ -436,6 +356,8 @@ def test_channels_survive_the_pipeline_through_the_real_translators(
     assert diffs == {}, f"the pipeline changed the sidecar: {diffs}"
     assert side_out["annotations"]["charge"]["data"] == {"0": -0.8,
                                                          "1": 0.4}
+    assert side_out["engine_offset"] == stated
+    assert "cell_origin" not in side_out
 
 
 def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
@@ -472,7 +394,6 @@ def test_identity_and_channels_survive_a_pair_round_trip_through_an_edit(
     })
     StructureCodec().write(s, tmp_path / "a.xyz")
     side = json.loads((tmp_path / "a.molstruct.json").read_text())
-    assert side["schema_version"] == 9
     assert side["residue_names"] == ["AUX", "CYS", "CYS"]
 
     back = StructureCodec().read(tmp_path / "a.xyz")

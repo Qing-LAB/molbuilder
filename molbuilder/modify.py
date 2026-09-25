@@ -302,12 +302,10 @@ def _rotation_matrix_from_a_to_b(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def _moved_subset(struct: Structure, R, t, indices: Sequence[int]) -> Structure:
     """A copy of ``struct`` with ONLY ``indices`` mapped by ``x -> x @ Rᵀ + t``.
 
-    THE BOX IS NOT TOUCHED, and that is the whole difference from
-    :meth:`Structure.affine`.  Moving part of a structure moves those atoms
-    RELATIVE to the ones that stayed; a lattice that followed them would stop
-    describing the atoms it was drawn around.  A rigid whole-structure move is
-    the other operation -- the box goes with the atoms because nothing moved
-    relative to anything else.  Two operations, not one with a flag.
+    THE BOX IS NOT TOUCHED -- nor is it by :meth:`Structure.affine`, the
+    whole-structure path: moving atoms only moves atoms (user, 2026-09-25).
+    The two paths differ in WHICH atoms move, and in the pivot a rotation
+    turns about.
 
     Labels and channels are index-keyed and the index space is UNCHANGED here
     (no atom is added or removed), so they carry through untouched: the atom at
@@ -334,9 +332,9 @@ def translate(struct: Structure, vec: Sequence[float], *,
               indices: "Sequence[int] | None" = None) -> Structure:
     """Translate ``struct`` by ``vec`` (Angstrom).
 
-    With ``indices``, ONLY those atoms move and the box stays where it is.
-    Without, the whole structure moves rigidly and the box's world-space corner
-    goes with it (``Structure.translated`` -> ``affine``).
+    With ``indices``, ONLY those atoms move; without, every atom does
+    (``Structure.translated`` -> ``affine``).  The box stays where it is either
+    way: moving atoms only moves atoms (user, 2026-09-25).
     """
     vec = np.asarray(vec, dtype=float).reshape(3)
     if indices is None:
@@ -506,10 +504,9 @@ def rotate_around_axis(
     # Rotation about a pivot p is the affine ``x -> (x - p) @ Rᵀ + p`` = ``x @ Rᵀ + t``
     # with ``t = p - p @ Rᵀ``.
     #
-    # WHOLE STRUCTURE: routed through ``Structure.affine`` so the whole box --
-    # lattice VECTORS (cell) AND the world-space CORNER (cell_origin) -- rotates
-    # WITH the atoms (structure-periodicity.md § 6); nothing moved relative to
-    # anything else, and a box left behind would stop wrapping the atoms.
+    # WHOLE STRUCTURE: routed through ``Structure.affine``, which moves the
+    # atoms and leaves the box alone (user, 2026-09-25: "moving atoms only
+    # moves atoms").
     #
     # A SUBSET: only those atoms turn, and the box stays.  The pivot is the
     # SELECTION's centroid, because "spin this piece in place" is what a partial
@@ -858,7 +855,6 @@ def _finish_slab(struct, metal_pos, element, full):
     slab_cell = np.asarray(full.get_cell(), dtype=float)
     elc_cell = None
     elc_axis_kind = None
-    elc_cell_origin = None
     if z_extent > 1e-6:
         # `c` IS THE ATOMS' EXTENT, VERBATIM.  A block here used to add one
         # layer spacing to it; `junction-cell.md` § 6 retired that on the
@@ -870,14 +866,12 @@ def _finish_slab(struct, metal_pos, element, full):
             [0.0, 0.0, z_len],
         ], dtype=float)
         elc_axis_kind = ("periodic", "periodic", "transport")
-        # cell_origin (structure-periodicity.md § 6): the captured cell is built
-        # AROUND atoms that straddle the origin (the molecule stays pinned there;
-        # the slabs sit at +/- gap/2).  Anchor the cell at the structure's LOW
-        # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
-        # [z_min, z_min + z_len), so the padding opens at the TOP, which is where
-        # the two faces meet.  render_fdf then shifts atoms by -cell_origin into
-        # [0, cell) for SIESTA.
-        elc_cell_origin = all_pos.min(axis=0).astype(float)
+        # NO CORNER IS STATED.  This builder anchored the box at the atoms' low
+        # corner until 2026-09-25 -- "the padding opens at the TOP" -- and
+        # stored it rounded, which put the lowest electrode layer 1.6e-5 Å below
+        # the face and made TranSIESTA refuse the device.  Where the box sits
+        # is the engine offset's now: the rule centres the atoms in it
+        # (model/structure-periodicity.md § 6.0).
 
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
     # Existing frozen_atoms + region indices carry through unchanged; the
@@ -896,12 +890,10 @@ def _finish_slab(struct, metal_pos, element, full):
     # captured box, or no box at all.
     # A NEW BOX DROPS A STATED OFFSET: it was stated against the old one.
     captured = ({"cell": elc_cell,
-                 "cell_origin": elc_cell_origin,
                  "engine_offset": None,
                  "axis_kind": elc_axis_kind}
                 if elc_cell is not None else
-                {"cell": None, "cell_origin": None, "engine_offset": None,
-                 "axis_kind": None})
+                {"cell": None, "engine_offset": None, "axis_kind": None})
     out = Structure(
         **{**struct._carry_nonatom(), **captured},
         elements=list(struct.elements) + [element] * n_new,

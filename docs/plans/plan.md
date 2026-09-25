@@ -3276,7 +3276,7 @@ All four were measured on 2026-09-25, on the fake-junction ladder
    unit-cell"*, 4 s in, before any SCF. The junction's box was anchored at its
    lowest atom by the electrode builder, deliberately (`modify.py:872–881`,
    *"the padding opens at the TOP"*). The stored corner was `−17.355` against an
-   atom at `−17.355016`, so that atom sat 16 fm below the face in every deck. The
+   atom at `−17.355016`, so that atom sat 1.6e-5 Å below the face in every deck. The
    relaxation and the seed ran with the same atom, because plain SIESTA treats z
    as periodic; only TranSIESTA checks. molbuilder's own `.validation.txt`
    passed the deck.
@@ -3316,7 +3316,7 @@ where it was applied.
 
 | file | today | becomes |
 |---|---|---|
-| `.molstruct.json` sidecar — `sidecars/molstruct.py` (writer), `parse/sidecars/molstruct.py` (reader) | schema v9, carries `cell_origin` | **v10**: `cell_origin` is replaced by `engine_offset`, written only when the person assigned the origin. The writer writes v10; the reader accepts v9 and ignores its `cell_origin`, as `model/structure.md` § 2.2 already rules for a removed key (**D2**) — a v9 corner may be the electrode builder's flush one, the placement that failed |
+| `.molstruct.json` sidecar — `sidecars/molstruct.py` (writer), `parse/sidecars/molstruct.py` (reader) | schema v9, carries `cell_origin` | **v10**: `cell_origin` is replaced by `engine_offset`, always written — `null` means the rule, `[0, 0, 0]` an engine's output, `−P` an origin the person assigned. The writer writes v10; the reader accepts v9 and ignores its `cell_origin`, as `model/structure.md` § 2.2 already rules for a removed key (**D2**) — a v9 corner may be the electrode builder's flush one, the placement that failed |
 | every deck molbuilder writes (SIESTA `.fdf`, PySCF `.py`) | an `atom-metadata` block only when there are labels; no placement record | + a **`molbuilder engine-offset` block** for every deck (cell, offset applied, whether it was assigned, axis kinds). One writer beside `script_emit.emit_atom_metadata`, one reader beside `_extract_atom_metadata_dict` |
 | engine output (`.XV`, `.out`, `.STRUCT_OUT`, `.ANI`, `.MD`, the PySCF logs) | read as bare coordinates plus a lattice | read into `engine_frame()`, offset 0 stated |
 | the molwatch log (`trajectory_log/format.py` ← `jobset/prep.py`; the audit's § 1.18) | step 0 written in the design frame | step 0 written from `to_engine()` — closes that finding |
@@ -3325,27 +3325,29 @@ where it was applied.
 
 ### 5q.3 Protocol agreement — the wire
 
-* **One periodicity view**, built by one server function from an `EngineFrame`
-  / `ResolvedCell`: `{cell, axis_kind, vacuum, engine_offset, box_corner,
-  coordinates: "design" | "engine"}`. Every door that sends a structure to the
-  browser spreads it, and none composes its own.
-* **The doors**: `/api/structure/periodicity` (the Cell page;
-  `build.py:480–494`), the structure load/save payload (`_shared.py:134–160`),
-  `/api/watch/load` and `/api/watch/data` (the Results door — from the deck's
-  record, or `engine_frame()` for a run made before it), the transport citation
-  viewer, and the calculation pages' viewers. `structure-periodicity.md` § 6.2 calls the last an
-  "engine-calibrated view", but no door by that name exists; what those pages
-  draw is established at the start of phase 3.
-* **MolView** draws from `box_corner`, verbatim: `render-engine.js:329` (today
-  `used.cell_origin`), `model-jobs.js:323` (today `resolved_cell_origin ||
-  cell_origin`), `ui.js:2353` / `:2397` (the Cell panel's Origin line → the
-  offset, read-only), `model.js:898`. The browser never computes a corner, which
-  `structure-periodicity.md` § 6.2 already requires — this keeps it true.
+* **One periodicity block**, built by one server function, `Structure.to_wire`:
+  `{cell, engine_offset, resolved_cell, box_corner, axis_kind, vacuum,
+  resolved_vacuum}` — `engine_offset` the offset the structure STATES (raw,
+  echoed back by the client), `box_corner` where the box is drawn
+  (`−engine_offset` of the coordinates it rides with). No `coordinates` tag:
+  D4 made every viewer draw the coordinates of the structure it shows, so the
+  structure says which they are. Every door that sends a structure spreads the
+  block, and none composes its own. *(In the swap, 2026-09-25.)*
+* **The doors**: `/api/structure/periodicity` (the Cell page), the structure
+  load/save payload (`_shared._stated_periodicity` reads `engine_offset` back),
+  and `/api/watch/load` / `/api/watch/data` — the Results door, which reads the
+  run deck's ENGINE-OFFSET record for the axis kinds (D5; the `.source` pair for
+  a run made before it) and states `engine_offset = 0` for the engine's frames.
+  The transport citation viewer is still open.
+* **MolView** draws the box at `box_corner`, verbatim (`render-engine.js`,
+  `model-jobs.js`'s effective cell, `ui.js`'s Origin row, `model.js`'s
+  `getUnitCellOrigin` — the ASSIGNED origin or `null`). The browser never
+  computes a corner. *(In the swap.)*
 * **The Cell page** (`modify/periodicity.js`, `templates/modify.html`): the
-  origin group stays and assigns the box's origin — three numbers, or *Use
-  selection* — and *Derive it* becomes *Automatic* (**D1**); the offset is shown,
-  computed or assigned. `demo.js:270` commits a `cell_origin` op and moves to
-  `box_corner`.
+  origin group assigns the box's origin — three numbers, or *Use selection* at
+  the atom's own unrounded position — sent as the block's `box_corner`, and
+  *Derive it* became *Automatic* (**D1**). Assigned values are shown in full,
+  so an Apply never re-sends a rounded origin. *(In the swap.)*
 * `/api/modify/calibrate` (`web/blueprints/modify.py:656–675`) is **retired**
   (**D3**), with the `calibrate` op in `lib/molview/model-jobs.js` and
   `modify.calibrate_to_cell`.
@@ -3361,7 +3363,7 @@ edit; *transport clearance along c* in the transport kind validator
 | | what it drives | what it asserts |
 |---|---|---|
 | **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, the SIESTA and PySCF vibration ladders, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it; the vibration `freq` deck writes the relax output unchanged (a stated `0`); an atom beyond a periodic face is a warning in the report |
-| **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output. The fixture is `claude-vib-ui/optimization/au333bdt-loose`, a real flush run — it must be drawn **flush** |
+| **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output, and the axis kinds are the deck record's (D5). The run directory is BUILT under `tmp_path` with a flush deck and output — never read from `projects/` (`testing.md` § 2a); a run with no record takes its kinds from the `.source` pair |
 | **T3** | export from Results → reload | coordinates + offset is what the engine had: an automatic run whose atoms did not move reloads with the rule giving zero; an assigned run reloads with an assigned zero |
 | **T4** | `prep device` on the fixture | every atom inside the cell along c; a face gap below the lead's `d/2` is warned, not refused (risk **R1**) |
 | **T5** | the rule itself, API-level on a measured fixture — the docstring says so | the hexagonal junction's `[6.3684, 3.746, 18.5325]`. A Cartesian implementation fails it (x-extent 10.093 > \|a\| 8.651); a re-wrapping one fails it (the 2.399 > 2.355 cut) |
@@ -3539,7 +3541,9 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
 * **D6 — moving atoms only moves atoms** *(user, 2026-09-25: "leave the cell
   alone, moving atoms only moves atoms")*. A translation, rotation or
   orientation — of some atoms or all — changes coordinates only: the cell's
-  vectors, its corner and a stated offset stay where they were. Retires § 6
+  vectors and a stated offset stay where they were. Under *Automatic* there is
+  no stored corner to keep: the box is the rule's, centred on wherever the
+  atoms now are. Retires § 6
   clause 5 (a whole-structure transform moved the box with the atoms) and the
   tests that pinned it. **Done 2026-09-25** (`Structure.affine`).
 

@@ -46,32 +46,14 @@ def test_save_load_apply_roundtrips_annotations(tmp_path):
     assert back.get_channel("tail").data == [3, 4]
 
 
-def test_cell_origin_survives_the_disk_roundtrip(tmp_path):
-    """Regression (schema v6): cell_origin was silently dropped on the READ
-    path (load() -> apply_to_structure), so an off-origin electrode cell kept
-    its anchor in-session but jumped back to the world origin after save +
-    reload.  The read normaliser must carry cell_origin through, same as the
-    write side -- both now go through the shared normalise_cell_origin."""
-    cell = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]]
-    origin = [1.5, -2.0, 3.25]
-    p = tmp_path / "cell.molstruct.json"
-    molstruct.save(p, molstruct.to_dict(
-        {"cell": cell, "cell_origin": origin},
-        n_atoms_total=2, structure_hash=_hash()))
-    loaded = molstruct.load(p)                    # the read path that dropped it
-    assert loaded["cell_origin"] == origin        # preserved in the normalised dict
-    back = Structure(elements=["C", "C"], positions=np.zeros((2, 3)))
-    molstruct.apply_to_structure(back, loaded)
-    assert back.cell_origin is not None           # not reset to the world origin
-    np.testing.assert_allclose(back.cell_origin, origin)
-
-
-def test_cell_origin_dropped_without_a_cell():
-    """cell_origin is only meaningful with an explicit cell; without one it
-    normalises to None on BOTH sides (write here; read shares the normaliser)."""
-    d = molstruct.to_dict({"cell_origin": [1.0, 2.0, 3.0]},   # no cell given
-                          n_atoms_total=1, structure_hash=_hash())
-    assert d["cell_origin"] is None
+# `test_cell_origin_survives_the_disk_roundtrip` and
+# `test_cell_origin_dropped_without_a_cell` RETIRED 2026-09-25 with the field
+# (`cell_origin` is a retired key, read and ignored -- plan § 5q.8, D2).  What
+# the first protected -- a stored placement survives the read normaliser -- is
+# held for the stated `engine_offset` by the pair round-trip in
+# `test_structure_authority_roundtrip.py`, which reads the file back through
+# the same path.  The second pinned a dataclass rule that is gone: "typed cell
+# only" is the periodicity gate's now (`box_corner` is refused without one).
 
 
 def test_the_annotations_key_is_optional(tmp_path):

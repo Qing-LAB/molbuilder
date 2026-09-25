@@ -100,8 +100,8 @@ class TestOpsPreservePeriodicity:
         with no warning anywhere. Atom-count edits are lattice-VECTOR-invariant --
         removing an atom does not change the crystal.
 
-        Contract: `model/structure-periodicity.md` § 3c (a rigid transform moves the
-        box; an atom-count edit does not touch it).
+        Contract: `model/structure-periodicity.md` § 6.0 (an edit keeps the box
+        and a stated offset; moving atoms only moves atoms, D6).
         """
         _assert_lattice_preserved(delete_atoms(periodic_dimer, [1]), periodic_dimer)
 
@@ -114,7 +114,7 @@ class TestOpsPreservePeriodicity:
         the transport axis length IS the device length, and losing it makes the
         electrodes non-commensurate with the bulk lead.
 
-        Contract: `model/structure-periodicity.md` § 3c + § 2 (axis kinds).
+        Contract: `model/structure-periodicity.md` § 6.0 + § 2 (axis kinds).
         """
         _assert_lattice_preserved(
             add_atom(periodic_dimer, "S", 0, [1.5, 0, 0]), periodic_dimer)
@@ -165,7 +165,7 @@ class TestOpsPreservePeriodicity:
         its whole purpose is to move atoms relative to a frame -- and doing so
         would change a periodic cell's dimensions as a side effect of a cosmetic act.
 
-        Contract: `model/structure-periodicity.md` § 3c.
+        Contract: `model/structure-periodicity.md` § 6.0.
         """
         _assert_lattice_preserved(periodic_dimer.centered(), periodic_dimer)
 
@@ -179,7 +179,7 @@ class TestOpsPreservePeriodicity:
         tests in this class all take the non-no-op branch.
 
         Contract: `model/structure.md` § 1 (the object and what a copy holds) +
-        `model/structure-periodicity.md` § 3c.
+        `model/structure-periodicity.md` § 6.0.
         """
         _assert_lattice_preserved(periodic_dimer.copy(), periodic_dimer)
 
@@ -358,17 +358,25 @@ def test_append_leaves_the_reserved_frozen_label_spelled_as_it_is():
 
 
 def test_append_keeps_the_open_structures_cell_and_says_so():
-    """The canvas being built in owns its box; an incoming fragment contributes
-    atoms.  A dropped lattice is invisible in the result, so it is said.
+    """The canvas being built in owns its box -- and the origin assigned in
+    it; an incoming fragment contributes atoms.  A dropped lattice is
+    invisible in the result, so it is said.
+
+    Contract: `model/structure.md` § 2.2b; `model/structure-periodicity.md`
+    § 6.0 (an op that joins structures takes a stated offset from the one
+    whose cell it keeps).
     """
     base = _frag(["C"], [0.0])
     base.cell = np.diag([10.0, 10.0, 10.0])
+    base.engine_offset = np.array([1.0, 1.0, 1.0])
     base.__post_init__()
     add = _frag(["N"], [3.0])
     add.cell = np.diag([20.0, 20.0, 20.0])
+    add.engine_offset = np.array([9.0, 9.0, 9.0])
     add.__post_init__()
     out, notes = append_structure(base, add)
     assert np.allclose(out.cell, np.diag([10.0, 10.0, 10.0]))
+    assert np.allclose(out.engine_offset, [1.0, 1.0, 1.0]), out.engine_offset
     assert any("not adopted" in n for n in notes), notes
 
 

@@ -153,7 +153,7 @@ whose inverse is `Structure.from_dict()`:
     "positions": [[0.0, 0.0, 0.0], [1.4, 0.0, 0.0]],
     "atom_names": [], "residue_ids": [], "residue_names": [], "chain_ids": [],
     "metadata": { "regions": {"L-electrode": [0], "frozen_atoms": [1]},
-                  "cell": null, "cell_origin": null,
+                  "cell": null, "engine_offset": null,
                   "axis_kind": ["isolated","isolated","isolated"],
                   "vacuum": [0.0, 0.0, 0.0], "annotations": {} }
   },
@@ -283,10 +283,12 @@ running a calculation. Readers of wire-only blocks take the names they set and
 leave the rest.
 
 **The `periodicity` block is the case that shows why.** `Structure.to_wire`
-sends what the caller stated (`cell`, `cell_origin`, `axis_kind`, `vacuum`)
-BESIDE the server's own derived answers (`resolved_cell`,
-`resolved_cell_origin`, `resolved_vacuum`) so a page can show the box *as it
-will be used*. MolView keeps that block verbatim and hands the whole thing back
+sends what the caller stated (`cell`, `engine_offset` — the offset the
+structure STATES, `null` meaning the rule places it — `axis_kind`, `vacuum`)
+BESIDE the server's own derived answers (`resolved_cell`, `box_corner` — where
+the viewer draws the box, `−engine_offset` of the coordinates it holds, never
+worked out in the browser — and `resolved_vacuum`) so a page can show the box
+*as it will be used* (`?doc=model/structure-periodicity.md` § 6.0). MolView keeps that block verbatim and hands the whole thing back
 through the load door. A reader made strict here would refuse the viewer's own
 structure — the derived fields are the traffic, not an anomaly.
 
@@ -674,7 +676,7 @@ supervisor refuses it;
 | ~~POST `/api/build/pyscf`~~ | **deleted 2026-08-17** — same, and it had no caller at all |
 | POST `/api/build/preflight` | `{ structure, config, engine }` → the pre-run validation report (pseudos + config gates) |
 | POST `/api/structure/analyze` | **two ways in**: the envelope `{structure}` for a structure the caller is holding, or a `structure_path` for one on disk — the browser sends both, depending on which it has. *(A third, `structure_text`, was retired here on 2026-09-02: it went from `/api/spectra/render` on 2026-08-03 because the viewer holds no coordinate document and writes none (`molview.md` § 11.7), and this route was missed by that sweep — no page posted it and only tests reached it.)* **Out:** `n_atoms`, `elements`, `n_electrons_neutral`, `metals`, `metal_hints`, `suggested_treatment`, and `suggested.<engine>` — one block per **registered** adapter, so a new engine appears here without this route changing. The detection chip reads `suggested_treatment`; the parameter forms read `suggested.<engine>` |
-| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `cell_origin` — through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit, and the engine gets them placed at emission (`?doc=model/structure-periodicity.md` § 6.0). The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the `resolved_*` views beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
+| POST `/api/structure/periodicity` | `{structure, op, payload}` → `{ok, periodicity, notices}`. The unified periodicity door (`?doc=model/structure-periodicity.md` § 6.2): **four** ops — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns, on a typed cell; `null` is *Automatic*) — plus `block`, the whole cell at once, through the frame-contract gate. There is deliberately **no** `calibrate`: moving atoms is not a periodicity edit, and the engine gets them placed at emission (`?doc=model/structure-periodicity.md` § 6.0). The answer is the cell block in the same shape `/api/build/load` sends it — raw values with the resolved views (`resolved_cell`, `box_corner`, `resolved_vacuum`) beside them — so a client adopts it verbatim through the path a load already takes, and `notices` carries `{level, message, where, about}` rows — first what the edit did (RECEIPTS, `where: "cell.edit"`), then what is now true of the result (CONDITIONS, each with its own `cell.*` id) |
 | ~~POST `/api/run/install-wrapper`~~ · ~~POST `/api/siesta/install-pseudos`~~ | **retired 2026-08-21** — zero browser callers; the described route owns both (`prep` writes the wrapper beside every deck and installs the pseudopotentials itself) |
 
 **Checkpoint** — the run-history panel (its behavior is

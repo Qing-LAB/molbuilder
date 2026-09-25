@@ -31,16 +31,16 @@ def _thin_box_molecule() -> Structure:
 
 
 class TestTheSubjectAndItsCoordinatesShareOneFrame:
-    """PINS: `model/structure-periodicity.md` § 6 clause 2b — an origin is a
-    label on the coordinates beside it, so an op that reframes the
-    coordinates restates the origin in the same breath.
+    """PINS: `model/structure-periodicity.md` § 6 clause 2b + § 6.0 -- an
+    offset is a statement about the coordinates beside it, so an op that
+    reframes the coordinates restates the offset in the same breath.
 
     INVARIANT: the structure the SIESTA deck hands the validator carries the
-    coordinates the deck will actually write — already translated by
-    ``-resolve_cell_origin()`` into SIESTA's frame — so the corner it states
-    must be that frame's, not the one the atoms came from.
+    coordinates the deck will actually write -- already placed by the engine
+    offset into SIESTA's frame, the cell's corner at (0,0,0) -- so it states
+    THAT frame's offset, 0, not the design structure's.
 
-    PREVENTS: the validator judging atoms against a box a whole corner away.
+    PREVENTS: the validator judging atoms against a box a whole offset away.
     Measured before the fix on a junction with a stored corner:
     ``contains_atoms = False`` and a clearance of -19 Å along transport, i.e.
     a ``cell.atoms_outside`` warning naming numbers from neither frame, on a
@@ -49,38 +49,37 @@ class TestTheSubjectAndItsCoordinatesShareOneFrame:
     warning, never a refusal.
     """
 
-    def _junction_with_a_stored_corner(self) -> Structure:
-        # A cell built AROUND atoms that straddle the origin -- what
-        # `add_slab` produces for every junction.
+    def _junction_with_an_assigned_origin(self) -> Structure:
+        # Atoms that straddle the origin, and an origin the person ASSIGNED at
+        # (-2, -2, -10): the deck puts them at x = y = 3 in the 8 Å cell --
+        # off-centre, so the rule is not what placed them -- and z = 1..19.
         z = np.linspace(-9.0, 9.0, 7)
         pos = np.array([[1.0, 1.0, float(v)] for v in z])
         return Structure(
             elements=["Au"] * len(z), positions=pos,
-            cell=np.diag([8.0, 8.0, 18.0]),
-            cell_origin=[-2.0, -2.0, -9.0],
+            cell=np.diag([8.0, 8.0, 20.0]),
+            engine_offset=[2.0, 2.0, 10.0],
             axis_kind=("periodic", "periodic", "transport"))
 
-    def test_the_deck_validates_the_frame_it_emits(self):
+    def test_the_deck_validates_the_frame_it_emits_and_leaves_the_structure_alone(self):
+        """Carried over, the design's offset would put z at fractional 0.55-1.45
+        and `cell.atoms_outside` would fire on a deck whose atoms are inside.
+        And the subject is a derived copy: the origin the person assigned, and
+        the design coordinates, stay on the structure they own (§ 6.1 clause 1;
+        § 6.0, no engine step rewrites the design)."""
         from molbuilder.siesta.input import spec_for
-        s = self._junction_with_a_stored_corner()
+        s = self._junction_with_an_assigned_origin()
+        before = s.positions.copy()
         cfg = SiestaConfig()
         subject, kw = spec_for(s, cfg).validate_subject(s, cfg)
 
         wheres = {i.where for i in validate(subject, cfg, **kw)}
         assert "cell.atoms_outside" not in wheres, (
-            "the validator judged the deck's coordinates against the corner "
-            "they were translated away from")
-
-    def test_the_structure_itself_is_untouched(self):
-        """The subject is a derived copy; the corner the user set stays on
-        the structure they own (§ 6.1 clause 1 — a resolved value is never
-        written back)."""
-        from molbuilder.siesta.input import spec_for
-        s = self._junction_with_a_stored_corner()
-        cfg = SiestaConfig()
-        spec_for(s, cfg).validate_subject(s, cfg)
-        assert s.cell_origin is not None
-        assert list(np.asarray(s.cell_origin, dtype=float)) == [-2.0, -2.0, -9.0]
+            "the validator judged the deck's coordinates against the offset "
+            "they were placed by")
+        np.testing.assert_array_equal(subject.engine_offset, 0.0)
+        np.testing.assert_array_equal(s.engine_offset, [2.0, 2.0, 10.0])
+        np.testing.assert_array_equal(s.positions, before)
 
 
 class TestF4GateDerivesWhatChecksNeed:
@@ -328,10 +327,13 @@ class TestF4DerivesOnlyABoxTheStructureAskedFor:
                                 [0.757, 0.586, 0.0],
                                 [-0.757, 0.586, 0.0]]))
         wheres = {i.where for i in validate(water, PySCFConfig())}
-        assert "cell.determinant" not in wheres, (
+        # ANY cell finding means a box was invented -- the least it would say
+        # is `cell.vacuum_defaulted`.  (This asked for `cell.determinant` and
+        # `cell.volume`, which no code has emitted since 2026-08-03, so it
+        # could not fail.)
+        assert not any(w.startswith("cell.") for w in wheres), (
             "a gas-phase molecule that never asked for a box must not be "
-            "judged against one")
-        assert "cell.volume" not in wheres
+            f"judged against one: {sorted(wheres)}")
 
     def test_a_declared_vacuum_does_bring_the_cell_checks_back(self):
         """The hemeC case: asking for vacuum IS asking for a box."""

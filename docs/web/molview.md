@@ -559,7 +559,7 @@ classDiagram
 |---|---|---|
 | `elements` | `string[]` | element per atom. **Shared by every frame.** |
 | `annotations` | per atom: the labels it carries, its identity — residue name, atom name, residue id, chain, real ones from a format that has them or the server's synthesized placeholders from one that does not (§ 6.1) — and its per-atom channel values (the sidecar's `annotations` block, atom-indexed half) | **Shared by every frame.** These are facts about the molecule, not switches — the panel reads them, writes them and filters on them (§ 9.5); the drawing does not use them. Writing one is a change to the structure, gated like any other (§ 9.4). Some label names are **reserved** and mean something downstream (§ 6.6) |
-| `periodicity` | the a/b/c vectors, the corner the box is anchored at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `cell_origin`, `axis_kind`, `vacuum` — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
+| `periodicity` | the a/b/c vectors, the offset the structure states (if any) and the corner the box is drawn at, how each axis is treated — repeating, isolated, or a transport lead — how much empty space an isolated axis should have, and beside each of those the **resolved** answer the server worked out. `null` when the structure has none | **One fact that travels together**, which is why there is one door to change it (§ 9.3). **Carried under the field names it arrives with** — `cell`, `engine_offset`, `axis_kind`, `vacuum` (and the resolved `box_corner` beside them) — which are the same names the sidecar on disk uses, because both are the codec's. MolView holds the block, offers it, edits it through that one door, and interprets none of it. Those names and the rules for resolving them belong to [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) |
 | `title` + `channelDefs` | the structure's title, and per channel its `kind`/`color`/`fdf` — the channel-LEVEL half of the sidecar's `annotations` block | **Carried verbatim, like `periodicity`** *(2026-08-20)*: the viewer edits neither, so neither is per-atom — the atom-indexed half of each channel rides on the atoms (above), and the two doors (§ 11.1's adoption, the one outbound read) fold and unfold between this split and the wire's shape. Whether an identity value is a placeholder is the **server's** judgment; this module carries what it is given |
 | `frames` | `Vec3[][]` | `frames[f]` = the coordinates of frame `f`. At least one. **Coordinates only** — no elements, no labels |
 | `forcesPerFrame` | `Vec3[][]` or `null` | `forcesPerFrame[f]` = the forces of frame `f` |
@@ -1919,8 +1919,8 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `getRegions()` | — | `{label: [atom…]}` |
 | `getFrozen()` | — | the atoms carrying `frozen_atoms` (§ 6.6) |
 | `getFrameAllAtoms(i)` | `i` — frame index, 0-based | every atom of that frame, original order |
-| `getUnitCellInfo()` | — | the cell **as it will be used** — `{cell, cell_origin, axis_kind, vacuum}`, each `null` where there is nothing. **Never `null` itself** |
-| `getUnitCell()` · `getUnitCellOrigin()` · `getAxisKind()` · `getVacuum()` | — | what the structure itself states, `null` where it states nothing |
+| `getUnitCellInfo()` | — | the cell **as it will be used** — `{cell, box_corner, axis_kind, vacuum}`, each `null` where there is nothing; `box_corner` is the server's, where the box is drawn (`structure-periodicity.md` § 6.0), never worked out here. **Never `null` itself** |
+| `getUnitCell()` · `getUnitCellOrigin()` · `getAxisKind()` · `getVacuum()` | — | what the structure itself states, `null` where it states nothing — `getUnitCellOrigin()` is the ASSIGNED origin, `null` for *Automatic* |
 | `currentFrame()` · `frameCount()` | — | **`0` with nothing loaded**, not `null` — they are counts |
 | `setCurrentFrame(i)` | `i` — resolved against the range, never taken on trust | — |
 | `onFrameChange(fn)` · `subscribe(fn)` | `fn` | an unsubscribe function |
@@ -1929,7 +1929,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `state_index` · `uncommitted` | — | the position; whether there is unsaved work |
 | `installMolecule(input)` | `{path}` **or** `{structure}` **or** `{text, filename}`, plus `frames?` + `forces?` for a trajectory (§ 9.3) and `enforce?` (§ 9.4) | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `applyOp(name, args)` | `name` — a row of § 11.1's table, and the route segment. `args` — that operation's own arguments, flat | the structure · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
-| `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `cell_origin`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
+| `commitPeriodicityOp(op, payload)` | `op` — `vacuum` · `axis_kind` · `cell` · `box_corner` (the origin the person assigns; `null` is *Automatic*) · `block`. `payload` — that op's value; `null` clears | the cell block · `null` if there was nothing to do · **throws** if it was refused (§ 6.9) |
 | `reloadFrames(frames, opts)` | `opts` — `{forces?, enforce?}` | — |
 | `addFrame(frame, opts)` · `addFrames(frames, opts)` | `opts` — `{forces?}` | — |
 | `setForces(perFrame)` | one entry per frame; `null` clears | — |
@@ -1971,7 +1971,7 @@ over a long time and verified against the server's resolver
 | Row | Shown | Counts as a **default** when |
 |---|---|---|
 | **Lattice** | the box as it will be used | there is no explicit `cell` |
-| **Origin** | the corner the box is drawn from | there is no explicit `cell_origin` |
+| **Origin** | the corner the box is drawn from (the server's `box_corner`) | the structure states no offset — *Automatic*, the atoms centred |
 | **Axes** | `periodic` · `isolated` · `transport`, per axis | unset **or** every axis is `isolated` |
 | **Vacuum** | the per-side gap, per axis | it is `0` on every axis |
 
@@ -2066,8 +2066,8 @@ and `out.structure` is:
   metadata: {
     regions:     { frozen_atoms: [3,4,5,6],   ← the labels, grouped by name
                    L-electrode:  [0,1] },
-    cell:        [[10,0,0],[0,10,0],[0,0,10]],
-    cell_origin: null,
+    cell:          [[10,0,0],[0,10,0],[0,0,10]],
+    engine_offset: null,
     axis_kind:   null,
     vacuum:      null } }
 ```
@@ -2083,7 +2083,7 @@ be doing:
    by atom; the server's `regions` is the inverse map. Same information, other
    direction.
 3. **The cell block was renamed.** `periodicity` is this module's word;
-   `metadata.cell` / `cell_origin` / `axis_kind` / `vacuum` are the server's,
+   `metadata.cell` / `engine_offset` / `axis_kind` / `vacuum` are the server's,
    flat and unnested.
 
 **The nesting is not decoration.** A hand-built body once sent the cell as
@@ -2165,7 +2165,7 @@ because a coordinate document is a format the server owns).
   writing that format, and re-stating the count is how that guard stops being
   able to fire.
 
-  `periodicity` is a **plain value** — the same `{cell, cell_origin, axis_kind,
+  `periodicity` is a **plain value** — the same `{cell, engine_offset, axis_kind,
   vacuum}` block every other structure door takes — so the server applies it
   through the one seam that also **checks** it: a refusable cell comes back as a
   refusal (§ 6.9), not as a box that was quietly accepted. A cell folded into

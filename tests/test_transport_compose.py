@@ -29,6 +29,7 @@ import numpy as np
 
 import pytest
 
+from molbuilder.cell import to_engine
 from molbuilder.config.transport import (REGION_BRIDGE,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
@@ -183,6 +184,14 @@ class TestHappyPath:
             "not the source's")
         assert np.allclose(np.asarray(dev.cell),
                            np.diag([8.0, 8.0, 40.0]), atol=1e-6)
+        # and the .XV's frame with them: SIESTA's own, the cell at (0,0,0),
+        # so the junction states an offset of 0 and every rung composed from
+        # it hands the engine these coordinates as they are
+        # (`model/structure-periodicity.md` § 6.0).  This is the in-body
+        # label lane; the sidecar lane is the next test's.
+        frame = to_engine(dev)
+        assert frame.stated and np.allclose(frame.applied_offset, 0.0), (
+            "the composed junction would be re-centred on its way to the engine")
         # electrode models extracted from the sorted blocks
         assert len(out.electrode_left.elements) == 6
         assert len(out.electrode_right.elements) == 6
@@ -196,21 +205,22 @@ class TestHappyPath:
         assert out.provenance["form"] == "relaxation"
         assert "Relax.XV" in out.provenance["files"]
 
-    def test_the_authoring_corner_does_not_follow_the_xv_coordinates(
+    def test_the_authoring_origin_does_not_follow_the_xv_coordinates(
             self, tree):
-        """The sidecar's `cell_origin` describes the AUTHORING frame.
+        """The sidecar's `engine_offset` describes the AUTHORING frame.
 
         Form A's coordinates come from the `.XV` — SIESTA's own frame,
         cell at (0,0,0) — but its labels may come from the authoring
         pair's `.molstruct.json`, and applying that sidecar is a full
-        replace of the metadata block. So the box corner the author's
-        viewer drew (`add_slab` sets one on every junction) landed on
-        coordinates it does not describe, and `render_fdf` then shifted
-        the atoms by `-cell_origin` a second time: the whole junction
-        came out translated, far-face atoms wrapping into the leads.
+        replace of the metadata block. So an origin the author assigned
+        would land on coordinates it does not describe, and the deck would
+        shift the atoms by it: the whole junction translated, far-face
+        atoms wrapping into the leads -- how a junction saved from
+        `add_slab` once came out, by its whole authoring corner.
 
         The cell is a SHAPE and survives the change of frame — it is
-        checked against the `.XV`'s and kept. The corner does not.
+        checked against the `.XV`'s and kept. The origin does not: the
+        `.XV`'s frame states 0 (`model/structure-periodicity.md` § 6.0).
         """
         from molbuilder.script_emit import BLOCK_ATOM_METADATA, begin_marker
         from molbuilder.workingcopy_structure import StructureCodec
@@ -225,23 +235,20 @@ class TestHappyPath:
         assert sep, "the fixture's deck no longer carries a label block"
         deck.write_text(head)
 
-        # The authoring pair, whose box was drawn around coordinates that
-        # straddled the origin: a corner well away from (0,0,0).
-        authored = src.replace(cell_origin=[-2.0, -2.0, -20.0])
+        # The authoring pair, with an origin its author assigned well away
+        # from the .XV's (0,0,0).
+        authored = src.replace(engine_offset=[2.0, 2.0, 20.0])
         StructureCodec().write(authored, attempt / "authored.xyz")
         (attempt / "authored.xyz").unlink()
 
         out = compose_junction(_CITE, tree_root=root)
-        dev = out.sorted.structure
+        frame = to_engine(out.sorted.structure)
 
-        assert dev.resolve_cell_origin() is None, (
-            "the authoring corner rode in on the .XV's coordinates")
-        # The emitted frame IS the .XV's. Compared as sets, because the
+        assert frame.stated and np.allclose(frame.applied_offset, 0.0), (
+            "the authoring origin rode in on the .XV's coordinates")
+        # What the engine gets IS the .XV's. Compared as sets, because the
         # composition sorts the atoms into electrode/device blocks.
-        shift = dev.resolve_cell_origin()
-        emitted = dev.positions - (0.0 if shift is None
-                                   else np.asarray(shift))
-        assert np.allclose(np.sort(emitted[:, 2]),
+        assert np.allclose(np.sort(frame.positions[:, 2]),
                            np.sort(relaxed_pos[:, 2]), atol=1e-6), (
             "the junction was emitted translated along transport")
 
@@ -278,6 +285,11 @@ class TestHappyPath:
         dev = StructureCodec().load(dest / "junction.xyz")
         assert dev.elements[:6] == ["Au"] * 6
         assert dev.elements[6:10] == ["S", "C", "C", "S"]
+        # ...still in the .XV's frame: the stage decks prep builds from this
+        # copy apply nothing, so the device lines up with its electrodes.
+        frame = to_engine(dev)
+        assert frame.stated and np.allclose(frame.applied_offset, 0.0), (
+            "the record lost the .XV's origin; prep would re-centre the device")
 
     def test_read_xv_round_trips_units(self, tree):
         root, src, relaxed_pos = tree
@@ -1237,31 +1249,11 @@ class TestTheCellIsStatedOnceOrNotAtAll:
         out = compose_junction(_CITE, tree_root=root)
         assert out.sorted.structure.cell is not None
 
-    def test_a_sidecars_cell_cannot_displace_the_relaxations(self, tmp_path):
-        """`apply_to_structure` is a full REPLACE, so before this the
-        sidecar's box silently won on the no-block lane."""
-        import json
-        from molbuilder.workingcopy_structure import StructureCodec
-        root = tmp_path / "projects"
-        d = root / "loose"
-        d.mkdir(parents=True)
-        s = _junction_struct()
-        StructureCodec().write(s, d / "junction.xyz")
-        side = d / "junction.molstruct.json"
-        doc = json.loads(side.read_text())
-        doc["cell"] = [[9.0, 0, 0], [0, 9.0, 0], [0, 0, 40.0]]
-        side.write_text(json.dumps(doc))
-        # form B reads the pair as one document, so the mismatch shows as
-        # the pair's own cell -- what must NOT happen is a silent 8->9.
-        out_cell = None
-        try:
-            out_cell = compose_junction("loose", tree_root=root
-                                        ).sorted.structure.cell
-        except ComposeError:
-            return                      # refused: also an acceptable answer
-        assert out_cell[0][0] == pytest.approx(9.0), (
-            "form B has one cell document; if it composed, it must be the "
-            "one the pair states, not a silent blend of two")
+    # `test_a_sidecars_cell_cannot_displace_the_relaxations` RETIRED
+    # 2026-09-25: it ran form B, whose pair states ONE cell, so there was no
+    # second box to displace it -- and it accepted a refusal and a
+    # composition alike, so it could not fail.  The no-block lane its
+    # docstring named is form A's, held by the test below.
 
     def test_a_sidecar_beside_the_deck_cannot_displace_the_relaxations_cell(
             self, tmp_path):

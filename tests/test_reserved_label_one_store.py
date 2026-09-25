@@ -376,7 +376,9 @@ def test_the_metadata_dict_has_exactly_these_members():
     # adding a field to both at once still forces a conscious edit here.
     # `pbc` left the set 2026-09-22 -- it was the boolean view of `axis_kind`
     # and is now the `pbc()` accessor (`structure-periodicity.md` § 2.0a).
-    assert set(METADATA_FIELDS) == {"regions", "cell", "cell_origin",
+    # `cell_origin` left it 2026-09-25 for the stated `engine_offset` (§ 6.0),
+    # and this literal is what stops it coming back (D2: never written again).
+    assert set(METADATA_FIELDS) == {"regions", "cell", "engine_offset",
                                     "axis_kind", "vacuum", "annotations"}
     assert "frozen_atoms" not in METADATA_FIELDS, (
         "the reserved label is a member of `regions`, not a field beside it"
@@ -488,9 +490,12 @@ def test_a_deck_label_block_is_validated_like_a_sidecar_one():
     # labels-only block would have reset these to their defaults.
     keeps = _S(elements=["H", "H"], positions=_np.array([[0., 0, 0], [1., 0, 0]]),
                cell=_np.diag([9., 9, 9]), vacuum=(4.0, 4.0, 4.0),
-               axis_kind=("periodic", "periodic", "transport"))
+               axis_kind=("periodic", "periodic", "transport"),
+               engine_offset=_np.array([1.0, 1.0, 1.0]))
     apply_atom_metadata(keeps, {"n_atoms_total": 2, "regions": {"lead": [0]}})
     assert keeps.regions == {"lead": [0]}
     assert keeps.cell is not None
+    assert _np.allclose(keeps.engine_offset, [1.0, 1.0, 1.0]), \
+        "the deck's label block reset an origin the person assigned"
     assert keeps.vacuum == (4.0, 4.0, 4.0)
     assert keeps.axis_kind == ("periodic", "periodic", "transport")

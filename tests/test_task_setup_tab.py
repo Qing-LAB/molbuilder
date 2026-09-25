@@ -653,15 +653,16 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
                          for ln in blk.group(1).strip().splitlines()])
         design = StructureCodec().load(d / over["structure"]["source"])
         assert fdf.shape == (3, 3)
+        # Nobody assigned an origin, so the pair the hand-over wrote leaves the
+        # placement to the rule (Automatic) rather than freezing a corner.
+        assert design.engine_offset is None, design.engine_offset
         offset = _cell.engine_offset(design)
         assert _np.allclose(fdf, design.positions + offset, atol=1e-6), (
             fdf, design.positions, offset)
         record = extract_engine_offset(deck)
         assert record is not None, "the deck does not say where it put the atoms"
         assert _np.allclose(record["applied_offset"], offset, atol=1e-7), record
-        # ...and at the hand-off the offset is ZERO: the correction applied.
-        _cell.require_placed(_cell.engine_frame(_np.asarray(cell), fdf),
-                             design.axis_kind)
+        assert record["stated"] is False, record
     finally:
         pass    # tmp_path removes the tree
 
@@ -779,13 +780,15 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
     env = _envelope()
     env["structure"]["metadata"] = {
         "regions": {}, "cell": [[1.0, 0, 0], [1.0, 0, 0], [0, 0, 1.0]],
-        "cell_origin": None, "axis_kind": None, "vacuum": None,
+        "engine_offset": None, "axis_kind": None, "vacuum": None,
     }
     r = web_client.post("/api/task-setup/handover", json=dict(
         env, engine="siesta", name="bad", params={"system_label": "bad"}))
-    assert r.status_code in (200, 400), r.status_code
-    if r.status_code == 400:
-        assert (r.get_json() or {}).get("error"), "a refusal with no reason"
+    # Two equal rows: a flat box, an ERROR finding (`cell.no_volume`), so the
+    # gate refuses and the door answers 400 with that sentence.
+    assert r.status_code == 400, (r.status_code, r.get_json())
+    assert "flat" in ((r.get_json() or {}).get("error") or ""), (
+        "the 400 does not carry the gate's reason", r.get_json())
 
 
 
