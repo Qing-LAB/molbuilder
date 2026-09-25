@@ -148,7 +148,8 @@ def validate(struct: Structure, cfg, *,
              cell: Optional[np.ndarray] = None,
              dest_dir: "Optional[object]" = None,
              prior: "Optional[object]" = None,
-             calculation: str = "optimization") -> List[Issue]:
+             calculation: str = "optimization",
+             design: "Optional[Structure]" = None) -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -194,6 +195,15 @@ def validate(struct: Structure, cfg, *,
         engine validators use for selector / cross-run checks.  None
         on a first run and on every SIESTA/PySCF Build call (their
         validators ignore it).
+
+    design
+        The structure AS THE PERSON HOLDS IT, when ``struct`` is the placed
+        copy a deck writes (its validation subject: the coordinates plus the
+        engine offset).  A fact recorded ABOUT the file -- the relaxation
+        record's geometry fingerprint -- is judged against these, because a
+        placement is a rigid shift the record never saw (found by review,
+        2026-09-25: on the road every SIESTA vibration pair's record stopped
+        vouching).  None means ``struct`` is the file.
 
     The returned list is in deterministic order: generic geometry
     checks first, generic config-field checks next, then engine-
@@ -259,6 +269,8 @@ def validate(struct: Structure, cfg, *,
         engine_kw["dest_dir"] = dest_dir
     if prior is not None:
         engine_kw["prior"] = prior
+    if design is not None:
+        engine_kw["design"] = design
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
     # one fact, one finding -- on a vibration deck the parity /
@@ -340,7 +352,7 @@ _KIND_VALIDATORS: dict = {}
 
 
 def _validate_vibration_kind(struct: Structure, cfg, cell, *,
-                             prior=None, **_) -> List[Issue]:
+                             prior=None, design=None, **_) -> List[Issue]:
     """The vibration kind's science (grid / amplitude / parity /
     method / open-shell), over the deck's own config view.  Lazy
     imports at call time, same cycle-avoidance as the engine
@@ -353,7 +365,7 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     from ..config.siesta import SiestaConfig
     if isinstance(cfg, SiestaConfig):
         from .spectra import siesta_vibration_checks
-        return list(siesta_vibration_checks(struct, cfg))
+        return list(siesta_vibration_checks(struct, cfg, design=design))
     # The kind's science is written per engine, and an engine this dispatch
     # does not name has NO science here -- a gap to refuse, never an empty
     # verdict: an empty list reads as "checked, nothing found" on every

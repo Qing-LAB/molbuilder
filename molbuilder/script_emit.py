@@ -550,6 +550,9 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
         "applied_offset": [_num(v) for v in frame.applied_offset],
         "cell": [[_num(x) for x in row] for row in frame.cell],
         "axis_kind": [str(k) for k in axis_kind],
+        # The structure's own offset (a person's origin, an engine's 0), or
+        # the rule's -- § 6.0, *A stated offset*.
+        "stated": bool(getattr(frame, "stated", False)),
     }
     out: List[str] = [begin_marker(BLOCK_ENGINE_OFFSET),
                       "# format: molbuilder-engine-offset/v1"]
@@ -1441,17 +1444,36 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     if atoms:
         record.append(atoms)
         in_record.append("ATOM-METADATA")
-    if spec.engine_frame is not None:
-        # ZERO AT THE HAND-OFF (user, 2026-09-25): the coordinates this deck
-        # writes must carry no offset -- the correction applied -- or the deck
-        # refuses.  Every emitter places through `cell.to_engine`, so this can
-        # only fire on one that did not.
-        from .cell import require_placed as _require_placed
-        _require_placed(spec.engine_frame)
-        record.append(emit_engine_offset(
-            spec.engine_frame,
-            getattr(struct, "axis_kind", None) or ("isolated",) * 3))
-        in_record.append("ENGINE-OFFSET")
+    # PLACED AT THE HAND-OFF (user, 2026-09-25): the cell origin at (0,0,0)
+    # and every atom inside the cell, or the deck refuses (§ 6.0, check 3).
+    # EVERY deck places its atoms and says so, so a spec without a frame is
+    # refused rather than logged: a new engine or kind that forgot it would
+    # otherwise walk past the gate and the record without a word.
+    if spec.engine_frame is None:
+        raise ValueError(
+            f"the {spec.engine} deck carries no engine frame, so nothing says "
+            f"where its atoms were placed: a spec builder places through "
+            f"cell.to_engine and hands the frame over "
+            f"(model/structure-periodicity.md § 6.0)")
+    from .cell import atoms_outside as _atoms_outside
+    from .cell import require_placed as _require_placed
+    from .issues import Issue as _Issue
+    _kinds = tuple(getattr(struct, "axis_kind", None) or ("isolated",) * 3)
+    _require_placed(spec.engine_frame, _kinds)
+    # What is left outside is along PERIODIC vectors only -- the gate refused
+    # the rest.  Legal, and said: the engine wraps them as images.
+    for _axis, _atoms in sorted(_atoms_outside(spec.engine_frame).items()):
+        _issues.append(_Issue(
+            "warn",
+            f"Atom(s) {', '.join(str(k) for k in _atoms[:8])}"
+            f"{' …' if len(_atoms) > 8 else ''} (0-based) lie past a face of "
+            f"the cell along {'abc'[_axis]}, which is periodic: the engine "
+            f"treats them as images of atoms inside it. That is legal -- a "
+            f"crystal written with whole molecules crosses its faces -- but "
+            f"check it is what you meant.",
+            "cell.beyond_periodic_face"))
+    record.append(emit_engine_offset(spec.engine_frame, _kinds))
+    in_record.append("ENGINE-OFFSET")
 
     text = (science + "\n\n" + emit_user_custom_placeholder()
             + "\n\n" + machine_record_banner()
@@ -1467,8 +1489,6 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         if "ATOM-METADATA" not in in_record:
             log.note("ATOM-METADATA: nothing — this structure carries no "
                      "regions or annotations")
-        if "ENGINE-OFFSET" not in in_record:
-            log.note("ENGINE-OFFSET: nothing — this deck places no atoms")
         log.produced("deck", f"{len(text.splitlines())} lines, "
                              f"{len(emitted)} recorded for the gate")
     return RenderedDeck(text=text, emitted=tuple(emitted),

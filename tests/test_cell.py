@@ -139,41 +139,30 @@ class TestWhatIsChecked:
     def test_what_an_ignored_vacuum_still_does_is_stated_only_when_true(self):
         """The sentence must not claim more than the code does.
 
-        It used to say a typed vacuum "is not being used", which is too
-        broad: under an explicit cell it stops setting the box LENGTH, but on
-        an isolated axis it still decides the derived corner — and therefore
-        where `render_fdf` puts the atoms. Someone who believed the old
-        sentence would not touch the control that was moving their molecule.
+        It said a typed vacuum "is not being used", which was too broad while
+        the vacuum still decided the derived corner on an isolated axis, so it
+        grew a clause saying the vacuum "still sets where the structure sits".
+        Since 2026-09-25 the engine offset places the atoms
+        (`model/structure-periodicity.md` § 6.0) and the clause became false,
+        so it went.
 
-        THE CLAIM IS ASSERTED, NOT THE WORDING: when the extra sentence
-        fires, changing the vacuum must actually move the corner; when it
-        does not fire, it must not.
+        THE CLAIM IS ASSERTED, NOT THE WORDING: under a typed cell, changing
+        the vacuum must move nothing the engine is handed.
         """
         import numpy as _np
+        from molbuilder.cell import to_engine
 
-        def _say_and_corner(vac, origin=None):
+        def _say_and_placed(vac):
             s = Structure(elements=["H", "H"],
                           positions=_np.array([[0., 0, -3.], [0, 0, 3.]]),
                           cell=_np.diag([20., 20., 20.]), axis_kind=ISOLATED,
-                          vacuum=vac, cell_origin=origin)
-            return _by_id(s, "cell.vacuum_ignored"), s.resolve_cell_origin()
+                          vacuum=vac)
+            return _by_id(s, "cell.vacuum_ignored"), to_engine(s).positions
 
-        said, corner_a = _say_and_corner((2.0, 2.0, 2.0))
-        _, corner_b = _say_and_corner((8.0, 8.0, 8.0))
-        assert said is not None
-        assert "still sets where the structure sits" in said.message, (
-            "the corner IS vacuum-dependent here and the notice does not say so")
-        assert not _np.allclose(corner_a, corner_b), (
-            "the notice claims the vacuum positions the structure, but "
-            "changing it moved nothing")
-
-        # A STORED corner is the corner; vacuum cannot reach it, so the
-        # sentence must not be there.
-        pinned, corner_c = _say_and_corner((8.0, 8.0, 8.0), origin=[0., 0, 0])
-        assert pinned is not None, "the box-size half is still true"
-        assert "still sets where the structure sits" not in pinned.message, (
-            "claimed the vacuum positions a structure whose corner is stored")
-        assert _np.allclose(corner_c, [0., 0, 0])
+        said, placed_a = _say_and_placed((2.0, 2.0, 2.0))
+        _, placed_b = _say_and_placed((8.0, 8.0, 8.0))
+        assert said is not None, "the box-size half is still true"
+        _np.testing.assert_allclose(placed_a, placed_b, atol=1e-12)
 
     def test_no_vacuum_set_under_a_typed_cell_says_nothing_about_vacuum(self):
         """Nothing was chosen, so there is no expectation to correct."""
@@ -669,19 +658,35 @@ def test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none(
     """User, 2026-09-25: *"the invariable is coordinate+offset"* -- the design
     coordinates plus their offset ARE the coordinates the engine gets -- and at
     that hand-off *"offset should be zero … the correction should have been
-    applied"*.  Nothing here claims a saved file's offset is zero: a relaxation
-    moves atoms, and their offset is whatever the rule then says."""
+    applied"*: the cell origin at (0,0,0) and every atom inside the cell.  A
+    STATED offset -- an engine's own output handed on, a person's origin --
+    need not centre the atoms, but no atom may sit outside the cell along a
+    non-periodic vector; along a periodic one it is an image, warned about
+    where the deck is written, not refused here.
+
+    API-level, on the measured fixture: no prep can hand the gate an
+    off-centre stated frame until an origin can be assigned (§ 6.0)."""
     s = _junction_like()
     frame = cellmod.to_engine(s)
     np.testing.assert_allclose(s.positions + cellmod.engine_offset(s),
                                frame.positions, atol=1e-12)
     np.testing.assert_allclose(frame.applied_offset, cellmod.engine_offset(s),
                                atol=1e-12)
-    cellmod.require_placed(frame)                     # zero at the hand-off
+    cellmod.require_placed(frame, s.axis_kind)        # placed at the hand-off
     unplaced = cellmod.EngineFrame(cell=frame.cell, positions=s.positions,
                                    applied_offset=np.zeros(3))
     with pytest.raises(ValueError, match="still carry an offset"):
-        cellmod.require_placed(unplaced)
+        cellmod.require_placed(unplaced, s.axis_kind)
+    off_centre = frame.positions + np.array([0.0, 0.0, 0.5])   # still inside
+    cellmod.require_placed(cellmod.engine_frame(frame.cell, off_centre),
+                           s.axis_kind)
+    outside = frame.positions.copy()
+    outside[0, 2] = -1e-3                         # 1 mÅ below the c face
+    with pytest.raises(ValueError, match="outside the cell"):
+        cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
+                               ("periodic", "periodic", "transport"))
+    cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
+                           ("periodic", "periodic", "periodic"))
 
 
 def test_an_engines_own_output_is_shown_as_the_engine_had_it():

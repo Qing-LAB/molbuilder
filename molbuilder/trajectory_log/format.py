@@ -71,6 +71,7 @@ def write_initial_preview(
     generator: str = "molbuilder",
     stage_name: Optional[str] = None,
     convergence_targets: Optional[Mapping[str, float]] = None,
+    frame=None,
 ) -> None:
     """Write a ``<path>.molwatch.log`` containing exactly one preview
     block: step 0 with the structure's coordinates, no energy, no
@@ -121,8 +122,12 @@ def write_initial_preview(
     # (`model/structure-periodicity.md` § 6.0).  Step 0 was the design
     # coordinates while the deck beside it was placed, so the log jumped by
     # the whole offset between step 0 and step 1 (45 Å, measured 2026-09-22).
+    # ``frame`` is the DECK's, when a deck is beside this log: prep may hand
+    # the deck a box of its own (the vibration `freq` stage's), and step 0 is
+    # then what that deck writes, not a placement worked out again here.
     from ..cell import to_engine
-    positions = to_engine(struct).positions  # (N, 3), Angstrom
+    positions = (frame if frame is not None
+                 else to_engine(struct)).positions  # (N, 3), Angstrom
     n = len(elements)
     now_epoch = time.time()
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%S",

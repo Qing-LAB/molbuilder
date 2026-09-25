@@ -803,8 +803,13 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
         log.received(str(out.relative_to(base)),
                      f"{len(frames)} geometry step(s); the last is written as "
                      f"the deck's coordinates, in that run's cell")
+    # THE ENGINE'S COORDINATES STATE THE ENGINE'S ORIGIN -- 0, set together
+    # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
+    # applies nothing.  The rule re-centred them until 2026-09-25, moving the
+    # relaxed geometry by the change in its span: -0.0168 Å on the H2 e2e.
     return (struct.replace(positions=np.asarray(last.structure.positions,
-                                                dtype=float)),
+                                                dtype=float),
+                           engine_offset=np.zeros(3)),
             (np.asarray(cell, dtype=float) if cell is not None else None))
 
 
@@ -1183,7 +1188,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             with _calling("label_of", engine=task.engine, log=log):
                 _label = seam.label_of(cfg)
             _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
-                                 label=_label, token=(token or None))
+                                 label=_label, token=(token or None),
+                                 frame=spec.engine_frame)
             if log is not None:
                 log.step("what this deck's text PROMISES, kept")
                 log.produced("sibling_artifacts",
@@ -2182,7 +2188,7 @@ def _environment_rows(environment) -> "List[tuple]":
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
-                         label: str, token=None) -> None:
+                         label: str, token=None, frame=None) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
     The deck NAMES its trajectory log; something has to CREATE it, or the tab
@@ -2227,7 +2233,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         struct,
         base / molwatch_log_basename(label, token),
         job=label, engine=engine,
-        stage_name=token, convergence_targets=(targets or None))
+        stage_name=token, convergence_targets=(targets or None),
+        frame=frame)
 
 
 def token_for(task, stage_name: Optional[str]) -> str:

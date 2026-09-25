@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from molbuilder import script_emit as se
+from molbuilder.cell import to_engine
 from molbuilder.issues import ValidationError
 from molbuilder.structure import Structure
 
@@ -59,6 +60,10 @@ def _spec(**over) -> se.DeckSpec:
                 se.Section("Relaxation", ("relax_steps",))),
         line=_line,
         created_by="stub",
+        # EVERY spec builder places its atoms and hands the frame over, the
+        # stub included -- the renderer refuses a deck without one
+        # (`model/structure-periodicity.md` § 6.0, check 3).
+        engine_frame=to_engine(_struct()),
     )
     kw.update(over)
     return se.DeckSpec(**kw)

@@ -660,7 +660,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         assert record is not None, "the deck does not say where it put the atoms"
         assert _np.allclose(record["applied_offset"], offset, atol=1e-7), record
         # ...and at the hand-off the offset is ZERO: the correction applied.
-        _cell.require_placed(_cell.engine_frame(_np.asarray(cell), fdf))
+        _cell.require_placed(_cell.engine_frame(_np.asarray(cell), fdf),
+                             design.axis_kind)
     finally:
         pass    # tmp_path removes the tree
 

@@ -894,11 +894,14 @@ def _finish_slab(struct, metal_pos, element, full):
     # a periodicity carried from the source would then be a periodic axis with
     # no lattice, which `resolve_cell()` refuses outright.  One decision: the
     # captured box, or no box at all.
+    # A NEW BOX DROPS A STATED OFFSET: it was stated against the old one.
     captured = ({"cell": elc_cell,
                  "cell_origin": elc_cell_origin,
+                 "engine_offset": None,
                  "axis_kind": elc_axis_kind}
                 if elc_cell is not None else
-                {"cell": None, "cell_origin": None, "axis_kind": None})
+                {"cell": None, "cell_origin": None, "engine_offset": None,
+                 "axis_kind": None})
     out = Structure(
         **{**struct._carry_nonatom(), **captured},
         elements=list(struct.elements) + [element] * n_new,

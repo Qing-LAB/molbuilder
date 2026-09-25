@@ -468,6 +468,14 @@ class Structure:
     # origin is computed from atom extents) and for an imported crystal (atoms are
     # already in [0, cell), so the cell sits at the world origin).
     cell_origin:   Optional[np.ndarray]            = None
+    # THE OFFSET THIS STRUCTURE STATES (Angstrom), or None -- then the rule
+    # computes it (`model/structure-periodicity.md` § 6.0, *A stated
+    # offset*).  Two things state one: an origin the person assigns, P, stored
+    # as -P; and coordinates that came from an engine, which state 0 -- their
+    # origin is the engine's, set together with them.  ``cell.to_engine``
+    # applies it as it stands, and nothing derives it.  Not yet persisted: the
+    # sidecar gains it with ``cell_origin``'s retirement (plan § 5q, D2).
+    engine_offset: Optional[np.ndarray]            = None
     # Extensible per-atom annotations (model/structure-annotations.md).  Holds
     # channels BEYOND the two built-ins (regions -> tag channels,
     # frozen_atoms -> the "frozen" flag channel), e.g. future per-atom
@@ -587,6 +595,15 @@ class Structure:
                 raise ValueError(
                     "Structure.cell_origin must be 3 finite floats (Angstrom)")
             self.cell_origin = co if self.cell is not None else None
+        # A stated offset is kept whether or not the structure types a cell:
+        # an engine's output states 0 against the cell the ENGINE used, which
+        # the next deck is handed as its box.
+        if self.engine_offset is not None:
+            eo = np.asarray(self.engine_offset, dtype=float).reshape(3)
+            if not np.all(np.isfinite(eo)):
+                raise ValueError(
+                    "Structure.engine_offset must be 3 finite floats (Angstrom)")
+            self.engine_offset = eo
         # Shape vacuum (per-side gap).  ``None`` MEANS THE STRUCTURE SAYS
         # NOTHING -- the same "unset" its three siblings (cell, cell_origin,
         # axis_kind) have always had, and the state the whole regime model
@@ -1380,9 +1397,11 @@ class Structure:
         `sidecars.spectra.structure_hash_text` (the artifact's pin over the
         input order with the job's label in it): this is a fact about the
         geometry alone.  Labels, cell and metadata are left out on purpose;
-        a rigid shift is NOT folded in, because a pair exported from a run
-        carries the run's cell and no deck shifts a structure that states
-        one.
+        a rigid shift is NOT folded in: a record is judged against the
+        coordinates the person holds (``validate``'s ``design``), never the
+        placed copy a deck writes, and a structure saved from a run states
+        its engine's origin, so its deck moves nothing (`model/
+        structure-periodicity.md` § 6.0).
         """
         import hashlib as _hashlib
         return "sha256:" + _hashlib.sha256(
@@ -1977,6 +1996,8 @@ class Structure:
             cell        = (self.cell.copy() if self.cell is not None else None),
             cell_origin = (self.cell_origin.copy()
                            if self.cell_origin is not None else None),
+            engine_offset = (self.engine_offset.copy()
+                             if self.engine_offset is not None else None),
             axis_kind   = self.axis_kind,
             vacuum      = self.vacuum,
             info        = _copy.deepcopy(self.info) if self.info else {},
@@ -2252,6 +2273,7 @@ class Structure:
             _box = base._carry_nonatom()
             lattice["cell"] = _box["cell"]
             lattice["cell_origin"] = _box["cell_origin"]
+            lattice["engine_offset"] = _box["engine_offset"]
         # `info` IS NOT THE LATTICE'S.  The recorded contract belongs to the
         # one being appended TO, which is the first, cell or no cell.
         lattice["info"] = (_copy.deepcopy(first.info) if first.info else {})

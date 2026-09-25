@@ -906,7 +906,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # a -19 A clearance along transport on a structure whose atoms sit
     # perfectly inside their box.  An origin is a label on the coordinates
     # beside it; reframe one and you restate the other in the same breath.
-    validation_struct = struct.replace(positions=positions, cell_origin=None)
+    # ...and it STATES that origin, 0: these are the engine's coordinates, so
+    # nothing downstream may place them a second time (§ 6.0).
+    validation_struct = struct.replace(positions=positions, cell_origin=None,
+                                       engine_offset=np.zeros(3))
 
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
     # to the subject this spec names -- the wrapped coordinates and the
@@ -1054,7 +1057,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         check_rules=_layout.check_rules,
         # WHAT the settings gate judges: the structure as this deck
         # expresses it, not as it arrived.
-        validate_subject=lambda s, c: (validation_struct, {"cell": cell}),
+        validate_subject=lambda s, c: (validation_struct,
+                                       {"cell": cell, "design": struct}),
     )
     def _science(struct, cfg) -> str:
         """The deck, built in the order SIESTA reads it.

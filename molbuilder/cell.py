@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import math as _math
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -386,27 +386,15 @@ def check(rc: ResolvedCell) -> List[Issue]:
     if (rc.is_manual and rc.stated_vacuum is not None
             and any(float(v) != 0.0 for v in rc.stated_vacuum)):
         typed = ", ".join(f"{v:g}" for v in rc.stated_vacuum)
-        # SAY WHAT IT STOPPED DOING, NOT THAT IT STOPPED MATTERING.  This read
-        # "is not being used", which is too broad: the typed cell takes over
-        # the box LENGTH, but on an isolated axis the vacuum still decides the
-        # derived corner (`Structure.expected_cell_corner`: `bbox_min -
-        # vacuum`), and therefore where the atoms are emitted.  Measured on a
-        # 20 A cubic cell with three isolated axes: vacuum unset put the
-        # corner at (-3,-3,-6), vacuum 8 put it at (-8,-8,-11).  Someone who
-        # believed the old sentence would not touch the control that was
-        # moving their molecule.
-        #
-        # Only said when the corner is actually derived -- a stored
-        # `cell_origin` is the corner, and vacuum does not reach it.
-        also = (" On an isolated axis it still sets where the structure sits "
-                "inside that box."
-                if rc.corner_was_derived and not rc.origin_is_user_owned
-                else "")
+        # THE WHOLE TRUTH, SINCE 2026-09-25: the typed cell takes over the
+        # box, and the engine offset places the atoms in it, so a vacuum
+        # decides nothing at all.  (It used to still decide the derived corner
+        # on an isolated axis, and this said so; that corner is gone.)
         out.append(Issue(
             "info",
-            f"Your vacuum ({typed} Å) is not setting the box size, because "
-            f"you typed a cell and that cell is the box.{also} To have it "
-            f"size the box again, clear the cell.",
+            f"Your vacuum ({typed} Å) is not setting the box, because you "
+            f"typed a cell and that cell is the box. To have it size the box "
+            f"again, clear the cell.",
             "cell.vacuum_ignored"))
 
     # ONLY IN THE DERIVED REGIME.  Under an explicit cell the vacuum is
@@ -514,6 +502,11 @@ class EngineFrame:
     positions: np.ndarray
     #: 3, Å.
     applied_offset: np.ndarray
+    #: True when the offset was the structure's own STATED one -- an origin
+    #: the person assigned, or an engine's output (0) -- rather than the
+    #: rule's.  A stated offset need not centre the atoms, so the hand-off
+    #: gate asks only that they be inside (:func:`require_placed`).
+    stated: bool = False
 
     @property
     def box_corner(self) -> np.ndarray:
@@ -552,11 +545,14 @@ def engine_offset(struct: Structure, *,
     device whole.
 
     Computed from the cell and every atom's position and from nothing else --
-    no axis kind, no vacuum, no label -- so it needs no stored input and cannot
-    go stale.  Idempotent: on coordinates it has already centred it returns
-    zero, which is why a structure saved from an engine's output needs no
-    special case.  ``box`` overrides the resolved cell, as in :func:`resolve`.
+    no axis kind, no vacuum, no label -- UNLESS THE STRUCTURE STATES ONE
+    (§ 6.0, *A stated offset*): an origin the person assigned, or the ``0`` of
+    coordinates that came from an engine.  That is returned as it stands; the
+    rule is the default, not a cage.  ``box`` overrides the resolved cell, as
+    in :func:`resolve`.
     """
+    if struct.engine_offset is not None:
+        return np.asarray(struct.engine_offset, dtype=float).copy()
     if struct.n_atoms == 0:
         return np.zeros(3)
     return _centring(_lattice(struct, box), struct.positions.astype(float))
@@ -581,19 +577,61 @@ def _centring(lattice: np.ndarray, positions: np.ndarray) -> np.ndarray:
 PLACED_TOL_ANG = 1e-6
 
 
-def require_placed(frame: "EngineFrame") -> None:
-    """At the hand-off to an engine the offset is ZERO -- the correction has
-    been applied (user, 2026-09-25).  Raises ``ValueError`` naming what is
-    left when the coordinates still carry one: they reached the engine without
-    passing through :func:`to_engine`, which is the one door."""
-    left = _centring(frame.cell, frame.positions)
-    if float(np.linalg.norm(left)) > PLACED_TOL_ANG:
+def atoms_outside(frame: "EngineFrame") -> Dict[int, List[int]]:
+    """Lattice vector -> the atoms past one of its faces, in the frame the
+    engine gets (the cell at the origin), to :data:`PLACED_TOL_ANG` Å.
+
+    The tolerance is a DISTANCE, never a fraction: TranSIESTA refused an atom
+    16 fm outside (2026-09-25), and a fractional 1e-6 is 37 fm on a 37 Å cell.
+    """
+    if len(frame.positions) == 0:
+        return {}
+    frac = np.linalg.solve(frame.cell.T, frame.positions.T).T
+    out: Dict[int, List[int]] = {}
+    for i in range(3):
+        tol = PLACED_TOL_ANG / float(np.linalg.norm(frame.cell[i]))
+        bad = np.where((frac[:, i] < -tol) | (frac[:, i] > 1.0 + tol))[0]
+        if len(bad):
+            out[i] = [int(k) for k in bad]
+    return out
+
+
+def require_placed(frame: "EngineFrame", axis_kind) -> None:
+    """At the hand-off the cell origin is (0,0,0) and every atom is inside
+    the cell -- the correction applied (user, 2026-09-25: *"the siesta receives
+    a cell origin at 0,0,0 always as it expects with all coordinates
+    corrected"*).  Raises ``ValueError`` when that is not so:
+
+    * a COMPUTED frame whose atoms are not centred reached the engine without
+      :func:`to_engine`, the one door;
+    * any frame with an atom outside the cell along a NON-periodic lattice
+      vector would hand the engine an atom outside its box -- what TranSIESTA
+      refused.  Along a periodic vector an atom past a face is an image the
+      engine wraps, and is warned about, not refused (§ 6.0, check 1).
+    """
+    if not frame.stated:
+        left = _centring(frame.cell, frame.positions)
+        if float(np.linalg.norm(left)) > PLACED_TOL_ANG:
+            raise ValueError(
+                "the atoms handed to the engine still carry an offset of "
+                + str(tuple(round(float(v), 6) for v in left))
+                + " Å: they were not placed by cell.to_engine "
+                "(model/structure-periodicity.md § 6.0), so the engine would "
+                "see them where nobody put them")
+    kinds = tuple(axis_kind or ("isolated",) * 3)
+    bad = {i: atoms for i, atoms in atoms_outside(frame).items()
+           if kinds[i] != "periodic"}
+    if bad:
+        where = "; ".join(
+            f"{'abc'[i]} ({kinds[i]}): atom(s) "
+            f"{', '.join(str(k) for k in atoms[:8])}"
+            f"{' …' if len(atoms) > 8 else ''}"
+            for i, atoms in sorted(bad.items()))
         raise ValueError(
-            "the atoms handed to the engine still carry an offset of "
-            + str(tuple(round(float(v), 6) for v in left))
-            + " Å: they were not placed by cell.to_engine "
-            "(model/structure-periodicity.md § 6.0), so the engine would see "
-            "them where nobody put them")
+            f"atoms lie outside the cell after placement -- {where} (0-based). "
+            f"Along a non-periodic axis the engine would get an atom outside "
+            f"its box. Make the cell longer there, or move the origin you "
+            f"assigned (model/structure-periodicity.md § 6.0, check 3)")
 
 
 def to_engine(struct: Structure, *,
@@ -608,7 +646,8 @@ def to_engine(struct: Structure, *,
     offset = engine_offset(struct, box=lattice)
     return EngineFrame(cell=lattice,
                        positions=struct.positions.astype(float) + offset,
-                       applied_offset=offset)
+                       applied_offset=offset,
+                       stated=struct.engine_offset is not None)
 
 
 def engine_frame(cell, positions) -> EngineFrame:
@@ -621,7 +660,7 @@ def engine_frame(cell, positions) -> EngineFrame:
     misled on 2026-09-25."""
     return EngineFrame(cell=np.array(cell, dtype=float).reshape(3, 3),
                        positions=np.array(positions, dtype=float).reshape(-1, 3),
-                       applied_offset=np.zeros(3))
+                       applied_offset=np.zeros(3), stated=True)
 
 
 # --------------------------------------------------------------------- #

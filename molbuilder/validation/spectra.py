@@ -7,7 +7,7 @@ the retired ``spectra/pyscf_engine.py`` carried it as a classmethod.
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from ..issues import Issue
 from ..structure import Structure
@@ -617,7 +617,8 @@ def spectra_render_checks(struct: Structure,
     return issues
 
 
-def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
+def siesta_vibration_checks(struct: Structure, cfg, *,
+                            design: Optional[Structure] = None) -> List[Issue]:
     """The vibration kind's science on SIESTA -- the force-constant run.
 
     What holds on both engines is said once here and in
@@ -720,8 +721,10 @@ def siesta_vibration_checks(struct: Structure, cfg) -> List[Issue]:
     # THIS calculation's tolerance and level of theory.
     from ..parse.contract import contract_fields_of
     from .sidecar import check_relaxation_record
+    # Against the FILE's coordinates (`design`), not the placed subject: a
+    # placement is a rigid shift the record never saw (`validate`, ``design``).
     issues.extend(check_relaxation_record(
-        struct, engine="siesta",
+        design if design is not None else struct, engine="siesta",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
         level=contract_fields_of(cfg)))

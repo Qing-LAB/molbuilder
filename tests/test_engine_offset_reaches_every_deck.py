@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import numpy as np
 from click.testing import CliRunner
@@ -54,10 +55,13 @@ def _water():
                      vacuum=(5.0, 5.0, 5.0))
 
 
-def _prep(root, struct, cfg, stages, engine):
-    """Describe, then `jobset prep run` the first rung; the deck's text.
-    ``root`` is the per-test projects tree (`isolated_projects_root`): `prep`
-    reads a calculation only from inside the tree."""
+def _prep(root, struct, cfg, stages, engine, *, stage=None,
+          calculation="optimization", name="JOB", before_prep=None):
+    """Describe, then `jobset prep run` one rung (the first unless ``stage``
+    names another); the deck's text.  ``root`` is the per-test projects tree
+    (`isolated_projects_root`): `prep` reads a calculation only from inside
+    the tree.  ``before_prep(dest)`` puts on disk what an earlier rung left --
+    a finished attempt -- before the prep that reads it."""
     # AS A PAIR, through the codec: the cell, the vacuum and the frozen set
     # live in the sidecar, and a bare `.xyz` would hand prep a molecule in the
     # default box -- a different structure from the one described.
@@ -66,7 +70,8 @@ def _prep(root, struct, cfg, stages, engine):
     dest = root / "t" / "calc"
     D.write_description(
         D.build_description(struct, cfg, stages, engine=engine,
-                            shape="hierarchical", name="JOB",
+                            shape="hierarchical", name=name,
+                            calculation=calculation,
                             source=str(root / "in.xyz")),
         dest, struct=struct)       # as `jobset init` does: the pair travels
     if engine == "siesta":
@@ -79,12 +84,14 @@ def _prep(root, struct, cfg, stages, engine):
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4)
                     ).to_json() + "\n")
-    stage = stages[0].name
+    if before_prep is not None:
+        before_prep(dest)
+    stage = stage or stages[0].name
     r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output
     suffix = ".fdf" if engine == "siesta" else ".py"
-    deck = next((dest / f"01_{stage}").glob(f"*{suffix}"))
+    deck = next(next(dest.glob(f"*_{stage}")).glob(f"*{suffix}"))
     return dest, stage, deck.read_text()
 
 
@@ -109,7 +116,8 @@ def _assert_placed(design, written, text):
     np.testing.assert_allclose(record["applied_offset"], offset, atol=1e-7)
     cell = np.asarray(record["cell"], dtype=float)
     np.testing.assert_allclose(cell, design.resolve_cell(), atol=1e-7)
-    cellmod.require_placed(cellmod.engine_frame(cell, written))
+    cellmod.require_placed(cellmod.engine_frame(cell, written),
+                           design.axis_kind)
     frac = np.linalg.solve(cell.T, written.T).T
     near, far = frac.min(axis=0), 1.0 - frac.max(axis=0)
     assert np.all(near > 0), near
@@ -183,3 +191,130 @@ def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():
     with pytest.raises(ValueError, match="still carry an offset"):
         render_deck(dataclasses.replace(spec, engine_frame=unplaced),
                     struct, cfg)
+
+
+#: The measured relaxation of `tests/fixtures/siesta_relax` (its README says
+#: what each file pins): H2 in a 10 Å box, the held atom first.
+_RELAX_RUN = (Path(__file__).parent / "fixtures" / "siesta_relax"
+              / "01_relax" / "run-0")
+
+
+def _h2(z_moved=5.741):
+    return Structure(elements=["H", "H"],
+                     positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, z_moved]]),
+                     regions={"frozen_atoms": [0]},
+                     cell=np.diag([10.0, 10.0, 10.0]),
+                     axis_kind=("isolated",) * 3)
+
+
+def test_the_freq_deck_is_written_at_the_relaxed_geometry_unchanged(
+        isolated_projects_root):
+    """The vibration `freq` deck writes the geometry `relax` left, unchanged.
+
+    GOAL: a relaxed geometry moved against SIESTA's real-space mesh is no
+    longer stationary on it (`engines/vibration.md` § 5.2a).  Until
+    2026-09-25 the offset rule re-centred these coordinates at every deck,
+    moving them by the change in their span -- -0.0168 Å on H2 (found by an
+    independent review).  CONTRACT: `model/structure-periodicity.md` § 6.0 --
+    coordinates that came from an engine state their origin, 0.
+
+    The `relax` attempt is the measured fixture, copied in as this ladder's.
+    """
+    import shutil
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.engines.siesta import SiestaParser
+    from molbuilder.pyscf.stages import vibration_stages
+
+    def the_relax_ran(dest):
+        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0")
+
+    _dest, _stage, text = _prep(
+        isolated_projects_root, _h2(), SiestaConfig(system_label="H2"),
+        vibration_stages("siesta", already_relaxed=False), "siesta",
+        stage="freq", calculation="vibration", name="H2",
+        before_prep=the_relax_ran)
+    block = re.search(r"%block AtomicCoordinatesAndAtomicSpecies\n(.*?)%endblock",
+                      text, re.S).group(1)
+    written = np.array([[float(v) for v in r[:3]] for r in _rows(block)])
+    out = next(_RELAX_RUN.glob("*.out"))
+    relaxed = [f for f in SiestaParser.parse(str(out)).frames
+               if f.structure is not None][-1].structure.positions
+    np.testing.assert_allclose(written, relaxed, atol=1e-8)
+    record = extract_engine_offset(text)
+    assert record["stated"] is True
+    np.testing.assert_allclose(record["applied_offset"], 0.0, atol=0.0)
+
+
+def test_a_relaxed_pairs_record_still_vouches_through_prep(
+        isolated_projects_root):
+    """The relaxation record a pair carries is judged against the pair.
+
+    GOAL: the record's geometry fingerprint was compared with the deck's
+    PLACED copy, so on the road every relaxed pair's record "does not vouch"
+    and its level-of-theory and force checks were skipped (found by review,
+    2026-09-25).  CONTRACT: `engines/vibration.md` § 2.2 (the record table);
+    `validation.validate`'s ``design``.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.parse.dirs.run_info import run_info_for_dir
+    from molbuilder.pyscf.stages import vibration_stages
+    pair = _h2(z_moved=5.774583)
+    pair.apply_info_dict(run_info_for_dir(_RELAX_RUN))
+    dest, stage, _text = _prep(
+        isolated_projects_root, pair,
+        SiestaConfig(system_label="H2", already_relaxed=True,
+                     relax_force_tol=0.01),
+        vibration_stages("siesta", already_relaxed=True), "siesta",
+        calculation="vibration", name="H2")
+    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
+    assert "relaxed on siesta to 0.01 eV/Å" in report, report
+    assert "does not vouch" not in report, report
+
+
+def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
+        isolated_projects_root):
+    """Along a periodic vector an atom past a face is legal -- an image the
+    engine wraps -- and said.
+
+    GOAL: with the correction applied at every deck, an atom still outside
+    the cell after it is something the person should see, not a silence
+    (user, 2026-09-25: "we should now give warning/error when atoms are
+    outside boundary for all cases").  CONTRACT: `model/structure-periodicity.md`
+    § 6.0, checks 1 and 3: warned along a periodic vector, refused along any
+    other.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import default_siesta_stages
+    # A whole molecule 1.2 cells long along a: no translation fits it.
+    wide = Structure(elements=["C", "C", "C"],
+                     positions=np.array([[0.0, 1.0, 1.0], [3.0, 1.0, 1.0],
+                                         [6.0, 1.0, 1.0]]),
+                     cell=np.diag([5.0, 8.0, 8.0]),
+                     axis_kind=("periodic", "periodic", "periodic"))
+    dest, stage, _text = _prep(isolated_projects_root, wide,
+                               SiestaConfig(system_label="JOB"),
+                               default_siesta_stages("publishable"), "siesta")
+    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
+    assert "[cell.beyond_periodic_face]" in report, report
+    assert "along a, which is periodic" in report, report
+
+
+def test_the_renderer_refuses_a_spec_that_carries_no_frame():
+    """Every deck places its atoms and says so: a spec without a frame is
+    refused, not logged -- a new engine or kind that forgot it would walk past
+    the gate and the record in silence (`model/structure-periodicity.md` § 6.0,
+    check 3).
+
+    API-level, because the road cannot reach it: every spec builder today
+    hands a frame over.
+    """
+    import dataclasses
+    import pytest
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.script_emit import render_deck
+    from molbuilder.siesta.input import spec_for
+    struct, cfg = _slab(), SiestaConfig(system_label="JOB")
+    spec = spec_for(struct, cfg)
+    with pytest.raises(ValueError, match="carries no engine frame"):
+        render_deck(dataclasses.replace(spec, engine_frame=None), struct, cfg)
+
