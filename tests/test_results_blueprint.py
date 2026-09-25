@@ -879,6 +879,47 @@ class TestTheContractEndpoint:
             "the calculation's own product must be what opens here; got "
             + repr(body["openable"]))
 
+    def test_a_calculation_root_answers_with_its_ladder(
+            self, isolated, monkeypatch, tmp_path_factory):
+        """`web/results.md` § 2.4 (`plan.md` § 5c.3 c-d): a calculation root
+        is a container with no run state and ONE ladder -- N rungs, each a
+        run directory below it.  The door answers `ladder` from
+        `jobset_status`, the ladder door the CLI's `status` verb reads, so
+        the page can draw which rung is outstanding instead of *pick a
+        file*.  Driven the way a person gets there: describe, prep the
+        seed, ask.  A rung's own directory answers no ladder."""
+        # prep wants the machine record in an isolated HOME -- the transport
+        # prep tests' own sandbox, made here for this one test
+        home = tmp_path_factory.mktemp("home")
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
+        from conftest import write_machine_record
+        write_machine_record()
+        from test_transport_prep import (_describe_transport, _junction_struct,
+                                         _write_junction)
+        from molbuilder.jobset.prep import prep_calculation
+        from molbuilder.transport.stages import TRANSPORT_STAGES
+        root, client = isolated
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root)
+        prep_calculation(calc, "seed")
+        body = client.get("/api/results/dir?path=" + str(calc)).get_json()
+        assert body["place"]["role"] == "container" and body["status"] is None
+        lad = body["ladder"]
+        assert lad is not None, body["attempts"]
+        assert [s["name"] for s in lad["stages"]] == list(TRANSPORT_STAGES)
+        assert lad["complete"] is False and lad["first_incomplete"] == "seed"
+        by = {s["name"]: s for s in lad["stages"]}
+        assert by["seed"]["state"] == "pending" and by["seed"]["attempt"] == "run-0"
+        # the four rungs nothing has prepped are the description's, in the
+        # status reader's own words -- the job-set grows rung by rung
+        from molbuilder.jobset.runstatus import NOT_PREPPED
+        assert (by["device"]["state"], by["device"]["detail"]) == NOT_PREPPED
+        assert by["device"]["attempt"] is None and by["device"]["seq"] is None
+        stage = client.get("/api/results/dir?path=" + str(calc / "01_seed")).get_json()
+        assert stage["ok"] and stage["ladder"] is None
+
     def test_a_run_with_no_output_yet_still_reports_running(self, isolated):
         """The other side, so the fix above cannot be a blanket silence.
 

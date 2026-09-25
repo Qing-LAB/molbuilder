@@ -305,7 +305,7 @@ _RESULT_CATEGORY_CASES = [
      "optim_xyz+unknown→unclaimed"),
 
     # --- the other presenters, whose headings take no engine ---
-    ("/projects/foo/r.spectra.json", None, "PySCF spectrum",
+    ("/projects/foo/r.spectra.json", None, "Vibrational spectrum",
      "spectra_json→pyscf_spectrum"),
     ("/projects/foo/q.xyz", None, "Structure", "xyz→structure"),
     ("/projects/foo/p.pdb", None, "Structure", "pdb→structure"),

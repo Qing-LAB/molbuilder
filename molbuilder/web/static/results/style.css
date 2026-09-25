@@ -133,6 +133,33 @@
     font-weight: var(--weight-medium);
 }
 
+/* ---- The ladder of a calculation root (results.md § 2.4) ------------ */
+.results-fallback .results-ladder {
+    margin: var(--space-md) 0;
+}
+.results-fallback .results-ladder-title {
+    margin: 0 0 var(--space-sm);
+    font-size: 1rem;
+    font-weight: 600;
+}
+.results-ladder-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: var(--space-sm);
+}
+.results-ladder-table td {
+    padding: var(--space-xs) var(--space-sm);
+    border-top: 1px solid var(--border);
+    vertical-align: baseline;
+}
+.results-ladder-table td:first-child {
+    color: var(--text-muted);
+    width: 2.5ch;
+    text-align: right;
+}
+.results-ladder-table tr.is-next td:nth-child(2) { font-weight: 600; }
+.results-ladder-table td:last-child { color: var(--text-muted); }
+
 .results-fallback .inspector-card-note {
     color: var(--text-secondary);
     margin-bottom: var(--space-md);

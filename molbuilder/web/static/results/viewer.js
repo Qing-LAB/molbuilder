@@ -159,7 +159,65 @@
         el.hidden = !el.textContent;
     }
 
-    function _showFallback(file, place) {
+    /* THE LADDER of a calculation root (results.md § 2.4; plan.md § 5c.3
+     * c-d).  `/api/results/dir` answers a root with `ladder`, the ladder
+     * door's own reading, and the empty-state card draws it: one row per
+     * rung in ladder order, its state and detail, the rung to resume from
+     * named in the title.  The state chip is the bench summary's
+     * (`inspectors.stateChip`) -- one vocabulary of eight words and seven
+     * tones; a third copy is what § 5c.3 forbids. */
+    function _renderLadder(ladder) {
+        const host = els.fallback
+            && els.fallback.querySelector(".results-ladder");
+        if (!host) return;
+        host.textContent = "";
+        const stages = ladder && Array.isArray(ladder.stages) ? ladder.stages : [];
+        if (!stages.length) { host.hidden = true; return; }
+        const reg = (window.molbuilder || {}).inspectors || {};
+        const chip = (state) => {
+            if (typeof reg.stateChip === "function") return reg.stateChip(state);
+            const s = document.createElement("span");
+            s.textContent = String(state);
+            return s;
+        };
+        const title = document.createElement("h3");
+        title.className = "results-ladder-title";
+        title.textContent = "This calculation's ladder \u2014 " + stages.length
+            + " rung" + (stages.length === 1 ? "" : "s")
+            + (ladder.complete ? ", every rung finished"
+               : (ladder.first_incomplete
+                  ? ", next to run: " + ladder.first_incomplete.replace("_", " ")
+                  : ""));
+        host.appendChild(title);
+        const table = document.createElement("table");
+        table.className = "results-ladder-table";
+        stages.forEach((s, i) => {
+            const tr = document.createElement("tr");
+            if (s.name === ladder.first_incomplete) tr.className = "is-next";
+            const td = (content) => {
+                const c = document.createElement("td");
+                if (typeof content === "string") c.textContent = content;
+                else c.appendChild(content);
+                return c;
+            };
+            tr.appendChild(td(String(s.seq != null ? s.seq : i + 1)));
+            tr.appendChild(td(String(s.name).replace("_", " ")));
+            tr.appendChild(td(chip(s.state)));
+            tr.appendChild(td(s.detail || ""));
+            table.appendChild(tr);
+        });
+        host.appendChild(table);
+        const note = document.createElement("p");
+        note.className = "inspector-card-note";
+        note.textContent = "Each rung runs in its own directory below this one; "
+            + "open a rung in the sidebar to read its files.  The calculation's "
+            + "own result, once summarize has written it here, is what this "
+            + "panel opens.";
+        host.appendChild(note);
+        host.hidden = false;
+    }
+
+    function _showFallback(file, place, ladder) {
         if (currentHandle) {
             try { currentHandle.dispose(); } catch (_) { /* swallow */ }
             currentHandle = null;
@@ -171,6 +229,7 @@
         if (els.fallback) {
             els.host.appendChild(els.fallback);
             _renderPlaceNote(place);
+            _renderLadder(ladder || null);
         }
         _renderStatus(file, null);
     }
@@ -211,13 +270,14 @@
         const file  = sel && sel.file ? sel.file : "";
         const meta  = (sel && sel.meta) || null;
         const place = (sel && sel.place) || null;
+        const ladder = (sel && sel.ladder) || null;
         const scope = { dir: (sel && sel.dir) || "",
                         diverged: !!(sel && sel.diverged) };
         const reg  = (window.molbuilder || {}).inspectors;
         if (!reg) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place);
+            _showFallback(file, place, ladder);
             _renderStatus("", "", scope);
             return;
         }
@@ -241,7 +301,7 @@
         if (!inspector) {
             _hideLoading();
             _clearMounted();
-            _showFallback(file, place);
+            _showFallback(file, place, ladder);
             _renderStatus("", "", scope);
             return;
         }

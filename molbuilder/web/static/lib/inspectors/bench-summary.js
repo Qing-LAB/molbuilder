@@ -690,6 +690,11 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.benchSummaryInspector = inspector;
+    // THE ONE STATE CHIP, lent to the Results page's ladder view
+    // (results.md § 2.4): the same eight words and seven tones, so the
+    // ladder is not a third copy of this vocabulary (plan.md § 5c.3).
+    root.molbuilder.inspectors.stateChip = (state) =>
+        el("span", "bench-state is-" + (TONE[state] || "idle"), String(state));
     if (root.molbuilder.inspectors.register) {
         root.molbuilder.inspectors.register(inspector);
     }

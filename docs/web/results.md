@@ -259,9 +259,11 @@ Two rules keep this from hiding anything:
 > The picker is its browser consumer and decides nothing from a filename any
 > more; `presenters.md` § 2 is where that answer becomes each viewer's `meta`.
 >
-> **Two things this route is NOT.** It is not served over
-> `jobset/runstatus.py::jobset_status`, the ladder door — the blueprint imports
-> no `jobset` at all. And `parse_dir` / `JobDirParser` / `RunDirResult` are not
+> **Two things this route is NOT.** It is not a second ladder reader: for a
+> CALCULATION ROOT it answers `ladder` by CONSUMING
+> `jobset/runstatus.py::jobset_status`, the one ladder door (§ 2.4,
+> 2026-09-24), and copies none of it — *(until that day the blueprint imported
+> no `jobset` at all, and a root answered nothing about its rungs)*. And `parse_dir` / `JobDirParser` / `RunDirResult` are not
 > in its path either: the route composes `openable_in`, `run_status`,
 > `labels_in`, `read_back` and `engine_of` directly. *(This section claimed the
 > opposite of all of it — "there is no door to ask", "no route offers the
@@ -301,6 +303,27 @@ Two rules keep this from hiding anything:
   visible even when a folder has zero results, so Reload is always reachable,
   and it re-scans automatically when you return to the tab (so a file written
   while you were away shows up).
+
+### 2.4 A calculation root shows its LADDER *(2026-09-24; `plan.md` § 5c.3 c–d)*
+
+A calculation root — the directory holding `task.json` and `job-set.json` — is
+a container, so it has no run state (§ 1.4a); what it has is a **ladder**: N
+rungs, each a run directory below it, and one deliverable written at the root
+once `summarize` has run. `GET /api/results/dir` answers a root with
+`ladder: {complete, first_incomplete, stages: [{name, seq, state, detail, dir,
+attempt}]}`, read from `jobset_status`, the ladder door the CLI's `status`
+verb reads — consumed, never copied — and `null` for anything that is not a
+root (a rung's directory, a folder nothing prepped).
+
+The page's empty-state card draws it: one row per rung in ladder order, the
+state in the bench summary's own chip (`inspectors.stateChip` — the eight
+words of `_stage_state` and their seven tones, one vocabulary; § 5c.3 forbids
+a third copy), the detail beside it, and the rung to resume from named in the
+title. A person who opens a five-rung transport calculation therefore sees
+which of the five is outstanding — `engines/transport.md` § 2a.12's third
+requirement — instead of *pick a file*. A rung's files are read by opening the
+rung's directory; the product, when present, is what `openable` picks at the
+root.
 
 ## 3. Showing the file
 

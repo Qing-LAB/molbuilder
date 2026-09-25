@@ -484,6 +484,7 @@
         //: from the last scan so the empty state can render the answer
         //: instead of a generic sentence.
         let lastPlace       = null;
+        let lastLadder      = null;   // the root's ladder (results.md § 2.4)
         let cachedResults   = [];  // last successful scan -- flat, newest first
         let cachedGroups    = [];  // same data bucketed via groupResultFiles;
                                    // ``_populate`` consumes this so we don't
@@ -596,6 +597,7 @@
              * cleared sidebar cannot leave the previous directory's `place`
              * riding on the next announcement. */
             lastPlace = null;
+            lastLadder = null;
             if (!dir) {
                 // No directory selected (sidebar cleared).  Show
                 // the picker bar in its placeholder state so the
@@ -680,6 +682,7 @@
                         inspReg.pickResult
                     );
                     lastPlace = body.place || null;
+                    lastLadder = body.ladder || null;
                     cachedResults = results;
                     cachedGroups = results.length
                         ? groupResultFiles(results, inspReg.pickResult)
@@ -971,7 +974,8 @@
                      * so".  Unbinding the panel from the sidebar is only safe
                      * because this is said out loud. */
                     { detail: { file: file || "", meta: _metaFor(file),
-                                place: lastPlace, dir: boundDir,
+                                place: lastPlace, ladder: lastLadder,
+                                dir: boundDir,
                                 diverged: _divergedFromSidebar(),
                                 force: forced } }));
             } catch (_) {

@@ -238,12 +238,54 @@ def api_results_dir():
     # stage containers, `pseudos/`, roots with no aggregate -- and the
     # transport record at the twelfth.  It surfaces exactly what was hidden.
     opened, attempts = openable_in(str(directory))
+    ladder = None
     if place == calcdirs.CONTAINER:
         st = None
         attempts.append(
             "this directory is a container, not a run -- it has no run "
             "state; its runs are the directories below it "
             "(project-layout.md § 1.4)")
+        # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4;
+        # `plan.md` § 5c.3 c-d): N rungs, each a run directory below it.
+        # THE RUNGS ARE THE DESCRIPTION'S (`task.stages`, `stages.md` § 6.7:
+        # the ladder is read, never inferred); each one's state is
+        # `jobset_status`'s reading -- the one ladder door the CLI's `status`
+        # verb reads, CONSUMED here, never copied.  A described rung the
+        # job-set does not hold yet is NOT_PREPPED in the reader's own
+        # words: a transport ladder is prepped rung by rung, so the job-set
+        # grows while the description already names all five (measured
+        # 2026-09-24: a root with the seed prepped answered a one-rung
+        # ladder).  `null` for a container that is not the root.
+        if root is not None and Path(root).resolve() == directory.resolve():
+            from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
+            from molbuilder.jobset.model import JobSet
+            from molbuilder.jobset.runstatus import NOT_PREPPED, jobset_status
+            from molbuilder.task import FILENAME as TASK_FILENAME, read_task
+            try:
+                _described = [s.name for s in
+                              read_task(directory / TASK_FILENAME).stages]
+                jpath = directory / JOBSET_FILENAME
+                _known = ({s.name: s
+                           for s in jobset_status(JobSet.load(jpath),
+                                                  directory).stages}
+                          if jpath.is_file() else {})
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                attempts.append(f"the ladder could not be read: {exc}")
+            else:
+                rows = []
+                for name in _described:
+                    s = _known.get(name)
+                    rows.append(
+                        {"name": name, "seq": s.seq, "state": s.state,
+                         "detail": s.detail, "dir": s.dir,
+                         "attempt": s.attempt} if s is not None else
+                        {"name": name, "seq": None, "state": NOT_PREPPED[0],
+                         "detail": NOT_PREPPED[1], "dir": None,
+                         "attempt": None})
+                _open = [r["name"] for r in rows if r["state"] != "finished"]
+                ladder = {"complete": not _open,
+                          "first_incomplete": _open[0] if _open else None,
+                          "stages": rows}
     else:
         # AND A DIRECTORY THAT SAYS NOTHING IS NOT ASKED TO INVENT ONE.
         # `run_status`'s four states are running/stale/finished/failed --
@@ -326,5 +368,7 @@ def api_results_dir():
                      "active_source": st.active_source,
                      "last_change_at": st.last_change_at,
                      "concluded": st.concluded},
+        # THE LADDER, for a calculation root (§ 2.4); `null` elsewhere.
+        "ladder":   ladder,
         "files":    files,
     })

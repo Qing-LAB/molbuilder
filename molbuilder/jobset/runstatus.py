@@ -227,6 +227,13 @@ def _label_of(job: Any, fallback: str) -> str:
     return fallback
 
 
+#: The state a stage has before `prep` has made it a directory -- the ONE
+#: spelling, read by `_stage_state` for a planned stage whose directory is
+#: missing and by the Results door for a described stage the job-set does
+#: not hold yet (`web/results.md` § 2.4).
+NOT_PREPPED = ("not-started", "no directory yet (not prepped)")
+
+
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
                  label: str, stage: Optional[str], out_glob: str) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
@@ -248,7 +255,7 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     *"queued as job 481923"* rather than guessing from an absence.
     """
     if not observed.is_dir():
-        return ("not-started", "no directory yet (not prepped)")
+        return NOT_PREPPED
     # WHICH FILES ARE THIS RUNG'S, asked of the grammar rather than spelled
     # (`project-layout.md` § 4.5).  ``label`` + ``stage`` is the right narrowing
     # in BOTH shapes and needs no shape knowledge at all: the deck is
