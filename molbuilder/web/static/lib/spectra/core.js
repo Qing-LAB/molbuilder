@@ -677,6 +677,17 @@
         if (kind) el.classList.add(kind);
     }
 
+    /* A one-line notice that REPLACES what a host holds.  The message is set
+     * as text: it is an exception's or a server's words, and words are never
+     * markup (ui-contract.md § 7). */
+    function showNotice(host, msg, kind) {
+        if (!host) return;
+        const p = document.createElement("p");
+        p.className = "status";
+        setStatus(p, msg, kind);
+        host.replaceChildren(p);
+    }
+
     // ----- Form schema load + render ----------------------------
     //
     // The form is the CATALOGUE's vibration schema and depends on no
@@ -699,9 +710,9 @@
         if (!fs) {
             for (const host of Object.values(els.form)) {
                 if (host) host.innerHTML =
-                    '<p class="status error">form-schema.js not loaded; '
-                    + 'check that <code>lib/form-schema.js</code> appears '
-                    + 'before this script in the template.</p>';
+                    `<p class="status error">form-schema.js not loaded; check
+                    that <code>lib/form-schema.js</code> appears before this
+                    script in the template.</p>`;
             }
             return;
         }
@@ -742,9 +753,8 @@
         } catch (exc) {
             if (mySeq !== _schemaFetchSeq) return;
             for (const host of Object.values(els.form)) {
-                if (host) host.innerHTML =
-                    '<p class="status error">Could not load form schema: '
-                    + escapeHtml(String(exc)) + '</p>';
+                showNotice(host, "Could not load form schema: " + String(exc),
+                           "error");
             }
         }
     }
@@ -837,13 +847,6 @@
             const host = els.form[engine], schema = state.schemas[engine];
             if (host && schema && sug[engine]) fs.setValues(host, schema, sug[engine]);
         }
-    }
-
-    function escapeHtml(s) {
-        return String(s).replace(/[&<>"']/g, (c) => ({
-            "&": "&amp;", "<": "&lt;", ">": "&gt;",
-            "\"": "&quot;", "'": "&#39;",
-        }[c]));
     }
 
     // ----- Selector / compatibility (lock unused value fields) --
@@ -1619,10 +1622,15 @@
             if (md && els.methodsText) els.methodsText.textContent = md;
         }
 
-        els.resultsMeta.innerHTML = meta
-            .map(([k, v]) => "<dt>" + escapeHtml(String(k)) + "</dt>"
-                           + "<dd>" + escapeHtml(String(v)) + "</dd>")
-            .join("");
+        // Built, not written: the values are the results file's own strings
+        // (engine, version, host), set as text.
+        els.resultsMeta.replaceChildren(...meta.flatMap(([k, v]) => {
+            const dt = document.createElement("dt");
+            dt.textContent = String(k);
+            const dd = document.createElement("dd");
+            dd.textContent = String(v);
+            return [dt, dd];
+        }));
 
         // ES-derived table columns: ALWAYS visible.  Pre-fix the
         // ES column headers vanished when no mode had electronic_
@@ -2245,11 +2253,9 @@
                 try { Plotly.purge(els.esBarDiagram); } catch (_) {}
             }
             els.esBarDiagram.innerHTML =
-                '<p class="status muted">'
-                + 'No electronic-structure data for this mode.<br>'
-                + 'Re-run with es_mode_selection covering this mode '
-                + '(or pick \'all\') to see HOMO/LUMO drift here.'
-                + '</p>';
+                `<p class="status muted">No electronic-structure data for this
+                mode.<br>Re-run with es_mode_selection covering this mode (or
+                pick 'all') to see HOMO/LUMO drift here.</p>`;
             els.esSummary.innerHTML = "";
             return;
         }
@@ -2330,16 +2336,22 @@
             ]],
         ];
 
-        els.esSummary.innerHTML = groups.map(([title, rows]) =>
-            '<div class="es-group">'
-            + '<h4 class="es-group-title">' + escapeHtml(title) + "</h4>"
-            + "<dl>"
-            + rows.map(([k, v, u]) =>
-                  "<dt>" + escapeHtml(k) + "</dt>"
-                + '<dd class="es-val">'  + escapeHtml(v) + "</dd>"
-                + '<dd class="es-unit">' + escapeHtml(u) + "</dd>").join("")
-            + "</dl></div>"
-        ).join("");
+        const node = (tag, cls, text) => {
+            const n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined) n.textContent = text;
+            return n;
+        };
+        els.esSummary.replaceChildren(...groups.map(([title, rows]) => {
+            const dl = node("dl");
+            for (const [k, v, u] of rows) {
+                dl.append(node("dt", "", k), node("dd", "es-val", v),
+                          node("dd", "es-unit", u));
+            }
+            const group = node("div", "es-group");
+            group.append(node("h4", "es-group-title", title), dl);
+            return group;
+        }));
     }
 
 
@@ -3417,17 +3429,16 @@
                 }))
                 .then((handle) => {
                     if (!handle.ok) {
-                        els.spectrumChart.innerHTML =
-                            '<p class="status muted">' + handle.error + '</p>';
+                        showNotice(els.spectrumChart, handle.error, "muted");
                         return null;
                     }
                     chart = handle;
                     return handle;
                 })
                 .catch((err) => {
-                    els.spectrumChart.innerHTML =
-                        '<p class="status muted">spectrum chart unavailable: '
-                        + (err && err.message ? err.message : err) + '</p>';
+                    showNotice(els.spectrumChart, "spectrum chart unavailable: "
+                               + (err && err.message ? err.message : err),
+                               "muted");
                     return null;
                 });
         }

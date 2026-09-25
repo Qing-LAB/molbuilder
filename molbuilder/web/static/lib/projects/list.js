@@ -254,8 +254,10 @@ function _renderSelectionStatus(filename, fullPath) {
   const sel = document.querySelector("#ps-actions .ps-selection");
   if (!sel) return;
   if (filename) {
-    sel.innerHTML = "Selected: <strong></strong>";
-    sel.querySelector("strong").textContent = filename;
+    sel.textContent = "Selected: ";
+    const strong = document.createElement("strong");
+    strong.textContent = filename;
+    sel.appendChild(strong);
     sel.title = fullPath;
   } else {
     sel.textContent = "No file selected.";

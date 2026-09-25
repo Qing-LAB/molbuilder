@@ -1,28 +1,26 @@
-"""Adversarial XSS audit of the static JS surface.
+"""Nothing a person, a file or a server supplies is parsed as markup, or run as
+code, by the JavaScript the app serves.
 
-Project-wide regression test: every ``.innerHTML = ...`` assignment in
-the JS we ship must be either (a) an empty-string clear or (b) a
-static string literal with no interpolation.  Anything that splices
-dynamic data into innerHTML risks XSS when that data comes from a
-user-controlled source (filename, file content, URL param, etc.).
+GOAL -- the failure these catch: a runtime string reaching a DOM API that
+parses HTML, or one that runs code.  The markup half has been measured: on
+2026-09-14 a person-chosen folder name going into ``innerHTML``
+(`jupyternb/index.js`), and on 2026-09-25 three sites an independent review
+found behind this file's own allowlist -- the projects sidebar's roots error
+and the spectrum chart's two failure notices, all spliced in raw while the
+comments exempting them called them static.
 
-The audit covers EVERY JS file under ``static/`` -- not just the
-recent additions -- so a future viewer or inspector that quietly
-reintroduces ``el.innerHTML = "<x>" + somevar`` lands a test
-failure rather than a silent vulnerability.
+CONTRACT: `web/ui-contract.md` § 7.  The CSP (``script-src 'self'``) stops an
+injected script from running; these stop the injection.
 
-Exempted patterns (false positives, not vulnerabilities):
-  * Inside comments (// ... or /* ... */)
-  * Inside string literals (e.g., a docstring example)
-
-Why this lives outside the per-tab tests:
-  This invariant applies to ALL pages.  Per-tab tests focus on
-  that tab's behaviour; this is the cross-cutting safety net.
+Artifact lints (`testing.md` § 6): each quantifies over every first-party file
+and names no line.  ``vendor/`` is the one exclusion -- unmodified third-party
+bundles served verbatim, whose provenance is ``static/vendor/README.md``.
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import pytest
 
@@ -31,385 +29,342 @@ STATIC_ROOT = (Path(__file__).resolve().parent.parent
                / "molbuilder" / "web" / "static")
 
 
-def _strip_js_comments(src: str) -> str:
-    """Drop ``//`` line comments and ``/* ... */`` block comments
-    from JS source while preserving newlines (so reported line
-    numbers stay accurate) and preserving string contents (so a
-    ``/`` inside a string doesn't confuse us)."""
-    out, i, n = [], 0, len(src)
+def _all_js_files() -> list[Path]:
+    """Every first-party JS file the app serves: all of ``static/`` but
+    ``vendor/``."""
+    return sorted(p for p in STATIC_ROOT.rglob("*.js")
+                  if "vendor" not in p.relative_to(STATIC_ROOT).parts)
+
+
+# --------------------------------------------------------------------- #
+#  Reading JavaScript -- tokens, not text                               #
+# --------------------------------------------------------------------- #
+#
+# WHY A TOKENIZER.  This file matched ``.innerHTML = ([^;]+);`` over the source
+# with its comments stripped, and reading text failed three ways at once, all
+# measured 2026-09-25: the value stopped at the first ``;`` even inside a
+# string (``'&amp;'``, ``padding:0.7rem;``), so a site passed or failed on a
+# fragment of itself; ``+=`` and ``$("x").innerHTML`` were not seen at all; and
+# the stripper had no regex state, so a quote inside ``/["']/g`` opened a
+# "string", a real ``//`` in the next string was then taken for a comment, and
+# the code after it was dropped.  Here a string, a template literal (with its
+# ``${...}``), a comment and a regex literal are each ONE token, so what
+# follows an ``=`` is known exactly.
+
+class _Tok(NamedTuple):
+    kind: str        # ident | num | str | tmpl | regex | punct | comment
+    text: str
+    start: int       # offset in the source
+    line: int        # the 1-based line it starts on
+
+
+#: After one of these words a ``/`` opens a regex literal, not a division.
+_REGEX_AFTER_WORD = frozenset({
+    "return", "typeof", "instanceof", "in", "of", "new", "delete", "void",
+    "throw", "case", "do", "else", "yield", "await"})
+
+#: Longest first, so ``===`` is one token and never ``==`` then ``=``.
+_PUNCT = sorted(
+    (">>>=", "===", "!==", "**=", "<<=", ">>=", ">>>", "...", "&&=", "||=",
+     "??=", "=>", "==", "!=", "<=", ">=", "&&", "||", "??", "?.", "++", "--",
+     "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**", "<<", ">>"),
+    key=len, reverse=True)
+
+
+def _quoted_end(src: str, i: int) -> int:
+    """Past the ``'...'`` or ``"..."`` string that opens at ``i``."""
+    q, j, n = src[i], i + 1, len(src)
+    while j < n and src[j] != q and src[j] != "\n":
+        j += 2 if src[j] == "\\" else 1
+    return min(j + 1, n)
+
+
+def _template_end(src: str, i: int) -> int:
+    """Past the template literal that opens at ``i``, across its ``${...}``."""
+    j, n = i + 1, len(src)
+    while j < n:
+        if src[j] == "\\":
+            j += 2
+        elif src[j] == "`":
+            return j + 1
+        elif src.startswith("${", j):
+            j = _braces_end(src, j + 2)
+        else:
+            j += 1
+    return n
+
+
+def _braces_end(src: str, j: int) -> int:
+    """Past the ``}`` that closes a ``${`` opened just before ``j``."""
+    depth, n = 1, len(src)
+    while j < n:
+        c = src[j]
+        if c in "'\"":
+            j = _quoted_end(src, j)
+        elif c == "`":
+            j = _template_end(src, j)
+        elif src.startswith("//", j):
+            e = src.find("\n", j)
+            j = n if e == -1 else e
+        elif src.startswith("/*", j):
+            e = src.find("*/", j + 2)
+            j = n if e == -1 else e + 2
+        else:
+            depth += (c == "{") - (c == "}")
+            j += 1
+            if depth == 0:
+                return j
+    return n
+
+
+def _regex_end(src: str, i: int) -> int:
+    """Past the ``/.../flags`` literal that opens at ``i``.  A ``/`` inside a
+    character class does not close it."""
+    j, n, in_class = i + 1, len(src), False
+    while j < n and src[j] != "\n":
+        c = src[j]
+        if c == "\\":
+            j += 2
+            continue
+        if in_class:
+            in_class = c != "]"
+        elif c == "[":
+            in_class = True
+        elif c == "/":
+            j += 1
+            while j < n and (src[j].isalnum() or src[j] in "_$"):
+                j += 1
+            return j
+        j += 1
+    return j
+
+
+def _tokens(src: str) -> List[_Tok]:
+    """``src`` as tokens, comments included -- ``_strip_js_comments`` needs
+    to know where they are."""
+    toks: List[_Tok] = []
+    i, n, line = 0, len(src), 1
+    last: Optional[_Tok] = None          # the last token that is not a comment
     while i < n:
-        ch = src[i]
-        nxt = src[i + 1] if i + 1 < n else ""
-        if ch == "/" and nxt == "/":
-            j = src.find("\n", i)
-            if j == -1:
-                break
-            out.append("\n")
-            i = j + 1
-            continue
-        if ch == "/" and nxt == "*":
-            j = src.find("*/", i + 2)
-            if j == -1:
-                break
-            out.append("\n" * src[i:j].count("\n"))
-            i = j + 2
-            continue
-        if ch in ('"', "'", "`"):
-            quote = ch
-            out.append(ch)
+        c = src[i]
+        if c.isspace():
+            line += c == "\n"
             i += 1
-            while i < n:
-                c = src[i]
-                if c == "\\":
-                    out.append(c)
-                    out.append(src[i + 1] if i + 1 < n else "")
-                    i += 2
-                    continue
-                out.append(c)
-                if c == quote:
-                    i += 1
-                    break
-                if quote == "`" and c == "$" and i + 1 < n and src[i + 1] == "{":
-                    out.append("{")
-                    i += 2
-                    depth = 1
-                    while i < n and depth > 0:
-                        c2 = src[i]
-                        out.append(c2)
-                        if c2 == "{":
-                            depth += 1
-                        elif c2 == "}":
-                            depth -= 1
-                        i += 1
-                    continue
-                i += 1
             continue
-        out.append(ch)
-        i += 1
+        if src.startswith("//", i):
+            e = src.find("\n", i)
+            j, kind = (n if e == -1 else e), "comment"
+        elif src.startswith("/*", i):
+            e = src.find("*/", i + 2)
+            j, kind = (n if e == -1 else e + 2), "comment"
+        elif c in "'\"":
+            j, kind = _quoted_end(src, i), "str"
+        elif c == "`":
+            j, kind = _template_end(src, i), "tmpl"
+        elif c == "/" and (
+                last is None
+                or (last.kind == "punct" and last.text not in (")", "]", "}"))
+                or (last.kind == "ident" and last.text in _REGEX_AFTER_WORD)):
+            j, kind = _regex_end(src, i), "regex"
+        elif c.isalpha() or c in "_$":
+            j = i + 1
+            while j < n and (src[j].isalnum() or src[j] in "_$"):
+                j += 1
+            kind = "ident"
+        elif c.isdigit():
+            j = i + 1
+            while j < n and (src[j].isalnum() or src[j] in "._"):
+                j += 1
+            kind = "num"
+        else:
+            op = next((p for p in _PUNCT if src.startswith(p, i)), c)
+            j, kind = i + len(op), "punct"
+        tok = _Tok(kind, src[i:j], i, line)
+        toks.append(tok)
+        if kind != "comment":
+            last = tok
+        line += src.count("\n", i, j)
+        i = j
+    return toks
+
+
+def _strip_js_comments(src: str) -> str:
+    """``src`` with every comment blanked -- its newlines kept, so a line
+    number still points at the source -- and every string intact."""
+    out, at = [], 0
+    for t in _tokens(src):
+        if t.kind == "comment":
+            out.append(src[at:t.start])
+            out.append("\n" * t.text.count("\n"))
+            at = t.start + len(t.text)
+    out.append(src[at:])
     return "".join(out)
 
 
-def _all_js_files() -> list[Path]:
-    """All first-party JS files served by molbuilder.
-
-    Excludes ``vendor/`` -- those are unmodified third-party bundles
-    (3Dmol.js etc.) that we serve verbatim.  Holding minified
-    webpack output to our internal eval/innerHTML standards is
-    pointless (legitimate Function() module wrappers, runtime
-    `eval` for sourcemaps, etc.); the audit's job is to keep OUR
-    code free of these patterns, not to re-audit upstream.  License
-    + provenance for each vendored file is documented in
-    ``molbuilder/web/static/vendor/README.md``.
-
-    ``molview-old/`` is excluded for a different reason: it is the FROZEN
-    pre-rebuild MolView, kept as a reference for the rewrite and loaded by no
-    page. Auditing it reports on code that cannot run -- and did: its
-    ``mount.js:607`` (``host.innerHTML = await r.text()``) fetched
-    ``/partials/selection-panel``, a route retired 2026-08-01, so the finding
-    was about a fetch that can no longer resolve. The tree goes when the
-    MolView-users pass is done with it; until then it is reference material,
-    not shipped code.
-    """
-    return sorted(
-        p for p in STATIC_ROOT.rglob("*.js")
-        if not {"vendor", "molview-old"} & set(p.relative_to(STATIC_ROOT).parts)
-    )
-
-
-def _is_safe_innerHTML_rhs(rhs: str) -> bool:
-    """A right-hand side for ``el.innerHTML = ...`` is safe iff it's:
-
-      * an empty-string clear (``""`` or ``''``), or
-      * a static string literal with no escapes that could embed
-        dynamic content, or
-      * a value where EVERY dynamic component is run through an
-        escaping function (``escapeHtml(...)``, ``.replace(/[<>&]``
-        in some form) -- the invariant we actually care about is
-        "no unescaped user-controlled string reaches innerHTML",
-        not "no concatenation at all".
-
-    Returns False for raw concatenation / template-interpolation of
-    identifiers that are NOT inside an escape call.
-    """
-    rhs = rhs.strip()
-    if rhs in ('""', "''"):
-        return True
-    if re.fullmatch(r'"[^"\\]*"', rhs):
-        return True
-    if re.fullmatch(r"'[^'\\]*'", rhs):
-        return True
-    # Template literal with no ``${...}`` interpolation.
-    if re.fullmatch(r'`[^`${]*`', rhs):
-        return True
-    # Defended: every dynamic insertion goes through escapeHtml
-    # or a regex .replace that strips/escapes the dangerous chars.
-    # If the RHS uses these defenses AND has no raw identifier
-    # reference outside them, accept.  This is a coarse heuristic:
-    # the goal is "force any concatenation to go through an
-    # escape", not "prove correctness".
-    if "escapeHtml(" in rhs and "+" in rhs:
-        # Concat is fine as long as every interpolated piece
-        # uses escapeHtml.  We don't deeply parse -- the
-        # presence of escapeHtml() in the expression is
-        # treated as the developer asserting they handled it.
-        # A site that mixes escapeHtml(safeThing) + rawThing
-        # would slip through; flag as P3 review item only.
-        return True
-    if re.search(r'\.replace\s*\(\s*/\[[<>&]', rhs):
-        return True
-    return False
-
-
 # --------------------------------------------------------------------- #
-#  Tests                                                                #
+#  Markup is written only from literals                                 #
 # --------------------------------------------------------------------- #
 
+#: Properties that parse what is assigned to them as HTML.
+_HTML_PROPERTIES = frozenset({"innerHTML", "outerHTML", "srcdoc"})
 
-#: The innerHTML sites verified safe by inspection, keyed by the EXACT
-#: relative path under `STATIC_ROOT`.  Hoisted to module scope 2026-09-09 so
-#: `test_every_allowlist_entry_names_a_real_site` can quantify over it: an
-#: allowlist nobody audits grows into a hole, and this one had two dead entries
-#: and a suffix match that exempted five files through one line.
+#: Methods that parse an argument as HTML.
+_HTML_METHODS = frozenset({"insertAdjacentHTML", "createContextualFragment",
+                           "parseFromString", "setHTMLUnsafe",
+                           "parseHTMLUnsafe"})
 
-#: RETIRED 2026-09-09 -- nine entries whose PATTERN no longer appears in the
-#: file they name, found the moment the lint below started quantifying over
-#: this table.  Each had become a standing permission for whatever gets written
-#: at that name next: four in `modify/viewer.js` (`tr` / `elSel` / `planeBox` /
-#: `infoBody`), three in `lib/spectra/core.js` (`methodsBody` / `modesTbody` /
-#: `panel`), and the two inspector wrappers whose `host.innerHTML = partialHtml`
-#: moved into `_partial_inspector_factory.js` -- which is separately exempted
-#: and still live.  A dead exemption is invisible until someone writes the
-#: pattern again, and then it is silent.
-INNERHTML_ALLOWLIST = {
-    # RE-DERIVED 2026-09-09, when the match became exact.  Three
-    # entries stood here as the bare string "viewer.js", under a
-    # comment naming "static/viewer.js, static/modify/viewer.js,
-    # static/spectra/viewer.js".  Measured against the tree:
-    #   * static/viewer.js DOES NOT EXIST;
-    #   * `hint.innerHTML` and `ul.innerHTML` match NO shipped file —
-    #     dead entries, standing ready to exempt those patterns in any
-    #     of the five files whose path ends in viewer.js;
-    #   * `if (c) c.innerHTML =` lives in exactly ONE file, and it is
-    #     not one the old comment named.
-    # Structure-optimization viewer: `c` is a container looked up by a
-    # constant id and the value is a static string; no untrusted data
-    # in the chain.
-    ("structure-optimization/viewer.js", "if (c) c.innerHTML ="),
-    # Modify tab: pre-existing patterns; same class of risk
-    # as the Watch atom-list (since fixed) — flagged for a
-    # focused hardening task tracked separately.
-    # Spectra inspector core (lifted from spectra/viewer.js in
-    # step 2.2 of the tab-merge; the entries below moved with
-    # the code — same patterns, same safety story).  Most use
-    # escapeHtml (now auto-accepted by the heuristic above); a
-    # few are static status messages with no dynamic content.
-    # The engine forms' "form-schema.js not loaded" notice -- a static literal,
-    # written into each host since `dccac2f3` (2026-09-24) made one strip serve
-    # both tabs.  Re-derived from `formContainer.innerHTML`, the single
-    # container's name before: the same site, and the same safety story.  Keyed
-    # on the notice's own text, so it exempts that site and no later one; its
-    # sibling (`Could not load form schema`) passes `escapeHtml` and needs none.
-    ("lib/spectra/core.js", "form-schema.js not loaded"),
-    ("lib/spectra/core.js", "esBarDiagram.innerHTML"),
-    ("lib/spectra/core.js", "modeViewer.innerHTML"),
-    ("lib/spectra/core.js", "spectrumChart.innerHTML"),
-    # Sidebar empty-state message (static literal).
-    ("lib/projects/projects-sidebar.js", "list.innerHTML"),
-    # Region-label definitions popover (Phase 2a transport
-    # UI shipped 2026-06-18): renderPopover() builds the
-    # innerHTML from a curated CANONICAL_DEFINITIONS array
-    # at the top of the same file — no user-controlled data
-    # in the value chain.  Region labels (the one dynamic
-    # piece) flow through escapeHtml().
-    # 2026-06-12: forms.js renamed to mutation-bar.js after the
-    # v2 buttons-not-inline-forms refactor; the New-project
-    # subdir-list innerHTML was deleted with the inline form
-    # (the hint now lives in the modal dialog as plain text).
-    # Allowlist entry retired.
-    # 'Selected: <strong></strong>' then textContent on the
-    # strong child -- safe by inspection.
-    ("lib/projects/list.js", "sel.innerHTML"),
-    # Trajectory inspector wrapper: assigns the response body
-    # of GET /partials/trajectory-inspector to host.innerHTML.
-    # Trust boundary: the endpoint renders Jinja-autoescaped
-    # ``_trajectory_inspector.html``, no user input flows
-    # through the template, same-origin fetch.  Equivalent
-    # to /watch's server-side ``{% include %}`` of the same
-    # file.  See molbuilder/web/blueprints/results.py for
-    # the endpoint.
-    # Spectra inspector wrapper: identical pattern to the
-    # trajectory adapter above.  Assigns the response body of
-    # GET /partials/spectra-inspector (Jinja-autoescaped
-    # render of ``_spectra_inspector.html``) to host.innerHTML.
-    # Same trust boundary; same justification.
-    # (RETIRED 2026-08-01: the fused molview selection-panel mount.
-    #  Its file `lib/molview/selection/mount-panel.js` had already been
-    #  deleted in the MolView rebuild, so this allowlisted an innerHTML
-    #  assignment that no longer existed -- and the route it fetched,
-    #  GET /partials/selection-panel, is retired with it.  An allowlist
-    #  entry for a deleted file is worse than none: it reads as a
-    #  reviewed exemption for code nobody can find.)
-    # Markdown inspector: the live-preview pane assigns
-    # ``_renderToHTML(cm.getValue())`` to innerHTML.  Verified safe:
-    # ``_renderToHTML`` (markdown.js, the SINGLE render path) pipes
-    # ``marked.parse(text)`` through ``DOMPurify.sanitize(...)`` on
-    # EVERY call before returning, so the only thing reaching
-    # innerHTML is DOMPurify-sanitised HTML (script/on*/javascript:/
-    # iframe stripped).  The heuristic can't see the sanitiser
-    # through the wrapper function; the sanitisation is mandatory and
-    # has one site.  (Source is user-editable markdown -> self-XSS at
-    # worst, and DOMPurify defends even that.)
-    ("lib/inspectors/markdown.js",
-     "elRender.innerHTML = _renderToHTML"),
-    # Documents tab render pane: same guarantee as the markdown
-    # inspector above, through the SHARED render path.  The RHS is
-    # ``markdownRender.render(r.text)`` (lib/markdown-render.js) =
-    # marked.parse piped through DOMPurify.sanitize on every call, so
-    # only sanitised HTML reaches innerHTML.  Source is app-shipped
-    # docs/*.md served read-only by /api/docs/read.  The loading /
-    # error states use textContent (no innerHTML), so this is the ONE
-    # innerHTML in documents/page.js.
-    ("documents/page.js",
-     "renderEl.innerHTML = window.molbuilder.markdownRender.render"),
-    # Mermaid diagram render (shared markdown-render.js): the RHS is
-    # ``out.svg`` from ``mermaid.render(...)`` run with
-    # securityLevel 'strict' (mermaid sandboxes label HTML), on
-    # app-shipped docs/*.md source.  The ONE innerHTML in the mermaid
-    # path; the code / error states use textContent + createElement.
-    ("lib/markdown-render.js",
-     "fig.innerHTML = out.svg"),
-    # Shared partial-inspector factory (task #308 dedupe):
-    # the ``host.innerHTML = partialHtml`` assignment moved
-    # out of the trajectory + spectra wrappers and into the
-    # factory itself.  Same trust boundary as the two
-    # allowlisted wrappers above — partialHtml is the
-    # response body of a same-origin GET to one of the
-    # ``/partials/*-inspector`` endpoints, all of which
-    # render Jinja-autoescaped templates with no user input.
-    ("lib/inspectors/_partial_inspector_factory.js",
-     "host.innerHTML = partialHtml"),
-    # (STALE 2026-08-01: this described selection-bootstrap.js fetching
-    #  GET /partials/selection-panel into host.innerHTML.  That route is
-    #  retired and the file no longer does it -- its only innerHTML is a
-    #  `= ""` clear, which the safe-RHS check passes unaided.  Kept as a
-    #  note rather than an entry, because an allowlist that outlives the
-    #  code it excuses is how a real finding gets waved through later.)
-    # Bundle-handoff result panel (Step 3 PR-E): builds an
-    # HTML array out of literal tags + escapeHtml(...) calls
-    # on every dynamic value (paths, engine name, region
+#: What may follow the one legal value: the statement, or the expression
+#: holding it, ends there.
+_VALUE_ENDS = frozenset({";", "}", ")", ","})
+
+
+def _is_literal(t: Optional[_Tok]) -> bool:
+    """One string written in the source: quoted, or a template with no
+    ``${...}``."""
+    return t is not None and (
+        t.kind == "str" or (t.kind == "tmpl" and "${" not in t.text))
+
+
+def html_writes(src: str) -> List[Tuple[int, str]]:
+    """Every place ``src`` hands markup to a DOM API that parses it, as
+    ``(line, what)`` -- except the one legal form, ``= <one literal>``."""
+    toks = [t for t in _tokens(src) if t.kind != "comment"]
+
+    def at(k: int) -> Optional[_Tok]:
+        return toks[k] if 0 <= k < len(toks) else None
+
+    found: List[Tuple[int, str]] = []
+    for k, t in enumerate(toks):
+        prev, nxt = at(k - 1), at(k + 1)
+        dotted = prev is not None and prev.text in (".", "?.")
+        # `x.innerHTML = ...`, and `x["innerHTML"] = ...`
+        if t.kind == "ident" and t.text in _HTML_PROPERTIES and dotted:
+            name, op_at = t.text, k + 1
+        elif (t.kind == "str" and t.text[1:-1] in _HTML_PROPERTIES
+              and prev is not None and prev.text == "["
+              and nxt is not None and nxt.text == "]"):
+            name, op_at = t.text[1:-1], k + 2
+        else:
+            name, op_at = None, -1
+        if name is not None:
+            op, value, end = at(op_at), at(op_at + 1), at(op_at + 2)
+            if op is None or op.text not in ("=", "+="):
+                continue                           # read, or compared
+            if (op.text == "=" and _is_literal(value)
+                    and (end is None or end.text in _VALUE_ENDS)):
+                continue
+            found.append((t.line, f"{name} {op.text}"))
+        elif t.kind == "ident" and nxt is not None and nxt.text == "(":
+            if t.text in _HTML_METHODS and dotted:
+                found.append((t.line, t.text + "()"))
+            elif (t.text in ("write", "writeln") and dotted
+                  and (at(k - 2) or t).text == "document"):
+                found.append((t.line, "document." + t.text + "()"))
+    return found
+
+
+#: The doors through which HTML made at run time enters a page -- file ->
+#: (writes, why).  THE COUNT IS PART OF THE ALLOWANCE, as in
+#: `test_one_door_reads_a_structure.py`: a second write in one of these files
+#: has not inherited the first one's reason, and a file whose write is gone
+#: fails too, so an allowance cannot outlive its argument.
+PRODUCERS: Dict[str, Tuple[int, str]] = {
+    "lib/markdown-render.js": (
+        1, "a mermaid diagram's SVG, rendered with securityLevel 'strict' "
+           "from the app's own docs"),
+    "lib/inspectors/markdown.js": (
+        1, "the editor's live preview -- lib/markdown-render.js, which runs "
+           "marked through DOMPurify on every call"),
+    "documents/page.js": (
+        1, "the Documents tab -- the same DOMPurify path, on the app's docs "
+           "from /api/docs/read"),
+    "lib/inspectors/_partial_inspector_factory.js": (
+        1, "a same-origin GET of /partials/*-inspector: Jinja-autoescaped "
+           "templates with no request-derived values"),
 }
 
 
-class TestNoUnsafeInnerHTML:
-    """Every dynamic ``el.innerHTML = ...`` assignment in the project's
-    JS must be either an empty clear or a static string literal.
+@pytest.mark.parametrize(
+    "rel", sorted({str(p.relative_to(STATIC_ROOT)) for p in _all_js_files()}
+                  | set(PRODUCERS)))
+def test_markup_is_written_only_from_literals(rel):
+    """A page parses as HTML only markup written in its own source.
 
-    Why: ``el.innerHTML = "<x>" + user_data`` is the canonical XSS
-    sink in DOM-only apps.  textContent + createElement + setAttribute
-    handle the same DOM construction without parsing the value as
-    HTML."""
+    GOAL: text that varies -- a file name, a server's ``error``, an
+    exception's message -- is set with ``textContent``, never spliced into
+    markup.  The three sites this file's allowlist hid until 2026-09-25 (the
+    module docstring) are the failure.  CONTRACT: `web/ui-contract.md` § 7.
 
-    @pytest.mark.parametrize("js_path", _all_js_files(),
-                             ids=lambda p: str(p.relative_to(STATIC_ROOT)))
-    def test_file_has_no_unsafe_innerHTML(self, js_path):
-        src = _strip_js_comments(js_path.read_text())
-        offenders = []
-        for m in re.finditer(
-                r'\b(\w+)\.innerHTML\s*=\s*([^;]+);', src):
-            rhs = m.group(2)
-            if _is_safe_innerHTML_rhs(rhs):
-                continue
-            line_no = src[:m.start()].count("\n") + 1
-            offenders.append(f"line {line_no}: {m.group(0).strip()[:140]}")
-        # The remaining viewer files (static/viewer.js, static/modify
-        # /viewer.js, static/spectra/viewer.js) have pre-existing
-        # innerHTML usage that is documented under separate hardening
-        # tasks (they predate this audit and represent self-XSS at
-        # worst -- user's own data into user's own browser).  This
-        # test pins the INVARIANT that any NEW unsafe innerHTML is a
-        # regression we catch immediately.  When the old viewers are
-        # hardened, they move out of the allow-list.
-        # Allowlist entries are (suffix-of-relpath, substring-of-RHS).
-        # Each represents a site verified safe by inspection but not
-        # automatically classifiable by the heuristics above.  Each
-        # has a one-line "why this is safe" comment.  Growing this
-        # list is fine when the value is genuinely safe; growing
-        # it to silence a real vulnerability is not.
-        ALLOWLIST = INNERHTML_ALLOWLIST
-        rel_name = str(js_path.relative_to(STATIC_ROOT))
-        real_offenders = []
-        for offender in offenders:
-            # offender format: "line 123: foo.innerHTML = ..."
-            payload = offender.split(": ", 1)[1] if ": " in offender else offender
-            allowed = False
-            for (af, ap) in ALLOWLIST:
-                # EXACT relative path, never a suffix.  `endswith` stood here
-                # until 2026-09-09 and a bare `"viewer.js"` entry then exempted
-                # FIVE files -- modify/, task-setup/, spectra/,
-                # structure-optimization/ and results/ -- so an exemption
-                # written for one tab silently covered every other viewer.  An
-                # allowlist that cannot say WHICH file it exempts is not one.
-                if rel_name == af and ap in payload:
-                    allowed = True
-                    break
-            if not allowed:
-                real_offenders.append(offender)
-        assert not real_offenders, (
-            f"{rel_name} has unsafe innerHTML assignment(s):\n  "
-            + "\n  ".join(real_offenders)
-            + "\n\nIf the value cannot contain user-controlled data, "
-            + "add the file/pattern to the ALLOWLIST in this test "
-            + "with a comment explaining why."
-        )
+    The rest of the pages' markup arrives through PRODUCERS, by count.
+    """
+    path = STATIC_ROOT / rel
+    assert path.is_file(), f"PRODUCERS names {rel}, which is not a file"
+    found = html_writes(path.read_text(encoding="utf-8"))
+    allowed, why = PRODUCERS.get(rel, (0, ""))
+    assert len(found) == allowed, (
+        f"{rel}: {len(found)} place(s) hand markup to a DOM API "
+        f"(allowed: {allowed}{' -- ' + why if why else ''}):\n  "
+        + "\n  ".join(f"line {ln}: {what}" for ln, what in found)
+        + "\n\nText that varies goes in with textContent, on an element "
+          "built with createElement; fixed markup is ONE literal "
+          "(ui-contract.md § 7). A new producer of HTML is a design "
+          "decision, not a line in PRODUCERS.")
 
 
-class TestRecentAdditionsArePure:
-    """Stricter pin: every JS file added or substantially refactored
-    in the 2026-05-16/17 work has ZERO innerHTML interpolation, full
-    stop.  No allowlist exemption -- if any of these files reintroduce
-    the pattern, fix it; don't grow the exception list."""
+#: What the reader must flag and must pass -- each row one statement a text
+#: match gets wrong (`testing.md` § 2a: a guard nobody has watched fail is a
+#: guard nobody has tested).
+CASES = [
+    ('el.innerHTML = "";', 0),
+    ('el.innerHTML = "<p>fixed; one literal</p>";', 0),
+    ('el.innerHTML = `<div>\n  <b>fixed</b>\n</div>`;', 0),
+    ('if (a == b) el.innerHTML = "<p>a</p>";', 0),
+    ('if (el.innerHTML === "") show();', 0),
+    ('// el.innerHTML = name;', 0),
+    ('const note = "el.innerHTML = name;";', 0),
+    ('el.innerHTML = "<p>" + name + "</p>";', 1),
+    ('el.innerHTML = `<p>${name}</p>`;', 1),
+    ('el.innerHTML = escapeHtml(name);', 1),
+    ('el.innerHTML = ok ? "<b>a</b>" : "<b>b</b>";', 1),
+    ('el.innerHTML += "<p>more</p>";', 1),
+    ('$("x").innerHTML = name;', 1),
+    ('rows[i].innerHTML = name;', 1),
+    ('el["innerHTML"] = name;', 1),
+    ('el.outerHTML = name;', 1),
+    ('frame.srcdoc = name;', 1),
+    ('el.insertAdjacentHTML("beforeend", "<p>x</p>");', 1),
+    ('document.write(name);', 1),
+    # The stripper this replaced had no regex state: the quote inside the
+    # regex opened a "string", the URL's `//` was then read as a comment, and
+    # the sink after it vanished.
+    ('const re = /["\']/g; const u = "http://x"; el.innerHTML = name;', 1),
+    ('x = a / b; el.innerHTML = name; y = c / d;', 1),
+]
 
-    PURE_FILES = [
-        "lib/inspectors/registry.js",
-        "lib/inspectors/source.js",
-        "lib/inspectors/structure.js",
-        # ``lib/inspectors/trajectory.js`` is INTENTIONALLY not in
-        # this pure-files list -- it assigns trusted server-rendered
-        # HTML (the GET /partials/trajectory-inspector response) to
-        # host.innerHTML by design.  That one site is in the audit's
-        # ALLOWLIST above with the trust-boundary justification;
-        # everything else in the file is XSS-safe (createElement +
-        # textContent).  ``lib/inspectors/spectra.js`` is excluded for
-        # the same reason — also covered by the ALLOWLIST above.
-        # ``lib/trajectory/core.js`` was lifted from the legacy
-        # watch/viewer.js in the trajectory-inspector lift.  It has
-        # exactly one innerHTML use (``tbody.innerHTML = ""``,
-        # empty-string clear) which ``_is_safe_innerHTML_rhs``
-        # already recognises as safe.  Pinning it as PURE catches
-        # any new innerHTML-with-concat that a future change might
-        # introduce here -- the file's size (~1591 LoC) makes that
-        # the most likely place for an XSS regression to land.
-        "lib/trajectory/core.js",
-        "lib/path-utils.js",
-        "results/viewer.js",
-    ]
 
-    @pytest.mark.parametrize("rel_path", PURE_FILES)
-    def test_zero_unsafe_innerHTML_in_session_additions(self, rel_path):
-        js_path = STATIC_ROOT / rel_path
-        src = _strip_js_comments(js_path.read_text())
-        offenders = []
-        for m in re.finditer(
-                r'\b(\w+)\.innerHTML\s*=\s*([^;]+);', src):
-            rhs = m.group(2)
-            if _is_safe_innerHTML_rhs(rhs):
-                continue
-            line_no = src[:m.start()].count("\n") + 1
-            offenders.append(f"line {line_no}: {m.group(0).strip()[:140]}")
-        assert not offenders, (
-            f"{rel_path} (session-added, expected pure) has unsafe "
-            f"innerHTML: " + "; ".join(offenders)
-        )
+@pytest.mark.parametrize("src,expected", CASES, ids=[c for c, _ in CASES])
+def test_the_reader_flags_every_form_and_only_those(src, expected):
+    """The lint above is only as good as its reader: each row is a statement
+    it must flag or must pass, and a text match gets at least one wrong."""
+    assert len(html_writes(src)) == expected, html_writes(src)
+
+
+# RETIRED 2026-09-25, with the (file, spelling) allowlist they served:
+#   * `TestNoUnsafeInnerHTML` and `test_every_allowlist_entry_names_a_real_site`
+#     -- the text-matching lint and its allowlist's liveness check, replaced by
+#     `test_markup_is_written_only_from_literals` above.  Of the allowlist's 11
+#     entries, 3 exempted nothing (one could never match: the text it keyed on
+#     began before the match did), and 3 hid raw splices behind comments that
+#     called them static.
+#   * `TestRecentAdditionsArePure` and `TestNoTemplateLiteralInnerHTMLInterp`
+#     -- subsumed, by mutant: a spliced write in `results/viewer.js` and a
+#     `${}` template write in `lib/form-schema.js` each turned the candidate
+#     AND the lint above red.
+
+
+# --------------------------------------------------------------------- #
+#  Code is never run from a string                                      #
+# --------------------------------------------------------------------- #
 
 
 class TestNoEvalOrFunctionConstructor:
@@ -558,78 +513,3 @@ class TestJinjaAutoescapeNeverDisabled:
         assert not offenders, (
             f"templates use Markup() (autoescape bypass): {offenders}"
         )
-
-
-class TestNoTemplateLiteralInnerHTMLInterp:
-    """Template literals with ``${...}`` are the OTHER innerHTML
-    injection vector (my prior audit only flagged ``+`` concat).
-    Catch ``el.innerHTML = `...${dynamic}...``` too."""
-
-    @pytest.mark.parametrize("js_path", _all_js_files(),
-                             ids=lambda p: str(p.relative_to(STATIC_ROOT)))
-    def test_no_template_literal_innerHTML(self, js_path):
-        src = _strip_js_comments(js_path.read_text())
-        # Match el.innerHTML = `... ${ ... } ...`
-        bad = re.findall(
-            r'\.innerHTML\s*=\s*`[^`]*\$\{', src,
-        )
-        # Allowlist: known-safe sites (string literals constructed
-        # for status hints, no user-controlled interpolation).
-        # Update with comment when adding a new entry.
-        # Empty allowlist: zero template-literal innerHTML
-        # interpolations should remain in the codebase.  Both
-        # Modify atom-list sites were rewritten with textContent
-        # in round 5 (matched the same XSS class the Watch table
-        # had).  Add an entry only with a clear "why this is safe"
-        # comment; the goal is to push devs toward textContent.
-        ALLOWED = set()
-        if not bad:
-            return
-        rel = str(js_path.relative_to(STATIC_ROOT))
-        unexempt = []
-        for site in bad:
-            allowed = any(rel == p and frag in site
-                          for (p, frag) in ALLOWED)
-            if not allowed:
-                unexempt.append(site)
-        assert not unexempt, (
-            f"{rel} has template-literal innerHTML with ${{...}} "
-            f"interpolation: {unexempt}.  Add to ALLOWED if verified "
-            f"safe."
-        )
-
-
-@pytest.mark.parametrize(
-    "rel,frag", sorted(INNERHTML_ALLOWLIST),
-    ids=lambda v: v if "/" in str(v) or ".js" in str(v) else str(v)[:28])
-def test_every_allowlist_entry_names_a_real_site(rel, frag):
-    """Every innerHTML exemption names a file that EXISTS at that exact path,
-    and a pattern that is really in it.
-
-    GOAL: keep the allowlist from becoming a hole. An exemption that matches no
-    site is a standing permission for whatever is written next; an exemption
-    matched by SUFFIX is a permission for every file whose path happens to end
-    the same way.
-
-    MEASURED (#65, 2026-09-09). The matcher used `rel_name.endswith(af)` and
-    three entries were the bare string `"viewer.js"` -- of which FIVE files
-    exist (`modify/`, `task-setup/`, `spectra/`, `structure-optimization/`,
-    `results/`), so an exemption written for one tab silently covered all five.
-    The comment above them named `static/viewer.js`, WHICH DOES NOT EXIST. Two
-    of the three patterns matched no shipped file at all, and the third lived
-    in a viewer the comment never mentioned.
-
-    This is the artifact lint that replaces re-auditing by hand (`testing.md`
-    § 3b): it quantifies over the class, so the next dead entry fails the day
-    the code it exempted is deleted -- which is when it becomes a hole, not
-    when someone next looks.
-    """
-    f = STATIC_ROOT / rel
-    assert f.is_file(), (
-        f"allowlist entry {rel!r} is not a file under STATIC_ROOT. An entry "
-        f"must be an EXACT relative path -- a bare name like 'viewer.js' "
-        f"matches every viewer in the tree.")
-    assert frag in _strip_js_comments(f.read_text(encoding="utf-8")), (
-        f"allowlist entry ({rel!r}, {frag!r}) matches nothing in that file any "
-        f"more. Delete it: a dead exemption is a standing permission for "
-        f"whatever is written there next.")

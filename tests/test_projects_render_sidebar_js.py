@@ -275,19 +275,27 @@ class TestRenderSidebarSubscriber:
         assert out["status"] == "No file selected."
 
     def test_setShared_updates_selection_status_line(self):
-        """The ``ps-selection`` span gets a "Selected: ..." innerHTML
-        scaffold; the inner <strong> textContent + the title attribute
-        are not testable under the Node DOM stub (which doesn't parse
-        innerHTML strings), but the scaffold's presence proves
-        renderSidebar ran the status-update branch."""
+        """The status line names the picked file, in bold, with the full
+        path as its tooltip -- what the person reads.
+
+        This asserted the ``"Selected: <strong></strong>"`` innerHTML scaffold
+        until 2026-09-25, and was blind: the stub cannot find a ``<strong>``
+        inside a string, so ``querySelector("strong").textContent = filename``
+        threw, ``state.js`` swallowed the subscriber's error, and the test
+        passed on a line that never showed the name.  The line is built from
+        elements now, so the name itself is asserted."""
         out = _run_node('''
             state.setShared("/p", "/p/file-b.out");
+            const strong = psSelection._children[0] || {};
             console.log(JSON.stringify({
-                inner: psSelection._innerHTML,
+                text:   psSelection._textContent,
+                tag:    strong.tagName || null,
+                name:   strong._textContent || null,
+                title:  psSelection._title,
             }));
         ''')
-        assert "Selected:" in out["inner"]
-        assert "<strong>" in out["inner"]
+        assert out == {"text": "Selected: ", "tag": "STRONG",
+                       "name": "file-b.out", "title": "/p/file-b.out"}
 
     def test_setShared_nonexistent_file_clears_marker(self):
         """If the file isn't in the currently-rendered list (e.g.

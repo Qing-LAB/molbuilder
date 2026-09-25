@@ -682,11 +682,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             // server's /api/build/schema endpoint is unreachable.
             for (const id of ["siesta-form-container", "pyscf-form-container"]) {
                 const c = $(id);
-                if (c) c.innerHTML =
-                    '<p class="status error">Could not load form schema: '
-                    + String(exc).replace(/[&<>]/g, c =>
-                        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
-                    + '</p>';
+                if (!c) continue;
+                // The server's words, set as text (ui-contract.md § 7).
+                const p = document.createElement("p");
+                p.className = "status error";
+                p.textContent = "Could not load form schema: " + String(exc);
+                c.replaceChildren(p);
             }
             return;
         }

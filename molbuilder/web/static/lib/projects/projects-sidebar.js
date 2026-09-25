@@ -343,8 +343,13 @@ async function init() {
         ? "No file-picker roots configured."
         : ("File-picker roots unavailable: "
            + (rootsResp.error || "unknown error"));
-      list.innerHTML = "<li style='padding:0.7rem;color:#e07a7a;'>"
-                     + reason + "</li>";
+      // The same row list.js draws when a listing fails: the envelope's
+      // error is text, and the colour is the palette's (ui-contract.md
+      // §§ 2, 7).
+      const li = document.createElement("li");
+      li.className = "ps-list-error";
+      li.textContent = reason;
+      list.replaceChildren(li);
     }
     return;
   }

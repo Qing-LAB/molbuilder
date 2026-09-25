@@ -104,8 +104,8 @@
                 const fig = document.createElement("figure");
                 fig.className = "mermaid-figure";
                 // mermaid-generated SVG from app-shipped docs, rendered with
-                // securityLevel 'strict'.  The ONE innerHTML here; allowlisted
-                // in tests/test_xss_audit.py.
+                // securityLevel 'strict'.  The ONE innerHTML here, and one of
+                // the counted producers in tests/test_xss_audit.py.
                 fig.innerHTML = out.svg;
                 host.replaceWith(fig);
             } catch (e) {

@@ -333,7 +333,7 @@
         // Build the loading lock-down overlay: wrap the host in a relative box and
         // add the overlay as a SIBLING, so it survives the host's innerHTML churn
         // during an async mount (the inspector replaces host.innerHTML; a child
-        // overlay would be wiped).  Static markup -> innerHTML is a fixed literal.
+        // overlay would be wiped).  Built with createElement, like every node here.
         if (els.host.parentNode && !els.loadingOverlay) {
             const wrap = document.createElement("div");
             wrap.className = "results-inspector-wrap";
