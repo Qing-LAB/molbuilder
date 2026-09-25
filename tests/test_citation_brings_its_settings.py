@@ -72,12 +72,66 @@ def test_a_saved_structure_that_remembers_its_run_brings_its_settings(tmp_path):
     assert cfg.tbt_k_grid == (4, 4, 1)
 
 
-def test_a_saved_structure_with_no_run_behind_it_brings_none(tmp_path):
-    """§ 3.1's third case.  Nothing was measured, so nothing is claimed --
-    the catalogue's defaults, and the person chooses."""
-    cfg = _cite(tmp_path, _junction())
-    assert cfg.mesh_cutoff == pytest.approx(300.0)
-    assert cfg.basis_size == "DZP"
+def test_a_saved_structure_with_no_run_behind_it_leaves_the_rows_unanswered_on_both_roads(
+        isolated_projects_root, web_client):
+    """§ 3.1's third case, on the two roads that write a description.
+
+    Nothing was measured, so nothing is claimed: every `citation` row the
+    pair does not answer is written VALUELESS into the template
+    (`engines/transport.md` § 3.8.3), by `jobset init` and by the browser's
+    describe door alike -- one door, `transport_template_text`.  Until
+    2026-09-24 the CLI wrote 300 Ry and DZP into those rows while the same
+    pair described in the browser left them empty: two files for one
+    description, and the CLI's claimed a basis no run had said.  The
+    remembered pair beside it is the contrast that proves the filter is
+    *unanswered*, not *every citation row*: a value the record answers
+    arrives on both roads.  What `prep` writes into the deck for an empty
+    row -- the documented default, marked -- is § 6.6 obligation 4's, not
+    this file's.
+    """
+    from pathlib import Path
+
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.template import one, read_template
+
+    root = isolated_projects_root
+    codec = StructureCodec()
+    bare = root / "J" / "structure" / "bare"
+    bare.mkdir(parents=True)
+    codec.write(_junction(), bare / "junction.xyz")
+    remembered = root / "J" / "structure" / "remembered"
+    remembered.mkdir(parents=True)
+    codec.write(_junction(engine="siesta", source="JunctionRelax.fdf",
+                          contract=dict(RECORDED)),
+                remembered / "junction.xyz")
+
+    def cli(slot, bundle):
+        r = CliRunner().invoke(jobset_group, [
+            "init", "--calculation", "transport", "--shape", "hierarchical",
+            "--bundle", bundle, "--slot", f"junction={slot}"])
+        assert r.exit_code == 0, r.output
+        return read_template(
+            (root / bundle / f"{Path(bundle).name}.template.toml")
+            .read_text())
+
+    def browser(slot):
+        r = web_client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T", junction=slot, bias=[0.0]))
+        assert r.status_code == 200, r.get_json()
+        return read_template(r.get_json()["files"][1]["text"])
+
+    for tmpl in (cli("J/structure/bare", "J/transport/Tbare"),
+                 browser("J/structure/bare")):
+        for name in ("mesh_cutoff", "basis_size", "xc_functional",
+                     "electronic_temperature", "kgrid"):
+            assert one(tmpl, name).value is None, (
+                f"{name} carries a value nobody said")
+    for tmpl in (cli("J/structure/remembered", "J/transport/Tmem"),
+                 browser("J/structure/remembered")):
+        assert one(tmpl, "mesh_cutoff").value == pytest.approx(400.0)
+        assert one(tmpl, "basis_size").value == "TZP"
 
 
 def test_a_record_with_no_contract_block_brings_none(tmp_path):

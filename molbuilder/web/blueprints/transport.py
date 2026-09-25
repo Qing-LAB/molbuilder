@@ -350,7 +350,7 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder import template as _T
     from molbuilder.transport.citation_defaults import (
-        siesta_config_from_citation)
+        transport_template_text)
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
                                              resolvable_override_names,
                                              stages_for_transport)
@@ -444,8 +444,6 @@ def api_transport_describe() -> Any:
                                      f"this calculation; the shared panel "
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
-    from molbuilder.transport.citation_defaults import citation_answers
-    _answers = citation_answers(cited.path)
     # THE PANEL'S VALUES, through the door every SIESTA form goes through
     # (`_shared.siesta_config_from_params`): coerced to each field's
     # declared type, so a number typed as text and a comma-typed tuple mean
@@ -464,10 +462,6 @@ def api_transport_describe() -> Any:
                                  f"field cannot take: {exc}"}), 400
     _chosen = {k: getattr(_panel_cfg, k) for k in _typed_shared
                if getattr(_panel_cfg, k, None) is not None}
-    _unanswered = sorted(
-        it.name for it in _T.select(_cat, engine="siesta", citation=True)
-        if "transport" in it.citation
-        and it.name not in _answers.values and it.name not in _chosen)
     try:
         task = Task(
             engine="siesta", shape="hierarchical",
@@ -503,20 +497,16 @@ def api_transport_describe() -> Any:
         # this endpoint -- the door a person actually uses.
         #
         # Its values are DEFAULTED FROM THE CITED RUN (§ 2a.7, ruling 1) and
-        # are the person's to change afterwards.
+        # are the person's to change afterwards; a `citation` row nobody
+        # answered stays VALUELESS (§ 3.8.3).  The text comes through the
+        # same door `jobset init` writes it through, so the two roads
+        # cannot produce two files for one description.
         "files": [{"name": TASK_FILENAME,
                    "text": json_text(task.to_dict())},
                   {"name": _T.template_filename(task.label),
-                   "text": _T.template_with_values(
-                       siesta_config_from_citation(cited.path,
+                   "text": transport_template_text(cited.path,
                                                    label=task.label,
-                                                   **_chosen),
-                       engine="siesta", calculation="transport",
-                       # A `citation` row neither the citation nor the
-                       # person answered stays VALUELESS (§ 3.8.3): the
-                       # class default there would claim a run said
-                       # something no run said.
-                       valueless=_unanswered)}],
+                                                   **_chosen)}],
         "notices": [],
     })
 

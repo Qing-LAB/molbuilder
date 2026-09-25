@@ -1932,6 +1932,34 @@ def api_task_setup_sweepable():
     return jsonify({"ok": True, "engine": engine, "items": out})
 
 
+def _column_items(engine: str, kind: str):
+    """The catalogue items that may be a COLUMN of the stage table for this
+    (engine, kind) -- **the one membership rule**, read by the columns route
+    and by the presets route (`web/task-setup.md` § 5, § 9), so a preset can
+    never offer to fill a column the table would refuse to add.
+
+    `engines/stages.md` § 6.2: *"Any setting the description is allowed to
+    hold may become a column. The ones it is not allowed to hold may not."*
+    """
+    from molbuilder import template as _T
+    for it in _T.select(_T.catalogue(), engine=engine):
+        # THE membership rule, asked of the item rather than restated here.
+        if it.allocation:
+            continue
+        # A column belongs to this folder's KIND (template.md § 6.3's
+        # sibling rule); the tab passes its description's kind (P2).
+        if it.calculations and kind not in it.calculations:
+            continue
+        # ...and a ROLE item is not a column at all for this kind: the rung
+        # decides it, so a cell offering it would present a choice with one
+        # correct answer, and a person who changed it would not be tuning
+        # the run but stopping it being the run it is (template.md § 6.4's
+        # third answerer, 2026-09-16).
+        if kind in it.role:
+            continue
+        yield it
+
+
 @bp.route("/api/task-setup/columns", methods=["GET"])
 def api_task_setup_columns():
     """Which parameters may become a column of the stage table.
@@ -1961,25 +1989,9 @@ def api_task_setup_columns():
     if engine not in ("siesta", "pyscf"):
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
-    from molbuilder import template as _T
     _calc_kind = str(request.args.get("calculation") or "optimization")
-    parsed = _T.catalogue()
     out = []
-    for it in _T.select(parsed, engine=engine):
-        # THE membership rule, asked of the item rather than restated here.
-        if it.allocation:
-            continue
-        # A column belongs to this folder's KIND (template.md § 6.3's
-        # sibling rule); the tab passes its description's kind (P2).
-        if it.calculations and _calc_kind not in it.calculations:
-            continue
-        # ...and a ROLE item is not a column at all for this kind: the rung
-        # decides it, so a cell offering it would present a choice with one
-        # correct answer, and a person who changed it would not be tuning
-        # the run but stopping it being the run it is (template.md § 6.4's
-        # third answerer, 2026-09-16).
-        if _calc_kind in it.role:
-            continue
+    for it in _column_items(engine, _calc_kind):
         out.append({
             "name":    it.name,
             "label":   it.label or it.name,
@@ -2549,8 +2561,21 @@ def api_task_setup_presets():
     from, so a stage filled here and a stage of the default ladder cannot drift
     -- `engines/tuning.md` § 4 is the authority for what number each tier
     carries, and this serves it rather than restating it.
+
+    **Offered per KIND, by the columns' own membership rule.** A tier is a
+    set of values for named fields; it is offered for this folder's kind
+    only when every one of those fields may be a column of the table
+    (`_column_items`) -- `task-setup.md` § 9: *"a preset that half-applied
+    would be worse than one that refused"*.  The relaxation tiers are
+    columns of an optimization and of a vibration ladder's relax rung, and
+    of NO transport rung (`stages` routes each rung its own items;
+    `engines/transport.md` § 2a.7: a rung carries its role's profile), so a
+    transport description gets an empty menu and its rows draw none.  Until
+    2026-09-24 every transport rung offered `coarse / medium / tight`
+    (plan W31).
     """
     engine = str(request.args.get("engine") or "siesta").lower()
+    kind = str(request.args.get("calculation") or "optimization")
     out = []
     if engine == "siesta":
         from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
@@ -2574,4 +2599,7 @@ def api_task_setup_presets():
                                    if k != "restart"}})
     else:
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
-    return jsonify({"ok": True, "engine": engine, "presets": out})
+    columns = {it.name for it in _column_items(engine, kind)}
+    out = [ps for ps in out if set(ps["values"]) <= columns]
+    return jsonify({"ok": True, "engine": engine, "calculation": kind,
+                    "presets": out})

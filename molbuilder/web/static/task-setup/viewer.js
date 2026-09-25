@@ -233,19 +233,25 @@ function renderStages(task) {
         }, "\u00d7");
         drop.addEventListener("click", () => removeStage(i));
 
-        // Fill this row from a shipped tier (`tuning.md` § 4).
-        const preset = el("select", { class: "ts-preset",
-                                      "aria-label": "apply a preset to " + name });
-        preset.appendChild(el("option", { value: "" }, "preset\u2026"));
-        for (const ps of (_presets || [])) {
-            preset.appendChild(el("option", { value: String(ps.tier) }, ps.name));
+        // Fill this row from a shipped tier (`tuning.md` § 4).  The menu is
+        // the server's answer for THIS folder's kind (`task-setup.md` § 9):
+        // a kind whose rungs own none of a tier's fields -- transport --
+        // gets an empty list, and a row draws no menu rather than one that
+        // would add columns `prep` refuses (W31, 2026-09-24).
+        let preset = null;
+        if ((_presets || []).length) {
+            preset = el("select", { class: "ts-preset",
+                                    "aria-label": "apply a preset to " + name });
+            preset.appendChild(el("option", { value: "" }, "preset\u2026"));
+            for (const ps of _presets) {
+                preset.appendChild(el("option", { value: String(ps.tier) }, ps.name));
+            }
+            preset.addEventListener("change", () => {
+                const ps = _presets.find((x) => String(x.tier) === preset.value);
+                preset.value = "";
+                if (ps) applyPreset(i, ps.values);
+            });
         }
-        preset.addEventListener("change", () => {
-            const ps = (_presets || []).find(
-                (x) => String(x.tier) === preset.value);
-            preset.value = "";
-            if (ps) applyPreset(i, ps.values);
-        });
 
         const ran = _fs.runs[name];
         const ranEl = (ran === undefined) ? null
@@ -1750,15 +1756,21 @@ let _presetsKey = null;
 const _presetsInflight = {};  // key -> the pending fetch
 
 async function loadPresets(engine) {
-    /* Keyed by ENGINE, like `_cols` (R2-1): a stale cache here APPLIED
-     * SIESTA tier values into a PySCF description opened second. */
-    const key = engine || "siesta";
+    /* Keyed by (ENGINE, KIND), like `_cols` (R2-1): a stale cache here
+     * APPLIED SIESTA tier values into a PySCF description opened second --
+     * and, keyed by engine alone, offered an optimization's tiers on every
+     * transport rung of the folder opened next (W31). */
+    const kind = (_task && _task.calculation)
+        || (_handover && _handover.calculation) || "optimization";
+    const key = (engine || "siesta") + ":" + kind;
     if (_presets && _presetsKey === key) return _presets;
     if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
     _presetsKey = key;
     const p = (async () => {
         const got = await fetchVocabulary(
-            "/api/task-setup/presets?engine=" + encodeURIComponent(key),
+            "/api/task-setup/presets?engine="
+            + encodeURIComponent(engine || "siesta")
+            + "&calculation=" + encodeURIComponent(kind),
             "tier presets");
         const presets = (got.ok && got.body && got.body.presets) || [];
         if (_presetsKey !== key) return presets;   // a newer load owns the slot

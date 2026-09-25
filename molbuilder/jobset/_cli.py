@@ -462,17 +462,20 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # Its values are DEFAULTED FROM THE CITED RUN, not sealed to it
     # (§ 2a.7): the person may change any of them afterwards, and a change
     # applies to every stage at once because there is one template.
-    from ..transport.citation_defaults import siesta_config_from_citation
-    cfg = siesta_config_from_citation(_P(resolved), label=task.label)
+    # ...and its TEXT comes through the same door the browser's describe
+    # door uses (`citation_defaults.transport_template_text`): a `citation`
+    # row the cited directory does not answer stays VALUELESS
+    # (`engines/transport.md` § 3.8.3).  This wrote the class default into
+    # such rows until 2026-09-24, so a hand-built structure described on
+    # the CLI claimed a basis no run had said.
+    from ..transport.citation_defaults import transport_template_text
     # THE ONE DOOR that forms this name (`template.template_path`).  Six
     # call sites spelled it by hand, in two incompatible ways, until
     # 2026-08-17; `test_doc_claims` walks the AST to keep it at one, and
     # caught this line the day it was written.
     tmpl = _T.template_path(dest, task.label)
-    tmpl.write_text(
-        _T.template_with_values(cfg, engine="siesta",
-                                calculation="transport"),
-        encoding="utf-8")
+    tmpl.write_text(transport_template_text(_P(resolved), label=task.label),
+                    encoding="utf-8")
 
     click.echo(f"Described transport '{task.run.name}' in {dest} -- "
                f"composes {citation}.")

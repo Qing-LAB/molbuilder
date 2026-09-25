@@ -186,3 +186,36 @@ def siesta_config_from_citation(cite_dir, *, label: str,
     kw = dict(citation_answers(cite_dir).values)
     kw.update({k: v for k, v in chosen.items() if v is not None})
     return SiestaConfig(system_label=label, **kw)
+
+
+def transport_template_text(cite_dir, *, label: str, **chosen) -> str:
+    """The text of a transport description's template -- **the one door
+    both roads write it through** (`jobset init` and the browser's describe
+    door), so the file cannot differ by the road that made it.
+
+    Its values are :func:`siesta_config_from_citation`'s: the citation's
+    answers with the person's choices laid over them.  **A `citation` row
+    neither the citation nor the person answered is written VALUELESS**
+    (`engines/transport.md` § 3.8.3; `template.md` § 6.6 obligation 2): a
+    hand-built structure answers no basis, and a value written there would
+    claim a run said something no run said -- after which no surface can
+    tell the person's 300 Ry from nobody's.  What `prep` then writes into
+    the deck for such a row is the documented default, marked as nobody's
+    choice (§ 6.6 obligation 4) -- that is `prep`'s to do, not this file's
+    to pre-empt.
+
+    Until 2026-09-24 the CLI's `init` wrote those rows WITH the class
+    default while the describe door wrote them valueless: two roads, two
+    files, for one description.
+    """
+    from .. import template as _T
+    cfg = siesta_config_from_citation(cite_dir, label=label, **chosen)
+    answered = set(citation_answers(cite_dir).values) | {
+        k for k, v in chosen.items() if v is not None}
+    unanswered = sorted(
+        it.name for it in _T.select(_T.catalogue(), engine="siesta",
+                                    citation=True)
+        if "transport" in it.citation and it.name not in answered)
+    return _T.template_with_values(cfg, engine="siesta",
+                                   calculation="transport",
+                                   valueless=unanswered)

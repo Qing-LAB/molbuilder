@@ -412,6 +412,18 @@ def test_the_presets_come_from_the_shipped_table(web_client):
         assert ps["name"] == SIESTA_STAGE_NAMES[ps["tier"]]
         assert ps["values"] == SIESTA_STAGE_PRESETS[ps["tier"]], (
             "the endpoint restates the tier values instead of serving them")
+    # OFFERED PER KIND, by the columns' own membership rule (`task-setup.md`
+    # § 9): a tier is offered only where every field it carries may be a
+    # column.  A transport rung owns none of the relaxation fields, so its
+    # rows get no menu; a vibration ladder's relax rung owns them all.
+    # Until 2026-09-24 every transport rung offered coarse/medium/tight
+    # (plan W31), a menu whose every entry `prep` would refuse.
+    t = web_client.get("/api/task-setup/presets?engine=siesta"
+                       "&calculation=transport").get_json()
+    assert t["ok"] and t["presets"] == [], t
+    v = web_client.get("/api/task-setup/presets?engine=siesta"
+                       "&calculation=vibration").get_json()
+    assert v["ok"] and len(v["presets"]) == 3
 
 
 

@@ -206,13 +206,10 @@ def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
     # THE TEMPLATE, through the product's own doors -- `jobset init` writes
     # one for a transport description since 2026-09-16 (TR1), and a fixture
     # that skipped it would stop matching what this claims to reproduce.
-    from molbuilder import template as _T
     from molbuilder.transport.citation_defaults import (
-        siesta_config_from_citation)
-    _cfg = siesta_config_from_citation(root / cite, label="T")
+        transport_template_text)
     (dest / "T.template.toml").write_text(
-        _T.template_with_values(_cfg, engine="siesta",
-                                calculation="transport"))
+        transport_template_text(root / cite, label="T"))
     return dest
 
 
