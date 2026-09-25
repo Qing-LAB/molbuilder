@@ -54,7 +54,7 @@ def _all_js_files() -> list[Path]:
 # exactly -- and the expression inside a template's ``${...}`` is read by the
 # SAME scanner.  A second one without regex state stood here for a day, and a
 # review found it lost its place at `lib/tree-picker.js:112` (a regex inside
-# ``${}``), reading the next 140 lines as a string (2026-09-25).
+# ``${}``), reading the next 140 lines as template text (2026-09-25).
 
 class _Tok(NamedTuple):
     kind: str            # ident | num | str | tmpl | regex | punct | comment
@@ -62,6 +62,7 @@ class _Tok(NamedTuple):
     start: int           # offset in the source
     line: int            # the 1-based line it starts on
     closed: bool = True  # a str / tmpl / regex / block comment found its end
+    prop: bool = False   # an ident right after `.` / `?.`: a property name
 
 
 #: After one of these words a ``/`` opens a regex literal, not a division.
@@ -86,7 +87,8 @@ def _regex_ok(last: Optional[_Tok], owner: Optional[str]) -> bool:
     if last is None:
         return True
     if last.kind == "ident":
-        return last.text in _REGEX_AFTER_WORD
+        # `a.of / 2` divides: a property named like a keyword is a value.
+        return not last.prop and last.text in _REGEX_AFTER_WORD
     if last.kind != "punct":
         return False                     # after a value: a division
     if last.text == ")":
@@ -186,6 +188,8 @@ class _Reader:
                 while j < n and (src[j].isalnum() or src[j] in "_$"):
                     j += 1
                 kind = "ident"
+                if last is not None and last.text in (".", "?."):
+                    kind = "prop"                    # marked below, read as ident
             elif c.isdigit():
                 j = i + 1
                 while j < n and (src[j].isalnum() or src[j] in "._"):
@@ -200,12 +204,18 @@ class _Reader:
                     depth -= 1
                 elif inside and op == "{":
                     depth += 1
-            tok = _Tok(kind, src[i:j], i, self._line(i), closed)
+            if kind == "prop":
+                tok = _Tok("ident", src[i:j], i, self._line(i), True, True)
+            else:
+                tok = _Tok(kind, src[i:j], i, self._line(i), closed)
             self.toks.append(tok)
             if kind != "comment":
                 if tok.text == "(":
+                    # `Symbol.for(k) / 2`: a method named like a statement
+                    # opens no statement's parentheses.
                     opened.append(last.text if last is not None
-                                  and last.kind == "ident" else None)
+                                  and last.kind == "ident"
+                                  and not last.prop else None)
                     owner = None
                 elif tok.text == ")":
                     owner = opened.pop() if opened else None
@@ -296,6 +306,19 @@ def html_writes(src: str) -> List[Tuple[int, str]]:
         end = at(k + 1)
         return _is_literal(at(k)) and (end is None or end.text in _VALUE_ENDS)
 
+    def opener(k: int) -> Optional[int]:
+        """The ``{`` / ``[`` / ``(`` that encloses token ``k``."""
+        depth = 0
+        for j in range(k - 1, -1, -1):
+            s = toks[j].text
+            if s in ("}", "]", ")"):
+                depth += 1
+            elif s in ("{", "[", "("):
+                if depth == 0:
+                    return j
+                depth -= 1
+        return None
+
     found: List[Tuple[int, str]] = []
     for k, t in enumerate(toks):
         prev, nxt = at(k - 1), at(k + 1)
@@ -316,11 +339,19 @@ def html_writes(src: str) -> List[Tuple[int, str]]:
                 if not (op.text == "=" and one_literal(op_at + 1)):
                     found.append((t.line, f"{name} {op.text}"))
                 continue
-            # `{ innerHTML: ... }` -- an object for Object.assign and kin
+            # `{ innerHTML: ... }` and `{ innerHTML }` -- an object for
+            # Object.assign and kin.  Not `const { innerHTML: h } = el`, which
+            # READS the property: a pattern after const / let / var.
             if (prev is not None and prev.text in ("{", ",")
-                    and nxt is not None and nxt.text == ":"):
-                if not one_literal(k + 2):
-                    found.append((t.line, f"{name}:"))
+                    and nxt is not None and nxt.text in (":", ",", "}")):
+                o = opener(k)
+                if o is None or toks[o].text != "{":
+                    continue                       # an array, or arguments
+                before = at(o - 1)
+                if before is not None and before.text in ("const", "let", "var"):
+                    continue                       # a destructuring read
+                if nxt.text != ":" or not one_literal(k + 2):
+                    found.append((t.line, f"{{{name}}}"))
                 continue
         if t.kind != "ident" or nxt is None or nxt.text != "(" or not dotted:
             continue
@@ -442,7 +473,36 @@ CASES = [
     ('frame.setAttribute("srcdoc", name);', 1),
     ('el.innerHTML ||= name;', 1),
     ('frame.contentDocument.write(name);', 1),
+    ('Object.assign(el, { innerHTML });', 1),
+    ('Object.assign(el, { srcdoc, a: 1 });', 1),
+    ('const { innerHTML: h } = el;', 0),
+    ('const list = [a, innerHTML, b];', 0),
+    ('x = a.of / 2; el.innerHTML = name;', 1),
+    ('x = Symbol.for(k) / 2; el.innerHTML = name;', 1),
+    ('frame.setAttribute("srcdoc", "<p>x</p>");', 0),
 ]
+
+
+#: What the reader must report left open -- and a line it must not.  The
+#: per-file lint's first assertion is only a guard if it has been seen to fire.
+UNCLOSED = [
+    ('x = "open\n', "str"),
+    ('x = /open\n', "regex"),
+    ('x = `open', "tmpl"),
+    ('x = `${ open', "tmpl"),
+    ('/* open', "comment"),
+    (r'''q = `[a="${p.replace(/"/g, '\\"')}"]`;''', None),
+]
+
+
+@pytest.mark.parametrize("src,kind", UNCLOSED, ids=[c for c, _ in UNCLOSED])
+def test_the_reader_says_where_it_lost_its_place(src, kind):
+    """A string, regex, template or comment the reader never closes is how a
+    lost place shows, and the per-file lint fails on one -- so each row here
+    must leave exactly its kind open, and the tree-picker line (the form that
+    derailed the first scanner) none (`testing.md` § 2a)."""
+    lost = [t.kind for t in _tokens(src) if not t.closed]
+    assert lost == ([kind] if kind else []), lost
 
 
 @pytest.mark.parametrize("src,expected", CASES, ids=[c for c, _ in CASES])

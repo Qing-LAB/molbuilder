@@ -368,21 +368,21 @@ The security policy (owned by the server — see
   attributes. If an XSS payload ever landed, the CSP would block it.
 - **Markup comes only from the source, or from four counted writes**
   *(2026-09-25)*. In first-party JS (`vendor/` bundles excepted), the three
-  properties that parse HTML — `innerHTML`, `outerHTML`, `srcdoc` — are given
-  an empty string or **one literal** written in the source; the methods that
-  parse it — `insertAdjacentHTML`, `document.write`, `createContextualFragment`,
-  `DOMParser.parseFromString` and kin — are not used at all. Text that varies
-  at run time — a file name, a server's `error`, an exception's message — is
-  set with `textContent` on an element built with `createElement`, however
-  harmless it looks today. HTML made at run time enters at four writes, one
-  per file, that `tests/test_xss_audit.py` counts: the markdown editor's
-  preview (`lib/inspectors/markdown.js`) and the Documents tab
-  (`documents/page.js`), both through `lib/markdown-render.js`'s DOMPurify;
-  mermaid's SVG (`lib/markdown-render.js`); and the server's `/partials/*`
-  inspectors (`lib/inspectors/_partial_inspector_factory.js`). A fifth is a
-  design decision, not a line in that table. The CSP stops an injected script from running; this rule stops the
-  injection — three sites broke it until 2026-09-25, each passing a runtime
-  message into `innerHTML`.
+  properties that parse HTML — `innerHTML`, `outerHTML`, `srcdoc` — are set,
+  with `=`, to an empty string or **one literal** written in the source; the
+  methods that parse it — `insertAdjacentHTML`, `document.write`,
+  `createContextualFragment`, `DOMParser.parseFromString` and kin — are not
+  used at all. Text that varies at run time — a file name, a server's `error`,
+  an exception's message — is set with `textContent` on an element built with
+  `createElement`, however harmless it looks today. HTML made at run time
+  enters at four writes, one per file, that `tests/test_xss_audit.py` counts:
+  the markdown editor's preview (`lib/inspectors/markdown.js`) and the
+  Documents tab (`documents/page.js`), both through `lib/markdown-render.js`'s
+  DOMPurify; mermaid's SVG (`lib/markdown-render.js`); and the server's
+  `/partials/*` inspectors (`lib/inspectors/_partial_inspector_factory.js`). A
+  fifth is a design decision, not a line in that table. The CSP stops an
+  injected script from running; this rule stops the injection — three sites
+  broke it until 2026-09-25, each passing a runtime message into `innerHTML`.
 
 ## 8. Is a rule dead? — how to tell, and how not to
 

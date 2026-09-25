@@ -677,7 +677,7 @@
         if (kind) el.classList.add(kind);
     }
 
-    /* A one-line notice that REPLACES what a host holds.  The message is set
+    /* A notice that REPLACES what a host holds.  The message is set
      * as text: it is an exception's or a server's words, and words are never
      * markup (ui-contract.md § 7). */
     function showNotice(host, msg, kind) {
