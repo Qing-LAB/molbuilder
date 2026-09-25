@@ -692,29 +692,25 @@ def test_modify_op_round_trips_the_periodic_cell(web_client):
     assert per["vacuum"] == periodicity["vacuum"], "delete dropped vacuum"
     assert "kgrid" not in per, "delete should not echo k-grid (not geometry)"
 
-    # A rigid ROTATION rotates the lattice VECTORS with the atoms (cell @ Rᵀ, origin
-    # pivot -- structure-periodicity.md §3c); it must not DROP them or leave an
-    # axis-aligned box behind.  axis_kind / vacuum are non-geometric -> verbatim.
+    # A rigid ROTATION turns the atoms and leaves the box alone (user,
+    # 2026-09-25: "moving atoms only moves atoms"); it must not DROP the cell
+    # either.  axis_kind / vacuum are non-geometric -> verbatim.
     body = web_client.post("/api/modify/rotate", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 30}).get_json()
     assert body["ok"] is True, body
     per = body["periodicity"]
-    th = np.radians(30.0)
-    R = np.array([[np.cos(th), -np.sin(th), 0.0],
-                  [np.sin(th),  np.cos(th), 0.0], [0.0, 0.0, 1.0]])
     assert per["cell"] is not None, "rotate dropped the cell"
-    assert np.allclose(per["cell"], np.array(periodicity["cell"]) @ R.T), \
-        "rotate must rotate the lattice vectors with the atoms"
+    assert np.allclose(per["cell"], periodicity["cell"]), \
+        "rotate moved the cell: moving atoms only moves atoms"
     assert per["axis_kind"] == periodicity["axis_kind"], "rotate dropped axis_kind"
     assert per["vacuum"] == periodicity["vacuum"], "rotate dropped vacuum"
     assert "kgrid" not in per, "rotate should not echo k-grid (not geometry)"
 
 
 def test_modify_op_round_trips_cell_origin(web_client):
-    """§3c: a rigid whole-structure ROTATION on an electrode junction rotates the
-    cell_origin corner WITH the atoms (about the pivot -- origin by default), so the
-    box keeps wrapping the off-origin atoms.  It must neither DROP it (box jumps to
-    the origin) nor leave it behind (box stops wrapping the atoms)."""
+    """A rigid whole-structure ROTATION carries the cell_origin corner verbatim:
+    moving atoms only moves atoms (user, 2026-09-25).  It must not DROP it either
+    (the box would jump).  Goes with `cell_origin` itself (plan § 5q, P1)."""
     import numpy as np
     periodicity = {
         "cell": [[4.0, 0, 0], [0, 4.0, 0], [0, 0, 12.0]],
@@ -724,13 +720,9 @@ def test_modify_op_round_trips_cell_origin(web_client):
     r = web_client.post("/api/modify/rotate", json={
         "structure": _env_per(_H2O_XYZ, periodicity), "axis": "z", "angle": 15})
     per = r.get_json()["periodicity"]
-    th = np.radians(15.0)
-    R = np.array([[np.cos(th), -np.sin(th), 0.0],
-                  [np.sin(th),  np.cos(th), 0.0], [0.0, 0.0, 1.0]])
     assert per["cell_origin"] is not None, "rotate dropped cell_origin"
-    # origin pivot (endpoint default): cell_origin -> cell_origin @ Rᵀ
-    assert np.allclose(per["cell_origin"], np.array(periodicity["cell_origin"]) @ R.T), \
-        "rotate must rotate the cell_origin corner with the atoms"
+    assert np.allclose(per["cell_origin"], periodicity["cell_origin"]), \
+        "rotate moved the cell_origin corner: moving atoms only moves atoms"
 
 
 # `test_modify_calibrate_moves_atoms_into_the_cell` RETIRED 2026-09-25, with
@@ -1149,11 +1141,12 @@ def test_modify_translate_recenter_of_a_group_leaves_the_box(web_client):
         "centring a GROUP must leave the box where it is"
 
 
-def test_modify_translate_recenter_of_everything_takes_the_box_along(web_client):
-    """The other half of the same rule: with nothing selected the move is
-    rigid, so the box goes with the atoms and containment cannot change.
-    Asserting only the previous test would pass on a route that never
-    moves the box at all."""
+def test_modify_translate_recenter_of_everything_leaves_the_box(web_client):
+    """The other half of the same rule, on the WHOLE-structure path (nothing
+    selected, through ``Structure.affine``): the atoms move and the box stays
+    where it is -- *"leave the cell alone, moving atoms only moves atoms"*
+    (user, 2026-09-25).  Until then this path took the box along.  Goes with
+    ``cell_origin`` itself (plan § 5q, P1)."""
     import numpy as np
     periodicity = {
         "cell": [[10.0, 0, 0], [0, 10.0, 0], [0, 0, 20.0]],
@@ -1164,9 +1157,8 @@ def test_modify_translate_recenter_of_everything_takes_the_box_along(web_client)
         "structure": _env_per(_LINEAR_XYZ, periodicity),
         "recenter": True}).get_json()
     assert r["ok"] is True, r
-    # centroid of _LINEAR_XYZ is (1.5, 1.5, 0), so the corner moves by -that
     assert np.allclose(r["periodicity"]["cell_origin"],
-                       np.array(periodicity["cell_origin"]) - [1.5, 1.5, 0.0]), \
+                       periodicity["cell_origin"]), \
         r["periodicity"]["cell_origin"]
 
 

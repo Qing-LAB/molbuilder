@@ -2134,43 +2134,21 @@ class Structure:
     def affine(self, linear: Sequence[Sequence[float]],
                translation: Sequence[float]) -> "Structure":
         """Apply one rigid/affine map ``x -> x @ linearᵀ + translation`` to the
-        WHOLE structure -- atoms AND the unit-cell box -- so an explicit box keeps
-        wrapping the atoms after a rigid transform
-        (``model/structure-periodicity.md`` § 6 clause 2b).  THE single transform
-        primitive ``translated`` / ``rotate_around_axis`` route through.
+        ATOMS, and to nothing else (user, 2026-09-25: *"leave the cell alone,
+        moving atoms only moves atoms"*).  THE single transform primitive
+        ``translated`` / ``rotate_around_axis`` / ``orient_along_axis`` route
+        through.
 
-        * atoms:        ``positions @ linearᵀ + translation``
-        * lattice VECTORS (``cell`` rows): ``cell @ linearᵀ`` -- the vectors rotate/
-          shear with the linear part; the translation cancels (they are differences
-          of points).
-        * cell ORIGIN (``cell_origin``, the world-space corner): the FULL affine
-          ``cell_origin @ linearᵀ + translation`` -- it is a point and follows the
-          atoms.
-
-        A DERIVED cell (``cell`` None) / unset origin (``cell_origin`` None) needs no
-        update: ``resolve_cell`` / ``resolve_cell_origin`` recompute it from the new
-        atom extents.  Index-preserving, so regions / frozen / annotations / axis_kind
-        / vacuum carry verbatim.  For a pure rotation ``linear`` is orthogonal
-        (det +1), so the cell stays non-singular."""
+        The cell's vectors, its corner and a stated ``engine_offset`` stay
+        exactly as they were: moving atoms is an edit of where they are, not a
+        change of frame.  A person who wants the box elsewhere sets it on the
+        Cell page, and an atom the move leaves outside the box is named there
+        and at the deck (`model/structure-periodicity.md` § 6.0).
+        Index-preserving, so every label and the rest of the metadata carry
+        verbatim."""
         L = np.asarray(linear, dtype=float).reshape(3, 3)
         t = np.asarray(translation, dtype=float).reshape(3)
-        per = self._carry_nonatom()
-        if per.get("cell") is not None:
-            per["cell"] = per["cell"] @ L.T
-        if per.get("cell_origin") is not None:
-            per["cell_origin"] = per["cell_origin"] @ L.T + t
-        out = Structure(
-            elements      = list(self.elements),
-            positions     = self.positions @ L.T + t,
-            atom_names    = list(self.atom_names),
-            residue_ids   = list(self.residue_ids),
-            residue_names = list(self.residue_names),
-            chain_ids     = list(self.chain_ids),
-            title         = self.title,
-            regions       = {k: list(v) for k, v in self.regions.items()},
-            annotations   = copy_annotations(self.annotations),
-            **per,
-        )
+        out = self.replace(positions=self.positions @ L.T + t)
         # A RIGID TRANSFORM IS AN EDIT (`molview/model.js` marks every
         # `applyOp` the same way): the atoms the contract was converged on
         # have moved, so the record is outdated -- not erased.
@@ -2178,10 +2156,8 @@ class Structure:
         return out
 
     def translated(self, vec: Sequence[float]) -> "Structure":
-        # A rigid translation: linear part = identity (lattice vectors unchanged),
-        # the cell's world-space corner moves WITH the atoms
-        # (``model/structure-periodicity.md`` § 6 clause 2b).  Routed through
-        # the ONE affine primitive so atoms + box stay consistent.
+        # A rigid translation of the atoms, through the ONE affine primitive;
+        # the box stays where it is.
         return self.affine(np.eye(3), np.asarray(vec, dtype=float).reshape(3))
 
     def centered(self) -> "Structure":

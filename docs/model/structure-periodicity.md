@@ -397,10 +397,14 @@ two things state one:
 
 The engine gets the coordinates plus the stated offset, the cell at
 `(0,0,0)`, and the deck's record says the offset was stated. An operation that
-reframes the coordinates restates the offset with them: a whole-structure
-rigid map `x → x·Lᵀ + t` takes a stated `o` to `o·Lᵀ − t` (the box moves with
-the atoms), a builder that types a new cell drops it, and one that joins
-structures takes it from the one whose cell it keeps (§ 2.2b).
+reframes the coordinates restates the offset with them. **Moving atoms only
+moves atoms** *(user, 2026-09-25: "leave the cell alone, moving atoms only
+moves atoms")*: a translation, rotation or orientation — of some atoms or all —
+changes coordinates and nothing else, so the cell's vectors and a stated
+offset stay where they were, and an atom the move leaves outside the box is
+named on the Cell page and at the deck. A builder that types a new cell drops
+a stated offset, and one that joins structures takes it from the one whose
+cell it keeps (§ 2.2b).
 
 `cell_origin` (§ 6) stored the person's choice as a corner, and where none was
 stored every reader derived one by its own per-axis rule. The stated offset is
@@ -577,13 +581,9 @@ convention. The box would sit at the origin with half the atoms outside it (the
 4. *(Retired 2026-09-25 with its code: `calibrate_to_cell`, the optional last
    step that baked the generation-time shift into the stored coordinates.
    § 6.0's assigned origin is what it was for.)*
-5. **A rigid whole-structure transform moves the box WITH the atoms.**
-   `Structure.affine` applies the same map to atoms AND box: translation moves
-   the `cell_origin` corner; a whole-structure rotation rotates the lattice
-   vectors (`cell @ Rᵀ`) *and* the corner. The Modify dispatch sends a transform
-   through the whole-structure path only when the selection is empty or is all
-   atoms (a partial selection = "transform only these atoms" → the box stays
-   put); `orient` is always whole-structure.
+5. *(Retired 2026-09-25: a rigid whole-structure transform moved the box with
+   the atoms — the lattice vectors and the corner. The user: "leave the cell
+   alone, moving atoms only moves atoms" — § 6.0, *A stated offset*.)*
 
 ```mermaid
 flowchart LR

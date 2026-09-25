@@ -3503,17 +3503,17 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
   contract's (§ 6.0, *A stated offset*). The first answer —
   *"always automatically calculated based on the cell unit and all the atoms"*
   — is still what happens wherever the person assigns nothing.
-* **D2 — existing sidecars: a decision, not the rule** *(corrected 2026-09-25 by
-  the structure review; open)*. It read *"`apply_metadata_dict` ignores unknown
-  keys"* (`model/structure.md` § 2.2, which contradicts its own § 2.2 further
-  down and the code): three gates REFUSE an unknown key, and every sidecar
-  carries `cell_origin`, null or not. So `cell_origin` leaves the model one of
-  two ways. **(a) Retired** — added to `RETIRED_METADATA_KEYS`, read and
-  ignored: an old structure opens with the rule's placement, and an origin a
-  person typed by hand must be assigned again. **(b) Migrated** — v9's corner
-  `P` becomes a stated offset `−P`: old structures keep their placement,
-  including the electrode builder's flush corner, the one TranSIESTA refused.
-  v9 cannot tell the two apart. Proposed: **(a)**.
+* **D2 — existing sidecars: the old corner is retired** *(user, 2026-09-25:
+  "your option (a) is fine, and when files are saved, make sure no old retired
+  key is written again")*. Corrected first by the structure review: three
+  gates REFUSE an unknown sidecar key (`model/structure.md` § 2.2's *"ignores
+  unknown keys"* contradicts its own section and the code), and every sidecar
+  carries `cell_origin`. So `cell_origin` joins `RETIRED_METADATA_KEYS` — read
+  and ignored, and an old structure opens with the rule's placement — and no
+  writer ever emits it again. An origin a person typed by hand is assigned
+  again on the Cell page. Chosen over migrating it as a stated offset because
+  v9 cannot tell a typed corner from the electrode builder's flush one, and
+  the flush one is the placement TranSIESTA refused.
 * **D3 — calibrate: retired** *(user, 2026-09-25: "we can retire the
   calibrate button")*. The `calibrate` op, `/api/modify/calibrate`,
   `modify.calibrate_to_cell` and their tests go in P3. What calibrate was
@@ -3536,6 +3536,12 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
   surrounding them and that shows in the cell box too")*: read from the
   deck's record, which carries them as the structure had them when the deck
   was written.
+* **D6 — moving atoms only moves atoms** *(user, 2026-09-25: "leave the cell
+  alone, moving atoms only moves atoms")*. A translation, rotation or
+  orientation — of some atoms or all — changes coordinates only: the cell's
+  vectors, its corner and a stated offset stay where they were. Retires § 6
+  clause 5 (a whole-structure transform moved the box with the atoms) and the
+  tests that pinned it. **Done 2026-09-25** (`Structure.affine`).
 
 ---
 

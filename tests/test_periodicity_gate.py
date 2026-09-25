@@ -748,21 +748,28 @@ class TestPeriodicityDoor:
         assert not _said(after.get("notices"), "cell.atoms_outside"), (
             f"a derived box cannot fail to contain: {_wheres(after.get('notices'))}")
 
-    def test_translating_the_whole_molecule_keeps_the_box_with_it(self, client):
-        """The same distance, every atom: ``affine`` carries ``cell_origin``
-        with the atoms (``structure.py:1619``), so the structure sits in the
-        box exactly as before and there is nothing to report.  This is the
-        pair to the test above -- the warning must depend on the atoms moving
-        RELATIVE to the box, not on their coordinates being large.
+    def test_translating_the_whole_molecule_leaves_the_box_and_says_so(self,
+                                                                       client):
+        """Every atom moved 50 Å: the box stays where the person put it, and the
+        atoms now outside it are named.
+
+        Until 2026-09-25 a whole-structure move carried the box along and there
+        was nothing to report; the user retired that -- *"leave the cell alone,
+        moving atoms only moves atoms"* (`model/structure-periodicity.md`
+        § 6.0).  The pair to the test above still holds: the warning depends on
+        the atoms moving RELATIVE to the box, and now a whole-molecule move is
+        such a move.
         """
         s = self._explicit_box_structure()
         r = client.post("/api/modify/translate", json={
             "structure": self._envelope(s), "dx": 50.0, "dy": 0.0, "dz": 0.0})
         assert r.status_code == 200
         body = r.get_json()
-        assert body["periodicity"]["cell_origin"][0] == 50.0, "the box moved too"
-        assert not _said(body.get("notices"), "cell.atoms_outside"), (
-            f"spurious finding: {_wheres(body.get('notices'))}")
+        assert body["periodicity"]["cell_origin"] == [0.0, 0.0, 0.0], (
+            "the box moved with the atoms")
+        assert _said(body.get("notices"), "cell.atoms_outside"), (
+            f"atoms left the box and nothing said so: "
+            f"{_wheres(body.get('notices'))}")
 
     def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
         """molview.md § 6.8: a CONDITION describes the state the answer carries.

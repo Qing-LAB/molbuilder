@@ -59,14 +59,20 @@ def periodic_dimer():
         cell=np.diag([10.0, 10.0, 20.0]),
         axis_kind=("periodic", "periodic", "transport"),
         vacuum=(5.0, 5.0, 0.0),
+        # A stated offset (an origin the person assigned): the box the ops below
+        # must leave exactly where it is.
+        engine_offset=np.array([1.0, 2.0, 3.0]),
     )
 
 
 def _assert_lattice_preserved(out, ref):
-    """The op must carry cell / axis_kind / vacuum verbatim -- these are NOT
-    per-atom, so an edit must never revert them to isolated defaults.  (k-grid
-    is no longer geometry; it lives on SiestaConfig -- structure-periodicity.md.)"""
+    """The op must carry the box verbatim -- cell, a stated offset, axis kinds,
+    vacuum.  None of it is per-atom, so an edit must never revert it to
+    isolated defaults, and moving atoms must never move it.  (k-grid is no
+    longer geometry; it lives on SiestaConfig -- structure-periodicity.md.)"""
     assert out.cell is not None and np.allclose(out.cell, ref.cell)
+    assert out.engine_offset is not None and np.allclose(out.engine_offset,
+                                                         ref.engine_offset)
     assert out.axis_kind == ref.axis_kind
     assert out.vacuum == ref.vacuum
 
@@ -78,11 +84,11 @@ class TestOpsPreservePeriodicity:
     no warning.  (k-grid is NOT among them: it belongs to `SiestaConfig`,
     not to the geometry, so no op can carry or lose it.)
 
-    NB: ``axis_kind`` / ``vacuum`` are non-geometric and carry VERBATIM through
-    every op.  The lattice VECTORS carry verbatim through atom-count edits +
-    translation (translation-invariant), but a whole-structure ROTATION rotates
-    them WITH the atoms so the box keeps wrapping the structure (§ 3c) -- that is
-    checked separately in :class:`TestRigidTransformMovesTheBox`, not here."""
+    NB: MOVING ATOMS ONLY MOVES ATOMS (user, 2026-09-25: "leave the cell alone,
+    moving atoms only moves atoms").  Every op here -- the rigid transforms
+    included -- carries the cell, a stated offset, the axis kinds and the vacuum
+    verbatim; a whole-structure rotation rotated the lattice with the atoms
+    until then (`model/structure-periodicity.md` § 6.0)."""
 
     def test_delete_preserves_lattice(self, periodic_dimer):
         """SCIENCE. Deleting an atom leaves the cell, axis kinds and vacuum untouched.
@@ -113,56 +119,40 @@ class TestOpsPreservePeriodicity:
         _assert_lattice_preserved(
             add_atom(periodic_dimer, "S", 0, [1.5, 0, 0]), periodic_dimer)
 
-    def test_orient_preserves_axis_kind_and_vacuum(self, periodic_dimer):
-        # orient is a whole-structure rotation -> it ROTATES the lattice vectors
-        # (checked in TestRigidTransformMovesTheBox); the non-geometric axis_kind /
-        # vacuum tags still carry verbatim.
-        """SCIENCE. `orient_along_axis` carries the NON-geometric periodicity tags --
-        axis kinds and vacuum -- verbatim.
+    def test_orient_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. `orient_along_axis` turns the atoms and leaves the box alone.
 
-        Catches a whole-structure rotation resetting the axis kinds to isolated
-        defaults. The lattice VECTORS legitimately rotate here (that is
-        `TestRigidTransformMovesTheBox`), which is exactly why this test cannot use
-        `_assert_lattice_preserved` -- and why the tags need their own check: they
-        are the half that must NOT change, and a rotation that rebuilds the cell
-        from scratch loses them without touching a single coordinate.
+        Catches a rotation that turns the cell with the molecule, or resets the
+        axis kinds -- a whole-structure rotation did the first until 2026-09-25,
+        by design then, and the user retired it: *"moving atoms only moves
+        atoms"*.  An atom the turn leaves outside the box is named on the Cell
+        page and at the deck, and the person moves the box if they want to.
 
-        Contract: `model/structure-periodicity.md` § 3c.
+        Contract: `model/structure-periodicity.md` § 6.0.
         """
-        out = orient_along_axis(periodic_dimer, (0, 5), axis="z")
-        assert out.axis_kind == periodic_dimer.axis_kind
-        assert out.vacuum == periodic_dimer.vacuum
+        _assert_lattice_preserved(
+            orient_along_axis(periodic_dimer, (0, 5), axis="z"), periodic_dimer)
 
-    def test_rotate_preserves_axis_kind_and_vacuum(self, periodic_dimer):
-        # A rotation ROTATES the lattice vectors (checked in
-        # TestRigidTransformMovesTheBox), but the non-geometric axis_kind / vacuum
-        # tags still carry verbatim.
-        """SCIENCE. `rotate_around_axis` carries axis kinds and vacuum verbatim.
+    def test_rotate_preserves_lattice(self, periodic_dimer):
+        """SCIENCE. `rotate_around_axis` turns the atoms and leaves the box alone
+        -- the same rule as orient, for the other rotation op (about the world
+        origin and about the centroid alike).
 
-        The same split as the orient test above, for the other rotation op: the
-        vectors turn with the atoms, the KINDS do not. A rotation that reset
-        `("periodic", "periodic", "transport")` to `("isolated",)*3` would leave the
-        geometry perfect and the calculation non-periodic.
-
-        Contract: `model/structure-periodicity.md` § 3c.
+        Contract: `model/structure-periodicity.md` § 6.0.
         """
-        out = rotate_around_axis(periodic_dimer, axis="z", angle=30)
-        assert out.axis_kind == periodic_dimer.axis_kind
-        assert out.vacuum == periodic_dimer.vacuum
+        for center in ("origin", "centroid"):
+            _assert_lattice_preserved(
+                rotate_around_axis(periodic_dimer, axis="z", angle=30,
+                                   center=center), periodic_dimer)
 
     def test_translate_preserves_lattice(self, periodic_dimer):
-        # Translation is lattice-VECTOR-invariant (only the origin corner moves),
-        # so cell / axis_kind / vacuum all carry verbatim.
-        """SCIENCE. A translation leaves the lattice VECTORS unchanged (only the origin
-        corner moves).
+        """SCIENCE. A translation moves the atoms and leaves the box alone.
 
         Catches a translate that rebuilds the cell from the moved atoms' bounding
         box -- which would silently resize a crystal's lattice constant because the
-        user shifted the molecule. Translation is the one rigid transform under
-        which the vectors are invariant, and that has to stay stated separately from
-        rotation, where they are not.
+        user shifted the molecule -- or that carries the box along with the atoms.
 
-        Contract: `model/structure-periodicity.md` § 3c.
+        Contract: `model/structure-periodicity.md` § 6.0.
         """
         _assert_lattice_preserved(periodic_dimer.translated((1, 0, 0)), periodic_dimer)
 
@@ -800,138 +790,12 @@ def test_orient_rejects_bad_axis(linear_dimer):
         orient_along_axis(linear_dimer, (0, 5), axis="w")
 
 
-# --------------------------------------------------------------------- #
-#  A whole-structure rigid transform moves the unit-cell BOX with the    #
-#  atoms so it keeps wrapping them (structure-periodicity.md § 3c).       #
-# --------------------------------------------------------------------- #
-
-
-class TestRigidTransformMovesTheBox:
-    """A rigid whole-structure transform (rotate / translate) must move the
-    explicit unit-cell box WITH the atoms -- the lattice vectors and the
-    world-space origin corner -- else the box stops wrapping the structure
-    (the bug: a rotation left an axis-aligned box behind the rotated atoms)."""
-
-    # +90° about z: R = [[0,-1,0],[1,0,0],[0,0,1]]; atoms/vectors map via `@ Rᵀ`.
-    _RT = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])  # Rᵀ
-
-    def _boxed(self):
-        return Structure(
-            elements=["C", "H"],
-            positions=np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
-            cell=np.diag([10.0, 10.0, 20.0]),
-            cell_origin=np.array([1.0, 2.0, 3.0]),
-            axis_kind=("periodic", "periodic", "transport"),
-            vacuum=(5.0, 5.0, 0.0),
-        )
-
-    def test_rotate_origin_pivot_rotates_vectors_and_origin(self):
-        """SCIENCE. Under `center="origin"`, the atoms, the lattice VECTORS and the
-        world-space origin CORNER all rotate the same way, and the non-geometric
-        tags do not.
-
-        Catches the bug this class was written for: a rotation that turned the atoms
-        and left an axis-aligned box behind them. The box then no longer wraps the
-        structure, so atoms sit outside a cell the user never changed, and a
-        periodic run folds them onto images of the wrong neighbours. All three
-        quantities are asserted against the explicit R-transpose so a rotation
-        applied in the wrong sense or the wrong frame is visible as a value, not
-        just as "something moved".
-
-        Contract: `model/structure-periodicity.md` § 3c.
-        """
-        s = self._boxed()
-        out = rotate_around_axis(s, axis="z", angle=90.0, center="origin")
-        # atoms rotate about the world origin
-        assert np.allclose(out.positions, [[0, 1, 0], [0, 2, 0]], atol=1e-9)
-        # lattice VECTORS rotate the same way (cell @ Rᵀ)
-        assert np.allclose(out.cell, s.cell @ self._RT, atol=1e-9)
-        # the world-space origin CORNER rotates about the pivot (origin): origin @ Rᵀ
-        assert np.allclose(out.cell_origin, s.cell_origin @ self._RT, atol=1e-9)
-        # non-geometric tags carry verbatim
-        assert out.axis_kind == s.axis_kind and out.vacuum == s.vacuum
-
-    def test_rotate_centroid_pivot_rotates_origin_about_centroid(self):
-        """SCIENCE. Under `center="centroid"`, the box corner rotates about THE SAME
-        pivot the atoms do.
-
-        Catches the two halves using different pivots -- atoms about the centroid,
-        the corner about the world origin. Nothing raises; the box simply slides off
-        the structure by an amount that grows with how far the molecule is from the
-        origin, so it looks correct for a centred molecule and wrong for every other.
-
-        Contract: `model/structure-periodicity.md` § 3c.
-        """
-        s = self._boxed()
-        out = rotate_around_axis(s, axis="z", angle=90.0, center="centroid")
-        c = s.positions.mean(axis=0)
-        # origin corner rotates about the SAME centroid the atoms pivot on
-        assert np.allclose(out.cell_origin, (s.cell_origin - c) @ self._RT + c, atol=1e-9)
-        assert np.allclose(out.cell, s.cell @ self._RT, atol=1e-9)
-
-    def test_rotation_keeps_the_box_wrapping_the_atoms(self):
-        # The invariant the fix exists for: after a whole-structure rotation, every
-        # atom's FRACTIONAL coordinate in the (rotated) box is unchanged -- the box
-        # still wraps the atoms exactly as before.
-        """SCIENCE, and the invariant the other two tests are special cases of: after a
-        whole-structure rotation, every atom's FRACTIONAL coordinate in the box is
-        unchanged.
-
-        Catches any rotation error the explicit-matrix tests miss, because it states
-        the physics instead of the arithmetic: a rigid rotation of the system is a
-        change of viewpoint, so nothing about where an atom sits INSIDE its cell may
-        change. An arbitrary 37 degrees, not 90, so a mistake that happens to be
-        symmetric under a quarter turn cannot hide.
-
-        Contract: `model/structure-periodicity.md` § 3c.
-        """
-        s = self._boxed()
-        out = rotate_around_axis(s, axis="z", angle=37.0, center="centroid")
-        def frac(st):
-            rel = st.positions - st.cell_origin      # world -> box-corner frame
-            return np.linalg.solve(st.cell.T, rel.T).T
-        assert np.allclose(frac(out), frac(s), atol=1e-9)
-
-    def test_translate_moves_origin_not_vectors(self):
-        """SCIENCE. A translation moves the box CORNER with the atoms and leaves the
-        lattice vectors alone.
-
-        Catches the corner being left behind: translate the structure 10 Å and the
-        box stays where it was, so the atoms are now outside a cell nobody edited.
-        This is the exact asymmetry with rotation -- there the vectors turn too --
-        and getting it backwards (translating the vectors) would resize the cell.
-
-        Contract: `model/structure-periodicity.md` § 3c.
-        """
-        s = self._boxed()
-        out = s.translated((10.0, 0.0, 0.0))
-        assert np.allclose(out.cell_origin, [11.0, 2.0, 3.0], atol=1e-9)  # corner follows
-        assert np.allclose(out.cell, s.cell, atol=1e-9)                   # vectors invariant
-
-    def test_orient_moves_the_box(self):
-        # orient is ALWAYS whole-structure (anchors only define the rotation), so it
-        # moves the box too: the atoms' fractional coords in the (rotated) box are
-        # unchanged -- the box still wraps the structure.
-        """SCIENCE. `orient_along_axis` is a whole-structure rotation, so it moves the
-        box too -- fractional coordinates unchanged, and the vectors visibly no
-        longer axis-aligned.
-
-        Catches orient being treated as "a rotation of the selection". The anchors
-        only DEFINE the rotation; every atom and the box turn. The second assertion
-        is what makes this test able to fail for the right reason: without it, an
-        op that rotated nothing at all would satisfy the fractional-coordinate check
-        trivially.
-
-        Contract: `model/structure-periodicity.md` § 3c.
-        """
-        s = self._boxed()
-        out = orient_along_axis(s, (0, 1), axis="z", center="none")
-        def frac(st):
-            rel = st.positions - st.cell_origin
-            return np.linalg.solve(st.cell.T, rel.T).T
-        assert np.allclose(frac(out), frac(s), atol=1e-9)
-        # the lattice vectors actually rotated (not left axis-aligned)
-        assert not np.allclose(out.cell, s.cell)
+# `TestRigidTransformMovesTheBox` RETIRED 2026-09-25 -- five tests that a
+# whole-structure rotate / translate / orient carried the box WITH the atoms
+# (the lattice vectors, the cell_origin corner, the fractional coordinates).
+# The user retired that design: "leave the cell alone, moving atoms only moves
+# atoms".  What holds now is pinned in `TestOpsPreservePeriodicity` above: every
+# op, the rigid transforms included, carries the box verbatim.
 
 
 @pytest.mark.parametrize("axis", ["x", "y", "z"])

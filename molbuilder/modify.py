@@ -438,10 +438,10 @@ def orient_along_axis(
     else:  # "none"
         t = np.zeros(3)
     # orient is ALWAYS a whole-structure rotation (the anchors only DEFINE the
-    # rotation; every atom moves), so the unit-cell box rotates WITH the atoms --
-    # lattice vectors + the cell_origin corner (structure-periodicity.md § 6),
-    # via the ONE affine primitive.  (A partial-selection edit never reaches orient:
-    # its role is "anchor", so applyOp always takes the whole-structure path.)
+    # rotation; every atom moves), through the ONE affine primitive -- which moves
+    # the atoms and leaves the box alone (user, 2026-09-25: "moving atoms only
+    # moves atoms").  (A partial-selection edit never reaches orient: its role is
+    # "anchor", so applyOp always takes the whole-structure path.)
     return struct.affine(R, t)
 
 
