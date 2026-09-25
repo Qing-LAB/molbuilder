@@ -1042,7 +1042,7 @@ one helper, `ok_structure_response`, and the check lives **in that return path**
 — so an op cannot answer without having been checked. "Always validated" is a
 property of the shape of the code, not of each author remembering.
 
-(The ops are delete, add_atom, orient, rotate, translate, calibrate and slab.
+(The ops are delete, add_atom, orient, rotate, translate, slab and append.
 `meta` and `lattice-from-run` are `/api/modify/*` routes and not ops: the first
 is a GET of the dropdown enums, the second reads a number out of a finished
 run, and neither carries a structure in both directions.
@@ -3051,7 +3051,6 @@ shape, rather than each one being hand-coded:
 | `orient` | a reference the move is defined against | `anchors` | refuse | 2 | unchanged |
 | `add_atom` | a reference the new atom attaches to | `anchor_index` (one number) | measure from the world origin | 1 | grows |
 | `delete` | the atoms to remove | `indices` | refuse | — | shrinks |
-| `calibrate` | the thing being mapped | — | act on all atoms | — | unchanged, whole-structure only |
 | `slab` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
 | `append` | **not read at all** | — | *(nothing to fall back from)* | — | grows |
 
@@ -3077,13 +3076,9 @@ them. Nesting them under a `params` object sends them where nothing looks.
 the network. It says nothing about **zero**: that case belongs to "With nothing
 selected" alone. Letting the count answer it too made every operation with a
 count refuse at zero whatever its own column said, which is how `add_atom` came
-to be unable to place the first atom on an empty canvas. `calibrate` always
-takes the whole-structure path even with a partial selection, because it rigidly
-maps every atom into the cell and clears the cell origin.
+to be unable to place the first atom on an empty canvas.
 
-**Three operations send no selection, and the table says which.** `calibrate`
-rigidly maps every atom into the cell, so a partial selection would be a
-half-mapped structure. `append` places the incoming fragment on the world
+**Two operations send no selection, and the table says which.** `append` places the incoming fragment on the world
 origin — a load is an edit (2026-09-07), and there is nothing a picked atom
 could mean to it. `slab` places its slab from
 **absolute coordinates** — a starting z, a growth direction and an (x, y)

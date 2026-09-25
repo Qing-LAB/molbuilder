@@ -528,9 +528,8 @@ convention. The box would sit at the origin with half the atoms outside it (the
    coordinates. **Any operation that reframes the coordinates restates the
    origin in the same breath** — coordinates from frame X carrying an origin
    measured in frame Y is always a defect, because the emitter then shifts by
-   `−cell_origin` and displaces the structure by the whole corner. The
-   reference implementation is `calibrate_to_cell`, which translates the atoms
-   and sets `cell_origin: None` together. Three sites got this wrong
+   `−cell_origin` and displaces the structure by the whole corner. Three sites
+   got this wrong
    independently before the rule was written down: the SIESTA deck's
    `validation_struct` (shifted atoms, stored corner → a phantom
    `atoms_outside` warning), the Results tab (a run's engine-frame frames given
@@ -547,11 +546,9 @@ convention. The box would sit at the origin with half the atoms outside it (the
    state, different mechanism.) **The viewer ≡ render_fdf invariant:** the viewer's box (cell at
    `cell_origin`, atoms where they are) and SIESTA's cell (at `(0,0,0)`, atoms
    translated by `−cell_origin`) are the SAME relative geometry.
-4. **`calibrate_to_cell` — the optional unified last step** (`modify.py`,
-   `/api/modify/calibrate`). It *bakes* the generation-time shift into the
-   stored coordinates: translate all atoms by `−resolve_cell_origin()`, then set
-   `cell_origin → (0,0,0)`. Generation is correct with or without it; calibration
-   just lets the user *see* and *save* the exact SIESTA coordinate frame.
+4. *(Retired 2026-09-25 with its code: `calibrate_to_cell`, the optional last
+   step that baked the generation-time shift into the stored coordinates.
+   § 6.0's assigned origin is what it was for.)*
 5. **A rigid whole-structure transform moves the box WITH the atoms.**
    `Structure.affine` applies the same map to atoms AND box: translation moves
    the `cell_origin` corner; a whole-structure rotation rotates the lattice
@@ -567,8 +564,6 @@ flowchart LR
     end
     E -->|viewer| V["box drawn at cell_origin<br/>WRAPS the structure (no jump)"]
     E -->|render_fdf always| S["atoms translated by −cell_origin<br/>cell @ (0,0,0), atoms in [0,cell)  ✓ SIESTA"]
-    E -->|calibrate optional| C["bake the shift into stored coords<br/>cell_origin → 0; atoms in [0,cell)"]
-    C --> V2["viewer box @ origin == FDF cell — all frames agree"]
 ```
 
 **The resolve table, completed:**
@@ -618,8 +613,7 @@ to these or is a bug:
    clause used to describe was removed 2026-07-29.
 3. **The world frame belongs to the structure.** Atoms are authored relative
    to the world origin (composition convenience); the **cell is constructed
-   around the structure**, never the structure moved into the cell — except
-   by the one sanctioned rewrite, *calibrate* (§ 6, user-invoked only).
+   around the structure**, never the structure moved into the cell.
 4. **The state table** (right-handed cells enforced, `det(cell) > 0`;
    per-axis `expected_corner = bbox_min − vacuum` on isolated, `bbox_min` on
    transport, `0` on periodic). **Containment is required only along
@@ -881,12 +875,10 @@ silently contradicts downstream state — it resets it, loudly:
 | `cell_origin` | Accepted **as typed** + warning: *vacuum is not respected under a manual origin — only the unit-cell parameters are* (+ actual per-side clearances). `null` = the **Reset-origin-to-default** button: the override is cleared and the corner is **derived again**, so the box keeps wrapping the structure instead of jumping to `(0,0,0)`; the other parameters regain their freedom, and a vacuum / periodicity edit re-derives the whole box. |
 
 **There is no calibrate button.** Coordinate rewrites are not a periodicity
-edit: emission translates to the engine frame implicitly (and stamps the
-shift as provenance), so nothing on the Cell page ever moves atoms. The
-rewrite exists only as the Modify op (`/api/modify/calibrate`,
-`molbuilder.modify.calibrate_to_cell`) for the explicit save-in-engine-frame
-workflow, and the equivalence is test-pinned: *calibrated-then-emit ≡ emit*.
-*(Retired 2026-09-25 with § 6's calibrate — § 6.0; deleted with the op.)*
+edit: emission places the atoms where the engine gets them and records the
+offset (§ 6.0), so nothing on the Cell page ever moves atoms. The Modify op
+that once baked the shift into the stored coordinates was retired
+2026-09-25.
 
 **Frame ownership by tab.** Only the **Molbuilder/Modify** tab operates on
 the authoring truth (the pair, world frame). Every **calculation page**
@@ -1205,7 +1197,7 @@ rule for every engine, recorded in every deck; the scope and the phases are
 
 **Shipped:** the `Structure` fields + `resolve_cell`/`resolve_cell_origin`; the
 electrode builder's capture-at-construction (`cell` + `axis_kind`); `render_fdf`
-origin translation; `calibrate_to_cell` (op + `/api/modify/calibrate`); the
+origin translation; the
 MolView Cell-page display + the Modify per-group editors; sidecar persistence
 of `cell`/`cell_origin`/`axis_kind`/`vacuum` (schema v5, `kgrid` dropped);
 transport reading `struct.cell` (a `--cell-fdf` argument overrides it).

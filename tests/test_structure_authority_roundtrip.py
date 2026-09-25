@@ -308,7 +308,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
 
     @pytest.mark.parametrize("name", [
         "copy", "delete_atoms", "add_atom", "translate", "translate_subset",
-        "rotate", "orient", "append", "calibrate",
+        "rotate", "orient", "append",
     ])
     def test_every_atom_edit_carries_the_recorded_contract(self, name):
         import numpy as np
@@ -325,7 +325,6 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "rotate":           lambda x: M.rotate_around_axis(x, "z", 90.0),
             "orient":           lambda x: M.orient_along_axis(x, [0, 1], "z"),
             "append":           lambda x: M.append_structure(x, other),
-            "calibrate":        lambda x: M.calibrate_to_cell(x),
         }
         out = ops[name](s)
         if isinstance(out, tuple):
@@ -350,7 +349,6 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
         ("add_atom",      "structure_modified"),
         ("translate",     "structure_modified"),
         ("rotate",        "structure_modified"),
-        ("calibrate",     "structure_modified"),
     ])
     def test_a_python_edit_marks_the_contract_outdated(self, op, mark):
         """The backend marks what MolView marks.
@@ -369,7 +367,6 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "add_atom":     lambda: M.add_atom(s, "H", 0, [1.0, 1.0, 1.0]),
             "translate":    lambda: M.translate(s, [1.0, 0.0, 0.0]),
             "rotate":       lambda: M.rotate_around_axis(s, "z", 30.0),
-            "calibrate":    lambda: M.calibrate_to_cell(s),
         }[op]()
         assert out.info["calculation"][mark] is True
         assert out.info["calculation"]["contract"], "the record was erased, not marked"

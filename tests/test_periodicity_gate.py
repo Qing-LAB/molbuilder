@@ -2,8 +2,8 @@
 + § 6.2 v3 (the unified door's regime model).
 
 Python owns every periodicity-metadata change (the gate); the JS only
-calls.  These tests pin each state-table row, each op's v3 semantics, the
-calibrate≡emit frame equivalence, and the unified endpoint envelope.
+calls.  These tests pin each state-table row, each op's v3 semantics, and
+the unified endpoint envelope.
 """
 from __future__ import annotations
 
@@ -481,12 +481,11 @@ class TestApplyEditV3:
         Catches a metadata edit that "helpfully" wraps or recentres coordinates.
         That silently changes the physical system: bond lengths across a boundary,
         which atoms are neighbours, and the frozen-atom indices that name them.
-        Coordinate rewrites belong to Modify (`calibrate_to_cell`), never to the
-        Cell page -- and the equivalence that makes that safe is pinned by
-        `test_calibrated_then_emit_equals_emit`.
+        The atoms are placed where the engine gets them, at emission -- never
+        on the stored structure.
 
         Contract: `model/structure-periodicity.md` § 6.2 (the ops change metadata
-        only) + § 6 (calibration is a separate, explicit act).
+        only) + § 6.0 (placement happens at emission).
         """
         s = _mol()
         out, _ = apply_edit(s, "vacuum", [1.0, 1.0, 1.0])
@@ -500,31 +499,11 @@ class TestApplyEditV3:
             assert np.allclose(out.positions, s.positions), op
 
 
-# ------------------------------------------------------------------ #
-#  Calibrate ≡ emit — the implicit-translation equivalence            #
-# ------------------------------------------------------------------ #
-
-
-def _coords_block(fdf: str) -> str:
-    lines = fdf.splitlines()
-    a = next(i for i, l in enumerate(lines)
-             if "%block AtomicCoordinatesAndAtomicSpecies" in l)
-    b = next(i for i, l in enumerate(lines[a:], start=a)
-             if "%endblock" in l)
-    return "\n".join(lines[a:b + 1])
-
-
-def test_calibrated_then_emit_equals_emit():
-    """§ 6.2: emission translates implicitly — a user who never clicks
-    calibrate gets the identical SIESTA frame."""
-    from molbuilder.modify import calibrate_to_cell
-    from molbuilder.siesta.input import render_fdf
-    from molbuilder.config.siesta import SiestaConfig
-    s = _mol()
-    cfg = SiestaConfig(verbose_comments=False)
-    direct = _coords_block(render_fdf(s, cfg))
-    baked = _coords_block(render_fdf(calibrate_to_cell(s), cfg))
-    assert direct == baked
+# `test_calibrated_then_emit_equals_emit` RETIRED 2026-09-25 with calibrate
+# itself (`model/structure-periodicity.md` § 6.0, user: "we can retire the
+# calibrate button").  What it guarded -- emission independent of a prior
+# bake -- is the placement rule's idempotence, pinned by `tests/test_cell.py`
+# and, through prep, by `tests/test_engine_offset_reaches_every_deck.py`.
 
 
 # ------------------------------------------------------------------ #
@@ -1460,23 +1439,10 @@ class TestDocMatchesTheDoor:
                 f"op {op!r} has no row in {self.DOC} § 6.2 — the door and the "
                 f"doc disagree")
 
-    def test_the_doc_says_there_is_no_calibrate_button(self):
-        """The doc states, in the affirmative, that there is no calibrate button.
-
-        Catches the doc re-acquiring one. The sibling test only checks OPS -> doc,
-        so a doc row for an op the code does not have is invisible to it; this
-        sentence is the only thing standing against the design being re-documented
-        back into existence.
-
-        Contract: `model/structure-periodicity.md` § 6.2. Commemorates 2026-07-29,
-        when the door still advertised a calibrate op that had been removed.
-
-        KNOWN WEAK: it matches one exact sentence, so a reworded doc fails while
-        the design is right.
-        """
-        import pathlib
-        text = pathlib.Path(self.DOC).read_text(encoding="utf-8")
-        assert "There is no calibrate button." in text
+    # `test_the_doc_says_there_is_no_calibrate_button` RETIRED 2026-09-25: it
+    # matched one sentence of a document (its own docstring called it KNOWN
+    # WEAK), and calibrate itself is gone -- op, route and function -- so there
+    # is no design left for a document to write back into existence.
 
     def test_the_door_docstring_names_the_real_op_set(self):
         """The door's own docstring names every op in `OPS` and denies `calibrate`.
@@ -1875,7 +1841,6 @@ class TestEveryOpIsChecked:
         "/api/modify/orient":      {"anchors": [0, 1]},
         "/api/modify/rotate":      {"axis": "z", "angle": 30.0},
         "/api/modify/translate":   {"dx": 1.0, "dy": 0.0, "dz": 0.0},
-        "/api/modify/calibrate":   {},
         # The slab op (archive/2026-09-01-modify-redesign-plan.md § 3).  It reads no selection --
         # dx, dy and start_z are absolute -- so unlike every op above it needs
         # no `indices` to have something to do.  It replaced `electrode`,

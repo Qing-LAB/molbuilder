@@ -718,14 +718,11 @@ export function createWriteOut(handed) {
  *                      to a delete or a whole-structure rotation, and reading
  *                      an ordered track would cap them at three atoms.
  *   `wholeStructure` — THE SELECTION IS NOT SENT for this operation.  Two ops
- *                      set it, for two different reasons, and the rule is the
- *                      same one: `calibrate` rigidly maps every atom into the
- *                      cell (a partial selection would be a half-mapped
- *                      structure), and `slab` places from ABSOLUTE coordinates
- *                      -- a starting z, a growth direction, an (x, y) from the
- *                      world origin -- so there is nothing a selection could
- *                      mean.  One flag rather than two, because it is one rule;
- *                      the reasons live on the rows.
+ *                      set it, and for one reason: `slab` and `append` place
+ *                      from ABSOLUTE coordinates -- a starting z, a growth
+ *                      direction, an (x, y) from the world origin; a fragment
+ *                      on the world origin -- so there is nothing a selection
+ *                      could mean.  The details live on the rows.
  */
 export const OPERATIONS = {
     translate:             { emptySelection: "all",    needsExactly: null,
@@ -753,9 +750,6 @@ export const OPERATIONS = {
                              checkpoint: true },
     delete:                { emptySelection: "refuse", needsExactly: null,
                              group: "indices", checkpoint: true },
-    calibrate:             { emptySelection: "all",    needsExactly: null,
-                             wholeStructure: true, group: null,
-                             checkpoint: true },
     // Placed absolutely, so it reads no selection -- the one edit whose panel
     // gives the same answer with atoms picked or none (redesign plan § 3).
     slab:                  { emptySelection: "all",    needsExactly: null,

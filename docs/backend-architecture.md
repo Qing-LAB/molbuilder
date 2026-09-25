@@ -122,7 +122,7 @@ validation pass (that gate is at generation time).
 | `builders/backends/` | L2 | per-tool backends: `_rdkit` / `_amber` / `_threedna` | `Structure` (or `BackendUnavailable`) |
 | `smiles.py` | L2 | SMILES → `Structure` (RDKit + OpenBabel fallback) | `Structure` |
 | `pubchem.py` | L2 | name → SMILES → `Structure` | `Structure` |
-| `modify.py` | L2 | atom-level edits (`delete_atoms` / `add_atom` / `orient_along_axis` / `calibrate_to_cell` / …) | `Structure` |
+| `modify.py` | L2 | atom-level edits (`delete_atoms` / `add_atom` / `orient_along_axis` / …) | `Structure` |
 
 The construction surfaces are in [`engines/builders.md`](?doc=engines/builders.md).
 

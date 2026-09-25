@@ -17,8 +17,6 @@ Routes (no url_prefix; each carries its own full path):
                                                     angle)
     POST /api/modify/translate             rigid translate ({dx,dy,dz}
                                                     or {recenter:true})
-    POST /api/modify/calibrate             set the lattice constant from
-                                                    a measured spacing
     POST /api/modify/slab                  add_slab -- ONE fcc slab,
                                                     placed absolutely
     POST /api/modify/lattice-from-run      read a lattice constant out
@@ -106,7 +104,6 @@ from molbuilder.modify import (
     FCC_ORTHOGONAL_CHOICES,
     add_atom as _add_atom,
     append_structure as _append_structure,
-    calibrate_to_cell as _calibrate_to_cell,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
@@ -650,29 +647,6 @@ def api_modify_translate():
         new_struct = _translate(struct, (dx, dy, dz), indices=indices)
     except ValueError as exc:
         return _err(f"translate failed: {exc}", 400)
-    return _ok_response(new_struct)
-
-
-@bp.route("/api/modify/calibrate", methods=["POST"])
-def api_modify_calibrate():
-    """Calibrate coordinates to the cell (structure-periodicity.md § 6).
-
-    The unified "last step": translate every atom by ``-resolve_cell_origin()`` so the
-    atoms sit inside ``[0, cell)`` with the cell anchored at ``(0,0,0)``, and
-    materialise the resolved cell as the explicit cell (``cell_origin`` cleared).  Rigid
-    + count-preserving (selection indices survive); idempotent.  Lets the user SEE and
-    SAVE the exact coordinate frame SIESTA will use -- generation applies the same shift
-    on the fly, so this is optional.
-    """
-    body = request.get_json(silent=True) or {}
-    try:
-        struct = _struct_from_body(body)
-    except ValueError as exc:
-        return _err(str(exc), 400)
-    try:
-        new_struct = _calibrate_to_cell(struct)
-    except ValueError as exc:
-        return _err(f"calibrate failed: {exc}", 400)
     return _ok_response(new_struct)
 
 

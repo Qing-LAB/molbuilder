@@ -876,8 +876,7 @@ def _finish_slab(struct, metal_pos, element, full):
         # CORNER so the box WRAPS the atoms WITHOUT moving them -- z runs
         # [z_min, z_min + z_len), so the padding opens at the TOP, which is where
         # the two faces meet.  render_fdf then shifts atoms by -cell_origin into
-        # [0, cell) for SIESTA; the `calibrate` op bakes that shift when the user
-        # wants it in the stored coords.
+        # [0, cell) for SIESTA.
         elc_cell_origin = all_pos.min(axis=0).astype(float)
 
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
@@ -1134,57 +1133,6 @@ def add_slab(
     return _finish_slab(struct, metal_pos, element, full)
 
 
-def calibrate_to_cell(struct: Structure) -> Structure:
-    """Move the structure into its cell's SIESTA coordinate frame (§ 3c).
-
-    The unified "last step" before saving / handing to SIESTA: bake the
-    generation-time shift into the STORED coordinates so the viewer box, the saved
-    ``.xyz``, and the emitted FDF all agree.  Translate every atom by
-    ``-resolve_cell_origin()`` so the atoms sit in ``[0, cell)`` with the cell
-    anchored at ``(0,0,0)``, and materialise the resolved cell as the explicit cell
-    (``cell_origin`` cleared).
-
-    Idempotent: a second call is a no-op (origin is already 0).  Optional --
-    ``render_fdf`` applies the SAME shift on the fly, so an un-calibrated structure
-    still generates correct SIESTA input; calibration just lets the user SEE and
-    SAVE the exact coordinate frame SIESTA will use.
-
-    Raises ``ValueError`` for a ``periodic`` axis with no explicit cell (you cannot
-    materialise a commensurate lattice from a bounding box; § 3).
-    """
-    if struct.n_atoms == 0:
-        return struct.copy()
-    resolved = struct.resolve_cell()          # explicit cell, or derived bbox+vacuum
-    origin = struct.resolve_cell_origin()
-    shift = (-np.asarray(origin, dtype=float)
-             if origin is not None else np.zeros(3, dtype=float))
-    # THE NON-ATOM FACTS COME FROM THE ONE SEAM.  This op materialises the
-    # resolved box and moves the atoms into it, so it states `cell` and
-    # `cell_origin` itself and takes the rest -- axis_kind, vacuum, info --
-    # from `_carry_nonatom`, which is what a field added to `Structure`
-    # tomorrow travels through.
-    out = Structure(
-        **{**struct._carry_nonatom(),
-           "cell": (resolved.copy() if resolved is not None else None),
-           # atoms now sit in [0, cell); the box is at the world origin
-           "cell_origin": None},
-        elements=list(struct.elements),
-        positions=struct.positions + shift,
-        atom_names=list(struct.atom_names),
-        residue_ids=list(struct.residue_ids),
-        residue_names=list(struct.residue_names),
-        chain_ids=list(struct.chain_ids),
-        title=struct.title,
-        regions={k: list(v) for k, v in struct.regions.items()},
-        annotations=copy_annotations(struct.annotations),
-    )
-    # AN EDIT OUTDATES THE RECORD, it does not erase it
-    # (`model/structure.md` § 2.2a; the same mark
-    # `molview/model.js` sets on every `applyOp`).
-    out.mark_contract_outdated()
-    return out
-
-
 # --------------------------------------------------------------------- #
 #  Appending one structure into another                                 #
 # --------------------------------------------------------------------- #
@@ -1307,7 +1255,6 @@ __all__ = [
     "add_atom",
     "orient_along_axis",
     "rotate_around_axis",
-    "calibrate_to_cell",
     "SUPPORTED_FCC_ELEMENTS",
     "SUPPORTED_FCC_PLANES",
     "FCC_ORTHOGONAL_CHOICES",

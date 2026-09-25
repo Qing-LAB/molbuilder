@@ -733,21 +733,8 @@ def test_modify_op_round_trips_cell_origin(web_client):
         "rotate must rotate the cell_origin corner with the atoms"
 
 
-def test_modify_calibrate_moves_atoms_into_the_cell(web_client):
-    """§3c: POST /api/modify/calibrate translates atoms into [0,cell) and clears
-    cell_origin -- the SIESTA coordinate frame, baked into the stored coords."""
-    xyz = "2\njx\nS 0 0 -3\nS 0 0 3\n"
-    r = web_client.post("/api/modify/calibrate", json={
-        "structure": _env(xyz), "periodicity": {
-            "cell": [[4, 0, 0], [0, 4, 0], [0, 0, 10]],
-            "cell_origin": [-2, -2, -5],
-            "axis_kind": ["periodic", "periodic", "transport"]}})
-    body = r.get_json()
-    assert body["ok"] is True, body
-    per = body["periodicity"]
-    assert per["cell_origin"] is None            # now anchored at (0,0,0)
-    zs = [a["z"] for a in body["atoms"]]
-    assert min(zs) >= -1e-6 and max(zs) <= 10 + 1e-6   # atoms inside [0, Lz]
+# `test_modify_calibrate_moves_atoms_into_the_cell` RETIRED 2026-09-25, with
+# the route (`model/structure-periodicity.md` § 6.0: calibrate is retired).
 
 
 # --------------------------------------------------------------------- #

@@ -1664,11 +1664,11 @@ def test_the_operation_name_is_the_route_segment():
         const m = await loaded();
         globalThis.__requests = [];
         await m.applyOp("translate");
-        await m.applyOp("calibrate");
+        await m.applyOp("rotate");
         console.log(JSON.stringify({ routes: globalThis.__requests.map(r => r.route) }));
         """
     )
-    assert out["routes"] == ["/api/modify/translate", "/api/modify/calibrate"]
+    assert out["routes"] == ["/api/modify/translate", "/api/modify/rotate"]
 
 
 def test_a_failed_edit_changes_nothing():

@@ -22,10 +22,8 @@ and what the user is told; ``apply_edit`` below governs LIVE edits per the
   then vacuum").  Upstream edits never silently contradict downstream
   state -- they reset it, loudly.
 
-  Coordinate rewrites (calibrate) are NOT a periodicity edit: they live
-  with the Modify ops (/api/modify/calibrate, molbuilder.modify.
-  calibrate_to_cell).  Emission translates to the engine frame
-  implicitly; nothing on the Cell page moves atoms.
+  Nothing on the Cell page moves atoms.  The engine gets them placed at
+  emission (model/structure-periodicity.md § 6.0).
 
 State table (§ 6.1, stored state; right-handed cells only, det > 0).  Every
 row ends in "legal" -- the gate reports, it does not repair:
@@ -442,7 +440,7 @@ def apply_edit(struct: Structure, op: str,
     """The § 6.2 v3 unified door: one entry point for the Cell-page edits.
     Returns (new struct, notices).  Raises ``ValueError`` on contract
     violations (the caller maps to HTTP 400).  Coordinates are NEVER
-    touched here (calibrate is a Modify op, not a periodicity edit)."""
+    touched here: the atoms are placed at emission (§ 6.0)."""
     if op not in OPS:
         raise ValueError(f"unknown periodicity op {op!r}; one of {OPS}")
     if struct.n_atoms == 0:

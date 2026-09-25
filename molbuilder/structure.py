@@ -463,9 +463,8 @@ class Structure:
     # straddle the origin) sets this to the structure's low corner so the cell WRAPS
     # the atoms WITHOUT moving them -- the molecule/selection stays pinned where the
     # user placed it.  SIESTA correctness is restored at generation: render_fdf
-    # translates atoms by -resolve_cell_origin() so they sit in [0, cell); the
-    # ``calibrate`` op bakes that same shift into the stored coords (cell_origin ->
-    # 0).  ONLY meaningful with an explicit ``cell``; None for a derived cell (its
+    # translates atoms by -resolve_cell_origin() so they sit in [0, cell).
+    # ONLY meaningful with an explicit ``cell``; None for a derived cell (its
     # origin is computed from atom extents) and for an imported crystal (atoms are
     # already in [0, cell), so the cell sits at the world origin).
     cell_origin:   Optional[np.ndarray]            = None

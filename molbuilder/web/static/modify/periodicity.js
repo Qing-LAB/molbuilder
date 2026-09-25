@@ -814,8 +814,7 @@ export function init(viewer) {
          * length box and the handedness note already use -- so what the note
          * describes and what Apply sends cannot differ. */
         // § 6.2 v3: no calibrate handler — coordinate rewrites are not a
-        // periodicity edit (emission translates implicitly; the explicit
-        // rewrite lives with the Modify ops as /api/modify/calibrate).
+        // periodicity edit; the engine gets the atoms placed at emission.
     }
 
     function start() {

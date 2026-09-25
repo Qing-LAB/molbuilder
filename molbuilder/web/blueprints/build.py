@@ -446,9 +446,8 @@ def api_periodicity():
     entry point for the FOUR Cell-page edits — ``vacuum`` / ``axis_kind`` /
     ``cell`` / ``cell_origin`` (``periodicity_gate.OPS``) — through the
     frame-contract gate.  There is deliberately NO ``calibrate`` op: moving
-    atoms is not a periodicity edit, it lives with the Modify ops
-    (``/api/modify/calibrate``), and emission translates to the engine frame
-    implicitly.
+    atoms is not a periodicity edit, and the engine gets them placed at
+    emission (structure-periodicity.md § 6.0).
 
     Body: ``{"structure": <envelope>, "op": <one of OPS>, "payload": ...}`` --
     THE ENVELOPE every other structure door takes (web-api.md § 1), so a caller

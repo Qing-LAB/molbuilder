@@ -460,7 +460,6 @@ COUNT_PRESERVING = [
     ("translate", {"dx": 1.0, "dy": 0.0, "dz": 0.0}),
     ("rotate",    {"axis": "z", "angle": 90.0, "center": "centroid"}),
     ("orient",    {"anchors": [0, 1], "axis": "z", "center": "first"}),
-    ("calibrate", {}),
 ]
 
 

@@ -3491,7 +3491,8 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
   calibrate button")*. The `calibrate` op, `/api/modify/calibrate`,
   `modify.calibrate_to_cell` and their tests go in P3. What calibrate was
   for — a structure saved with its box where the person wants it — is D1's
-  assigned origin.
+  assigned origin. **Done 2026-09-25**: the op, the route, the function, their
+  tests and the clauses that described them.
 * **D4 — every viewer draws the structure's own coordinates** *(user,
   2026-09-25: "the 3d viewer should just follow what coordinate is in the
   structure, and draw the cell box with the offset in mind (start from

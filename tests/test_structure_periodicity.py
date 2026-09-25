@@ -254,7 +254,7 @@ def _parse_fdf_cell_coords(fdf):
 
 class TestCellOriginAndCalibration:
     """§ 3c: an explicit cell wraps off-origin atoms via cell_origin; the viewer box
-    and render_fdf stay consistent; calibrate bakes the SIESTA frame."""
+    and render_fdf stay consistent.  (Calibrate retired 2026-09-25, § 6.0.)"""
 
     def _junction(self):
         """Molecule pinned at the origin (2 anchors on z) + symmetric Au(111)
@@ -289,18 +289,6 @@ class TestCellOriginAndCalibration:
         Lz = cell[2, 2]
         assert coords[:, 2].min() >= -1e-4, "device atom below the transport cell"
         assert coords[:, 2].max() <= Lz + 1e-4, "device atom above the transport cell"
-
-    def test_calibrate_bakes_the_shift_idempotent(self):
-        from molbuilder.modify import calibrate_to_cell
-        j = self._junction()
-        c = calibrate_to_cell(j)
-        assert c.cell_origin is None                      # now anchored at (0,0,0)
-        assert c.resolve_cell_origin() is None
-        assert np.allclose(c.positions[:, 2].min(), 0.0, atol=1e-6)  # atoms in [0, Lz]
-        assert np.allclose(c.resolve_cell(), j.resolve_cell(), atol=1e-6)  # same cell
-        # Idempotent: a second calibrate is a no-op.
-        c2 = calibrate_to_cell(c)
-        assert np.allclose(c.positions, c2.positions)
 
     def test_imported_crystal_no_shift(self):
         """An explicit cell with NO cell_origin (imported crystal, atoms already in
