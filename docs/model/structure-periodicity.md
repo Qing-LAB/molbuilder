@@ -286,8 +286,8 @@ no one is allowed to act on.)
 *Decided in conversation on 2026-09-25. **Partly built** (2026-09-25): the rule
 and the hand-off gate (`cell.py`), every emitter (SIESTA, the five transport
 rungs, PySCF, the molwatch preview) and each deck's record. Not yet built: the
-readers, the wire, MolView, the assigned origin (below) and the retirement of
-`cell_origin` that it completes. The scope and the
+stated offset (below) and the gate's containment and warnings (check 3); the
+readers, the wire and MolView; and the retirement of `cell_origin`. The scope and the
 order of work are [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33).
 Until each phase lands, §§ 1, 5 and 6–7 still describe the running code; every
 clause this section supersedes says so at its own site, and is deleted with the
@@ -300,15 +300,19 @@ code it describes.*
 > fractional coordinates. It is **computed** from the resolved cell and the
 > position of every atom, and from nothing else — **unless the person assigns
 > the box's origin**, and then it is that origin's negative, stored with the
-> structure (*An origin the person assigns*, below). Nothing else chooses it.
+> structure (*A stated offset*, below). Nothing else chooses it.
 
-> **The invariant is coordinates + offset** *(user, 2026-09-25)*. A design file's
-> coordinates plus its offset ARE the coordinates the engine gets. **At the
-> hand-off to an engine the offset is zero** — the correction has been applied —
-> and the deck renderer refuses coordinates that were not placed
-> (`cell.require_placed`). Nothing else is claimed zero: a file saved after a
-> relaxation holds atoms the engine moved, and its offset is whatever the rule
-> then says.
+> **The invariant is coordinates + offset** *(user, 2026-09-25)*. A file's
+> coordinates plus its offset ARE the coordinates the engine gets — *"the only
+> invariable is that the cell origin and the coordinate are consistently set
+> together"*. **At the hand-off the cell origin is `(0,0,0)` and every atom is
+> inside the cell** — the correction applied — and the deck renderer refuses
+> coordinates for which that is not so (`cell.require_placed`, check 3): *"the
+> siesta receives a cell origin at 0,0,0 always as it expects with all
+> coordinates corrected. that's it. nothing about forcing how a structure file
+> should always has about its origin."* Nothing else is claimed of a file:
+> whatever reframes its coordinates restates its origin with them (§ 6
+> clause 2b).
 
 *(User: "always adjust it before sending to siesta or other engines that the
 coordinates of all atoms are centered inside the cell … the original xyz would
@@ -339,8 +343,8 @@ the physics treats as periodic, isolated or transport — and lose this one.
 | **design coordinates** | the `.xyz`: the author's intent. No engine step rewrites them |
 | **engine coordinates** | design + `engine_offset`, the cell at `(0,0,0)` — what SIESTA, TranSIESTA and PySCF are all handed |
 | **where a viewer draws the box** | at `−engine_offset` **of the coordinates on screen**: for design coordinates, the structure's offset negated — the computed one, or the origin the person assigned; for engine coordinates, `(0,0,0)`. The viewer draws the coordinates it is given and moves no atom *(user, 2026-09-25: "the 3d viewer should just follow what coordinate is in the structure, and draw the cell box with the offset in mind (start from -offset). i don't believe the 3d viewer should do the job of translation")* |
-| **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame and are drawn verbatim (§ 6.1 clause 5). Recomputing would redraw an older flush run centred, which is the misleading picture itself |
-| **a structure saved from an engine's output** | carries the engine's coordinates; the invariant holds as for any file, coordinates + its own offset. Taken straight from a deck, the rule on them gives zero — it is idempotent on what it centred (measured below) — so nothing is applied twice; after a relaxation moved atoms it gives whatever it then gives, and a result from a run made before this rule is centred at its next emission rather than refused. A run whose origin the person assigned is saved with an assigned offset of **zero**, so the box stays where they put it |
+| **coordinates that came from an engine** | `engine_offset = 0`, **stated, not recomputed**: they are the engine's own frame, drawn verbatim (§ 6.1 clause 5) and handed to the next engine unchanged. Recomputing would redraw an older flush run centred, which is the misleading picture itself — and would move a relaxed geometry against SIESTA's real-space mesh, where it is no longer stationary (`engines/vibration.md` § 5.2a) |
+| **a structure saved from an engine's output** | carries the engine's coordinates **with the engine's origin**, `(0,0,0)` — the two set together, as a stated offset of `0` — so its next treatment applies nothing and the box stays where the engine had it. One saved from a run made before this rule carries that run's frame, flush corner included; check 2 refuses a transport rung it leaves touching a face, and *Automatic* on the Cell page re-centres it |
 
 **Why fractional, and why never re-wrapped** — both measured on the junction
 that surfaced this, `projects/claude-vib-ui/structure/au333x6_bdt`:
@@ -367,35 +371,40 @@ margins on every axis (a 0.0555 / 0.0555, b 0.0555 / 0.0555, c 0.0318 / 0.0318)
 — the z half-gap TranSIESTA itself asked for (1.1773) — and the offset
 recomputed on those engine coordinates is `[0, 0, 0]`.
 
-**An origin the person assigns** *(user, 2026-09-25: "we should add one that can
-allow user to explicitly assign the origin of the cell box as the user desire
-(for further modificaiton convenience etc). this could be handled by just write
-the -origin to the frame_offset such that the next treatment of the file will
-force the 0,0,0 to be the user specified position")*. The rule is the default,
-not a cage:
+**A stated offset — an origin the person assigns, and an engine's own.** The
+rule is the default, not a cage. A structure may STATE its offset instead, and
+two things state one:
 
-* **On a typed cell only.** A box sized from the vacuum stays centred: its
-  vacuum is a per-side gap (§ 4), and an off-centre box would make that number
-  false. When the box returns to a derived one (§ 6.2: an edit of the vacuum or
-  the axis kinds), the assignment goes with the typed cell.
-* **Stored as the offset.** Assigning origin `P` stores `engine_offset = −P`
-  with the structure; absent means the rule. The Cell page sets it — three
-  numbers, or one selected atom — and *Automatic* clears it. Nothing else
-  writes it, except the save in the last bullet.
-* **The person's, so edits keep it.** When an atom then lies outside the box
-  along a non-periodic lattice vector, the Cell page names the atom and the
-  axis, and the edit stands; the deck is refused until it is fixed (check 3).
-* **The engine gets the design coordinates − `P`**, the cell at `(0,0,0)`, and
-  the deck's record says the offset was assigned.
-* **A structure saved from that run's output keeps the placement.** It is saved
-  with an assigned offset of zero, so its next treatment finds the person's
-  origin at `(0,0,0)` and moves nothing. A run whose offset was computed is
-  saved with none, and the rule then gives what it gives.
+* **An origin the person assigns** *(user, 2026-09-25: "we should add one that
+  can allow user to explicitly assign the origin of the cell box as the user
+  desire (for further modificaiton convenience etc). this could be handled by
+  just write the -origin to the frame_offset such that the next treatment of
+  the file will force the 0,0,0 to be the user specified position")*.
+  Assigning origin `P` stores `engine_offset = −P` with the structure. The
+  Cell page sets it — three numbers, or one selected atom — and *Automatic*
+  clears it; on a typed cell only, because a box sized from the vacuum has a
+  per-side gap (§ 4) that an off-centre box would make false, and when the box
+  returns to a derived one (§ 6.2: an edit of the vacuum or the axis kinds)
+  the assignment goes with the typed cell. It is the person's, so edits keep
+  it: an atom it then leaves outside the box along a non-periodic lattice
+  vector is named on the Cell page, the edit stands, and the deck is refused
+  until it is fixed (check 3).
+* **Coordinates that came from an engine** state `0`: their origin is the
+  engine's, `(0,0,0)`, set together with them — the table above. Every door
+  that makes a structure from an engine's output states it: the next rung of
+  a ladder (the vibration `freq` stage from `relax`'s output, a transport
+  rung from the seed's `.XV`), and every save of a run's output.
 
-`cell_origin` (§ 6) stored the same choice as a corner, and where none was
-stored every reader derived one by its own per-axis rule. The assigned offset
-is that choice with no deriving behind it: when it is absent, the rule
-answers.
+The engine gets the coordinates plus the stated offset, the cell at
+`(0,0,0)`, and the deck's record says the offset was stated. An operation that
+reframes the coordinates restates the offset with them: a whole-structure
+rigid map `x → x·Lᵀ + t` takes a stated `o` to `o·Lᵀ − t` (the box moves with
+the atoms), a builder that types a new cell drops it, and one that joins
+structures takes it from the one whose cell it keeps (§ 2.2b).
+
+`cell_origin` (§ 6) stored the person's choice as a corner, and where none was
+stored every reader derived one by its own per-axis rule. The stated offset is
+that choice with no deriving behind it: when it is absent, the rule answers.
 
 **The name.** `engine_offset` — *how far these coordinates are from the ones the
 engine gets*, so `0` reads as *these are engine coordinates*. Chosen over
@@ -407,7 +416,7 @@ because those name a *position of the box* (clause 2b) and this is a
 *displacement of the atoms*; and over `structure_offset`, which says whose it
 is but not relative to what. **Two quantities, two names**, so the invariant can
 be written without ambiguity: `engine_offset(struct)` is a structure's OWN
-offset — computed, or assigned by the person; nonzero for design coordinates,
+offset — computed by the rule, or stated; nonzero for design coordinates,
 zero at the hand-off — and
 `applied_offset` is the correction a frame or a deck's record states was added.
 `design + applied_offset == deck coordinates`, and `engine_offset` of those is
@@ -422,19 +431,20 @@ place it is judged"*. It was not in fact, because the two emitters bypassed it �
 
 | operation | answers | its only callers |
 |---|---|---|
-| `engine_offset(struct)` | the rule: the offset the person assigned when there is one, else the centring | the two below |
-| `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was assigned | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
+| `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | the two below |
+| `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
 | `engine_frame(cell, positions) → EngineFrame` | the same record for coordinates that ARE an engine's, the offset `0` stated | every reader of engine output — the Results door, the transport citation's `.XV`, the Results and CLI exports |
 | `EngineFrame.box_corner` | `−applied_offset` | every payload that tells a viewer where to draw |
-| `require_placed(frame, axis_kind)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector | the deck renderer, before it writes a line |
+| `require_placed(frame, axis_kind)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector, to 1e-6 Å | the deck renderer, before it writes a line |
 | the periodicity door's `box_corner` op | assigns the box's origin on a typed cell, or clears it back to the rule | the Cell page |
 | `resolve(struct) → ResolvedCell` | the box and its judgement, now carrying `engine_offset` and `box_corner` | the periodicity gate, the validators |
 
 **The record — engine-neutral, beside the coordinates it labels.** Every deck
 molbuilder writes (SIESTA `.fdf`, PySCF `.py`) carries a `molbuilder
 engine-offset` block: the cell, the correction applied (`applied_offset`),
-whether the person assigned it, and the axis kinds, in neutral terms, written
-at the precision of the coordinates beside it (8 decimals). It is the provenance clause 5 promised, and it is what a reader
+whether it was stated or computed, and the axis kinds, in neutral terms, to 8
+decimals (PySCF's coordinates are written to 8, SIESTA's to 10: the record is
+inside every tolerance either way). It is the provenance clause 5 promised, and it is what a reader
 of a run asks, so the Results tab no longer searches for a `.source` pair to
 learn the axis kinds. **The Results tab shows those axis kinds** — the
 structure's, as the deck was written — rather than the engine's own treatment
@@ -453,29 +463,47 @@ that block's.
    and the edit is refused naming the axis. Along a periodic vector a wider
    span is legal: the atoms beyond the cell are images the engine wraps — and
    requiring containment there is what made real crystals unopenable until
-   2026-07-29. The placement rule itself stays blind to the axis kind; only
+   2026-07-29. Since the correction is applied everywhere, an atom left beyond
+   a periodic face is **warned, never refused** *(user, 2026-09-25: "we should
+   now give warning/error when atoms are outside boundary for all cases, now
+   that the correction of origin is applied universally at the output of the
+   engine")*: a molecular crystal written with whole molecules is the legal
+   case, and the warning says the engine will wrap it. The placement rule itself stays blind to the axis kind; only
    this check reads it. This replaces the containment regimes of § 6.1
    clause 4. With an assigned origin the question is where the atoms are,
    not their span: an atom outside the box along a non-periodic lattice
-   vector is named on the Cell page, and the edit stands (*An origin the
-   person assigns*); check 3 refuses the deck.
+   vector is named on the Cell page, and the edit stands (*A stated
+   offset*); check 3 refuses the deck.
 2. **A transport rung has clearance along its transport axis** — the transport
    kind validator refuses a rung whose atoms touch a face along `c`, saying that
    a junction's gap is one layer spacing (`science/junction-cell.md` § 6.1).
    This is the refusal that should have come from molbuilder before the
-   2026-09-25 device deck reached TranSIESTA.
+   2026-09-25 device deck reached TranSIESTA. The condition is per face and an
+   inequality: at each face the device's gap is at least the lead's `d/2`,
+   half the electrode's interlayer spacing. TranSIESTA asked for a 1.1773 Å
+   half-gap while the leads it had just run sat flush in their own cells, so a
+   different rigid shift between lead and device is not what it checks. The
+   spacing is the electrode model's, known where the rung is composed.
 
 3. **Placed at the hand-off** — the deck renderer (`script_emit.render_deck`)
-   runs `cell.require_placed` on the frame every spec carries. It refuses a
-   computed frame whose atoms are not centred — every emitter places through
-   `cell.to_engine`, so that can only fire on one that did not — and any frame
-   with an atom outside the cell along a non-periodic lattice vector, which is
-   where an assigned origin can leave one.
+   runs `cell.require_placed` on the frame every spec carries, and a spec that
+   carries none is refused rather than logged. It refuses a computed frame
+   whose atoms are not centred — every emitter places through `cell.to_engine`,
+   so that can only fire on one that did not — and any frame with an atom
+   outside the cell along a non-periodic lattice vector, to 1e-6 Å (TranSIESTA
+   refused an atom 16 fm outside; a fractional tolerance of 1e-6 is 37 fm on a
+   37 Å cell). The atoms beyond a periodic face go into the deck's report as
+   warnings (check 1). The tests hold every engine to it through prep *(user,
+   2026-09-25: "test should validate the invariables, and then gate that the
+   output of the script generator for all engines to correctly also have the
+   origin to be 0,0,0 and all atoms are within cell boundary after that
+   correction/check")*.
 
 **A frame set gets one offset.** The frames of a multi-frame pair share one cell
 and identical electrode atoms (`engines/transport.md` § 2a.9). The offset is
-computed from frame 0 and applied to every frame, so no electrode atom moves
-between frames in the engine's coordinates either.
+computed from frame 0 and applied to every frame — frames 1…N state frame 0's
+offset — so no electrode atom moves between frames in the engine's coordinates
+either.
 
 ---
 

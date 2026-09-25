@@ -3360,7 +3360,7 @@ edit; *transport clearance along c* in the transport kind validator
 
 | | what it drives | what it asserts |
 |---|---|---|
-| **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it |
+| **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, the SIESTA and PySCF vibration ladders, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it; the vibration `freq` deck writes the relax output unchanged (a stated `0`); an atom beyond a periodic face is a warning in the report |
 | **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output. The fixture is `claude-vib-ui/optimization/au333bdt-loose`, a real flush run — it must be drawn **flush** |
 | **T3** | export from Results → reload | coordinates + offset is what the engine had: an automatic run whose atoms did not move reloads with the rule giving zero; an assigned run reloads with an assigned zero |
 | **T4** | `prep device` on the fixture | clearance at both faces along c; the lead's and the device's L blocks agree (risk **R1**) |
@@ -3410,13 +3410,24 @@ inventory at the end of phase 4, not by a lint test.
 | `modify/periodicity.js`, `templates/modify.html` | the origin group — kept, re-founded on the assigned offset (**D1**) | P3 |
 | `validation/__init__.py` | no transport clearance rule | P4 |
 | `transport/sort.py`, `config/siesta.py` | comments naming the old field | P4 |
+| *found by the structure review, 2026-09-25 (at `effb6ca3`):* | | |
+| `jobset/prep.py::_vibration_stage_geometry` | hands `freq` the relax run's output coordinates, which the rule then re-centres — a relaxed geometry moved against the mesh (`engines/vibration.md` § 5.2a; −0.0168 Å on the H₂ e2e). A P2 regression | P1 — the output states `0` |
+| `siesta/input.py` validation subject → `validation/sidecar.py` | the relaxation record's `geometry_sha256` is compared with the SHIFTED subject, so on the road a relaxed pair's record stops vouching and its checks are skipped. A P2 regression | P1 |
+| `script_emit.render_deck` | a spec without `engine_frame` skips the gate and the record with a log note | P1 — refused |
+| `trajectory_log/format.py` ← `jobset/prep.py` | the preview calls `to_engine(struct)` with no box, so step 0 differs from the deck whenever prep passes `cell=` | P1 — from the spec's frame |
+| `cell.py` `cell.vacuum_ignored` | *"On an isolated axis it still sets where the structure sits"* — false since P2, and in every SIESTA report for a typed cell with a stated vacuum | P1 |
+| `pyscf/input.py`, `pyscf/vibration_deck.py` | the pair writer bakes the design structure's sidecar beside the engine coordinates it saves | P3 — at compose time |
+| `structure.py` `to_extxyz` / `to_ase` / `to_pyscf`, `cli.py --pyscf-atom-block` | design coordinates beside a lattice that implies the box at the origin | P3 |
+| `transport/deck.py`, `validation/__init__.py` | no validation subject: the transport validators judge design coordinates in `resolve_cell()`, which for an isolated lead is not the deck's box | P4 |
+| `transport/wizard.py:431` | the lead's z hand-shifted by its lowest layer — harmless (re-centred), and a translation outside the one door | P4 review |
+| multi-frame pairs | "one offset from frame 0" is implemented nowhere, and no emitter takes frames | P3 |
 
 **The documents to sweep** in P4 (restatements; the owner is
 `structure-periodicity.md`, whose superseded clauses are deleted then):
 `web/molview.md` (11), `model/structure.md` (11), `web/web-api.md` (6),
 `model/structure-molstruct.md` (5), `engines/transport.md` (3),
 `engines/vibration.md` (2), `architecture.md` (2), `science/normal-modes.md`,
-`README.md`, `model/overview.md`, `backend-architecture.md` (1 each). Dated
+`README.md`, `model/overview.md`, `backend-architecture.md` (1 each); and, found by the review, `model/parse.md` (the premise *"no deck shifts a structure that states one"*), `model/structure.md` § 2.2 (the removal rule D2 relied on), `execution/job-contracts.md` § 3.1 (the block grammar lacks ENGINE-OFFSET), `engines/vibration.md` § 5.2a, `engines/siesta.md` (centring described for the derived box only). Dated
 plans and handovers are history and are not rewritten; `plans/plan.md`'s live
 rows are.
 
@@ -3426,7 +3437,7 @@ rows are.
 |---|---|---|
 | **P0** | the name, contract § 6.0, this plan | — *(2026-09-25, this commit)* |
 | **P1** | data structure + file access: §§ 5q.1–5q.2's model and sidecar rows | T5 passes; the codec reads v9 and writes v10. **Half done 2026-09-25**: the rule, `EngineFrame`, `to_engine`, `engine_frame` and the hand-off gate `require_placed` are in `cell.py` (T5, mutation-tested); removing `cell_origin` and its derivers waits until P3 has moved their readers |
-| **P2** | every emitter through `to_engine`, each deck carrying its record | T1 passes for every engine. **Done 2026-09-25**: SIESTA (`spec_for`), all five transport rungs (`transiesta.engine_frame_for`, one frame per deck), PySCF (both atom writers) and the molwatch preview; `render_deck` writes ENGINE-OFFSET and runs the gate. Found on the way: the first prep rendered from the fresh composition while every later one read the record, ~1e-10 apart — every prep now renders from the record |
+| **P2** | every emitter through `to_engine`, each deck carrying its record | T1 passes for every engine. **Done 2026-09-25**: SIESTA (`spec_for`), all five transport rungs (`transiesta.engine_frame_for`, one frame per deck), PySCF (both atom writers) and the molwatch preview; `render_deck` writes ENGINE-OFFSET and runs the gate. Found on the way: the first prep rendered from the fresh composition while every later one read the record, ~1e-10 apart — every prep now renders from the record · **The review of 2026-09-25 found three regressions** (§ 5q.5): templates written before `wrap_into_cell` retired are refused (kept so, by decision), the vibration `freq` deck re-centres the relaxed geometry, and SIESTA's relaxation record stops vouching on the road — the last two are P1's. T1 has no transport rung yet |
 | **P3** | readers and the wire (§ 5q.3), MolView and the Cell page | T2 and T3 pass, and on the dev server the browser draws what the deck says |
 | **P4** | the checks, the test retirement, the document sweep | T4 passes; the review of § 5q.5 finds no hand translation |
 | **P5** | **acceptance** — resume the fake-junction ladder (`claude-vib-ui/transport/au333bdt-t`): re-prep and re-run the seed (≈ 70 min measured), both leads (≈ 3 min each), then the device (never yet run), the transmission, and `summarize run` | the device reaches its SCF; the record is written; the Results tab shows each rung's engine frame |
@@ -3457,11 +3468,20 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
 
 ### 5q.7 Risks
 
-* **R1 — the lead and device L blocks.** Their half-gaps differ by 0.23 mÅ
-  (1.17725 vs 1.1775), because `c` was typed as 37.065 while span + spacing is
-  37.0645. Whether TranSIESTA's electrode matching tolerates that is not
-  knowable by reading; the first device run measures it. If it does not, the
-  fix is one consistent gap number, not a placement special case.
+* **R1 — the device's gaps against the lead's** *(reframed 2026-09-25 by the
+  structure review)*. A different rigid shift between lead and device is not
+  what TranSIESTA checks: it asked for a 1.1773 Å half-gap while the leads it
+  had just run sat flush in their own cells. The condition inferred from that
+  is per face and an inequality — the device's gap at each face ≥ the lead's
+  `d/2` (contract § 6.0, check 2). The fixture passes by 0.23 mÅ a face
+  (1.1775 vs 1.17725, because `c` was typed 37.065 against span + spacing
+  37.0645); a `c` typed 0.5 mÅ short would fail both. T4 asserts ≥ at both
+  faces of both electrodes, and only the P5 device run confirms the exact
+  condition and its tolerance.
+* **R5 — the record is load-bearing before anything reads it.** `same_calculation`
+  masks only volatile fields, so any change to the ENGINE-OFFSET block's text
+  (a key added, the format bumped) makes every concluded rung "not the same
+  calculation". Freeze the record's format before P5's ≈ 70-minute seed re-run.
 * **R2 — existing runs.** A re-prep of any existing calculation renders shifted
   coordinates, so its old concluded attempts no longer count. Intended for
   transport; for a finished relaxation it means its runs do not match a re-prep.
@@ -3480,13 +3500,20 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
   the -origin to the frame_offset such that the next treatment of the file will
   force the 0,0,0 to be the user specified position")*. The Cell page's origin
   group stays, on a typed cell only, and stores the offset; its rules are the
-  contract's (§ 6.0, *An origin the person assigns*). The first answer —
+  contract's (§ 6.0, *A stated offset*). The first answer —
   *"always automatically calculated based on the cell unit and all the atoms"*
   — is still what happens wherever the person assigns nothing.
-* **D2 — existing sidecars: already the rule, not a decision.** `model/structure.md`
-  § 2.2 (*To remove one*): an old sidecar that still carries a removed key loads
-  fine, because `apply_metadata_dict` ignores unknown keys. The writer writes
-  v10; the xyz is untouched.
+* **D2 — existing sidecars: a decision, not the rule** *(corrected 2026-09-25 by
+  the structure review; open)*. It read *"`apply_metadata_dict` ignores unknown
+  keys"* (`model/structure.md` § 2.2, which contradicts its own § 2.2 further
+  down and the code): three gates REFUSE an unknown key, and every sidecar
+  carries `cell_origin`, null or not. So `cell_origin` leaves the model one of
+  two ways. **(a) Retired** — added to `RETIRED_METADATA_KEYS`, read and
+  ignored: an old structure opens with the rule's placement, and an origin a
+  person typed by hand must be assigned again. **(b) Migrated** — v9's corner
+  `P` becomes a stated offset `−P`: old structures keep their placement,
+  including the electrode builder's flush corner, the one TranSIESTA refused.
+  v9 cannot tell the two apart. Proposed: **(a)**.
 * **D3 — calibrate: retired** *(user, 2026-09-25: "we can retire the
   calibrate button")*. The `calibrate` op, `/api/modify/calibrate`,
   `modify.calibrate_to_cell` and their tests go in P3. What calibrate was
