@@ -1931,8 +1931,15 @@ tell the person's 300 Ry from nobody's.
 400 Ry   from the run you cited
 400 Ry   from the record saved with your structure
 400 Ry   you set this
-(empty)  not chosen — SIESTA's own default applies
+(empty)  not chosen — the documented default is written into every deck and marked as nobody's choice
 ```
+
+**What the fourth state writes into the deck is not SIESTA's silence.**
+`template.md` § 6.6 obligation 4 *(user, 2026-09-23)*: a value nobody chose is
+written as the documented default **and marked as such**, and no value
+reaches the engine by omission. The line above said *"SIESTA's own default
+applies"* until 2026-09-24 — the reading from before § 6.6, left standing by
+the consolidation that wrote this section the same day.
 
 ---
 
@@ -1972,7 +1979,7 @@ six scattered versions could not do.
 | the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `role`, `allocation` and staging items kept off it by their markers |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
-| a value nobody chose is shown as not chosen | **half built** — the panel shows an unanswered `citation` row blank, and the describe door writes it VALUELESS into the template; `prep` then still falls back to the class default rather than leaving the keyword to SIESTA (the deck writer writes every field it has). The CLI's `init` still writes defaults into those rows |
+| a value nobody chose is shown as not chosen | **half built** — the panel shows an unanswered `citation` row blank, and the describe door writes it VALUELESS into the template; `prep` then fills it with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but **marks nothing**, so the deck cannot say the value was nobody's choice; and the CLI's `init` still writes those rows WITH a value, so the file cannot tell a default from a person's choice (obligation 2). The marking mechanism is the open choice under § 6.6 (`plans/2026-09-22-unification-audit.md` § 6 item 10) |
 | the deck viewer | ❌ not built |
 | `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
 
