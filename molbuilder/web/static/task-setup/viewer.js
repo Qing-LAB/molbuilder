@@ -266,6 +266,28 @@ function renderStages(task) {
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
+            // A COLUMN THIS RUNG DOES NOT OWN (template.md § 6.4's `stages`,
+            // carried on the column payload): the catalogue names the rungs
+            // that may carry their own value for the item, and every other
+            // rung's cell would be a control `prep` refuses by name -- so it
+            // is drawn disabled, naming the owners, never as an editor
+            // (task-setup.md § 5).  A transmission window on the seed's row,
+            // for one.
+            const owners = (_meta[col] && Array.isArray(_meta[col].stages)
+                            && _meta[col].stages.length)
+                ? _meta[col].stages : null;
+            if (owners && !owners.includes(name)) {
+                const foreign = el("input", {
+                    class: "ts-cell", value: "", disabled: "yes",
+                    placeholder: "\u2014",
+                    title: col + " belongs to " + owners.join(", ")
+                           + " \u2014 not this rung's (template.md \u00a7 6.4)",
+                    "aria-label": name + " " + col + " (not this rung's)",
+                    "data-foreign": "yes",
+                });
+                tr.appendChild(el("td", { "data-foreign": "yes" }, foreign));
+                continue;
+            }
             // An empty cell is not blank: it says what the stage will USE,
             // which is the template's value.  Showing the number rather than
             // the word "template" is what makes "adding a column changes

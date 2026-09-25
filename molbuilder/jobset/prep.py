@@ -1508,10 +1508,30 @@ def _resolve_transport(base, task, stage: str, allocation,
     # answers that still bind every rung (the species order, the spin
     # treatment, the pseudopotentials).  Gating on `citation` alone let a
     # `species_order` override through until 2026-09-24.  Asked, not listed.
-    shared = {i.name for i in select(catalogue(), engine="siesta",
-                                     shared=True)
-              if "transport" in i.shared}
+    _items = select(catalogue(), engine="siesta")
+    shared = {i.name for i in _items if "transport" in i.shared}
+    # AND THE RUNG THAT OWNS A VALUE (`stages`, the same § 6.4): "only these
+    # rungs may; it is not that rung's business anywhere else".  The
+    # describe door ROUTES by that declaration
+    # (`transport/stages.py::route_overrides`); a description written by
+    # any other road -- the CLI, the stage table, a hand edit -- reaches
+    # `resolve`, which knows no ownership and would write a transmission
+    # window into the seed's deck, where the keyword is inert.  That is
+    # TR8's defect on the roads TR8 did not cover; refused since 2026-09-24.
+    owner = {i.name: tuple(i.stages) for i in _items if i.stages}
     for bag in (task.stages or ()):
+        foreign = sorted(n for n in (bag.overrides or {})
+                         if n in owner and bag.name not in owner[n])
+        if foreign:
+            owners = sorted({r for n in foreign for r in owner[n]})
+            raise PrepError(
+                f"stage {bag.name!r} overrides "
+                f"{', '.join(map(repr, foreign))}, which "
+                f"{'belongs' if len(foreign) == 1 else 'belong'} to "
+                f"{' / '.join(owners)} -- not this rung's "
+                f"(engines/template.md 6.4, the `stages` declaration).  "
+                f"Move {'it' if len(foreign) == 1 else 'them'} to the "
+                f"rung that owns {'it' if len(foreign) == 1 else 'them'}.")
         clash = sorted(set(bag.overrides or {}) & shared)
         if clash:
             raise PrepError(

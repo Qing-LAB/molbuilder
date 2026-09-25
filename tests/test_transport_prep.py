@@ -1931,16 +1931,23 @@ class TestTheOverrideLane:
         the contour block's own `points`, and
         `test_transport_keywords_exist_in_the_binary.py` is what stops a
         dead keyword satisfying this test again.
+
+        **And the rung changed on 2026-09-24, the property did not.** This
+        placed the TRANSMISSION's point count on the DEVICE rung and read it
+        back from the device deck -- the pre-TR8 placement, which `prep`
+        now refuses by name (`engines/template.md` § 6.4, the `stages`
+        declaration; the test below).  The knob is now one the device OWNS,
+        the equilibrium contour's pole energy, read back from the device
+        deck through the keyword the binary reads.
         """
-        self._with_override(calc, "device",
-                            {"transmission_n_points": 101})
+        self._with_override(calc, "device", {"negf_eq_pole_ev": 2.5})
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
-        assert "%block TBT.Contour.window" in text, (
-            "the transmission window is a contour BLOCK since 2026-09-15")
-        assert "points 101" in text, (
-            "the override did not reach the contour the deck actually "
-            f"carries:\n{text[text.find('%block TBT.Contour'):][:400]}")
+        eq = [ln for ln in text.splitlines()
+              if ln.strip().startswith("TS.Contours.Eq.Pole")]
+        assert eq, "the device deck carries no TS.Contours.Eq.Pole line"
+        assert "2.5" in eq[0], (
+            f"the override did not reach the deck line: {eq[0]!r}")
 
     def test_a_contract_field_is_sealed(self, calc):
         """SCIENCE. A CONTRACT field -- here `basis_size` -- cannot be overridden on a
@@ -1979,6 +1986,23 @@ class TestTheOverrideLane:
             f"could edit one line of the template: {msg}")
         assert "template" in msg, (
             f"...and it must name where the value IS changed: {msg}")
+
+    def test_a_rungs_own_value_on_another_rung_is_refused_by_name(self, calc):
+        """`engines/template.md` § 6.4, the `stages` declaration: *"only these
+        rungs may; it is not that rung's business anywhere else."*
+
+        The describe door ROUTES an override to the rung that owns it (TR8).
+        A description written by any other road -- the CLI, the stage table,
+        a hand edit -- reached `resolve`, which knows no ownership, so a
+        transmission window placed on the seed was written into the seed's
+        deck, where `tbtrans` never reads it, and the transmission ran on
+        the default.  Silently, on every road TR8 did not cover, until
+        2026-09-24.  The refusal names the owning rung.
+        """
+        self._with_override(calc, "seed", {"transmission_n_points": 101})
+        with pytest.raises(PrepError, match="(?i)not this rung") as e:
+            prep_calculation(calc, "seed")
+        assert "transmission" in str(e.value) and "'seed'" in str(e.value)
 
     def test_an_unknown_knob_is_refused_by_name(self, calc):
         """A misspelled override key is refused, quoting the key.

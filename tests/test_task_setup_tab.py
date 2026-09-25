@@ -372,6 +372,27 @@ def test_the_column_picker_offers_restart(web_client):
     # ...and the machine's settings are still not the description's to hold
     assert not ({"mpi_np", "omp_threads", "max_memory_mb", "gpu_count"}
                 & set(names))
+    # ...and a value that binds EVERY rung of the folder's kind is not a
+    # column either (template.md § 6.4 `shared`: "no stage overrides it").
+    # Measured 2026-09-24: a transport folder's picker offered thirteen of
+    # them, `mesh_cutoff` and `basis_size` among them -- each a per-rung
+    # override `prep` refuses by name.  A rung-owned item stays a column,
+    # and the payload names its owners, so the table can disable the
+    # other rungs' cells.
+    from molbuilder.template import catalogue, select
+    cat = catalogue()
+    shared = {it.name for it in select(cat, engine="siesta", shared=True)
+              if "transport" in it.shared}
+    assert shared, "the fixture catalogue marks nothing shared"
+    t = web_client.get("/api/task-setup/columns?engine=siesta"
+                       "&calculation=transport").get_json()
+    by = {i["name"]: i for i in t["items"]}
+    assert not (set(by) & shared), sorted(set(by) & shared)
+    assert by["transmission_n_points"]["stages"] == ["transmission"]
+    # ...while an optimization's picker, whose kind shares nothing, keeps
+    # the same rows as controls: `mesh_cutoff` is a legitimate per-stage
+    # column of a relaxation ladder.
+    assert "mesh_cutoff" in names
 
 
 def test_only_execution_category_parameters_may_be_swept(web_client):

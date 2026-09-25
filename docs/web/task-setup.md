@@ -209,6 +209,19 @@ every stage.**
 stage uses the template's value* — a real state, and why `overrides` is a subset
 of `varies` rather than equal to it.
 
+**Which parameters may be a column of THIS folder** is answered by the
+catalogue's markers for the folder's kind, and by nothing the page keeps
+([`template.md § 6.4`](?doc=engines/template.md); `/api/task-setup/columns?engine=&calculation=`):
+the kind narrows them (`calculations`); the machine's are excluded
+(`allocation`); a rung's role is not a column (`role`); and **a value shared by
+every rung is not a column (`shared`)** — it is edited in the template, on the
+tab that owns it, and a column here would be a per-rung override `prep`
+refuses by name. *(Measured 2026-09-24: a transport folder's picker offered
+thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
+a rung does not own (`stages`) shows on that rung's row as a disabled cell
+naming the rungs that own it**, never as an editor — the payload carries the
+owners, and `prep` refuses such an override on every road since the same day.
+
 ### 5.1 An empty cell shows the number, and it comes from the folder
 
 An empty cell says *"the template's value"* — so it **shows that value**, greyed,

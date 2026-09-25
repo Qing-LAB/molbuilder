@@ -428,6 +428,10 @@
 /* A cell the stage does not override: the placeholder says "template", so an
  * empty box reads as a real state rather than a value nobody typed. */
 .ts-cell[data-template="yes"]::placeholder { color: var(--text-muted); }
+/* A column this rung does not own (template.md § 6.4 `stages`): shown, not
+ * editable, so the row still says the column exists and whose it is. */
+.ts-cell[data-foreign="yes"] { opacity: 0.45; cursor: not-allowed; }
+.ts-cell[data-foreign="yes"]::placeholder { color: var(--text-muted); }
 .ts-cell-name {
     font-family: var(--font-sans);
     font-weight: var(--weight-semibold);

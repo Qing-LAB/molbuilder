@@ -1957,6 +1957,15 @@ def _column_items(engine: str, kind: str):
         # third answerer, 2026-09-16).
         if kind in it.role:
             continue
+        # ...nor is a value that binds EVERY rung of this kind (template.md
+        # § 6.4's `shared`: "the value binds every rung and no stage
+        # overrides it").  It is edited in the template, on the tab that
+        # owns it; a column here would be a per-rung override `prep`
+        # refuses by name.  Measured 2026-09-24: a transport folder's
+        # picker offered thirteen of them, `mesh_cutoff` and `basis_size`
+        # among them -- the reverted swap's defect, on this surface.
+        if kind in it.shared:
+            continue
         yield it
 
 
