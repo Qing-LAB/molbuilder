@@ -115,6 +115,7 @@ the same day, with what it turned out to be.
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `_afterRunLines` spell `relax`/`freq` and the box rule by hand) while Python owns it (`pyscf/stages.py::vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the after-run line should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open |
 | **W33** | structure / engines / web | **THE ENGINE OFFSET — one placement rule for every engine** *(user, 2026-09-25: "always adjust it before sending to siesta or other engines that the coordinates of all atoms are centered inside the cell"; "we don't have to have special logic to treat isolated, periodic, transport axis_info differently")*. Every engine receives the design coordinates + `engine_offset` with the cell at the origin; the offset is computed from the cell and every atom (the fractional span centred, never re-wrapped), recorded in every deck, and stated 0 for an engine's own output, so the Results tab draws what the engine had. Retires `cell_origin` (an origin the person assigns is kept, stored as the offset), the derive-on-null corner and its per-axis rules, calibrate, and the two hand translations. Found by the fake-junction ladder: a TranSIESTA device refused on a flush corner, a Results box the engine never had, the molwatch step-0 jump (audit X4) | `model/structure-periodicity.md` § 6.0 · § 5q | **P0–P2 done; P3 committed (`6c705058`), its T3 and dev-server check open; P4, P5 open** (2026-09-25; § 5q.6 is the per-phase record). **D1–D6 settled** (§ 5q.8). The fake-junction ladder is paused at rung 4 until P5 |
 | **W34** | science / engines / web | **THE ELECTRONIC STATE — charge and spin as one answer per calculation** *(user, 2026-09-25: "put spin and charge setup in to a unified framework so that these information can be produced consistently and systematically for different engines"; "investigate holistically ... from template to validation ... a design gap/framework level investigation rather than a patch"; "documentation should have an explicit discussion on species with these properties")*. Four engine-neutral template items — `net_charge`, `spin_treatment`, `unpaired_electrons`, `method` — resolved once with what the structure adds (the charge's source, the electron count, finite or repeating) and read by every deck writer, check, hand-over, form and read-back; restricted-open explicit; a species-by-species chapter. Found by the transport ladder's rung reports (a gold lead and a formate ion both told "switch to open-shell") | `science/chemistry-correctness.md` §§ 2a–2b · § 5s | **P0 open** (2026-09-25): decisions 1–7 taken (§ 5s.2) |
+| **W35** | parse / execution / web | **THE RUN RECORD — what ran, with what, and how it went, for every run; one SIESTA-family reader; the transport report** *(user, 2026-09-26: "include in the report of transport results ... all indicators that can provide scientific information, progress tracking and symptom of non-convergence"; "parameters used for calculating transport should be similarly reported ... check what we did for the other tasks, and find the best way to honestly and fully record what is the computation setup and scientific setup, and how result evolves in the record, and output report"; "fdf parser need unified upgrade"; "get the framework and code unified and finalized")*. One record per attempt, composed on read — computation, setup (default · asked · engine used), the deck, every iteration of every phase from one grammar, the verdict with its symptoms — read by a Run panel for every kind and by a transport report built from its rungs; the NEGF contour stated rather than left to TranSIESTA's fallback. Found by a device that diverged for eleven hours with every reader saying otherwise | `model/parse.md` § 5d · `engines/transport.md` § 2a.12 · § 5t | **P0 open** (2026-09-26) |
 | **W32** | engines / structure | **THE FRAME AXIS — a frame set is one multi-frame pair** *(user, 2026-09-24: "allow multi-frame … which shares the same .json file so meta data and labels are shared, checking of atom number and others can still be gated")*. The contract is `engines/transport.md` § 2a.9 (the set, the per-frame checks, `f000` the base) and `model/structure-molstruct.md` § 6.1 (one sidecar, many frames; a reader that does not ask for frames gets frame 0). **Nothing new is invented**: the codec already writes and reads the pair, and every existing door keeps working because it sees frame 0. **Order of work:** ① the contract — **done 2026-09-24**; ② the citation door classifies a multi-frame pair and checks the four per-frame promises, naming the frame; ③ `prep`: the device and the transmission carry the frame level (`f###`), the seed and the leads do not, the gather runs per frame, one bias for the group (§ 2a.9's ruling); ④ the generator from a spectra file (V1.25) — the vibration side's half; ⑤ Results: the family of curves and what is derived across it (§ 2a.9's deliverable, § 2a.12). **Gate:** ② and ③ land after the single-frame ladder has run end to end once (the run W30's status calls for) — a frame axis on a ladder that has never produced a curve would be measured against nothing | `engines/transport.md` § 2a.9, § 2a.11 · `model/structure-molstruct.md` § 6.1 | **① done 2026-09-24**; ② – ⑤ open |
 | **W31** | front end | **Task setup's stage table offers the optimization tiers on transport rungs**: every rung's row carries the `preset… coarse / medium / tight` select, which applies `SIESTA_STAGE_PRESETS` (relaxation-driver values) to a rung whose role is fixed and whose items the `stages` marker routes. Found driving the transport road 2026-09-24. The control is offered only where every field of the tier may be a column of this kind — the columns route's own membership rule (`web/task-setup.md` § 9); the per-rung columns for transport are the rung's own items | `web/task-setup.md` § 9, `engines/transport.md` § 3.8.2 | **done 2026-09-24** — `/api/task-setup/presets` takes the kind and answers an empty menu for transport; the page draws none |
 | ↳ | ~~**V1.29**~~ | **DONE 2026-09-24** — the mass-calibrated displacement per mode in the result: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang` (`Q_zp · L_canonical`), derived at every serialisation, `null` for an imaginary mode — what the vibration-coupled transport step displaces along (user, 2026-09-24) | `vibration.md` § 6.3, § 6.6 | done |
@@ -3779,6 +3780,94 @@ the species.
   auto-detected charge — so `spectra.json` cannot say what charge ran. P5.
 * `engines/transport.md` § 3.1's *"the six numbers"* names seven items (the code
   carries six pairs and the k-grid).
+
+## 5t. The run record — scope and order of work *(W35, 2026-09-26)*
+
+*The contract is [`model/parse.md`](?doc=model/parse.md) § 5d and
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.12; this is the order
+of work. The row is **W35** in § 2.*
+
+### 5t.0 Why — measured, by two inventories and a device that diverged unseen
+
+* **Three regexes for one line, all blind to TranSIESTA.** The wrapper's
+  timing tee (`runwrap.py`), the monitor (`monitor.py` `_SCF_LINE`) and the
+  parser (`parse/engines/siesta.py`) each match `scf:` and none matches
+  `ts-scf:`: the device's timing log held 7 iterations against 1000 and gave
+  *"4049.94 s/iter"* (the true rate was 27.5 s); the monitor logged *"no SCF
+  progress"* for 7.6 hours; the parser gave the periodic initialization's
+  energy (−437,029 eV) for a NEGF loop at −205,444 eV and 584 electrons short,
+  and a live device reads *converged* from the initialization's marker.
+* **Parameters are recorded as asked, never as used.** SIESTA's own
+  `fdf.<timestamp>.log` has no reader; the wrapper's absent list prints
+  catalogue defaults under *"the engine default applies"*
+  (`negf_eq_pole_ev (catalogue default 0.0)` where SIESTA used 0.1102 Ry);
+  PySCF's three-column read-back is printed only by the optimization script
+  and read by nothing; the pseudopotentials are recorded nowhere.
+* **The monitor never writes its summary**: the wrapper kills it and it
+  handles no signal — 0 of 9 monitor logs in `claude-w33` carry
+  `[UTIL-SUMMARY]`, so no run records its memory peak.
+* **The Results tab shows no parameters**: the deck, the validation report
+  and `run.json` are reachable only as raw text.
+* **The transport record**: written only by `summarize run` and refused
+  until the transmission has output; rung attempts picked by file time while
+  `.gathered-from` goes unread; `energies_relative_to_ef` hard-coded; the
+  spin channels' files missed; a TBtrans run labelled *SIESTA binary* and
+  its `.out` claimed by no parser.
+* **The contour**: no `contour.eq`, so TranSIESTA's 42-pole continued
+  fraction — dQ −29 at step 1 and −584 at the cap; 123 poles on the same deck
+  conserved the charge to 0.024 by step 4.
+* **The retry**: the wrapper warm-retried the diverged device from its own
+  density for three more hours.
+
+### 5t.1 The design
+
+`model/parse.md` § 5d: one record per attempt, five parts, composed on read;
+three columns for every parameter; one grammar per engine family; the verdict
+and its symptoms. `engines/transport.md` § 2a.12: the transport report from
+the rung records, and the stated contour.
+
+### 5t.2 Decisions *(user, 2026-09-26: "get the framework and code unified and finalized")*
+
+Taken as a yes to the three recommendations made the same day, with the
+user's own additions:
+
+1. **The run record as scoped**, for every kind — not only transport.
+2. **The contour is stated**: a circle and a tail whose lower bound sits
+   below the seed's lowest eigenvalue — the manual's rule — rather than a
+   pole count guessed from one measurement.
+3. **On divergence the monitor warns, and the wrapper does not warm-retry**;
+   stopping stays the person's call.
+4. **The parameters are reported as optimization's are — and better**: with
+   what the engine used, and with the deck as it ran (user).
+
+### 5t.3 Phases, each with its done-condition
+
+| | work | done when |
+|---|---|---|
+| **P0** | the contract and this plan | the user has read them |
+| **P1** | **the grammar and the readers**: the SIESTA-family line table; the parser's NEGF phase (`ts-scf:`, `ts-q:`, `ts-Vha:`), the start-up echo, the charge distribution, the electrode checks, `Emadel`, start and end of run; the `fdf`-log reader; the TBtrans reader, spin channels included; the timing tee and the monitor rendered from the table; the monitor's closing summary on SIGTERM | the 2026-09-25/26 device outputs parse to 7 periodic + 1000 NEGF cycles carrying dQ; the timing log counts NEGF rows; the monitor reports progress through a NEGF loop — each pinned on a trimmed real output, mutation-checked |
+| **P2** | **the record**: `RunDirResult.record` through `parse_dir`; `/api/results/dir` serves it; a Run panel for every kind — computation, setup with asked ≠ used first, the deck, the verdict | on the dev server, an optimization, a vibration and each transport rung show their Run panel |
+| **P3** | **the transport report** from the rung records, composed on read: `.gathered-from` provenance, the E_F reference checked, both spin channels, the device's NEGF facts; the inspector shows the ladder with each rung's verdict | the `claude-w33` ladder, read in the browser |
+| **P4** | **the contour and the divergence**: the device deck states its contour from the seed's eigenvalues; the settings gate refuses one that cannot cover the spectrum; no warm retry of a diverged run; the monitor's warnings | a device deck carries its contour; a trimmed diverging output yields the symptom verdict |
+| **P5** | **the document sweep** — § 5t.4 and the inventories' stale statements | the review finds none |
+
+### 5t.4 Found on the way — named here, fixed where a phase says so
+
+* The Watch tab was retired on 2026-05-19 and documents still name it
+  (`execution/run-reports.md`, `web/trajectory.md`). P5.
+* A PySCF run's manifest promises the monitor, `util.csv` and SCF-timing
+  files, which the wrapper never writes for PySCF (`runfiles.py`). P1.
+* The SIESTA SCF-residual plot draws `DM.Tolerance` over the dHmax trace;
+  SIESTA's dHmax criterion, `SCF.H.Tolerance`, is only in the `fdf` log. P2.
+* `web/trajectory.md` says a SIESTA `.out` carries no time of day; it
+  carries `>> Start of run` and `>> End of run`. P1.
+* `engines/transport.md` §§ 6.1 and `jobset/prep.py` describe the gather's
+  gate as *byte-for-byte*; it is `same_calculation`. P5.
+* `execution/job-contracts.md` and `runwrap.py` say a TranSIESTA deck
+  carries no PROVENANCE block; it does. P5.
+* The SIESTA vibration record's `runtime_info` is empty, so its Host/CPU/GPU
+  rows read *—*. P2.
+* `transport/record.py` reads tbtrans's reported voltage and drops it. P3.
 
 ## 6. Closed by consolidation — archived
 

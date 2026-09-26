@@ -1002,6 +1002,34 @@ curves plus whatever is derived across it — an average, a spread, a set of
 couplings. § 2a.9's axis rule is what keeps that additive rather than a rewrite.
 
 
+**The report, rung by rung** *(W35, decided 2026-09-26 — contract, not yet
+built; `model/parse.md` § 5d)*. Each rung has its run record — computation,
+setup with what the engine used, the deck, every iteration, the verdict — and
+the transport record composes the five and adds the science:
+
+| rung | the science it reports | the symptoms it watches |
+|---|---|---|
+| seed | the converged energy and E_F of the periodic junction | as any SCF |
+| electrode_L · electrode_R | each lead's E_F — the reference for T(E), and the two must agree | as any SCF |
+| device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's; the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | `model/parse.md` § 5d.6 — a first-step dQ above 0.1 % of the total charge names a set-up fault within one iteration |
+| transmission | T(E_F) and G = G₀·T(E_F), with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; eigenchannels and DOS when asked; the I–V with its treatment named (§ 2a.10) | the run's end, and the channels it wrote |
+
+**Composed on read, so a ladder in progress has a report.** The record was
+written only by `jobset summarize run`, which refused until the transmission
+had output; the rungs that had run said nothing. **The provenance is what was
+gathered**, read from each rung's `.gathered-from` — never the newest attempt
+by file time.
+
+**The contour is stated, not left to the engine** *(W35)*. A device deck with
+no `contour.eq` gets TranSIESTA's continued-fraction fallback — 42 poles
+(`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for — and on
+2026-09-25 that lost 29 electrons on the first NEGF step, before any mixing,
+and diverged to 584; 123 poles on the same deck conserved the charge to 0.024
+electrons by step 4. The device deck therefore writes an explicit equilibrium
+contour — a circle and a tail whose lower bound sits below the seed's lowest
+eigenvalue, the manual's own rule — and the settings gate refuses one that
+cannot cover the spectrum.
+
 ### 2a.13 The full map
 
 Every parameter a transport deck can carry, classified by § 2a.3 and tiered by

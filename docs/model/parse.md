@@ -1193,6 +1193,145 @@ which is the exact claim the 2026-09-03 correction retracted. A rename that
 stops at the field has fixed the half nobody reads. The column is now named
 after the field it prints, and `_fmt_wall` is `_fmt_duration`.
 
+## 5d. The run record — what ran, with what, and how it went *(W35, 2026-09-26)*
+
+> **Status: CONTRACT, not yet built** (plan W35, § 5t). Where this section
+> and the code disagree, the code is behind and § 5t names the phase.
+
+A transport device ran eleven hours on 2026-09-25 while diverging, and every
+reader molbuilder has said something else:
+
+* the wrapper's timing tee, the monitor and the SIESTA parser each match
+  `scf:` rows with their own regex, and none matches TranSIESTA's `ts-scf:` —
+  so the timing log held **7** iterations against **1000**, the monitor
+  reported *"no SCF progress"* for 7.6 hours, and the parser gave the device
+  the energy of its periodic initialization (−437,029 eV) where the NEGF
+  loop had reached −205,444 eV, 584 electrons short;
+* the parameters were recorded as the deck molbuilder wrote, never as what
+  the engine used: SIESTA's own `fdf.<timestamp>.log` — every key it read,
+  defaults marked — has no reader, and the wrapper's list of absent items
+  printed catalogue defaults under a heading promising the engine's;
+* the monitor is killed by the wrapper before it writes its summary, so no
+  run records its memory peak;
+* the Results tab shows no parameters at all, and the transport record could
+  not be written until the transmission rung had output.
+
+**One record per attempt, read from what the run left, answers all four.**
+
+### 5d.1 The record, and where it lives
+
+`parse_dir(<attempt directory>)` → `RunDirResult` carries **`record`**, five
+parts, composed on read from the files in the attempt — never written as a
+second store, so it cannot drift from its sources. Every row below names its
+ONE source (§ 5c.1's rule), and every part names its reader (§ 5.0's rule).
+
+| part | the question | reader |
+|---|---|---|
+| **computation** | what ran, where, for how long, on how much | the Results tab's Run panel |
+| **setup** | every parameter: the default, what this run asked for, what the engine used | the Run panel; W34's read-back (`science/chemistry-correctness.md` ES10) |
+| **deck** | which file ran, its hash, and what it was gathered from | the Run panel; the transport record |
+| **evolution** | every iteration of every phase | the trajectory plots; the verdict |
+| **verdict** | how it ended, whether it converged, and the symptoms | the Run panel; the transport record; the monitor |
+
+### 5d.2 Computation
+
+| quantity | its one source |
+|---|---|
+| host · user · cwd · conda env · python | the wrapper log's header |
+| engine binary · version · build | SIESTA / TBtrans: the wrapper banner, confirmed by the `.out` build header — **a TBtrans run is labelled TBtrans**; PySCF: the version the script records |
+| launch: ranks × threads · GPU | the wrapper's `ranks / omp` line; the `.out` node count is the engine's confirmation |
+| start · end (time of day) · wall | SIESTA's `>> Start of run` / `>> End of run`; PySCF's molwatch epochs; `tbt: Completed in` |
+| seconds per iteration | the SCF-timing instrument, counting every SCF row of every phase (§ 5d.5) |
+| memory: peak · limit | the monitor's closing `[UTIL-SUMMARY]` / `[UTIL-BASIS]` — which it now writes when the wrapper stops it, since it handles SIGTERM; `util.csv` where it did not (§ 5c) |
+| exit code · time | `<base>-runN.concluded` |
+
+### 5d.3 Setup — three columns, and a difference is a finding
+
+For every parameter: **the catalogue default · what this run asked for · what
+the engine used.** The third column is **read, never echoed**:
+
+* **SIESTA, TranSIESTA and TBtrans:** the engine's own `fdf.<timestamp>.log`
+  — each key it read, the value it used, `# default value` where nobody set
+  it, and `# above item originally: …` where it converted a unit. A foreign
+  format, so a `parse/` reader.
+* **PySCF:** the script's read-back table, the `effective-parameters` fence —
+  printed by the vibration deck too from now on. Its reader lives with its
+  writer (§ 1a).
+
+**The rows are every catalogue item for the engine and kind, then the keys the
+engine used that no catalogue row declares** — so a default nobody chose is
+visible: the diverging device ran `TS.Contours.Eq.Pole 0.1102 Ry` and a
+42-pole continued fraction, and the only place either appeared was the raw
+`.out`. **Then the pseudopotentials**: element, file, source (the folder, the
+library, the citation), sha256, and what the file's header states (XC,
+relativistic treatment, generator).
+
+A difference between *asked* and *used* is a **finding** in the verdict, not a
+footnote. The wrapper's `effective-parameters` fence stays the launch-time echo
+in the wrapper log; its absent list says *catalogue default*, because the
+engine's default is this record's third column.
+
+### 5d.4 The deck as run
+
+Path · sha256 · whether it is still the stage's current deck
+(`script_emit.same_calculation`) · for a gathered rung, the upstream attempts
+it was built from, read from `.gathered-from` — the provenance a transport
+record cites, never a newest-file guess.
+
+### 5d.5 Evolution — one grammar per engine family, every phase
+
+**One table of SIESTA-family output lines** — SIESTA, TranSIESTA, TBtrans —
+in `parse/engines/` is the grammar. The parser reads it, and **the wrapper's
+SCF-timing tee and the monitor get their patterns rendered from it**: neither
+can import molbuilder, and molbuilder writes both. Three regexes for one line
+is how the NEGF loop became invisible to all three at once.
+
+| phase | rows | attached to each cycle |
+|---|---|---|
+| SIESTA periodic SCF | `scf:` — E_KS, dDmax, dHmax, Ef | the IterSCF timer |
+| TranSIESTA NEGF SCF | `ts-scf:` — E_KS, dDmax, dHmax, Ef | `ts-q:` (device · electrodes · couplings · dQ), `ts-Vha:` |
+| geometry | per step, as today | — |
+| PySCF | as today | — |
+
+Each cycle carries its `phase`. Read once per run: the TranSIESTA start-up
+echo (`ts:` lines — contour method and poles, temperature, electrodes, Hartree
+pinning, solution method, tolerances), the charge distribution at the switch,
+the electrode checks (*"principal cell is perfect"*, surface Green's-function
+iterations), `siesta: Emadel`. **TBtrans:** T(E) per spin channel
+(`<label>.TBT_UP.AVTRANS_*` / `_DN` when polarized), the k-points, the energy
+grid, the completion time.
+
+### 5d.6 Verdict — how it ended, whether it converged, and the symptoms
+
+* **How it ended** — § 2b, unchanged.
+* **Converged** — per phase. A TranSIESTA device's convergence is its NEGF
+  phase's: the initialization's *"SCF Convergence"* line does not speak for it.
+* **Symptoms** — each a finding with its number:
+
+| symptom | fires when |
+|---|---|
+| a set-up fault, not mixing | the first NEGF step's \|dQ\| exceeds 0.1 % of the total charge — visible after ONE iteration |
+| charge not conserved | \|dQ\| stays above 0.1 % of the total charge (the SIESTA manual's bound) |
+| unphysical coupling | an electrode–device coupling charge is negative |
+| potential runaway | \|ts-Vha\| grows, or exceeds 1 eV |
+| stagnation | dDmax and dHmax stop falling for 20 iterations, or oscillate |
+| near the cap | past 80 % of the iteration limit |
+| asked ≠ used | § 5d.3 |
+
+**The monitor warns on the live symptoms and never stops a run**
+(`execution/run-reports.md` § 5). **The wrapper does not warm-retry a run whose
+verdict is divergence**: a retry that resumes from a diverged density is the
+same run again — on 2026-09-26 it spent three more hours.
+
+### 5d.7 Where it is read
+
+* **The Results tab — a Run panel for every kind**: computation; setup, with
+  the asked-≠-used rows first; the deck, viewable; the verdict. The trajectory
+  plots gain the NEGF phase (`web/results.md`).
+* **The transport record** composes the five rungs' records
+  (`engines/transport.md` § 2a.12).
+* **W34's read-back** compares the electronic state asked with the one used.
+
 ## 6. Adding a parser
 
 The shape every parser follows — a real minimal `FileParser` (mirrors
