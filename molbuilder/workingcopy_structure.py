@@ -134,7 +134,8 @@ class StructureCodec:
 
     # ---- load durable -> working Structure --------------------------- #
     def load(self, source_path, *,
-             frames_out: "list | None" = None) -> Structure:
+             frames_out: "list | None" = None,
+             retired_out: "dict | None" = None) -> Structure:
         """Read the pair back into a Structure.
 
         ``frames_out`` closes the round trip this codec can now write: a range
@@ -143,6 +144,10 @@ class StructureCodec:
         it a trajectory reopens as its first frame -- which is the right default
         for a Structure (one geometry) and the wrong answer for whoever wrote
         the range.
+
+        ``retired_out``, the same way: a caller that passes a dict gets each
+        retired key the sidecar carried with a value -- read and ignored, and
+        the load door says so (plan § 5q D14).
         """
         src = Path(source_path)
         # Parse the SOURCE in ITS OWN format (dispatch on the extension) -- the
@@ -172,7 +177,8 @@ class StructureCodec:
             struct = Structure.from_xyz(text, frames_out=frames_out)
         sidecar_path = molstruct.sidecar_path_for(src)
         if sidecar_path.exists():
-            molstruct.apply_to_structure(struct, molstruct.load(sidecar_path))
+            molstruct.apply_to_structure(
+                struct, molstruct.load(sidecar_path, retired_out=retired_out))
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what
@@ -372,9 +378,11 @@ class StructureCodec:
 
     # ---- read the pair from disk (alias of load, symmetric name) ----- #
     def read(self, source_path, *,
-             frames_out: "list | None" = None) -> Structure:
+             frames_out: "list | None" = None,
+             retired_out: "dict | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
         metadata, not an error).  ``frames_out`` collects every frame of a
-        multi-frame document."""
-        return self.load(source_path, frames_out=frames_out)
+        multi-frame document; ``retired_out`` the retired keys it carried."""
+        return self.load(source_path, frames_out=frames_out,
+                         retired_out=retired_out)

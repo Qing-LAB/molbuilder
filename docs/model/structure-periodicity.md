@@ -48,7 +48,10 @@ file.
 
 > **`cell_origin` was retired on 2026-09-25** (sidecar v10; plan § 5q, D2):
 > a v7–v9 file that carries it is read with it ignored, and no writer emits it
-> again. Placement is `engine_offset`'s (§ 6.0).
+> again. Placement is `engine_offset`'s (§ 6.0). Opening such a file on the
+> load door says so, naming the corner it did not apply
+> (`cell.origin_retired`, `info`; D14), because a person who typed it assigns
+> it again on the Cell page.
 
 ### 2.0a One periodicity field, and a boolean accessor *(user, 2026-09-22)*
 
@@ -403,7 +406,7 @@ two things state one:
   just write the -origin to the frame_offset such that the next treatment of
   the file will force the 0,0,0 to be the user specified position")*.
   Assigning origin `P` stores `engine_offset = −P` with the structure. The
-  Cell page sets it — three numbers, or one selected atom — and *Automatic*
+  Cell page sets it — three numbers, or one picked atom — and *Automatic*
   clears it; on a typed cell only, because a box sized from the vacuum has a
   per-side gap (§ 4) that an off-centre box would make false, and when the box
   returns to a derived one (§ 6.2: the single-field `vacuum` / `axis_kind`
@@ -433,7 +436,10 @@ changes coordinates and nothing else, so the cell's vectors and a stated
 offset stay where they were, and an atom the move leaves outside the box is
 named on the Cell page and at the deck. A builder that types a new cell drops
 a stated offset, and one that joins structures takes it from the one whose
-cell it keeps (§ 2.2b).
+cell it keeps (§ 2.2b) — except that an append which first centres the
+incoming structure drops that structure's stated offset (plan § 5q D9): the
+centring reframed its coordinates, so the box centres on the joined atoms, and
+the append says so.
 
 `cell_origin` (§ 6) stored the person's choice as a corner, and where none was
 stored every reader derived one by its own per-axis rule. The stated offset is
@@ -458,13 +464,13 @@ it is judged"*, and the one place atoms are placed: every emitter takes
 
 | operation | answers | its only callers |
 |---|---|---|
-| `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | the two below |
+| `engine_offset(struct)` | the rule: the offset the structure states when it states one, else the centring | `to_engine`, `resolve`, `Structure.to_wire` |
 | `to_engine(struct) → EngineFrame` | the cell, the engine coordinates, the offset, and whether it was stated | every emitter — the SIESTA deck, the TranSIESTA rungs, the PySCF script, the molwatch log's step 0, the validators' subject |
-| `engine_frame(cell, positions) → EngineFrame` | the same record for coordinates that ARE an engine's, the offset `0` stated | every reader of engine output — the Results door, the transport citation's `.XV`, the Results and CLI exports |
-| `EngineFrame.box_corner` | `−applied_offset` | every payload that tells a viewer where to draw |
+| every door that builds a structure from an engine's output | states `engine_offset = 0` on it, set together with the coordinates — one keyword, no API of its own (plan § 5q D10) | the `.XV` reader, the transport citation (with a record, D7), the vibration `freq` stage, the Results door, `xv2xyz`, the SIESTA validators' subject |
+| `Structure.to_wire` | `box_corner = −engine_offset`, the one place a viewer's corner is worked out | every payload that tells a viewer where to draw |
 | `require_placed(frame, axis_kind)` | refuses coordinates that were not placed: a computed frame whose atoms are not centred, and any frame with an atom outside the cell along a non-periodic lattice vector, to 1e-6 Å | the deck renderer, before it writes a line |
 | the periodicity door's `box_corner` op | assigns the box's origin on a typed cell, or clears it back to the rule | the Cell page |
-| `resolve(struct) → ResolvedCell` | the box and its judgement: the corner it sits at (`−engine_offset`) and whether the offset is stated | the periodicity gate, the validators |
+| `resolve(struct) → ResolvedCell` | the box and its judgement | the periodicity gate, the validators |
 
 **The record — engine-neutral, beside the coordinates it labels.** Every deck
 molbuilder writes (SIESTA `.fdf`, PySCF `.py`) carries a `molbuilder
@@ -772,19 +778,21 @@ wording — notices carry the id on the wire exactly as `Issue` does, so a
 reworded message never breaks a consumer and a *deleted* check always does.
 
 The first eight come from the one checker, `cell.check` (`molbuilder/cell.py`),
-and reach **both** surfaces. The last three are engine-specific and live with
-the engine that knows them.
+and reach **both** surfaces. The ninth is the hand-off's own refusal
+(`cell.require_placed`, plan § 5q D11). The last three are engine-specific and
+live with the engine that knows them.
 
 | What is true | `where` | Load / modify | Generate |
 |---|---|---|---|
 | No vacuum set; the default gap is sizing the box | `cell.vacuum_defaulted` | `info` | `info` |
 | A vacuum you set is inert, because you typed a cell | `cell.vacuum_ignored` | `info` | `info` |
-| Atoms outside the box along a non-periodic axis, under an origin the person set (§ 6.0 — the rule's own placement cannot leave one; that is `cell.unfittable`) | `cell.atoms_outside` | `warn` | `warn`, and the deck is refused at the hand-off (§ 6.0, check 3) |
+| Atoms outside the box along a non-periodic axis, under a stated origin — one the person assigned, or an engine's own (§ 6.0 — the rule's own placement cannot leave one; that is `cell.unfittable`). The message names them, per axis (D12) | `cell.atoms_outside` | `warn` | `warn` |
 | Atoms past a face along a PERIODIC axis — images the engine wraps (§ 6.0, check 1) | `cell.beyond_periodic_face` | `warn` | `warn` |
 | Box has **no volume** (`det ≈ 0`) | `cell.no_volume` | `warn` | **error — no script** |
 | Structure longer than the cell — no corner can fit it | `cell.unfittable` | `warn` | **error — no script** |
 | Left-handed cell (`det < 0`) | `cell.left_handed` | `warn` | **error — no script** |
 | A `periodic` axis with no lattice | `cell.unresolvable` | `warn` | **error — no script** |
+| An atom the deck would hand the engine outside its cell along a non-periodic lattice vector (§ 6.0, check 3), named | `deck.atoms_outside` | — | **error — no script** |
 | Vacuum below the advisory threshold (below) | `cell.vacuum_thin` | `warn` | `warn` |
 | Measured image distance under 6 Å | `cell.image_distance` | `warn` | `warn` |
 | A repeating axis into a **gas-phase** PySCF script | `cell.periodic_in_gas_phase` | `warn` | `warn` |
@@ -940,7 +948,7 @@ none computes or shows an engine-shifted copy.)*
 ## 7. Frontend surface (JS / user) — display vs edit
 
 > **The Cell page's origin is § 6.0's** *(decided 2026-09-25, D1)*: the origin
-> group sets the offset the structure STATES — three numbers, or one selected
+> group sets the offset the structure STATES — three numbers, or one picked
 > atom, on a typed cell only — and blank, or *Automatic*, is the rule. The page
 > shows where the box is drawn, the server's `box_corner`; nothing in the
 > browser works a corner out.
@@ -1006,23 +1014,22 @@ subtraction on coordinates the browser already holds.
 
 | Gesture | Needs | Writes into |
 |---|---|---|
-| **Use selection** beside the axis chooser | exactly **two** selected atoms | that row of the 3×3, as `second − first` |
+| **Use picked atoms** beside the axis chooser | the first **two** atoms picked with the ruler | that row of the 3×3, as `second − first` |
 | **Set length** beside it | a row with a direction | the same row, rescaled to the stated length — the spacing between periodic images, set without touching the direction |
-| **Use selection** beside the origin boxes | exactly **one** selected atom | the three origin boxes, as that atom's position |
+| **Use picked atom** beside the origin boxes | the first atom picked with the ruler | the three origin boxes, as that atom's position |
 
 **The order of the two atoms is the answer, not a detail.** The axis runs from
 the atom picked *first* to the atom picked *second*, so picking the same pair the
 other way round **negates that axis** — which is the way out of the refusal
 below, and the reason the pick order is read rather than the sorted selection.
-Where there is no pick order at all (the selection came from *All*, a filter, a
-restored session) the row runs in index order, which is stated on the control
-rather than guessed at.
 
-**They read the ordinary selection, and get no track of their own.** MolView's
-measurement gains one (`molview.md` § 11.6) because measuring must not disturb
-what an edit acts on; the cell page *is* an edit, so it wants exactly the
-selection every other op resolves its group through. One picking mechanism, one
-diversion switch, nothing new to keep apart.
+**They read the ruler's picks, in order** *(user, 2026-08-31: "having
+selection and this function overlapping seems functionally wrong")*. The
+ruler's track is ordered by construction, where a selection is a set, so the
+order that decides an axis's sign is there to read; the ruler holds up to three
+picks and the gestures take what they need from the front. Opening the Cell
+page turns measuring on (`molview.md` § 11.6), so a click there picks. The
+buttons say so, *Use picked atoms* and *Use picked atom* (plan § 5q D16).
 
 **Handedness, said before the request.** The gate refuses a left-handed cell
 outright — `det ≤ 0`, `cell.left_handed`, HTTP 400 — and typing nine numbers
@@ -1127,15 +1134,13 @@ refusal is immediate feedback on what was just typed rather than a block on
 getting work done — and a good value entered right after is accepted. You are
 never stuck.
 
-In code the split is two named seams over one applier, so neither owns a copy of
-the translation:
+In code the split is two seams, and neither applies anything — the box rides
+in with the structure, in the envelope or the pair:
 
-- `apply_periodicity_only(struct, body)` — applies, judges nothing. The loading
-  doors use it, and `ok_structure_response` (seam 2) reports on the way out.
-- `periodicity_checked_for_emit(struct)` — checks only; it applies nothing,
-  because the box already rode in with the structure. Every
-  emitting door uses it; the refusal becomes the door's 400 through one
-  app-level handler.
+- `ok_structure_response` (seam 2) — the loading and modifying doors: it
+  reports what `cell.check` finds, on the way out.
+- `periodicity_checked_for_emit(struct)` — checks only. Every emitting door
+  uses it; the refusal becomes the door's 400 through one app-level handler.
 
 #### Reading does not judge (and why that is safe)
 

@@ -325,9 +325,13 @@ export function sceneFor(periodicity) {
      * named failure, reached from a different direction than the one it warns
      * about. */
     const used = effectiveCell(periodicity);
-    const lattice = isLattice(used.cell) ? used.cell : null;
+    /* NO CORNER, NO BOX (molview.md § 10.3; plan § 5q D13). The box is drawn
+     * at the server's `box_corner` and nowhere else: a block that arrives
+     * without one draws no box and no a/b/c triad, rather than one anchored
+     * at a corner this layer made up. */
     const origin = (Array.isArray(used.box_corner) && used.box_corner.length === 3)
-        ? used.box_corner : [0, 0, 0];
+        ? used.box_corner : null;
+    const lattice = (isLattice(used.cell) && origin) ? used.cell : null;
 
     /* TWO TRIADS, AND THEY CO-EXIST.
      *

@@ -617,22 +617,32 @@ def test_the_two_triads_are_told_apart_by_colour_as_well_as_by_label():
     )
 
 
-def test_with_no_cell_there_is_no_box_and_the_triad_is_cartesian():
+def test_with_no_cell_or_no_corner_there_is_no_box_and_the_triad_is_cartesian():
     """§ 6.2: `cell` is null when there is no cell. The triad still has a job —
     saying which way is which — so it falls back to x/y/z at the world origin.
+
+    And a cell that arrives with no `box_corner` draws no box either: the box
+    sits at the server's corner and nowhere else, so none is invented at the
+    world origin (§ 10.3; plan § 5q D13).
     """
     out = _run(
         """
         const scene = ENGINE.sceneFor(null);
+        const cornerless = ENGINE.sceneFor({
+            resolved_cell: [[5,0,0],[0,5,0],[0,0,5]] });
         console.log(JSON.stringify({
             box: scene.cellBox,
             labels: scene.axes.map(a => a.label),
             starts: scene.axes.map(a => a.start),
             ends: scene.axes.map(a => a.end),
+            cornerlessBox: cornerless.cellBox,
+            cornerlessTriad: cornerless.cellAxes,
         }));
         """
     )
     assert out["box"] is None, "no cell means no box to draw"
+    assert out["cornerlessBox"] is None and out["cornerlessTriad"] is None, (
+        "a box was drawn at a corner the server never sent")
     assert out["labels"] == ["x", "y", "z"]
     assert all(s == [0, 0, 0] for s in out["starts"])
     assert out["ends"] == [[1.5, 0, 0], [0, 1.5, 0], [0, 0, 1.5]]

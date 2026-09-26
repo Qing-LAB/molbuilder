@@ -14,8 +14,7 @@ import pytest
 
 from molbuilder import cell as cellmod
 from molbuilder.structure import Structure
-from molbuilder.periodicity_gate import (
-    OPS, apply_edit, validate_periodicity)
+from molbuilder.periodicity_gate import apply_edit, validate_periodicity
 
 
 def _mol(off=(10.0, 10.0, 10.0), vacuum=(2.5, 2.5, 2.5)):
@@ -136,35 +135,11 @@ class TestTheStateTable:
     # the object itself, so it could not fail -- an assigned origin kept
     # verbatim is the test below.
 
-    def test_a_manual_origin_gets_the_same_answer_from_either_direction(self):
-        """ONE state, one answer.  An origin the person assigned that leaves the
-        atoms outside, typed on the Cell page, and the same origin read back
-        off disk: kept verbatim, warned about (the edit stands), never
-        auto-fixed.  Assigning P stores -P (D1).
-
-        This used to be two tests either side of a ``live_edit`` flag.  Both
-        passed, which was the proof the flag selected nothing -- it was removed
-        2026-08-02.  What the pair was really pinning is the equality below, so
-        that is what this asserts.
-
-        Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*.
-        """
-        P = np.array([100.0, 100.0, 100.0])      # a corner nowhere near the atoms
-        stored = _mol()
-        stored.cell = np.eye(3) * 7.0
-        stored.engine_offset = -P
-        stored.__post_init__()
-        checked, notes = validate_periodicity(stored)
-        np.testing.assert_allclose(checked.engine_offset, -P)
-        assert _said(notes, "cell.atoms_outside"), _wheres(notes)
-
-        # The live half: the same corner assigned through the Cell-page door.
-        live = _mol()
-        live.cell = np.eye(3) * 7.0
-        live.__post_init__()
-        typed, _ = apply_edit(live, "box_corner", P.tolist())
-        np.testing.assert_allclose(typed.engine_offset, -P)
-        assert validate_periodicity(typed)[1] == notes
+    # `test_a_manual_origin_gets_the_same_answer_from_either_direction` RETIRED
+    # 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
+    # informative mutants against `TestTheBlockOp::test_an_origin_is_assigned_on_a_typed_cell_only`
+    # (P -> -P) and `TestTheLoadAnswerIsNotSilent::test_the_load_answer_carries_what_the_gate_found`
+    # (read off disk, warned).
 
     def test_too_small_cell_is_a_hard_error(self):
         """SCIENCE. A cell shorter than the molecule's extent is REFUSED outright,
@@ -241,21 +216,20 @@ class TestApplyEditV3:
     rewrites are a Modify op, not a periodicity edit.
     """
 
-    def test_calibrate_is_not_a_periodicity_op(self):
-        """`calibrate` is not a periodicity op, and asking for it is an ERROR rather
-        than a silent no-op.
+    def test_an_op_the_gate_does_not_know_is_refused_at_the_gate(self):
+        """An op outside the closed set is an ERROR at the gate itself, not a
+        silent no-op -- whoever calls ``apply_edit``, not only the door, whose
+        own check stops a request before it gets here.
 
-        Catches the op's re-introduction, and -- the sharper half -- catches
-        `apply_edit` growing a permissive fall-through: an unknown op that returns
-        the structure unchanged with status 200 tells the client its edit landed
-        when nothing happened.
+        Catches ``apply_edit`` growing a permissive fall-through: an unknown op
+        that returns the structure unchanged tells the caller its edit landed
+        when nothing happened.  ``calibrate`` is the realistic one -- retired
+        in D3, and what a client from before it would still send.
+        (`tools/verify_subsumption.py`, 2026-09-25: the door's 400 test does
+        not reach this refusal.)
 
-        Contract: `model/structure-periodicity.md` § 6.2 (the closed op set, no
-        calibrate; emission places the atoms, so there is nothing to bake --
-        § 6.0, D3). Commemorates 2026-07-29, when the door's docstring still
-        advertised it.
+        Contract: `model/structure-periodicity.md` § 6.2 (the closed op set).
         """
-        assert "calibrate" not in OPS
         with pytest.raises(ValueError, match="unknown periodicity op"):
             apply_edit(_mol(), "calibrate", None)
 
@@ -729,9 +703,12 @@ class TestPeriodicityDoor:
         per = body["periodicity"]
         assert per["engine_offset"] == [0.0, 0.0, 0.0] and \
             per["box_corner"] == [0.0, 0.0, 0.0], "the box moved with the atoms"
-        assert _said(body.get("notices"), "cell.atoms_outside"), (
-            f"atoms left the box and nothing said so: "
-            f"{_wheres(body.get('notices'))}")
+        said = [n for n in body.get("notices") or []
+                if n.get("where") == "cell.atoms_outside"]
+        assert said, (f"atoms left the box and nothing said so: "
+                      f"{_wheres(body.get('notices'))}")
+        # ...and NAMED, as the deck will name them (plan § 5q D12).
+        assert "a (isolated): atom(s) 0, 1, 2" in said[0]["message"], said
 
     def test_a_fixed_box_is_not_still_reported_as_broken(self, client):
         """molview.md § 6.8: a CONDITION describes the state the answer carries.
@@ -915,11 +892,17 @@ class TestLoaderGate:
         assert cellmod.resolve(out).contains_atoms, (
             "the box is not drawn round the atoms")
 
+    @pytest.mark.parametrize("v9_corner", [None, [10.0, 10.0, 10.0]],
+                             ids=["v10-automatic", "v9-with-a-retired-corner"])
     def test_the_load_door_serves_the_rules_box_corner(
-            self, tmp_path, monkeypatch):
+            self, tmp_path, monkeypatch, v9_corner):
         """The same state, one layer out: `/api/build/load` serves the corner the rule
         places the box at, in `box_corner`, so the browser draws the box where the
         file means -- and states no offset, because the file states none.
+
+        And a v9 pair's retired `cell_origin` is said, not dropped in silence:
+        the answer names the corner it did not apply (plan § 5q D14), because a
+        person who typed it assigns it again on the Cell page.
 
         Catches the seam between the codec and the wire dropping the resolved half
         -- the exact live symptom of 2026-07-29, where MolView drew the box from
@@ -939,7 +922,7 @@ class TestLoaderGate:
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
-        xyz = self._write_pair_stating_no_offset(sdir)
+        xyz = self._write_pair_stating_no_offset(sdir, v9_corner)
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:
@@ -947,6 +930,13 @@ class TestLoaderGate:
             client = create_app(config={}).test_client()
             r = client.post("/api/build/load", json={"path": str(xyz)})
             assert r.status_code == 200, r.get_json()
+            said = [n for n in r.get_json().get("notices") or []
+                    if n.get("where") == "cell.origin_retired"]
+            if v9_corner is None:
+                assert not said, said
+            else:
+                assert len(said) == 1 and "(10, 10, 10)" in said[0]["message"], (
+                    said)
             per = r.get_json()["periodicity"]
             assert per["engine_offset"] is None
             # Centred on the atoms (x 10..12, y and z at 10), stated as the
@@ -1875,19 +1865,11 @@ class TestEveryOpIsChecked:
             f"periodicity check.  Every op leaves through "
             f"_shared.ok_structure_response; this one found another way out.")
 
-    def test_the_check_reaches_the_user_when_it_has_something_to_say(self, client):
-        """The companion to the test above: running the check is worth nothing
-        if its verdict is dropped between the validator and the wire.  A move
-        leaves a box whose origin was assigned where it is (D6), so these atoms
-        stay stranded outside it; the op has something to say, and it has to
-        arrive in ``notices``.
-        """
-        body = {"structure": self._stranded().to_dict(),
-                "dx": 1.0, "dy": 0.0, "dz": 0.0}
-        said = client.post("/api/modify/translate", json=body).get_json()
-        assert _said(said.get("notices"), "cell.atoms_outside"), (
-            f"the verdict was dropped between validator and wire: "
-            f"{_wheres(said.get('notices'))}")
+    # `test_the_check_reaches_the_user_when_it_has_something_to_say` RETIRED
+    # 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
+    # informative mutants against
+    # `TestPeriodicityDoor::test_translating_the_whole_molecule_leaves_the_box_and_says_so`
+    # -- the same route, op and outcome, which also checks the offset is kept.
 
 
 class TestARefusedCellIsA400:

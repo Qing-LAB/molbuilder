@@ -91,7 +91,7 @@ caller holds.
 | `/api/structure/export` | `{structure: <envelope>, name?, frames?}` |
 | ~~`/api/build/fdf`~~ · ~~`/api/build/pyscf`~~ · `/api/build/preflight` | `{structure: <envelope>, params, structure_path?}` — the **emit** doors. `structure_path` is provenance and a dest-dir anchor, never a source of geometry or labels |
 | ~~`/api/transport/render`~~ | **DELETED 2026-09-17.** It rendered a device deck and handed the text back; no browser had called it since 2026-08-29, and a browser renders no deck (`tabs.md`) — the same ruling that retired `/api/build/fdf` and `/api/build/pyscf` on 2026-08-17. It was the last door to take a file PATH as its geometry, which is the migration described in § 2's envelope rule below |
-| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename, atom_metadata?, periodicity?, info?}`. **Not the envelope** — nothing is being sent back, something is being *parsed*. The optional blocks beside the text are **what the caller already knew about these atoms** and the text has no room for — the labels, the cell, and the free `info` store (`?doc=web/molview.md` § 8.4a). A `path` load reads all three off disk and a `{structure}` restore carries them in its envelope; the text branch is the one shape with no document behind it, so a host that knows them states them. `info` must be an object of key → value: a non-object is a 400, never a silent drop. It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
+| `/api/build/load` | `{path}` — a file the server reads — or `{text, filename}`. **Not the envelope** — nothing is being sent back, something is being *parsed*, and the text carries atoms only: no labels, no cell, no `info` rides beside it, because nothing sends them (plan § 5q D15). A `path` load reads all three off disk, and says when the pair carried a retired `cell_origin` it did not apply (`cell.origin_retired`, `info`, naming the corner; D14). It ALSO takes `{structure: <envelope>}` on one branch: a tab **putting back** the structure it was showing before the page was left, which is not a parse — `exportFile`'s exact inverse, through the one entrance so the same checks run |
 | `/api/selection/eval` | `{atoms: [{element, labels, residueName, atomName, chainId}], rule}`. **Not the envelope:** no rule matches on position (`molview.md` § 9.5), so no coordinates are sent — the cut-down list is the whole of what a filter needs. `atomName` / `chainId` joined it 2026-09-07: they are what `by_atom_name` and `by_chain_id` match on, and without them the server rebuilt the structure with `Structure`'s defaults — atom name = element symbol, chain = `"A"` — so both rules answered **200 with a wrong answer** rather than refusing (`by_atom_name "CA"` never matched an alpha carbon; `by_chain_id "B"` never matched anything). Both keys are optional and fall back to those same defaults, so an older caller is unaffected |
 
 > **The text branch of `/api/build/load` is down to callers that should not be
@@ -106,13 +106,12 @@ caller holds.
 > `xyz` string beside it had been costing every generated peptide its residue
 > names.
 >
-> What still posts text is the **trajectory tab**, which manufactures a
-> single-frame XYZ *in the browser* to establish atom identity, then hands back
-> as `atom_metadata` / `periodicity` / `info` the very things that flattening
-> destroyed. That is a browser writing a coordinate document — what § 1 forbids
-> in the same breath as this table permits it. Moving it to `{structure}`
-> removes the branch, the three side-blocks, and the browser's XYZ writer
-> together (`plans/plan.md`).
+> The **trajectory tab** posted text too, a single-frame XYZ it wrote in the
+> browser, with `atom_metadata` / `periodicity` / `info` beside it to restore
+> what that flattening destroyed. It now installs the server's own envelope
+> for frame 0 (`/api/watch/load` composes it), so the three side-blocks had no
+> sender and are gone (2026-09-25, plan § 5q D15). What still posts text is the
+> component demo's hard-coded sample XYZ.
 
 > **The old shapes are gone, not deprecated.** `/api/structure/periodicity` used
 > to take `{data: {xyz, sidecar}}`; it now answers 400 to that, which is how the
@@ -282,19 +281,9 @@ a defect to fix in development, not a condition to turn into a 400 for someone
 running a calculation. Readers of wire-only blocks take the names they set and
 leave the rest.
 
-**The `periodicity` block is the case that shows why.** `Structure.to_wire`
-sends what the caller stated (`cell`, `engine_offset` — the offset the
-structure STATES, `null` meaning the rule places it — `axis_kind`, `vacuum`)
-BESIDE the server's own derived answers (`resolved_cell`, `box_corner` — where
-the viewer draws the box, `−engine_offset` of the coordinates it holds, never
-worked out in the browser — and `resolved_vacuum`) so a page can show the box
-*as it will be used* (`?doc=model/structure-periodicity.md` § 6.0). MolView keeps that block verbatim and hands the whole thing back
-through the load door. A reader made strict here would refuse the viewer's own
-structure — the derived fields are the traffic, not an anomaly.
-
-The same applies to `document` (the export door's answer) and `source_index`
-(the caller's own bookkeeping): both named in the envelope reader's `known` set
-so they are **ignored on purpose** rather than refused.
+**The envelope reader is the case that shows why.** `document` (the export
+door's answer) and `source_index` (the caller's own bookkeeping) are both named
+in its `known` set, so they are **ignored on purpose** rather than refused.
 
 **The envelope is not versioned, and that is a decision.** The sidecar on disk
 carries `schema_version` because a file outlives the program that wrote it. The

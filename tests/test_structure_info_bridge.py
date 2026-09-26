@@ -9,10 +9,10 @@ chain that makes that true, at every link:
   1. **The composer** — ``parse.dirs.run_info.run_info_for_dir``: one
      answer to *what does this run directory say about itself*, so the
      two doors that ask cannot come to disagree.
-  2. **The load door** — ``/api/build/load`` applies a stated ``info``
-     on the text branch (the one shape with no document behind it), and
-     answers the store inside the canonical ``structure`` envelope on
-     every branch.
+  2. **The load door** — ``/api/build/load`` answers the store inside the
+     canonical ``structure`` envelope, off the pair's ``.molstruct.json``.
+     (A stated ``info`` beside a text went with the text branch's side
+     blocks on 2026-09-25 -- nothing sent one; plan § 5q D15.)
   3. **The results adapter** — ``/api/watch/load`` answers the block from
      all THREE of its builders, upload included.
   4. **The browser** — ``structureFromServer`` reads the store from the
@@ -134,29 +134,6 @@ class TestTheComposer:
 # --------------------------------------------------------------------- #
 
 class TestTheLoadDoorTakesIt:
-
-    def test_a_stated_store_lands_on_the_text_branch(self, client):
-        """A text load parses a file, and a file being parsed carries no
-        store -- so a host that knows one states it, and it comes back on
-        the structure."""
-        d = client.post("/api/build/load", json={
-            "text": "2\n\nH 0 0 0\nH 0 0 0.74\n",
-            "filename": "probe.xyz",
-            "info": {"calculation": {"engine": "siesta"}},
-        }).get_json()
-        assert d["ok"] is True
-        assert d["structure"]["info"] == {"calculation": {"engine": "siesta"}}
-
-    def test_a_non_dict_store_is_refused_not_dropped(self, client):
-        """Dropping it silently is how the labels went missing for months
-        at HTTP 200 (`_shared._struct_from_envelope`'s own note)."""
-        r = client.post("/api/build/load", json={
-            "text": "2\n\nH 0 0 0\nH 0 0 0.74\n",
-            "filename": "probe.xyz",
-            "info": ["not", "a", "dict"],
-        })
-        assert r.status_code == 400
-        assert "info" in r.get_json()["error"]
 
     def test_a_pair_on_disk_brings_its_store_back(
             self, client, tmp_path, monkeypatch):

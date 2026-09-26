@@ -1189,6 +1189,10 @@ def append_structure(
     designated read).  Numbering it to ``frozen_atoms2`` would leave the
     incoming atoms carrying a label nothing recognises -- silently unfrozen.
 
+    **A stated origin** -- centring the incoming structure reframes its
+    coordinates, so an offset it states (an engine's 0, an origin its author
+    assigned) is dropped first, and said (plan § 5q D9).
+
     **The cell and the rest of the non-atom block** --
     `model/structure.md` § 2.2b, applied by `Structure.concat`.  The canvas
     keeps its box when it HAS one, and when it does not the fragment's is
@@ -1206,6 +1210,16 @@ def append_structure(
     if center and incoming.n_atoms:
         incoming = incoming.translated(
             -np.asarray(incoming.positions, dtype=float).mean(axis=0))
+        # THE CENTRING REFRAMED ITS COORDINATES, so an offset it stated no
+        # longer describes them (a Results export states the engine's 0):
+        # dropped, and the box centres on the joined atoms -- said, because a
+        # dropped origin is otherwise invisible (plan § 5q D9).
+        if incoming.engine_offset is not None:
+            incoming = incoming.replace(engine_offset=None)
+            notes.append(
+                "the incoming structure's stated origin was dropped: centring "
+                "it moved its atoms, so the box is centred on them "
+                "(Automatic)")
 
     # RENAMED BEFORE THE CONCAT, not after: `concat` unions by name, so a name
     # that is going to be distinct has to be distinct by the time it gets

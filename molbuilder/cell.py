@@ -82,19 +82,16 @@ class ResolvedCell:
     Consumers read fields.  Nobody re-derives, and nobody calls the
     ``Structure`` resolvers directly -- that is the whole point.
 
-    ``box`` and ``corner`` are ``None`` only when the box could not be worked
-    out at all (``unresolvable`` then says why, and :func:`check` turns it into
-    an error).  Everything else is always populated, so a caller never has to
-    branch on absence to ask a simple question.
+    ``box`` is ``None`` only when the box could not be worked out at all
+    (``unresolvable`` then says why, and :func:`check` turns it into an
+    error).  Everything else is always populated, so a caller never has to
+    branch on absence to ask a simple question.  Where the box SITS is the
+    engine offset's (:func:`engine_offset`), and a viewer's corner is
+    ``Structure.to_wire``'s.
     """
 
     #: The 3×3 lattice the calculation will use, or None if unresolvable.
     box: Optional[np.ndarray]
-    #: Where the box's corner sits in the structure's own coordinates:
-    #: ``-engine_offset`` -- the offset the structure states, or the rule's
-    #: (`model/structure-periodicity.md` § 6.0).  Never None when ``box`` is
-    #: set, so no reader works a corner out for itself.
-    corner: Optional[np.ndarray]
     #: The per-side gap the box was actually built from -- what the user set,
     #: or the default where they set nothing.
     vacuum: Tuple[float, float, float]
@@ -117,11 +114,6 @@ class ResolvedCell:
     #: Set when the box could not be worked out; the reason, in the user's
     #: words.  :func:`check` promotes it to an error Issue.
     unresolvable: Optional[str] = None
-    #: True when the structure STATES its offset -- an origin the person
-    #: assigned, or an engine's own 0 -- rather than the rule placing it.  A
-    #: stated offset is never rewritten, so a box that misses its atoms under
-    #: one is the person's to move.
-    offset_stated: bool = False
     #: det(box) > 0.  A left-handed cell is not a representable state: SIESTA's
     #: reciprocal vectors come out mirrored.
     right_handed: bool = True
@@ -135,6 +127,10 @@ class ResolvedCell:
     #: PERIODIC axes along which an atom lies past a face once placed: legal --
     #: an image the engine wraps -- and warned (§ 6.0, check 1).
     beyond_periodic_axes: Tuple[int, ...] = ()
+    #: NON-periodic axes with atoms outside the box, each with those atoms
+    #: (0-based) -- what ``contains_atoms`` is False about, named so the Cell
+    #: page can say which (plan § 5q D12).
+    outside_atoms: Tuple[Tuple[int, Tuple[int, ...]], ...] = ()
 
     @property
     def has_volume(self) -> bool:
@@ -180,14 +176,13 @@ def resolve(struct: Structure, *,
         axis_kind=kinds,                       # type: ignore[arg-type]
         regime=regime,
         defaulted_axes=defaulted,
-        offset_stated=struct.engine_offset is not None,
     )
 
     if struct.n_atoms == 0:
         # Nothing to wrap.  Not an error -- a blank viewer is a legal state --
         # so it resolves to "no box" and every check stays quiet.
-        return ResolvedCell(box=None, corner=None, volume=0.0,
-                            contains_atoms=True, **common)
+        return ResolvedCell(box=None, volume=0.0, contains_atoms=True,
+                            **common)
 
     if box is not None:
         box = np.asarray(box, dtype=float).reshape(3, 3)
@@ -198,9 +193,8 @@ def resolve(struct: Structure, *,
         # The one structural impossibility ``resolve_cell`` raises for: a
         # `periodic` axis with no explicit lattice.  A bounding box is not a
         # lattice, and one can never be invented from coordinates (§ 3).
-        return ResolvedCell(box=None, corner=None, volume=0.0,
-                            contains_atoms=True, unresolvable=str(exc),
-                            **common)
+        return ResolvedCell(box=None, volume=0.0, contains_atoms=True,
+                            unresolvable=str(exc), **common)
 
     # WHERE THE BOX SITS: at -engine_offset of these coordinates -- the offset
     # the structure states, or the rule's (§ 6.0).  A singular box places
@@ -215,15 +209,21 @@ def resolve(struct: Structure, *,
     # derive from it, and the determinant is taken once.
     frac = _fractional(struct, box, corner)
     det = float(np.linalg.det(box))
+    outside = _outside(frac, box)
     return ResolvedCell(
         box=box,
-        corner=corner,
         volume=abs(det),
-        contains_atoms=_contains(frac, kinds, box),
+        # A singular box fits nothing: no projection, so nothing is inside.
+        contains_atoms=frac is not None and not any(
+            kinds[i] != "periodic" for i in outside),
         right_handed=det > 0.0,
         unfittable_axes=_unfittable(frac, kinds, box),
         clearances=_clearances(frac, box),
-        beyond_periodic_axes=_beyond(frac, kinds, box),
+        beyond_periodic_axes=tuple(i for i in sorted(outside)
+                                   if kinds[i] == "periodic"),
+        outside_atoms=tuple((i, tuple(atoms))
+                            for i, atoms in sorted(outside.items())
+                            if kinds[i] != "periodic"),
         **common,
     )
 
@@ -257,37 +257,37 @@ def _tolerances(box: np.ndarray) -> np.ndarray:
                     0.0)
 
 
-def _contains(frac: Optional[np.ndarray], kinds: Sequence[str],
-              box: np.ndarray) -> bool:
-    """Every atom inside ``[0, 1]`` along every NON-periodic axis.
+def _outside(frac: Optional[np.ndarray],
+             box: np.ndarray) -> Dict[int, List[int]]:
+    """Lattice vector -> the atoms past one of its faces (0-based), to
+    :data:`PLACED_TOL_ANG` Å -- the ONE answer the Cell page's containment,
+    its periodic-face warning and the deck's refusal all read.
 
-    Along a periodic axis an atom outside the cell is a legitimate image the
-    engine wraps, so containment is never required there (§ 2) — requiring it
-    everywhere made real crystals unopenable.
+    The caller splits it by axis kind: along a NON-periodic axis an atom
+    outside is outside the box; along a periodic one it is an image the engine
+    wraps -- legal, and worth saying (§ 6.0, check 1) -- and requiring
+    containment there is what made real crystals unopenable (§ 2).  ``{}``
+    for a singular box, which has no projection to judge.
     """
     if frac is None:
-        return False                            # singular box: nothing fits
+        return {}
     tol = _tolerances(box)
-    for i, kind in enumerate(kinds):
-        if kind == "periodic":
-            continue
-        if not (np.all(frac[:, i] >= -tol[i])
-                and np.all(frac[:, i] <= 1.0 + tol[i])):
-            return False
-    return True
+    out: Dict[int, List[int]] = {}
+    for i in range(3):
+        bad = np.where((frac[:, i] < -tol[i]) | (frac[:, i] > 1.0 + tol[i]))[0]
+        if len(bad):
+            out[i] = [int(k) for k in bad]
+    return out
 
 
-def _beyond(frac: Optional[np.ndarray], kinds: Sequence[str],
-            box: np.ndarray) -> Tuple[int, ...]:
-    """PERIODIC axes along which some atom lies outside ``[0, 1]``: images the
-    engine wraps -- legal, and worth saying (§ 6.0, check 1)."""
-    if frac is None:
-        return ()
-    tol = _tolerances(box)
-    return tuple(
-        i for i, kind in enumerate(kinds)
-        if kind == "periodic"
-        and (np.any(frac[:, i] < -tol[i]) or np.any(frac[:, i] > 1.0 + tol[i])))
+def _name_outside(bad, kinds: Sequence[str]) -> str:
+    """``{axis: atoms}`` in words -- "a (isolated): atom(s) 2; c (transport):
+    atom(s) 0, 1" -- the one wording both the Cell page and the deck use."""
+    return "; ".join(
+        f"{'abc'[i]} ({kinds[i]}): atom(s) "
+        f"{', '.join(str(k) for k in list(atoms)[:8])}"
+        f"{' …' if len(atoms) > 8 else ''}"
+        for i, atoms in sorted(dict(bad).items()))
 
 
 def _unfittable(frac: Optional[np.ndarray], kinds: Sequence[str],
@@ -445,7 +445,9 @@ def check(rc: ResolvedCell) -> List[Issue]:
                          for i, (n, f) in enumerate(rc.clearances))
         out.append(Issue(
             "warn",
-            f"Some atoms are outside the box. Room to spare at each end, in "
+            f"Some atoms are outside the box -- "
+            f"{_name_outside(rc.outside_atoms, rc.axis_kind)} (0-based). "
+            f"Room to spare at each end, in "
             f"Å — a negative number means atoms stick out that side: {gaps}. "
             f"The box sits at the origin this structure states -- one you "
             f"assigned, or the engine's own -- and nothing moves it for you. "
@@ -495,9 +497,9 @@ class EngineFrame:
 
     ``positions`` are in the engine's frame -- the cell's corner at (0,0,0).
     ``applied_offset`` is the correction ADDED to the coordinates this frame
-    was made from: the rule's answer for design coordinates
-    (:func:`to_engine`), and zero for coordinates that already are an
-    engine's (:func:`engine_frame`).  The invariant is coordinates + offset:
+    was made from (:func:`to_engine`): the rule's answer for design
+    coordinates, or the offset the structure states -- zero for coordinates
+    that already are an engine's.  The invariant is coordinates + offset:
     ``source + applied_offset == positions``, and the positions themselves
     carry no offset -- :func:`require_placed` checks exactly that.
     """
@@ -513,16 +515,6 @@ class EngineFrame:
     #: rule's.  A stated offset need not centre the atoms, so the hand-off
     #: gate asks only that they be inside (:func:`require_placed`).
     stated: bool = False
-
-    @property
-    def box_corner(self) -> np.ndarray:
-        """Where a viewer showing the SOURCE coordinates draws the box.
-
-        ``−applied_offset``: for design coordinates the box sits there, and for
-        an engine's own output nothing was applied, so the box sits at the
-        origin.  One definition answers both, which is why no viewer computes
-        a corner of its own."""
-        return -self.applied_offset
 
 
 def _lattice(struct: Structure, box: Optional[np.ndarray]) -> np.ndarray:
@@ -593,14 +585,8 @@ def atoms_outside(frame: "EngineFrame") -> Dict[int, List[int]]:
     """
     if len(frame.positions) == 0:
         return {}
-    frac = np.linalg.solve(frame.cell.T, frame.positions.T).T
-    out: Dict[int, List[int]] = {}
-    for i in range(3):
-        tol = PLACED_TOL_ANG / float(np.linalg.norm(frame.cell[i]))
-        bad = np.where((frac[:, i] < -tol) | (frac[:, i] > 1.0 + tol))[0]
-        if len(bad):
-            out[i] = [int(k) for k in bad]
-    return out
+    return _outside(np.linalg.solve(frame.cell.T, frame.positions.T).T,
+                    frame.cell)
 
 
 def require_placed(frame: "EngineFrame", axis_kind) -> None:
@@ -612,14 +598,15 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
     * ``ValueError`` -- a COMPUTED frame whose atoms are not centred reached
       the engine without :func:`to_engine`, the one door.  A bug in an
       emitter, and it should look like one;
-    * ``ValidationError`` (``cell.atoms_outside``, error) -- any frame with an
+    * ``ValidationError`` (``deck.atoms_outside``, error) -- any frame with an
       atom outside the cell along a NON-periodic lattice vector would hand the
       engine an atom outside its box, what TranSIESTA refused.  A state of the
-      person's structure -- an origin they assigned -- so it is refused as a
-      finding, the class every prep door answers with its sentence
-      (`workflow.md` § 9); the Cell page warned of the same finding.  Along
-      a periodic vector an atom past a face is an image the engine wraps, and
-      is warned about, not refused (§ 6.0, check 1).
+      structure -- a stated origin -- so it is refused as a finding, the class
+      every prep door answers with its sentence (`workflow.md` § 9); the Cell
+      page warned of the same atoms as ``cell.atoms_outside``.  Its own id,
+      because one id carries one severity (plan § 5q D11).  Along a periodic
+      vector an atom past a face is an image the engine wraps, and is warned
+      about, not refused (§ 6.0, check 1).
     """
     if not frame.stated:
         left = _centring(frame.cell, frame.positions)
@@ -634,20 +621,16 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
     bad = {i: atoms for i, atoms in atoms_outside(frame).items()
            if kinds[i] != "periodic"}
     if bad:
-        where = "; ".join(
-            f"{'abc'[i]} ({kinds[i]}): atom(s) "
-            f"{', '.join(str(k) for k in atoms[:8])}"
-            f"{' …' if len(atoms) > 8 else ''}"
-            for i, atoms in sorted(bad.items()))
         raise ValidationError([Issue(
             "error",
-            f"atoms lie outside the cell after placement -- {where} (0-based). "
+            f"atoms lie outside the cell after placement -- "
+            f"{_name_outside(bad, kinds)} (0-based). "
             f"Along a non-periodic axis the engine would get an atom outside "
             f"its box. Make the cell longer there, or move the origin the "
             f"structure states -- one you assigned, or an engine's own -- or "
             f"set it back to Automatic on the Cell page "
             f"(model/structure-periodicity.md § 6.0, check 3)",
-            "cell.atoms_outside")])
+            "deck.atoms_outside")])
 
 
 def to_engine(struct: Structure, *,
@@ -677,19 +660,6 @@ def to_engine(struct: Structure, *,
                        positions=struct.positions.astype(float) + offset,
                        applied_offset=offset,
                        stated=struct.engine_offset is not None)
-
-
-def engine_frame(cell, positions) -> EngineFrame:
-    """The record for coordinates that ARE an engine's -- a run's output.
-
-    Nothing is applied: coordinates + offset is what the engine had, so they
-    are shown verbatim, the box at the origin (§ 6.1 clause 5).  Recomputing
-    the rule on them would redraw a run made before it -- which the engine had
-    flush against a face -- as though it had been centred, the picture that
-    misled on 2026-09-25."""
-    return EngineFrame(cell=np.array(cell, dtype=float).reshape(3, 3),
-                       positions=np.array(positions, dtype=float).reshape(-1, 3),
-                       applied_offset=np.zeros(3), stated=True)
 
 
 # --------------------------------------------------------------------- #

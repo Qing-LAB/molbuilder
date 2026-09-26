@@ -195,7 +195,7 @@ class TestWhatIsChecked:
         found = _by_id(s, "cell.atoms_outside")
         assert found is not None and found.severity == "warn"
         rc = cellmod.resolve(s)
-        assert rc.offset_stated and rc.clearances[0][0] < 0, rc.clearances
+        assert rc.clearances[0][0] < 0, rc.clearances
         assert _by_id(_mol(cell=np.eye(3) * 20, axis_kind=ISOLATED),
                       "cell.atoms_outside") is None, (
             "the rule left atoms that fit outside the box")
@@ -665,43 +665,12 @@ def test_the_atoms_move_rigidly_so_a_device_is_never_cut():
                                atol=1e-12)
 
 
-def test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none():
-    """User, 2026-09-25: *"the invariable is coordinate+offset"* -- the design
-    coordinates plus their offset ARE the coordinates the engine gets -- and at
-    that hand-off *"offset should be zero … the correction should have been
-    applied"*: the cell origin at (0,0,0) and every atom inside the cell.  A
-    STATED offset -- an engine's own output handed on, a person's origin --
-    need not centre the atoms, but no atom may sit outside the cell along a
-    non-periodic vector; along a periodic one it is an image, warned about
-    (check 1), not refused here.
-
-    API-level, on the measured fixture: the frames are built by hand, to put
-    an atom exactly as far past a face as the 2026-09-25 miss, which no prep
-    produces on purpose.  An assigned origin through prep is
-    `test_engine_offset_reaches_every_deck.py`'s."""
-    s = _junction_like()
-    frame = cellmod.to_engine(s)
-    np.testing.assert_allclose(s.positions + cellmod.engine_offset(s),
-                               frame.positions, atol=1e-12)
-    np.testing.assert_allclose(frame.applied_offset, cellmod.engine_offset(s),
-                               atol=1e-12)
-    cellmod.require_placed(frame, s.axis_kind)        # placed at the hand-off
-    unplaced = cellmod.EngineFrame(cell=frame.cell, positions=s.positions,
-                                   applied_offset=np.zeros(3))
-    with pytest.raises(ValueError, match="still carry an offset"):
-        cellmod.require_placed(unplaced, s.axis_kind)
-    off_centre = frame.positions + np.array([0.0, 0.0, 0.5])   # still inside
-    cellmod.require_placed(cellmod.engine_frame(frame.cell, off_centre),
-                           s.axis_kind)
-    outside = frame.positions.copy()
-    # 1.6e-5 Å below the c face: the miss TranSIESTA refused.  A fractional
-    # tolerance of 1e-6 is 3.7e-5 Å on this 37 Å cell and would let it by.
-    outside[0, 2] = -1.6e-5
-    with pytest.raises(ValueError, match="outside the cell"):
-        cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
-                               ("periodic", "periodic", "transport"))
-    cellmod.require_placed(cellmod.engine_frame(frame.cell, outside),
-                           ("periodic", "periodic", "periodic"))
+# `test_the_invariant_is_coordinates_plus_offset_and_the_hand_off_carries_none`
+# RETIRED 2026-09-25: `tools/verify_subsumption.py` confirmed it on all 12
+# informative mutants against the past-the-face case below and against the
+# assigned-origin road test (`test_engine_offset_reaches_every_deck.py`), and
+# its stated frames were built with `engine_frame`, deleted as unused (plan
+# § 5q D10).
 
 
 @pytest.mark.parametrize("miss, outside", [(1.6e-5, True), (0.0, False)],
@@ -717,38 +686,34 @@ def test_the_cell_page_and_the_deck_give_one_containment_answer(miss, outside):
     deck (and TranSIESTA) refused it.
 
     Contract: `model/structure-periodicity.md` § 6.0, checks 1 and 3 ("named
-    on the Cell page … and the deck is refused")."""
+    on the Cell page … and the deck is refused"); § 6.1a table B
+    (`cell.atoms_outside` names the atoms; `deck.atoms_outside` refuses)."""
     s = _junction_like()
     frame = cellmod.to_engine(s)
     lo = int(np.argmin(frame.positions[:, 2]))
     off = frame.applied_offset.copy()
     off[2] -= frame.positions[lo, 2] + miss
     assigned = s.replace(engine_offset=off)
-    named = _by_id(assigned, "cell.atoms_outside") is not None
+    found = _by_id(assigned, "cell.atoms_outside")
     try:
         cellmod.require_placed(cellmod.to_engine(assigned), assigned.axis_kind)
-        refused = False
+        refused = None
     except ValueError as exc:
-        assert "outside the cell" in str(exc), exc
-        refused = True
-    assert (named, refused) == (outside, outside), (
-        f"Cell page named={named}, deck refused={refused}")
+        refused = str(exc)
+    assert (found is not None, refused is not None) == (outside, outside), (
+        f"Cell page named={found is not None}, deck refused={refused}")
+    if outside:
+        # The SAME atom, named by both, under the deck's own id (D11, D12).
+        where = f"c (transport): atom(s) {lo} "
+        assert where in found.message, found.message
+        assert where in refused and "[deck.atoms_outside]" in refused, refused
 
 
-def test_an_engines_own_output_is_shown_as_the_engine_had_it():
-    """Nothing applied: coordinates + offset is what the engine had.  An
-    engine that wrote its atoms flush against a face -- as every deck did
-    before this rule -- is drawn flush, the box at the origin; applying the
-    rule to them would draw them centred, a box the engine never had."""
-    s = _junction_like()
-    flush = s.positions - s.positions.min(axis=0)
-    frame = cellmod.engine_frame(_HEX, flush)
-    np.testing.assert_array_equal(frame.positions + frame.applied_offset, flush)
-    np.testing.assert_array_equal(frame.box_corner, -frame.applied_offset)
-    np.testing.assert_array_equal(frame.box_corner, 0.0)
-    rule = cellmod.engine_offset(Structure(elements=list(s.elements),
-                                           positions=flush, cell=_HEX.copy()))
-    assert np.linalg.norm(rule) > 1.0, "the fixture must be one the rule would move"
+# `test_an_engines_own_output_is_shown_as_the_engine_had_it` RETIRED
+# 2026-09-25 with `engine_frame` and `EngineFrame.box_corner`, which no
+# production code called (plan § 5q D10).  The readers that state 0 are
+# pinned where they live: the Results door (T2), `xv2xyz`, the transport
+# citation and the `freq` rung.
 
 
 def test_where_the_atoms_go_does_not_depend_on_the_axis_kind():

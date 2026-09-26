@@ -241,65 +241,9 @@ class TestElectrodeCaptureCell:
         assert self._seam(out) == pytest.approx(a / np.sqrt(6), abs=1e-6)
 
 
-def _parse_fdf_cell_coords(fdf):
-    """Pull the LatticeVectors (3x3, rows) + the atom Cartesian coords (Ang) out of a
-    rendered FDF, so a test can check where every atom sits relative to the cell."""
-    import re
-    lv = re.search(r"%block\s+LatticeVectors\s*\n(.*?)%endblock\s+LatticeVectors",
-                   fdf, re.IGNORECASE | re.DOTALL)
-    cell = np.array([[float(x) for x in ln.split()[:3]]
-                     for ln in lv.group(1).strip().splitlines() if ln.split()])
-    ac = re.search(r"%block\s+AtomicCoordinatesAndAtomicSpecies\s*\n(.*?)%endblock",
-                   fdf, re.IGNORECASE | re.DOTALL)
-    coords = []
-    for ln in ac.group(1).strip().splitlines():
-        p = ln.split()
-        if len(p) >= 3 and not ln.lstrip().startswith("#"):
-            coords.append([float(p[0]), float(p[1]), float(p[2])])
-    return cell, np.array(coords)
-
-
-class TestTheBuiltJunctionReachesTheEngine:
-    """`model/structure-periodicity.md` § 6.0: a junction the builder made --
-    atoms straddling the origin, `c` the atoms' own extent -- is placed by the
-    rule and accepted at the hand-off, and the deck's lattice is the cell the
-    builder captured.
-
-    `test_cell_origin_wraps_the_atoms` and `test_imported_crystal_no_shift`
-    stood here and were RETIRED 2026-09-25.  The first pinned the builder's
-    flush corner (`cell_origin == positions.min`) -- the placement TranSIESTA
-    refused, its lowest layer 1.6e-5 Å below the face; the second, that a
-    structure stating nothing was handed over unshifted, which § 6.0 retires:
-    only an engine's own output states 0 (`test_cell.py`, the `.XV` readers).
-    (Calibrate retired the same day.)"""
-
-    def _junction(self):
-        """Molecule pinned at the origin (2 anchors on z) + symmetric Au(111)
-        electrodes -- atoms straddle the origin."""
-        mol = Structure(elements=["S", "S"],
-                        positions=[[0.0, 0.0, -2.0], [0.0, 0.0, 2.0]])
-        # `center_indices=[0, 1]` used to say "midpoint of the two S atoms",
-        # which IS the origin here -- so the absolute placement below is the
-        # same junction, said outright instead of derived.
-        return _two_slabs(mol, "Au", "111", (2, 2, 3), gap=6.0)
-
-    def test_render_fdf_puts_device_inside_the_transport_cell(self):
-        """Every device atom the deck writes is inside the transport cell
-        [0, Lz], to the hand-off's own tolerance (`cell.PLACED_TOL_ANG`,
-        1e-6 Å -- TranSIESTA refused an atom 1.6e-5 Å outside), and the emitted
-        lattice is the cell the builder captured.
-
-        What this adds to the gate inside `render_deck` is the builder's
-        junction itself, whose `c` equals its extent: centred, its outer
-        layers sit ON the faces, the case a looser tolerance hid.  It retires
-        into T1 once T1 has its transport rung (plan § 5q.6)."""
-        from molbuilder.siesta import render_fdf
-        from molbuilder.config.siesta import SiestaConfig
-        j = self._junction()
-        fdf = render_fdf(j, SiestaConfig(system_label="jx"))
-        cell, coords = _parse_fdf_cell_coords(fdf)
-        assert np.allclose(cell, j.resolve_cell(), atol=1e-4)
-        # Transport z is orthogonal ([0,0,Lz]); every atom's z is inside [0, Lz].
-        Lz = cell[2, 2]
-        assert coords[:, 2].min() >= -1e-6, "device atom below the transport cell"
-        assert coords[:, 2].max() <= Lz + 1e-6, "device atom above the transport cell"
+# `TestTheBuiltJunctionReachesTheEngine` RETIRED 2026-09-25 with its one test,
+# `test_render_fdf_puts_device_inside_the_transport_cell`:
+# `tools/verify_subsumption.py` confirmed it on all 12 informative mutants
+# against the transport rungs' placement test through prep
+# (`test_transport_prep.py::TestTheLadderPreps::test_every_rung_hands_the_engine_placed_coordinates`),
+# the successor its own docstring named.

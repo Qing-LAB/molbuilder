@@ -2710,6 +2710,12 @@ stays correct under isolate, where the drawn numbering has changed.
 > the structure's corner. A test of this must assert **where the wireframe is
 > drawn**, not what the cell data says. The cell data is right the whole time;
 > that is exactly why checking it proves nothing.
+>
+> **No corner, no box** *(plan § 5q D13)*. The box is drawn at the server's
+> `box_corner` and nowhere else. A block that arrives without one — an empty
+> structure, a box the server could not resolve — draws no box and no a/b/c
+> triad, rather than one anchored at a corner the browser made up; the world
+> triad, which needs no cell, still draws.
 
 ### 10.4 Load once; playing is a frame swap, not a redraw
 

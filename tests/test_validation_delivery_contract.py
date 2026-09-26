@@ -89,6 +89,43 @@ class TestTheSubjectAndItsCoordinatesShareOneFrame:
         np.testing.assert_array_equal(design.positions, before)
 
 
+class TestAChargedMoleculesDipoleIsItsOwn:
+    """PINS: `model/chemistry.md` § 4 (the dipole estimate, taken about the
+    centre of mass; plan § 5q D8).
+
+    The validators judge the copy the deck places -- half a box from where the
+    molecule was drawn -- and an ion's dipole depends on the origin
+    (`science/normal-modes.md` § 4a.5), so ``sum(q r)`` there measured the
+    box, not the molecule: formate at charge -1 read 88.8 D placed against
+    1.4 D as drawn (found by review, 2026-09-25).
+    """
+
+    def test_a_charged_molecules_dipole_does_not_measure_the_box(
+            self, isolated_projects_root):
+        """Formate, charge -1, in an 8 Å vacuum box: the report says no dipole
+        worth warning about, or a molecular-sized one -- never the tens of
+        debye the box's own size gave.
+
+        Through the road: prep writes the deck beside its `.validation.txt`,
+        the report of what the gate judged."""
+        import re as _re
+        from molbuilder.siesta.stages import default_siesta_stages
+        from test_engine_offset_reaches_every_deck import _prep
+        formate = Structure(
+            elements=["C", "O", "O", "H"],
+            positions=np.array([[0.0, 0.0, 0.0], [1.26, 0.0, 0.0],
+                                [-0.63, 1.09, 0.0], [-0.55, -0.95, 0.0]]),
+            vacuum=(8.0, 8.0, 8.0))
+        dest, stage, _text = _prep(
+            isolated_projects_root, formate,
+            SiestaConfig(system_label="JOB", net_charge=-1),
+            default_siesta_stages("publishable"), "siesta")
+        report = next(next(dest.glob(f"*_{stage}"))
+                      .glob("*.validation.txt")).read_text()
+        said = _re.search(r"estimated net dipole = ([0-9.]+) D", report)
+        assert said is None or float(said.group(1)) < 5.0, report
+
+
 class TestF4GateDerivesWhatChecksNeed:
     """PINS: docs/science/validation.md § 4.1 clause F4 — derived facts are
     derived server-side, from the facts.

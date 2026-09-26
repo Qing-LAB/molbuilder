@@ -684,16 +684,17 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         raise MolstructJsonError(str(exc)) from exc
 
 
-def load(sidecar_path):
+def load(sidecar_path, *, retired_out=None):
     """Read-side convenience re-export: delegates to
     :func:`molbuilder.parse.sidecars.molstruct._load` so consumers
     have a single ``molbuilder.sidecars.molstruct`` namespace that
     carries the full sidecar surface (read + write).  Local import
     avoids a module-load-time cycle: parse.sidecars.molstruct
     imports MolstructJsonError + SCHEMA_VERSION from THIS module.
+    ``retired_out`` is the reader's (a retired key that carried a value).
     """
     from molbuilder.parse.sidecars.molstruct import _load
-    return _load(sidecar_path)
+    return _load(sidecar_path, retired_out=retired_out)
 
 
 def load_text(text, *, source="<sidecar>"):

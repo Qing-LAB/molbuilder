@@ -526,7 +526,7 @@ def _clear_selection(page):
 
 def test_two_picked_atoms_become_a_lattice_vector_and_commit_nothing(
         page, flask_server, labelled_xyz):
-    """§ 7: *Use selection* beside the axis chooser writes `second − first` into
+    """§ 7: *Use picked atoms* beside the axis chooser writes `second − first` into
     that row — and STAGES it.
 
     Both halves matter.  The vector is checkable (water's O→H is 0.957 Å along
@@ -644,7 +644,7 @@ def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
 
 def test_one_picked_atom_becomes_the_box_origin(page, flask_server,
                                                  labelled_xyz):
-    """§ 7: *Use selection* beside the origin boxes puts the corner the box is
+    """§ 7: *Use picked atom* beside the origin boxes puts the corner the box is
     drawn from on the selected atom.  Staged, like the other one."""
     _open(page, flask_server)
     _load(page, labelled_xyz)

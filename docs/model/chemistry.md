@@ -239,7 +239,7 @@ own element-column rules.
 | `min_nonbonded_contact(struct, search_radius=2.5)` | closest approach between atoms in **different** residues — a steric-clash probe; returns `(distance, i, j)`, or `(None, None, None)` when there are no residue labels (intra-residue contacts are bonds, not clashes) |
 | `relieve_clashes(struct, steps=1000)` → Structure | nudge atoms apart to remove steric clashes |
 | `estimate_partial_charges(struct, total_charge=0.0, *, bond_cutoff=1.95, hx_cutoff=1.30)` | heuristic per-atom partial charges from electronegativity gaps (the cutoffs are keyword-only; same values as § 1) |
-| `estimate_dipole_moment_debye(struct, …)` | the molecular dipole moment, in Debye |
+| `estimate_dipole_moment_debye(struct, …)` | the molecular dipole moment, in Debye, taken about the centre of mass: an ion's dipole depends on the origin (`science/normal-modes.md` § 4a.5), and the centre of mass makes the number independent of where the molecule sits in its box (plan § 5q D8) |
 
 ---
 

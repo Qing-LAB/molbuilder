@@ -10,17 +10,20 @@ and re-applies it through ``script_emit.apply_atom_metadata`` -- THE one
 reader of this block, shared with the transport composite -- so the loaded
 viewer shows the same regions / frozen the user set in Build.
 
-Three seams, each tested for its END RESULT (not just API presence):
+Two seams, each tested for its END RESULT (not just API presence):
 
   1. parse layer -- ``atom_metadata_json_for_run_dir`` (``parse/dirs``,
      the directory-scoped layer; the TextParser itself stays memory-only)
      recovers the block from a run dir, guards the atom count, returns
      None on mismatch.
-  2. molview door -- ``/api/build/load`` applies a TRUSTED ``atom_metadata``
-     block (distinct from an untrusted ``.molstruct.json`` ``sidecar``):
-     the response's per-atom payload carries regions + is_frozen.
-  3. results adapter -- ``/api/watch/load`` on a run directory surfaces the
-     block as ``atom_metadata`` in the load response.
+  2. results adapter -- ``/api/watch/load`` on a run directory surfaces the
+     block as ``atom_metadata`` in the load response, and folds it into the
+     envelope it answers.
+
+(A third seam, ``/api/build/load`` applying an ``atom_metadata`` block posted
+beside a text, went with the text branch's side blocks on 2026-09-25: the
+Results tab installs the server's envelope, so nothing sent one -- plan § 5q
+D15.)
 """
 from __future__ import annotations
 
@@ -142,174 +145,14 @@ class TestParseRecovery:
         assert atom_metadata_json_for_run_dir(str(tmp_path / "x.fdf")) is None
 
 
-# --------------------------------------------------------------------- #
-#  2. MolView door: /api/build/load applies the trusted atom_metadata   #
-# --------------------------------------------------------------------- #
-
-
 @pytest.fixture()
 def client():
     from molbuilder.web.app import create_app
     return create_app(config={}).test_client()
 
 
-class TestBuildLoadDoor:
-
-
-    def test_atom_count_mismatch_is_400_not_500(self, client):
-        bad = json.dumps({**json.loads(_md_json_4c()), "n_atoms_total": 5})
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz", "atom_metadata": bad})
-        assert r.status_code == 400
-        assert "atom_metadata:" in r.get_json()["error"]
-
-    def test_malformed_json_is_400(self, client):
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
-            "atom_metadata": "{not valid"})
-        assert r.status_code == 400
-        assert "atom_metadata" in r.get_json()["error"]
-
-    def test_a_block_in_a_retired_layout_carries_no_labels(self, client):
-        """No translation, and no refusal either.
-
-        The block is read as it is written today. One written before the
-        frozen-atom store moved into `regions` says nothing this build reads,
-        so the structure arrives with its geometry and no labels -- and the
-        run still OPENS, which is what a finished run on disk needs, since
-        nothing can go back and rewrite its script.
-        """
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
-            "atom_metadata": _md_json_pre_v7()})
-        body = r.get_json()
-
-        assert r.status_code == 200, (
-            f"a retired layout made the whole structure unloadable: "
-            f"{body.get('error')!r}")
-        assert len(body["elements"]) == 4, "the geometry did not survive"
-
-        # What the retired layout spelled the CURRENT way still reads.
-        assert [a["regions"] for a in body["atoms"]][0] == ["electrode_L"]
-        # What it spelled the OLD way does not -- nothing translates it.
-        assert not any(a.get("is_frozen") for a in body["atoms"]), (
-            "the retired top-level `frozen_atoms` key was read after all")
-
-    def test_the_door_and_the_composite_read_the_block_the_same_way(self, client):
-        """ONE reader, proved by driving both ends with one block.
-
-        Until 2026-09-05 the transport composite translated a retired layout
-        while this door refused it, so the same finished run kept its frozen
-        set through one door and lost it through the other. The reader is
-        shared now, so the two cannot answer differently.
-        """
-        from molbuilder.script_emit import (_extract_atom_metadata_dict,
-                                            apply_atom_metadata)
-        from molbuilder.structure import Structure
-
-        block_json = _md_json_4c()
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
-            "atom_metadata": block_json})
-        assert r.status_code == 200
-        by_door = {a["regions"][0] if a.get("regions") else None
-                   for a in r.get_json()["atoms"]}
-
-        direct = Structure(elements=["C"] * 4,
-                           positions=[[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]])
-        apply_atom_metadata(direct, json.loads(block_json))
-        by_composite = set()
-        for i in range(4):
-            hit = [k for k, v in direct.regions.items() if i in v]
-            by_composite.add(hit[0] if hit else None)
-        assert by_door == by_composite, (
-            f"two readers again: door saw {by_door}, composite {by_composite}")
-
-    def test_a_trusted_block_needs_no_sidecar_envelope(self, client):
-        """The block has NO structure_hash -- it is a trusted fragment, not a
-        `.molstruct.json` file -- and `atom_metadata` applies it anyway.
-
-        This used to assert the CONTRAST: the same bytes sent as `sidecar`
-        400'd on the missing envelope. The `sidecar` parameter was deleted
-        2026-09-07 (no caller in production or in any test but that one line),
-        so the contrast has nothing to compare against. What it was really
-        pinning survives: a block without an envelope is accepted through the
-        door that does not ask for one."""
-        block_json = _md_json_4c()
-        assert "structure_hash" not in json.loads(block_json)
-        as_meta = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "t.xyz",
-            "atom_metadata": block_json})
-        assert as_meta.status_code == 200
-
-    def test_the_runs_cell_arrives_as_periodicity_beside_its_labels(self, client):
-        """Seam 4 (2026-08-03): a run's LATTICE reaches the structure too.
-
-        A trajectory has no `.molstruct.json`.  Its labels come from the input
-        script and its lattice from the output logs -- TWO facts from two
-        places, so two named fields.  The load door applies the labels through
-        `apply_to_structure` and the cell through `apply_periodicity_from_body`,
-        the seam every other structure door already passes.
-
-        NO ``pbc`` AND NO ``axis_kind`` ARE SENT, and the result is better for
-        it: the box is drawn and NOTHING claims the structure repeats.  The
-        drawing uses ``resolved_cell`` -- "the box a calculation runs in, so it
-        is the box to draw" (render-engine) -- and a stated cell resolves to
-        itself.  The axis kinds stay ``isolated``, because a run's 3x3 says
-        nothing about which axes repeat and `axis_kind` is authoritative, so
-        setting a cell beside it does not silently promote a container into a
-        periodicity.
-        """
-        cell = [[10.0, 0, 0], [0, 11.0, 0], [0, 0, 12.0]]
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "run.xyz",
-            "atom_metadata": _md_json_4c(),
-            "periodicity": {"cell": cell}})
-        assert r.status_code == 200, r.get_json()
-        body = r.get_json()
-        per = body.get("periodicity") or {}
-        assert per.get("cell") == cell, (
-            f"the run's cell did not reach the structure: {per!r} -- a "
-            f"trajectory then draws no unit-cell box, at HTTP 200"
-        )
-        assert per.get("resolved_cell") == cell, (
-            "the box that gets DRAWN is not the run's box"
-        )
-        assert per.get("axis_kind") == ["isolated"] * 3, (
-            f"stating a cell invented a periodicity nobody claimed: "
-            f"{per.get('axis_kind')!r}.  The run reported a box, not a "
-            f"statement about which axes repeat."
-        )
-        atoms = body.get("atoms") or []
-        assert any(a.get("regions") for a in atoms), (
-            "the cell arrived but the labels did not; both facts travel"
-        )
-
-
-    def test_the_label_block_is_passed_through_untouched(self, client):
-        """The browser must not re-state ``n_atoms_total``.
-
-        It is the guard that stops a label set written for one structure
-        landing on another, and a caller that parses the block and puts the key
-        back sets it to the count of the geometry it is loading -- so the
-        comparison becomes n == n and the guard can never fire.
-        """
-        stale = json.loads(_md_json_4c())
-        stale["n_atoms_total"] = 12          # written for a 12-atom structure
-        r = client.post("/api/build/load", json={
-            "text": _XYZ_4C_FRAME0, "filename": "run.xyz",   # 4 atoms
-            "atom_metadata": json.dumps(stale)})
-        assert r.status_code == 400, (
-            "a label block written for a different structure was applied; the "
-            "count guard did not fire"
-        )
-        err = r.get_json()["error"]
-        assert "12" in err and "4" in err, (
-            f"the refusal must say which two counts disagree: {err!r}")
-
-
 # --------------------------------------------------------------------- #
-#  3. Results adapter: /api/watch/load surfaces atom_metadata           #
+#  2. Results adapter: /api/watch/load surfaces atom_metadata           #
 # --------------------------------------------------------------------- #
 
 

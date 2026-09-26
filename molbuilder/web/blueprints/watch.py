@@ -392,19 +392,26 @@ def _frame0_structure(
     try:
         from molbuilder.structure import Structure
         first = frames[0]
+        # THE RUN'S BOX, set as the structure is built (plan § 5q D15): the
+        # block `_run_periodicity_json` composed, under the structure's own
+        # field names -- the cell, the stated 0, the kinds, and a vacuum only
+        # for a run made before the deck record.
+        per = _run_periodicity_json(search_dir, data) or {}
         struct = Structure(
             elements=[str(a[0]) for a in first],
             positions=[[float(a[1]), float(a[2]), float(a[3])] for a in first],
+            cell=per.get("cell"),
+            engine_offset=per.get("engine_offset"),
+            axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
+                       else None),
+            vacuum=(tuple(per["vacuum"]) if per.get("vacuum") is not None
+                    else None),
         )
         meta_json = _atom_metadata_json(search_dir, data)
         if meta_json:
             import json as _json
             from molbuilder.script_emit import apply_atom_metadata
             apply_atom_metadata(struct, _json.loads(meta_json))
-        per = _run_periodicity_json(search_dir, data)
-        if per:
-            from ._shared import apply_periodicity_only
-            struct = apply_periodicity_only(struct, {"periodicity": per})
         info = run_info_for_dir(search_dir) if search_dir else None
         if isinstance(info, dict) and info:
             struct.apply_info_dict(info)

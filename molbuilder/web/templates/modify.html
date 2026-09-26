@@ -854,7 +854,7 @@
             <select id="pv-cell-axis" class="modify-cell-select"
                     aria-label="which lattice vector to set"></select>
             <button id="pv-cell-from-selection" class="modify-ghost" type="button">
-              Use selection
+              Use picked atoms
             </button>
           </div>
           <div class="modify-op-row modify-cell-pick">
@@ -914,14 +914,15 @@
             <input type="number" id="pv-org-c" class="modify-cell-num" step="0.1"
                    aria-label="cell origin z" />
           </div>
-          {#- § 7: one selected atom becomes the corner.  Stages into the three
-              boxes above; Apply at the foot of the panel is the commit. -#}
+          {#- § 7: the first atom picked with the ruler becomes the corner.
+              Stages into the three boxes above; Apply at the foot of the panel
+              is the commit.  Both labels name what they read (plan § 5q D16). -#}
           <div class="modify-op-row modify-cell-pick">
             <button id="pv-org-from-selection" class="modify-ghost" type="button">
-              Use selection
+              Use picked atom
             </button>
             <button id="pv-org-auto" class="modify-ghost" type="button"
-                    title="Clear the origin: the atoms are centred in the cell.">
+                    title="Empty the boxes — Apply centres the atoms.">
               Automatic
             </button>
           </div>

@@ -122,49 +122,6 @@ def issues_to_json(issues, cfg=None):
 # --------------------------------------------------------------------- #
 
 
-def _stated_periodicity(per: Any) -> Dict[str, Any]:
-    """Read what a caller STATED about the box, from a ``periodicity`` block.
-
-    THE ONE READER of that block.  Its four names were spelled out at three
-    separate call sites, which is the only defect there was here: no one place
-    owned the set, so a fifth field would have had to be added three times.
-
-    UNKNOWN KEYS ARE IGNORED, and that is not an oversight.  The block's shape
-    is `Structure.to_wire`'s, which sends the stated values BESIDE the server's
-    own derived answers (`resolved_cell`, `box_corner`, `resolved_vacuum`) so
-    a page can show the box as it will be used.  Reading the names we set and
-    leaving the rest is what lets one shape serve both.
-
-    A stricter reader was tried on 2026-08-04 and reverted the same day.  The
-    reasoning was that `apply_metadata_dict` REFUSES an unknown key, so this
-    should too -- but that reader is on the SIDECAR path, and the sidecar is a
-    FILE.  web-api.md § 1: "the sidecar carries `schema_version` because a file
-    outlives the program that wrote it.  The wire does not: client and server
-    ship together."  An unrecognised key here is our own client disagreeing
-    with our own server in the same build -- a defect to fix in development,
-    not a runtime condition to turn into a 400 for the user.
-
-    (No "kgrid" either: k-grid is a SAMPLING knob on SiestaConfig /
-    TransportConfig, not geometry -- structure-periodicity.md.  One sent here is
-    simply not read.)
-    """
-    if not isinstance(per, dict):
-        return {}
-    out: Dict[str, Any] = {}
-    if per.get("cell") is not None:
-        out["cell"] = per["cell"]
-    # The STATED offset rides with the cell (§ 6.0), so a modify op on a
-    # structure whose origin the person set does not drop it.  Raw, as stored:
-    # `box_corner` beside it is the server's view and is not read back.
-    if per.get("engine_offset") is not None:
-        out["engine_offset"] = per["engine_offset"]
-    if per.get("axis_kind") is not None:
-        out["axis_kind"] = tuple(per["axis_kind"])
-    if per.get("vacuum") is not None:
-        out["vacuum"] = tuple(per["vacuum"])
-    return out
-
-
 def _struct_from_envelope(env: Dict[str, Any]) -> Structure:
     """The inverse, and the same rule: ``Structure.from_dict`` is the ONE
     deserialiser, and it validates through the same ``__post_init__`` a freshly
@@ -1403,64 +1360,6 @@ def checked_periodicity(struct):
         raise PeriodicityRefused(str(exc)) from exc
 
 
-def apply_periodicity_only(struct, body):
-    """Apply what the caller STATED about the box, and check nothing.
-
-    ``body["periodicity"]`` is the block :meth:`Structure.to_wire` sends, and
-    it has TWO halves that read alike and behave nothing alike:
-
-      * ``cell`` / ``engine_offset`` / ``axis_kind`` / ``vacuum`` -- what the
-        caller STATED.  Applied verbatim.  An absent block means the
-        Structure's own defaults (isolated, vacuum unset).
-      * the server's own views -- ``resolved_*`` and ``box_corner`` -- which
-        a page shows as the box will be USED.  They are not read.
-
-    WHICH DOORS TAKE THIS BLOCK, and why only they:
-
-      * ``/api/build/load``'s text branch, and the Results door building frame
-        0 of a run.  Neither has an envelope -- the structure is a file, a
-        paste or a parsed frame -- so a stated block is the only way to say
-        what the box is.  One key, one door, nothing to rank.
-
-    Every other door takes the envelope, where the cell rides in
-    ``structure.metadata`` and reaches the Structure through
-    ``Structure.from_dict``.  Applying this block THERE gave the cell two
-    sources, and the second won: an envelope stating 8 A plus a block stating
-    20 A emitted 20 (fixed 2026-08-04; see
-    :func:`periodicity_checked_for_emit`).  The rule the whole envelope exists
-    for is that a structure crosses ONCE -- web-api.md § 1.
-
-    There is deliberately NO disk-sidecar fallback: a request reflects the model
-    the user is looking at, and inferring state from what happens to be in the
-    request is the exact failure that severed this wire on 2026-06-14 (the
-    label-presence branch silently skipping the sidecar's cell).
-
-    THE APPLYING AND THE JUDGING ARE TWO STEPS, because the same bad box has
-    two right answers depending on what the request is FOR (user decision,
-    2026-08-03):
-
-      * a request that GENERATES something you would run -- an .fdf, a PySCF
-        script, a transport or spectra job, an exported document -- is REFUSED.
-        Those parameters have to be right; there is no point emitting a
-        calculation nobody can trust.
-      * a request that LOADS or MODIFIES a structure carries on, and the
-        problem is REPORTED with the answer, so the user can look at it, fix it
-        in the Cell page, and be checked again.  Refusing here would leave a
-        structure with a bad box unfixable through the UI -- you could not even
-        open it to correct it.
-
-    So this half applies; :func:`periodicity_checked_for_emit` adds the refusal
-    for the first kind of door, and :func:`ok_structure_response` reports for
-    the second.
-    """
-    stated = _stated_periodicity(body.get("periodicity"))
-    if stated:
-        for field, value in stated.items():
-            setattr(struct, field, value)
-        struct.__post_init__()          # the ONE validator, on the final shape
-    return struct
-
-
 def periodicity_checked_for_emit(struct):
     """REFUSE a bad box -- the emitting doors.  Checks; applies nothing.
 
@@ -1470,24 +1369,10 @@ def periodicity_checked_for_emit(struct):
     passes through rather than an optional check.  A refusable cell raises
     :class:`PeriodicityRefused`, which the app turns into the door's 400.
 
-    WHY IT NO LONGER APPLIES ANYTHING (2026-08-04).  This ran
-    ``apply_periodicity_only(struct, body)`` first, which reads a TOP-LEVEL
-    ``body["periodicity"]`` and writes it over the structure -- so an emit
-    request had TWO places to say what the box was, and the second one won:
-    an envelope stating an 8 A cell plus a top-level block stating 20 A
-    emitted 20.  Measured, not inferred.
-
-    That is the cell wearing the shape the LABELS wore until the day before
-    (#41): two sources, silently ranked, with no rule that could work -- "the
-    envelope stated no cell" and "the envelope stated a different cell" are the
-    same input to any precedence rule you can write.  No emit caller was
-    sending the top-level key (the tabs send ``molview.exportFile()``, whose
-    cell rides in ``metadata``), so nothing was being mis-emitted; a reader for
-    a shape nobody sends is exactly how the label version stayed invisible.
-
-    ``apply_periodicity_only`` REMAINS, and is right, on ``/api/build/load``:
-    that door takes a structure as TEXT, so there is no envelope and a stated
-    block is the only way to say what the box is.  One key, one door, no rank.
+    THE BOX ARRIVES IN THE ENVELOPE AND NOWHERE ELSE: a structure crosses
+    once (web-api.md § 1), so a second place to say what the box is would be
+    two sources silently ranked -- the shape that once emitted a 20 Å cell
+    for an envelope stating 8.
     """
     checked, _conditions = checked_periodicity(struct)
     return checked

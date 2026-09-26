@@ -139,16 +139,17 @@ def _normalised_dict(
     }
 
 
-def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
+def load_text(text: str, *, source: str = "<sidecar>",
+              retired_out: "Dict[str, Any] | None" = None) -> Dict[str, Any]:
     """Parse + validate a sidecar JSON **string** (the same strict checks
     as :func:`_load`, minus the file read).  Returns the normalised dict.
+    ``source`` names the origin for error messages (a path when called from
+    :func:`_load`, a placeholder for in-body content).
 
-    Used by ``/api/build/load``: the browser reads the ``.molstruct.json``
-    file's bytes through the concealed projects file package
-    (``projects.readFile``) and hands the CONTENT to the parse seam, which
-    validates from a string rather than re-reading a path.  ``source`` names
-    the origin for error messages (a path when called from :func:`_load`, a
-    placeholder for in-body content).
+    ``retired_out``, when a dict is passed, receives each retired key the file
+    carried WITH A VALUE (``structure.RETIRED_METADATA_KEYS``): read and
+    ignored, never applied -- and a door that opens the file for a person can
+    say so (the load door names a dropped ``cell_origin``, plan § 5q D14).
 
     Validation is strict: missing required fields, wrong types, out-of-range
     indices, and unknown schema version all raise :class:`MolstructJsonError`.
@@ -240,6 +241,9 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
             f"metadata the writer thinks it saved. Known keys: "
             f"{sorted(known)!r}"
         )
+    if retired_out is not None:
+        retired_out.update({k: data[k] for k in RETIRED_METADATA_KEYS
+                            if data.get(k) is not None})
 
     # Re-validate regions + frozen_atoms via _normalised_dict.  This
     # catches malformed user-edited JSON BEFORE any consumer tries to
@@ -267,7 +271,8 @@ def load_text(text: str, *, source: str = "<sidecar>") -> Dict[str, Any]:
         raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
 
 
-def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
+def _load(sidecar_path: Union[str, Path], *,
+          retired_out: "Dict[str, Any] | None" = None) -> Dict[str, Any]:
     """Read + validate a sidecar JSON from a PATH.  Reads the bytes, then
     delegates to :func:`load_text` for the parse + strict validation."""
     sidecar_path = Path(sidecar_path)
@@ -279,7 +284,7 @@ def _load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
         raise MolstructJsonError(
             f"failed to read sidecar {sidecar_path}: {exc}"
         ) from exc
-    return load_text(text, source=str(sidecar_path))
+    return load_text(text, source=str(sidecar_path), retired_out=retired_out)
 
 
 class MolstructSidecarFileParser(FileParser):

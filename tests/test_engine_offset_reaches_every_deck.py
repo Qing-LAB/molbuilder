@@ -292,6 +292,9 @@ def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
     assert "outside the cell" in said, said
     assert "a (isolated): atom(s) 2 " in said, said
     assert "b (" not in said and "c (" not in said, said
+    # Under the hand-off's own id: the Cell page warned of the same atom as
+    # `cell.atoms_outside`, and one id carries one severity (plan § 5q D11).
+    assert "[deck.atoms_outside]" in said, said
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])

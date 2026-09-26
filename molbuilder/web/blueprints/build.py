@@ -708,19 +708,34 @@ def api_build_load():
             return jsonify({"ok": False, "error": exc.message}), exc.status
         if not _resolved.exists():
             return jsonify({"ok": False, "error": f"no such file: {_path}"}), 404
+        retired: Dict[str, Any] = {}
         try:
-            struct = StructureCodec().read(_resolved)
+            struct = StructureCodec().read(_resolved, retired_out=retired)
         except Exception as exc:  # noqa: BLE001 -- parse/sidecar error -> 400
             return jsonify(
                 {"ok": False, "error": f"could not load {_path}: {exc}"}), 400
-        # No `notices` passed: `ok_structure_response` validates every structure
-        # it sends, so the conditions for THIS one are produced on the way out.
-        # The codec used to hand its own copy of them up as well, and the load
-        # door answered with the same sentence twice.
+        # The conditions for THIS structure are produced on the way out by
+        # `ok_structure_response`, which validates every structure it sends.
+        # What only the read knows is a retired corner it did not apply: said
+        # here, naming it, because a person who typed it assigns it again on
+        # the Cell page (plan § 5q D14).
+        said = []
+        if retired.get("cell_origin") is not None:
+            from molbuilder.issues import Issue
+            from molbuilder.periodicity_gate import notices_for_report
+            corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
+            said = notices_for_report([Issue(
+                "info",
+                f"This file stored a box origin ({corner}) the way molbuilder "
+                f"no longer reads it, so it was not applied: the atoms are "
+                f"centred in the cell (Automatic). If you placed the box "
+                f"there, set the origin again on the Cell page.",
+                "cell.origin_retired")])
         return ok_structure_response(struct, extra={
             "source_format": ("pdb" if str(_resolved).lower().endswith(".pdb")
                               else "xyz"),
             "title": struct.title or _resolved.name,
+            **({"notices": said} if said else {}),
         })
 
     # A STRUCTURE PUT BACK, with no file and no text behind it.  A tab that
@@ -737,23 +752,11 @@ def api_build_load():
             return jsonify({"ok": False,
                             "error": f"could not restore structure: {exc}"}), 400
         # THE BOX CAME IN THE ENVELOPE, like everything else about these atoms,
-        # and `from_dict` applied it.  Nothing more to apply.
-        #
-        # This ran `apply_periodicity_only(struct, _pbody)` here, which reads a
-        # TOP-LEVEL `periodicity` and writes it over what the envelope just set
-        # -- a second source for the cell on a route that had already taken a
-        # first (2026-08-04, the same shape the labels wore in #41).  It could
-        # not fire from the shipped client: `requestBodyFor` RETURNS on the
-        # structure branch, so a restore body cannot carry both keys.  A reader
-        # nobody can currently reach is still a reader; that is exactly how the
-        # label version stayed invisible for months.
-        #
-        # It is still applied on the TEXT branch below, and is right there: that
-        # body has no envelope, so a stated block is the only way to say what
-        # the box is.  A load APPLIES rather than refuses either way -- a bad
-        # box is reported with the answer (`ok_structure_response`) so the user
-        # can open the structure and fix it in the Cell page.  Refusing would
-        # make a structure with a bad box unopenable, and so unfixable.
+        # and `from_dict` applied it.  Nothing more to apply.  A load APPLIES
+        # rather than refuses -- a bad box is reported with the answer
+        # (`ok_structure_response`) so the user can open the structure and fix
+        # it in the Cell page; refusing would make it unopenable, and so
+        # unfixable.
         return ok_structure_response(struct, extra={
             "source_format": "xyz",
             "title": struct.title or "restored structure",
@@ -762,47 +765,14 @@ def api_build_load():
     text: str = ""
     fmt: str = "auto"
     filename: str = ""
-    # The TRUSTED per-atom metadata block (regions / frozen / annotations)
-    # a results-side caller recovered from a run's input script's
-    # ATOM-METADATA block (parse/dirs/atom_metadata.py) -- NOT a standalone
-    # .molstruct.json file.  Distinct from ``sidecar`` because it is
-    # molbuilder's own emit and by design omits the sidecar-file envelope
-    # (structure_hash), so it is applied via ``apply_to_structure`` (lenient,
-    # atom-count-only), never validated through ``load_text``.  Carries only
-    # atom-scoped keys, so the parsed geometry / cell above stay intact.
-    atom_metadata_text: str = ""
-    # WHAT THE CALLER KNOWS ABOUT THESE ATOMS THAT IS NOT THE ATOMS
-    # (`archive/2026-09-01-structure-info-plan.md`, `web/molview.md` § 8.4a): the free
-    # ``info`` store, a dict of key -> value that DESCRIBES the structure.
-    # § 8.4a states it "rides installMolecule in and exportFile out", and
-    # this is the in: a text load parses a file, and a file being parsed
-    # carries no store, so a host that knows one states it here.
-    #
-    # A FIELD OF ITS OWN, for the same reason ``periodicity`` is one: it
-    # is a different fact from a different place.  The caller is a tab
-    # showing a finished run -- the labels come from the run's input
-    # script, the cell from its output logs, and this from the deck's
-    # stated parameters (``parse.dirs.run_info``).  Every future metadata
-    # category is a KEY inside it and costs nothing here.
-    #
-    # The other two ways in already carry it: the ``path`` branch reads
-    # it out of the pair's ``.molstruct.json`` through the codec, and the
-    # ``structure`` restore branch out of the envelope through
-    # ``from_dict``.  The text branch was the one door that dropped it.
-    info_block: Any = None
-    # The periodicity seam below reads this for every path through the route.
+    # THE TEXT CARRIES ATOMS, AND ONLY ATOMS (plan § 5q D15).  Three side
+    # blocks stood here -- `atom_metadata`, `periodicity`, `info` -- to hand
+    # back what a browser-written XYZ could not hold, for the Results tab.
+    # That tab installs the server's own envelope now, so nothing sent them;
+    # the one caller left is the component demo's sample XYZ.
     body: Dict[str, Any] = request.get_json(silent=True) or {}
     text = body.get("text") or ""
     filename = body.get("filename") or ""
-    atom_metadata_text = body.get("atom_metadata") or ""
-    info_block = body.get("info")
-    # A MULTIPART BRANCH STOOD HERE, and `format` and `sidecar` were read
-    # beside these -- all three gone 2026-09-07 with no caller, ever.  The only
-    # `FormData` in the whole front end targets `/api/files/upload`; `format`
-    # and `sidecar` appear in no production code and in no test, while both
-    # were documented as live parameters of this door.  `fmt` stays "auto":
-    # every real caller was already sniffed, by filename extension then by
-    # content.
 
     if not text.strip():
         return jsonify({"ok": False, "error": "empty input"}), 400
@@ -831,88 +801,6 @@ def api_build_load():
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
-
-    # THE SIDECAR BLOCK STOOD HERE and is gone (2026-09-07).  It applied a
-    # `.molstruct.json` whose CONTENT the browser had read and handed in --
-    # a real capability with, it turned out, no caller: no production JS and
-    # no test ever sent `sidecar`, in the whole life of the parameter.  The
-    # browser reads a pair by handing the SERVER the path (`{path}`), which
-    # goes through `StructureCodec` and picks the sidecar up on the way.
-
-    # Trusted per-atom metadata block (see ``atom_metadata_text`` above):
-    # apply the SAME regions / frozen / annotations fields onto the parsed
-    # Structure via the lenient seam.  ``apply_to_structure`` re-runs its
-    # own atom-count + index validation and raises MolstructJsonError on a
-    # mismatch (surfaced as a 400, same as the sidecar path).  The block is
-    # trusted JSON, so it is parsed directly -- NOT through ``load_text``,
-    # which would reject it for lacking the untrusted-file envelope.
-    # ONE READER for this block, `script_emit.apply_atom_metadata` -- the
-    # same one the transport composite uses.  Until 2026-09-05 this door read
-    # it through the SIDECAR's `apply_to_structure` instead, so the same
-    # finished run kept its labels through one door and lost them through the
-    # other.
-    #
-    # Two refusals, and only two: malformed JSON is a broken REQUEST, and
-    # `MolstructPairingError` means the block was written for a DIFFERENT
-    # structure -- labels are indexed by atom position, so applying it would
-    # label the wrong atoms silently.
-    if atom_metadata_text.strip():
-        import json as _json
-
-        from molbuilder.script_emit import apply_atom_metadata
-        from molbuilder.sidecars.molstruct import MolstructPairingError
-        try:
-            _payload = _json.loads(atom_metadata_text)
-        except _json.JSONDecodeError as exc:
-            return jsonify({"ok": False,
-                            "error": f"atom_metadata: not valid JSON: {exc}"}), 400
-        try:
-            apply_atom_metadata(struct, _payload)
-        except MolstructPairingError as exc:
-            return jsonify({"ok": False,
-                            "error": f"atom_metadata: {exc}"}), 400
-
-    # THE PERIODICITY THE CALLER STATED: ``body["periodicity"]`` =
-    # {cell, engine_offset, axis_kind, vacuum}, applied verbatim.
-    #
-    # APPLIED, NOT JUDGED.  This is a LOAD, so a bad box is REPORTED with the
-    # answer rather than refused -- the emitting doors (fdf / pyscf / preflight
-    # / spectra / transport / export) are the ones that refuse, because what
-    # they produce is a calculation somebody runs.  A load that refused would
-    # leave a structure with a bad box unopenable, and so unfixable: the user
-    # could not even get it on screen to correct it.
-    #
-    # WHY IT IS A FIELD OF ITS OWN and not folded into the metadata block above.
-    # A run has no `.molstruct.json`: the Results tab recovers its labels from
-    # the input script and its lattice from the output logs -- two facts from
-    # two places.  Folding the lattice into the labels document meant the
-    # browser opening a document the server wrote, and re-stamping the atom
-    # count that guards it.
-    #
-    # AFTER the sidecar / atom_metadata application, never before:
-    # ``apply_metadata_dict`` is full-REPLACE, so a block applied second would
-    # reset the cell this just set.
-    from ._shared import apply_periodicity_only
-    struct = apply_periodicity_only(struct, body)
-
-    # THE ``info`` STORE THE CALLER STATED (see ``info_block`` above).
-    # Applied last, and it disturbs nothing applied before it: ``info`` is
-    # not part of the structure, so no seam above reads it and
-    # ``structure_hash`` does not cover it (`model/structure-molstruct.md`
-    # § 3).  What last DOES settle is the one overlap -- a ``sidecar``
-    # carries a store of its own, and a caller that states both means the
-    # stated one, which is the same precedence a stated ``periodicity``
-    # has over a sidecar's cell.
-    #
-    # REFUSED rather than coerced when it is not a dict: a non-dict store
-    # is a caller bug, and dropping it silently is how the labels went
-    # missing for months at HTTP 200.
-    if info_block is not None:
-        if not isinstance(info_block, dict):
-            return jsonify({"ok": False,
-                            "error": "info: must be an object of "
-                                     "key -> value"}), 400
-        struct.apply_info_dict(info_block)
 
     # Workspace-state Phase 2 migration (2026-06-07): route through
     # the canonical ``ok_structure_response`` helper.  Per-atom

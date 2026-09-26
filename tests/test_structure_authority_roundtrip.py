@@ -234,20 +234,11 @@ def test_derived_structure_round_trips_with_cell_still_null(tmp_path):
     assert back.vacuum == (3.0, 3.0, 3.0)
 
 
-def test_to_wire_derived_keeps_cell_null_and_resolves_view():
-    """Truth vs view never conflated on the wire for the DERIVED case."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    s = Structure(elements=["H", "H"],
-                  positions=np.array([[10.0, 10.0, 10.0],
-                                      [12.0, 10.0, 10.0]]),
-                  vacuum=(2.5, 2.5, 2.5))
-    per = s.to_wire()["periodicity"]
-    assert per["cell"] is None
-    assert np.allclose(np.diag(np.array(per["resolved_cell"])),
-                       [7.0, 5.0, 5.0])
-    assert per["engine_offset"] is None
-    assert np.allclose(per["box_corner"], [7.5, 7.5, 7.5])
+# `test_to_wire_derived_keeps_cell_null_and_resolves_view` RETIRED 2026-09-25:
+# `tools/verify_subsumption.py` confirmed it on all 12 informative mutants
+# against `test_periodicity_gate.py::TestTheDefaultVacuumGap::test_the_wire_carries_unset_and_the_resolved_view`,
+# and it held the last literal corner `[7.5, 7.5, 7.5]` plan § 5q.4 lists for
+# retirement.
 
 
 def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
@@ -293,8 +284,8 @@ def test_save_endpoint_gates_a_corrupted_blob_without_inventing_an_origin(
         assert "cell_origin" not in side
         assert side["engine_offset"] is None
         back = StructureCodec().read(sdir / "m.xyz")
-        from molbuilder import cell as _cell
-        assert np.allclose(_cell.resolve(back).corner, [7.5, 6.5, 6.5])
+        assert np.allclose(back.to_wire()["periodicity"]["box_corner"],
+                           [7.5, 6.5, 6.5])
     finally:
         set_capabilities(None)
 
@@ -506,8 +497,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
                          axis_kind=("periodic", "periodic", "isolated"),
                          vacuum=(0.0, 0.0, 0.0),
                          engine_offset=np.array([1.0, 1.0, 5.0]))
-        out = append_structure(canvas, slab)
-        out = out[0] if isinstance(out, tuple) else out
+        out, notes = append_structure(canvas, slab)
         assert out.vacuum == (8.0, 8.0, 8.0), \
             "the fragment's vacuum replaced the one the user typed"
         assert out.axis_kind == ("isolated", "isolated", "isolated"), \
@@ -521,10 +511,11 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             "the only lattice in play was not adopted at all"
         assert np.allclose(out.cell, np.diag([2.88, 2.88, 20.])), \
             f"the adopted lattice is not the slab's: {out.cell}"
-        # The offset comes WITH the cell it was stated against
-        # (`structure-periodicity.md` § 6.0, *A stated offset*).
-        assert out.engine_offset is not None and np.allclose(
-            out.engine_offset, [1.0, 1.0, 5.0]), out.engine_offset
+        # The slab's stated offset described its coordinates BEFORE the
+        # append centred them, so it does not ride in with the cell: the box
+        # centres on the joined atoms, and the append says so (plan § 5q D9).
+        assert out.engine_offset is None, out.engine_offset
+        assert any("stated origin was dropped" in n for n in notes), notes
 
     def test_append_takes_the_contract_from_the_structure_APPENDED_TO(self):
         """Not from whichever structure happens to carry the cell --

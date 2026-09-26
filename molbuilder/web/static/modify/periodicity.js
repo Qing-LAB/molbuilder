@@ -263,7 +263,7 @@ export function init(viewer) {
         if (!box || document.activeElement === box) return;
         box.value = round(norm(stagedCell()[chosenAxis()]));
     }
-    /* Both "Use selection" buttons say what they need and why they cannot run,
+    /* Both "Use picked…" buttons say what they need and why they cannot run,
      * because a disabled button with no reason is a dead end. */
     /* THE CELL PAGE TURNS THE RULER ON, AND SAYS SO (molview.md § 11.6).
      *

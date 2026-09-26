@@ -2039,12 +2039,22 @@ def estimate_dipole_moment_debye(struct: Structure,
     """Magnitude of the heuristic molecular dipole, in Debye.
 
     Uses :func:`estimate_partial_charges` and computes
-    ``|sum(q_i * r_i)|`` with positions in Å and charges in
+    ``|sum(q_i * (r_i - r_com))|`` with positions in Å and charges in
     elementary units, converting via `constants.DEBYE_E_ANGSTROM`.
+
+    ABOUT THE CENTRE OF MASS (plan § 5q D8): an ion's dipole depends on the
+    origin (`science/normal-modes.md` § 4a.5), and a deck hands the validators
+    the molecule placed in its box, half a box from where it was drawn -- so
+    ``sum(q_i * r_i)`` measured the box, not the molecule (formate, charge
+    -1 in a 10 Å vacuum: 88.8 D placed, 1.4 D as drawn).  For a neutral
+    molecule the origin cancels and this is the same number.
     """
     if struct.n_atoms == 0:
         return 0.0
     q = estimate_partial_charges(struct, total_charge)
-    p = (q[:, None] * struct.positions).sum(axis=0)   # e·Å
+    pos = struct.positions.astype(float)
+    m = np.array([atomic_mass(e) for e in struct.elements], dtype=float)
+    com = (m[:, None] * pos).sum(axis=0) / m.sum()
+    p = (q[:, None] * (pos - com)).sum(axis=0)   # e·Å
     from .constants import DEBYE_E_ANGSTROM
     return float(np.linalg.norm(p) * DEBYE_E_ANGSTROM)   # -> Debye
