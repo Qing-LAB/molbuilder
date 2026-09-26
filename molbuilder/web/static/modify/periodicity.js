@@ -1,9 +1,8 @@
-/* Modify tab -- the Cell op-tab's per-GROUP periodicity editors.
+/* Modify tab -- the Cell op-tab's periodicity editor.
  *
  * Contract: docs/model/structure-periodicity.md § 7; docs/web/molview.md § 9.3.
- * Owns:     the form. One Update button per group (vacuum / periodicity / unit
- *           cell / origin) so each can independently stay at its default or be
- *           committed. Editing a field only stages; the button commits.
+ * Owns:     the form. Editing a field only stages; one Apply sends the whole
+ *           cell as the gate's `block` op (structure-periodicity.md § 4.1).
  * Called by: modify/selection-bootstrap.js, which mounts the viewer and hands it
  *           here. Nothing self-starts.
  *
@@ -14,11 +13,6 @@
  * So "this value is a default" is "the raw read is null while the effective read
  * has one". The server works the cell out once and sends both halves; nothing here
  * decides which values are defaults, because a second opinion is a second resolver.
- *
- * This used to ask for getVacuumInfo / getAxisKindInfo / getUnitCellOriginInfo and
- * read `.isDefault` off them. None of those has ever existed. Every call was
- * written `w.getVacuumInfo ? … : fallback`, so the panel showed "(default)" on
- * every row for every structure instead of failing.
  *
  * (k-grid is NOT here: it is a reciprocal-space sampling knob on the config, not
  * geometry.)
@@ -60,7 +54,16 @@ export function init(viewer) {
         var w = data();
         return !!(w && w.getStructure());
     }
-    function round(n) { return Math.round(Number(n) * 1000) / 1000; }
+    /* ONE ROUNDING, AT THE 6th DECIMAL (user, 2026-09-25: "let's make it a
+     * fixed rule: rounding happens at 6th digit").  Every number this page
+     * shows it can also re-send -- Apply reads the boxes back -- so the
+     * rounding is part of what gets stored.  At the 6th decimal it is off by
+     * at most 5e-7 Å, half the hand-off's own tolerance (1e-6 Å,
+     * `cell.PLACED_TOL_ANG`), so a re-sent lattice, vacuum or origin cannot
+     * carry an atom past a face by what the deck refuses.  Three decimals is
+     * wrong when an atom bounds the structure: it put one 1.6e-5 Å past the
+     * face on 2026-09-25 (model/structure-periodicity.md § 6.0). */
+    function round(n) { return Math.round(Number(n) * 1e6) / 1e6; }
     function setIdle(el, val) {
         if (el && document.activeElement !== el) el.value = val;
     }
@@ -130,12 +133,12 @@ export function init(viewer) {
     /* ── Taking a value off the STRUCTURE instead of the keyboard (§ 7) ──
      *
      * Both gestures STAGE.  They write into the very inputs a user could have
-     * typed, and the group's own Update button remains the only thing that
-     * commits -- so what is about to be sent is on screen first, and there is
-     * no second commit path for the gate to stand in front of.
+     * typed, and Apply remains the only thing that commits -- so what is about
+     * to be sent is on screen first, and there is no second commit path for
+     * the gate to stand in front of.
      */
 
-    //: The nine inputs as a matrix.  A blank box is 0, exactly as Update reads it.
+    //: The nine inputs as a matrix.  A blank box is 0, exactly as Apply reads it.
     function stagedCell() {
         var m = [];
         for (var r = 0; r < 3; r++) {
@@ -437,13 +440,10 @@ export function init(viewer) {
         var hint = $("pv-empty-hint");
         if (hint) hint.hidden = has;
         panel.querySelectorAll("fieldset").forEach(function (fs) { fs.disabled = !has; });
-        /* THE TWO ACTIONS ARE NOT IN A FIELDSET, so the sweep above does not
-         * reach them.  The four "Update ..." buttons they replaced each sat
-         * inside the group they committed and went dead with it; one commit
-         * for the whole panel has nowhere to sit but outside, and would
-         * otherwise stay live over an empty canvas -- offering to apply a box
-         * to no atoms, which the gate refuses in a sentence nobody should have
-         * had to read. */
+        /* THE TWO ACTIONS ARE NOT IN A FIELDSET -- one commit for the whole
+         * panel sits outside every group -- so the sweep above does not reach
+         * them, and they would otherwise stay live over an empty canvas,
+         * offering to apply a box to no atoms. */
         ["pv-apply", "pv-revert"].forEach(function (id) {
             var b = $(id);
             if (b) b.disabled = !has;
@@ -462,9 +462,7 @@ export function init(viewer) {
         var rawVacuum = w.getVacuum();
 
         // An EXPLICIT cell is the source of truth: vacuum is inert (the box comes
-        // back verbatim) and "Use default" is invalid for a periodic/transport axis
-        // (you cannot derive a commensurate lattice from a bounding box -- clearing
-        // it would make the box DISAPPEAR).  Read first so the groups below react.
+        // back verbatim).  Read first so the groups below react.
         var explicitCell = rawCell !== null;
         var axes = used.axis_kind || [];
 
@@ -505,15 +503,9 @@ export function init(viewer) {
         // With an explicit cell it grows nothing, so the group says so instead of
         // silently doing nothing.
         tag("pv-vac-tag", explicitCell ? false : !rawVacuum);
-        // Vacuum edits are ALLOWED under an explicit cell -- they reset the box to
-        // the derived regime (confirm-gated in wire()).  The note warns; the button
-        // stays enabled.
-        // INERT, AND SHOWN TO BE.  The note appears, and the three inputs dim,
-        // so the row does not look like an editable number that will move the
-        // box -- it will not; an explicit cell IS the box
-        // (structure-periodicity.md § 6.1a, matrix A).  They stay ENABLED on
-        // purpose: typing here is how you go back to the derived regime, which
-        // is a real thing to want and is confirm-gated in wire().
+        // Under an explicit cell the vacuum group is hidden (`renderRegime`):
+        // the cell IS the box (structure-periodicity.md § 6.1a, matrix A), and
+        // the way back to a derived box is the switch at the top of the panel.
         /* THE SWITCH IS SET FROM THE STRUCTURE, never the other way round.
          * `cell === null` IS the derived regime -- there is no stored flag to
          * read and none to keep in step (structure-periodicity.md § 6.1).
@@ -559,7 +551,6 @@ export function init(viewer) {
          * reach for it, with a tooltip as the only explanation.  Choosing
          * "derived" beside an axis that needs a lattice is refused by the one
          * gate, in a sentence, on Apply. */
-        // § 6.2 v3: no calibrate button — emission translates implicitly.
 
         // § 6.0: the box's origin -- the corner it is drawn from, the server's
         // `box_corner`.  Typing it assigns the origin (stored as the offset);
@@ -578,11 +569,9 @@ export function init(viewer) {
                 var f = $(id);
                 if (!f) return;
                 f.placeholder = String(round(ov[i] || 0));
-                /* AN ASSIGNED ORIGIN IS SHOWN IN FULL, because Apply re-sends
-                 * what the box holds: a value rounded for display came back as
-                 * a different origin on every Apply -- up to 5e-4 Å off, where
-                 * the deck's containment is 1e-6 Å (§ 6.0). */
-                setIdle(f, rawOrigin === null ? "" : String(rawOrigin[i] || 0));
+                /* An assigned origin at the page's one rounding, like every
+                 * value Apply re-sends (`round` above). */
+                setIdle(f, rawOrigin === null ? "" : String(round(rawOrigin[i] || 0)));
             });
             tag("pv-org-tag", rawOrigin === null);
         }
@@ -680,8 +669,20 @@ export function init(viewer) {
                 var el = $(id);
                 return el && String(el.value).trim() !== "" ? Number(el.value) : null;
             });
-            if (typed.every(function (v) { return v !== null && isFinite(v); })) {
+            var given = typed.filter(function (v) { return v !== null; });
+            if (given.length === 3 && given.every(isFinite)) {
                 payload.box_corner = typed;
+            } else if (given.length) {
+                /* A HALF-TYPED OR MISTYPED CORNER IS REFUSED, here, before
+                 * anything is sent: read as Automatic it would clear an origin
+                 * the person is in the middle of stating. */
+                var notify = (window.molbuilder || {}).notify;
+                if (notify && notify.show) {
+                    notify.show({ id: "periodicity-error", level: "error",
+                                  message: "Type all three origin numbers, or "
+                                         + "leave all three blank for Automatic." });
+                }
+                return Promise.resolve();
             }
         }
         return commitOp("block", payload);
@@ -806,13 +807,12 @@ export function init(viewer) {
              * at all — the user asked for exactly this value — and
              * `setStagedRow` above already writes directly, so going the other
              * way would make the two gestures differ for no reason. */
-            // THE ATOM'S OWN POSITION, unrounded: an origin set on the atom that
-            // bounds the structure must put it ON the face, not 1.6e-5 Å past it
-            // -- the rounding that made TranSIESTA refuse the 2026-09-25
-            // device (model/structure-periodicity.md § 6.0).
+            // THE ATOM'S OWN POSITION at the page's one rounding (`round`
+            // above): an origin set on the atom that bounds the structure puts
+            // it on the face to within half the deck's tolerance.
             ["a", "b", "c"].forEach(function (ax, i) {
                 var box = $("pv-org-" + ax);
-                if (box) box.value = String(pos[0][i]);
+                if (box) box.value = String(round(pos[0][i]));
             });
         });
 
@@ -820,8 +820,6 @@ export function init(viewer) {
          * read by `applyCell` through `stagedCell()` -- the same reader the
          * length box and the handedness note already use -- so what the note
          * describes and what Apply sends cannot differ. */
-        // § 6.2 v3: no calibrate handler — coordinate rewrites are not a
-        // periodicity edit; the engine gets the atoms placed at emission.
     }
 
     function start() {

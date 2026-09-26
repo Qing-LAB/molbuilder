@@ -393,7 +393,7 @@ either nagging or dangerous:
   `None`; `pbc` is its derived view and collapses `transport` into the same
   `True` as `periodic` — both are wrong for a gas-phase script, but a check
   written on `pbc` alone could not tell a lead from a crystal axis, which
-  `cell.kgrid` depends on.
+  `config.kgrid` depends on.
 
 * **Does the k-grid contradict the axes?** — `config.kgrid`, **warnings**,
   under one rule *(user, 2026-08-20)*: **`k > 1` is the user's explicit

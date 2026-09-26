@@ -754,9 +754,9 @@ export function create(hostEl, opts) {
             paint();
         },
 
-        // The cell is lattice + the world-space CORNER the box is anchored at.
-        // For a bbox-plus-vacuum cell the anchor is (atom_min - vacuum) so the
-        // box WRAPS the atoms rather than starting at the world origin.
+        // The cell is lattice + the world-space CORNER the box is anchored at:
+        // the server's `box_corner` (structure-periodicity.md § 6.0), never
+        // computed here.
         setCell(cell) {
             if (state.disposed) return;
             state.cellShapes = clear(state.cellShapes);

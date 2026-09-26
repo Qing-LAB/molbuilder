@@ -1072,6 +1072,14 @@ function _resetPerFolderState() {
         const box = $(id);
         if (box) box.value = "";
     }
+    /* THE PREP PLAN AND THE FILE LIST ARE THIS FOLDER'S TOO: a refresh the
+     * last folder scheduled is cancelled, one in flight is discarded, and
+     * both cards stay hidden until this folder's description paints them
+     * -- a hand-over showed the previous calculation's plan and files. */
+    if (_planTimer) { clearTimeout(_planTimer); _planTimer = null; }
+    _planSeq++;
+    { const plan = $("ts-plan"); if (plan) plan.hidden = true; }
+    hideWritten();
 }
 
 
@@ -2273,7 +2281,7 @@ function renderNext(task) {
         block.appendChild(el("p", { class: "hint" },
             "Run it \u2014 at what the card above says. What no row states "
             + "is sized from the target's own width, or refused if that "
-            + "target has no record. Add --np / --omp / --time to override."));
+            + "target has no record. Add --np / --cpus-per-task / --time to override."));
         block.appendChild(el("pre", { class: "ts-cmd" },
             // The bundle is NAMED, from the projects root, so the line
             // works from wherever the user is standing

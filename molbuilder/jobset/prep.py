@@ -805,8 +805,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                      f"the deck's coordinates, in that run's cell")
     # THE ENGINE'S COORDINATES STATE THE ENGINE'S ORIGIN -- 0, set together
     # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
-    # applies nothing.  The rule re-centred them until 2026-09-25, moving the
-    # relaxed geometry by the change in its span: -0.0168 Å on the H2 e2e.
+    # applies nothing: the rule would re-centre them, moving the relaxed
+    # geometry by the change in its span (-0.0168 Å on the H2 e2e).
     return (struct.replace(positions=np.asarray(last.structure.positions,
                                                 dtype=float),
                            engine_offset=np.zeros(3)),

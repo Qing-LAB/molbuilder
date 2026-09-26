@@ -854,9 +854,6 @@ class SiestaConfig:
     # alongside SystemLabel / pseudo / spin.  Kills the "Output &
     # positioning" section as a separate untagged surface (the user
     # was hunting for these knobs at the bottom of the form).
-    # (center_in_vacuum and wrap_into_cell removed: where the atoms sit in the
-    # cell is one rule, the engine offset -- structure-periodicity.md § 6.0 --
-    # and a per-atom wrap can cut a device at its widest gap.)
 
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,

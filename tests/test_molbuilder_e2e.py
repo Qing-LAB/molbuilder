@@ -630,12 +630,10 @@ def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
     assert abs(length - 12.0) < 1e-3, f"length not set: {after} -> {length}"
 
     # SAME DIRECTION, to the precision the panel writes.  Every staged number is
-    # rounded to 3 dp, because the input IS the value that will be sent and a
-    # kept-behind unrounded copy would be a second home for it -- so the scaled
-    # components' ratios agree to ~1e-4, not to machine precision.  The honest
-    # assertion is therefore the ANGLE between the two vectors, not the equality
-    # of their ratios; the first version of this test asserted the latter and
-    # failed on a rescaling that had turned the axis by 2e-5 degrees.
+    # rounded at the 6th decimal -- the page's one rounding, because the input
+    # IS the value that will be sent -- so the scaled components' ratios agree
+    # to ~1e-7, not to machine precision.  The honest assertion is therefore the
+    # ANGLE between the two vectors, not the equality of their ratios.
     dot = sum(x * y for x, y in zip(before, after))
     mags = (sum(v * v for v in before) ** 0.5) * length
     assert dot / mags > 1 - 1e-6, (
@@ -644,7 +642,7 @@ def test_setting_a_length_keeps_the_direction(page, flask_server, labelled_xyz):
         f"rescaling flipped a component: {before} -> {after}")
 
 
-def test_one_picked_atom_becomes_the_cell_origin(page, flask_server,
+def test_one_picked_atom_becomes_the_box_origin(page, flask_server,
                                                  labelled_xyz):
     """§ 7: *Use selection* beside the origin boxes puts the corner the box is
     drawn from on the selected atom.  Staged, like the other one."""
@@ -690,6 +688,12 @@ def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
     MolView's Origin row (molview § 9.3, `getUnitCellOrigin`).  Automatic is a
     gesture too, since once something is typed there is otherwise no way back
     to nothing.
+
+    And what an Apply re-sends is what was typed, to the page's one rounding
+    at the 6th decimal (§ 7): a six-decimal lattice length and origin come
+    back exactly, through a second Apply as well.  At three decimals they came
+    back altered, which is how a re-sent corner once put an atom 1.6e-5 Å past
+    a face (§ 6.0).
     """
     _open(page, flask_server)
     _load(page, labelled_xyz)
@@ -702,13 +706,22 @@ def test_an_origin_is_assigned_on_a_typed_cell_and_automatic_returns(
     assert "default" in page.locator("#pv-org-tag").inner_text().lower()
     assert "(default)" in _origin_row(page)
 
+    page.locator("#pv-cell-grid input").nth(0).fill("12.345678")
     for b in org:
-        b.fill("-1")
+        b.fill("-1.234567")
     _apply_and_wait(page)
-    assert [float(b.input_value()) for b in org] == [-1.0, -1.0, -1.0]
+    assert [float(b.input_value()) for b in org] == [-1.234567] * 3
+    assert float(page.locator("#pv-cell-grid input").nth(0).input_value()) == 12.345678
     assert "default" not in page.locator("#pv-org-tag").inner_text().lower()
     row = _origin_row(page)
-    assert row.startswith("-1.000, -1.000, -1.000") and "(default)" not in row, row
+    assert row.startswith("-1.235, -1.235, -1.235") and "(default)" not in row, row
+    # A second Apply re-sends what the boxes now hold, and nothing drifts.
+    # The edit it answers is c's length (the vacuum is hidden under a typed
+    # cell); a and the origin ride along untouched.
+    page.locator("#pv-cell-grid input").nth(8).fill("15.5")
+    _apply_and_wait(page)
+    assert [float(b.input_value()) for b in org] == [-1.234567] * 3
+    assert float(page.locator("#pv-cell-grid input").nth(0).input_value()) == 12.345678
 
     page.locator("#pv-org-auto").click()
     _apply_and_wait(page)

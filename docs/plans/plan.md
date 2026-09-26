@@ -151,7 +151,7 @@ the same day, with what it turned out to be.
 | ↳ | **A1.6** | **`Structure.replace()` still hand-enumerates.** Nine fields in a literal, five more from `_carry_nonatom()`. Completeness is pinned by a test iterating `dataclasses.fields()` — but its fixture has `annotations={}`, so a `replace()` that drops annotations passes it. Deriving the carried set from `dataclasses.fields()` makes it complete by construction; `frozen_atoms` stays excluded (a property over `regions`, no storage). Read `replace()`, `_carry_nonatom()` and `__post_init__` end to end first — it is the most load-bearing method in the model | audit § 1.16e; the 2026-09-22 handover | open |
 | ↳ | **A1.7** | **The engine registry fails open.** With `molbuilder.siesta` unimportable the registry lists only `PySCFConfig`, and `validate(Au2, SiestaConfig())` runs no `config.*` check and says nothing. § 1.11b is done (`3382b851`); its sentence for `science/validation.md` § 7 is still owed | audit § 1.11 | open |
 | ↳ | **A1.8** | **Rules re-derived at the call site.** `estimate_partial_charges` is label-blind (water `O1,H2,H3` → **0.0 D**; `_DEFAULT_EN = 2.20` is hydrogen's value); **twelve dead `axis_kind` fallbacks** (11 × `("isolated",)*3`, 1 × `()`, all unreachable, plus `validation/siesta.py:734–737` resolving the opposite way — and `transiesta.py`'s was `("periodic",)*3`) — pure deletion, first; the k-sampling hint measures the gap in two frames (hexagonal cell: the hint says ~5.5 Å, the perpendicular gap is 4.16, `_min_image_distance` 6.5) | audit § 1.12a–c | open |
-| ↳ | **A1.9** | **`load()` restamps `schema_version`.** A sidecar written at 7 reads back as 9 through `molstruct.load` — so no reader can say what version a file was. W33 moves the schema to v10 and must not inherit this | audit § 1.13 | open |
+| ↳ | **A1.9** | **`load()` restamps `schema_version`.** A sidecar written at 7 reads back as 9 through `molstruct.load` — so no reader can say what version a file was. W33 moved the schema to v10 and inherited it: `parse/sidecars/molstruct.py` stamps v10 on every read | audit § 1.13 | open |
 | ↳ | **A1.10** | **Placeholders stored as facts, and two builder defects.** The backbone check keys on `rid − 1`, so a 5P duplex is refused (*"residue 4 O3' → residue 5 P 16.74 Å"*) with the blame on `$X3DNA`; rdkit-added hydrogens carry `(1, MOL, A)` and are persisted as real identity (7 of 12 atoms); `smiles.py:155,187` and `_common.py:35,40` spell index names `C1, O3, H4…` as stated identity, so every SMILES-built molecule ships a sidecar; `_amber.py:77–86` warns *"requested B-form … not enforced"* on every build. The placeholder must be carried apart from the data — a shape decision before a fix | audit §§ 1.15, 1.18 | open |
 | ↳ | **A1.11** | **The ghost element `X` is a legal element.** `resolve_element('X')` → `X`, `atomic_number('X') = 0`, `atomic_mass('X') = 1.0`; it passes `check_species_labels`, contributes Z = 0 to the electron count, and `render_fdf` writes `%block ChemicalSpeciesLabel / 1 0 X` — the defect `chemistry.py`'s own docstring says it exists to end. An unstated rule to state with it: an element denotes Z ≥ 1 | audit § 1.18 | open |
 | ↳ | **A1.12** | **The H/heavy-ratio check is wrong twice.** It counts `e == "H"` on RAW labels (`validation/geometry.py:89–90`), so labelled methane (`C1, H1…H4`) warns *"H/heavy 0/5"* and unlabelled does not — the owner is `chemistry.is_atom`. And it fires on every transport deck, where a metal junction has no hydrogens by construction (measured 2026-09-24/25, every rung) | audit § 1.18; the 2026-09-24 handover | open |
@@ -3320,7 +3320,7 @@ where it was applied.
 | every deck molbuilder writes (SIESTA `.fdf`, PySCF `.py`) | an `atom-metadata` block only when there are labels; no placement record | + a **`molbuilder engine-offset` block** for every deck (cell, offset applied, whether it was assigned, axis kinds). One writer beside `script_emit.emit_atom_metadata`, one reader beside `_extract_atom_metadata_dict` |
 | engine output (`.XV`, `.out`, `.STRUCT_OUT`, `.ANI`, `.MD`, the PySCF logs) | read as bare coordinates plus a lattice | read into `engine_frame()`, offset 0 stated |
 | the molwatch log (`trajectory_log/format.py` ← `jobset/prep.py`; the audit's § 1.18) | step 0 written in the design frame | step 0 written from `to_engine()` — closes that finding |
-| exports — the Results export, and `cli.py:1163–1174` (`.XV` → pair) | set `cell_origin = None`, which then derives | engine coordinates + cell, v10, through `engine_frame()`; a run whose offset was assigned is saved with an assigned offset of zero (contract § 6.0) |
+| exports — the Results export, and `cli.py:1163–1174` (`.XV` → pair) | set `cell_origin = None`, which then derives | engine coordinates + cell, v10, stating offset `0` (contract § 6.0): every run's export reloads as a typed cell with a stated origin of 0 (`watch.py`, `cli.py`) |
 | transport artifacts | form A composes the `.XV` with `cell_origin: None` (`compose.py:623`) and derives | the `.XV` through `engine_frame()`, each rung through `to_engine()`. `atom-permutation.json` and `slot-provenance.json` are unaffected (indices, provenance) |
 
 ### 5q.3 Protocol agreement — the wire
@@ -3332,7 +3332,8 @@ where it was applied.
   (`−engine_offset` of the coordinates it rides with). No `coordinates` tag:
   D4 made every viewer draw the coordinates of the structure it shows, so the
   structure says which they are. Every door that sends a structure spreads the
-  block, and none composes its own. *(In the swap, 2026-09-25.)*
+  block, and none composes its own. *(In the swap — `6c705058`, the commit
+  that retired `cell_origin` for the stated `engine_offset` — 2026-09-25.)*
 * **The doors**: `/api/structure/periodicity` (the Cell page), the structure
   load/save payload (`_shared._stated_periodicity` reads `engine_offset` back),
   and `/api/watch/load` / `/api/watch/data` — the Results door, which reads the
@@ -3364,9 +3365,9 @@ edit; *transport clearance along c* in the transport kind validator
 |---|---|---|
 | **T1** | per engine, `jobset init → prep`: a SIESTA relaxation, a SIESTA single point, the SIESTA and PySCF vibration ladders, PySCF, the five transport rungs | the deck's coordinates are design + `engine_offset`, every atom is inside with the rule's margins, and the deck's record equals the computed offset; on a typed cell with an assigned origin the deck is design − origin, its record says assigned, and an origin that leaves an atom outside is refused naming it; the vibration `freq` deck writes the relax output unchanged (a stated `0`); an atom beyond a periodic face is a warning in the report |
 | **T2** | the Results door on a finished run | `box_corner = 0` and the coordinates are verbatim from the output, and the axis kinds are the deck record's (D5). The run directory is BUILT under `tmp_path` with a flush deck and output — never read from `projects/` (`testing.md` § 2a); a run with no record takes its kinds from the `.source` pair |
-| **T3** | export from Results → reload | coordinates + offset is what the engine had: an automatic run whose atoms did not move reloads with the rule giving zero; an assigned run reloads with an assigned zero |
+| **T3** | export from Results → reload | coordinates + offset is what the engine had: every run's export reloads as a typed cell with a stated offset of `0` (contract § 6.0), the box where the engine had it |
 | **T4** | `prep device` on the fixture | every atom inside the cell along c; a face gap below the lead's `d/2` is warned, not refused (risk **R1**) |
-| **T5** | the rule itself, API-level on a measured fixture — the docstring says so | the hexagonal junction's `[6.3684, 3.746, 18.5325]`. A Cartesian implementation fails it (x-extent 10.093 > \|a\| 8.651); a re-wrapping one fails it (the 2.399 > 2.355 cut) |
+| **T5** | the rule itself, API-level on constructed fixtures shaped like the junction (`tests/test_cell.py`) — the header says so | a Cartesian implementation fails it (a skewed cell's x-extent exceeds \|a\|); a widest-gap cut fails T1's slab, whose widest gap along c is inside it, as the junction's Au–S contacts (2.399 Å) were wider than its seam (2.355 Å). The junction's `[6.3684, 3.746, 18.5325]` is recomputed in the contract, not pinned |
 
 Each is mutation-tested: break the rule, watch it fail. T1 also pins a rule
 the audit found unpinned — the explicit-cell centring branch, whose deletion
@@ -3375,7 +3376,7 @@ left 441 tests green (A1.17).
 **Retired**: the tests that pin the obsolete designs — the derived corner per
 axis kind, the user-owned origin, the `cell_origin` op, the containment regimes,
 the `resolved_cell_origin` wire shapes, and the nine tests asserting the
-literal corner `[7.5, 7.5, 7.5]` on one fixture (the audit's § 5a). Today that is 24 files and 210
+literal corner `[7.5, 7.5, 7.5]` on one fixture (the audit's § 5a). Counted at planning: 24 files and 210
 references (`test_periodicity_gate.py` alone has 82, then
 `test_structure_authority_roundtrip.py` 22, `test_web.py` 18,
 `test_structure_periodicity.py` 16, `test_molview_model.py` 13). Unifying must
@@ -3473,7 +3474,7 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
 * **R1 — the device's gaps against the lead's** *(reframed twice, 2026-09-25)*.
   What TranSIESTA requires is containment — every atom inside the cell (its
   own words, contract § 6.0, *Why centring*); `d/2` at each face is what its
-  recipe recommends, and centring gives it. So the 0.23 mÅ by which the
+  recipe recommends, and centring gives it. So the 0.21 mÅ by which the
   device's half-gap (1.1775) exceeds the lead's (1.17725) — `c` typed 37.065
   against span + spacing 37.0645 — is irrelevant to the requirement: either
   way every atom is more than a full ångström inside the cell. A lead and
@@ -3546,6 +3547,42 @@ and 44 iterations; the leads 159.4 and 161.6 s, 15 iterations each, E_F
   atoms now are. Retires § 6
   clause 5 (a whole-structure transform moved the box with the atoms) and the
   tests that pinned it. **Done 2026-09-25** (`Structure.affine`).
+
+**D7–D16 — the review's ten questions** *(user, 2026-09-25: "go with your
+recommendations on all ten"; and, on the workspace store: "you can clean up
+the persistence and timeline record so you have a clean baseline to test e2e.
+new project, new file, no residue state to deal with")*. Asked after the
+four-agent review of the swap; each is the recommendation as put:
+
+* **D7 — a relaxation from before the rule stays citable.** The transport
+  citation states `0` for the `.XV` only when the cited deck carries its
+  `engine-offset` record; otherwise the rule centres the junction, a rigid
+  shift (contract § 6.0). **Done 2026-09-25** (`transport/compose.py`).
+* **D8 — the dipole estimate is taken about the centre of mass**, so a charged
+  system's number does not depend on where it sits in the box.
+* **D9 — an append that centres the incoming structure drops its stated
+  offset**: the centring reframed its coordinates, so the box centres on the
+  joined atoms, and the append says so.
+* **D10 — the unused placement API goes.** `engine_frame`,
+  `EngineFrame.box_corner`, `ResolvedCell.corner` and `.offset_stated` have no
+  reader; each engine-output door states `engine_offset=0` itself, and the
+  contract's table says so.
+* **D11 — the hand-off refusal has its own id**, `deck.atoms_outside`, so
+  `cell.atoms_outside` carries one severity everywhere.
+* **D12 — the Cell page names the atoms outside**, per axis, as the deck
+  refusal does.
+* **D13 — no box without a corner.** MolView draws no box when the server sent
+  no `box_corner`. The store of drafts from before W33 was backed up and
+  cleared rather than migrated (the second ruling above), so nothing restored
+  can lack one.
+* **D14 — a retired `cell_origin` is said, not dropped silently**: the load
+  door names the corner it did not apply.
+* **D15 — the load door's text branch loses its side blocks**
+  (`atom_metadata`, `periodicity`, `info`: no caller sends them), and the
+  Results door builds its structure directly.
+* **D16 — the Cell-page gestures say what they read**: the ruler's picks, in
+  order (user, 2026-08-31) — *Use picked atoms* / *Use picked atom*, and
+  *Automatic*'s title says it empties the boxes for Apply.
 
 ---
 

@@ -129,12 +129,11 @@ def _stated_periodicity(per: Any) -> Dict[str, Any]:
     separate call sites, which is the only defect there was here: no one place
     owned the set, so a fifth field would have had to be added three times.
 
-    UNKNOWN KEYS ARE IGNORED, and that is not an oversight.  The block arrives
-    from `Structure.to_wire`, which sends the stated values BESIDE the server's
-    own derived answers (`resolved_cell`, `box_corner`,
-    `resolved_vacuum`) so a page can show the box as it will be used -- and
-    MolView keeps that block verbatim and hands the whole thing back.  Reading
-    the names we set and leaving the rest is what makes that work.
+    UNKNOWN KEYS ARE IGNORED, and that is not an oversight.  The block's shape
+    is `Structure.to_wire`'s, which sends the stated values BESIDE the server's
+    own derived answers (`resolved_cell`, `box_corner`, `resolved_vacuum`) so
+    a page can show the box as it will be used.  Reading the names we set and
+    leaving the rest is what lets one shape serve both.
 
     A stricter reader was tried on 2026-08-04 and reverted the same day.  The
     reasoning was that `apply_metadata_dict` REFUSES an unknown key, so this
@@ -449,13 +448,12 @@ def structure_to_dict(
     """
     extras = dict(extra) if extra else {}
     base = workspace_payload(struct, extra=extras)
-    # The drift-prone block -- the full `periodicity` (raw cell/origin + the
-    # server-RESOLVED cell/origin via the ONE resolver) + `annotations` + the
-    # identity columns -- is assembled by the Structure itself
-    # (`struct.to_wire()`, `model/structure.md` § 2.1 + § 4).  This helper no longer
-    # hand-lists a single metadata field or re-runs a resolver, so a field added
-    # to `metadata_to_dict` rides onto every endpoint automatically and the
-    # `cell_origin` drop-on-repack bug cannot recur.  The web layer only adds its
+    # The drift-prone block -- the full `periodicity` (the raw cell and offset
+    # + the server-resolved cell and box corner) + `annotations` + the identity
+    # columns -- is assembled by the Structure itself (`struct.to_wire()`,
+    # `model/structure.md` § 2.1 + § 4).  This helper hand-lists no metadata
+    # field and re-runs no resolver, so a field added to `metadata_to_dict`
+    # rides onto every endpoint automatically.  The web layer only adds its
     # OWN concerns (render `atoms`, `issues`, `text`/`xyz`, `extra`).
     wire = struct.to_wire()
     return {
@@ -463,7 +461,7 @@ def structure_to_dict(
         # not a wire shape assembled here. `to_dict` is the one serialiser the
         # sidecar, the persistence layer and the CLI already round-trip through,
         # and its rule is that nobody outside the class picks a structure apart,
-        # because that is where a field goes missing (`cell_origin` did). So a
+        # because that is where a field goes missing. So a
         # field added to the structure reaches the wire with no edit in this file.
         #
         # It sits BESIDE the keys below rather than replacing them, and both are
@@ -477,7 +475,7 @@ def structure_to_dict(
         "n_atoms":       base["n_atoms"],
         "atoms":         base["atoms"],
         "lattice":       base["lattice"],
-        # Structure-owned: full periodicity (incl. resolved_cell/_origin) +
+        # Structure-owned: full periodicity (incl. resolved_cell, box_corner) +
         # annotations ride with the geometry into the store so a captured
         # electrode cell survives the modify op (`web-api.md` § 1, what
         # the envelope must be able to carry).
@@ -1414,17 +1412,15 @@ def apply_periodicity_only(struct, body):
       * ``cell`` / ``engine_offset`` / ``axis_kind`` / ``vacuum`` -- what the
         caller STATED.  Applied verbatim.  An absent block means the
         Structure's own defaults (isolated, vacuum unset).
-      * the ``resolved_*`` answers the server computed and sent back so a page
-        can show the box as it will be USED.  They arrive here because MolView
-        keeps the block verbatim and hands the whole thing back; they are not
-        read, which is all that needs to happen to them.
+      * the server's own views -- ``resolved_*`` and ``box_corner`` -- which
+        a page shows as the box will be USED.  They are not read.
 
     WHICH DOORS TAKE THIS BLOCK, and why only they:
 
-      * ``/api/build/load`` (text branch) and ``struct_from_body``'s legacy
-        ``xyz`` branch.  Those bodies carry NO envelope -- the structure is a
-        file or a paste -- so a stated block is the only way to say what the box
-        is.  One key, one door, nothing to rank.
+      * ``/api/build/load``'s text branch, and the Results door building frame
+        0 of a run.  Neither has an envelope -- the structure is a file, a
+        paste or a parsed frame -- so a stated block is the only way to say
+        what the box is.  One key, one door, nothing to rank.
 
     Every other door takes the envelope, where the cell rides in
     ``structure.metadata`` and reaches the Structure through

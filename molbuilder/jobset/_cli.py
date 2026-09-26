@@ -1389,14 +1389,17 @@ def run_condition(task, stage=None):
 
 
 #: The catalogue's words for a launch field, and `Resources`' own.  Most
-#: agree; these three never did.  It is a NAME MAP and nothing else -- no
-#: default, no enumeration, no arithmetic.
+#: agree; these never did.  It is a NAME MAP and nothing else -- no default,
+#: no enumeration, no arithmetic.  PySCF's ``threads`` is SIESTA's
+#: ``omp_threads`` -- the cores one process runs on (`job-contracts.md`
+#: § 6.2) -- and an item missing here is DROPPED by `declared_run_shape`.
 #: `stages.md` § 6.8e -- the run's own wall and queue, carried through the
 #: direct map under their own names (they are already `Resources` fields).
 from ..task import LANE_ASKS as _LANE_ASKS
 
 _AS_RESOURCE = {
     "omp_threads": "cpus_per_task",
+    "threads": "cpus_per_task",
     "gpu_count": "gres",
     "max_memory_mb": "max_memory_mb",
 }

@@ -101,10 +101,10 @@ def _unusable_cell(struct) -> Optional[str]:
     **It does not crash, and the first telling of this said it did.**
     ``transiesta.axis_vacuum`` inverts the cell unguarded and does raise
     ``LinAlgError`` when called directly -- but nothing reaches it with a
-    bad box: ``_emit_geometry`` is only ever a ``Block`` in a deck layout,
-    and ``script_emit.render_deck`` runs ``report(validate(...))`` before the
-    first block renders, so the deck path answers *"[cell.no_volume] This box
-    is flat (8 x 8 x 0 A)"*.  Both the original review and its cross-check
+    bad box: the spec builder places the atoms through ``cell.to_engine``,
+    which refuses a box it cannot place them in with the one checker's own
+    finding, so the deck path answers *"[cell.no_volume] This box is flat
+    (8 x 8 x 0 A)"*.  Both the original review and its cross-check
     asserted the traceback from the function in isolation without tracing the
     call, which is the § 1d step-0 mistake in miniature.
 
@@ -530,21 +530,27 @@ def labeled_citation_structure(cited: CitedDir):
     # electrode deck then read `pbc` and printed "the transport axis (c) has
     # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
     # on a junction that is periodic in-plane and open along z by design.
+    deck_text = cited.deck.read_text()
+    # ...and the `.XV` is the engine's frame, so it states an offset of 0 on
+    # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0, plan
+    # § 5q D7): every rung composed from it then applies nothing.  A deck
+    # with no `engine-offset` record was prepped before the rule and left its
+    # atoms flush against a face, so its junction states none and the rule
+    # centres it -- a rigid shift, and the relaxation stays citable.
+    from ..script_emit import extract_engine_offset
+    stated = (np.zeros(3) if extract_engine_offset(deck_text) is not None
+              else None)
     try:
-        # ...and the `.XV` is the engine's frame, so it states an offset of 0
-        # on either label lane (§ 6.0): every rung composed from it applies
-        # nothing.
         struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
                            cell=cell,
                            axis_kind=("periodic", "periodic", "transport"),
-                           engine_offset=np.zeros(3))
+                           engine_offset=stated)
     except ValueError as exc:
         # Live now that the cell goes through the constructor: `prep` catches
         # only ComposeError/SortError, so a bare ValueError would surface as
         # a traceback.
         raise ComposeError(
             f"{cited.xv.name} states a cell transport cannot use: {exc}")
-    deck_text = cited.deck.read_text()
 
     # THE DECK SET THE BOX AND THE .XV CAME BACK WITH IT.  A fixed-cell
     # relaxation cannot move it, so a disagreement means these two files
@@ -604,18 +610,19 @@ def labeled_citation_structure(cited: CitedDir):
         #
         # AND THE ORIGIN IS THIS FRAME'S, NOT THE AUTHORING PAIR'S.  These
         # coordinates came from the `.XV` -- SIESTA's own frame, the cell at
-        # (0,0,0) -- so the structure states an offset of 0, set together with
-        # them, and every rung composed from it applies nothing
-        # (`model/structure-periodicity.md` § 6.0).  The cell above is a SHAPE
-        # and survives the change of frame; the authoring pair's placement
-        # belonged to different coordinates and does not travel -- a junction
-        # saved from `add_slab` once came out translated by its whole
-        # authoring corner, far-face atoms wrapping into the leads.
+        # (0,0,0) -- so the structure states what the construction above
+        # stated: 0 when the deck recorded its placement, else none, for the
+        # rule (`model/structure-periodicity.md` § 6.0).  The cell above is a
+        # SHAPE and survives the change of frame; the authoring pair's
+        # placement belonged to different coordinates and does not travel --
+        # a junction saved from `add_slab` once came out translated by its
+        # whole authoring corner, far-face atoms wrapping into the leads.
         apply_to_structure(struct, {
             **_side,
             "cell": _side.get("cell") or [[float(x) for x in row]
                                           for row in cell],
-            "engine_offset": [0.0, 0.0, 0.0],
+            "engine_offset": (None if stated is None
+                              else [float(v) for v in stated]),
             # STATED, NOT DEFAULTED.  This read `_side.get("axis_kind") or
             # [...]`, and the `or` could never fire: `load_sidecar`
             # normalises the payload through a scratch `Structure`, whose
@@ -991,10 +998,8 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         # atoms moved as part of deciding whether the block is a lead.
 
     # THE RELAXED COORDINATES AND THE BOX THEY CAME BACK IN, and nothing
-    # else stated by hand.  This was a fourteen-field list that did not
-    # name `cell_origin` or `info`, so the cited junction lost its stored
-    # corner and its recorded contract on the way in -- then lost them
-    # again in `categorical_sort` below (`model/structure.md` § 2.2a).
+    # else stated by hand: ``replace`` carries every other field the cited
+    # junction states (`model/structure.md` § 2.2a).
     relaxed = struct.replace(positions=xv_pos.copy(), cell=cell)
 
     sorted_res = categorical_sort(relaxed)

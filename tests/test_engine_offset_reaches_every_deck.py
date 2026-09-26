@@ -11,11 +11,12 @@ then `jobset prep run`, then the deck on disk.  Per engine:
 * every atom is inside the cell, with equal margins along each lattice vector;
 * the deck's ENGINE-OFFSET record states that same offset and that cell.
 
-The transport rungs are asserted beside their own fixtures, in
-``test_transport_prep.py``.
+The transport rungs are asserted beside their own fixture, in
+``test_transport_prep.py`` (``test_every_rung_hands_the_engine_placed_coordinates``).
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -32,13 +33,18 @@ from molbuilder.script_emit import extract_engine_offset
 from molbuilder.structure import Structure
 
 #: A skewed cell, as the 2026-09-25 junction's was.
-_HEX = np.array([[8.651, 0.0, 0.0], [4.326, 7.492, 0.0], [0.0, 0.0, 20.0]])
+_HEX = np.array([[8.651, 0.0, 0.0], [4.326, 7.492, 0.0], [0.0, 0.0, 14.0]])
 
 
 def _slab():
     """A periodic structure on the skewed cell, authored AROUND the world
     origin -- how the junction builder authors -- so the offset that places
-    it is far from zero.  Two atoms are frozen."""
+    it is far from zero.  Two atoms are frozen.
+
+    Its widest gap along c is INSIDE it (7 Å between the S layers, against a
+    2 Å seam), as the junction's Au-S contacts were wider than its seam: a
+    rule that cut the cell at the widest gap would split it, and the
+    invariant below would say so."""
     frac_ab = np.array([[0.0, 0.0], [0.95, 0.3], [0.05, 0.95], [0.5, 0.5]])
     xy = frac_ab @ _HEX[:2, :2] - np.array([5.0, 3.0])
     z = np.array([-6.0, 6.0, -3.5, 3.5])
@@ -126,8 +132,6 @@ def _assert_placed(design, written, text):
                                -np.asarray(record["applied_offset"]), atol=1e-7)
     cell = np.asarray(record["cell"], dtype=float)
     np.testing.assert_allclose(cell, design.resolve_cell(), atol=1e-7)
-    cellmod.require_placed(cellmod.engine_frame(cell, written),
-                           design.axis_kind)
     frac = np.linalg.solve(cell.T, written.T).T
     near, far = frac.min(axis=0), 1.0 - frac.max(axis=0)
     assert np.all(near > 0), near
@@ -141,6 +145,14 @@ def _rows(block):
 
 def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
         isolated_projects_root):
+    """A periodic slab on a skewed cell, authored around the origin, reaches
+    the SIESTA deck as its design coordinates plus the engine offset -- one
+    rigid translation, frozen atoms included, centred in the cell -- and the
+    run's trajectory starts where the deck does.
+
+    CONTRACT: `model/structure-periodicity.md` § 6.0 (the rule; the
+    invariant; frozen atoms move with the rest).
+    """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.siesta.stages import default_siesta_stages
     struct = _slab()
@@ -164,16 +176,27 @@ def test_a_siesta_deck_writes_the_design_coordinates_plus_the_offset(
         written, atol=1e-6)
 
 
+@pytest.mark.parametrize("calculation", ["optimization", "vibration"])
 def test_a_pyscf_deck_writes_the_design_coordinates_plus_the_offset(
-        isolated_projects_root):
+        isolated_projects_root, calculation):
+    """A molecule with no cell reaches the PySCF deck -- the optimisation
+    deck and the vibration deck, two spec builders -- as its design
+    coordinates plus the engine offset, centred in the box its vacuum sizes.
+
+    CONTRACT: `model/structure-periodicity.md` § 6.0 (every engine is handed
+    the design coordinates plus the offset).
+    """
     from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.stages import default_pyscf_stages
+    from molbuilder.pyscf.stages import default_pyscf_stages, vibration_stages
     struct = _water()
-    dest, _stage, text = _prep(isolated_projects_root, struct,
-                               PySCFConfig(job_name="JOB"),
-                                default_pyscf_stages("publishable"), "pyscf")
-    block = re.search(r"_atom_block = '''\n(.*?)'''", text, re.S).group(1)
-    written = np.array([[float(v) for v in r[1:4]] for r in _rows(block)])
+    if calculation == "vibration":
+        cfg = PySCFConfig(job_name="JOB", already_relaxed=True)
+        stages = vibration_stages("pyscf", already_relaxed=True)
+    else:
+        cfg, stages = PySCFConfig(job_name="JOB"), default_pyscf_stages("publishable")
+    dest, _stage, text = _prep(isolated_projects_root, struct, cfg, stages,
+                               "pyscf", calculation=calculation)
+    written = _written("pyscf", text)
     design = _design(dest)
     assert tuple(design.vacuum) == (5.0, 5.0, 5.0), "the vacuum reached prep"
     _assert_placed(design, written, text)
@@ -196,8 +219,12 @@ def _written(engine, text):
         block = re.search(r"%block AtomicCoordinatesAndAtomicSpecies\n(.*?)%endblock",
                           text, re.S).group(1)
         return np.array([[float(v) for v in r[:3]] for r in _rows(block)])
-    block = re.search(r"_atom_block = '''\n(.*?)'''", text, re.S).group(1)
-    return np.array([[float(v) for v in r[1:4]] for r in _rows(block)])
+    m = re.search(r"_atom_block = '''\n(.*?)'''", text, re.S)
+    if m:                                      # the optimisation deck
+        return np.array([[float(v) for v in r[1:4]] for r in _rows(m.group(1))])
+    # the vibration deck: ATOMS = [(element, x, y, z), ...]
+    block = re.search(r"^ATOMS = (\[.*?^\])", text, re.S | re.M).group(1)
+    return np.array([row[1:4] for row in ast.literal_eval(block)], dtype=float)
 
 
 def _assigned(corner):
@@ -233,28 +260,59 @@ def test_an_assigned_origin_places_the_deck_at_design_minus_it(
     record = extract_engine_offset(text)
     assert record["stated"] is True, record
     np.testing.assert_allclose(record["applied_offset"], -P, atol=1e-7)
+    # The kinds as the structure had them (D5) -- what the Results tab reads.
+    assert record["axis_kind"] == list(design.axis_kind), record
     np.testing.assert_allclose(design.to_wire()["periodicity"]["box_corner"],
                                P, atol=1e-7)          # the viewer's box is there
+    if engine == "pyscf":
+        # The pair the run saves beside its geometry states the engine's
+        # origin: the coordinates it lands beside are the engine's (§ 6.0,
+        # every save of a run's output), and the design's -P would place them
+        # a second time at the next prep.
+        line = re.search(r"^_MB_SIDECAR = (.*)$", text, re.M).group(1)
+        assert ast.literal_eval(line)["engine_offset"] == [0.0, 0.0, 0.0]
 
 
 @pytest.mark.parametrize("engine", ["siesta", "pyscf"])
 def test_an_origin_that_leaves_an_atom_outside_is_refused_naming_it(
         isolated_projects_root, engine):
-    """The same box with its origin assigned at (1, 1, 1): the oxygen, at the
-    design origin, would land at (-1, -1, -1) -- outside along every lattice
-    vector, all three isolated.  The deck is refused, and prep says why and
-    which atoms, in a sentence rather than a traceback.
+    """The same box with its origin assigned at (-0.5, -1, -1): one hydrogen,
+    atom 2, would land at x = -0.257 -- outside along a, every other atom
+    inside and every other axis clear.  The deck is refused, and prep names
+    that atom and that axis, in a sentence rather than a traceback.
 
     CONTRACT: `model/structure-periodicity.md` § 6.0, check 3 (an origin that
     leaves an atom outside is refused naming it); `workflow.md` § 9
     (a gate refuses with the reason, never a stack trace).
     """
-    _typed, assigned = _assigned([1.0, 1.0, 1.0])
+    _typed, assigned = _assigned([-0.5, -1.0, -1.0])
     cfg, stages = _engine(engine)
     _dest, _stage, said = _prep(isolated_projects_root, assigned, cfg, stages,
                                 engine, refused=True)
     assert "outside the cell" in said, said
-    assert "atom(s) 0" in said, said
+    assert "a (isolated): atom(s) 2 " in said, said
+    assert "b (" not in said and "c (" not in said, said
+
+
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_a_box_nothing_can_be_placed_in_is_refused_in_a_sentence(
+        isolated_projects_root, engine):
+    """Flat water with no vacuum across its plane has a box with no volume:
+    prep refuses it with the checker's own finding.
+
+    GOAL: the PySCF spec builders place the atoms before the settings gate
+    runs, and placing them in a singular box raised a bare ValueError that
+    reached the person as a traceback (found by review, 2026-09-25).
+    CONTRACT: `workflow.md` § 9 (a gate refuses with its reason);
+    `model/structure-periodicity.md` § 6.1a (`cell.no_volume`, an error).
+    """
+    flat = Structure(elements=["O", "H", "H"], positions=_water().positions,
+                     vacuum=(5.0, 5.0, 0.0))
+    cfg, stages = _engine(engine)
+    _dest, _stage, said = _prep(isolated_projects_root, flat, cfg, stages,
+                                engine, refused=True)
+    assert "[cell.no_volume]" in said, said
+    assert "Traceback" not in said, said
 
 
 def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():
@@ -300,11 +358,12 @@ def test_the_freq_deck_is_written_at_the_relaxed_geometry_unchanged(
     """The vibration `freq` deck writes the geometry `relax` left, unchanged.
 
     GOAL: a relaxed geometry moved against SIESTA's real-space mesh is no
-    longer stationary on it (`engines/vibration.md` § 5.2a).  Until
-    2026-09-25 the offset rule re-centred these coordinates at every deck,
-    moving them by the change in their span -- -0.0168 Å on H2 (found by an
-    independent review).  CONTRACT: `model/structure-periodicity.md` § 6.0 --
-    coordinates that came from an engine state their origin, 0.
+    longer stationary on it (`engines/vibration.md` § 5.2a).  The offset rule
+    would re-centre these coordinates at every deck, moving them by the
+    change in their span: -0.0168 Å on the H2 e2e's relaxation, and -0.387 Å
+    on this fixture's, whose deck predates the rule.  CONTRACT:
+    `model/structure-periodicity.md` § 6.0 -- coordinates that came from an
+    engine state their origin, 0.
 
     The `relax` attempt is the measured fixture, copied in as this ladder's.
     """
@@ -342,12 +401,17 @@ def test_a_relaxed_pairs_record_still_vouches_through_prep(
     and its level-of-theory and force checks were skipped (found by review,
     2026-09-25).  CONTRACT: `engines/vibration.md` § 2.2 (the record table);
     `validation.validate`'s ``design``.
+
+    It can fail only because the pair states no offset -- an export from
+    before the rule -- so its placed copy differs from it; the guard below
+    keeps the fixture one the rule moves.
     """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.parse.dirs.run_info import run_info_for_dir
     from molbuilder.pyscf.stages import vibration_stages
     pair = _h2(z_moved=5.774583)
     pair.apply_info_dict(run_info_for_dir(_RELAX_RUN))
+    assert np.linalg.norm(cellmod.engine_offset(pair)) > 0.1
     dest, stage, _text = _prep(
         isolated_projects_root, pair,
         SiestaConfig(system_label="H2", already_relaxed=True,
@@ -373,10 +437,11 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
     """
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.siesta.stages import default_siesta_stages
-    # A whole molecule 1.2 cells long along a: no translation fits it.
+    # 1.2 cells long along a, so no translation fits it -- and the atom past
+    # the face sits 3 Å off the others' line, so its image meets no atom.
     wide = Structure(elements=["C", "C", "C"],
                      positions=np.array([[0.0, 1.0, 1.0], [3.0, 1.0, 1.0],
-                                         [6.0, 1.0, 1.0]]),
+                                         [6.0, 4.0, 1.0]]),
                      cell=np.diag([5.0, 8.0, 8.0]),
                      axis_kind=("periodic", "periodic", "periodic"))
     dest, stage, _text = _prep(isolated_projects_root, wide,

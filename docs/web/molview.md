@@ -1026,7 +1026,8 @@ map that put an error in the tone of a remark.
 > MolView's sheet sets the row's type scale
 > for this panel's density and owns nothing about the severity.
 
-Every one of them is worded by `periodicity_gate` — MolView writes none and
+Every one of them is worded by the server — the conditions by `cell.check`, the
+receipts by `periodicity_gate` — MolView writes none and
 rewords none, because the numbers in them (determinants, per-axis clearances)
 were computed there and a second author would be writing a sentence only one of
 them can. They reach it through three doors:
@@ -1035,7 +1036,7 @@ them can. They reach it through three doors:
 |---|---|---|
 | `/api/build/load` | the structure as read from disk | every load |
 | `/api/structure/periodicity` | the structure as it arrived, then the edit | every cell edit |
-| `/api/modify/*` | the structure the op produced | every edit, all eight ops |
+| `/api/modify/*` | the structure the op produced | every edit, all seven ops |
 
 The third door is not many doors. Every `/api/modify/*` route returns through
 one helper, `ok_structure_response`, and the check lives **in that return path**
@@ -1063,11 +1064,9 @@ leave through the `files` door, § 6.7.)
 | **A condition** | *"the box does NOT contain the structure along a non-periodic axis — per-axis (near, far) clearances in Å: …"* | a fact about the structure **right now**. Stays true until the cell or the atoms change |
 | **A receipt** | *"explicit cell cleared; the box is derived again"* | what the edit just **did**. True about that moment, meaningless afterwards |
 
-There are twelve of them today. **Four are conditions** — the box does not
-contain the structure; the corner had to be derived because none was stored; no
-vacuum was set, so a default gap is sizing the box; and the box has no volume at
-all. The other **eight are receipts**, one per Cell-page edit plus the
-regime-change line. That line reads like a condition and is not one: it says
+The conditions are `cell.check`'s — the full set is
+`model/structure-periodicity.md` § 6.1a, table B — and the receipts are the
+periodicity gate's, one per Cell-page edit plus the regime-change line. That line reads like a condition and is not one: it says
 what the edit did to the box, which is the definition of a receipt.
 
 All four conditions are now answered by the check **every hand-over runs**
@@ -1973,14 +1972,14 @@ over a long time and verified against the server's resolver
 | **Lattice** | the box as it will be used | there is no explicit `cell` |
 | **Origin** | the corner the box is drawn from (the server's `box_corner`) | the structure states no offset — *Automatic*, the atoms centred |
 | **Axes** | `periodic` · `isolated` · `transport`, per axis | unset **or** every axis is `isolated` |
-| **Vacuum** | the per-side gap, per axis | it is `0` on every axis |
+| **Vacuum** | the per-side gap, per axis | the structure states none (`null`) |
 
-**The last two are value-based on purpose, and that is not sloppiness.** A fresh
-molecule loads with every axis `isolated` and a vacuum of zero — those *are* the
-defaults, whether or not somebody typed them. The tag reports that **the value
-being displayed is the default one**, not that nobody ever chose it. Provenance
-is a different question and not the one a reader of this page has; theirs is *"is
-this box mine?"*
+**Axes are value-based on purpose; vacuum is not.** A fresh molecule loads with
+every axis `isolated` — that *is* the default, whether or not somebody chose it,
+and the tag reports that **the value being displayed is the default one**. A
+vacuum has three states — a number, zero, and never chosen — and only the last
+is the default: a zero somebody typed means *"no gap"*, a choice, so it is not
+tagged.
 
 **Where a derived box comes from.** With no explicit `cell`, the server resolves
 one per axis kind — and the kinds are not interchangeable:
@@ -2000,7 +1999,8 @@ That third rule is why **`axis_kind` is the one field MolView will not default**
 `getAxisKind()` returns what the structure says and `null` when it says nothing,
 because periodic / isolated / transport is a *scientific choice*: guessing
 `periodic` would silently generate a wrong boundary for a transport cell. Vacuum
-defaults safely to zero; the axis kinds do not default at all.
+left unset is `null`, and the box takes the default gap; the axis kinds do not
+default at all.
 
 > **What the reconciliation caught.** The rebuilt Cell page showed
 > `Lattice: set | none` and no default markers — so a user could not see the cell
@@ -2145,38 +2145,13 @@ because a coordinate document is a format the server owns).
   anchor throws the trajectory away** (§ 11.2).
 
   **And so does everything else that came with the structure**, for the same
-  reason. A run arrives without a `.molstruct.json` beside it, carrying two
-  facts from two places: its **region labels and frozen tags**, which the Build
-  tab wrote into the input script and the Results tab recovered from it
-  (`atomMetadata`), and the **cell it ran in**, read from its output logs
-  (`periodicity`). Handing either over separately would be a second door again,
-  and would lose the same way — a structure would exist, briefly, with none of
-  the facts that came with it.
-
-  **They are two inputs because they are two different kinds of thing.**
-
-  `atomMetadata` is a **document the server wrote**, in a format the server
-  owns, and it travels as bytes that this module never opens. It is not a
-  **`sidecar`** and must not be passed as one: a sidecar is an *untrusted*
-  document whose envelope is checked first, and this has no envelope because
-  nothing outside molbuilder wrote it. It carries its own guard — the atom count
-  it was written for, which is what stops a label set landing on a structure it
-  does not describe. Anything here that parsed it and put a key back would be
-  writing that format, and re-stating the count is how that guard stops being
-  able to fire.
-
-  `periodicity` is a **plain value** — the same `{cell, engine_offset, axis_kind,
-  vacuum}` block every other structure door takes — so the server applies it
-  through the one seam that also **checks** it: a refusable cell comes back as a
-  refusal (§ 6.9), not as a box that was quietly accepted. A cell folded into
-  the metadata document instead would have gone around that check, and the load
-  door is the one door a viewer actually loads through.
-
-  **Nothing is said about which axes repeat.** A run reports a box, not a
-  periodicity, so only the cell is sent; `axis_kind` stays whatever the
-  structure says (§ 9.5 — it is the one field MolView will not default). The box
-  is still drawn, because the drawing uses the cell *as it will be used* and a
-  stated cell resolves to itself.
+  reason: its region labels and frozen tags (recovered from the input script),
+  the cell it ran in, the axis kinds its deck recorded, and the engine's origin
+  stated `0`. The Results door composes all of it ON THE SERVER into the
+  envelope it answers with (`web-api.md`, `/api/watch/load`), and the tab
+  installs that envelope with the frames in this one call — so no structure
+  ever exists, even briefly, without the facts that came with it, and nothing
+  reaches the model through a second door.
 - **`exportFile(range)`** — its exact inverse. Returns **the structure as
   data** — the frames in the range, with the name it came in under — and stops
   there (§ 11.7). The range defaults to **the frame currently displayed** (§ 6.4),
@@ -4596,7 +4571,7 @@ This table is the test plan. **A rule with no row here is a rule nothing guards.
 | § 6.6 — MolView interprets no reserved label | tagging atoms `frozen_atoms` changes what is stored and nothing about what is drawn; no code here acts on the name |
 | § 6.6 — a reserved name is announced, never refused | typing a reserved label applies it like any other label **and** tells the user it is reserved and what it does |
 | § 6.6 — a reserved label is stored, filtered and drawn like any other | it arrives in the same list, groups through the same walk, filters through the same rule and leaves in the same field; no atom carries the fact twice, and no boundary renames or moves it |
-| § 6.8 — a notice reaches the user | a load, a cell edit, or any of the eight modify ops that answers with notices shows them: a cell notice under the Cell-page row it is about, everything else at the top of the panel |
+| § 6.8 — a notice reaches the user | a load, a cell edit, or any of the seven modify ops that answers with notices shows them: a cell notice under the Cell-page row it is about, everything else at the top of the panel |
 | § 6.8 — every op is checked | each `/api/modify/*` route validates the structure it returns, because the check is in the shared return path; the op list is read from the app's route table so a new op is covered on arrival |
 | § 6.8 — a notice lives until what it describes changes | an edit to the structure clears the set, and an answer carrying notices replaces it; nothing is stored, saved, or survives a reload |
 | § 6.9 — a refused change throws, carrying the server's own sentence | the caller of a door the server refused receives the *text the server sent*, not a status code and not `null`; asserting it means asserting that text |

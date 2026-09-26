@@ -204,9 +204,9 @@ the render's.)*
 amendment (`job-contracts.md` § 3.1, 2026-08-01/recorded 2026-08-12) the
 engine body IS the file's head — the file **begins at row 1 below**.  The
 shared script-contract blocks follow it as the tail, in § 3.1's order:
-`user-custom` placeholder, status banner, `provenance`, `bench-marks`, and
-the optional `atom-metadata` last — which is why `tail -40` on any deck
-shows its record.  Parsers find every block by its MARKERS, never by
+`user-custom` placeholder, status banner, `provenance`, `bench-marks`, the
+optional `atom-metadata`, and `engine-offset` last, on every deck — which is
+why `tail -40` on any deck shows its record.  Parsers find every block by its MARKERS, never by
 position, so this order is ergonomics, not interface.  *(Until 2026-08-12
 this paragraph still taught the retired header-on-top wrapping the § 3.1
 amendment had corrected.)*  `SystemLabel` is the basename SIESTA

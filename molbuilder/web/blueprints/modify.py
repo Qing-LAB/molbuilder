@@ -527,8 +527,9 @@ def api_modify_rotate():
 
     ``center`` picks what the axis passes through -- ``"origin"``
     (default) or ``"centroid"``.  ``indices`` turns ONLY those atoms,
-    about their own centroid; omitted, the whole structure turns.  The box
-    stays where it is either way (moving atoms only moves atoms).
+    about their own centroid; omitted, the whole structure turns.  The cell
+    and a stated origin stay as they were either way (moving atoms only moves
+    atoms); under Automatic the box re-centres on the atoms.
 
     Useful for redirecting a tilted molecule's azimuth after an
     ``orient`` op with non-zero angle (e.g. spin a tilt from the
@@ -581,17 +582,19 @@ def api_modify_translate():
       origin.  WHOSE centroid is decided by ``indices``, exactly as
       it is for a ``{dx, dy, dz}`` translate: with a group, that
       group's own centroid moves to the origin and only those atoms
-      move; without one, the whole structure's centroid does, and the
-      box stays where it is.  Useful after adding electrode slabs
+      move; without one, the whole structure's centroid does.  Either
+      way the cell and a stated origin stay.  Useful after adding electrode slabs
       shifts the structure off-axis: re-anchoring the centroid
       makes mouse-zoom feel sane and aligns subsequent slab ops
       against a predictable origin.
     * ``{dx, dy, dz}`` (Å) -- translate EVERY atom by the given
-      vector.  Each component defaults to 0.  The box stays where it
-      is (user, 2026-09-25: "moving atoms only moves atoms"), and an
-      atom the move takes outside it is named in the answer.
+      vector.  Each component defaults to 0.  The cell and a stated
+      origin stay as they were (user, 2026-09-25: "moving atoms only moves
+      atoms") -- under Automatic the box re-centres on the atoms -- and an
+      atom the move takes outside a stated box is named in the answer.
     * ``{dx, dy, dz, indices: [...]}`` -- move ONLY those atoms.  The
-      box is NOT moved, because only part of what it contains did.
+      cell and a stated origin are not moved; under Automatic the box
+      re-centres on the whole structure.
       This is the mode that can put atoms outside an explicit cell,
       and the reason the response is validated on the way out.
 
@@ -625,8 +628,9 @@ def api_modify_translate():
     if bool(body.get("recenter", False)):
         # Center IS a Translate whose vector the server computes.  One path,
         # so the two cannot drift: `modify.translate` already decides what
-        # moves -- a named group moves alone and the box stays; no group and
-        # the structure moves rigidly with its box.
+        # moves -- a named group alone, else the whole structure -- and the
+        # cell and a stated origin stay either way (moving atoms only moves
+        # atoms).
         try:
             positions = (struct.positions[group] if group is not None
                          else struct.positions)

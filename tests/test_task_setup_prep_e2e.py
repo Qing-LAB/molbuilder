@@ -503,6 +503,35 @@ def test_a_row_added_on_one_folder_does_not_follow_you_to_the_next(
         "change'")
 
 
+def test_a_folder_with_no_description_shows_no_plan_from_the_last(
+        page, flask_server, filled_dir, isolated_projects_root_module):
+    """**§ 2.1, for the two side cards**: the prep plan and the list of files
+    a prep writes belong to the folder that painted them.
+
+    Moving to a folder with no description -- or only a hand-over -- reset
+    every other card and left these two showing the previous calculation's
+    rungs and filenames (found on the dev server, 2026-09-25: a hand-over
+    for a junction listed `water-pyscf_initial.xyz`).
+    """
+    empty = isolated_projects_root_module / "prep_e2e" / "optimization" / "none"
+    empty.mkdir(parents=True, exist_ok=True)
+    _open(page, flask_server, filled_dir)
+    page.wait_for_selector("#ts-plan:not([hidden])", timeout=20000)
+    page.wait_for_selector("#ts-written-card:not([hidden])", timeout=20000)
+
+    # Switch THE WAY THE SIDEBAR DOES, and wait on the new folder's own
+    # sentence -- a positive signal, not the absence being asserted.
+    page.evaluate(
+        "(dir) => window.molbuilder.projects.setShared(dir, '')", str(empty))
+    page.wait_for_function(
+        "() => /No description here yet/.test(document.body.textContent)",
+        timeout=20000)
+    assert page.locator("#ts-plan").is_hidden(), (
+        "the previous folder's prep plan is still on screen")
+    assert page.locator("#ts-written-card").is_hidden(), (
+        "the previous folder's file list is still on screen")
+
+
 def test_a_parameter_write_and_a_save_BLOCK_THE_WINDOW(
         page, flask_server, filled_dir):
     """`ui-contract.md` § 10 — **one cover for every heavy click**, and a
@@ -766,7 +795,8 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     # `task.json` again.  *(The hint also named `run-config.toml` until
     # 2026-09-02.  That file is a report now and the UI does not name it: a
     # benchmark reports, and what the run uses is this card.)*
-    assert "--np / --omp / --time" in hints, (
+    # The flags named are `jobset prep run`'s own (`--omp` is not one).
+    assert "--np / --cpus-per-task / --time" in hints, (
         "a person who filled the card is not told a flag still overrides it")
 
 

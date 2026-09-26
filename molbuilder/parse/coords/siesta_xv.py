@@ -207,10 +207,10 @@ def _read_xv(path: Union[str, Path]) -> Structure:
     survives across re-orderings of the species block; the species
     index requires a matching ``.fdf``.
 
-    Positions come back in Å.  Velocities are discarded.  Cell vectors
-    are read but NOT surfaced on the returned Structure (geometry-only
-    dataclass); :func:`_read_xv_cell` exposes the cell for callers
-    that need it.
+    Positions come back in Å.  Velocities are discarded.  The returned
+    Structure carries the cell and states the engine's origin (offset 0);
+    :func:`_read_xv_cell` reads the cell alone for callers that need only
+    it.
     """
     return read_xv_with_cell(path)[0]
 

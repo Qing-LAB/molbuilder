@@ -7,15 +7,15 @@ USED-BY StructureCodec (load/save gate), web/blueprints/build.py (the
 
 Contract (§ 6.1, decided 2026-07-29): the .xyz/.molstruct.json pair is the
 only truth; resolved values are views and are never written back; NOTHING
-here rewrites stored state.  The § 6.1 state table governs STORED state
-(load/save) -- it says, for each state the pair can hold, whether it is legal
-and what the user is told; ``apply_edit`` below governs LIVE edits per the
-§ 6.2 v3 regime model:
+here rewrites stored state.  The three box states below govern STORED state
+(load/save) -- for each state the pair can hold, whether it is legal and what
+the user is told; ``apply_edit`` below governs LIVE edits per the § 6.2 v3
+regime model:
 
   DERIVED regime: {structure size, vacuum, axis_kind} => the cell is a
-  computed view.  Editing vacuum / axis_kind RESETS to this regime
-  (explicit cell + assigned origin cleared) -- the box boundary moves, and
-  the caller must warn the user BEFORE committing.
+  computed view.  The single-field ``vacuum`` / ``axis_kind`` ops RESET to
+  this regime (explicit cell + stated origin cleared), and their receipt
+  says so; on the Cell page it is the Derived / Explicit switch that does.
 
   MANUAL regime: an explicit cell demotes vacuum to reference-only; the
   atoms are centred in it by the rule unless the person assigns the box's
@@ -25,7 +25,8 @@ and what the user is told; ``apply_edit`` below governs LIVE edits per the
   Nothing on the Cell page moves atoms.  The engine gets them placed at
   emission (model/structure-periodicity.md § 6.0).
 
-Three box states (plan § 5q.1; right-handed cells only, det > 0).  Every one
+Three box states (model/structure-periodicity.md § 6.0; right-handed cells
+only, det > 0).  Every one
 is legal -- the gate reports, it does not repair:
 
   | stored state                 | what is said                              |
@@ -41,9 +42,7 @@ WHERE THE BOX SITS is the engine offset's (`model/structure-periodicity.md`
 offset, and the person states one through ``box_corner`` -- the corner they
 type or pick, stored as ``engine_offset = −corner``, on a typed cell only.
 Nothing here derives a corner and nothing is materialised: what is stored is
-exactly what the person set, and absent means the rule (2026-09-25; the corner
-this module derived per axis kind, and the ``cell_origin`` it stored, are
-gone).
+exactly what the person set, and absent means the rule.
 
 Notices (the machine-readable half of the contract).  Every entry is
 ``{"severity", "message", "where", "about"}`` -- FOUR keys.  It was
@@ -202,15 +201,9 @@ def validate_periodicity(struct: Structure) -> Tuple[Structure, List[dict]]:
     """Check STORED periodicity against the § 6.1 table and REPORT.  Returns
     ``(struct, notices)``.
 
-    THE ANSWER DOES NOT DEPEND ON HOW THE STATE ARRIVED.  There was a
-    ``live_edit`` flag here, documented as selecting the explicit-origin
-    manual-edit row -- and never read by a line of this function.  It was true
-    once: the flag chose between healing a stored origin and accepting a typed
-    one.  Healing left on 2026-07-29 and both branches became the same branch,
-    so the flag went on being passed, and read, and believed for three days
-    while doing nothing.  Removed 2026-08-02.  Row 5 is one row: a manual origin
-    is user-owned, warned about, and never auto-fixed -- from disk and from the
-    Cell page alike, which is the property the round-trip depends on.
+    THE ANSWER DOES NOT DEPEND ON HOW THE STATE ARRIVED: a stated origin is
+    the structure's, warned about and never auto-fixed -- from disk and from
+    the Cell page alike, which is the property the round-trip depends on.
 
     IT CORRECTS NOTHING, and must not.  Clause 1: `cell` / `engine_offset` hold
     only what the user set, and every resolved value is a VIEW that is never
@@ -293,7 +286,7 @@ def _reset_to_derived(s: Structure, what: str,
         notices.append(_notice(
             "warn",
             f"{what} changed → the box returned to the DERIVED regime: the "
-            "explicit cell and any origin you set were reset, and the box is "
+            "explicit cell and any stated origin were reset, and the box is "
             "now the structure's size plus the per-direction vacuum, with "
             "the atoms centred in it."))
 
@@ -401,7 +394,7 @@ def _apply_block(s: Structure, payload: Any,
             "the box is derived: the structure's extent plus the vacuum on "
             "each side, centred on the structure. Vacuum is authoritative."))
     else:
-        where = ("its corner at the origin you set" if corner is not None
+        where = ("its corner at the stated origin" if corner is not None
                  else "the atoms centred in it (Automatic)")
         notices.append(_notice(
             "info",
@@ -533,19 +526,16 @@ def apply_edit(struct: Structure, op: str,
         _refuse_on_error(s)
         notices.append(_notice(
             "info",
-            ("explicit cell set; the origin you set is kept. "
+            ("explicit cell set; the stated origin is kept. "
              if s.engine_offset is not None else
              "explicit cell set; the atoms are centred in it (Automatic). ")
             + "Vacuum values are reference-only from now on (§ 6.1)."))
         return s, notices
 
     # op == "box_corner" -- the person assigns the box's origin, or clears it
-    # back to the rule (§ 6.0, *A stated offset*).
-    if s.cell is None:
-        raise ValueError(
-            "an origin is assigned on a typed cell only -- a box sized from "
-            "the vacuum stays centred, its vacuum a per-side gap "
-            "(model/structure-periodicity.md § 6.0)")
+    # back to the rule (§ 6.0, *A stated offset*).  Automatic first: an
+    # engine's stated 0 can sit on a box sized from the vacuum, and clearing
+    # it needs no typed cell.
     if payload is None:
         s.engine_offset = None
         s.__post_init__()
@@ -554,6 +544,11 @@ def apply_edit(struct: Structure, op: str,
             "origin set back to Automatic: the atoms are centred in the cell "
             "(model/structure-periodicity.md § 6.0)."))
         return s, notices
+    if s.cell is None:
+        raise ValueError(
+            "an origin is assigned on a typed cell only -- a box sized from "
+            "the vacuum stays centred, its vacuum a per-side gap "
+            "(model/structure-periodicity.md § 6.0)")
     try:
         corner = [float(x) for x in payload]
     except (TypeError, ValueError):

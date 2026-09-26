@@ -2365,7 +2365,7 @@ function mountPanel(doc, card, model) {
          * everything else follows from that one fact. */
         const manual = !!rawCell;
         cellRegime.textContent = manual
-            ? "The box is the cell you typed — vacuum is not used."
+            ? "The box is an explicit cell — vacuum is not used."
             : "The box is worked out from the molecule, your vacuum and the "
               + "axis kinds.";
 

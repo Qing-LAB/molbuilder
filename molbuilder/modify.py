@@ -866,12 +866,9 @@ def _finish_slab(struct, metal_pos, element, full):
             [0.0, 0.0, z_len],
         ], dtype=float)
         elc_axis_kind = ("periodic", "periodic", "transport")
-        # NO CORNER IS STATED.  This builder anchored the box at the atoms' low
-        # corner until 2026-09-25 -- "the padding opens at the TOP" -- and
-        # stored it rounded, which put the lowest electrode layer 1.6e-5 Å below
-        # the face and made TranSIESTA refuse the device.  Where the box sits
-        # is the engine offset's now: the rule centres the atoms in it
-        # (model/structure-periodicity.md § 6.0).
+        # NO CORNER IS STATED: where the box sits is the engine offset's, and
+        # the rule centres the atoms in it (model/structure-periodicity.md
+        # § 6.0).
 
     # New electrode atoms are appended at indices [old_n, old_n + n_new).
     # Existing frozen_atoms + region indices carry through unchanged; the

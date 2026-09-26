@@ -1500,15 +1500,21 @@ def _emit_molwatch_callback_wire(mf_var: str) -> str:
 
 
 def _sidecar_for(struct: Structure) -> dict:
-    """The sidecar payload for ``struct``, from the codec that owns it.
+    """The sidecar a run's saved geometry carries, from the codec that owns it.
 
     ONE call, so the pair a run writes and the pair `Save to project` writes
-    are made by the same code.  Imported inside the function because the codec
-    pulls in the parse stack and this module is imported by the deck composer
-    on every render.
+    are made by the same code.  The coordinates it lands beside are the
+    engine's (``mol`` is built from ``cell.to_engine``), so it states the
+    engine's origin, ``engine_offset = 0`` (`model/structure-periodicity.md`
+    § 6.0, *A stated offset*: every save of a run's output); the design's own
+    offset would place those coordinates a second time.  Imported inside the
+    function because the codec pulls in the parse stack and this module is
+    imported by the deck composer on every render.
     """
+    import numpy as np
     from ..workingcopy_structure import StructureCodec
-    return StructureCodec().pair(struct).sidecar
+    return StructureCodec().pair(
+        struct.replace(engine_offset=np.zeros(3))).sidecar
 
 
 def emit_save_helper(v: bool, sidecar: dict) -> List[str]:

@@ -744,10 +744,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     # The box first, then ONE placement for either box (§ 6.0, below the two
     # branches).  The branches decide only which box and check that it is a
-    # real one.  They used to place the atoms too, two ways: a derived box
-    # translated them by `-resolve_cell_origin()`, and a passed-in cell wrapped
-    # each atom into [0, 1) -- which cuts a device at its widest gap, and the
-    # 2026-09-25 junction's widest gap was its Au-S contact, not its seam.
+    # real one; the atoms are placed once, by the rule every emitter takes.
     positions = np.asarray(struct.positions, dtype=float)
     if cell is None:
         # The structure's own box -- the single source of truth for lattice and
@@ -782,7 +779,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                      if float(np.linalg.norm(cell[i])) < ZERO_VOLUME_TOL]
             _detail = ", ".join(f"axis {i} (kind '{k}')" for i, k in _thin) \
                 or "no single axis -- the three vectors are not independent"
-            raise ValueError(
+            # A FINDING, the checker's id: every prep door answers one with
+            # its sentence (`workflow.md` § 9), where a bare ValueError
+            # reached the person as a traceback.
+            from molbuilder.issues import Issue, ValidationError
+            raise ValidationError([Issue("error",
                 f"the cell derived from the structure is degenerate (zero "
                 f"volume), and SIESTA cannot run without a real box: {_detail}. "
                 f"Vacuum padding applies only to an 'isolated' axis -- on a "
@@ -790,7 +791,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 f"construction, and a structure with zero extent along it cannot "
                 f"define that length. Set an explicit unit cell for that "
                 f"direction (Modify -> Cell tab), or correct the axis kind. The "
-                f"geometry is never changed for you.")
+                f"geometry is never changed for you.", "cell.no_volume")])
         # Vacuum adequacy is checked by the VALIDATOR
         # (validation/siesta.py:_check_siesta_vacuum_adequacy), which the
         # report(validate(...)) call below runs -- so the finding reaches the
@@ -810,16 +811,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # Named from the model rather than repeated as a literal here.
         from molbuilder.structure import _DEFAULT_ISOLATED_VACUUM as _GAP
         _DEFAULT_GAP_TEXT = f"{_GAP:g} A/side"
-        # SAY WHICH BOX THIS IS, AND WHAT WAS ACTUALLY DONE TO THE ATOMS.
-        # This sentence claimed three things that are false under an explicit
-        # cell -- that the box was derived, that the 3 A default supplied the
-        # vacuum, and that the atoms were "centred".  `cell.check` already
-        # guards the middle one (`if rc.defaulted_axes and not rc.is_manual`,
-        # "a molecule in a hand-typed 30 A box would be told the box came from
-        # a 3 A default"); the emitter had no such guard.  And the atoms are
-        # not centred -- they were translated by `-resolve_cell_origin()`,
-        # which on an imported crystal was no shift at all.  Since § 6.0 they
-        # ARE centred, and the placement below says so with the number.
+        # SAY WHICH BOX THIS IS, AND WHAT WAS ACTUALLY DONE TO THE ATOMS: a
+        # stated cell or a derived one, the default vacuum only where it sized
+        # a derived box (`cell.check` guards the same case), and the placement
+        # with its number.
         _manual = struct.cell is not None
         cell_note = (
             "# (" + ("cell stated on the structure"
@@ -870,9 +865,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     from molbuilder.cell import to_engine as _to_engine
     _frame = _to_engine(struct, box=cell)
     positions = _frame.positions
+    # Centred only when the rule placed them: an origin the person assigned,
+    # or an engine's own 0, is the structure's and need not centre anything.
     cell_note += ("; atoms placed by the engine offset "
                   + str(tuple(round(float(v), 4) for v in _frame.applied_offset))
-                  + " A, centred in the cell)")
+                  + (" A, the offset the structure states)" if _frame.stated
+                     else " A, centred in the cell)"))
 
     # ---------- pre-emission validation ----------
     # By now `cell` and `positions` are final; run the validation pass
@@ -907,7 +905,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                                        engine_offset=np.zeros(3))
 
     # The gate is NOT run here.  `render_deck` owns step 3.3 and applies it
-    # to the subject this spec names -- the wrapped coordinates and the
+    # to the subject this spec names -- the placed coordinates and the
     # resolved cell, which is what the deck actually expresses.  Running it
     # here as well gave the step two owners judging two different
     # structures (`script-preparation.md` § 4.3).

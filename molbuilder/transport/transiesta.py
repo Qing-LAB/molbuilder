@@ -376,10 +376,7 @@ def _emit_geometry(struct: Structure,
     (`model/structure-periodicity.md` § 6.0): the design coordinates plus
     ``cell.engine_offset``, which centres the atoms in the box -- the rule
     every emitter takes, so a lead, the device and a relaxation cannot place
-    their atoms differently.  Until 2026-09-25 this block subtracted
-    ``resolve_cell_origin()`` by hand, and a junction anchored at its lowest
-    atom reached TranSIESTA flush against its face: *"Electrode: L lies
-    outside the unit-cell."*
+    their atoms differently.
     """
     from ..chemistry import atomic_number
     # ONE SPECIES RULE, AND ONE OVERRIDE, SHARED WITH THE SIESTA EMITTER

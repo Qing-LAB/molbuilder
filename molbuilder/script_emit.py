@@ -540,8 +540,8 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
     2026-09-25 -- and it is what a reader of the run asks instead of deriving a
     corner of its own.
     """
-    # AT THE PRECISION OF THE COORDINATES BESIDE IT -- the geometry block's 8
-    # decimals -- and never -0.0.  A re-prep that reloads the composed junction
+    # AT 8 DECIMALS -- the transport rungs' geometry block (SIESTA's writes
+    # 10) -- and never -0.0.  A re-prep that reloads the composed junction
     # moves the tenth digit (2.849999999902925 then 2.8499999999983694,
     # measured 2026-09-25), and full precision made the gate's "same
     # calculation" refuse a re-prepped seed whose coordinates were identical.
@@ -1126,14 +1126,14 @@ class DeckSpec:
     #: a finished deck of mine satisfy?*  Runs on the file as written.
     check_rules: Optional[Callable] = None
     #: ``(struct, cfg) -> (struct, kwargs)`` — WHAT the settings gate should
-    #: judge, when that is not the structure as it arrived.  SIESTA wraps
-    #: coordinates into the cell and resolves a box before writing, so the deck
-    #: expresses a structure the caller never handed in; judging the input
-    #: would judge something nobody runs.
+    #: judge, when that is not the structure as it arrived.  SIESTA places
+    #: the coordinates in the cell (``cell.to_engine``) and resolves a box
+    #: before writing, so the deck expresses coordinates the caller never
+    #: handed in; judging the input would judge something nobody runs.
     #:
     #: **It exists so step 3.3 has ONE owner.**  Both engines ran the gate
     #: themselves inside ``spec_for`` while ``prepare_deck`` ran it again --
-    #: two owners, and on different subjects: the engine's call saw the wrapped
+    #: two owners, and on different subjects: the engine's call saw the placed
     #: coordinates and the resolved cell, the framework's saw neither.  The
     #: order is the framework's (§ 4.3); what the order is applied TO can be
     #: the engine's, and that is what this carries.
@@ -1959,7 +1959,7 @@ def _extract_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
     (ATOM-METADATA, ENGINE-OFFSET), so their parsing cannot drift.
 
     Returns ``None`` when:
-      * No ATOM-METADATA block is present.
+      * No such block is present.
       * The block markers are unbalanced.
       * The JSON between markers fails to parse.
 

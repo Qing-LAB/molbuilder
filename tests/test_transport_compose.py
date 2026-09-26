@@ -143,6 +143,15 @@ def _write_tree(root, struct):
         label_store["frozen_atoms"] = list(struct.frozen_atoms)
     block = emit_atom_metadata(regions=label_store,
                                n_atoms_total=len(struct.elements)) or ""
+    # AND ITS PLACEMENT RECORD, last, as every deck prepped today carries it:
+    # its coordinates were handed over as they stand (a stated 0), which is
+    # what lets a citation state 0 for the `.XV` (plan § 5q D7).
+    from molbuilder.cell import to_engine
+    from molbuilder.script_emit import emit_engine_offset
+    kinds = ("periodic", "periodic", "transport")
+    record = emit_engine_offset(
+        to_engine(struct.replace(axis_kind=kinds, engine_offset=np.zeros(3))),
+        kinds)
     (attempt / "Relax_01_coarse.fdf").write_text(
         "SystemLabel Relax\nMeshCutoff 300.0 Ry\nXC.functional GGA\n"
         "XC.authors PBE\nPAO.BasisSize DZP\n"
@@ -150,7 +159,7 @@ def _write_tree(root, struct):
         "%block AtomicCoordinatesAndAtomicSpecies\n"
         + coords + "\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
-        + block + "\n")
+        + block + "\n" + record + "\n")
     (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
     return _write_xv(attempt / "Relax.XV", struct)
 
@@ -222,7 +231,8 @@ class TestHappyPath:
         checked against the `.XV`'s and kept. The origin does not: the
         `.XV`'s frame states 0 (`model/structure-periodicity.md` § 6.0).
         """
-        from molbuilder.script_emit import BLOCK_ATOM_METADATA, begin_marker
+        from molbuilder.script_emit import (BLOCK_ATOM_METADATA, begin_marker,
+                                            end_marker)
         from molbuilder.workingcopy_structure import StructureCodec
         root, src, relaxed_pos = tree
         attempt = root / _CITE
@@ -230,10 +240,11 @@ class TestHappyPath:
 
         # A deck with NO in-body label block, so the labels must come
         # from a sidecar -- the repair path compose's own refusal names.
+        # Only that block goes: the placement record after it stays.
         text = deck.read_text()
-        head, sep, _ = text.partition(begin_marker(BLOCK_ATOM_METADATA))
+        head, sep, rest = text.partition(begin_marker(BLOCK_ATOM_METADATA))
         assert sep, "the fixture's deck no longer carries a label block"
-        deck.write_text(head)
+        deck.write_text(head + rest.partition(end_marker(BLOCK_ATOM_METADATA))[2])
 
         # The authoring pair, with an origin its author assigned well away
         # from the .XV's (0,0,0).

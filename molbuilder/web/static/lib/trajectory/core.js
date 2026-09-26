@@ -247,19 +247,18 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // Per-atom metadata (region labels / frozen tags / annotation
             // channels) the Build tab embedded in this run's input script,
             // recovered by /api/watch/load as the trusted ATOM-METADATA
-            // block (a JSON STRING).  Coordinates come from the output logs;
-            // this carries the labels the logs don't.  Handed to MolView's
-            // installMolecule({atomMetadata}) so the loaded structure shows
-            // the same regions/frozen the user set in Build.  null = run had
-            // no ATOM-METADATA block.  Per-file (survives polls of the same
-            // file; cleared on a fresh load like path/label).
+            // block (a JSON STRING).  The server folds it into the envelope
+            // the tab installs; this copy is kept per file (survives polls
+            // of the same file; cleared on a fresh load like path/label).
+            // null = run had no ATOM-METADATA block.
             atomMetadata: null,
             // The run's periodicity, COMPOSED ON THE SERVER (watch.py: the
-            // cell from the output logs, the axis kinds from the run deck's
-            // ENGINE-OFFSET record, the engine's origin stated).  Passed to installMolecule
-            // verbatim -- guessing periodicity in the browser is the one
-            // thing the Cell rules refuse.  null = the run knows nothing.
-            // Same per-file lifecycle as atomMetadata.
+            // run's cell, the axis kinds from the run deck's ENGINE-OFFSET
+            // record, the engine's origin stated).  The structure arrives in
+            // the server's envelope, periodicity included; this copy is read
+            // only to say where the box came from (`_cellCameFromTheRun`).
+            // null = the run knows nothing.  Same per-file lifecycle as
+            // atomMetadata.
             periodicity: null,
             // What this run says ABOUT itself: the free `info` store
             // (molview.md § 8.4a), composed by the server from the run
@@ -1059,33 +1058,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // The cost the user accepted: an isolated molecule that ran in a large
     // SIESTA box gets a box drawn round it -- so the tab says where the box
     // came from (below).
-    /* The lattice the run reported, as the periodicity block the load takes.
-     *
-     * A PLAIN VALUE IN A NAMED FIELD, not a key pushed into the label document
-     * beside it.  Two reasons, and the first is a correctness one: the server
-     * CHECKS this block (a left-handed cell comes back refused, with the gate's
-     * own sentence) and it does not check what arrives inside a metadata
-     * document.  The second is provenance -- the labels come from the run's
-     * INPUT script and this comes from its OUTPUT logs, so they are two facts
-     * from two places and travel as two fields.
-     *
-     * COMPOSED ON THE SERVER (watch.py::_run_periodicity_json, 2026-08-20):
-     * the cell from the output logs, the axis kinds from the run deck's
-     * ENGINE-OFFSET record (the `.source` pair for a run made before it), and
-     * the engine's origin stated, 0 (structure-periodicity.md § 6.0).  This
-     * tab passes the block through
-     * verbatim -- guessing periodicity in the browser is the one thing the
-     * Cell rules refuse (molview.md § 9.5).  (Until 2026-08-20 this composed
-     * `{cell}` alone and a comment claimed the Structure's lattice-implies-
-     * periodicity rule would resolve the axes -- it could not: the parse
-     * builds the structure cell-less first, so the isolated default was
-     * already concretised, and a lattice-bearing junction exported as
-     * isolated on every axis.)
-     */
-    function _runPeriodicity() {
-        return state.periodicity || null;
-    }
-
     /* Whether the box on screen came from the run rather than from the user --
      * a fact about the FILE OPERATION this tab performed, so this tab keeps it
      * (molview.md § 6.7: the viewer tracks contents, not where they came from).
@@ -1153,11 +1125,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * that never existed (§ 6.4); and worst, point 0 is anchored on that
          * one frame -- so **a Retract threw the trajectory away** (§ 11.2).
          *
-         * The labels ride along the same way.  `atomMetadata` is the region /
-         * frozen / annotation block the Build tab wrote into this run's input
-         * script, recovered by /api/watch/load; it is molbuilder's own emit, so
-         * it is NOT a `.molstruct.json` sidecar and carries no file envelope.
-         * null when the run had no ATOM-METADATA block. */
+         * The labels ride along the same way: `frame0` is the server's
+         * envelope, so the region / frozen / annotation block the Build tab
+         * wrote into the input script, the cell and the axis kinds are
+         * already on it (/api/watch/load). */
         try {
             await _mvdata().installMolecule({
                 structure:    frame0,
@@ -2876,7 +2847,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         setStatus(
             "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + "."
             + (_cellCameFromTheRun()
-               ? "  Unit cell taken from the run output, not set by you."
+               ? "  Unit cell from the run (its output, or the box its deck"
+                 + " placed the atoms in), not set by you."
                : ""),
             "ok"
         );

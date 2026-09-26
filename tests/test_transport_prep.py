@@ -146,8 +146,12 @@ def _junction_struct(*, order="canonical", buffers=False):
                      cell=np.diag([8.0, 8.0, max(40.0, c)]))
 
 
-def _write_junction(root, struct):
-    """One concluded junction relaxation with the distinctive deck."""
+def _write_junction(root, struct, *, record=True):
+    """One concluded junction relaxation with the distinctive deck.
+
+    ``record`` -- the deck carries its placement record, as every deck
+    prepped today does; ``False`` is a relaxation prepped before the rule,
+    whose junction the rule centres (plan § 5q D7)."""
     from molbuilder.task import (Stage, StructureRef, Task, derive_run,
                                  write_task)
     from molbuilder.workingcopy_structure import StructureCodec
@@ -176,6 +180,13 @@ def _write_junction(root, struct):
         label_store["frozen_atoms"] = list(struct.frozen_atoms)
     block = emit_atom_metadata(regions=label_store,
                                n_atoms_total=len(struct.elements)) or ""
+    if record:
+        from molbuilder.cell import to_engine
+        from molbuilder.script_emit import emit_engine_offset
+        kinds = ("periodic", "periodic", "transport")
+        block += "\n" + emit_engine_offset(
+            to_engine(struct.replace(axis_kind=kinds,
+                                     engine_offset=np.zeros(3))), kinds)
     deck_text = (_CITED_DECK
                  + "AtomicCoordinatesFormat Ang\n"
                  + "%block AtomicCoordinatesAndAtomicSpecies\n"
@@ -831,6 +842,68 @@ class TestTheLadderPreps:
         assert [r[3] for r in rows[:6]] == [idx["Au"]] * 6
         assert [r[3] for r in rows[6:10]] == [idx[e] for e in "SCCS"]
 
+    @pytest.mark.parametrize("recorded", [True, False],
+                             ids=["a-deck-with-its-record",
+                                  "a-deck-from-before-the-rule"])
+    def test_every_rung_hands_the_engine_placed_coordinates(self, tmp_path,
+                                                            recorded):
+        """T1 for the transport rungs (plan § 5q.4): each deck writes the
+        coordinates its ENGINE-OFFSET record accounts for, every atom inside
+        the cell.
+
+        The seed and the device are the cited relaxation's `.XV` -- the
+        engine's own coordinates.  When the cited deck recorded its placement
+        they go in verbatim and the record states 0: re-centring the device
+        against its leads is the failure W33 was opened for.  A deck from
+        before the rule has no record, so the rule centres the junction -- one
+        rigid shift, the same for the seed and the device (D7).  The leads are
+        cut from that junction and placed by the rule, centred in the cell the
+        device gives them.
+
+        Contract: `model/structure-periodicity.md` § 6.0 (the invariant; *A
+        stated offset*: a transport rung from the cited `.XV`, D7; check 3).
+        """
+        from molbuilder.parse.coords.siesta_xv import read_xv_with_cell
+        from molbuilder.script_emit import extract_engine_offset
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct(), record=recorded)
+        calc = _describe_transport(root)
+        xv, _ = read_xv_with_cell(root / _CITE / "Relax.XV")
+
+        def deck(stage):
+            prep_calculation(calc, stage)
+            tok = _TOKEN[stage]
+            text = (calc / tok / f"T_{tok}.fdf").read_text()
+            block = (text.split("%block AtomicCoordinatesAndAtomicSpecies")[1]
+                     .split("%endblock")[0])
+            written = np.array([[float(v) for v in ln.split()[:3]]
+                                for ln in block.splitlines() if ln.strip()])
+            record = extract_engine_offset(text)
+            assert record is not None, f"the {stage} deck carries no record"
+            cell = np.asarray(record["cell"], dtype=float)
+            frac = np.linalg.solve(cell.T, written.T).T
+            lens = np.linalg.norm(cell, axis=1)
+            near, far = frac.min(axis=0) * lens, (1.0 - frac.max(axis=0)) * lens
+            assert np.all(near >= -1e-6) and np.all(far >= -1e-6), (stage,
+                                                                    near, far)
+            return written, record, near, far
+
+        for stage in ("seed", "device"):
+            written, record, near, far = deck(stage)
+            assert record["stated"] is recorded, (stage, record)
+            if recorded:
+                np.testing.assert_allclose(record["applied_offset"], 0.0,
+                                           atol=0.0)
+            else:
+                np.testing.assert_allclose(near, far, atol=1e-6)
+            np.testing.assert_allclose(
+                written, xv.positions + np.asarray(record["applied_offset"]),
+                atol=1e-6)
+        for stage in ("electrode_L", "electrode_R"):
+            _written, record, near, far = deck(stage)
+            assert record["stated"] is False, (stage, record)
+            np.testing.assert_allclose(near, far, atol=1e-6)
+
     def test_the_transmission_deck_carries_the_tbt_window(self, calc):
         """SCIENCE. The transmission deck carries the tbtrans energy window
         -- as the contour block tbtrans actually reads.
@@ -931,7 +1004,10 @@ class TestTheLadderPreps:
         from the NEGF region, placed outermost by the categorical sort).
         """
         root = tmp_path / "projects"
-        _write_junction(root, _junction_struct(buffers=True))
+        # A relaxation from before the rule: its buffer layers overhang the
+        # cell as authored (z = -5 and 39.5 in c = 50), and with no placement
+        # record the rule centres the junction (plan § 5q D7).
+        _write_junction(root, _junction_struct(buffers=True), record=False)
         dest = _describe_transport(root)
         prep_calculation(dest, "device")
         text = (dest / "04_device" / "T_04_device.fdf").read_text()

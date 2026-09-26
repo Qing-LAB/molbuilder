@@ -31,7 +31,7 @@ def _thin_box_molecule() -> Structure:
 
 
 class TestTheSubjectAndItsCoordinatesShareOneFrame:
-    """PINS: `model/structure-periodicity.md` § 6 clause 2b + § 6.0 -- an
+    """PINS: `model/structure-periodicity.md` § 6.0, *A stated offset* -- an
     offset is a statement about the coordinates beside it, so an op that
     reframes the coordinates restates the offset in the same breath.
 
@@ -61,25 +61,32 @@ class TestTheSubjectAndItsCoordinatesShareOneFrame:
             engine_offset=[2.0, 2.0, 10.0],
             axis_kind=("periodic", "periodic", "transport"))
 
-    def test_the_deck_validates_the_frame_it_emits_and_leaves_the_structure_alone(self):
+    def test_the_deck_validates_the_frame_it_emits_and_leaves_the_structure_alone(
+            self, isolated_projects_root):
         """Carried over, the design's offset would put z at fractional 0.55-1.45
         and `cell.atoms_outside` would fire on a deck whose atoms are inside.
         And the subject is a derived copy: the origin the person assigned, and
-        the design coordinates, stay on the structure they own (§ 6.1 clause 1;
-        § 6.0, no engine step rewrites the design)."""
-        from molbuilder.siesta.input import spec_for
+        the design coordinates, stay on the pair they own (§ 6.1 clause 1;
+        § 6.0, no engine step rewrites the design).
+
+        Through the road: prep writes the deck beside its `.validation.txt`,
+        the report of what the gate judged."""
+        from molbuilder.siesta.stages import default_siesta_stages
+        from test_engine_offset_reaches_every_deck import _design, _prep
         s = self._junction_with_an_assigned_origin()
         before = s.positions.copy()
-        cfg = SiestaConfig()
-        subject, kw = spec_for(s, cfg).validate_subject(s, cfg)
-
-        wheres = {i.where for i in validate(subject, cfg, **kw)}
-        assert "cell.atoms_outside" not in wheres, (
+        dest, stage, _text = _prep(isolated_projects_root, s,
+                                   SiestaConfig(system_label="JOB"),
+                                   default_siesta_stages("publishable"),
+                                   "siesta")
+        report = next(next(dest.glob(f"*_{stage}"))
+                      .glob("*.validation.txt")).read_text()
+        assert "[cell.atoms_outside]" not in report, (
             "the validator judged the deck's coordinates against the offset "
-            "they were placed by")
-        np.testing.assert_array_equal(subject.engine_offset, 0.0)
-        np.testing.assert_array_equal(s.engine_offset, [2.0, 2.0, 10.0])
-        np.testing.assert_array_equal(s.positions, before)
+            "they were placed by:\n" + report)
+        design = _design(dest)
+        np.testing.assert_array_equal(design.engine_offset, [2.0, 2.0, 10.0])
+        np.testing.assert_array_equal(design.positions, before)
 
 
 class TestF4GateDerivesWhatChecksNeed:

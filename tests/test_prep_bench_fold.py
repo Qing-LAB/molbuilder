@@ -2447,6 +2447,52 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
         "the refusal blames measurement pins the user never wrote")
 
 
+def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
+    """PySCF's run card names its cores ``threads``; the launch shape gets
+    them as ``cpus_per_task``, as SIESTA's ``omp_threads`` does -- the job's
+    record, which a direct launch hands the wrapper as ``-omp``
+    (`jobset/submit.py::_run_sh_args`).
+
+    GOAL: ``threads`` had no entry in the catalogue-to-``Resources`` name map,
+    so a value typed on Task setup's run card was dropped and the run sized
+    itself from the machine ("omp auto") -- found on the dev server,
+    2026-09-25.  CONTRACT: `execution/job-contracts.md` § 6.2 (OMP cores per
+    process -> ``cpus_per_task``); `engines/stages.md` § 6.8d (what
+    ``execution`` states is what the run uses).
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.jobset._cli import jobset_group
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
+    dest = tmp_path / "pycalc"
+    D.write_description(
+        D.build_description(struct, PySCFConfig(job_name="JOB"),
+                            [Stage(name="only", enabled=True, overrides={},
+                                   execution={"threads": 3})],
+                            engine="pyscf", shape="hierarchical", name="JOB",
+                            source=str(tmp_path / "h2.xyz")),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    (dest / "environment.json").write_text(
+        Environment(scheduler="workstation",
+                    topology=Topology(sockets=1,
+                                      cores_per_socket=4)).to_json() + "\n")
+    r = CliRunner().invoke(jobset_group, ["prep", "run", "only", "--bundle",
+                                          str(dest), "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    job = json.loads((dest / "job-set.json").read_text())["jobs"][0]
+    assert job["resources"]["cpus_per_task"] == 3, (
+        "the run card asked for 3 threads and the job records something "
+        "else", job["resources"])
+
+
 def test_no_winner_speaks_only_about_the_timed_set():
     """R2-2: the "every timed trial ran something other than asked"
     verdict scanned ALL points -- one unfinished point carrying mismatch

@@ -3,11 +3,16 @@
 MODULE  cell (L1; imports ``structure`` + ``issues`` and nothing else)
 ROLE    the ONE place a box is worked out, and the ONE place it is judged
 USED-BY periodicity_gate (the hand-over gate + the edit door), validation/
-        (the engine validators fold these in), siesta/input.py (the emitter),
-        web/blueprints (through the gate)
+        (the engine validators fold these in), every emitter through
+        ``to_engine`` (siesta/input.py, pyscf/input.py,
+        pyscf/vibration_deck.py, transport/transiesta.py) and script_emit
+        (the deck's ENGINE-OFFSET record), transport/compose.py + wizard.py,
+        modify.py, trajectory_log/format.py, Structure.to_wire, and
+        web/blueprints (_shared, modify)
 
-Contract: docs/model/structure-periodicity.md § 6.1 / § 6.1a, and the finding
-contract in docs/science/validation.md § 4.1 (R1–R6).
+Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit) and
+§ 6.1 / § 6.1a (what is true of the box), and the finding contract in
+docs/science/validation.md § 4.1 (R1–R6).
 
 WHY THIS MODULE EXISTS (decided 2026-08-03 — cell-plan.md § 6a).  Two jobs had
 grown many hands, and the hands disagreed.
@@ -74,8 +79,8 @@ ZERO_VOLUME_TOL = 1e-6
 class ResolvedCell:
     """Everything true about a structure's box, worked out ONCE.
 
-    Consumers read fields.  Nobody re-derives, and nobody calls the six
-    ``Structure`` resolvers directly any more -- that is the whole point.
+    Consumers read fields.  Nobody re-derives, and nobody calls the
+    ``Structure`` resolvers directly -- that is the whole point.
 
     ``box`` and ``corner`` are ``None`` only when the box could not be worked
     out at all (``unresolvable`` then says why, and :func:`check` turns it into
@@ -381,12 +386,9 @@ def check(rc: ResolvedCell) -> List[Issue]:
             "cell.no_volume"))
 
     # YOUR VACUUM IS DOING NOTHING -- said whenever it is true, which is the
-    # point (cell-plan.md § 3c).  It used to live on the cell_origin RECEIPT
-    # behind `if not conditions:`, so the one sentence explaining why a number
-    # you typed stopped mattering was dropped exactly when the box ALSO had a
-    # problem -- the moment you most needed it.  A condition is not a receipt:
-    # it is true until the regime changes, so it belongs here and is answered
-    # on every hand-over.
+    # point (cell-plan.md § 3c).  A condition, not a receipt: it is true until
+    # the regime changes, so it belongs here and is answered on every
+    # hand-over, whatever else the box has wrong with it.
     #
     # Silent when no vacuum was set: there is no expectation to correct.
     #
@@ -398,10 +400,8 @@ def check(rc: ResolvedCell) -> List[Issue]:
     if (rc.is_manual and rc.stated_vacuum is not None
             and any(float(v) != 0.0 for v in rc.stated_vacuum)):
         typed = ", ".join(f"{v:g}" for v in rc.stated_vacuum)
-        # THE WHOLE TRUTH, SINCE 2026-09-25: the typed cell takes over the
-        # box, and the engine offset places the atoms in it, so a vacuum
-        # decides nothing at all.  (It used to still decide the derived corner
-        # on an isolated axis, and this said so; that corner is gone.)
+        # THE WHOLE TRUTH: the typed cell takes over the box, and the engine
+        # offset places the atoms in it, so a vacuum decides nothing at all.
         out.append(Issue(
             "info",
             f"Your vacuum ({typed} Å) is not setting the box, because you "
@@ -447,10 +447,10 @@ def check(rc: ResolvedCell) -> List[Issue]:
             "warn",
             f"Some atoms are outside the box. Room to spare at each end, in "
             f"Å — a negative number means atoms stick out that side: {gaps}. "
-            f"The box sits where its origin was set, and nothing moves it for "
-            f"you. Move the origin, or set it back to Automatic, or make the "
-            f"cell bigger. An input file is refused until every atom is "
-            f"inside.",
+            f"The box sits at the origin this structure states -- one you "
+            f"assigned, or the engine's own -- and nothing moves it for you. "
+            f"Move the origin, or set it back to Automatic, or make the cell "
+            f"bigger. An input file is refused until every atom is inside.",
             "cell.atoms_outside"))
 
     # PAST A PERIODIC FACE: legal -- an image the engine wraps -- and said,
@@ -643,8 +643,10 @@ def require_placed(frame: "EngineFrame", axis_kind) -> None:
             "error",
             f"atoms lie outside the cell after placement -- {where} (0-based). "
             f"Along a non-periodic axis the engine would get an atom outside "
-            f"its box. Make the cell longer there, or move the origin you "
-            f"assigned (model/structure-periodicity.md § 6.0, check 3)",
+            f"its box. Make the cell longer there, or move the origin the "
+            f"structure states -- one you assigned, or an engine's own -- or "
+            f"set it back to Automatic on the Cell page "
+            f"(model/structure-periodicity.md § 6.0, check 3)",
             "cell.atoms_outside")])
 
 
@@ -655,9 +657,22 @@ def to_engine(struct: Structure, *,
 
     The one door an emitter takes.  The design coordinates are the author's
     intent and are never changed: this returns new positions and leaves
-    ``struct`` alone."""
-    lattice = _lattice(struct, box)
-    offset = engine_offset(struct, box=lattice)
+    ``struct`` alone.
+
+    A box nothing can be placed in -- a periodic axis with no lattice, or a
+    singular lattice -- is refused with the one checker's own finding
+    (``cell.unresolvable`` / ``cell.no_volume``), because a spec builder places
+    the atoms before the settings gate runs, and every prep door answers a
+    finding with its sentence (`workflow.md` § 9)."""
+    try:
+        lattice = _lattice(struct, box)
+        offset = engine_offset(struct, box=lattice)
+    except ValueError as exc:
+        found = [i for i in check(resolve(struct, box=box))
+                 if i.severity == "error"]
+        if not found:
+            raise
+        raise ValidationError(found) from exc
     return EngineFrame(cell=lattice,
                        positions=struct.positions.astype(float) + offset,
                        applied_offset=offset,

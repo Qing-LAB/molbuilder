@@ -262,12 +262,10 @@ def _now_iso_z() -> str:
 # --------------------------------------------------------------------- #
 
 
-# NOTE: the standalone ``normalise_cell_pbc`` / ``normalise_cell_origin`` field
-# validators were REMOVED once the metadata contract landed -- cell / pbc /
-# axis_kind / vacuum / cell_origin are now validated in exactly ONE place,
-# ``Structure.__post_init__`` (reached via ``structure_fields_via_dataclass`` ->
-# ``apply_metadata_dict``).  Keeping a second copy here is what let cell_origin
-# drift between the write + read paths; there is no second copy now.
+# The metadata fields (cell / axis_kind / vacuum / engine_offset) are validated
+# in exactly ONE place, ``Structure.__post_init__`` (reached via
+# ``structure_fields_via_dataclass`` -> ``apply_metadata_dict``), so the write
+# and read paths cannot validate a field differently.
 
 
 def structure_fields_via_dataclass(
@@ -278,7 +276,7 @@ def structure_fields_via_dataclass(
     field exactly as a live structure does -- then read it back normalised via
     ``metadata_to_dict``.  Shared by the write validator (:func:`to_dict`) and
     the read validator (``parse/sidecars/molstruct._normalised_dict``) so the
-    two can never enumerate a different field set (the cell_origin drift).
+    two can never enumerate a different field set.
     Raises :class:`MolstructJsonError` on any invalid field.
     """
     from molbuilder.structure import Structure
@@ -604,8 +602,7 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     :meth:`molbuilder.structure.Structure.apply_metadata_dict` -- the SINGLE
     dict->struct authority (`model/structure.md` § 2.2).  Because the writer
     (``Structure.metadata_to_dict``) and this reader share that one method, they
-    can no longer drift a field (the class of bug that dropped ``cell_origin`` on
-    reload).  ``selection_rules`` is a sidecar-only pass-through (not a Structure
+    cannot drift a field.  ``selection_rules`` is a sidecar-only pass-through (not a Structure
     field) and is intentionally not applied here.
 
     Validates that the sidecar's ``n_atoms_total`` matches the structure's atom

@@ -616,12 +616,10 @@
            the anchor(s); Save to project, then load that file in the
            Structure optimization / Transport tab to generate FDF/PySCF. -->
 
-      <!-- Cell: per-GROUP periodicity editors (structure-periodicity.md § 3b).  MolView
-           only DISPLAYS periodicity; the actual edits live here, one Update per group so
-           each (vacuum / pbc / unit cell) can independently stay default or be committed.
-           Wired by modify/periodicity.js via ws.commitPeriodicity (the server re-resolves
-           the effective cell).  (k-grid is NOT here: it's a reciprocal-space sampling knob
-           on SiestaConfig / TransportConfig, not geometry.) -->
+      {#- Cell: the periodicity editor.  MolView only DISPLAYS periodicity; the edits
+          live here and are sent by one Apply as the gate's `block` op
+          (structure-periodicity.md § 4.1), wired by modify/periodicity.js.  k-grid is
+          a sampling knob on SiestaConfig / TransportConfig, not geometry. -#}
       {#- ============================================================ -#}
       {#-  Slab -- one fcc slab, placed ABSOLUTELY                      -#}
       {#-  (archive/2026-09-01-modify-redesign-plan.md § 3)                          -#}
@@ -773,14 +771,17 @@
             numbers only tell you what the gaps happen to be.
           </p>
           <p>
-            Every change here is checked by the backend before it is applied,
-            and it may be <b>corrected or refused</b>: cells must be
-            right-handed, and along a non-periodic direction the box must
-            contain every atom (along a periodic direction, atoms outside are
-            legitimate periodic images). Whenever no origin of your own is
-            set, the corner is <b>derived</b> so the box wraps the structure —
-            it never jumps to (0,&nbsp;0,&nbsp;0). Anything the check has to
-            say appears in the message bar at the top of the page.
+            Every change here is checked by the backend before it is applied.
+            A cell that is mirrored (left-handed), flat, or shorter than the
+            molecule along a non-periodic direction — or a periodic direction
+            with no cell — is <b>refused</b>, and nothing you set is changed.
+            Where the box sits is decided once: leave the origin blank
+            (<b>Automatic</b>) and the atoms are centred in the cell; assign an
+            origin and the box sits there, and an atom it leaves outside is
+            warned about here and refused when an input file is written. Along
+            a periodic direction, atoms past a face are legitimate periodic
+            images, and are only warned about. Warnings appear under the Cell
+            rows of the 3-D view; refusals appear in the message bar.
           </p>
           <p class="muted">
             Details:
@@ -843,7 +844,7 @@
           {#- 3x3 lattice-vector matrix; nine inputs built by periodicity.js. -#}
           <div id="pv-cell-grid" class="modify-cell-matrix" aria-label="unit cell 3x3"></div>
           {#- § 7: two ways to fill a row that are not the keyboard.  Both STAGE
-              into the nine inputs above -- "Update cell" stays the only commit,
+              into the nine inputs above -- Apply stays the only commit,
               so what is about to be sent is on screen first.  The chooser's
               option text carries each axis's current length, so all three are
               readable from one control and the box below edits the chosen one
@@ -890,12 +891,9 @@
               onto one field of a fact § 6.2 says travels together, and "Use
               default" was the way back to the derived regime -- which is now
               the switch at the top of the panel.  One Apply, at the bottom. -#}
-          {#- § 6.2 v3: there is NO calibrate button.  Emission translates to the
-              engine frame implicitly (cell at (0,0,0), atoms shifted); nothing on
-              this page moves atoms.  The note below says so. -#}
           <p>
-            SIESTA receives this box anchored at (0,0,0) with the coordinates
-            shifted accordingly — automatically, at generation.
+            Every engine receives this box anchored at (0,0,0), with the
+            coordinates shifted into it — automatically, at generation.
           </p>
         </fieldset>
 
@@ -907,7 +905,7 @@
               coordinates minus it -- stored as the structure's offset.  Blank, or
               Automatic, is the rule: the atoms centred in the cell.  Only with a
               typed cell: a box sized from the vacuum keeps the vacuum a per-side
-              gap, so this group is disabled there. -#}
+              gap, so this group is hidden there. -#}
           <div class="modify-op-row">
             <input type="number" id="pv-org-a" class="modify-cell-num" step="0.1"
                    aria-label="cell origin x" />

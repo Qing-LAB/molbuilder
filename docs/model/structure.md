@@ -68,7 +68,7 @@ class Structure:
     chain_ids:     Optional[List[str]] = None # single char; default = all "A"
     title:         str = ""                   # XYZ comment / PDB TITLE
     # ── metadata (each detailed in a sub-doc; serialized as one block) ──
-    # cell, cell_origin, axis_kind, vacuum → structure-periodicity.md
+    # cell, engine_offset, axis_kind, vacuum → structure-periodicity.md
     #     (NB: kgrid is NOT a structure field — it is a SiestaConfig DFT
     #      sampling knob; see engines/siesta.md)
     # regions (THE label store), annotations    → structure-annotations.md

@@ -739,9 +739,8 @@ class Structure:
     # metadata field set is enumerated: ``metadata_to_dict`` (struct -> dict)
     # and ``apply_metadata_dict`` (dict -> struct).  The sidecar read + write
     # modules and the workspace codec ALL route through them, so the write and
-    # read paths physically cannot drift a field -- the exact class of bug that
-    # silently dropped ``cell_origin`` on reload.  Add a metadata field = add it
-    # to the dataclass + these two methods, and nowhere else.
+    # read paths physically cannot drift a field.  Add a metadata field = add
+    # it to the dataclass + these two methods, and nowhere else.
     #
     # SCOPE = the dataclass's OWN metadata (periodicity + selection tags +
     # annotations).  ``selection_rules`` is NOT a Structure field (a sidecar-only
@@ -865,9 +864,8 @@ class Structure:
     #  ``metadata_to_dict``/``apply_metadata_dict``) as a single          #
     #  round-trippable dict: ``Structure.from_dict(s.to_dict())`` == s.   #
     #  Outside this class NOBODY assembles or picks apart a structure     #
-    #  dict -- that is what let ``cell_origin`` drift on every hand-rolled #
-    #  repack.  Add a field = add it here + the two metadata methods,     #
-    #  nowhere else.                                                       #
+    #  dict, so no hand-rolled repack can drop a field.  Add a field =    #
+    #  add it here + the two metadata methods, nowhere else.              #
     # ------------------------------------------------------------------ #
 
     def to_dict(self) -> dict:
@@ -1151,13 +1149,12 @@ class Structure:
 
         IT IS ``copy()`` PLUS THE CHANGES, and that is the second reason to
         use it.  ``dataclasses.replace`` re-passes the mutable fields BY
-        REFERENCE: the derived structure shared ``positions``, ``cell``,
-        ``cell_origin`` and the ``info`` dict with its source, so writing to
-        one wrote to the other — measured, including through
-        ``info.calculation``.  That is what every hand-listed rebuild in the
-        tree was working around with its own ``.copy()`` calls, and enumerating
-        fields to copy them is how ``cell_origin`` and ``info`` came to be
-        forgotten (§ 2.2a).  Deriving through here copies, so a caller states
+        REFERENCE: the derived structure shared ``positions``, ``cell`` and
+        the ``info`` dict with its source, so writing to one wrote to the
+        other — measured, including through ``info.calculation``.  That is
+        what every hand-listed rebuild in the tree was working around with its
+        own ``.copy()`` calls, and enumerating fields to copy them is how
+        fields came to be forgotten (§ 2.2a).  Deriving through here copies, so a caller states
         only what CHANGES and nothing it did not name can alias or vanish.
 
         ``frozen_atoms`` is never re-passed at all: a copied ``regions`` is the
@@ -2004,9 +2001,10 @@ class Structure:
         ``translated`` / ``rotate_around_axis`` / ``orient_along_axis`` route
         through.
 
-        The cell's vectors, its corner and a stated ``engine_offset`` stay
-        exactly as they were: moving atoms is an edit of where they are, not a
-        change of frame.  A person who wants the box elsewhere sets it on the
+        The cell's vectors and a stated ``engine_offset`` stay exactly as they
+        were -- under Automatic the rule re-centres the box on the moved atoms
+        -- because moving atoms is an edit of where they are, not a change of
+        frame.  A person who wants the box elsewhere sets it on the
         Cell page, and an atom the move leaves outside the box is named there
         and at the deck (`model/structure-periodicity.md` § 6.0).
         Index-preserving, so every label and the rest of the metadata carry

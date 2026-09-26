@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 9,
+  "schema_version": 10,
   "n_atoms_total": 2,
   "structure_hash": "9f2c…(sha256 hex)",
   "created_by": "molbuilder",

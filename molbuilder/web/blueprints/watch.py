@@ -221,16 +221,16 @@ def _run_periodicity_json(
 ) -> Optional[Dict[str, Any]]:
     """The run's periodicity, composed ON THE SERVER (2026-08-20).
 
-    The CELL from the run's own output logs (the frames' real box --
-    ``data["lattice"]``); the AXIS KINDS from the run's own deck -- its
+    The CELL from the run's own output (the frames' real box --
+    ``data["lattice"]``), or, when the output carries none (a PySCF log), the
+    cell the deck placed the atoms in, from its record; the AXIS KINDS from
+    the run's own deck -- its
     ENGINE-OFFSET record, the kinds as the structure had them when the deck
     was written -- or, for a run made before the record, from the
     ``.source`` pair (job-contracts § 6.3); and the ORIGIN the engine's:
     these frames are its coordinates, so the block states an offset of 0 and
     the box is drawn at their origin (`model/structure-periodicity.md`
-    § 6.0).  Until 2026-09-25 no origin was sent, the load door derived an
-    isolated-axis corner, and the Results tab drew atoms centred that the
-    engine had flush.
+    § 6.0).
 
     Until this existed the browser composed ``{cell}`` alone, the axis
     kinds never reached the viewer, and an export from the Results tab

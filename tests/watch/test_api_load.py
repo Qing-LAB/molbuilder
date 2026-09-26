@@ -715,7 +715,8 @@ def _the_run(tmp_path, *, record_kinds, source_kinds):
     `projects/` (`process/testing.md` § 2a) -- with a `.source` pair beside it
     stating ``source_kinds``, and, when ``record_kinds`` is given, the
     ENGINE-OFFSET record a deck prepped today carries (this run's predates
-    it), written by the real emitter from the design it was prepped from."""
+    it), written by the real emitter for the coordinates beside it -- which
+    applied no offset, so the record states 0."""
     import shutil
 
     import numpy as np
@@ -734,7 +735,8 @@ def _the_run(tmp_path, *, record_kinds, source_kinds):
                            run / "H2.source.xyz")
     if record_kinds is not None:
         deck = next(run.glob("*.fdf"))
-        frame = to_engine(Structure(**design, axis_kind=record_kinds))
+        frame = to_engine(Structure(**design, axis_kind=record_kinds,
+                                    engine_offset=np.zeros(3)))
         deck.write_text(deck.read_text() + "\n"
                         + emit_engine_offset(frame, record_kinds) + "\n")
     return run
@@ -772,10 +774,11 @@ def test_the_results_door_shows_the_engines_frame_and_the_structures_kinds(
     meta = body["structure"]["metadata"]
     assert meta["engine_offset"] == [0.0, 0.0, 0.0], meta
     assert meta["axis_kind"] == kinds, meta
+    # Against the deck the run started from (the fixture's README), not the
+    # door's own frames: a door that shifted what it parsed would pass that.
     np.testing.assert_allclose(
-        body["structure"]["positions"],
-        [[float(v) for v in a[1:4]] for a in body["data"]["frames"][0]],
-        err_msg="the Results door moved the engine's coordinates")
+        body["structure"]["positions"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]],
+        atol=1e-6, err_msg="the Results door moved the engine's coordinates")
 
     again = client.post("/api/build/load",
                         json={"structure": body["structure"]}).get_json()

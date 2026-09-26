@@ -176,8 +176,9 @@ class TestTheStateTable:
         no choice of origin can fit it -- the refusal is unconditional, not a
         warning.
 
-        Contract: `model/structure-periodicity.md` § 6.1 (containment is required
-        along non-periodic axes) + § 6.1a.
+        Contract: `model/structure-periodicity.md` § 6.0, check 1 (a span wider
+        than the cell along a non-periodic axis is refused naming the axis) +
+        § 6.1a.
 
         *(This carried a "KNOWN WEAK" note saying the axis half was asserted
         as `"a" in str(exc)` -- any English sentence satisfies that.  Fixed
@@ -399,21 +400,22 @@ class TestApplyEditV3:
     # vacuum is inert because the cell is typed, not because of an origin, and
     # `test_cell.py` pins that finding (`cell.vacuum_ignored`) where it is made.
 
-    def test_automatic_clears_the_assigned_origin_to_none(self):
-        """*Automatic* stores None -- not the rule's offset.
+    def test_automatic_clears_a_stated_offset_on_a_box_sized_from_vacuum(self):
+        """*Automatic* clears an engine's stated 0 on a box sized from the
+        vacuum -- how a PySCF run saves its geometry -- and stores None.
 
-        Catches the reset writing back the offset the rule would compute. The
-        box would look identical and the state would be wrong: the pair on disk
-        would carry an origin the person never chose, and the box would stop
-        following the atoms.
+        Catches the typed-cell check refusing the way back: an origin is
+        ASSIGNED on a typed cell only, but clearing one needs no cell, and a
+        structure refused here could never return to the rule.  (The typed-cell
+        case is `test_origin_reset_null_payload_through_the_door`.)
 
         Contract: `model/structure-periodicity.md` § 6.0, *A stated offset*
-        (*Automatic* clears it) + § 6.1 clause 1.
+        (*Automatic* clears it; an engine's output states 0).
         """
         s = _mol(off=(1.0, 1.0, 1.0))
-        s.cell = np.eye(3) * 10.0
-        s.engine_offset = np.array([-0.5] * 3)
+        s.engine_offset = np.zeros(3)
         s.__post_init__()
+        assert s.cell is None
         out, _ = apply_edit(s, "box_corner", None)
         assert out.engine_offset is None
 
@@ -864,7 +866,7 @@ class TestLoaderGate:
     states an offset (§ 6.0), so the seams have one thing to agree on: nothing
     is invented."""
 
-    def _write_pair_with_no_stored_corner(self, dirpath, v9_corner=None):
+    def _write_pair_stating_no_offset(self, dirpath, v9_corner=None):
         """A pair whose sidecar holds an explicit cell and NO origin, with the
         atoms outside it at the world origin — the hemeC state, and a legal one.
         Written BY HAND rather than through ``write()`` so it reaches the read
@@ -907,13 +909,13 @@ class TestLoaderGate:
         projects/hemeC-dithiol, observed live 2026-07-29.
         """
         from molbuilder.workingcopy_structure import StructureCodec
-        xyz = self._write_pair_with_no_stored_corner(tmp_path, v9_corner)
+        xyz = self._write_pair_stating_no_offset(tmp_path, v9_corner)
         out = StructureCodec().read(xyz)
         assert out.engine_offset is None, "an offset was invented on the read"
         assert cellmod.resolve(out).contains_atoms, (
             "the box is not drawn round the atoms")
 
-    def test_the_load_door_serves_the_derived_corner(
+    def test_the_load_door_serves_the_rules_box_corner(
             self, tmp_path, monkeypatch):
         """The same state, one layer out: `/api/build/load` serves the corner the rule
         places the box at, in `box_corner`, so the browser draws the box where the
@@ -924,8 +926,8 @@ class TestLoaderGate:
         the world origin while the Cell page showed the wrapping corner. The
         codec-level test above cannot see that; only the served payload can.
 
-        Contract: `model/structure-periodicity.md` § 6.1 clause 2 + § 8.1 (where
-        the gate runs); plan § 5q.3 (the wire).
+        Contract: `model/structure-periodicity.md` § 6.0 (the rule; the wire's
+        `box_corner`) + § 8.1 (where the gate runs).
         """
         pytest.importorskip("flask")
         from molbuilder.diagnostics import Capabilities, set_capabilities
@@ -937,7 +939,7 @@ class TestLoaderGate:
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
         sdir = tmp_path / "projects" / "P" / "structure"
         sdir.mkdir(parents=True)
-        xyz = self._write_pair_with_no_stored_corner(sdir)
+        xyz = self._write_pair_stating_no_offset(sdir)
         set_capabilities(Capabilities(runtime_config={},
                                       conda_binary="/usr/bin/conda"))
         try:
@@ -1006,20 +1008,16 @@ class TestPeriodicAxesAreNeverContained:
     # the stored half of `test_a_manual_origin_gets_the_same_answer_from_either_
     # direction` above, which asserts it.
 
-    def test_unfittable_cell_edit_is_refused_not_stored(self):
-        """A cell the structure cannot fit is refused at the edit — a
-        stored-but-invalid cell locked every later door.
+    def test_unfittable_cell_edit_is_refused_naming_the_axis(self):
+        """A cell the structure cannot fit is refused at the edit, naming the
+        axis it is too short along -- a stored-but-invalid cell locked every
+        later door.
 
-        The assertion is REFUSED-AND-NOT-STORED, which is what the title says
-        and what matters.  It matched the sentence ("cannot contain") until
-        2026-08-03; the wording now comes from ``cell.check`` and names the
-        axis, and pinning prose would have failed on an improvement while
-        passing on a deletion."""
-        s = _mol()                                    # extent 2 Å
-        before = s.cell
-        with pytest.raises(ValueError):
-            apply_edit(s, "cell", (np.eye(3) * 1.0).tolist())
-        assert s.cell is before, "the refused cell must not have been stored"
+        CONTRACT: `model/structure-periodicity.md` § 6.0, check 1 (refused
+        naming the axis).  The molecule is 2 Å along x in a 1 Å cube, so a is
+        the axis; the sentence is the checker's (``cell.unfittable``)."""
+        with pytest.raises(ValueError, match=r"along a\b"):
+            apply_edit(_mol(), "cell", (np.eye(3) * 1.0).tolist())
 
     def test_reset_to_derived_survives_a_zero_extent_isolated_axis(self):
         """Was a refusal ("axis would be degenerate"): a structure with a
@@ -1320,7 +1318,7 @@ class TestDoorHygieneAndRemainingOps:
     # `test_cell_op_anchors_origin_through_the_door` RETIRED 2026-09-25: a thin
     # caller of `to_wire`, whose first assertion (`.get("cell_origin") is None`)
     # could not fail once the key was retired.  What the wire sends for the
-    # rule's box is `test_the_load_door_serves_the_derived_corner` and
+    # rule's box is `test_the_load_door_serves_the_rules_box_corner` and
     # `test_the_wire_carries_unset_and_the_resolved_view`.
 
     def test_axis_kind_op_resets_to_derived_through_the_door(self, client):

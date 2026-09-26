@@ -376,8 +376,8 @@ def test_the_metadata_dict_has_exactly_these_members():
     # adding a field to both at once still forces a conscious edit here.
     # `pbc` left the set 2026-09-22 -- it was the boolean view of `axis_kind`
     # and is now the `pbc()` accessor (`structure-periodicity.md` § 2.0a).
-    # `cell_origin` left it 2026-09-25 for the stated `engine_offset` (§ 6.0),
-    # and this literal is what stops it coming back (D2: never written again).
+    # `cell_origin` left it 2026-09-25 for the stated `engine_offset` (§ 6.0);
+    # that it is never written again (D2) is `TestARetiredKeyPassesEveryGate`'s.
     assert set(METADATA_FIELDS) == {"regions", "cell", "engine_offset",
                                     "axis_kind", "vacuum", "annotations"}
     assert "frozen_atoms" not in METADATA_FIELDS, (

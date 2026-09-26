@@ -1,7 +1,7 @@
 """The one process line for the cell — resolve once, check once.
 
-Contract: docs/model/structure-periodicity.md § 6.1a (both matrices) and
-docs/archive/2026-08-20-cell-plan.md § 6a.
+Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit),
+§ 6.1a (both matrices) and docs/archive/2026-08-20-cell-plan.md § 6a.
 
 WHAT THIS MODULE REPLACED, because it is what these tests are really guarding.
 Before 2026-08-03 the same box was judged in several places at once:
@@ -136,18 +136,13 @@ class TestWhatIsChecked:
                        "cell.vacuum_ignored")
         assert found is not None and found.severity == "info"
 
-    def test_what_an_ignored_vacuum_still_does_is_stated_only_when_true(self):
-        """The sentence must not claim more than the code does.
+    def test_a_vacuum_under_a_typed_cell_moves_nothing_the_engine_gets(self):
+        """Under a typed cell the vacuum sets nothing -- the cell is the box
+        and the engine offset places the atoms -- so `cell.vacuum_ignored`
+        says so, and changing the vacuum moves nothing the engine is handed.
 
-        It said a typed vacuum "is not being used", which was too broad while
-        the vacuum still decided the derived corner on an isolated axis, so it
-        grew a clause saying the vacuum "still sets where the structure sits".
-        Since 2026-09-25 the engine offset places the atoms
-        (`model/structure-periodicity.md` § 6.0) and the clause became false,
-        so it went.
-
-        THE CLAIM IS ASSERTED, NOT THE WORDING: under a typed cell, changing
-        the vacuum must move nothing the engine is handed.
+        THE CLAIM IS ASSERTED, NOT THE WORDING.  CONTRACT:
+        `model/structure-periodicity.md` § 6.0; § 6.1a (`cell.vacuum_ignored`).
         """
         import numpy as _np
         from molbuilder.cell import to_engine
@@ -606,9 +601,9 @@ class TestInterplanarSpacingIsDerivedNotTabulated:
 # --------------------------------------------------------------------- #
 #  The engine offset -- structure-periodicity.md § 6.0                  #
 #                                                                       #
-#  API-level, on a measured fixture: the arithmetic every emitter and   #
-#  every viewer depends on.  The decks it produces are pinned through   #
-#  the road by the prep tests.                                          #
+#  API-level, on constructed fixtures shaped like the 2026-09-25       #
+#  junction: the arithmetic every emitter and every viewer depends on.  #
+#  The decks it produces are pinned through the road by the prep tests. #
 # --------------------------------------------------------------------- #
 
 #: The 2026-09-25 junction's cell: hexagonal in-plane, so a Cartesian

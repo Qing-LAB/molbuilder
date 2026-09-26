@@ -84,9 +84,8 @@ def _normalised_dict(
 
     # The Structure FIELDS -> validated + canonicalised through the ONE dataclass
     # authority, SHARED byte-for-byte with the write validator (to_dict).  This
-    # is what closes the read/write drift that silently dropped cell_origin: a
-    # field cannot exist on one side and not the other, because there is only one
-    # side.  ``selection_rules`` (a sidecar-only pass-through) shares its one
+    # is what closes the read/write drift: a field cannot exist on one side and
+    # not the other, because there is only one side.  ``selection_rules`` (a sidecar-only pass-through) shares its one
     # validator too.
     fields = structure_fields_via_dataclass(n_atoms_total, {
         "regions":      regions,

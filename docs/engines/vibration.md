@@ -979,9 +979,10 @@ order both decks share, **and the cell that run used**
 `<label>.XV`, because on the flat shape both stages share one `.XV` and the
 force-constant run overwrites it with its last displacement, while the output
 carries the stage's token in its name; the cell rather than a re-derived
-vacuum box, because the deck otherwise shifts the atoms into a box drawn
-around the new bounding box, and a relaxed geometry moved against the
-real-space grid is not stationary on that grid any more. The FC deck's start
+vacuum box, and the offset stated `0` with it (`model/structure-periodicity.md`
+§ 6.0: coordinates from an engine state its origin), because otherwise the
+deck re-centres the atoms in their new span, and a relaxed geometry moved
+against the real-space grid is not stationary on that grid any more. The FC deck's start
 state stays the kind's (§ 5.3: `MD.UseSaveXV .false.`), because honouring a
 found `.XV` is exactly what would take a displaced geometry as the stationary
 point on a re-run. `prep` **refuses to prepare `freq` before `relax` has
