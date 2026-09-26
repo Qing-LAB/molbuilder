@@ -55,6 +55,14 @@ dashed line for *all atoms* (informational, includes the fixed ones) and a solid
 line for the *free atoms* (the real convergence signal, since fixed atoms carry
 forces that don't matter). With no frozen atoms it collapses to a single line.
 
+**A cycle carries its `phase`, and the SCF plots draw the phases apart**
+*(W35 P2)*. A TranSIESTA device's periodic initialization and its NEGF loop
+are two traces on their own iteration axes — its cycles run 1..7 and then
+1..1000, at −437,029 and −205,444 eV, and one line through both described
+neither. The last phase is shown by default and the status line names it. A
+run with one phase — every relaxation, every PySCF run — draws as before
+(`model/parse.md` § 5d.5).
+
 ## 3. Convergence targets
 
 The viewer reads the **targets the run was chasing** and draws them as green
@@ -69,6 +77,19 @@ to it. A small label under the plot even says which of these it read them from
 A summary band above the plots names the targets and the current distance. When a
 value sits far above its target, the plot switches to a **log y-axis** so the
 early approach is readable; as it converges the curve heads toward the line.
+
+**The SCF residual is judged against its own criterion, per phase** *(W35
+P2)*: `runtime_info.scf_criteria` — `{phase: {residual: {tolerance, unit,
+required}}}`, one structure for every engine. The SIESTA parser fills it from
+the `redata:` echo (`Require H convergence for SCF`, `Hamiltonian tolerance
+for SCF`, `Require DM convergence for SCF`, `DM tolerance for SCF`) and
+TranSIESTA's `ts:` echo (the NEGF loop's DM, H and charge tolerances); the
+PySCF deck from what it read back (`scf_conv_tol_grad`). A line is drawn for a
+criterion the run requires, against the residual it bounds — dHmax against the
+H tolerance, dDmax against the DM tolerance, the NEGF dQ against the charge
+tolerance, PySCF's |g| against its gradient tolerance — and none where the run
+states none. *(Until 2026-09-26 dHmax was drawn against the dimensionless DM
+tolerance.)*
 
 ## 4. Is it done, and how fast?
 

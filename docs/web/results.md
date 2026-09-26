@@ -355,6 +355,56 @@ bench-summary, then transport. `presenters.md` § 1 carries the list that is
 machine-checked against the registrations; this prose is not, which is why it
 has now drifted twice. Read it as a tour, and that table as the count.)*
 
+## 3a. The Run panel — what ran, with what, and how it went *(W35 P2)*
+
+**A viewer shows a file; the Run panel shows the run the files came from.**
+When the folder the picker is bound to is a run — a run directory, or an
+unmarked folder read alone that holds a run's output — `/api/results/dir`
+carries its `record` (`model/parse.md` § 5d), and the panel sits between the
+picker and the viewer: the same panel for an optimization, a vibration, each
+transport rung and a PySCF run, whichever of the run's files is open. It is
+not a presenter — no file picks it — and it is hidden where there is no
+record: a container, a calculation root (whose ladder is § 2.4's), a folder
+with no run in it.
+
+**It is the ONE home on this page of a run's computation facts.** The
+trajectory viewer's runtime line (host · ranks · SIESTA version · solver) and
+the spectrum viewer's Host / CPU / GPU rows are gone: two places stating one
+fact is how they come to disagree, and the spectrum's rows read *—* for every
+SIESTA vibration, whose trajectory carries no runtime block. The viewers keep
+what is about their file — the convergence card beside the plots stays.
+
+**Closed, it is one line** — the engine and version, the ranks, the engine's
+wall time, how the latest run ended, whether each phase converged, and how
+many findings — so it never pushes the result off the screen. **Open, it has
+four sections**, in the order a person asks them when a number looks wrong:
+
+| section | what it shows | from |
+|---|---|---|
+| **Verdict** | how the run ended, each phase's convergence, each finding as a sentence with its number; the earlier runs of the attempt and how each ended | `verdict`, `earlier` |
+| **Setup** | one table — parameter · default · asked · used — the rows where asked ≠ used first and marked; an item the deck does not set reads *engine default*; a key read to several values shows them all, and the engine's own echo beside them; then, folded with its count, the keys the engine read that no catalogue item names; then the pseudopotentials | `setup` |
+| **Computation** | engine, build and solver; host and environment; the launch asked beside the ranks the engine ran on; start, end, engine wall time, seconds per iteration by phase; peak memory against its limit; the exit | `computation` |
+| **Deck** | its path and sha256; whether it is still the stage's current deck; for a gathered rung, what was taken from which attempt; **View**, which opens it in the sidebar's text viewer (`projects.showPreview`) | `deck` |
+
+**Generic, so a new fact is a label.** The panel does not know engines or
+kinds. It walks the record's parts and renders each field through one table
+of labels and formatters keyed by the field's name — a duration as a
+duration, a byte count as memory, a time of day as a time of day — so a field
+the backend starts stating appears with one label added, and a field the
+record leaves out (§ 5d.1a: not stated, so not shown) leaves no row.
+
+**It is re-read with the directory**, not on a timer: the picker's scan is
+the one source (§ 2.1). The picker carries the record in the same selection
+event as `place` and `ladder`, and forgets it at the start of every scan, so
+a failed or superseded scan cannot leave one folder's record under another
+folder — the 2026-08-04 fault in a new place. A live run's panel shows the
+record as of the last scan; Reload refreshes it with the menu.
+
+*Module:* `lib/results/run-panel.js` renders into `#results-run-panel`,
+listens to the picker's selection event, and owns
+`lib/results/run-panel.css`. `results/viewer.js` is not edited: § 1 keeps it
+to pick, dispose and mount.
+
 ## 4. What a mounted viewer remembers
 
 Each viewer keeps a small amount of state, and it's worth knowing the shape
