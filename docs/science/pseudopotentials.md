@@ -90,7 +90,11 @@ header once (`parse_psml_header` → `PsmlInfo`, `pseudos.py:168`) and returns
 eight statuses. Both then map status → severity through the **one shared
 constant** `pseudos.ERROR_STATUSES` (`pseudos.py:440`), so the preflight (which
 blocks script generation, `validation/siesta.py:125`) and the CLI (which exits
-non-zero, `cli.py:386`) **cannot disagree about what blocks**:
+non-zero, `cli.py:386`) **cannot disagree about what blocks**. And the preflight
+asks about **the files the run will open**: at `prep` it is handed the
+calculation folder, and `pseudos.psml_sources` — the rule `prep` fetches by —
+says per element whether that file comes from the folder or from `psml_lib`
+([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.5a):
 
 | Severity | Statuses | Meaning |
 |---|---|---|

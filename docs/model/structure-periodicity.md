@@ -124,7 +124,7 @@ neighbouring cell intended, or an artefact of the box?*
 | **transport** | the device continuing into its leads — it tiles seamlessly by design | ignore this direction |
 | **isolated** | copies of the molecule that only exist because the box is finite | measure this direction |
 
-Two consumers follow from that one rule, and both were bugs before they did:
+Three consumers follow from that one rule, and all three were bugs before they did:
 
 * **Containment** (§ 6.1 state table) is required along non-periodic axes only —
   requiring it everywhere made real crystals and junction files unopenable.
@@ -137,6 +137,14 @@ Two consumers follow from that one rule, and both were bugs before they did:
   the direction it measured. A fully periodic cell has no vacuum direction, so
   the check is *not applicable* there — which is different from a check that
   could not run, and stays quiet rather than reporting itself.
+* **The cell-volume check** (`cell.volume`, `validation/geometry.py`) compares
+  the box's volume with the atoms' bounding volume — a question about all three
+  axes at once, so it is asked only of a box that is vacuum on all three. It was
+  asked of every box, and it called every crystal and every junction
+  *"suspiciously tight"*: a bulk lead fills its cell by construction (1.45 on
+  the 2026-09-25 gold lead, 1.03 on its junction). A slab's or a wire's vacuum
+  is measured per axis, by the image-distance check above and
+  `cell.vacuum_thin`.
 
 ---
 

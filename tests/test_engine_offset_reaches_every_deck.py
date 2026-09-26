@@ -455,6 +455,27 @@ def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
     assert "along a, which is periodic" in report, report
 
 
+def test_a_crystal_that_fills_its_cell_is_not_called_tight(
+        isolated_projects_root):
+    """A periodic structure fills its cell by construction, and its report
+    does not call the cell tight.
+
+    GOAL: every rung of the 2026-09-25 transport ladder was told "cell is
+    suspiciously tight; expect image-image interactions" -- the bulk gold lead
+    at 1.45, the junction at 1.03 -- because the volume ratio was taken over
+    all three axes.  CONTRACT: `model/structure-periodicity.md` § 2 (images
+    across a periodic or transport axis are intended; only an isolated axis is
+    measured).
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.stages import default_siesta_stages
+    dest, stage, _text = _prep(isolated_projects_root, _slab(),
+                               SiestaConfig(system_label="JOB"),
+                               default_siesta_stages("publishable"), "siesta")
+    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
+    assert "[cell.volume]" not in report, report
+
+
 def test_the_renderer_refuses_a_spec_that_carries_no_frame():
     """Every deck places its atoms and says so: a spec without a frame is
     refused, not logged -- a new engine or kind that forgot it would walk past

@@ -25,8 +25,8 @@ from .sidecar import _check_frozen_atoms_consumed
 
 def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                                     *, dest_dir=None) -> List[Issue]:
-    """Run molbuilder.pseudos.check_coverage on cfg.psml_lib so the
-    SIESTA Build->Generate preflight catches:
+    """Run molbuilder.pseudos.check_coverage on the pseudopotentials THIS RUN
+    WILL OPEN, so the SIESTA Build->Generate preflight catches:
       * missing .psml files (SIESTA's ``pseudo_read: ERROR: Pseudopotential
         file not found`` after 5 minutes of MPI init -- we surface
         at click-time instead);
@@ -35,13 +35,32 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         bond lengths come out wrong with no error -- only molbuilder
         catches this).
 
-    Without cfg.psml_lib set we emit a single WARN telling the
-    user SIESTA will hard-fail at run time looking for them.
-    Suggests projects/pseudopotential/ as the convention since
-    that's where the new-project skeleton creates one.
+    WHICH FILES those are is prep's rule, asked through the one function that
+    states it (`pseudos.psml_sources`): the calculation's own folder first,
+    then the library ``cfg.psml_lib`` names, for what the folder lacks.  This
+    gate read the library alone until 2026-09-25, and prep never told it the
+    folder -- so every rung of a transport ladder, whose pseudopotentials come
+    with the citation and never from a library, was told "cfg.psml_lib is not
+    set".
+
+    With no folder (the Build tab, before a save) only the library can
+    answer, and an unset one is a WARN; with a folder, a species in neither
+    place is an ERROR.  Suggests projects/pseudopotential/ as the convention
+    since that's where the new-project skeleton creates one.
     """
+    from ..pseudos import (PsmlLibError, check_coverage, ERROR_STATUSES,
+                           expected_xc_family, psml_sources, resolve_psml_lib)
+    labels = list(dict.fromkeys(str(e).strip() for e in struct.elements))
+    found = (psml_sources(labels, dest_dir=dest_dir) if dest_dir is not None
+             else dict.fromkeys(labels))
+    lacking = [el for el in labels if found[el] is None]
+    read_from: dict = {}                  # directory -> the labels read there
+    for el in labels:
+        if found[el] is not None:
+            read_from.setdefault(found[el], []).append(el)
+
     psml_lib = getattr(cfg, "psml_lib", None)
-    if not psml_lib:
+    if lacking and not psml_lib:
         # WHERE THE PSEUDOPOTENTIALS COME FROM IS STATED, OR THE FOLDER
         # ALREADY HAS THEM -- there is no third answer, and leaving it
         # unstated is the one implicit thing left on this path (user,
@@ -52,22 +71,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
         # DECIDES IT, and for the same reason: with a calculation folder in
         # hand this is answerable, and without one it is not.
         #
-        #   * folder known, and it covers every element  -> nothing to say.
-        #     § 2.5a: pseudos already beside the calculation are used
-        #     WITHOUT this field, so a silent config is correct there.
-        #   * folder known, and it does not              -> ERROR.  Neither
+        #   * folder known, and it lacks a species      -> ERROR.  Neither
         #     source exists; SIESTA cannot start, and saying so at Generate
         #     beats finding out after MPI init.
         #   * no folder yet (Build tab, before a save)   -> WARN.  Whether
         #     the folder will supply them is not knowable yet, and refusing
         #     on a guess is the thing this whole path is being cleared of.
-        covered = None
-        if dest_dir is not None:
-            from ..pseudos import elements_with_psml
-            here = elements_with_psml(dest_dir)
-            covered = here and not (set(struct.elements) - here)
-        if covered:
-            return []
         return [Issue(
             "error" if dest_dir is not None else "warn",
             ("cfg.psml_lib is not set -- SIESTA needs .psml files for "
@@ -86,62 +95,86 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
                 "this field." if dest_dir is not None else "")),
             "config.psml_lib",
         )]
-    from ..pseudos import PsmlLibError, resolve_psml_lib
-    try:
-        psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
-    except PsmlLibError as exc:
-        # A spelling the rule cannot answer (outside the tree / dotted).
-        # ERROR, and the message already teaches the rule (2.5a).
-        return [Issue("error", str(exc), "config.psml_lib")]
-    if not psml_dir.is_dir():
-        # The spelling named ONE anchor (job-contracts.md 2.5a) and the
-        # folder is not there.  Say which anchor, in the rule's own words --
-        # `pseudos.describe_psml_anchor` owns that sentence so this surface
-        # and `prep`'s cannot describe the rule differently.
-        from ..pseudos import describe_psml_anchor
-        from pathlib import Path as _P
-        is_relative = not _P(psml_lib).expanduser().is_absolute()
-        # Severity, and the one thing that changes it:
-        #   * ABSOLUTE miss -> ERROR.  Nothing about context can rescue it.
-        #   * RELATIVE, calculation folder known -> ERROR.  The anchor the
-        #     spelling named is available and the folder is not there.
-        #   * RELATIVE, NO calculation folder -> WARN.  A dotted spelling
-        #     means "from this calculation", and there is no calculation
-        #     yet; this ran against the server's own tree instead, so a
-        #     miss here does not prove a miss at prep time.
-        severity = "error" if (not is_relative or dest_dir is not None) else "warn"
-        return [Issue(
-            severity,
-            f"cfg.psml_lib path does not exist or is not a directory: "
-            f"{psml_lib}.  SIESTA will not find any pseudopotentials.  "
-            + describe_psml_anchor(psml_lib, dest_dir=dest_dir)
-            + "  Create that directory, use an absolute path, or pick "
-              "the directory with the file-picker.",
-            "config.psml_lib",
-        )]
+    if lacking:
+        try:
+            psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
+        except PsmlLibError as exc:
+            # A spelling the rule cannot answer (outside the tree / dotted).
+            # ERROR, and the message already teaches the rule (2.5a).
+            return [Issue("error", str(exc), "config.psml_lib")]
+        if not psml_dir.is_dir():
+            # The spelling named ONE anchor (job-contracts.md 2.5a) and the
+            # folder is not there.  Say which anchor, in the rule's own words
+            # -- `pseudos.describe_psml_anchor` owns that sentence so this
+            # surface and `prep`'s cannot describe the rule differently.
+            from ..pseudos import describe_psml_anchor
+            from pathlib import Path as _P
+            is_relative = not _P(psml_lib).expanduser().is_absolute()
+            # Severity, and the one thing that changes it:
+            #   * ABSOLUTE miss -> ERROR.  Nothing about context can rescue it.
+            #   * RELATIVE, calculation folder known -> ERROR.  The anchor the
+            #     spelling named is available and the folder is not there.
+            #   * RELATIVE, NO calculation folder -> WARN.  A dotted spelling
+            #     means "from this calculation", and there is no calculation
+            #     yet; this ran against the server's own tree instead, so a
+            #     miss here does not prove a miss at prep time.
+            severity = ("error" if (not is_relative or dest_dir is not None)
+                        else "warn")
+            return [Issue(
+                severity,
+                f"cfg.psml_lib path does not exist or is not a directory: "
+                f"{psml_lib}.  SIESTA will not find any pseudopotentials.  "
+                + describe_psml_anchor(psml_lib, dest_dir=dest_dir)
+                + "  Create that directory, use an absolute path, or pick "
+                  "the directory with the file-picker.",
+                "config.psml_lib",
+            )]
+        read_from.setdefault(psml_dir, []).extend(lacking)
     # The expected XC family, from the ONE table (`pseudos.expected_xc_family`).
     # It was spelled out here and again in `cli.py`, and the two disagreed --
     # the CLI copy had no VDW arm.
     xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
-    from ..pseudos import check_coverage, ERROR_STATUSES, expected_xc_family
     expected_family = expected_xc_family(xc_authors)
     out: List[Issue] = []
-    for entry in check_coverage(
-        struct.elements, psml_dir,
-        expected_xc_family=expected_family,
-        expected_xc_authors=xc_authors or None,
-    ):
-        if entry.status == "ok":
-            continue
-        # ERROR_STATUSES (missing / dead_projector / xc_family_mismatch) BLOCK:
-        # the run cannot be correct.  The rest -- xc_mismatch (same-family author
-        # diff) / relativistic_mismatch / generator_mismatch / parse_warning --
-        # are advisory (warn).  The set is shared with the CLI (pseudos.py) so
-        # the two surfaces can't drift.
-        severity = "error" if entry.status in ERROR_STATUSES else "warn"
-        out.append(Issue(severity, entry.message,
-                          f"config.psml_lib.{entry.element}"))
+    for directory, els in read_from.items():
+        for entry in check_coverage(
+            els, directory,
+            expected_xc_family=expected_family,
+            expected_xc_authors=xc_authors or None,
+        ):
+            if entry.status == "ok":
+                continue
+            # ERROR_STATUSES (missing / dead_projector / xc_family_mismatch)
+            # BLOCK: the run cannot be correct.  The rest -- xc_mismatch
+            # (same-family author diff) / relativistic_mismatch /
+            # generator_mismatch / parse_warning -- are advisory (warn).  The
+            # set is shared with the CLI (pseudos.py) so the two surfaces
+            # can't drift.
+            severity = "error" if entry.status in ERROR_STATUSES else "warn"
+            message = entry.message
+            if entry.status == "missing" and dest_dir is not None:
+                message = (f"no .psml file for {entry.element} in the "
+                           f"calculation folder, and {message}")
+            out.append(Issue(severity, message,
+                              f"config.psml_lib.{entry.element}"))
     return out
+
+
+def _psml_files(struct, cfg, *, dest_dir=None) -> dict:
+    """Each species' `.psml` as the run will open it: the calculation's own
+    folder first, then the library (`pseudos.psml_sources`, prep's rule).  A
+    species in neither place is absent -- the coverage check reports it."""
+    from ..pseudos import psml_sources, resolve_psml_lib
+    library = None
+    psml_lib = getattr(cfg, "psml_lib", None)
+    if psml_lib:
+        try:
+            library = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
+        except Exception:                                # noqa: BLE001
+            library = None     # a spelling the rule refuses: coverage says so
+    found = psml_sources(getattr(struct, "elements", []) or [],
+                         dest_dir=dest_dir, library=library)
+    return {el: d / f"{el}.psml" for el, d in found.items() if d is not None}
 
 
 def _declared_cutoff_ry(struct, cfg, *, dest_dir=None):
@@ -167,20 +200,15 @@ def _declared_cutoff_ry(struct, cfg, *, dest_dir=None):
     ``(None, None)``. Silent on every failure the coverage check already
     reports — a missing directory is an INTEGRITY finding, and layer 2 has
     nothing to add to it.
+
+    Read from the files the run will open (`_psml_files`): until 2026-09-25
+    this read the library alone, so a calculation whose pseudopotentials sat
+    in its own folder -- every transport rung -- had its hints ignored.
     """
-    psml_lib = getattr(cfg, "psml_lib", None)
-    if not psml_lib:
-        return (None, None)
     try:
-        from ..pseudos import parse_psml_header, resolve_psml_lib
-        psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
-        if not psml_dir.is_dir():
-            return (None, None)
+        from ..pseudos import parse_psml_header
         best_ry, best_el = None, None
-        for el in sorted(set(getattr(struct, "elements", []) or [])):
-            f = psml_dir / f"{el}.psml"
-            if not f.is_file():
-                continue
+        for el, f in sorted(_psml_files(struct, cfg, dest_dir=dest_dir).items()):
             ry = parse_psml_header(f).suggested_mesh_ry
             if ry is not None and (best_ry is None or ry > best_ry):
                 best_ry, best_el = float(ry), el
@@ -242,11 +270,10 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
     if declared is not None:
         if mc_val >= declared:
             return []
-        from ..pseudos import parse_psml_header, resolve_psml_lib
+        from ..pseudos import parse_psml_header
         high = None
         try:
-            f = resolve_psml_lib(getattr(cfg, "psml_lib", ""),
-                                 dest_dir=dest_dir) / f"{el}.psml"
+            f = _psml_files(struct, cfg, dest_dir=dest_dir)[el]
             high = parse_psml_header(f).cutoff_hints_ry.get("high")
         except Exception:                                # noqa: BLE001
             pass
@@ -588,8 +615,15 @@ def _validate_siesta(struct: Structure, cfg,
     # struct.frozen_atoms via %block Geometry.Constraints which is
     # only meaningful inside an MD/relax block.  When relax_type is
     # "none" the relaxer doesn't run, so the constraint is a no-op.
+    #
+    # NOT ON A TRANSPORT RUNG, which writes no MD block at all: the junction
+    # was relaxed upstream and every rung computes at that geometry
+    # (engines/transport.md § 1), so the frozen set holds nothing there.
+    # Reasoned from `relax_type`'s catalogue default, this said "held fixed
+    # during SIESTA relaxation" on every junction rung (2026-09-25) -- the
+    # vibration kind's failure (science/validation.md § 7) on a second kind.
     relax = (getattr(cfg, "relax_type", "") or "").lower()
-    if not vibration:
+    if not vibration and calculation != "transport":
         issues += _check_frozen_atoms_consumed(
             struct,
             engine="SIESTA",

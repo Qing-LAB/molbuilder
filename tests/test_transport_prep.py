@@ -749,6 +749,38 @@ class TestTheLadderPreps:
         assert [j["name"] for j in js["jobs"]] == ["seed"]
         assert (calc / "STAGE-PLAN.md").is_file()
 
+    def test_no_rung_says_its_frozen_atoms_are_held_in_a_relaxation(self,
+                                                                    calc):
+        """A transport rung relaxes nothing, so its report says nothing about
+        holding atoms during a relaxation.
+
+        GOAL: every junction rung of the 2026-09-25 ladder reported "108
+        atom(s) held fixed during SIESTA relaxation", reasoned from
+        `relax_type`'s catalogue default on a deck with no MD block.
+        CONTRACT: `science/validation.md` § 7 (one fact, one finding: a
+        family reasoned from the wrong calculation is not fired) and the seed
+        deck's own note (`transport/deck.py`): no MD block, a single point at
+        the relaxed geometry.
+        """
+        prep_calculation(calc, "seed")
+        report = (calc / "01_seed" / "T_01_seed.validation.txt").read_text()
+        assert "[config.frozen_atoms]" not in report, report
+
+    def test_no_rung_says_its_pseudopotentials_are_unconfigured(self, calc):
+        """The pseudopotentials come with the citation, and the report says
+        nothing about a library transport never uses.
+
+        GOAL: every rung of the 2026-09-25 ladder reported "cfg.psml_lib is
+        not set -- SIESTA ... will refuse to start", beside a deck whose
+        pseudopotentials prep had just copied from the cited run.  CONTRACT:
+        `engines/transport.md` (the pseudopotentials travel with the
+        citation) and `pseudos.psml_sources` (the gate reads the calculation's
+        folder first, as prep does).
+        """
+        prep_calculation(calc, "seed")
+        report = (calc / "01_seed" / "T_01_seed.validation.txt").read_text()
+        assert "[config.psml_lib" not in report, report
+
     def test_the_RUNS_CHOSEN_SHAPE_reaches_a_transport_stage(self, calc):
         """**The run's launch shape travels into the transport arm.**
 

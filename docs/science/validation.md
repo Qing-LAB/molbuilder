@@ -541,6 +541,11 @@ closes: the engine's copy is reasoned from the wrong calculation (a
 *"held fixed during relaxation"* line on a force-constant run that relaxes
 nothing — seen on the Spectrum tab, 2026-09-24). Both engine validators
 branch on the kind the same way (`validation/pyscf.py`, `validation/siesta.py`).
+The same wrong calculation reached the transport kind: its rungs write no MD
+block — the junction was relaxed upstream and every rung computes at that
+geometry — so SIESTA's frozen-atom family is not asked there at all, rather
+than deferred to anyone (every junction rung said *"held fixed during SIESTA
+relaxation"*, 2026-09-25).
 
 > *This said **four** configs (SIESTA / PySCF / spectra / transport). Both of
 > the others keyed on a config class nothing in production validates, and both

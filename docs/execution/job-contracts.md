@@ -769,6 +769,17 @@ it.
 spelling names exactly one folder, and a miss is reported against that
 folder — never a second guess against a different anchor.
 
+**Which files are checked is which files are opened.** `prep` and the
+settings gate read the pseudopotentials by one rule, `pseudos.psml_sources`:
+the calculation's own folder first (`pseudos/`, then any left at its root),
+then the `psml_lib` folder for what the calculation lacks. So a calculation
+whose files sit beside it needs no `psml_lib`, and a library that lacks a
+species the calculation already has refuses nothing. Before a calculation
+folder exists (the Build tab) only the library can answer, and an unset one
+is a warning, not a refusal. *(Until 2026-09-25 the gate read the library
+alone and `prep` never told it the folder, so every transport rung — whose
+files come with the citation — was told `psml_lib` was unset.)*
+
 #### 2.5b Naming a calculation: from the root, and inside it
 
 § 2.5a is about a path that points at **data** inside the tree. A path

@@ -2459,13 +2459,15 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             _ask_if_underway(base, stage, bench_container=cont)
         from .prep import prep_calculation
         from ..scheduler import AmbiguousTarget, UnknownTarget
+        opened: list = []          # the attempts prep opened -- see the report
         try:
             dirs = prep_calculation(base, stage, allocation=allocation,
                                     env=env, emit_sbatch=emit_sbatch,
                                     sweep=sweep, pins=pins,
                                     translation=translation, target=target,
                                     chosen=chosen,
-                                    pipeline_log=pipeline_log)
+                                    pipeline_log=pipeline_log,
+                                    opened=opened)
         except (UnknownTarget, AmbiguousTarget) as exc:
             # Both are the same class of refusal -- WHICH machine is this
             # for -- and both are answers only the user has
@@ -2589,8 +2591,13 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                               cold=cold)
     except ValueError as e:
         raise click.ClickException(str(e))
+    # FRESH IS THE FIRST OPEN'S ANSWER.  `prep_calculation` opened this
+    # attempt a moment ago, so opening it again here finds it unlaunched and
+    # calls it reused: every prep said "(reused -- not launched yet)" of a
+    # directory it had just made (2026-09-25).
+    fresh = next((a.fresh for a in opened if a.dir == rep.dir), rep.fresh)
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
-               f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
+               f"{'' if fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  linked: {', '.join(rep.linked)}")
     if rep.copied:
         click.echo(f"  copied from {rep.continued_from}: "

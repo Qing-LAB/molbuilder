@@ -562,7 +562,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     preflight and `molbuilder pseudo check` refuse on, from the same shared
     constant.
     """
-    from ..pseudos import resolve_psml_lib
+    from ..pseudos import psml_sources, resolve_psml_lib
     from ..siesta.input import copy_pseudopotentials
     from ..chemistry import species_order
 
@@ -570,8 +570,9 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     if not species:
         return
     pdir = _pseudo_dir(base)
-    have = {p.stem for p in pdir.glob("*.psml")}
-    want = [s for s in species if s not in have]
+    # THE FOLDER WINS, by the one rule the settings gate asks too.
+    want = [s for s, d in psml_sources(species, dest_dir=base).items()
+            if d is None]
     if not want:
         _screen_pseudos(species, cfg, pdir)
         return
@@ -628,10 +629,11 @@ def _screen_pseudos(species, cfg, base: Path) -> None:
 
     The three blocking statuses are `missing`, `dead_projector` and
     `xc_family_mismatch` — a file absent, a valence channel physically absent,
-    or the wrong XC family.  The rest are advisory and are printed.
+    or the wrong XC family.  The rest are advisory, and the settings gate
+    reports them in the deck's report: it reads these same files
+    (`pseudos.psml_sources`), so printing them here too said each one twice.
     """
     from ..pseudos import ERROR_STATUSES, check_coverage, expected_xc_family
-    import sys as _sys
     entries = check_coverage(
         species, base,
         expected_xc_family=expected_xc_family(
@@ -639,9 +641,6 @@ def _screen_pseudos(species, cfg, base: Path) -> None:
         expected_xc_authors=(getattr(cfg, "xc_authors", "") or "") or None,
     )
     blocking = [e for e in entries if e.status in ERROR_STATUSES]
-    for e in entries:
-        if e.status != "ok" and e not in blocking:
-            print(f"  note: {e.message}", file=_sys.stderr)
     if blocking:
         raise PrepError(
             "the pseudopotentials in this calculation do not pass the "
@@ -863,7 +862,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      sweep=None, pins=None, translation=None,
                      target: Optional[str] = None,
                      chosen=None,
-                     pipeline_log: bool = False) -> List[Path]:
+                     pipeline_log: bool = False,
+                     opened: Optional[list] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -887,6 +887,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     decided and produced, beside this prep's ``STAGE-PLAN.md``. Off by
     default: it is an observer of the pipeline, never a step in it, and no
     generated artifact differs either way (`script-preparation.md` § 4.5).
+
+    ``opened``, when given, receives the :class:`~molbuilder.jobset.materialize.Attempt`
+    reports of the attempts this prep opened.  A caller reporting on the
+    attempt reads its freshness from here: opening it a second time finds it
+    already there, unlaunched, and calls it reused.
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
@@ -912,7 +917,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                sweep=sweep, pins=pins,
                                translation=translation, target=target,
                                chosen=chosen,
-                               pipeline_log=pipeline_log)
+                               pipeline_log=pipeline_log,
+                               opened=opened)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
@@ -1180,7 +1186,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                          calculation=_render_kind,
                                          **({"cell": _render_cell}
                                             if _render_cell is not None else {}))
-                _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log)
+                _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
+                                 dest_dir=base)
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
                               where=script, log=log):
@@ -1298,7 +1305,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
     # the asymmetry was inside this function, not between two surfaces.
     if kind == "ladder" and stage:
-        _open_attempts(js, base, stage)
+        reports = _open_attempts(js, base, stage)
+        if opened is not None:
+            opened.extend(reports)
 
     if log is not None:
         log.close()
@@ -1436,6 +1445,7 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     actually here, same protocol, same blocking statuses.
     """
     from ..projects import find_projects_root
+    from ..pseudos import psml_sources
     from ..siesta.input import copy_pseudopotentials
     from ..chemistry import species_order
 
@@ -1443,8 +1453,9 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     if not species:
         return
     pdir = _pseudo_dir(base)
-    have = {p.stem for p in pdir.glob("*.psml")}
-    want = [s for s in species if s not in have]
+    # THE FOLDER WINS, by the one rule the settings gate asks too.
+    want = [s for s, d in psml_sources(species, dest_dir=base).items()
+            if d is None]
     if want:
         root = find_projects_root(base)
         lib = None
@@ -1598,7 +1609,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     sweep=None, pins=None, translation=None,
                     target: Optional[str] = None,
                     chosen=None,
-                    pipeline_log: bool = False) -> List[Path]:
+                    pipeline_log: bool = False,
+                    opened: Optional[list] = None) -> List[Path]:
     """`prep` for the transport COMPOSITE — one rung of the ladder.
 
     **The same five steps every kind takes**, with one step of its own.
@@ -1838,7 +1850,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 # only ValidationError / RuntimeConfigError / WrapperError --
                 # deliberately, so a TypeError still looks like the bug it is.
                 raise PrepError(str(exc)) from exc
-            _sc.prepare_deck(spec, struct, cfg, out_dir / script, log=_tlog)
+            _sc.prepare_deck(spec, struct, cfg, out_dir / script,
+                             log=_tlog, dest_dir=base)
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     if stage == "transmission":
@@ -1908,8 +1921,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # folder by name and that refusal was accidentally the guard.  Opening the
     # attempt (above, the same day) removed the symptom and left the gap, so a
     # device job could reach the node and die for want of an electrode `.TSHS`.
-    _open_attempts(js, base, stage,
-                   containers=[d for d, _ in point_dirs] or (None,))
+    reports = _open_attempts(js, base, stage,
+                             containers=[d for d, _ in point_dirs] or (None,))
+    if opened is not None:
+        opened.extend(reports)
     if _tlog is not None:
         _tlog.close()
     return dirs

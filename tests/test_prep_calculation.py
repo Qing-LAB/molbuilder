@@ -189,6 +189,62 @@ def test_the_template_supplies_what_no_stage_varies(calc):
 
 
 # --------------------------------------------------------------------- #
+#  The pseudopotentials checked are the ones the run will open           #
+# --------------------------------------------------------------------- #
+
+def test_pseudopotentials_beside_the_calculation_need_no_library(calc):
+    """A calculation whose `.psml` files are in its own folder is not told
+    `psml_lib` is unset.
+
+    GOAL: prep used the folder's files -- the folder wins -- while the report
+    beside the deck said "cfg.psml_lib is not set ... SIESTA will refuse to
+    start": the settings gate was never told the folder (2026-09-25).
+    CONTRACT: `job-contracts.md` § 2.5a (pseudopotentials already beside the
+    calculation are used without this field); `pseudos.psml_sources` (the
+    folder first, then the library -- one rule for prep and the gate).
+    """
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
+    report = (calc / "01_coarse" / "calc_01_coarse.validation.txt").read_text()
+    assert "[config.psml_lib" not in report, report
+
+
+def test_the_folder_wins_over_a_library_that_lacks_a_species(
+        isolated_projects_root):
+    """A library that lacks a species the folder has does not stop prep.
+
+    GOAL: prep's provider takes the folder's files and never asks the library
+    for them, while the gate read the library alone -- so a calculation with
+    every file beside it was refused over a library it did not need
+    (2026-09-25).  CONTRACT: `pseudos.psml_sources` -- the folder first, then
+    the library for what the folder lacks.
+    """
+    tree = isolated_projects_root
+    lib = tree / "pseudopotential"
+    lib.mkdir()
+    _pseudos_for(lib, ["S"])                       # the library: sulfur only
+    struct = Structure(elements=["S", "C", "C", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.78],
+                                           [1.21, 0.0, 2.48], [2.15, 0.0, 1.94]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    src = tree / "bdt.xyz"
+    src.write_text(struct.to_xyz())
+    dest = tree / "P" / "optimization" / "calc"
+    D.write_description(D.build_description(
+        struct, SiestaConfig(system_label="calc", mesh_cutoff=300.0,
+                             psml_lib="pseudopotential"),
+        default_siesta_stages("publishable"),
+        engine="siesta", shape="hierarchical", name="calc", source=str(src)),
+        dest)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    _pseudos_for(dest, ["S", "C", "H"])            # the folder: all three
+    prep_calculation(dest, "coarse", allocation=Resources(mpi_np=32))
+    report = (dest / "01_coarse" / "calc_01_coarse.validation.txt").read_text()
+    assert "[config.psml_lib" not in report, report
+
+
+# --------------------------------------------------------------------- #
 #  Refusals                                                              #
 # --------------------------------------------------------------------- #
 

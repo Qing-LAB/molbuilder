@@ -44,31 +44,42 @@ import xml.etree.ElementTree as ET
 PSEUDO_DIRNAME = "pseudos"
 
 
-def elements_with_psml(base) -> "set":
-    """Which elements this calculation already has a `.psml` for.
+def psml_sources(elements, *, dest_dir=None,
+                 library=None) -> "Dict[str, Optional[Path]]":
+    """Which directory each element's `.psml` is read from, or ``None``.
 
-    *(Called `staged_psml` until 2026-09-19.  "Staged" is the participle --
-    the files are in place -- but STAGE is this repo's word for a rung of a
-    ladder, and a reader who knows that vocabulary reads the old name as a
-    question about rungs.  The name says what it returns instead.)*
+    **The calculation's own folder first, then ``library``** -- the rule prep
+    applies when it puts the files in place (*the folder wins; only what is
+    missing is fetched*, `jobset/prep.py`), and the rule every check asks, so
+    that a check reads the files the run will open.  The library is the
+    template's ``psml_lib`` on SIESTA and the cited run's folder on
+    transport.  Keyed by LABEL, verbatim: SIESTA opens `<label>.psml`
+    (`check_coverage`).
 
-    **The NAME of the folder, with no side effects** -- which is why this is
-    here and not `jobset.prep._pseudo_dir`, whose job is to CREATE that
-    folder and migrate root strays into it.  A read-only check cannot call
-    a function that writes, and copying its rule instead is how the two
-    come to disagree about where a file is.
+    **No side effects** -- which is why this is here and not
+    `jobset.prep._pseudo_dir`, whose job is to CREATE the folder and migrate
+    root strays into it.  A read-only check cannot call a function that
+    writes, and copying its rule instead is how the two came to disagree
+    about where a file is: the settings gate read only the library, and
+    called a calculation whose files sat beside it unconfigured (2026-09-25).
 
-    Both places, because both are real at different moments: `init` and a
-    travelled bundle leave `<El>.psml` at the root, and the first `prep`
-    moves them into `pseudos/`.  Asking only the root is what made the
-    configuration-time check refuse a calculation whose pseudopotentials
-    were already staged (found 2026-09-19 by a prep e2e timing out).
+    In the folder, ``pseudos/`` before the root.  Both are real at different
+    moments -- `init` and a travelled bundle leave `<El>.psml` at the root,
+    and the first `prep` moves them into ``pseudos/``, keeping what is
+    already there.  Asking only the root is what made the check refuse a
+    calculation whose pseudopotentials were already in place (2026-09-19).
     """
-    base = Path(base)
-    out = set()
-    for d in (base, base / PSEUDO_DIRNAME):
-        if d.is_dir():
-            out |= {f.stem for f in d.glob("*.psml")}
+    places: List[Path] = []
+    if dest_dir is not None:
+        places += [Path(dest_dir) / PSEUDO_DIRNAME, Path(dest_dir)]
+    if library is not None:
+        places.append(Path(library))
+    out: Dict[str, Optional[Path]] = {}
+    for el in elements:
+        key = str(el).strip()
+        if key not in out:
+            out[key] = next((d for d in places
+                             if (d / f"{key}.psml").is_file()), None)
     return out
 
 

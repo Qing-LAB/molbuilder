@@ -139,7 +139,7 @@ states the *why* so the thresholds don't drift silently.
 | `cell.no_volume` (det ≈ 0) | **error** | the box has no volume — nothing to calculate in |
 | `cell.left_handed` (det < 0) | **error** | mirrored lattice vectors; swap two of them |
 | `cell.unfittable` | **error** | the structure is longer than the cell — no corner can fit it |
-| cell volume / atom-bounding-volume < 3 | warn | cell suspiciously tight |
+| cell volume / atom-bounding-volume < 3, on a box that is vacuum on all three axes | warn | cell suspiciously tight. Not asked of a crystal, a lead or a junction, which fill their cells by construction; a slab's or a wire's vacuum is measured per axis by the image-distance row below ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2) |
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
 | net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (all `kgrid == 1`) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |

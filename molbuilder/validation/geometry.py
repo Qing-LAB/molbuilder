@@ -123,10 +123,19 @@ def validate_geometry(struct: Structure,
     if det <= 0:
         return issues
 
+    # Which axis an image belongs to decides whether it is a defect
+    # (structure-periodicity.md 2): only an ISOLATED axis has images that
+    # are an artefact of the box.
+    _kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
+
     # Cell volume vs atom-bounding-volume: warn when the cell is so
     # tight that the molecule fills most of it (= guaranteed
-    # image-image contact in PBC).
-    if n >= 1:
+    # image-image contact in PBC).  A volume asks about all three axes at
+    # once, so it is asked only of a box that is vacuum on all three: a
+    # crystal or a lead fills its cell BY CONSTRUCTION (bulk gold read 1.45),
+    # and the vacuum of a slab or a wire is measured per axis, by
+    # `cell.image_distance` below and `cell.vacuum_thin`.
+    if n >= 1 and all(k == "isolated" for k in _kinds):
         extent = pos.max(axis=0) - pos.min(axis=0)
         atom_box = float(np.prod(np.maximum(extent, 1.0)))   # min 1 Å on each side
         ratio = det / atom_box
@@ -148,7 +157,6 @@ def validate_geometry(struct: Structure,
     # non-periodic axes only).  A fully periodic cell has no vacuum direction
     # and the check is simply not applicable -- that is different from a check
     # that could not run, so it stays quiet rather than emitting an info.
-    _kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
     _vac_axes = [i for i, k in enumerate(_kinds) if k == "isolated"]
     if n >= 2 and _vac_axes:
         min_image = _min_image_distance(pos, cell, axes=_vac_axes)

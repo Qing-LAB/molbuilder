@@ -1502,6 +1502,41 @@ def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
         assert (Path(first) / "run.json").is_file()               # left intact
 
 
+def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
+        isolated_projects_root):
+    """The report tells a new attempt from one an earlier prep left behind.
+
+    GOAL: every `prep run` of the 2026-09-25 transport ladder said "(reused --
+    not launched yet)" of a directory it had just made -- `prep_calculation`
+    opens the attempt, and the CLI opened it again for its report and found it
+    unlaunched.  CONTRACT: `Attempt.fresh` (`jobset/materialize.py`) is False
+    only when an unlaunched attempt was REUSED rather than opened
+    (`project-layout.md` § 1.6).
+    """
+    tree = isolated_projects_root
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text(
+        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+    runner, grp = _runner()
+    init = runner.invoke(grp, ["init", "--structure", "P/structure/h2.xyz",
+                               "--bundle", "P/optimization/h",
+                               "--shape", "hierarchical", "--engine", "pyscf"])
+    assert init.exit_code == 0, init.output
+    import json
+    (tree / "P" / "optimization" / "h" / ".molbuilder.json").write_text(
+        json.dumps({"script_generation": {"activation": "conda activate",
+                                          "preamble": "true"}}))
+    prep = ["prep", "run", "coarse", "--bundle", "P/optimization/h",
+            "--no-sbatch"]
+    first = runner.invoke(grp, prep)
+    assert first.exit_code == 0, first.output
+    assert "prepared coarse: " in first.output, first.output
+    assert "(reused" not in first.output, first.output
+    again = runner.invoke(grp, prep)
+    assert again.exit_code == 0, again.output
+    assert "(reused -- not launched yet)" in again.output, again.output
+
+
 # --------------------------------------------------------------------- #
 #  The observe layer vs the attempt layer (project-layout.md § 1.5, 1.6) #
 # --------------------------------------------------------------------- #

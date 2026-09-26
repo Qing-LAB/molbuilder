@@ -1342,7 +1342,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
 
 
 def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
-                log=None) -> "RenderedDeck":
+                log=None, dest_dir=None) -> "RenderedDeck":
     """Sub-steps **structure** through **record**, in that order.
 
     **The layout is walked in order**, and a member of it is either a
@@ -1356,6 +1356,10 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     reader's section, the record blocks and the banner are the framework's, so
     two engines cannot drift about what a generated file looks like below the
     science.
+
+    ``dest_dir`` is the calculation folder the deck is prepared into, when
+    there is one.  The settings gate reads from it what the run will open
+    beside the deck -- the pseudopotentials -- rather than guessing at them.
     """
     # STEP 3.3, HERE, AND ONLY HERE.  The gate belongs to rendering because
     # its whole job is to refuse before a line exists -- and every route that
@@ -1366,7 +1370,8 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     with _calling("validate_subject", engine=spec.engine, log=log):
         _subject, _kw = ((spec.validate_subject(struct, cfg))
                          if spec.validate_subject else (struct, {}))
-    _issues = _validate(_subject, cfg, calculation=spec.calculation, **_kw)
+    _issues = _validate(_subject, cfg, calculation=spec.calculation,
+                        dest_dir=dest_dir, **_kw)
     if log is not None:
         log.step("STEP 3.3 · VALIDATE — the settings gate")
         log.received("subject", ("the spec's own subject" if spec.validate_subject
@@ -1661,7 +1666,7 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
 
 
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
-                 verbose: bool = True, log=None):
+                 verbose: bool = True, log=None, dest_dir=None):
     """**Validate → render → write → check**, in that order, for one deck.
 
     The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
@@ -1683,7 +1688,8 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     # 3.3 validate now runs inside `render_deck`, on the subject the SPEC
     # names -- one owner for the step, and the same one for every route that
     # renders (`render_fdf` / `render_script` gate too, not just this one).
-    rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log)
+    rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
+                           dest_dir=dest_dir)
     written = write_script(path, rendered.text)        # 3.10 write
     if log is not None:
         log.step("STEP 3.10 · WRITE")
