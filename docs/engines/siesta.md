@@ -272,10 +272,16 @@ A non-zero result emits `NetCharge ±N` (with a verbose comment naming the sourc
 **reported and never fixed for you**: the geometry is the user's, so molbuilder
 says what is wrong and leaves it alone. The thresholds are
 `_VACUUM_MIN_NEUTRAL = 8.0` and `_VACUUM_MIN_CHARGED = 25.0`
-(`validation/siesta.py`). ≥ 25 Å is what SIESTA's compensating-background-charge
-correction needs for image–image Coulomb to drop below ~1 meV (Makov-Payne
-scaling — see References); a neutral molecule needs ≥ 8 Å, enough that basis
-orbitals (4–7 Å per atom at DZP) cannot reach across the gap, which is 2×vacuum.
+(`validation/siesta.py`). ≥ 25 Å keeps a charged molecule's density well clear
+of its images; it does not make the image energy small. SIESTA gives any charged
+cell a uniform compensating background — that makes the periodic electrostatics
+finite, it corrects nothing — and the monopole's image energy falls only as
+1/L: q²α/2L, ≈ 0.37 eV for q = 1 at L ≈ 55 Å in a simple cubic cell (α = 2.837,
+Makov–Payne — see References). *(This said "below ~1 meV" until 2026-09-26.)*
+The term is SIESTA's own where it applies it (`siesta: Emadel`, a molecule in a
+simple, face- or body-centred cubic cell — `science/chemistry-correctness.md`
+§ 2a.4). A neutral molecule needs ≥ 8 Å, enough that basis orbitals (4–7 Å per
+atom at DZP) cannot reach across the gap, which is 2×vacuum.
 
 The check is a **validator** (`_check_siesta_vacuum_adequacy`, emitting
 `cell.vacuum_thin`), not a Python warning inside the emitter. It used to be
@@ -305,7 +311,11 @@ post-process script beside the deck — `prep._siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why
-one writer owns both routes.)*
+one writer owns both routes. **It double-counts wherever SIESTA applied the
+term itself** (`siesta: Emadel` ≠ 0) and is written for a charged slab where
+the monopole formula does not hold: W34's P2 keys it on the axis kinds and
+makes it read `Emadel` — `science/chemistry-correctness.md` § 2a.4,
+`plans/plan.md` § 5s.)*
 
 ---
 
@@ -625,7 +635,8 @@ and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 > `identity.parse_stage_token` rather than keeping a second regex.
 
 When the resolved charge ≠ 0, **`prep`** also drops a `makov_payne_correction.py`
-script next to the `.fdf` (§ 4). And
+script next to the `.fdf` (§ 4 — and its double count, which W34's P2
+removes). And
 each per-stage `.molwatch.log` carries `# stage: <name>` + `# convergence.<key>:
 <value>` headers (`max_force_ev_per_ang`, `max_steps`) so the Results inspector
 draws the right threshold for the running stage.

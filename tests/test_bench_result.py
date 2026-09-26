@@ -8,7 +8,7 @@ import pytest
 
 from molbuilder.bench.result import (
     BenchPoint, BenchResult, build_bench_result, choose_winner,
-    compare_asked_to_ran, parse_effective_run, parse_mpi_ranks,
+    compare_asked_to_ran, parse_effective_run,
     parse_sacct_mem,
 )
 # The wrapper's own instruments are registered parsers since 2026-09-04
@@ -20,12 +20,6 @@ from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
 def _bound(text):
     return monitor_metrics(text)["bound"]
-
-
-def test_parse_mpi_ranks():
-    assert parse_mpi_ranks("* Running on 20 nodes in parallel.\n") == 20
-    assert parse_mpi_ranks("header\n* Running on   8 nodes in parallel.") == 8
-    assert parse_mpi_ranks("no parallel line here") is None
 
 
 # --------------------------------------------------------------------- #

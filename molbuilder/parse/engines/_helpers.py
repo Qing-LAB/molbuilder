@@ -295,8 +295,8 @@ def trajectory_result_to_legacy_dict(
     #
     # The reverse is NOT done and must never be: `wall_clock_s` cannot
     # be recovered from `elapsed_s`, because the file does not contain
-    # the missing addend.  An engine with no time of day (SIESTA .out)
-    # keeps a null series, and the consumer falls back to the file's
+    # the missing addend.  An engine whose steps carry no time of day
+    # (SIESTA .out) keeps a null series, and the consumer falls back to the file's
     # mtime knowingly instead of formatting a duration as a date.
     if any(v is not None for v in out_wall_clock) and \
             all(v is None for v in out_elapsed):

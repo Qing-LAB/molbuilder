@@ -107,10 +107,21 @@ classDiagram
         metrics · parse_warnings
         result_kind = "instrument"
     }
+    class RunDirResult {
+        run_dir · engine · files · active ·
+        openable · attempts · status
+        result_kind = "rundir"
+    }
+    class EngineParamsResult {
+        params · blocks · parse_warnings
+        result_kind = "engine-params"
+    }
     ParseResult <|-- TrajectoryResult
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- InstrumentResult
+    ParseResult <|-- RunDirResult
+    ParseResult <|-- EngineParamsResult
 ```
 
 **The four envelope fields are built in ONE place** —
@@ -127,8 +138,8 @@ Plus **`ParseWarning`** (`types.py:36`) — a fail-soft warning (`source`,
 instead of raising.
 
 - **The discriminator.** Each concrete subclass sets `result_kind` to a fixed
-  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"script"`,
-  `"instrument"`).
+  string (`"trajectory"`, `"structure"`, `"sidecar"`, `"instrument"`,
+  `"rundir"` — § 5.0 — and `"engine-params"` — § 5d.3).
   Consumers holding a `ParseResult` (cached, or sent over the wire)
   `match` on it; JSON deserialisation reads it to pick a class. Adding a kind =
   a new subclass + a new discriminator value (rule below).
@@ -142,8 +153,9 @@ instead of raising.
 
 Engines report time in whatever frame of reference suits them. A `.molwatch.log`
 carries the writer's own `time.time()`; a SIESTA `.out` carries `timer:` lines
-counting from the start of the run and contains no time-of-day anywhere. **Both
-are legitimate; neither is convertible into the other from the file alone.**
+counting from the start of the run, and states the time of day only at its two
+ends. **Both are legitimate; neither is convertible into the other from the file
+alone.**
 
 So the *field name* carries the frame of reference, and there is no neutral
 name for "some time value".
@@ -183,7 +195,10 @@ two surfaces' output directly.
 
 **P-T2 — `None` means "this engine cannot say", and is a correct final answer.**
 A parser never converts one kind to fill the other's hole, and never substitutes
-a value it did not read. SIESTA's `wall_clock_s` is `None` forever. That is
+a value it did not read. SIESTA's `wall_clock_s` is `None` forever — no step
+carries a clock. The run's two ends are a different reading and have their own
+names, `run_start_local` / `run_end_local` in `runtime_info`: naive, because
+SIESTA prints the node's local time with no zone (§ 5d.2). That is
 output, not missing data — and it is what lets a consumer fall back to the
 file's `mtime` deliberately instead of rendering nonsense confidently.
 
@@ -305,9 +320,14 @@ private `_DONE_MARKERS` tuple whose own comment knew about the
 `SCF.MustConverge .false.` case, while the parser it sat beside did not. The
 bench summary asked both and rendered the wrong one.
 
-**Where it lives, and why there are two doors onto it.**
-`engines/_run_ending.py` owns the marker strings — `FATAL_MARKERS`,
-`END_MARKER`, the SCF markers — and nothing else. Two callers share them:
+**Where it lives, and why there are two doors onto it.** SIESTA's marker
+strings — `FATAL_MARKERS`, `RUN_END`, the SCF markers, and `SCF cycle
+continued`, SIESTA taking a convergence back — are lines of its output, so
+they live in the SIESTA family's one table, `engines/siesta_grammar.py`
+(§ 5d.5); `engines/_run_ending.py` owns the dispatch and PySCF's traceback
+sniff, and imports the rest. *(They were `_run_ending`'s until 2026-09-26,
+and the parser retyped four of them as literals beside the import it did
+use.)* Two callers share them:
 
 | door | for | cost |
 |---|---|---|
@@ -315,9 +335,12 @@ bench summary asked both and rendered the wrong one.
 | `SiestaParser.parse(path)` | callers that want frames, energies, forces | builds arrays; needs numpy |
 
 The split is a dependency and a cost, not a second opinion — the heavy parser
-**builds its fatal rules from the same table**, so the two cannot diverge, and
-`tests/test_run_ending_one_table.py` parses every frozen fixture both ways and
-fails if they disagree on `run_state` or `scf_converged`.
+**builds its rules from the same table**, so the two cannot diverge, and
+`tests/test_run_ending_one_table.py` parses every frozen fixture and both
+TranSIESTA devices both ways and fails if they disagree on `run_state` or
+`scf_converged`. **Convergence is the last phase's** in both: a device's
+periodic initialization converging does not speak for its NEGF loop, so a new
+phase clears it, as `SCF cycle continued` does.
 
 Measured on a six-trial sweep of 152 KB files: **272 ms** through the full
 parse, **21 ms** through the scan — on a bench summary that polls every 15 s and
@@ -425,7 +448,7 @@ already knows the shape of.
 ```
 molbuilder/parse/
 ├── base.py        # the 2 ABCs                (FileParser / DirParser)
-├── types.py       # ParseResult + 5 subclasses + ParseWarning
+├── types.py       # ParseResult + 6 subclasses + ParseWarning
 ├── registry.py    # _REGISTRY, detect/parse/parse_dir/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
@@ -437,7 +460,11 @@ molbuilder/parse/
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
 │   ├── siesta.py · pyscf.py · molwatch.py
 │   ├── siesta_mdnc.py         # <label>.MD.nc (netCDF) — sibling upgrade, § 5a
-│   ├── _run_ending.py         # HOW A RUN ENDED — the markers, § 2b
+│   ├── siesta_fdflog.py       # fdf.<stamp>.log → EngineParamsResult, § 5d.3
+│   ├── siesta_grammar.py      # the SIESTA family's output lines — one table, § 5d.5
+│   ├── tbtrans.py             # TBtrans's .out and transmission files (not registered)
+│   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role, § 2b
+│   ├── _diag.py               # the solver lines (bench/result.py reads them)
 │   ├── _helpers.py            # Trajectory → TrajectoryResult adapters
 │   └── _section_rules.py · _sidecar.py   # shared extraction helpers
 │
@@ -1077,10 +1104,12 @@ netCDF4.
 ## 5c. Instruments — what the WRAPPER measured, not what the engine wrote
 
 `parse/engines/` reads what the *engine* produced. The **wrapper** measures
-the run too, and writes three files of its own beside the deck
+a SIESTA-family run too, and writes three files of its own beside the deck
 (`running-a-job.md` § 4.1): `<base>-runN.scf-timing.log`,
 `<base>-runN.monitor.log`, `<base>-runN.util.csv` — all three indexed by
-attempt, so a re-run neither appends to nor truncates the previous one.
+attempt, so a re-run neither appends to nor truncates the previous one. A
+PySCF run gets none of them: the wrapper starts the tee and the monitor in
+its SIESTA branch only (`runfiles.WRITTEN` says so per row).
 
 They were outside this module until 2026-09-04 — `bench/result.py` opened
 and regex'd their bytes itself, which is a second read stack for a class of
@@ -1095,7 +1124,10 @@ number, a string where it read a word the wrapper wrote (`bound` is
 `"host"` / `"gpu"`, `util_basis` names a source), and the `[MACHINE]`
 line's `node` / `cores` / `mem_gb` / `gpu` arrive as one `machine` dict
 because they are one reading of one line and splitting them into four
-sibling keys would let three survive a partial parse.
+sibling keys would let three survive a partial parse. A TranSIESTA device's
+two SCF phases stay one level too: `s_per_iter_periodic`,
+`s_per_iter_negf` and their `iters_measured_*` / `rows_*` beside the
+headline `s_per_iter`, which is the NEGF loop's.
 
 *This said "a flat dict of measured numbers, and nothing else" when it was
 written on 2026-09-04, before the three parsers were finished. They never
@@ -1180,6 +1212,14 @@ reconstruction is never mistaken for an exact figure. Peak RSS, peak VRAM and
 `monitored_elapsed_s` come from the CSV either way — the summary does not carry
 them. Do not add a second chooser; call the door.
 
+**The memory LIMIT, and the kernel's own peak, have no reader yet.** The
+monitor's closing `[UTIL-BASIS]` states what the memory figures are fractions
+of (cgroup or node) and, where the kernel keeps a counter, its exact peak.
+`monitor_metrics` reads `[UTIL-SUMMARY]` only, so today the sampled
+`peak_rss_gb` is the one peak. The run record (§ 5d.2) is the reader that
+brings the other in — and, when it does, the two peaks are one quantity from
+two sources, and this map gets the row that says which one speaks.
+
 **The rule this map is here to enforce.**
 
 > A measured quantity has ONE source, ONE extractor and ONE name, and the name
@@ -1195,24 +1235,28 @@ after the field it prints, and `_fmt_wall` is `_fmt_duration`.
 
 ## 5d. The run record — what ran, with what, and how it went *(W35, 2026-09-26)*
 
-> **Status: CONTRACT, not yet built** (plan W35, § 5t). Where this section
-> and the code disagree, the code is behind and § 5t names the phase.
+> **Status, per part** (plan W35, § 5t). **BUILT — P1, 2026-09-26:** § 5d.5's
+> grammar and its readers, § 5d.3's `fdf`-log reader, the timing split by
+> phase, and the monitor's closing lines. **CONTRACT:** the record itself —
+> §§ 5d.1–5d.4 and 5d.6–5d.7 — which P2 builds, with the corrections the
+> 2026-09-26 review asked of it (§ 5t). Where this section and the code
+> disagree, the code is behind and § 5t names the phase.
 
 A transport device ran eleven hours on 2026-09-25 while diverging, and every
-reader molbuilder has said something else:
+reader molbuilder had said something else:
 
-* the wrapper's timing tee, the monitor and the SIESTA parser each match
-  `scf:` rows with their own regex, and none matches TranSIESTA's `ts-scf:` —
+* the wrapper's timing tee, the monitor and the SIESTA parser each matched
+  `scf:` rows with their own regex, and none matched TranSIESTA's `ts-scf:` —
   so the timing log held **7** iterations against **1000**, the monitor
   reported *"no SCF progress"* for 7.6 hours, and the parser gave the device
   the energy of its periodic initialization (−437,029 eV) where the NEGF
   loop had reached −205,444 eV, 584 electrons short;
 * the parameters were recorded as the deck molbuilder wrote, never as what
-  the engine used: SIESTA's own `fdf.<timestamp>.log` — every key it read,
-  defaults marked — has no reader, and the wrapper's list of absent items
+  the engine read: SIESTA's own `fdf.<timestamp>.log` — every key it read,
+  defaults marked — had no reader, and the wrapper's list of absent items
   printed catalogue defaults under a heading promising the engine's;
-* the monitor is killed by the wrapper before it writes its summary, so no
-  run records its memory peak;
+* the wrapper killed the monitor before it wrote its closing lines, so no run
+  recorded its CPU and GPU means (0 of 9 monitor logs);
 * the Results tab shows no parameters at all, and the transport record could
   not be written until the transmission rung had output.
 
@@ -1241,8 +1285,8 @@ ONE source (§ 5c.1's rule), and every part names its reader (§ 5.0's rule).
 | engine binary · version · build | SIESTA / TBtrans: the wrapper banner, confirmed by the `.out` build header — **a TBtrans run is labelled TBtrans**; PySCF: the version the script records |
 | launch: ranks × threads · GPU | the wrapper's `ranks / omp` line; the `.out` node count is the engine's confirmation |
 | start · end (time of day) · wall | SIESTA's `>> Start of run` / `>> End of run`; PySCF's molwatch epochs; `tbt: Completed in` |
-| seconds per iteration | the SCF-timing instrument, counting every SCF row of every phase (§ 5d.5) |
-| memory: peak · limit | the monitor's closing `[UTIL-SUMMARY]` / `[UTIL-BASIS]` — which it now writes when the wrapper stops it, since it handles SIGTERM; `util.csv` where it did not (§ 5c) |
+| seconds per iteration | the SCF-timing instrument, each phase timed from its own rows (§ 5c) |
+| memory: peak · limit | the sampled peak is `util.csv`'s `peak_rss_gb` (§ 5c.1); the limit, and the kernel's own peak where it keeps one, are stated on the monitor's closing `[UTIL-BASIS]` — which the monitor writes since it handles the wrapper's stop (2026-09-26) and which no reader takes yet |
 | exit code · time | `<base>-runN.concluded` |
 
 ### 5d.3 Setup — three columns, and a difference is a finding
@@ -1251,18 +1295,27 @@ For every parameter: **the catalogue default · what this run asked for · what
 the engine used.** The third column is **read, never echoed**:
 
 * **SIESTA, TranSIESTA and TBtrans:** the engine's own `fdf.<timestamp>.log`
-  — each key it read, the value it used, `# default value` where nobody set
-  it, and `# above item originally: …` where it converted a unit. A foreign
-  format, so a `parse/` reader.
+  — each key it read and the value it read, `# default value` where the deck
+  does not carry the label (a label may still inherit another's:
+  `SCF.DM.Tolerance` reads `DM.Tolerance`), and `# above item originally: …`
+  where it converted the spelling it was given. A key can be read more than
+  once to different values — TranSIESTA reads the contour's pole energy per
+  chemical potential with two defaults — and then it has no one value: every
+  reading is kept, in order. A foreign format, so a `parse/` reader:
+  `parse/engines/siesta_fdflog.py`, whose result is an `EngineParamsResult`
+  (`result_kind` `"engine-params"`) — one entry per key and per block, keyed
+  by fdf's own label rule (`parse/fdf._norm`: case, `.`, `-` and `_`
+  ignored).
 * **PySCF:** the script's read-back table, the `effective-parameters` fence —
   printed by the vibration deck too from now on. Its reader lives with its
   writer (§ 1a).
 
 **The rows are every catalogue item for the engine and kind, then the keys the
 engine used that no catalogue row declares** — so a default nobody chose is
-visible: the diverging device ran `TS.Contours.Eq.Pole 0.1102 Ry` and a
-42-pole continued fraction, and the only place either appeared was the raw
-`.out`. **Then the pseudopotentials**: element, file, source (the folder, the
+visible: nobody set the diverging device's contour, TranSIESTA read its pole
+energy as 0.1102 Ry (1.5 eV) and then as the continued fraction's own
+0.2507 Ry (π·60·kT·0.7), and ran the second — 42 poles — and none of it
+appeared anywhere but the raw `.out` and the unread `fdf` log. **Then the pseudopotentials**: element, file, source (the folder, the
 library, the citation), sha256, and what the file's header states (XC,
 relativistic treatment, generator).
 
@@ -1281,25 +1334,42 @@ record cites, never a newest-file guess.
 ### 5d.5 Evolution — one grammar per engine family, every phase
 
 **One table of SIESTA-family output lines** — SIESTA, TranSIESTA, TBtrans —
-in `parse/engines/` is the grammar. The parser reads it, and **the wrapper's
-SCF-timing tee and the monitor get their patterns rendered from it**: neither
-can import molbuilder, and molbuilder writes both. Three regexes for one line
-is how the NEGF loop became invisible to all three at once.
+is the grammar: `parse/engines/siesta_grammar.py`. The parser reads it, and
+**the wrapper's SCF-timing tee and the monitor get their patterns rendered
+from it**: neither can import molbuilder, and molbuilder writes both. Three
+regexes for one line is how the NEGF loop became invisible to all three at
+once. The table also holds **the build header and the launch lines SIESTA and
+TBtrans both print** (`Src/version-info-template.inc`, `Src/runinfo_m.F90`,
+`Src/timestamp.f90`) with their one reader each — `read_build_line`, and
+`read_launch_line` for the ranks (serial mode is one), the start and the end —
+which the SIESTA parser, the TBtrans reader and `bench/result.py`'s rank count
+share; and **how a run ends** (§ 2b), which the cheap scan and the parser
+share.
 
 | phase | rows | attached to each cycle |
 |---|---|---|
-| SIESTA periodic SCF | `scf:` — E_KS, dDmax, dHmax, Ef | the IterSCF timer |
-| TranSIESTA NEGF SCF | `ts-scf:` — E_KS, dDmax, dHmax, Ef | `ts-q:` (device · electrodes · couplings · dQ), `ts-Vha:` |
+| SIESTA periodic SCF | `scf:` — E_KS, dDmax, dHmax, Ef | the IterSCF timer; in a device, `ts-Vha:` too — `dhscf.F` fixes the potential in both phases |
+| TranSIESTA NEGF SCF | `ts-scf:` — E_KS, dDmax, dHmax, Ef | `ts-q:` (device · electrodes · couplings · buffer, then dQ — and Qup−Qdn when polarized), `ts-Vha:` |
 | geometry | per step, as today | — |
 | PySCF | as today | — |
 
-Each cycle carries its `phase`. Read once per run: the TranSIESTA start-up
-echo (`ts:` lines — contour method and poles, temperature, electrodes, Hartree
-pinning, solution method, tolerances), the charge distribution at the switch,
-the electrode checks (*"principal cell is perfect"*, surface Green's-function
-iterations), `siesta: Emadel`. **TBtrans:** T(E) per spin channel
-(`<label>.TBT_UP.AVTRANS_*` / `_DN` when polarized), the k-points, the energy
-grid, the completion time.
+Each cycle carries its `phase`, and a phase's convergence is its own: SIESTA
+prints `SCF Convergence by` in both, and takes it back with `SCF cycle
+continued` (TranSIESTA's charge still off, or too few iterations). Read once
+per run: the TranSIESTA start-up echo (`ts:` lines — the options, each
+electrode, and the contour, kept per SEGMENT: one per chemical potential or
+contour part, each with the same labels), the charge distribution at the
+switch (one value per region, or up and down when polarized), the electrode
+checks (*"principal cell is perfect"* or *"… all being zero"*, both passing;
+surface Green's-function iterations), `siesta: Emadel`. **TBtrans**
+(`parse/engines/tbtrans.py`, not a registered viewer file — the transport
+record's builder moves onto it in P3): its build and launch lines, the
+k-points and how they were chosen, each spin pass's time, the bias it applied
+with the current and power it reports per pass, and the transmission files
+per spin channel — `<label>.TBT_UP.AVTRANS_*` / `_DN` when polarized — whose
+own E column is the energy grid. **The SCF-timing instrument** times each
+phase from its own rows: the step between them is TranSIESTA's switch and the
+whole first NEGF iteration, and is neither phase's rate.
 
 ### 5d.6 Verdict — how it ended, whether it converged, and the symptoms
 
@@ -1313,7 +1383,7 @@ grid, the completion time.
 | a set-up fault, not mixing | the first NEGF step's \|dQ\| exceeds 0.1 % of the total charge — visible after ONE iteration |
 | charge not conserved | \|dQ\| stays above 0.1 % of the total charge (the SIESTA manual's bound) |
 | unphysical coupling | an electrode–device coupling charge is negative |
-| potential runaway | \|ts-Vha\| grows, or exceeds 1 eV |
+| potential runaway | \|ts-Vha\| stays beyond 1 eV once the NEGF loop's first iterations have passed, or keeps growing — within the phase: the converging device swung −1.39 → +1.95 eV at steps 1–2 and then held near 0.4 eV, the diverging one went from −18.7 eV to beyond ±20 eV (P4 sets the rule on these two runs) |
 | stagnation | dDmax and dHmax stop falling for 20 iterations, or oscillate |
 | near the cap | past 80 % of the iteration limit |
 | asked ≠ used | § 5d.3 |

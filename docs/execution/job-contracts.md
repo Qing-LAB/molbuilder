@@ -213,7 +213,10 @@ thing in that directory, and it has the narrowest job of all.
 the wrapper at low priority, follows the launcher's **PID** — so it knows
 authoritatively when the run ended, rather than guessing from output markers —
 parses the run's artifacts as they grow, and appends what it learns to a log
-beside them. It carries a **notifier hook** — a destination the user configures in their own
+beside them. The wrapper also stops it, and says why: at the job's end
+(SIGTERM), or before a warm retry re-runs the attempt in the same PID
+(SIGUSR1, not an ending) — and waits for its closing lines
+(`running-a-job.md` § 4.1). It carries a **notifier hook** — a destination the user configures in their own
 `<config dir>/secrets/notify`
 (mode 0600; `MB_NOTIFY_URL` overrides it for a one-off),
 fired on the schedule the calculation states in `task.json`'s `notify` block.

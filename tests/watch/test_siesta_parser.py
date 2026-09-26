@@ -298,9 +298,11 @@ def test_scf_history_collects_per_cycle(siesta_path):
 
 
 def test_scf_history_per_cycle_keys(siesta_path):
-    """Each per-cycle entry must have the SIESTA key set."""
+    """Each per-cycle entry must have the SIESTA key set -- including its
+    ``phase``, which tells SIESTA's periodic SCF from TranSIESTA's NEGF loop
+    (`model/parse.md` § 5d.5)."""
     runs = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))["scf_history"]
-    expected = {"cycle", "energy", "delta_E", "dHmax", "dDmax"}
+    expected = {"cycle", "energy", "delta_E", "dHmax", "dDmax", "phase"}
     for run in runs:
         for entry in run:
             assert set(entry.keys()) == expected

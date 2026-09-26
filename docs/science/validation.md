@@ -284,6 +284,13 @@ class SiestaAdapter:                     class PyscfAdapter:
 PySCF's open- vs closed-shell DFT solve; SIESTA's `spin_polarized` bool is the
 equivalent switch.)
 
+> **Superseded by the electronic state** — `science/chemistry-correctness.md`
+> § 2a (W34): four engine-neutral items (`net_charge`, `spin_treatment`,
+> `unpaired_electrons`, `method`) replace these per-engine fields, and PySCF's
+> class is composed and written explicitly (ROHF/ROKS included) rather than
+> named here as UKS or RKS. This block describes the code as it is until W34's
+> P1 lands.
+
 **Adapter rules:** a pure translator — **must not** re-do chemistry detection or
 parity (if you're importing `chemistry.py` inside an adapter, the logic belongs
 in the analyzer); returns a frozen dataclass, not a dict; `rationale` always
@@ -588,7 +595,8 @@ cross-engine consistency claim.
 - **Cross-engine agreement** — all registered adapters reach the same open-vs-closed
   decision (SIESTA `spin_polarized` iff PySCF `UKS`) and the same 2S for a given
   structure: `test_chemistry_adapters.py::test_all_adapters_agree_on_treatment`
-  (parametrised over CH₄ / Fe / Cu / Mn).
+  (parametrised over CH₄ / Fe / Cu / Mn). *(W34 restates the agreement over the
+  electronic state's items — `science/chemistry-correctness.md` § 2a.)*
 - **Validator ↔ analyzer** — `check_open_shell_metal` reads its conclusion from
   `analyze_structure` and echoes its rationale, proved by *monkeypatching* the
   analyzer (a test temporarily swaps it for a stub):

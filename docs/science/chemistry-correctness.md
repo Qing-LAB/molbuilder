@@ -78,7 +78,7 @@ the [`overview.md` glossary](?doc=science/overview.md).)*
   | Code | What "spin" means |
   |---|---|
   | **PySCF** | `spin = 2S = n_unpaired` (**not** multiplicity 2S+1) |
-  | **SIESTA** | `SpinPolarized` (bool) + `Spin.Total` in μ_B |
+  | **SIESTA** | `Spin polarized` + `Spin.Fix` + `Spin.Total` (2S, in μ_B) — `SpinPolarized` is the retired spelling (`Src/spin_subs.F90`) |
   | ORCA / Gaussian | multiplicity = 2S+1 |
 
   For a **triplet** (2 unpaired electrons, 2S = 2) the two engines molbuilder
@@ -86,9 +86,9 @@ the [`overview.md` glossary](?doc=science/overview.md).)*
 
   ```python
   # PySCF (.py):     mol = gto.M(..., charge=0, spin=2)   # spin is 2S
-  # SIESTA (.fdf):   SpinPolarized  .true.
+  # SIESTA (.fdf):   Spin           polarized
   #                  Spin.Fix       .true.
-  #                  Spin.Total     2.0                    # in μ_B
+  #                  Spin.Total     2.0                    # 2S, in μ_B
   ```
 
 - **Wrong `(charge, spin)` often *does* converge SCF** — just to a different
@@ -283,7 +283,7 @@ item — the spelling is the generator's*):
 |---|---|---|---|---|
 | `net_charge` | how many electrons short (+) or extra (−), in \|e\| | an integer; **blank = auto** (the phosphate rule, `model/chemistry.md`) | `NetCharge ±N` (nothing at 0) | `gto.M(charge=N)` |
 | `spin_treatment` | how the two spin channels are solved | `restricted` · `restricted-open` · `unrestricted` · `non-collinear` · `spin-orbit` | `Spin non-polarized` · *(not offered)* · `Spin polarized` · `Spin non-colinear` · `Spin spin-orbit` | the `R` · `RO` · `U` of the SCF class · *(not offered)* · *(not offered)* |
-| `unpaired_electrons` | 2S = N↑ − N↓ — **not** the multiplicity 2S+1 | an integer ≥ 0; **blank = the moment floats** | `Spin.Fix .true.` + `Spin.Total N`; blank writes neither | `gto.M(spin=N)`; blank is refused — PySCF always pins it |
+| `unpaired_electrons` | 2S = N↑ − N↓ — **not** the multiplicity 2S+1 | an integer ≥ 0; **blank = the moment floats** | `Spin.Fix .true.` + `Spin.Total N` beside `Spin polarized` only — SIESTA stops on `Spin.Fix` at any other spin (`read_options.F90`); blank, and `restricted`'s 0 (ES5), write neither | `gto.M(spin=N)`; blank is refused — PySCF always pins it |
 | `method` | which theory | `DFT` · `HF` | *(SIESTA is DFT)* | `dft.` · `scf.` |
 
 So PySCF's class is **composed, and written explicitly**: `dft.UKS(mol)` is
@@ -335,7 +335,8 @@ left to fail on the node.
 spatial orbitals) and `unrestricted` (the channels relax separately).
 
 **ES6 · A blank count means the moment floats — where it can.** Only SIESTA can
-float it (`Spin polarized` without `Spin.Fix`). PySCF pins N↑ and N↓ from
+float it: `Spin polarized` without `Spin.Fix`, and always under `non-collinear`
+and `spin-orbit`, where `Spin.Fix` stops the run. PySCF pins N↑ and N↓ from
 `mol.spin` (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation must state a
 count; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
 moment.
@@ -377,8 +378,9 @@ engine's source, not from a manual's prose.
 | `non-collinear` | ✅ — but a pinned count is refused: SIESTA `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ not offered | ❌ |
 | `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count refused as above | ❌ | ❌ |
 
-A blank `unpaired_electrons` (a floating moment) is offered with SIESTA's
-`unrestricted` only (ES6).
+A blank `unpaired_electrons` — a floating moment — is SIESTA's only: a choice
+under `unrestricted`, and the only value under `non-collinear` and
+`spin-orbit`, where a pinned count is refused (ES6).
 
 ### 2a.4 How each engine reads what molbuilder writes
 
@@ -391,7 +393,7 @@ above leans on:
 | SIESTA | a charged cell gets a uniform compensating background | the Poisson solve |
 | SIESTA | **SIESTA applies the Makov–Payne monopole correction itself** — only when it classifies the system as an atom or molecule **and** the cell is simple, face-centred or body-centred cubic; otherwise it prints *"Energy correction terms can not be applied"* and adds nothing. The term is in the total energy and printed as `siesta: Emadel` | `madelung.f`, `m_energies.F90`, `write_subs.F` |
 | SIESTA | `Spin.Total` is read only when `Spin.Fix` is true, and splits the electrons N↑ = (N + Spin.Total)/2 — so it is the count of unpaired electrons | `read_options.F90`, `siesta_init.F` |
-| SIESTA | `Spin.Fix` with non-collinear or spin-orbit spin stops the run | `read_options.F90` |
+| SIESTA | `Spin.Fix` stops the run unless the spin is collinear and polarized — non-polarized, non-collinear and spin-orbit alike (`if (nspin .ne. 2) call die(...)`) | `read_options.F90` |
 | SIESTA | a polarized run with no initial moments given starts **every atom at its maximum atomic moment, aligned** (ferromagnetic), not at zero | `m_new_dm.F90` |
 | SIESTA | an odd electron count with `Spin non-polarized` runs: the top level is half filled under the electronic temperature — a restricted description of a radical, not an error | occupation by smearing |
 | PySCF | `mol.spin` is 2S = N↑ − N↓; a count and a spin of different parity is refused when the molecule is built | `gto/mole.py` |

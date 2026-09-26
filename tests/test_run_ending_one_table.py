@@ -21,8 +21,13 @@ import pytest
 from molbuilder.parse.engines._run_ending import scan_ending
 from molbuilder.parse.engines.siesta import SiestaParser
 
+# The frozen runs, and the two TranSIESTA devices -- whose periodic
+# initialization converges while the NEGF loop has not, which is where a
+# phase-blind scan and the parser came apart (2026-09-26).
 _FIXTURES = sorted(
-    (pathlib.Path(__file__).parent / "watch/fixtures/siesta_frozen").glob("*.out"))
+    (pathlib.Path(__file__).parent / "watch/fixtures/siesta_frozen").glob("*.out")
+) + sorted(
+    (pathlib.Path(__file__).parent / "parse/fixtures/transiesta").glob("*.out"))
 
 
 def test_the_scanner_needs_no_numpy():
@@ -184,11 +189,11 @@ def test_ending_of_dispatches_on_the_role_and_refuses_anything_else(tmp_path):
     catalogue's own `run_output_roles()`, so getting here means the caller
     asked about the wrong file.
     """
-    from molbuilder.parse.engines._run_ending import (END_MARKER,
-                                                      PYSCF_END_MARKER,
+    from molbuilder.parse.engines._run_ending import (PYSCF_END_MARKER,
                                                       ending_of)
     siesta = tmp_path / "job_01_coarse-run0.out"
-    siesta.write_text(f"{END_MARKER}:  25-AUG-2026\n", encoding="utf-8")
+    siesta.write_text(">> End of run:  25-AUG-2026   4:08:52\n",
+                      encoding="utf-8")
     pyscf = tmp_path / "job_01_coarse-run0.pyscf.log"
     pyscf.write_text(f"{PYSCF_END_MARKER} 3.2 s\n", encoding="utf-8")
     assert ending_of(siesta).run_state == "ended"

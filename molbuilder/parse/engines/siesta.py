@@ -18,6 +18,14 @@ Also captures the most recent unit-cell vectors from
 ``outcell: Unit cell vectors (Ang):`` blocks so the viewer can draw the
 lattice.
 
+A TranSIESTA device runs TWO SCF phases in one ``.out`` -- SIESTA's periodic
+initialization (``scf:`` rows) and then the NEGF loop (``ts-scf:`` rows, each
+preceded by its ``ts-q:`` charges and ``ts-Vha:`` correction).  Every cycle
+carries its ``phase``, and the device's energy and convergence are its NEGF
+phase's (`model/parse.md` § 5d.5-5d.6).  The line patterns are
+``siesta_grammar``'s, the one table the wrapper and the monitor are rendered
+from too.
+
 Tolerant to in-progress + malformed files (Level 3 contract,
 2026-05-28):
   * if the outcoor block is mid-write at EOF the partial frame is dropped
@@ -31,13 +39,13 @@ Tolerant to in-progress + malformed files (Level 3 contract,
 from __future__ import annotations
 
 import math
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from ._run_ending import FATAL_MARKERS as _FATAL_MARKERS
 
 from molbuilder.frame import Frame, ParseWarning, Trajectory
 from molbuilder.parse.base import FileParser
@@ -45,22 +53,22 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
+from . import siesta_grammar as _G
 from ._section_rules import (
     CONTINUE, END_BUBBLE, END_SECTION,
-    SectionRule, compile_rules, contains_ci, matches_regex_ci,
+    SectionRule, any_of, compile_rules, contains_ci, matches_regex_ci,
     starts_with_ci,
 )
 
 
 # Runtime info detection (cross-cutting -- same display path as
 # molwatch's runtime header):
-#   * "* Running on  N nodes in parallel."  -> n_mpi_processes
-#   * "Running on host: <name>"             -> hostname  (some SIESTA builds)
+#   * "* Running on  N nodes in parallel." / "* Running in serial mode"
+#                                           -> n_mpi_processes
 #   * Echoed .fdf comments "# runtime.<k>: <v>" -> all the user-set caps
-_SIESTA_NODES_RE   = re.compile(
-    r"^\s*\*\s*Running on\s+(\d+)\s+nodes? in parallel", re.IGNORECASE)
-_SIESTA_HOST_RE    = re.compile(
-    r"^\s*Running on host:\s*(\S+)", re.IGNORECASE)
+# The launch lines are `siesta_grammar`'s (``read_launch_line``): TBtrans
+# prints the same ones.  A "Running on host:" probe stood here until
+# 2026-09-26; no SIESTA source prints that line.
 # The runtime header is the SAME line format as the molwatch log's, so
 # /spectra script writers and Build SIESTA writers emit IDENTICAL lines
 # (cf. molbuilder.runtime_info, which owns the write side).  A private
@@ -96,40 +104,11 @@ _SIESTA_MAX_OPT_RE = re.compile(
     r"^\s*redata:\s+Maximum number of optimization moves\s+=\s+(\d+)",
     re.IGNORECASE)
 
-# SIESTA header probes -- read the binary's self-report at the top of the
-# .out file (same shape as ``siesta --version``; the runwrap CLI probe
-# at molbuilder/runwrap.py:1587 uses the same field names).  Captured
-# into ``runtime_info['siesta_build']`` so the Results tab can show
-# what SIESTA actually ran with, not what the user requested.
-#
-# The header layout is stable across SIESTA 4.x and 5.x:
-#
-#     Siesta Version  : 5.4.2                  (or "Version : 5.4.2")
-#     Architecture    : x86_64-linux-gnu
-#     Compiler version: GNU Fortran ... 13.3.0
-#     PP flags        : -DMPI -DCDF ...
-#     Parallelisations: MPI                     (or "MPI, OPENMP")
-#     NetCDF support                            (presence = compiled in)
-#     NetCDF-4 support
-#     Lua support
-#     ELPA support                              (when --enable-elpa)
-#     ELSI support
-#
-_SIESTA_VERSION_RE = re.compile(
-    r"^\s*(?:Siesta\s+)?Version\s*:\s*(\S+)", re.IGNORECASE)
-_SIESTA_ARCH_RE = re.compile(
-    r"^\s*Architecture\s*:\s*(.+?)\s*$", re.IGNORECASE)
-_SIESTA_COMPILER_RE = re.compile(
-    r"^\s*Compiler version\s*:\s*(.+?)\s*$", re.IGNORECASE)
-_SIESTA_PARALLEL_RE = re.compile(
-    r"^\s*Parallelisations?\s*:\s*(.+?)\s*$", re.IGNORECASE)
-# Feature-presence lines.  SIESTA prints exactly one of these per
-# compiled-in optional component -- the BARE name on its own line.
-# (When the component is disabled the line is just absent; SIESTA
-# does NOT emit a "NetCDF support: no" form.)
-_SIESTA_FEATURE_RE = re.compile(
-    r"^\s*(NetCDF|NetCDF-4|Lua|ELPA|ELSI|PEXSI|FLOOK)\s+support\s*$",
-    re.IGNORECASE)
+# SIESTA header probes -- the binary's self-report at the top of the .out,
+# captured into ``runtime_info['siesta_build']`` so the Results tab can show
+# what SIESTA actually ran with, not what the user requested.  The patterns
+# and their one reader are `siesta_grammar`'s (``read_build_line``): TBtrans
+# prints the same header, and two copies of it would drift.
 
 # Diagonalizer echoes from the redata: block.  SIESTA echoes every
 # diagonalization-affecting input the binary actually consumed -- this
@@ -153,7 +132,8 @@ _SIESTA_DIAG_ELPA_GPU_RE = _DIAG_REQUESTED["elpa_gpu"]
 # § 7 #9, no silent absorption; audit-2026-06-26 T1 BLOCKER 3).
 #
 # Parallelisation modes SIESTA prints on its ``Parallelisations:`` line.
-_SIESTA_PARALLELISATIONS = frozenset({"MPI", "OPENMP"})
+# "none" is what a build with neither prints (Src/version-info-template.inc).
+_SIESTA_PARALLELISATIONS = frozenset({"MPI", "OPENMP", "NONE"})
 # Diag.Algorithm vocabulary -- the COMPLETE case-insensitive alias set
 # SIESTA accepts (uppercased here), transcribed from the binary's own
 # parser at Src/diag_option.F90 (read_diag).  SIESTA ``die()``s on any
@@ -173,13 +153,11 @@ _SIESTA_DIAG_ALGORITHMS = frozenset({
     "NOEXPERT-2STAGE", "NOEXPERT-2", "QR-2STAGE", "QR-2", "V_2STAGE",
 })
 
-# Lightweight prefix match for any SIESTA SCF iteration line.  We
-# capture iscf + the rest of the line as a single string; the actual
-# float columns are parsed separately by ``_parse_scf_floats`` below.
-# This split lets us handle BOTH the closed-shell form (7 columns
-# total) AND the spin-polarized form (8 columns -- Ef split into
-# Ef_up + Ef_dn) without writing a brittle multi-regex dispatch.
-_SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$", re.IGNORECASE)
+# The SCF iteration row of either phase -- SIESTA's periodic ``scf:`` and
+# TranSIESTA's NEGF ``ts-scf:`` -- is the one grammar's (``_G.scf_row``).
+# Its float columns are parsed by ``_parse_scf_floats`` below, which takes
+# the ordinary form (6 values after iscf) AND the ``Spin.Fix`` form (7 -- Ef
+# split into Ef_up + Ef_dn, ``Src/write_subs.F``).
 
 # SIESTA timer lines emitted right after each SCF cycle.  Format:
 #   timer: Routine,Calls,Time,% = IterSCF        1      40.820  49.49
@@ -301,7 +279,7 @@ def _parse_scf_floats_by_columns(
     ``data_start`` must be the position in ``line`` immediately AFTER
     the iscf integer -- i.e. the first character of the first F16.6
     field, INCLUDING its leading whitespace.  Callers obtain this
-    from ``m.end(1)`` of the prefix regex match.
+    from the grammar's ``scf_row(line).columns_at``.
 
     Returns 6 floats (closed-shell) or 7 (spin-polarized); returns
     None when the column structure is missing or a slice can't be
@@ -589,7 +567,6 @@ class SiestaParser:
     # the case-insensitive lookup collapses them.  Listed lower-case
     # here because the matcher lower-cases its input.
     _STRONG_MARKERS = (
-        "executable      : siesta",     # v5.x line 1
         "welcome to siesta",            # v4.x / v5.x banner (either case)
         "siesta: system type",
         "siesta: atomic forces",
@@ -627,6 +604,18 @@ class SiestaParser:
         # with the rule-table case-insensitivity policy (#171).
         head_lower = "".join(head_lines).lower()
         head_lines_lower = [ln.lower() for ln in head_lines]
+        # 0. A v5 build header NAMES the program (`siesta_grammar.EXECUTABLE`,
+        #    the path it was invoked by): SIESTA's is ours, and TBtrans's --
+        #    the same header, the transmission rung's -- is not.
+        for ln in head_lines:
+            m = _G.EXECUTABLE.match(ln)
+            if m:
+                prog = os.path.basename(m.group(1)).lower()
+                if prog.startswith("siesta"):
+                    return True
+                if prog.startswith("tbtrans"):
+                    return False
+                break
         # 1. Any strong content marker wins immediately.
         if any(m in head_lower for m in cls._STRONG_MARKERS):
             return True
@@ -720,6 +709,22 @@ class SiestaParser:
         # the latest -- subsequent data rows are interpreted against
         # the most recent header.
         scf_header: Optional[List[Optional[str]]] = None
+
+        # THE TWO PHASES OF A TRANSIESTA DEVICE (`model/parse.md` § 5d.5).  The
+        # phase of the last SCF row; what an iteration printed BEFORE its row
+        # -- the ``ts-q:`` charges (NEGF only) and the ``ts-Vha:`` correction
+        # (both phases), reported while the iteration is built and the row
+        # printed after -- held until that row arrives; whether each phase
+        # converged; and the start-up facts TranSIESTA states about itself.
+        current_phase: Optional[str] = None
+        pending_cycle: Dict[str, Any] = {}
+        ts_q_names: Optional[List[str]] = None
+        phase_converged: Dict[str, Optional[bool]] = {}
+        ts_info: Dict[str, Any] = {}
+        ts_echo_open = False
+        ts_echo_where: List[Optional[str]] = ["options", None]
+        ts_gf_electrode: Optional[str] = None
+        ts_charge_take = False
 
         # Per-step buffers; flushed via _commit() when the next outcoor:
         # arrives or at EOF (only if the coords block is known to be
@@ -837,6 +842,21 @@ class SiestaParser:
                             and math.isfinite(candidate)):
                         frame_energy = float(candidate)
                         break
+            # A DEVICE SPEAKS FOR ITS NEGF PHASE.  When the step ran
+            # TranSIESTA's loop its energy is the last NEGF row's: SIESTA's own
+            # closing ``E_KS(eV)`` line and the periodic initialization's
+            # cycles are other quantities -- the two formulas already differ
+            # by 66,041 eV at the first NEGF step -- and reporting the periodic one
+            # is how a device 584 electrons short read as a sound -437,029 eV
+            # (§ 5d).  No finite NEGF energy is ``None``: a divergence is not
+            # covered by a number from the other phase.
+            _negf = [c for c in current_scf
+                     if c.get("phase") == _G.PHASE_NEGF]
+            if _negf:
+                frame_energy = next(
+                    (float(c["energy"]) for c in reversed(_negf)
+                     if isinstance(c.get("energy"), (int, float))
+                     and math.isfinite(c["energy"])), None)
             # PR 4 (results-state-contract § 6): no preamble-Etot
             # fallback.  If the SCF ran without a finite energy, the
             # run is diverging; using ``step_initial_etot`` as a
@@ -857,7 +877,9 @@ class SiestaParser:
             # runs) or when SIESTA didn't emit the timer.
             #
             # ``wall_clock_s`` is left unset ON PURPOSE: a SIESTA .out
-            # carries no time-of-day anywhere, so the honest answer is
+            # states the time of day only at its two ends, in local time
+            # with no zone (``run_start_local`` / ``run_end_local``), and
+            # no step carries one -- so for a frame the honest answer is
             # "this engine cannot say" (parse.md § 2a, P-T2).  Filling
             # it with the elapsed seconds is what made the browser
             # render a 6-minute run as "Dec 31, 5:06 PM".
@@ -929,10 +951,16 @@ class SiestaParser:
             # if it somehow did, the abort is the load-bearing fact.
             if run_state not in ("stopped", "out_of_memory"):
                 run_state = "ended"
+            # The node's time of day at the end (naive: SIESTA states no
+            # zone).  The start is `_on_run_start`'s.
+            _G.read_launch_line(line, runtime_info)
+
+        def _on_run_start(line: str, line_no: int) -> None:
+            _G.read_launch_line(line, runtime_info)
 
         # Fatal error markers.  Each ``contains_ci`` substring is the
         # canonical SIESTA-emitted phrase that always indicates a
-        # non-recoverable failure; the set lives in `_run_ending`
+        # non-recoverable failure; the set lives in `siesta_grammar`
         # (`model/parse.md` § 2b) and both readers of it share that table.
         # Set 2026-05-29 per user directive.
         #
@@ -982,6 +1010,17 @@ class SiestaParser:
         def _on_scf_converged(line: str, line_no: int) -> None:
             nonlocal last_scf_converged
             last_scf_converged = True
+            # Both phases print this same line (``Src/scfconvergence_test.F``,
+            # with ``+dQ`` in the NEGF phase's criteria), so it belongs to the
+            # phase of the row before it.
+            phase_converged[current_phase or _G.PHASE_PERIODIC] = True
+
+        def _on_scf_continued(line: str, line_no: int) -> None:
+            """SIESTA withdrew the convergence it had just printed: until
+            the next row, this phase has not converged."""
+            nonlocal last_scf_converged
+            last_scf_converged = None
+            phase_converged[current_phase or _G.PHASE_PERIODIC] = None
 
         def _on_scf_fatal_not_converged(line: str, line_no: int) -> None:
             """``SCF_NOT_CONV:`` -- the root cause when the run dies, and
@@ -1013,12 +1052,14 @@ class SiestaParser:
             if scf_not_conv_line is None:
                 scf_not_conv_line = line.strip()[:200]
             last_scf_converged = False
+            phase_converged[current_phase or _G.PHASE_PERIODIC] = False
 
         def _on_scf_not_converged(line: str, line_no: int) -> None:
             """Soft handler for the informational form.  Flags only;
             strict EOF check decides whether the run errored."""
             nonlocal last_scf_converged
             last_scf_converged = False
+            phase_converged[current_phase or _G.PHASE_PERIODIC] = False
 
         # Coords section: multi-line.  on_start flushes prev step
         # (commit()) + resets step_frame; consume parses one atom row
@@ -1171,20 +1212,20 @@ class SiestaParser:
         # SCF cycle.  Pre-2026-05-28 had this in a 70-line inline
         # block; it's now collapsed into one ``on_start`` hook.
         def _on_scf_data(line: str, line_no: int) -> None:
-            nonlocal current_scf, prev_E_KS
-            m_scf_prefix = _SCF_PREFIX_RE.match(line)
-            if not m_scf_prefix:
+            nonlocal current_scf, prev_E_KS, current_phase
+            nonlocal last_scf_converged
+            row = _G.scf_row(line)
+            if row is None:
                 return
-            iscf = int(m_scf_prefix.group(1))
-            rest = m_scf_prefix.group(2)
-            # ``m.end(1)`` is the position immediately AFTER the iscf
+            phase, iscf = row.phase, row.iscf
+            # ``columns_at`` is the position immediately AFTER the iscf
             # integer in the original line -- i.e. the first character
             # of the first F16.6 field, with its leading whitespace
             # still attached.  The column-position fallback in
             # ``_parse_scf_floats`` needs this so it can slice at
             # the Fortran format boundaries (3 x F16.6 + 3..4 x F10.6).
-            vals = _parse_scf_floats(rest, line=line,
-                                     data_start=m_scf_prefix.end(1))
+            vals = _parse_scf_floats(line[row.columns_at:].lstrip(),
+                                     line=line, data_start=row.columns_at)
             if vals is None:
                 _warn(line_no, line,
                       "SCF line: could not tokenize as floats")
@@ -1216,15 +1257,28 @@ class SiestaParser:
                       "downstream plot can't render this cycle")
                 return
 
-            # iscf==1 starts a new SCF run.  See parse() docstring for
-            # the failed-SCF-restart edge case.
+            # A NEW PHASE IS NOT A RESTART.  The periodic initialization's
+            # cycles stay beside the NEGF loop's, and the new phase starts
+            # with its convergence unanswered -- the initialization's "SCF
+            # cycle converged" does not speak for the device.
+            if phase != current_phase:
+                if current_phase is not None:
+                    last_scf_converged = None
+                current_phase = phase
+                prev_E_KS = None
+            # iscf==1 starts a new SCF run of THIS phase.  See parse()
+            # docstring for the failed-SCF-restart edge case.
             if iscf == 1:
-                if current_scf:
+                if current_scf and current_scf[-1].get("phase") == phase:
                     current_scf = []
                 prev_E_KS = None
             delta_E = ((e_ks - prev_E_KS)
                        if prev_E_KS is not None else 0.0)
             cycle_dict["delta_E"] = delta_E
+            cycle_dict["phase"] = phase
+            # What TranSIESTA reported while building this iteration.
+            cycle_dict.update(pending_cycle)
+            pending_cycle.clear()
             current_scf.append(cycle_dict)
             prev_E_KS = e_ks
 
@@ -1338,8 +1392,179 @@ class SiestaParser:
                       "Max-force-constrained line: malformed value: "
                       f"{exc}", category="forces")
 
+        # ---- TranSIESTA (`model/parse.md` § 5d.5) ------------------------
+        def _on_ts_q(line: str, line_no: int) -> None:
+            """``ts-q:`` -- a header naming the regions (``D``, ``E1``,
+            ``C1``, ..., ``B``) and the totals (``dQ``, ``Qup-Qdn``), then
+            their values, held for the NEGF row that follows.  By NAME, so a
+            third electrode is a third pair of columns and not a parser
+            change."""
+            nonlocal ts_q_names
+            m = _G.TS_Q_ROW.match(line)
+            if not m:
+                return
+            toks = m.group(1).split()
+            try:
+                vals = [_parse_fortran_float(t) for t in toks]
+            except ValueError:
+                ts_q_names = toks
+                return
+            if not ts_q_names or len(ts_q_names) != len(vals):
+                _warn(line_no, line, "ts-q row with no matching header",
+                      category="negf")
+                return
+            row = dict(zip(ts_q_names, vals))
+            dq_name, moment_name = _G.TS_Q_TOTALS
+            dq, moment = row.pop(dq_name, None), row.pop(moment_name, None)
+            pending_cycle["charges"] = row
+            if dq is not None:
+                pending_cycle["dq"] = dq
+            if moment is not None:
+                pending_cycle["qup_minus_qdn"] = moment
+
+        def _on_ts_vha(line: str, line_no: int) -> None:
+            m = _G.TS_VHA.match(line)
+            if not m:
+                return
+            try:
+                pending_cycle["vha_ev"] = _parse_fortran_float(m.group(1))
+            except ValueError:
+                _warn(line_no, line, "ts-Vha: malformed value",
+                      category="negf")
+
+        def _on_ts_echo(line: str, line_no: int) -> None:
+            """The start-up echo -- TranSIESTA's own account of the settings
+            it runs with, which is the only place some of them exist: the
+            continued-fraction contour's pole count is computed inside
+            ``m_ts_chem_pot.F90`` and appears in no input and no fdf log.
+            Only lines inside the star frame are the echo; ``ts:`` lines
+            later in the run are the energy decomposition."""
+            nonlocal ts_echo_open
+            if _G.TS_ECHO_FRAME.match(line):
+                ts_echo_open = not ts_echo_open
+                return
+            if not ts_echo_open:
+                return
+            if _G.TS_ECHO_CONTOUR.match(line):
+                ts_echo_where[:] = ["contours", None]
+                return
+            m = _G.TS_ECHO_SECTION.match(line)
+            if m:
+                name = m.group(1).strip()
+                if name.lower() == "electrodes":
+                    ts_echo_where[:] = ["electrodes", None]
+                elif ts_echo_where[0] in ("electrodes", "contours"):
+                    ts_echo_where[1] = name
+                return
+            m = _G.TS_ECHO_LINE.match(line)
+            where, name = ts_echo_where
+            home = _ts_echo_home(where, name,
+                                 m.group(1).strip() if m else None)
+            if m:
+                label, value = m.group(1).strip(), m.group(2).strip()
+                # A label a segment states twice -- ``Option for contour
+                # method`` -- keeps every value.
+                if label in home:
+                    prev = home[label]
+                    home[label] = (prev if isinstance(prev, list)
+                                   else [prev]) + [value]
+                else:
+                    home[label] = value
+                return
+            note = line.split(":", 1)[1].strip().strip("*").strip()
+            if note:
+                home.setdefault("notes", []).append(note)
+
+        def _ts_echo_home(where, name, label):
+            """Where an echo line belongs: the options, an electrode, or a
+            contour SEGMENT -- one per chemical potential or contour part,
+            each with the same labels, a new one starting at the line that
+            names it (``siesta_grammar.TS_ECHO_SEGMENT``)."""
+            if where == "options" or (where == "electrodes" and name is None):
+                return ts_info.setdefault("options", {})
+            if where == "electrodes":
+                return ts_info.setdefault("electrodes", {}).setdefault(
+                    name, {})
+            segments = ts_info.setdefault("contours", {}).setdefault(
+                name or "", [])
+            if not segments or (label and _G.TS_ECHO_SEGMENT.search(label)):
+                segments.append({})
+            return segments[-1]
+
+        def _on_ts_charge_start(line: str, line_no: int) -> None:
+            """The charge distribution at the switch from the periodic
+            density -- the baseline each NEGF iteration's charge is judged
+            against.  The FIRST report only."""
+            nonlocal ts_charge_take
+            m = _G.TS_CHARGE_START.match(line)
+            ts_charge_take = bool(m) and "charge_at_switch" not in ts_info
+            if ts_charge_take:
+                try:
+                    target = _parse_fortran_float(m.group(1))
+                except ValueError:
+                    target = None
+                ts_info["charge_at_switch"] = {"target": target}
+
+        def _consume_ts_charge(line: str, line_no: int) -> str:
+            m = _G.TS_CHARGE_ROW.match(line)
+            if not m:
+                return END_BUBBLE if line.strip() else END_SECTION
+            if ts_charge_take:
+                vals = _G.ts_charge_values(m.group(3))
+                q = ts_info["charge_at_switch"]
+                if len(vals) == 1:
+                    q[m.group(2)] = vals[0]
+                elif len(vals) in (2, 3):
+                    # Spin-polarized (``Src/ts_charge.F90``): up and down,
+                    # and on the ``[Q]`` row the total after them.
+                    q[m.group(2)] = vals[2] if len(vals) == 3 else sum(vals)
+                    q.setdefault("by_spin", {})[m.group(2)] = vals[:2]
+                else:
+                    _warn(line_no, line, "charge distribution: malformed row",
+                          category="negf")
+            return CONTINUE
+
+        def _on_ts_principal_cell(line: str, line_no: int) -> None:
+            m = _G.TS_PRINCIPAL_CELL.match(line)
+            if m:
+                ts_info.setdefault("electrodes", {}).setdefault(
+                    m.group(1), {})["principal_cell"] = m.group(2)
+
+        def _on_ts_gf_for(line: str, line_no: int) -> None:
+            nonlocal ts_gf_electrode
+            m = _G.TS_GF_FOR.match(line)
+            if m:
+                ts_gf_electrode = m.group(1)
+
+        def _on_ts_gf_stats(line: str, line_no: int) -> None:
+            if ts_gf_electrode is None:
+                return
+            el = ts_info.setdefault("electrodes", {}).setdefault(
+                ts_gf_electrode, {})
+            m = _G.TS_GF_MEAN_STD.search(line)
+            if m:
+                try:
+                    el["gf_iterations_mean"] = float(m.group(1))
+                    el["gf_iterations_std"] = float(m.group(2))
+                except ValueError:
+                    pass
+                return
+            m = _G.TS_GF_MIN_MAX.search(line)
+            if m:
+                el["gf_iterations_min"] = int(m.group(1))
+                el["gf_iterations_max"] = int(m.group(2))
+
+        def _on_emadel(line: str, line_no: int) -> None:
+            m = _G.EMADEL.match(line)
+            if m:
+                try:
+                    runtime_info["emadel_ev"] = _parse_fortran_float(
+                        m.group(1))
+                except ValueError:
+                    pass
+
         rules: List[SectionRule] = [
-            # FATAL MARKERS, FROM THE ONE TABLE (`_run_ending.FATAL_MARKERS`,
+            # FATAL MARKERS, FROM THE ONE TABLE (`siesta_grammar.FATAL_MARKERS`,
             # `model/parse.md` § 2b).  They fire FIRST so they win over any
             # section that might otherwise eat the line, and they are
             # substring matches because SIESTA prefixes them with "node 0: "
@@ -1357,7 +1582,7 @@ class SiestaParser:
                     start=contains_ci(_marker),
                     on_start=_fatal(_state),
                 )
-                for _marker, _state in _FATAL_MARKERS
+                for _marker, _state in _G.FATAL_MARKERS
             ],
             # SCF_NOT_CONV: FATAL form.  Must be BEFORE the soft
             # "scf did not converge" rule -- a line containing both
@@ -1369,7 +1594,7 @@ class SiestaParser:
             SectionRule(
                 name="fatal_scf_not_conv",
                 aliases=["SCF_NOT_CONV: ..."],
-                start=contains_ci("scf_not_conv"),
+                start=contains_ci(_G.SCF_NOT_CONV_MARKER),
                 on_start=_on_scf_fatal_not_converged,
             ),
             # SCF convergence success.  "by <criterion>" suffix
@@ -1378,8 +1603,16 @@ class SiestaParser:
             SectionRule(
                 name="scf_converged",
                 aliases=["SCF Convergence by ..."],
-                start=contains_ci("scf convergence by"),
+                start=contains_ci(_G.SCF_CONVERGED_MARKER),
                 on_start=_on_scf_converged,
+            ),
+            # SIESTA taking the convergence back -- TranSIESTA's charge
+            # still off, or too few iterations (``Src/siesta_forces.F90``).
+            SectionRule(
+                name="scf_continued",
+                aliases=["SCF cycle continued ..."],
+                start=contains_ci(_G.SCF_CONTINUED_MARKER),
+                on_start=_on_scf_continued,
             ),
             # SCF non-convergence: SOFT informational form (no
             # SCF_NOT_CONV: prefix).  Can appear during a relax that
@@ -1388,7 +1621,7 @@ class SiestaParser:
             SectionRule(
                 name="scf_not_converged",
                 aliases=["SCF did NOT converge"],
-                start=contains_ci("scf did not converge"),
+                start=contains_ci(_G.SCF_NOT_CONVERGED_MARKER),
                 on_start=_on_scf_not_converged,
             ),
             # Specific (multi-token) section matchers next.
@@ -1402,7 +1635,7 @@ class SiestaParser:
             SectionRule(
                 name="end_of_run",
                 aliases=[">> End of run"],
-                start=starts_with_ci(">> End of run"),
+                start=matches_regex_ci(_G.RUN_END.pattern),
                 on_start=_on_end_of_run,
             ),
             SectionRule(
@@ -1450,17 +1683,16 @@ class SiestaParser:
                 # use ``matches_regex_ci`` here so the rule participates
                 # in the combined-regex pre-filter compiled by
                 # :class:`CompiledRules`.
-                start=matches_regex_ci(r"^\s*iscf\s+\S"),
+                start=matches_regex_ci(_G.SCF_HEADER.pattern),
                 on_start=_on_scf_header,
             ),
             SectionRule(
                 name="scf_data",
                 aliases=["scf: <iscf> ..."],
-                # Same shape as _SCF_PREFIX_RE without the trailing
-                # capture (the on_start callback does its own
-                # ``_SCF_PREFIX_RE.match(line)`` to extract groups).
-                # Combined-regex eligible.
-                start=matches_regex_ci(r"^\s*scf:\s*\d+\s+"),
+                # The row's start, the pattern the tee and the monitor
+                # match too; ``_on_scf_data`` asks ``_G.scf_row`` for the
+                # rest.  Combined-regex eligible.
+                start=matches_regex_ci(_G.SCF_ROW_ERE),
                 on_start=_on_scf_data,
             ),
             SectionRule(
@@ -1480,6 +1712,64 @@ class SiestaParser:
                 start=matches_regex_ci(
                     r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s"),
                 on_start=_on_iter_scf_timer,
+            ),
+            # TranSIESTA's lines (`model/parse.md` § 5d.5).  None of them can
+            # collide with a rule above: each has its own prefix.
+            SectionRule(
+                name="ts_q",
+                aliases=["ts-q: ..."],
+                start=matches_regex_ci(_G.TS_Q_ROW.pattern),
+                on_start=_on_ts_q,
+            ),
+            SectionRule(
+                name="ts_vha",
+                aliases=["ts-Vha: ... eV"],
+                start=matches_regex_ci(_G.TS_VHA.pattern),
+                on_start=_on_ts_vha,
+            ),
+            SectionRule(
+                name="ts_echo",
+                aliases=["ts: ..."],
+                start=matches_regex_ci(_G.TS_ECHO.pattern),
+                on_start=_on_ts_echo,
+            ),
+            SectionRule(
+                name="ts_charge_distribution",
+                aliases=["transiesta: Charge distribution, target = ..."],
+                start=matches_regex_ci(_G.TS_CHARGE_START.pattern),
+                on_start=_on_ts_charge_start,
+                consume=_consume_ts_charge,
+            ),
+            SectionRule(
+                name="ts_principal_cell",
+                aliases=["<electrode> principal cell is ..."],
+                start=matches_regex_ci(_G.TS_PRINCIPAL_CELL.pattern),
+                on_start=_on_ts_principal_cell,
+            ),
+            SectionRule(
+                name="ts_gf_for",
+                aliases=["Calculating surface Green functions for: ..."],
+                start=matches_regex_ci(_G.TS_GF_FOR.pattern),
+                on_start=_on_ts_gf_for,
+            ),
+            SectionRule(
+                name="ts_gf_stats",
+                aliases=["Lopez Sancho ... iterations"],
+                start=any_of(matches_regex_ci(_G.TS_GF_MEAN_STD.pattern),
+                             matches_regex_ci(_G.TS_GF_MIN_MAX.pattern)),
+                on_start=_on_ts_gf_stats,
+            ),
+            SectionRule(
+                name="emadel",
+                aliases=["siesta: Emadel = ..."],
+                start=matches_regex_ci(_G.EMADEL.pattern),
+                on_start=_on_emadel,
+            ),
+            SectionRule(
+                name="run_start",
+                aliases=[">> Start of run"],
+                start=matches_regex_ci(_G.RUN_START.pattern),
+                on_start=_on_run_start,
             ),
             SectionRule(
                 name="max_force",
@@ -1539,16 +1829,9 @@ class SiestaParser:
             emit a ParseWarning on a miss -- the value is still
             recorded, but an unrecognised token surfaces instead of
             silently becoming ground truth (no silent absorption)."""
-            m = _SIESTA_NODES_RE.match(line)
-            if m:
-                try:
-                    runtime_info["n_mpi_processes"] = int(m.group(1))
-                except ValueError:
-                    pass
-                return True
-            m = _SIESTA_HOST_RE.match(line)
-            if m:
-                runtime_info["hostname"] = m.group(1).strip()
+            if (_G.RUNNING_ON.match(line)
+                    or _G.RUNNING_SERIAL.match(line)):
+                _G.read_launch_line(line, runtime_info)
                 return True
             # ONE reader of the runtime-header grammar, in the module that
             # owns it.  A character-identical copy of the coercion stood
@@ -1601,30 +1884,13 @@ class SiestaParser:
             # self-reports about its compiled-in capabilities.  The
             # Results tab uses this to show "what actually ran" vs the
             # user's requested params.
-            m = _SIESTA_VERSION_RE.match(line)
-            if m:
-                runtime_info.setdefault("siesta_build", {})["version"] = (
-                    m.group(1).strip())
-                return True
-            m = _SIESTA_ARCH_RE.match(line)
-            if m:
-                runtime_info.setdefault("siesta_build", {})["architecture"] = (
-                    m.group(1).strip())
-                return True
-            m = _SIESTA_COMPILER_RE.match(line)
-            if m:
-                runtime_info.setdefault("siesta_build", {})["compiler"] = (
-                    m.group(1).strip())
-                return True
-            m = _SIESTA_PARALLEL_RE.match(line)
-            if m:
-                # Split on comma/whitespace so "MPI, OPENMP" becomes
-                # ["MPI", "OPENMP"] and "MPI" stays ["MPI"].
-                tokens = [t.strip().upper() for t in
-                          re.split(r"[,\s]+", m.group(1)) if t.strip()]
-                runtime_info.setdefault(
-                    "siesta_build", {})["parallelisations"] = tokens
-                unknown = [t for t in tokens
+            build: Dict[str, Any] = {}
+            key = _G.read_build_line(line, build)
+            if key:
+                have = runtime_info.setdefault("siesta_build", {})
+                for k, v in build.items():
+                    have.setdefault(k, v)
+                unknown = [t for t in build.get("parallelisations", ())
                            if t not in _SIESTA_PARALLELISATIONS]
                 if unknown:
                     _warn(line_no, line,
@@ -1633,17 +1899,6 @@ class SiestaParser:
                           f"in the known set "
                           f"{sorted(_SIESTA_PARALLELISATIONS)}",
                           category="runtime_info")
-                return True
-            m = _SIESTA_FEATURE_RE.match(line)
-            if m:
-                # Feature presence -- the line "ELPA support" by itself
-                # means ELPA was compiled in.  Lowercase the key for the
-                # dict; hyphen-to-underscore for "NetCDF-4" -> "netcdf4".
-                # "NetCDF-4" -> "netcdf4" is what the lower+replace above
-                # already produces; an `if name == "netcdf4": pass` sat here
-                # doing nothing until 2026-09-05.
-                name = m.group(1).lower().replace("-", "")
-                runtime_info.setdefault("siesta_build", {})[name] = True
                 return True
             # ---- SIESTA diagonalizer probes ----------------------- #
             # Populate runtime_info["siesta_diag"] -- which solver path
@@ -1791,7 +2046,10 @@ class SiestaParser:
             # from E_KS at parse time -- see _SCF_FIELD_MAP); walk back
             # to the most recent FINITE value.
             in_prog_energy: Optional[float] = None
-            for cycle in reversed(current_scf):
+            # A device mid-NEGF speaks for its NEGF phase, as commit() rules.
+            _live = ([c for c in current_scf
+                      if c.get("phase") == _G.PHASE_NEGF] or current_scf)
+            for cycle in reversed(_live):
                 v = cycle.get("energy")
                 if v is None:
                     continue
@@ -1877,6 +2135,28 @@ class SiestaParser:
         if (step_initial_etot is not None
                 and math.isfinite(step_initial_etot)):
             runtime_info["initial_etot"] = float(step_initial_etot)
+
+        # THE PHASES, SUMMED (`model/parse.md` § 5d.6): how many cycles each
+        # ran and whether it converged -- a device's verdict is its NEGF
+        # phase's, and `scf_converged` above already answers for the LAST
+        # phase that ran.
+        _counts: Dict[str, int] = {}
+        for _fr in frames:
+            for _c in (_fr.scf_history or []):
+                _ph = _c.get("phase") or _G.PHASE_PERIODIC
+                _counts[_ph] = _counts.get(_ph, 0) + 1
+        if _counts:
+            runtime_info["scf_phases"] = {
+                _ph: {"cycles": _n, "converged": phase_converged.get(_ph)}
+                for _ph, _n in _counts.items()}
+        # Only a run that RAN TranSIESTA gets its facts: every SIESTA run
+        # prints the small ``ts:`` block of HS-save flags inside the same star
+        # frame, and a relaxation's record would otherwise carry a
+        # "transiesta" section about nothing (found by the golden audit).
+        if ts_info and (_counts.get(_G.PHASE_NEGF)
+                        or "electrodes" in ts_info
+                        or "charge_at_switch" in ts_info):
+            runtime_info["transiesta"] = ts_info
 
         _scan_log.info(
             f"parsed {len(frames)} frames, run_state={run_state}, "

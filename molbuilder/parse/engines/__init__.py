@@ -1,8 +1,14 @@
 """Engine FileParsers — wrap one engine's `.out` / `.log` format.
 
-Each module here defines exactly one :class:`FileParser` subclass
-returning a :class:`TrajectoryResult`.  Adding a new engine is two
-steps: new module here, import + ``register`` below.
+Each PARSER module here defines exactly one :class:`FileParser` subclass: an
+engine's trajectory (a :class:`TrajectoryResult`), or -- ``siesta_fdflog`` --
+the engine's own record of the settings it used (an
+:class:`EngineParamsResult`, `model/parse.md` § 5d.3).  Adding a new engine is
+two steps: new module here, import + ``register`` below.  The rest define no
+parser and are imported by the ones that read with them: ``siesta_grammar``,
+the SIESTA family's one table of output lines (§ 5d.5); ``tbtrans``, the
+transmission rung's readers, which the transport record calls rather than the
+registry; ``_run_ending``, ``_diag``, ``_sidecar`` and ``_helpers``.
 
 Order matters: the registry tries parsers in insertion order, so
 more-specific parsers go first.  MolwatchLogParser leads because
@@ -15,6 +21,7 @@ from .molwatch import MolwatchLogFileParser
 from .siesta_mdnc import SiestaMdNcFileParser
 from .siesta import SiestaOutFileParser
 from .pyscf import PySCFOutFileParser
+from .siesta_fdflog import SiestaFdfLogParser
 
 
 register(MolwatchLogFileParser)
@@ -25,10 +32,12 @@ register(MolwatchLogFileParser)
 register(SiestaMdNcFileParser)
 register(SiestaOutFileParser)
 register(PySCFOutFileParser)
+register(SiestaFdfLogParser)
 
 __all__ = [
     "MolwatchLogFileParser",
     "SiestaMdNcFileParser",
     "SiestaOutFileParser",
     "PySCFOutFileParser",
+    "SiestaFdfLogParser",
 ]

@@ -82,9 +82,12 @@ detail line beneath it with two different facts:
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
-A SIESTA `.out` contains no time of day anywhere — only a timer counting from
-the start of the run — so for SIESTA the "when" falls back to the file's
-mtime, deliberately. The parser says *"this engine cannot tell you the time of
+A SIESTA `.out` states the time of day only at the run's two ends
+(`>> Start of run`, `>> End of run`) and carries no per-step clock — only a
+timer counting from the start — so for SIESTA the "when" of a step falls back
+to the file's mtime, deliberately. *(This said "no time of day anywhere" until
+2026-09-26; the two ends are read into the run record,
+[`model/parse.md`](?doc=model/parse.md) § 5d.2.)* The parser says *"this engine cannot tell you the time of
 day"* rather than handing over its elapsed seconds; when it did hand them over,
 a run six minutes old displayed **"last result Dec 31, 5:06 PM"** — six minutes
 after epoch zero, a duration printed as a date

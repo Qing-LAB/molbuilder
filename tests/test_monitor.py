@@ -342,3 +342,143 @@ def test_pid_alive_self():
     import os
     assert monitor._pid_alive(os.getpid()) is True
     assert monitor._pid_alive(0) is True             # 0 => not watching
+
+
+# --------------------------------------------------------------------- #
+#  A TranSIESTA device's NEGF loop, and the closing summary              #
+#  (`model/parse.md` § 5d.2, § 5d.5; plan W35 P1)                        #
+# --------------------------------------------------------------------- #
+
+_TS_FIXTURE = (Path(__file__).parent / "parse" / "fixtures" / "transiesta"
+               / "device-diverging.out")
+
+
+def _rendered_tee(tmp_path):
+    """The timing tee as the wrapper renders it -- extracted from a real
+    wrapper, never re-typed."""
+    from molbuilder.jobset.model import Resources
+    from molbuilder.runwrap import render_run_wrapper
+    import json
+    deck = tmp_path / "JOB.fdf"
+    deck.write_text("SystemLabel JOB\n")
+    (tmp_path / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    text = render_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    start = text.index("_mb_scf_tee() {")
+    return text[start:text.index("\n}\n", start) + 3]
+
+
+def test_the_rendered_timing_tee_stamps_every_negf_iteration(tmp_path):
+    """The wrapper's instrument counts TranSIESTA's ``ts-scf:`` rows as well
+    as SIESTA's ``scf:`` rows -- it counted 7 of a device's 1007 iterations
+    and timed them at "4049.94 s/iter" (2026-09-25).  Runs the tee the
+    wrapper actually writes over a real device output."""
+    import subprocess
+    tee = tmp_path / "tee.sh"
+    tee.write_text(_rendered_tee(tmp_path))
+    out, log = tmp_path / "copy.out", tmp_path / "timing.log"
+    subprocess.run(["bash", "-c", f'source "{tee}"; _mb_scf_tee "{out}" "{log}"'],
+                   stdin=_TS_FIXTURE.open("rb"), check=True)
+    prefixes = [line.split()[2] for line in log.read_text().splitlines()]
+    assert prefixes.count("scf:") == 7
+    assert prefixes.count("ts-scf:") == 8
+    assert out.read_bytes() == _TS_FIXTURE.read_bytes()
+
+
+def test_the_monitor_follows_a_negf_loop(tmp_path):
+    """The monitor reads the tee's log and the output's last SCF row of
+    either phase -- it reported "no SCF progress" for 7.6 hours of NEGF
+    iterations."""
+    import subprocess
+    tee = tmp_path / "tee.sh"
+    tee.write_text(_rendered_tee(tmp_path))
+    out, log = tmp_path / "copy.out", tmp_path / "timing.log"
+    subprocess.run(["bash", "-c", f'source "{tee}"; _mb_scf_tee "{out}" "{log}"'],
+                   stdin=_TS_FIXTURE.open("rb"), check=True)
+    st = monitor.parse_status(out, log, start_epoch=0.0, now_epoch=150.0)
+    assert st.n_iters == 15
+    assert st.scf_iter == "1000"
+    # E_KS, the energy the parser gives this run -- not the Eharris column
+    # beside it, which the monitor reported until 2026-09-26.
+    assert st.energy == "-205444.335258"
+
+
+def _rendered_monitor_flags(tmp_path):
+    """The grammar flags the wrapper passes the shipped monitor -- read out of
+    a rendered wrapper, never re-typed."""
+    import re as _re
+    import shlex
+    from molbuilder.jobset.model import Resources
+    from molbuilder.runwrap import render_run_wrapper
+    import json
+    deck = tmp_path / "JOB.fdf"
+    deck.write_text("SystemLabel JOB\n")
+    (tmp_path / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    text = render_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    m = _re.search(r'(--scf-row ".*?" --scf-energy-field \d+ '
+                   r'--geom-row ".*?") ', text)
+    assert m, "the wrapper passes the monitor no grammar"
+    return shlex.split(m.group(1))
+
+
+@pytest.mark.parametrize("sig,ended", [("SIGTERM", True), ("SIGUSR1", False)],
+                         ids=["the-job-ended", "a-retry-in-place"])
+def test_the_shipped_monitor_closes_on_the_wrapper_s_signal(tmp_path, sig,
+                                                            ended):
+    """The monitor as a compute node runs it -- the shipped copy, molbuilder
+    unimportable, the grammar only in the flags the wrapper renders --
+    follows a real device's NEGF rows and, when the wrapper stops it, writes
+    its closing lines at once however long its interval.  SIGTERM is the
+    job's end and sends "it ended"; SIGUSR1 is a warm retry in the same
+    process, and sends nothing (`run-reports.md` § 2).  Until 2026-09-26 the
+    monitor wrote no closing lines at all (0 of 9 logs), then for a while
+    sent "it ended" on every retry."""
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+    from molbuilder.runwrap import _config_dir_source, _monitor_source
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "mb_monitor.py").write_text(_monitor_source())
+    (run / "config_dir.py").write_text(_config_dir_source())
+    flags = _rendered_monitor_flags(tmp_path)
+    tee = tmp_path / "tee.sh"
+    tee.write_text(_rendered_tee(tmp_path))
+    subprocess.run(["bash", "-c", f'source "{tee}"; _mb_scf_tee '
+                                  f'"{run}/dev.out" "{run}/dev.timing.log"'],
+                   stdin=_TS_FIXTURE.open("rb"), check=True)
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    assert subprocess.run([sys.executable, "-c", "import molbuilder"],
+                          cwd=run, env=env).returncode != 0, (
+        "molbuilder is importable here, so this is not a compute node")
+    log = run / "dev.monitor.log"
+    watched, mon = subprocess.Popen(["sleep", "120"]), None
+    try:
+        mon = subprocess.Popen(
+            [sys.executable, "mb_monitor.py", "--out", "dev.out",
+             "--timing", "dev.timing.log", "--log", log.name,
+             "--util", "dev.util.csv", "--interval", "60",
+             "--watch-pid", str(watched.pid), "--nice", "0", *flags],
+            cwd=run, env=env)
+        for _ in range(300):
+            if log.exists() and "[MONITOR] start" in log.read_text():
+                break
+            time.sleep(0.1)
+        mon.send_signal(getattr(signal, sig))
+        assert mon.wait(timeout=10) == 0, "the stop waited out the interval"
+    finally:
+        watched.kill()
+        if mon is not None and mon.poll() is None:
+            mon.kill()
+    text = log.read_text()
+    closing = [line for line in text.splitlines() if "[STATUS]" in line][-1]
+    assert "energy=-205444.335258" in closing and "last_iter=1000" in closing
+    assert "[UTIL-SUMMARY]" in text
+    assert ("(stopped by SIGTERM)" in text) is ended
+    assert ("retrying this attempt in place" in text) is not ended
+    assert ("finish:" in text) is ended

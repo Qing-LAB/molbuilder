@@ -154,7 +154,7 @@ states the *why* so the thresholds don't drift silently.
 | Check | Severity | Why |
 |---|---|---|
 | spin treatment other than `non-polarized` but `spin_total` unset, open-shell metal present | warn | the moment then floats from SIESTA's default start — every atom at its maximum atomic moment, aligned (`m_new_dm.F90`); *"zero net spin on every atom"*, which this row said until 2026-09-25 and the finding's own text still says (W34 P2), is not what SIESTA does — and for an open-shell metal that can settle into a state which is not the ground state, or fail to converge — neither of which announces itself; the starting value and its alternatives come from `chemistry.suggest_spin_total`. **Whether the structure is open-shell is asked of the STRUCTURE**, so a gold junction is closed-shell and this stays quiet (§ 2.1 of [`validation.md`](?doc=science/validation.md)). This was **error** until 2026-09-17, citing a `propor: ERROR: IMAX = 0` abort that spin cannot cause: `propor` is a vector-proportionality utility called only from `matel_table.F90`, and `IMAX = 0` means an all-zero radial table — a defective pseudopotential, which the `dead_projector` row above already blocks |
-| `spin_total` set with `Spin non-polarized` | warn | there are no separate spin channels to pin; SIESTA reads the value and ignores it |
+| `spin_total` set with `Spin non-polarized` | warn | there are no separate spin channels to pin, and molbuilder writes neither `Spin.Fix` nor `Spin.Total` without `Spin polarized`: SIESTA reads `Spin.Total` only under `Spin.Fix`, and stops on `Spin.Fix` at any spin but collinear-polarized (`read_options.F90`) — so the value is dropped, which this row said until 2026-09-26 SIESTA did itself |
 | `spin_total` set with `Spin non-colinear` or `spin-orbit` | **error** | SIESTA does NOT ignore this one — `read_options.F90` calls `die()`: *"You can only fix the spin of the system for collinear spin polarized calculations"*. A warning would let the job reach the queue and abort there, which is the failure this preflight exists to move earlier |
 | open-shell metal paired with a *closed*-shell SCF | warn | closed-shell SCF on a true open-shell complex converges to a fictitious state — a strong warning, not a block → [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) (`check_open_shell_metal`) |
 | `(charge, spin)` parity mismatch | (engine) | caught pre-emission for a clearer message than PySCF's runtime error |
@@ -306,10 +306,13 @@ glosses its own specialised terms inline; this is the common core.)
 - **parity** — the even/odd match: an even electron count needs an even 2S, odd
   needs odd. A mismatch is physically impossible.
 - **DM (density matrix)** — the electron distribution SIESTA seeds the SCF loop
-  with. A polarized run seeds it from `Spin.Total`; left unset, it starts at
-  zero net spin everywhere. (It is *not* built by `propor`, as this line said
-  until 2026-09-17 — that is a vector-proportionality helper in the
-  matrix-element table code and has nothing to do with the DM.)
+  with. A polarized run given no initial moments starts every atom at its
+  maximum atomic moment, aligned (`m_new_dm.F90`) — not at zero net spin, and
+  not from `Spin.Total`, which under `Spin.Fix` pins N↑ − N↓ instead
+  (`siesta_init.F`); this line said otherwise until 2026-09-26. (It is *not*
+  built by `propor`, as this line said until 2026-09-17 — that is a
+  vector-proportionality helper in the matrix-element table code and has
+  nothing to do with the DM.)
 
 **Periodic (crystal) calculations**
 

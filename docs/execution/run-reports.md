@@ -74,7 +74,7 @@ combine with OR, and the third is not settable at all.
 |---|---|---|
 | an SCF cycle converged | `notify.on_scf_converged` | once per geometry step in a relaxation; a single point has none, and its finish message is the whole report |
 | every N hours | `notify.every_hours` | N is a **number of hours**, not a duration string |
-| **it ended** | nothing — always on | when the watched PID goes, however it went |
+| **it ended** | nothing — always on | when the watched PID goes, or the wrapper stops the monitor at the job's end (SIGTERM, which a scheduler's walltime or cancel reads the same as), however the run went. A warm retry is not an ending: the wrapper re-runs the attempt in the same PID, stops this run's monitor with SIGUSR1, and the next run's monitor reports on |
 | **it stalled** | nothing — always on | no progress for `stall_heartbeat_s`, throttled to one per window |
 
 **Nothing is reported before an SCF converges.** A half-finished cycle is not

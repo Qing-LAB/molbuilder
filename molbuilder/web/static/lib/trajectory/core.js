@@ -2751,8 +2751,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // run's start and is the only series that may be shown as a
         // duration; `wall_clock_s[]` is an absolute epoch and the only
         // one that may be shown as a date.  Either may be an all-null
-        // series when the engine cannot report it -- a SIESTA .out has
-        // no time of day in it at all -- so each is read on its own and
+        // series when the engine cannot report it -- no step of a SIESTA
+        // .out carries a time of day -- so each is read on its own and
         // neither substitutes for the other.
         const { elapsed, lastResultEpoch } = badgeClocks(state);
 
@@ -2778,8 +2778,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // `wall_clock_s` from the simulation log (authoritative;
             // this is when the simulation itself produced the result),
             // fall back to the file's mtime -- the only timestamp
-            // available when the engine emits no time of day, e.g. a
-            // raw SIESTA .out without molwatch hooks.  That fallback
+            // available when the engine's steps carry no time of day,
+            // e.g. a raw SIESTA .out without molwatch hooks.  That fallback
             // is reached because the parser reports null rather than
             // handing over its elapsed seconds; when it did the latter,
             // a run six minutes in displayed "Dec 31, 5:06 PM".  This

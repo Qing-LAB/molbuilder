@@ -183,7 +183,7 @@ def test_dry_run_flag_and_block(tmp_path):
     # GPU mode: per-rank mapping preview + exit before launch
     assert "Rank -> GPU mapping (block-distributed)" in t
     assert "_dry_run complete" not in t  # (sanity: it's the log msg form)
-    assert '_log INFO "dry-run complete; no SIESTA launched"' in t
+    assert '_log INFO "dry-run complete; nothing launched"' in t
     assert "exit 0" in t
 
 
@@ -252,15 +252,18 @@ def test_scf_timing_instrument_present(tmp_path):
     with the .out, the piped launch + PIPESTATUS, and a wall-time log."""
     for t in (_gpu(tmp_path), _cpu(tmp_path)):
         assert "_mb_scf_tee() {" in t
-        assert '/^[ \\t]*scf:[ \\t]*[0-9]/' in t      # iteration-line match
+        # WHICH lines it stamps is a behaviour, pinned where it is exercised:
+        # `test_monitor.py::test_the_rendered_timing_tee_stamps_every_negf_iteration`
+        # runs this tee over a real device output (the pattern is the grammar's,
+        # `parse/engines/siesta_grammar.py`).
         assert '_scf_timing_log="${_out_file%.out}.scf-timing.log"' in t
         assert '| _mb_scf_tee "$_out_file" "$_scf_timing_log"' in t
         # PIPESTATUS so awk never masks SIESTA's exit code
         assert "_siesta_exit=${PIPESTATUS[0]}" in t
-        # Reliable benchmark metric = total wall / N SCF iters (SIESTA's
-        # own per-scf time is unreliable; per-line stamps are buffered).
+        # The row count beside the wall time.  Seconds PER ITERATION are the
+        # timing instrument's (`parse/instruments/scf_timing.py`); the
+        # wrapper's total/N was a second answer and is gone (2026-09-26).
         assert '_n_scf=$(wc -l < "$_scf_timing_log"' in t
-        assert "total/N -- the reliable metric" in t
 
 
 def test_propor_diagnostic_still_reads_out_after_timing(tmp_path):
@@ -310,8 +313,9 @@ def test_wrapper_launches_low_priority_monitor(tmp_path):
     assert "python -m molbuilder monitor" not in t       # NOT the package form
     assert "--watch-pid $$" in t
     assert "--interval \"${MB_MONITOR_INTERVAL:-10}\"" in t
-    # cleaned up by the single unified EXIT trap
-    assert '[ -n "${_monitor_pid:-}" ] && kill "$_monitor_pid"' in t
+    # stopped by the single unified EXIT trap, through the one function
+    # that waits for its closing lines
+    assert "_mb_stop_monitor TERM || true" in t
 
 
 def test_wrapper_ships_standalone_monitor(tmp_path):

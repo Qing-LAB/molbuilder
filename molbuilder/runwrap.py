@@ -1369,7 +1369,7 @@ def _siesta_dry_run_block(script_name: str, gpu_mode: bool) -> str:
             if gpu_mode else ""
         )
         + f'    echo "================================================"\n'
-        f'    _log INFO "dry-run complete; no SIESTA launched"\n'
+        f'    _log INFO "dry-run complete; nothing launched"\n'
         f'    exit 0\n'
         f'fi\n'
         f"\n"
@@ -1401,19 +1401,27 @@ def _siesta_scf_timing_func() -> str:
     across gawk/mawk (getline-from-command + close + fflush). The caller
     pipes ``$_launch_cmd … | _mb_scf_tee "$_out_file" "$_scf_timing_log"``
     and reads ``${PIPESTATUS[0]}`` for SIESTA's exit (awk never masks it).
+
+    EVERY SCF ROW OF EITHER PHASE, and the pattern is not this function's: it
+    is ``parse.engines.siesta_grammar``'s, the one table the parser and the
+    monitor read too (`model/parse.md` § 5d.5).  It matched ``scf:`` alone
+    until 2026-09-26, so a TranSIESTA device's 1000 ``ts-scf:`` iterations
+    were timed as its 7 periodic ones -- *"4049.94 s/iter"* against 27.5.
     """
+    from .parse.engines import siesta_grammar as _G
     return (
         "# --- SCF per-iteration timing instrument "
         "(running-a-job.md § 4.1) ---\n"
-        "# Tees SIESTA stdout to the .out AND stamps each scf: iteration\n"
-        "# line into the per-run .scf-timing.log so per-iter wall time =\n"
+        "# Tees SIESTA stdout to the .out AND stamps each SCF row -- scf:\n"
+        "# and TranSIESTA's ts-scf: -- into the per-run .scf-timing.log so\n"
+        "# per-iter wall time =\n"
         "# consecutive-epoch delta (SIESTA prints no per-iter time).\n"
         "_mb_scf_tee() {\n"
         "    awk -v out=\"$1\" -v tlog=\"$2\" '\n"
         "        { print > out; fflush(out) }\n"
-        "        /^[ \\t]*scf:[ \\t]*[0-9]/ {\n"
+        "        /" + _G.SCF_ROW_ERE + "/ {\n"
         "            _cmd=\"date +%s.%N\"; _cmd | getline _ts; close(_cmd)\n"
-        "            _l=$0; sub(/^[ \\t]*scf:[ \\t]*/, \"\", _l)\n"
+        "            _l=$0; sub(/" + _G.SCF_PREFIX_ERE + "/, \"\", _l)\n"
         "            split(_l, _f, /[ \\t]+/)\n"
         "            print _ts, _f[1], $0 > tlog; fflush(tlog)\n"
         "        }\n"
@@ -1846,8 +1854,14 @@ def _effective_parameters_block(script_path: "Path") -> str:
         ' | sed "s/^/#   /"',
     ]
     if absent:
+        # THE CATALOGUE'S DEFAULT, SAID AS SUCH.  This heading promised the
+        # engine's ("the engine default applies") over the catalogue's value:
+        # `negf_eq_pole_ev (catalogue default 0.0)` where SIESTA ran 0.2507
+        # Ry.  What the engine actually used is SIESTA's own fdf log, read by
+        # the run record (`model/parse.md` § 5d.3).
         lines.append(
-            'echo "#   -- not in the deck; the engine default applies --"')
+            'echo "#   -- not in the deck: the catalogue default is shown; the '
+            'value the engine used is in its fdf.*.log --"')
         for row in absent:
             lines.append(f'echo "#   {row}"')
     lines.append(f'echo "{_sc.end_marker(_sc.BLOCK_PARAMETERS)}"')
@@ -2883,6 +2897,10 @@ def render_run_wrapper(script_path: Path, *,
         # deck text, so the deck cannot carry the answer and the
         # allocation road does (jobset/model.Resources.program).
         _prog = getattr(r, "program", None) or "siesta"
+        # WHAT THE LOG CALLS IT: a transmission run is TBtrans.  Its log said
+        # "SIESTA binary" over a tbtrans path, and "SIESTA wall" / "SIESTA
+        # exited" after it, until 2026-09-26.
+        _prog_label = "TBtrans" if _prog == "tbtrans" else "SIESTA"
         env_prefix += (
             # The block NAME is job-contracts.md § 2.6's row and stays
             # stable; the binary inside is _prog.
@@ -3039,13 +3057,13 @@ def render_run_wrapper(script_path: Path, *,
         # the rank count / threading / cwd / command + BUILD probe
         # results before SIESTA spends 30 seconds reading the .fdf.
         env_prefix += (
-            f'echo "===== molbuilder SIESTA run-wrapper ====="\n'
+            f'echo "===== molbuilder {_prog_label} run-wrapper ====="\n'
             f'echo "  Date          : $(date -Iseconds)"\n'
             f'echo "  Host          : $(hostname)"\n'
             f'echo "  Cwd           : $(pwd)"\n'
             f'echo "  Conda env     : ${{CONDA_DEFAULT_ENV:-?}}"\n'
-            f'echo "  SIESTA binary : $_siesta_bin_path"\n'
-            f'echo "  SIESTA version: ${{_siesta_ver:-unknown}}"\n'
+            f'echo "  {_prog_label + " binary":<14}: $_siesta_bin_path"\n'
+            f'echo "  {_prog_label + " version":<14}: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
             # WHAT A RETRY WILL ACTUALLY DO ON THIS DECK.  It said
@@ -3435,6 +3453,22 @@ def render_run_wrapper(script_path: Path, *,
         f"# No-ops unless the relevant vars were set, so it is safe for\n"
         f"# CPU / PySCF / non-MPS runs.  Cleans (a) the per-rank GPU\n"
         f"# launcher temp file and (b) the MPS daemon + its pipe/log dirs.\n"
+        # STOPPING THE MONITOR, in one place: the signal says why -- TERM at
+        # the job's end, USR1 when one attempt is retried in place, which is
+        # not an ending (`run-reports.md` § 2) -- and the wait lets it write
+        # its closing [STATUS] / [UTIL-SUMMARY] before this shell exits and a
+        # scheduler reaps the job's processes.  Bounded (~10 s): a monitor
+        # that does not exit by then is left to its own watch-pid exit.
+        f"_mb_stop_monitor() {{\n"
+        f'    [ -n "${{_monitor_pid:-}}" ] || return 0\n'
+        f'    kill "-$1" "$_monitor_pid" 2>/dev/null || return 0\n'
+        f"    _mb_w=0\n"
+        f'    while kill -0 "$_monitor_pid" 2>/dev/null '
+        f'&& [ "$_mb_w" -lt 50 ]; do\n'
+        f"        sleep 0.2\n"
+        f"        _mb_w=$((_mb_w + 1))\n"
+        f"    done\n"
+        f"}}\n"
         f"_mb_cleanup_ran=0\n"
         f"_mb_cleanup() {{\n"
         # Idempotence guard: a caught signal runs cleanup and exits,
@@ -3456,8 +3490,7 @@ def render_run_wrapper(script_path: Path, *,
         # 2026-08-12; the warm-retry's identical kill was already
         # guarded).  Same for a vanished MPS control daemon under
         # pipefail.
-        f'    [ -n "${{_monitor_pid:-}}" ] && kill "$_monitor_pid" '
-        f"2>/dev/null || true\n"
+        f"    _mb_stop_monitor TERM || true\n"
         f'    [ -n "${{_rank_helper:-}}" ] && rm -f "$_rank_helper" '
         f"2>/dev/null || true\n"
         # BOTH conditions (E-3, 2026-08-13): _mps_started says a daemon
@@ -3578,6 +3611,7 @@ def render_run_wrapper(script_path: Path, *,
     # finished PySCF one, which is what `submit.py` refuses a ladder on.
     # The cost is the one already accepted above: one extra bash process.
     if category == "siesta":
+        from .parse.engines import siesta_grammar as _siesta_grammar
         # Always-on launch-command audit log + the --dry-run preview, both
         # extracted into named block-emitters (see their docstrings for
         # the goal/contract).  Order: log the resolved command, then the
@@ -3608,11 +3642,11 @@ def render_run_wrapper(script_path: Path, *,
             # molbuilder install, NO numpy, NO repo on PATH, NO separate env
             # (the backend siesta env has none of those).  Each interval it
             # parses .out + .scf-timing.log, appends status to
-            # <basename>.monitor.log, and fires notifier hooks.  It blocks on
-            # time.sleep() (0 CPU while idle) and runs at `nice -n 19` (+ a
+            # <basename>.monitor.log, and fires notifier hooks.  It sleeps
+            # between wakes (0 CPU while idle) and runs at `nice -n 19` (+ a
             # self-nice) so it never competes with the compute ranks.  Opt
-            # out with MB_MONITOR=0.  Killed by _mb_cleanup; also self-exits
-            # when this wrapper's PID ($$) disappears.
+            # out with MB_MONITOR=0.  Stopped by _mb_stop_monitor; also
+            # self-exits when this wrapper's PID ($$) disappears.
             f'_monitor_pid=""\n'
             # The interpreter is PROBED (python3 first, python second):
             # bare `python` does not exist on python3-only hosts, and the
@@ -3642,6 +3676,11 @@ def render_run_wrapper(script_path: Path, *,
             # names simply match the `.out` beside them.
             f'--log "{basename}-run${{_run_n}}.monitor.log" '
             f'--util "{basename}-run${{_run_n}}.util.csv" '
+            # The SCF-row pattern, from the one grammar: the shipped monitor
+            # cannot import molbuilder (`model/parse.md` § 5d.5).
+            f'--scf-row "{_siesta_grammar.SCF_ROW_ERE}" '
+            f'--scf-energy-field {_siesta_grammar.SCF_E_KS_FIELD} '
+            f'--geom-row "{_siesta_grammar.GEOM_MOVE.pattern}" '
             f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
             f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
             + (f'--notify-on-scf ' if notify_on_scf else "")
@@ -3683,17 +3722,15 @@ def render_run_wrapper(script_path: Path, *,
                f'# sequence and --cold would move aside the very warm-start\n'
                f'# files the retry needs.  MB_RETRY_N is exported so it\n'
                f'# survives the exec -> bounded recursion.  The monitor is\n'
-               f'# killed first (exec skips the EXIT trap; the retried run\n'
-               f'# starts its own).\n'
+               f'# stopped first, as a retry and not an ending (exec skips\n'
+               f'# the EXIT trap; the retried run starts its own).\n'
                f'_mb_warm_retry() {{\n'
                f'    _mb_next=$((_siesta_retry + 1))\n'
                f'    echo "" >&2\n'
                f'    echo "=== $1; warm-restarting '
                f'(retry $_mb_next/$_siesta_retry_max) with --continue ===" >&2\n'
                f'    echo "" >&2\n'
-               f'    if [ -n "$_monitor_pid" ]; then\n'
-               f'        kill "$_monitor_pid" 2>/dev/null || true\n'
-               f'    fi\n'
+               f'    _mb_stop_monitor USR1 || true\n'
                f'    export MB_RETRY_N=$_mb_next\n'
                f'    _mb_retry_args=()\n'
                f'    for _mb_a in ${{_mb_orig_args[@]+"${{_mb_orig_args[@]}}"}}; do\n'
@@ -3715,32 +3752,23 @@ def render_run_wrapper(script_path: Path, *,
             f"_t_end=$(date +%s.%N)\n"
             f'_siesta_wall=$(awk -v a="$_t_start" -v b="$_t_end" '
             f"'BEGIN{{printf \"%.1f\", b-a}}')\n"
-            # Reliable per-iteration metric = total wall / N_iters.  SIESTA's
-            # OWN per-scf time in the .out is NOT trustworthy (it effectively
-            # records only the first iteration), and the external per-line
-            # stamps in .scf-timing.log are subject to Fortran stdout
-            # buffering -- so the headline benchmark number is total/N
-            # (job-system.md § 7).  N = scf: iteration lines.
+            # The engine's wall time, and how many SCF rows the tee took --
+            # of both phases.  The seconds PER ITERATION are the timing
+            # instrument's, one phase at a time (`parse/instruments/
+            # scf_timing.py`, `model/parse.md` § 5c.1); a total/N here was a
+            # second answer, and across a device's two phases it is neither.
             f'if [ -f "$_scf_timing_log" ]; then\n'
             f'    _n_scf=$(wc -l < "$_scf_timing_log" | tr -d " ")\n'
             f'else\n'
-            f'    _n_scf=0   # SIESTA crashed before any scf: output\n'
+            f'    _n_scf=0   # the engine stopped before any SCF row\n'
             f'fi\n'
             f'case "$_n_scf" in ""|*[!0-9]*) _n_scf=0 ;; esac\n'
-            f'if [ "$_n_scf" -ge 1 ]; then\n'
-            f'    _per_iter=$(awk -v t="$_siesta_wall" -v n="$_n_scf" '
-            f"'BEGIN{{printf \"%.2f\", t/n}}')\n"
-            f'    _log INFO "benchmark: SIESTA wall ${{_siesta_wall}}s / '
-            f'${{_n_scf}} SCF iters = ${{_per_iter}}s/iter '
-            f'(total/N -- the reliable metric)"\n'
-            f'else\n'
-            f'    _log INFO "benchmark: SIESTA wall ${{_siesta_wall}}s '
-            f'(no SCF iterations parsed from $_scf_timing_log)"\n'
-            f'fi\n'
+            f'_log INFO "benchmark: {_prog_label} wall ${{_siesta_wall}}s, '
+            f'${{_n_scf}} SCF rows in $_scf_timing_log"\n'
             f"\n"
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"
-            f'    echo "===== SIESTA exited with code $_siesta_exit =====" >&2\n'
+            f'    echo "===== {_prog_label} exited with code $_siesta_exit =====" >&2\n'
             f'    if grep -aq "propor: ERROR" "$_out_file" "$_runwrap_log" '
             f'2>/dev/null; then\n'
             f"        cat <<HINT >&2\n"
@@ -3842,7 +3870,7 @@ def render_run_wrapper(script_path: Path, *,
                f'fi\n'
                f'\n'
                if continue_retries and continue_retries > 0 else "")
-            + f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
+            + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + f'$_out_file"\n'
             f'printf "rc=0 at %s\\n" "$(date)" '
             f'> "{basename}-run${{_run_n}}.concluded"\n'

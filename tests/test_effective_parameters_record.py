@@ -94,10 +94,13 @@ def test_siesta_reads_the_deck_at_launch_not_at_generation(deck):
 
 
 def test_siesta_records_what_the_deck_leaves_out_with_its_default(deck):
-    """A keyword absent from the deck takes the engine default, and a reader
-    chasing a surprising number has to be able to see that it was never set."""
+    """A keyword absent from the deck is listed with the CATALOGUE's default,
+    said as such -- a reader chasing a surprising number has to see that it
+    was never set.  What the engine actually used is SIESTA's own fdf log, the
+    run record's third column (`model/parse.md` § 5d.3); this heading claimed
+    the engine's default until 2026-09-26."""
     block = _effective_parameters_block(deck)
-    assert "the engine default applies" in block
+    assert "not in the deck: the catalogue default is shown" in block
     # this toy deck sets neither, so both must be named
     assert "xc_authors" in block
     assert "relax_force_tol" in block
@@ -105,7 +108,7 @@ def test_siesta_records_what_the_deck_leaves_out_with_its_default(deck):
 
 def test_an_item_the_deck_does_carry_is_not_listed_as_absent(deck, tmp_path):
     block = _effective_parameters_block(deck)
-    absent = block.split("the engine default applies")[1]
+    absent = block.split("not in the deck:")[1]
     assert "mesh_cutoff" not in absent, (
         "mesh_cutoff IS in this deck; listing it as absent would be a lie "
         "about what the engine reads")
@@ -123,7 +126,7 @@ def test_an_item_the_deck_does_carry_is_not_listed_as_absent(deck, tmp_path):
                        "4 0 0 0.0\n0 4 0 0.0\n0 0 1 0.0\n"
                        "%endblock kgrid_Monkhorst_Pack\n", encoding="utf-8")
     absent_b = _effective_parameters_block(blocked).split(
-        "the engine default applies")[1]
+        "not in the deck:")[1]
     assert "kgrid" not in absent_b, (
         "this deck sets a k-grid; listing it as absent would be a lie about "
         "what the engine samples")

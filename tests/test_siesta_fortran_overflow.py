@@ -44,10 +44,10 @@ import math
 import pytest
 
 from molbuilder.parse.engines.siesta import (
-    _SCF_PREFIX_RE,
     _parse_fortran_float,
     _parse_scf_floats,
 )
+from molbuilder.parse.engines.siesta_grammar import scf_row
 
 
 # --------------------------------------------------------------------- #
@@ -111,14 +111,12 @@ class TestParseSCFLine:
     )
 
     def test_user_reported_line_parses(self):
-        m = _SCF_PREFIX_RE.match(self.USER_LINE)
-        assert m is not None, (
-            "SCF prefix regex must match the user's failing line"
+        row = scf_row(self.USER_LINE)
+        assert row is not None, (
+            "the SCF row grammar must match the user's failing line"
         )
-        iscf = int(m.group(1))
-        rest = m.group(2)
-        assert iscf == 2
-        vals = _parse_scf_floats(rest)
+        assert row.iscf == 2
+        vals = _parse_scf_floats(self.USER_LINE[row.columns_at:].lstrip())
         assert vals is not None, (
             "user's failing line must parse to a value list, not "
             "None; if this returns None the pre-2026-06-14 bug is "
@@ -126,8 +124,8 @@ class TestParseSCFLine:
         )
 
     def test_user_reported_line_values(self):
-        m = _SCF_PREFIX_RE.match(self.USER_LINE)
-        vals = _parse_scf_floats(m.group(2))
+        row = scf_row(self.USER_LINE)
+        vals = _parse_scf_floats(self.USER_LINE[row.columns_at:].lstrip())
         assert vals is not None
         # 6 columns after iscf: Eharris, E_KS, FreeEng, dDmax, Ef, dHmax.
         assert len(vals) == 6, (
@@ -244,12 +242,10 @@ class TestParseSCFOverflowVariants:
                 "-760091.068034 45.787763-15.068303410.273625")
         # Compute data_start the same way _on_scf_data does:
         # position immediately after the iscf integer.
-        import re
-        m = re.match(r"^\s*scf:\s*(\d+)", line, re.IGNORECASE)
-        data_start = m.end(1)
+        data_start = scf_row(line).columns_at
         expected = [-660624.384691, -760090.911374, -760091.068034,
                     45.787763, -15.068303, 410.273625]
-        vals = _parse_scf_floats(m.group(0).split(":", 1)[1].lstrip()[1:],
+        vals = _parse_scf_floats(line[data_start:].lstrip(),
                                   line=line, data_start=data_start)
         # (B-7, 2026-08-13: ``vals`` was computed and never asserted, and
         # the fallback was only ever called as the bare helper -- so the

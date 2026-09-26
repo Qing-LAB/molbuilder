@@ -30,7 +30,6 @@ from typing import Dict, List, Optional
 from ..bench.result import (
     BenchPoint, BenchResult, build_bench_result, compare_asked_to_ran,
     machine_brief, machine_census, mismatch_phrase, parse_effective_run,
-    parse_mpi_ranks,
 )
 
 
@@ -239,7 +238,8 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
                  if scan_ending(_read(out)).run_state == "ended"
                  else "incomplete")
     if engine == "cpu" and "mpi_np" not in knobs:
-        n = parse_mpi_ranks(out_head)
+        from ..parse.engines.siesta_grammar import mpi_ranks
+        n = mpi_ranks(out_head)
         if n is not None:
             knobs["mpi_np"] = n
 

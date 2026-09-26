@@ -127,12 +127,14 @@ class TestRenderedContract:
         # move aside the warm-start files the retry depends on.
         assert "--continue|-c|--force|-f|--cold|--from-scratch) ;;" in text
 
-    def test_monitor_is_killed_before_reexec(self, sandbox):
-        """exec skips the EXIT trap; without the kill each retry would
-        stack another mb_monitor.py appending to the same util CSV."""
+    def test_monitor_is_stopped_as_a_retry_before_reexec(self, sandbox):
+        """exec skips the EXIT trap; without the stop each retry would
+        stack another mb_monitor.py appending to the same util CSV -- and
+        it is stopped as a RETRY (SIGUSR1), because the job goes on and
+        "it ended" would be false (`run-reports.md` § 2)."""
         text = _render(continue_retries=2)
         fn = text[text.index("_mb_warm_retry() {"):text.index(EXEC_LINE)]
-        assert 'kill "$_monitor_pid"' in fn
+        assert "_mb_stop_monitor USR1" in fn
 
 
 # --------------------------------------------------------------------- #

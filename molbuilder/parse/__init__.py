@@ -35,6 +35,7 @@ from .types import (
     SidecarResult,
     StructureResult,
     TrajectoryResult,
+    EngineParamsResult,
 )
 
 # Import sub-packages so their register() side-effects run.
@@ -54,7 +55,7 @@ __all__ = [
     "FileParser", "DirParser",
     # Results
     "ParseResult", "TrajectoryResult", "StructureResult",
-    "SidecarResult", "InstrumentResult",
+    "SidecarResult", "InstrumentResult", "EngineParamsResult",
     "ParseWarning",
     # Registry / dispatch
     "detect", "parse", "parse_dir", "register",

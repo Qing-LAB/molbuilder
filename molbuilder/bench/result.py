@@ -128,18 +128,6 @@ _WRAP_NODE = re.compile(
     r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
     r"cores_per_socket=(\d+)")
 
-_MPI_RANKS = re.compile(r"Running on\s+(\d+)\s+nodes", re.IGNORECASE)
-
-
-def parse_mpi_ranks(out_text: str) -> Optional[int]:
-    """The MPI rank count from a SIESTA ``.out`` header line
-    ``* Running on <N> nodes in parallel.`` (``None`` if absent).  Used to
-    recover a CPU point's ``np`` -- it is set via ``sbatch -n`` and so is
-    not in any filename."""
-    m = _MPI_RANKS.search(out_text)
-    return int(m.group(1)) if m else None
-
-
 # What the run ACTUALLY used, printed by SIESTA itself and by the wrapper.
 # Formats verified against real frozen output in
 # tests/watch/fixtures/siesta_frozen/ and against the writers in SIESTA's
@@ -206,7 +194,10 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
         eff["node_sockets"] = int(node.group(2))
         eff["node_cores_per_socket"] = int(node.group(3))
 
-    ranks = parse_mpi_ranks(out_text)
+    # SIESTA's own launch line, through the family's one reader of it
+    # (`parse/engines/siesta_grammar.py`; serial mode is one rank).
+    from molbuilder.parse.engines.siesta_grammar import mpi_ranks
+    ranks = mpi_ranks(out_text)
     if ranks is not None:
         eff["mpi_np"] = ranks
     m = _WRAP_RANKS_OMP.search(wrapper_log)
@@ -459,7 +450,7 @@ def build_bench_result(points: List[BenchPoint], *,
 
 __all__ = [
     "SCHEMA", "BenchPoint", "BenchResult",
-    "parse_sacct_mem", "parse_mpi_ranks",
+    "parse_sacct_mem",
     "parse_effective_run", "compare_asked_to_ran",
     "mismatch_phrase", "choose_winner",
     "build_bench_result",

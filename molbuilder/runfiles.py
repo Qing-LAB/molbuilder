@@ -877,11 +877,19 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # so both spellings are listed: a directory can hold artifacts from
     # before the change, and a cold sweep that misses one leaves it to be
     # appended to or truncated by the next run.
-    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe"),
+    #
+    # SIESTA'S, all three, and they carried no engine until 2026-09-26: the
+    # wrapper starts the monitor and the timing tee in its SIESTA branch only
+    # (`runwrap.py`), so a PySCF rung's card promised three files no PySCF run
+    # has written -- the `.out` row's fault again.  `patterns()` ignores the
+    # column, so the cold sweep still knows them in any directory.
+    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe",
+             engine="siesta"),
     Artifact(".util.csv", "processor and memory samples taken while it ran",
-             attempt="maybe"),
-    Artifact(".scf-timing.log", "wall time per SCF iteration",
-             attempt="always"),
+             attempt="maybe", engine="siesta"),
+    Artifact(".scf-timing.log", "wall time per SCF iteration, both phases "
+                                "of a TranSIESTA device", attempt="always",
+             engine="siesta"),
     # MOLBUILDER'S OWN READING LOG, and the THIRD time this table has been
     # missing a row for a file we write ourselves (`.out` in 2026-08-13,
     # `_geom.log` above in 2026-09-07).  The parser opens one beside whatever

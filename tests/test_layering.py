@@ -501,9 +501,11 @@ def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path)
     `runwrap.MONITOR_COMPANIONS` travels to the machine that runs the job and is
     executed by **the job's own python**, inside a backend env where molbuilder
     is not installed and numpy is not either.  So every module in that set has
-    to import with the package absent -- `monitor` keeps its molbuilder imports
-    inside functions, with a flat fallback (``from config_dir import
-    config_dir``), and `config_dir` imports nothing of ours at all.
+    to import with the package absent -- `monitor`'s molbuilder imports are
+    inside functions or guarded by ``ImportError`` (the SIESTA grammar, which
+    the wrapper passes as flags instead), with a flat fallback (``from
+    config_dir import config_dir``), and `config_dir` imports nothing of ours
+    at all.
 
     The layering table above cannot see this.  It would let `config_dir` import
     `persist` -- both L1, perfectly legal, and fatal here, because only these

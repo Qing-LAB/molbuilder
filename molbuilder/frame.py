@@ -101,7 +101,12 @@ class Frame:
       scf_history  -- list of per-cycle dicts with at least the keys
                       `cycle`, `energy`, `delta_E`.  Engine-specific
                       residual keys: PySCF / molwatch_log use
-                      `gnorm` / `ddm`; SIESTA uses `dHmax` / `dDmax`.
+                      `gnorm` / `ddm`; SIESTA uses `dHmax` / `dDmax`,
+                      names each cycle's `phase` (`periodic`, or a
+                      TranSIESTA device's `negf`), and gives an
+                      iteration the `ts-Vha:` it printed (`vha_ev`) and,
+                      in the NEGF loop, its `charges` / `dq`
+                      (`model/parse.md` § 5d.5).
                       Consumers must not assume a fixed key set.
                       None when the parser couldn't find SCF data
                       (e.g. PySCF .log absent).
@@ -125,7 +130,8 @@ class Frame:
                       read a real clock reading out of the file may
                       fill it: the molwatch emitter stamps its own
                       ``time.time()``, so .molwatch.log has one.  A
-                      SIESTA .out carries no time-of-day anywhere, so
+                      SIESTA .out states the time of day only at its
+                      two ends, zoneless, and no step carries one, so
                       it stays None -- that is an ANSWER ("this engine
                       cannot say"), not missing data, and it is what
                       lets the watch UI fall back to the file's mtime
@@ -165,7 +171,7 @@ class Frame:
     max_force:    Optional[float]                 = None
     max_force_constrained: Optional[float]        = None
     lattice:      Optional[np.ndarray]            = None
-    scf_history:  Optional[List[Dict[str, float]]] = None
+    scf_history:  Optional[List[Dict[str, Any]]] = None
     wall_clock_s: Optional[float]                 = None
     elapsed_s:    Optional[float]                 = None
     in_progress:  bool                            = False

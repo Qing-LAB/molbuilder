@@ -65,14 +65,26 @@
       "max_scf_iter": 500,
       "source": "siesta_input_echo"
     },
+    "emadel_ev": 0.0,
     "initial_etot": -12728.905077,
     "n_mpi_processes": 8,
+    "run_start_local": "2026-05-28T19:41:39",
+    "scf_phases": {
+      "periodic": {
+        "converged": false,
+        "cycles": 765
+      }
+    },
     "siesta_build": {
       "architecture": "x86_64",
       "compiler": "GNU-14.3.0",
+      "dftd3": true,
+      "elsi": true,
+      "executable": "siesta",
       "lua": true,
       "netcdf": true,
       "netcdf4": true,
+      "netcdf4_mpiio": true,
       "parallelisations": [
         "MPI"
       ],

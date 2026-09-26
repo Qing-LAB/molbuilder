@@ -257,6 +257,24 @@ class InstrumentResult(ParseResult):
     result_kind: str = "instrument"
 
 
+@dataclass(frozen=True)
+class EngineParamsResult(ParseResult):
+    """What the ENGINE says it used -- `parse.md` § 5d.3.
+
+    The run record's third column: never the deck molbuilder wrote, always
+    the engine's own account.  ``params`` holds one entry per key the engine
+    read, under the key normalised the way fdf matches labels (case, ``.``,
+    ``_`` and ``-`` ignored): ``key`` as spelled, ``value`` as stated,
+    ``number`` and ``unit`` when it is a quantity, ``default`` when nobody set
+    it, and ``original`` when the engine converted the spelling it was given.
+    ``blocks`` holds each ``%block`` verbatim.
+    """
+    params: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    blocks: Dict[str, List[str]] = field(default_factory=dict)
+    parse_warnings: List["ParseWarning"] = field(default_factory=list)
+    result_kind: str = "engine-params"
+
+
 # ``JobResult`` stood here until 2026-09-04 -- the directory decoder's
 # eleven-field summary.  Ten fields had no reader anywhere in the tree;
 # the eleventh, ``status``, is now ``parse.dirs.job.run_status`` and is

@@ -1,17 +1,14 @@
-"""How a run ended -- the markers, one reader per ROLE, and a cheap way to ask.
+"""How a run ended -- one reader per ROLE, and a cheap way to ask.
 
-Contract: `model/parse.md` § 2b and § 5.5.  This module owns the marker
-STRINGS for a FOREIGN format and nothing else; both readers below share this
-one table, which is P-S4's "one reader per question" made structural rather
-than aspirational.
-
-**FOREIGN, which is the split that decides what is declared here.**  SIESTA
-prints `>> end of run` and we read it, so the string is ours to sniff and it
-lives below.  A format molbuilder GENERATES does not get a sniffed reader
-(§ 5.5): PySCF's end lines are strings our own emitters print, so each
-emitter declares its constant and this module IMPORTS it -- there is no
-second home for a line, and respelling the print without respelling the
-constant is what the tests catch.
+Contract: `model/parse.md` § 2b and § 5.5.  The marker STRINGS each have one
+home, and it is not here: SIESTA's are lines of a FOREIGN format and live in
+the SIESTA family's one table, `siesta_grammar`, which the full parser builds
+its rules from too; PySCF's are strings our own emitters print, so each
+emitter declares its constant (§ 5.5).  This module imports both and owns the
+dispatch -- which is P-S4's "one reader per question" made structural rather
+than aspirational.  *(SIESTA's markers were declared here until 2026-09-26,
+and the parser retyped four of them as literals beside the import it did
+use.)*
 
 **DISPATCH IS ON THE ROLE, never on the engine** (:data:`READERS`,
 :func:`ending_of`).  A directory whose engine is unknown, or which holds two
@@ -27,9 +24,8 @@ per trial** (272 ms for a six-trial sweep, on 152 KB files) building one
 Frame per file to read one string field, on a summary that polls every
 15 s.  A relaxation `.out` with hundreds of frames costs far more.
 
-So the markers live here, the scanner is a single pass, and the heavy
-parser consults the same table for its own rules -- there is no second
-list to drift.  (`jobset/summarize.py` grew a private `_DONE_MARKERS`
+So the scanner is a single pass over the same table the heavy parser
+builds its rules from -- there is no second list to drift.  (`jobset/summarize.py` grew a private `_DONE_MARKERS`
 tuple exactly that way, and it disagreed with the parser about a capped
 benchmark.)
 
@@ -58,28 +54,8 @@ from typing import Callable, Dict, Optional, Tuple
 from ...pyscf.input import END_MARKER as PYSCF_END_MARKER
 from ...pyscf.vibration_emitters import END_MARKER as PYSCF_SPECTRUM_END_MARKER
 
-#: Markers that prove the run DID NOT reach its own end, in the order a
-#: reader should prefer them.  Each entry is (substring, run_state).
-#: Matched case-insensitively anywhere in the line -- SIESTA prefixes them
-#: with "node 0: " under MPI.
-FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
-    # Out of memory is called out from the generic aborts because it is
-    # the most common cause and the most actionable: "you ran out of
-    # memory" is the one sentence that tells a user what to change.
-    ("out of memory",                "out_of_memory"),
-    ("oom-kill",                     "out_of_memory"),
-    ("killed process",               "out_of_memory"),
-    ("cannot allocate memory",       "out_of_memory"),
-    ("insufficient virtual memory",  "out_of_memory"),
-    ("siesta: error",                "stopped"),
-    ("propor: error",                "stopped"),
-    ("stopping program from node",   "stopped"),
-    ("siesta died",                  "stopped"),
-    ("abnormal_termination",         "stopped"),
-)
-
-#: The run reached its own end.  SIESTA prints this at the very bottom.
-END_MARKER = ">> end of run"
+#: SIESTA's markers are the family's one table's (`siesta_grammar`).
+from . import siesta_grammar as _G
 
 #: The run is over and will produce nothing more -- § 2b P-S1's vocabulary
 #: split by the only question a watcher asks.  ``unknown`` is deliberately
@@ -92,17 +68,6 @@ END_MARKER = ">> end of run"
 #: the test that should have caught it polled until it was killed.  P-S4 is
 #: not a style rule -- one door, or the copies drift silently.
 CONCLUDED: Tuple[str, ...] = ("ended", "stopped", "out_of_memory")
-
-#: SCF convergence -- REPORTED, never a verdict (§ 2b P-S2).
-SCF_CONVERGED_MARKER = "scf convergence by"
-#: The informative non-convergence line.  It is the best cause-of-death
-#: sentence when something else proves death, and proves nothing alone:
-#: a benchmark deck sets `SCF.MustConverge .false.` and SIESTA prints it
-#: on the way to a clean exit.
-SCF_NOT_CONV_MARKER = "scf_not_conv"
-#: The softer informational form.
-SCF_NOT_CONVERGED_MARKER = "scf did not converge"
-
 
 @dataclass(frozen=True)
 class RunEnding:
@@ -119,26 +84,40 @@ def scan_ending(text: str) -> RunEnding:
     nothing IN it separates a slow DFT step from a job the scheduler
     killed.  Only the filesystem can, and `parse/dirs/job.py` does
     (§ 2b P-S1).
+
+    ``scf_converged`` is the LAST phase's, as the parser's is: a TranSIESTA
+    device's periodic initialization converging does not speak for its NEGF
+    loop, so a new phase clears it, and so does SIESTA taking a convergence
+    back (``SCF cycle continued``).
     """
     run_state = "running"
     scf_converged: Optional[bool] = None
     scf_not_conv_line: Optional[str] = None
     error_message: Optional[str] = None
+    phase: Optional[str] = None
 
     for raw in text.splitlines():
+        row = _G.scf_row(raw)
+        if row is not None:
+            if row.phase != phase:
+                phase, scf_converged = row.phase, None
+            continue
         line = raw.lower()
-        if SCF_CONVERGED_MARKER in line:
+        if _G.SCF_CONTINUED_MARKER in line:
+            scf_converged = None
+            continue
+        if _G.SCF_CONVERGED_MARKER in line:
             scf_converged = True
             continue
-        if SCF_NOT_CONV_MARKER in line:
+        if _G.SCF_NOT_CONV_MARKER in line:
             scf_converged = False
             if scf_not_conv_line is None:
                 scf_not_conv_line = raw.strip()[:200]
             continue
-        if SCF_NOT_CONVERGED_MARKER in line:
+        if _G.SCF_NOT_CONVERGED_MARKER in line:
             scf_converged = False
             continue
-        for marker, state in FATAL_MARKERS:
+        for marker, state in _G.FATAL_MARKERS:
             if marker in line:
                 # An OOM outranks a generic abort: the aborts that follow
                 # it are the cascade, and the memory is the cause.
@@ -148,7 +127,7 @@ def scan_ending(text: str) -> RunEnding:
                     error_message = raw.strip()[:200]
                 break
         else:
-            if line.startswith(END_MARKER) and run_state == "running":
+            if _G.RUN_END.match(raw) and run_state == "running":
                 run_state = "ended"
 
     # The held SCF line is the informative cause when the run is proven
@@ -190,7 +169,7 @@ def scan_pyscf_ending(text: str) -> RunEnding:
     """How a PySCF run ended, from markers alone -- one pass, no arrays.
 
     The PySCF sibling of :func:`scan_ending`, and deliberately a much shorter
-    table: SIESTA's :data:`FATAL_MARKERS` are **not** shared.  Measured
+    table: SIESTA's ``siesta_grammar.FATAL_MARKERS`` are **not** shared.  Measured
     2026-09-18 over 135 real output files, its five out-of-memory markers fire
     0 times and the three that do fire are SIESTA's own sentences.  Borrowing
     them would have this reader answer `out_of_memory` for a PySCF log that

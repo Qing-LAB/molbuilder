@@ -63,10 +63,12 @@ Design notes:
 - **stdlib-only hot path** -- no heavy imports in the loop.
 - Each tick reads only the **tail** of the ``.out`` (cheap on a large
   file) and the whole (tiny) timing log for the iteration COUNT.
-- The stop signal is ``--watch-pid`` going away (the job wrapper's PID),
-  and it is the ONLY one.  Output markers are not consulted: they can
-  appear before a run is actually over, which would end the sampling
-  early (`job-contracts.md`, the monitor's section).
+- It stops when ``--watch-pid`` goes away (the job wrapper's PID) or when
+  the wrapper stops it: SIGTERM at the job's end -- the scheduler's own
+  SIGTERM at a walltime or a cancel reads the same -- and SIGUSR1 when one
+  attempt is retried in place, which is not an ending.  Output markers are
+  not consulted: they can appear before a run is actually over, which would
+  end the sampling early (`job-contracts.md`, the monitor's section).
 - The reliable live per-iteration estimate is ``elapsed / n_iters``
   (running average) -- consistent with the benchmark's ``total/N`` metric
   (§ 11.0); SIESTA's own per-scf time is not trusted.  It is reported
@@ -87,6 +89,7 @@ import hmac
 import json
 import os
 import re
+import signal
 import subprocess
 import time
 import urllib.request
@@ -156,16 +159,30 @@ class JobStatus:
 # ending the utilisation sampling that is the whole reason this process
 # exists, and skipping the ticks a notifier hook would have fired.  The
 # watched PID cannot be early: the wrapper outlives the engine it launched.
-_SCF_LINE = re.compile(r"^[ \t]*scf:[ \t]*[0-9]")
-# Geometry-relaxation move marker.  SIESTA prints e.g.
-# ``Begin CG move = 3`` / ``Begin FIRE move = 12`` / ``Begin Broyden
-# move = 5`` / ``Begin Z-matrix opt. move = 1`` at each ionic step.  We
-# take the highest move number seen in the .out tail as the current
-# geometry step (None for single-point runs, which never print it).
-# The literal ``move = <N>`` (and case-sensitive ``Begin``) is required
-# so narrative text like "begin to move 8 atoms" can't false-positive
-# (audit 2026-06-27 B-5).
-_GEOM_LINE = re.compile(r"Begin\b.*\bmove\b\s*=\s*([0-9]+)")
+#
+# THE ROW GRAMMAR IS NOT THIS FILE'S (`model/parse.md` § 5d.5).  In the package
+# it is imported from `parse.engines.siesta_grammar`, the one table the parser
+# and the wrapper's timing tee read too; shipped standalone as `mb_monitor.py`,
+# with no molbuilder beside it, the wrapper passes the same pattern with
+# ``--scf-row``, rendered from that table.  This file matched ``scf:`` alone
+# until 2026-09-26, and reported a TranSIESTA device as making no progress for
+# 7.6 hours of NEGF iterations.
+# The same holds for the E_KS column and the geometry-step line, passed as
+# ``--scf-energy-field`` and ``--geom-row``.  In the package they come from
+# the table; standalone with no flags they are None, and the monitor still
+# counts iterations from the timing log but reports no energy and no step.
+try:
+    from molbuilder.parse.engines.siesta_grammar import (
+        GEOM_MOVE as _GEOM_MOVE, SCF_E_KS_FIELD as _SCF_E_KS_FIELD,
+        SCF_ROW_ERE as _SCF_ROW_ERE)
+except ImportError:                       # the shipped copy: the flags
+    _SCF_ROW_ERE, _SCF_E_KS_FIELD, _GEOM_MOVE = None, None, None
+_SCF_LINE = re.compile(_SCF_ROW_ERE) if _SCF_ROW_ERE else None
+# The highest move number in the .out tail is the current geometry step
+# (None for a single point, which prints none).  The literal ``move = <N>``
+# (and case-sensitive ``Begin``) is what keeps narrative text like "begin to
+# move 8 atoms" from matching (audit 2026-06-27 B-5).
+_GEOM_LINE = _GEOM_MOVE
 
 
 def _tail_bytes(path: Path, nbytes: int = 16384) -> str:
@@ -186,7 +203,8 @@ def parse_status(out_path: Path, timing_path: Path,
     """Parse a :class:`JobStatus` from the job artifacts.
 
     ``n_iters`` (the reliable count) comes from the per-run timing log;
-    ``scf_iter`` / ``energy`` from the last ``scf:`` line.  It reports what
+    ``scf_iter`` / ``energy`` -- E_KS, the energy the parser reports -- from
+    the last SCF row of either phase.  It reports what
     the artifacts SAY and never judges whether the run is over -- that is
     the watched PID's answer alone.  Pure reads -- never raises on a
     missing/locked file.
@@ -220,14 +238,14 @@ def parse_status(out_path: Path, timing_path: Path,
     tail = _tail_bytes(Path(out_path))
     if tail:
         lines = tail.splitlines()
-        for line in reversed(lines):
+        for line in reversed(lines if _SCF_LINE is not None else ()):
             if _SCF_LINE.match(line):
                 f = line.split()
-                if len(f) >= 3:
-                    st.energy = f[2]
+                if _SCF_E_KS_FIELD is not None and len(f) > _SCF_E_KS_FIELD:
+                    st.energy = f[_SCF_E_KS_FIELD]
                 break
         # Highest geometry-move number in the tail (None if not relaxing).
-        for line in reversed(lines):
+        for line in reversed(lines if _GEOM_LINE is not None else ()):
             gm = _GEOM_LINE.search(line)
             if gm:
                 st.geom_step = int(gm.group(1))
@@ -1592,12 +1610,14 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             util_accum.add(first)
             util_prev = first
 
-    def _util_tick(now: float, *, force: bool = False) -> None:
+    def _util_tick(now: float, *, force: bool = False,
+                   count: bool = True) -> None:
         nonlocal util_prev, util_last_log
         if util_path is None:
             return
         s = _sample()
-        util_accum.add(s)
+        if count:
+            util_accum.add(s)
         if (force or util_prev is None
                 or s.changed_from(util_prev, util_change_frac)
                 or now - util_last_log >= util_keepalive_s):
@@ -1612,8 +1632,15 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         sleep(interval)
         ticks += 1
         now = clock()
-        _util_tick(now)
-        alive = _pid_alive(watch_pid)
+        # STOPPED IS OVER -- for this process.  The wrapper stops it when the
+        # job ends (its EXIT trap) and when it retries an attempt in place,
+        # and until 2026-09-26 both happened while the watched pid was still
+        # alive -- so the closing lines below were never written and no run
+        # recorded its means (0 of 9 monitor logs).  Asked BEFORE sampling:
+        # a sample taken after the stop is not the run's.
+        alive = _pid_alive(watch_pid) and _STOPPED_BY is None
+        if alive:
+            _util_tick(now)
         st = parse_status(out, timing, start, now)
         if not alive:
             st.state = "gone"
@@ -1625,16 +1652,29 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             # run IS a valid final average, so report it (force-show even
             # though this last tick added no new iteration).
             st.progressing = True
-            _util_tick(now, force=True)        # anchor the series end
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             if util_path is not None:
                 _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
                              f"{util_accum.summary()}")
                 _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
                              f"{measurement_provenance()}")
+            # The series' end, after the lines above: a GPU sample can take
+            # seconds, and the wrapper waits for this process only so long.
+            _util_tick(now, force=True, count=False)
+            if _STOPPED_BY == _STOP_RETRY:
+                # NOT AN ENDING: the wrapper re-execs itself in this pid for
+                # the next run, which starts its own monitor
+                # (`run-reports.md` § 2 -- "it ended" is the watched pid
+                # going, and across an exec it does not go).
+                _append(log, f"[{_iso(now)}] [MONITOR] stopped: the wrapper "
+                             f"is retrying this attempt in place; the next "
+                             f"run starts its own monitor")
+                return st
             _append(log, f"[{_iso(now)}] [MONITOR] job ended "
-                         f"(watched pid {watch_pid} gone); "
-                         f"final notify + exit")
+                         + (f"(stopped by {_STOPPED_BY}); "
+                            if _STOPPED_BY else
+                            f"(watched pid {watch_pid} gone); ")
+                         + "final notify + exit")
             _fire(st, "finish")
             return st
 
@@ -1777,13 +1817,44 @@ def make_log_notifier(log: Path) -> Notifier:
 #  Standalone entry (stdlib only -- runs WITHOUT the molbuilder package) #
 # --------------------------------------------------------------------- #
 #
-# CRITICAL: this module imports ONLY the stdlib (os/re/time/urllib/
-# dataclasses/pathlib/typing) -- no molbuilder, no numpy.  That is what
-# lets the run-wrapper SHIP this file as ``mb_monitor.py`` next to the
+# CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
+# urllib/dataclasses/pathlib/typing) -- no molbuilder, no numpy.  That is
+# what lets the run-wrapper SHIP this file as ``mb_monitor.py`` next to the
 # job and run it with the JOB's own python (e.g. the minimal
 # ``molbuilder-siesta-gpu`` env, which has no numpy/molbuilder), from the
-# working directory, with no install and no repo on PATH.  Keep it
-# stdlib-only.
+# working directory, with no install and no repo on PATH.  Its one import of
+# ours -- the SIESTA grammar -- is guarded, and the wrapper passes the same
+# patterns as flags; everything else stays stdlib.
+
+
+#: Why this process was stopped, or None: ``"SIGTERM"`` -- the job ended (the
+#: wrapper's EXIT trap, or the scheduler's walltime or cancel) -- or
+#: :data:`_STOP_RETRY`, SIGUSR1, the wrapper retrying one attempt in place.
+#: Set by PLAIN ASSIGNMENT in the handler: a handler that took a lock could
+#: meet the loop holding it and hang the monitor for good.  Only `main`
+#: installs the handlers: a library call of `run_monitor` gets no
+#: process-wide signal behaviour.  SIGUSR1 is chosen because nothing else
+#: sends it to a job's processes; wrong when a scheduler is set to (Slurm's
+#: ``--signal=USR1``), which would close the monitor quietly.
+_STOPPED_BY: Optional[str] = None
+_STOP_RETRY = "the wrapper's retry"
+
+
+def _on_stop_signal(signum, _frame) -> None:
+    global _STOPPED_BY
+    _STOPPED_BY = (_STOP_RETRY if signum == getattr(signal, "SIGUSR1", None)
+                   else "SIGTERM")
+
+
+def _sleep_until_stopped(seconds: float) -> None:
+    """The loop's sleep in `main`: short slices, so a stop is acted on within
+    a fifth of a second instead of at the end of the interval."""
+    end = time.monotonic() + seconds
+    while _STOPPED_BY is None:
+        left = end - time.monotonic()
+        if left <= 0:
+            return
+        time.sleep(min(0.2, left))
 
 
 def main(argv=None) -> int:
@@ -1799,6 +1870,17 @@ def main(argv=None) -> int:
         description="molbuilder background job-monitor + notifier hooks "
                     "(self-contained; § 11.0b)")
     p.add_argument("--out", required=True, help="SIESTA .out to watch")
+    p.add_argument("--scf-row", default=None, dest="scf_row",
+                   help="the SCF-row pattern, rendered by the wrapper from "
+                        "parse/engines/siesta_grammar.py (the shipped copy "
+                        "cannot import it)")
+    p.add_argument("--scf-energy-field", type=int, default=None,
+                   dest="scf_energy_field",
+                   help="the whitespace field of an SCF row holding E_KS, "
+                        "from the same table")
+    p.add_argument("--geom-row", default=None, dest="geom_row",
+                   help="the geometry-step line's pattern, from the same "
+                        "table")
     p.add_argument("--timing", required=True,
                    help="per-run .scf-timing.log (iteration COUNT)")
     p.add_argument("--log", required=True,
@@ -1856,6 +1938,16 @@ def main(argv=None) -> int:
                         + ", ".join(REPORT_ITEMS)
                         + "); omit for all of them, pass '' for none")
     a = p.parse_args(argv)
+    global _SCF_LINE, _SCF_E_KS_FIELD, _GEOM_LINE
+    if a.scf_row:
+        _SCF_LINE = re.compile(a.scf_row)
+    if a.scf_energy_field is not None:
+        _SCF_E_KS_FIELD = a.scf_energy_field
+    if a.geom_row:
+        _GEOM_LINE = re.compile(a.geom_row)
+    signal.signal(signal.SIGTERM, _on_stop_signal)
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, _on_stop_signal)
     try:
         os.nice(max(0, a.nice_level))
     except (OSError, AttributeError):
@@ -1863,6 +1955,7 @@ def main(argv=None) -> int:
     register_notifier(make_log_notifier(a.log))
     run_monitor(a.out, a.timing, a.log,
                 interval=a.interval, watch_pid=a.watch_pid,
+                sleep=_sleep_until_stopped,
                 stall_heartbeat_s=a.stall_heartbeat_s,
                 util_path=a.util_path,
                 util_keepalive_s=a.util_keepalive_s,

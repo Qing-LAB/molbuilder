@@ -95,6 +95,13 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     #  spells the layout it searches is a door only until the layout has a
     #  finder -- which is what this tool's own `--check` said by failing when
     #  the entries came unanchored.)
+    ("molbuilder/parse/engines/tbtrans.py", "transmission_files",
+     "{label}{tag}AVTRANS_*"):
+        ("foreign - not a name we compose",
+         "`<label>.TBT[_UP|_DN].AVTRANS_<E1>-<E2>` is what TBtrans's "
+         "`name_save` writes (`Util/TS/TBtrans/m_tbt_save.F90`); molbuilder "
+         "composes none of it, and the tag is the spin channel "
+         "(`siesta_grammar.TBT_CHANNELS`)"),
     ("molbuilder/scheduler/record.py", "named_environments", "*.json"):
         ("door - a finder, not a caller",
          "`environments/<name>.json` -- this IS the door every caller asks, "

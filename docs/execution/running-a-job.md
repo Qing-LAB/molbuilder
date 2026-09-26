@@ -564,14 +564,19 @@ behaves exactly as before — `--continue` stays the manual path.
 - **A backgrounded monitor** (`mb_monitor.py`, shipped next to **`.fdf`** jobs)
   samples utilisation into `<basename>-runN.util.csv` and
   `<basename>-runN.monitor.log`
-  every 10 s at `nice -n 19`, and is killed on exit. (Disable with
-  `MB_MONITOR=0`; override the interval with `MB_MONITOR_INTERVAL`.) A
-  standalone `molbuilder monitor` CLI does the same for a job you point it at.
+  every 10 s at `nice -n 19`, and is stopped when the wrapper exits.
+  (Disable with `MB_MONITOR=0`; override the interval with
+  `MB_MONITOR_INTERVAL`.) A standalone `molbuilder monitor` CLI does the same
+  for a job you point it at.
 
-  It ends when the **watched PID** goes, and only then — it does not read the
-  engine's output for a phrase that looks like the end. A marker can appear
-  before a run is over, and one did: `siesta: Final energy` prints early, so
-  the monitor could stop sampling while the job still held its CPUs and GPUs
+  It ends when the **watched PID** goes or the wrapper stops it — SIGTERM at
+  the job's end, which the scheduler's own walltime or cancel reads the same
+  as, and SIGUSR1 when a warm retry re-runs the attempt in place, which is
+  not an ending and sends no "it ended" (`run-reports.md` § 2). The wrapper
+  waits up to ten seconds for its closing lines. It never reads the engine's
+  output for a phrase that looks like the end: a marker can appear before a
+  run is over, and one did — `siesta: Final energy` prints early, so the
+  monitor could stop sampling while the job still held its CPUs and GPUs
   (`job-contracts.md`, the monitor's section; fixed 2026-08-26).
 
   > **What the percentages are a fraction OF: your allocation, not the node.**
@@ -587,7 +592,10 @@ behaves exactly as before — `--continue` stays the manual path.
   > the machine, including other people's jobs.
   >
   > Each run states its own basis on a `[UTIL-BASIS]` line in the monitor log —
-  > how many cores, and which source answered for each reading. Read it before
+  > how many cores, and which source answered for each reading. *(Written when
+  > the monitor stops — which, since 2026-09-26, includes the wrapper stopping
+  > it. Before that the wrapper's kill came first and 0 of 9 monitor logs
+  > carried the line.)* Read it before
   > comparing two runs: cgroup v1 and v2 spell these files differently, and
   > where no cgroup is readable the numbers fall back to the node and say so.
 - **Notifications, if you set them up.** The monitor can tell you a run
@@ -605,15 +613,23 @@ behaves exactly as before — `--continue` stays the manual path.
   travels** — so a captured report is valid for that one body and cannot be
   altered or reused to send another. `molbuilder notify-token <user>` issues
   the key and prints the file to save.
-- **An SCF-timing tee** stamps every `scf:` line into
-  `<basename>-runN.scf-timing.log` and reports total wall / iteration count,
-  using `PIPESTATUS` so the tee never masks SIESTA's exit code.
+- **An SCF-timing tee** stamps every SCF row of either phase — SIESTA's
+  `scf:` and TranSIESTA's `ts-scf:`, from the one grammar
+  (`parse/engines/siesta_grammar.py`, [`model/parse.md`](?doc=model/parse.md)
+  § 5d.5) — into `<basename>-runN.scf-timing.log`, and logs the engine's wall
+  time beside the row count, using `PIPESTATUS` so the tee never masks
+  SIESTA's exit code. The seconds PER ITERATION are the timing instrument's,
+  one phase at a time ([`model/parse.md`](?doc=model/parse.md) § 5c); the
+  wrapper's own total/N was a second answer, and across a device's two phases
+  neither's, until 2026-09-26.
 - **Failure hints.** On a non-zero SIESTA exit that contains `propor: ERROR`,
   the wrapper prints a three-cause hint in priority order:
   1. a **defective or XC-mismatched pseudopotential** — check this *first* with
      `molbuilder pseudo check`;
   2. too many **MPI ranks** for the system — retry with a lower `-np`;
-  3. **zero net spin** on an open-shell metal.
+  3. **zero net spin** on an open-shell metal — which is **not** a cause
+     (below: `propor` never sees the density), and which the wrapper prints
+     until W34's P2 removes it (`plans/plan.md` § 5s.4).
 
 ### 4.2 Reading a run directory back — `run_status` and `engine_of`
 
