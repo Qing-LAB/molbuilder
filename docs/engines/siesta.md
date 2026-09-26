@@ -335,10 +335,14 @@ the analyzer/preflight warns ([`science/validation.md`](?doc=science/validation.
 
   With any other treatment, `spin_total` is not emitted — and the validator
   warns rather than letting the contradiction ride. The method-vs-spin
-  science is validated for SIESTA exactly as for PySCF: the shared
+  science is validated for SIESTA as for PySCF, with one gap: the shared
   electron-count parity rule (`chemistry.check_spin_charge_parity`) runs in
-  `_validate_siesta`, ERROR when the user asserted the spin, WARN when the
-  default did ([`science/validation.md`](?doc=science/validation.md)).
+  `_validate_siesta` only when `net_charge` is typed — ERROR when the user
+  asserted the spin, WARN when the default did — and with the charge left to
+  auto-detection it does not run at all (measured 2026-09-25). W34 makes it
+  run at the resolved charge
+  ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+  § 2a, ES3; [`science/validation.md`](?doc=science/validation.md)).
 
 ---
 

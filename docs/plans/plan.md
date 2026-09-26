@@ -114,6 +114,7 @@ the same day, with what it turned out to be.
 | ↳ | **V1.31** | **The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`**: the deck knows its criteria, its convergence and its held set when it writes the pair; the spliced pair writer would compute the fingerprint the same way (`Structure.geometry_fingerprint`, spliced like `structure_hash_text`). Until then a PySCF-relaxed structure carries the record only when exported from the Results tab | `vibration.md` § 2.2, § 10 | open |
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `_afterRunLines` spell `relax`/`freq` and the box rule by hand) while Python owns it (`pyscf/stages.py::vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the after-run line should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open |
 | **W33** | structure / engines / web | **THE ENGINE OFFSET — one placement rule for every engine** *(user, 2026-09-25: "always adjust it before sending to siesta or other engines that the coordinates of all atoms are centered inside the cell"; "we don't have to have special logic to treat isolated, periodic, transport axis_info differently")*. Every engine receives the design coordinates + `engine_offset` with the cell at the origin; the offset is computed from the cell and every atom (the fractional span centred, never re-wrapped), recorded in every deck, and stated 0 for an engine's own output, so the Results tab draws what the engine had. Retires `cell_origin` (an origin the person assigns is kept, stored as the offset), the derive-on-null corner and its per-axis rules, calibrate, and the two hand translations. Found by the fake-junction ladder: a TranSIESTA device refused on a flush corner, a Results box the engine never had, the molwatch step-0 jump (audit X4) | `model/structure-periodicity.md` § 6.0 · § 5q | **P0–P2 done; P3 committed (`6c705058`), its T3 and dev-server check open; P4, P5 open** (2026-09-25; § 5q.6 is the per-phase record). **D1–D6 settled** (§ 5q.8). The fake-junction ladder is paused at rung 4 until P5 |
+| **W34** | science / engines / web | **THE ELECTRONIC STATE — charge and spin as one answer per calculation** *(user, 2026-09-25: "put spin and charge setup in to a unified framework so that these information can be produced consistently and systematically for different engines"; "investigate holistically ... from template to validation ... a design gap/framework level investigation rather than a patch"; "documentation should have an explicit discussion on species with these properties")*. Four engine-neutral template items — `net_charge`, `spin_treatment`, `unpaired_electrons`, `method` — resolved once with what the structure adds (the charge's source, the electron count, finite or repeating) and read by every deck writer, check, hand-over, form and read-back; restricted-open explicit; a species-by-species chapter. Found by the transport ladder's rung reports (a gold lead and a formate ion both told "switch to open-shell") | `science/chemistry-correctness.md` §§ 2a–2b · § 5s | **P0 open** (2026-09-25): decisions 1–7 taken (§ 5s.2) |
 | **W32** | engines / structure | **THE FRAME AXIS — a frame set is one multi-frame pair** *(user, 2026-09-24: "allow multi-frame … which shares the same .json file so meta data and labels are shared, checking of atom number and others can still be gated")*. The contract is `engines/transport.md` § 2a.9 (the set, the per-frame checks, `f000` the base) and `model/structure-molstruct.md` § 6.1 (one sidecar, many frames; a reader that does not ask for frames gets frame 0). **Nothing new is invented**: the codec already writes and reads the pair, and every existing door keeps working because it sees frame 0. **Order of work:** ① the contract — **done 2026-09-24**; ② the citation door classifies a multi-frame pair and checks the four per-frame promises, naming the frame; ③ `prep`: the device and the transmission carry the frame level (`f###`), the seed and the leads do not, the gather runs per frame, one bias for the group (§ 2a.9's ruling); ④ the generator from a spectra file (V1.25) — the vibration side's half; ⑤ Results: the family of curves and what is derived across it (§ 2a.9's deliverable, § 2a.12). **Gate:** ② and ③ land after the single-frame ladder has run end to end once (the run W30's status calls for) — a frame axis on a ladder that has never produced a curve would be measured against nothing | `engines/transport.md` § 2a.9, § 2a.11 · `model/structure-molstruct.md` § 6.1 | **① done 2026-09-24**; ② – ⑤ open |
 | **W31** | front end | **Task setup's stage table offers the optimization tiers on transport rungs**: every rung's row carries the `preset… coarse / medium / tight` select, which applies `SIESTA_STAGE_PRESETS` (relaxation-driver values) to a rung whose role is fixed and whose items the `stages` marker routes. Found driving the transport road 2026-09-24. The control is offered only where every field of the tier may be a column of this kind — the columns route's own membership rule (`web/task-setup.md` § 9); the per-rung columns for transport are the rung's own items | `web/task-setup.md` § 9, `engines/transport.md` § 3.8.2 | **done 2026-09-24** — `/api/task-setup/presets` takes the kind and answers an empty menu for transport; the page draws none |
 | ↳ | ~~**V1.29**~~ | **DONE 2026-09-24** — the mass-calibrated displacement per mode in the result: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang` (`Q_zp · L_canonical`), derived at every serialisation, `null` for an imaginary mode — what the vibration-coupled transport step displaces along (user, 2026-09-24) | `vibration.md` § 6.3, § 6.6 | done |
@@ -3672,6 +3673,112 @@ Recorded so nobody fixes them by analogy.
   that out"*). X3 is the browser half only.
 
 ---
+
+
+## 5s. The electronic state — charge and spin as one answer *(W34, 2026-09-25)*
+
+*The contract is [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+§§ 2a–2b; this section is the order of work. The row is **W34** in § 2.*
+
+### 5s.0 Why — measured on 2026-09-25, every one read in the code or the engine's source
+
+* **Every layer read the raw fields and interpreted them itself.** The analyzer
+  counted electrons at charge 0 and ignored periodicity (`chemistry.py`
+  `analyze_structure`), so formate at −1 and a bulk gold lead were both told to
+  go open-shell; the parity check used the run's charge on PySCF and, on SIESTA,
+  only when the charge was typed (`validation/siesta.py`); for a metal-free
+  structure the two reported one fact and could disagree.
+* **Auto-detect overwrote.** It wrote `net_charge = 0` over a blank charge (the
+  phosphate rule switched off), `spin_total = 0.0` beside `non-polarized`, and
+  RKS/UKS over HF (`structure-optimization/viewer.js` `_applyAutoDetectToForms`,
+  `lib/spectra/core.js` `applySuggested`, the two adapters); the chip never read
+  the charge (`lib/detection-chip.js`).
+* **Nothing travelled.** A transport calculation's spin started at the class
+  default whatever the cited relaxation ran (`transport/citation_defaults.py`
+  carries six pairs and the k-grid), under a caption naming the cited run; a
+  charged cited run was not detected; a vibration built from a relaxed structure
+  started neutral and closed-shell; a ladder stage could change either, with the
+  `.DM`/`.chk` carried across unconditionally (`resolve.py`, `warm-files.toml`).
+* **The charged-species science ignored the cell.** The Makov–Payne notice and
+  script fired for slabs and crystals too, and SIESTA applies the same
+  correction itself for a molecule in a cubic cell (`madelung.f`, printed as
+  `siesta: Emadel`), which the script never read — a double count.
+* **Nothing read back what ran**: no SIESTA charge or moment, no PySCF ⟨S²⟩, the
+  stability outcome printed but not recorded, and a spin-polarized TBtrans run's
+  `TBT_UP`/`TBT_DN` files invisible to the transport record's glob.
+* **PySCF re-ruled silently**: `dft.RKS`/`scf.RHF` with `mol.spin != 0` become
+  ROKS/ROHF inside PySCF.
+* **The documents were wrong in four places**: *"a polarized run starts from zero
+  net spin"* (SIESTA starts at maximum aligned moments), *"the parity rule runs in
+  `_validate_siesta`"* (only for a typed charge), `cfg.charge` for PySCF (the
+  field is `net_charge` since 2026-08-19), *"PySCF UKS at spin 0 is a free
+  moment"* (it is pinned).
+* **And one of those errors is printed to users.** The `config.spin_total`
+  warning (`validation/siesta.py`, `_check_siesta_spin_treatment_needs_spin_total`)
+  says *"the SCF then starts from zero net spin on every atom"* — SIESTA starts
+  every atom at its maximum moment, aligned (`m_new_dm.F90`) — and offers
+  `spin_total` as a starting point, when with `Spin.Fix` it constrains the total
+  moment for the whole run.
+
+### 5s.1 The design
+
+The contract, § 2a: four items, one resolver, ten rules (ES1–ES10), a capability
+table and the engines' semantics, each fact read from the engine's source. § 2b:
+the species.
+
+### 5s.2 Decisions *(user, 2026-09-25: "go with your recommendations on all seven")*
+
+1. **The framework**, contract first, then code in phases (§ 5s.3). It absorbs
+   the two questions held open earlier the same day — the analyzer judges the
+   resolved charge (was D17) and does not read parity in a repeating cell (was
+   D18).
+2. **Charge and spin belong to the calculation** — a stage override of any of the
+   four items is refused, as transport already refuses its shared items.
+3. **Auto-detect fills only fields still at their default** — never `0` over a
+   blank charge, never a pin beside a restricted treatment, and the HF/DFT
+   choice kept.
+4. **Transport's spin defaults from the cited run**, and a cited run carrying a
+   net charge is refused.
+5. **A vibration built from a relaxed structure inherits its state**, and a
+   change is warned.
+6. **Restricted-open is an explicit choice**, with the capability table: not
+   offered on SIESTA (no such formalism), offered for a PySCF optimization or
+   single point (ROHF/ROKS gradients exist), refused by name for a PySCF
+   vibration (no analytic ROHF/ROKS Hessian in PySCF; the deck uses the
+   analytic Hessian). `restricted` with unpaired electrons stays refused and
+   names both ways out.
+7. **Existing templates are migrated, not tolerated** — a one-time `jobset`
+   command rewrites the old items (`spin`, the R/U inside `method`, SIESTA's
+   `spin_treatment` spellings and `spin_total`); nothing reads the old names
+   afterwards, and a template that still carries one is refused naming the
+   command.
+
+### 5s.3 Phases, each with its done-condition
+
+| | work | done when |
+|---|---|---|
+| **P0** | this section, the contract (§§ 2a–2b), and a pointer at every restatement the contract supersedes (`engines/template.md` § 6.3's spin paragraph, `validation.md` §§ 2, 2.1, 9, `engines/siesta.md` §§ 4–5, `engines/pyscf.md`, `engines/vibration.md`, `engines/transport.md`, `engines/stages.md`, `science/overview.md`, `model/chemistry.md`) | the user has read the contract |
+| **P1** | the items and the resolver: the catalogue rows, both configs' fields, `chemistry.electronic_state()`, every deck writer composing from the state (PySCF's class explicit, ROKS/ROHF included), the migration command, the old items deleted everywhere | every deck kind — SIESTA optimization, vibration and the five transport rungs; PySCF optimization and vibration — is written from the state, pinned through `jobset prep` per kind; the migration command turns an old template into one prep accepts |
+| **P2** | the checks: parity for a finite system at the resolved charge (SIESTA's auto charge included); the recommendation at the resolved charge and periodicity; one family (ES9); the capability refusals (ES4, ES5); the charged-species checks keyed on the axis kinds; the correction script reads `siesta: Emadel`; the wording defects (*"closed-shell doublet"*, *"small Au cluster (27 atoms) … needs n ≥ 4"*, the empty `()`); the `config.spin_total` warning's premise (§ 5s.0) and the wrapper's IMAX hint (§ 5s.4) | formate at −1 and the gold lead prep without `config.spin`; a radical still gets it; a charged slab gets no Makov–Payne script; every new test mutation-checked |
+| **P3** | the forms: Auto-detect fills defaults only; the chip describes the form's charge (`/api/structure/analyze` takes one); the Task setup stage columns exclude the four items; the transport caption names each value's source | on the dev server, Auto-detect leaves a blank charge blank and a typed −1 changes the chip |
+| **P4** | the hand-over: `parse/fdf.py` reads `NetCharge`/`Spin`/`Spin.Fix`/`Spin.Total`; transport defaults its spin from the citation and refuses a charged one; the relaxation record carries the state, the vibration defaults from it, and the record check compares it | a polarized relaxation cited for transport yields polarized rungs; a charged citation is refused by name; a vibration of a charged relaxation starts charged |
+| **P5** | the read-back: SIESTA's `.out` (net charge, fixed or converged moment) into the run record; PySCF's class, ⟨S²⟩ and stability recorded; the transport record reads both TBtrans channels; the Results tab shows asked against used, and a difference is a finding | a spin-polarized run's moment and a UKS run's ⟨S²⟩ appear on the Results tab; a two-channel transmission is read |
+
+### 5s.4 Found on the way — named here, fixed only where a phase says so
+
+* A fresh PySCF bundle's first `prep` says *"this calculation is already under way
+  here: warm files at the root: <name>.source.xyz"* — the structure copy `init`
+  writes is read as a warm file.
+* The wrapper's failure hint (`runwrap.py`) still says *"SpinPolarized with
+  Spin.Total unset or 0 on a d/f-shell metal also triggers IMAX=0"* — a mechanism
+  retracted on 2026-09-17 (`science/overview.md`), in the retired v4 keyword.
+  P2 corrects it with the other wording.
+* The transport tab's shared panel is not persisted: an adopted citation or a
+  restored session resets it to the defaults (UI inventory, not yet reproduced).
+* The PySCF vibration record keeps the raw `net_charge` — `None` for an
+  auto-detected charge — so `spectra.json` cannot say what charge ran. P5.
+* `engines/transport.md` § 3.1's *"the six numbers"* names seven items (the code
+  carries six pairs and the k-grid).
 
 ## 6. Closed by consolidation — archived
 

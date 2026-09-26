@@ -138,6 +138,13 @@ in the adapters); **parity is enforced here, once** — if
 the analyzer bumps the spin and records it in `warnings`, so adapters never
 re-do parity work.
 
+> **Decided 2026-09-25 (W34): the analyzer judges the resolved electronic
+> state** — the run's own charge, and whether the cell repeats — not the
+> neutral structure alone ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+> § 2a, ES2, ES3, ES9). Until W34's P2 it counts electrons at charge 0 and
+> reads parity in a repeating cell, which is how a formate ion at −1 and a bulk
+> gold lead were both told to go open-shell.
+
 ### 2.1 The noble-metal distinction — three categories, not one flat set
 
 The flat `OPEN_SHELL_METALS` set wrongly treated gold junctions as
@@ -174,6 +181,11 @@ flowchart TD
     Q4 -->|yes| O1["→ OPEN · spin 1<br/>(atomic ground state)"]
     Q4 -->|"otherwise (2–3-atom cluster,<br/>or ≥4 atoms with odd e⁻)"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
 ```
+
+> **In a repeating cell parity is not asked** *(W34, ES3, decided 2026-09-25)*:
+> a noble-metal surface, lead or junction is closed-shell whatever its count per
+> cell. Until P2 the tree above sends a 27-atom gold lead with an odd count per
+> cell to the parity branch.
 
 The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py`) is
 the conservative choice — overwhelmingly what published Au transport / surface

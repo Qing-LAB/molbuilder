@@ -1296,26 +1296,18 @@ nothing is derived.
 | one item | SIESTA emits | PySCF emits |
 |---|---|---|
 | `use_gpu` | `Diag.ELPA.GPU` (with the ELPA solver gate) | the GPU backend selection |
-| `charge` | `NetCharge` | `gto.M(charge=)` |
+| `net_charge` | `NetCharge` | `gto.M(charge=)` |
 | `verbose_comments`, `write_molwatch_log` | *(no keyword — `kind="produce"`)* | same |
 
-> **Two of those three are RULED but not yet RENAMED, and the file still shows
-> the pair.** `use_gpu` and `charge` are settled merges — `use_gpu` by a user
-> ruling of 2026-08-13, restated 2026-08-14 and marked *do not re-open*
+> **Both merges have landed** *(corrected 2026-09-25 — this note said they
+> were ruled but not yet renamed)*. `use_gpu` — a user ruling of 2026-08-13,
+> restated 2026-08-14 and marked *do not re-open*
 > ([`template-unification-plan.md`](?doc=archive/2026-08-19-template-unification-plan.md)
-> § 5.5); `charge` by § 1 of the same plan. The merge is **declared by spelling
-> the field alike in both engines** (*How a merge is DECLARED*, below; plan
-> § 5.6), and that rename
-> is a separate unit that has not landed: `use_gpu` → `use_gpu` and
-> `net_charge` → `charge`, plus every reader of those names — 117 sites for
-> `net_charge` alone.
->
-> So today's catalogue carries `use_gpu` (SIESTA) and `use_gpu` (PySCF) as
-> **two items**, and that is the mechanism behaving as designed rather than a
-> defect: *"an un-renamed pair simply stays two items until the rename lands."*
-> The table above states the settled answer; the file states today. **Read a
-> difference between them as work queued, not as a disagreement** — and do not
-> re-open the ruling, which is what this note exists to prevent.
+> § 5.5) — is one item, SIESTA's `enable_gpu` renamed to it; the charge (§ 1
+> of the same plan) is one item too, merged on 2026-08-19 under the name
+> **`net_charge`**, both configs spelling the field alike — it was not renamed
+> to `charge`. Both were declared the way the next section says: *spelling the
+> field alike in both engines is the merge*.
 
 **What does NOT merge, and the rule is what says so.** `dm_tolerance` is a
 density-matrix criterion and `scf_conv_tol` is an energy criterion. Both are
@@ -1338,9 +1330,19 @@ permits the rest.
 > question, so they cannot be one item.
 > Both numbers are *the count of unpaired electrons* — the same quantity — but
 > the answer is **decomposed differently**, and there is a third state the
-> count alone cannot express: *polarized, moment free* (SIESTA
-> `SpinPolarized` without `Spin.Fix`; PySCF UKS at `spin = 0`). A shared flag
-> beside a shared number expresses all three; one merged number does not.
+> count alone cannot express: *polarized, moment free* (SIESTA `Spin
+> polarized` without `Spin.Fix` — and only SIESTA: PySCF's UKS pins N↑ and N↓
+> from `mol.spin`, so `spin = 0` there is a constrained singlet, not a free
+> moment, `pyscf/scf/uhf.py`; corrected 2026-09-25). A shared flag beside a
+> shared number expresses all three; one merged number does not.
+>
+> **And that is how spin merges** *(decided 2026-09-25, W34)*: a flag,
+> `spin_treatment` (`restricted` · `restricted-open` · `unrestricted` ·
+> `non-collinear` · `spin-orbit`), beside a number, `unpaired_electrons` (2S;
+> blank = the moment floats, where the engine can float it), with PySCF's
+> `method` left to say HF or DFT —
+> [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+> § 2a. Until W34's P1 lands, the catalogue carries the three items above.
 
 #### How a merge is DECLARED — the field name is the item name
 

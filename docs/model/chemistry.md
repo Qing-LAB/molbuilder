@@ -25,9 +25,9 @@ global state, no I/O) unless noted.
 
 ## 1. Net charge
 
-Charge is resolved in **one** place so the SIESTA and PySCF emitters — whose
-config fields are named differently (`cfg.net_charge` vs `cfg.charge`) — don't
-each carry their own logic.
+Charge is resolved in **one** place so the SIESTA and PySCF emitters don't each
+carry their own logic — both read one field, `cfg.net_charge` (two names until
+the 2026-08-19 merge).
 
 ```mermaid
 flowchart LR
@@ -57,7 +57,7 @@ flowchart LR
   It does **not** count carboxylates (Asp/Glu), protonated amines (Lys/Arg),
   histidine pKa, sulfonates/sulfates/nitrates, or metal coordination — those
   groups are invisible to it. A user with such a system **overrides** via
-  `cfg.charge` (PySCF) / `cfg.net_charge` (SIESTA); the docstring and the
+  `cfg.net_charge` (both engines); the docstring and the
   emitter specs say so.
 
 Two related counters:

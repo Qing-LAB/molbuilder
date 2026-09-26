@@ -380,6 +380,15 @@ limited to.
 > vary in practice, the honest answer is to fix the tag, not to weaken the
 > subtitle; `relax_type` was exactly that case and is now `stage` (below).
 >
+> **Four items are bound, and not by this tag** *(W34, decided 2026-09-25)*:
+> the electronic state — `net_charge`, `spin_treatment`, `unpaired_electrons`,
+> `method` — belongs to the calculation, and a stage override of it is refused,
+> because every rung's `.DM` or `.chk` is a density for one state. The binding
+> is declared on the items, the way transport's `shared` marker binds a value to
+> every rung, so the `profile` tag stays what this note says it is
+> ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a.2,
+> ES1).
+>
 > **The groups may overlap, and that is not a defect** (user, 2026-08-07). They
 > serve **user clarity and where a validation finding appears** — not a partition
 > of the model. A field can belong to the run's identity *and* be something a user

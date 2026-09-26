@@ -351,6 +351,13 @@ the hand-over, refused by `init` for anything but the two engines. A
 one-choice `engine` form item stood in for the strip until 2026-09-24 and
 retired with it: a parameter of the deck it never was.
 
+> **The electronic state is inherited, and one choice is refused** *(W34,
+> decided 2026-09-25)*: a vibration built from a relaxed structure defaults to
+> that relaxation's charge and spin, and a difference is warned; restricted-open
+> is refused for a PySCF vibration, which has no analytic ROHF/ROKS Hessian to
+> take ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) §§ 2a.2 ES7,
+> 2a.3).
+
 **The shared items** — method, functional, basis, spin, dispersion, density
 fitting, the implicit solvent (`solvent`, PCM), the SCF machinery, the
 geometry-convergence criteria (`geom_gmax` family, whose values for this

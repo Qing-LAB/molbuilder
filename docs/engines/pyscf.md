@@ -293,19 +293,23 @@ runs up to `200 × (1 + 2) = 600` steps before it finally halts.
 
 **Spin / method.** (`cfg.spin` here is 2S = the number of unpaired electrons, *not*
 the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time only for an
-**unknown** method.  A **restricted** method (`RKS`/`RHF`, which assume
-`mol.spin == 0`, i.e. closed-shell) with `cfg.spin != 0` is refused by the
-GATE as an error-severity preflight finding at `config.method`
-(`validation/pyscf.py`, G-1c 2026-08-21) — a named issue, not a stack
-trace, and the message points at `UKS`/`UHF`.  The shared electron-count
+**unknown** method.  A **restricted** method (`RKS`/`RHF`) with `cfg.spin !=
+0` is refused by the GATE as an error-severity preflight finding at
+`config.method` (`validation/pyscf.py`, G-1c 2026-08-21) — a named issue, not
+a stack trace, and the message points at `UKS`/`UHF`.  PySCF itself would not
+refuse it: `dft.RKS` / `scf.RHF` with `mol.spin != 0` silently return ROKS /
+ROHF (`pyscf/dft/__init__.py`, `pyscf/scf/__init__.py`) — which is why the gate
+refuses, and why W34 makes restricted-open an explicit choice the deck writes by
+name ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+§ 2a).  *(This said RKS/RHF "assume `mol.spin == 0`" until 2026-09-25.)*  The shared electron-count
 parity rule and the open-shell-metal check
 ([`science/validation.md`](?doc=science/validation.md)) run in the same
 gate; a negative spin is a separate error.
 
 **Charge.** The `gto.M(...)` charge matches `_resolve_charge(struct, cfg)`
-(`input.py`): `cfg.charge` wins if set (including `0`); otherwise
+(`input.py`): `cfg.net_charge` wins if set (including `0`); otherwise
 `formal_charge_from_phosphates(struct)` (phosphate heuristic — charged side chains
-Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.charge`).
+Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.net_charge`).
 
 **ECP — two plain fields, and nothing is chosen for you.** `cfg.ecp` names the
 potential (`"lanl2dz"`); `cfg.ecp_atoms` names which elements get it, as element

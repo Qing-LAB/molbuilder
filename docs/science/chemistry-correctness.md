@@ -247,6 +247,278 @@ The chip that renders this reads `suggested_treatment` straight off the
 
 ---
 
+## 2a. The electronic state — one answer per calculation *(decided 2026-09-25)*
+
+> **Status: CONTRACT, not yet built.** Decided by the user on 2026-09-25 ("go
+> with your recommendations on all seven", plan W34, § 5s.2, decisions 1–7). Where this
+> section and the code disagree, the code is behind and plan W34 names the
+> phase that closes the gap.
+
+Five failures, all live on one day, all the same defect:
+
+* a formate ion prepared at `NetCharge -1` (24 electrons, closed shell) was told
+  to switch to open-shell, because the check counted electrons as if the charge
+  were 0;
+* a bulk gold electrode (27 atoms, 2133 electrons per cell) was told to switch
+  to open-shell, because an odd count per *cell* was read as an unpaired
+  electron;
+* the Auto-detect button wrote `net_charge = 0` over a blank charge — which
+  switches the phosphate detection off — and `spin_total = 0` beside a
+  non-polarized treatment;
+* a transport calculation citing a relaxation started non-polarized whatever
+  the relaxation had run, under a caption saying the values came from it;
+* nothing read back what charge and spin the engine had actually used.
+
+Each layer read the raw fields — `net_charge`, `spin_treatment`, `spin_total`,
+`spin`, `method` — and interpreted them itself. **The fix is one answer, stated
+once, that every layer reads.**
+
+### 2a.1 What it is: four items, and what the structure adds
+
+The electronic state of a calculation is **four template items**, each asking
+one engine-neutral question (`engines/template.md` § 6.3: *one question, one
+item — the spelling is the generator's*):
+
+| item | the question | values | SIESTA writes | PySCF writes |
+|---|---|---|---|---|
+| `net_charge` | how many electrons short (+) or extra (−), in \|e\| | an integer; **blank = auto** (the phosphate rule, `model/chemistry.md`) | `NetCharge ±N` (nothing at 0) | `gto.M(charge=N)` |
+| `spin_treatment` | how the two spin channels are solved | `restricted` · `restricted-open` · `unrestricted` · `non-collinear` · `spin-orbit` | `Spin non-polarized` · *(not offered)* · `Spin polarized` · `Spin non-colinear` · `Spin spin-orbit` | the `R` · `RO` · `U` of the SCF class · *(not offered)* · *(not offered)* |
+| `unpaired_electrons` | 2S = N↑ − N↓ — **not** the multiplicity 2S+1 | an integer ≥ 0; **blank = the moment floats** | `Spin.Fix .true.` + `Spin.Total N`; blank writes neither | `gto.M(spin=N)`; blank is refused — PySCF always pins it |
+| `method` | which theory | `DFT` · `HF` | *(SIESTA is DFT)* | `dft.` · `scf.` |
+
+So PySCF's class is **composed, and written explicitly**: `dft.UKS(mol)` is
+`method = DFT` with `spin_treatment = unrestricted`; `scf.ROHF(mol)` is `HF` with
+`restricted-open`. molbuilder never writes a class and lets PySCF re-rule it —
+`dft.RKS(mol)` with `mol.spin != 0` silently becomes ROKS inside PySCF
+(`pyscf/dft/__init__.py`), and that is a setting that changes without a word.
+
+To those four the structure adds three facts, and **one resolver computes all of
+it once**, `chemistry.electronic_state(struct, cfg) → ElectronicState`:
+
+* **the charge, resolved, and where it came from** — stated in the template, the
+  phosphate rule, or the run the calculation cites;
+* **the electron count**, ΣZ − charge (the parity of the valence count is the
+  same: core shells hold an even number);
+* **finite or repeating** — every axis isolated, or at least one periodic or
+  transport axis (`model/structure-periodicity.md` § 2).
+
+The deck writers, the checks, the hand-over, the forms and the read-back all
+read this one object. There is no second vocabulary to translate into: the
+analyzer suggests in these items' own words, which is what retires the
+per-engine spin translation in the adapters (`validation.md` § 3).
+
+### 2a.2 The rules
+
+**ES1 · It belongs to the calculation, never to a stage.** A stage override of
+any of the four is refused by name. Every rung's warm files — SIESTA's `.DM`,
+PySCF's `.chk` — are a density for one electronic state, and a ladder that
+changes the state carries a density for the wrong one into the next rung with
+nothing to say so.
+
+**ES2 · The charge resolves once, and says how.** Explicit wins (0 included);
+blank runs the phosphate rule. The resolved value and its source travel with
+the state, so a report can say *"−3 (three deprotonated phosphates)"* rather
+than a bare number.
+
+**ES3 · Parity binds a finite system only.** An odd electron count in a molecule
+needs at least one unpaired electron. In a repeating cell it does not: the count
+per cell is odd, the band is partly filled, and bulk gold — one s-electron per
+atom — is non-magnetic. Parity is not asked of a structure with a periodic or
+transport axis.
+
+**ES4 · What an engine can run is declared, not discovered** (§ 2a.3). A choice an
+engine cannot run for this kind is refused by name at the settings gate, never
+left to fail on the node.
+
+**ES5 · Restricted means closed-shell.** `restricted` with `unpaired_electrons >
+0` is refused, naming both ways out: `restricted-open` (spin-pure, one set of
+spatial orbitals) and `unrestricted` (the channels relax separately).
+
+**ES6 · A blank count means the moment floats — where it can.** Only SIESTA can
+float it (`Spin polarized` without `Spin.Fix`). PySCF pins N↑ and N↓ from
+`mol.spin` (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation must state a
+count; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
+moment.
+
+**ES7 · The state travels with the run it starts from.** A follow-on calculation
+defaults to the state of the run it builds on — a transport calculation to its
+cited relaxation (read from that deck), a vibration to the relaxation record of
+the structure it was handed — and a difference is warned, because a frequency or
+a transmission at a geometry optimised for another electronic state is usually a
+mistake and occasionally the point (a vertical ionisation). **A transport
+calculation refuses a cited run that carried a net charge**: its boundaries are
+open and the junction must be neutral (`engines/transport.md` § 2a.7).
+
+**ES8 · Auto-detect proposes; it never overwrites.** It fills only fields still at
+their default. A blank charge stays blank (auto); a pin is never written beside a
+restricted treatment; the person's HF or DFT choice is kept.
+
+**ES9 · One fact, one finding.** The parity check and the open-shell
+recommendation are one family. When the count and the spin disagree, that is
+reported once — the recommendation does not restate it (`validation.md` § 7).
+
+**ES10 · What ran is read back.** After a run the engine's own account of the
+state is recorded, compared with what was asked, and shown: SIESTA's
+`redata: Net charge of the system`, its fixed or converged spin moment; PySCF's
+`mol.charge`, `mol.spin`, the SCF class it built, ⟨S²⟩ for an unrestricted run
+and the stability outcome; TBtrans's spin channels. A difference between asked
+and used is a finding, not a footnote.
+
+### 2a.3 What each engine can run — the capability table
+
+Declared here, enforced at the settings gate (ES4). Every entry is read from the
+engine's source, not from a manual's prose.
+
+| `spin_treatment` | SIESTA optimization · vibration · transport | PySCF optimization · single point | PySCF vibration |
+|---|---|---|---|
+| `restricted` | ✅ | ✅ | ✅ |
+| `restricted-open` | ❌ SIESTA has no restricted open-shell formalism | ✅ ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`) | ❌ **no analytic ROHF/ROKS Hessian** — `pyscf/hessian/` holds `rhf`, `rks`, `uhf`, `uks` only, and the vibration deck uses the analytic Hessian |
+| `unrestricted` | ✅ (`Spin polarized`) | ✅ | ✅ |
+| `non-collinear` | ✅ — but a pinned count is refused: SIESTA `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ not offered | ❌ |
+| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count refused as above | ❌ | ❌ |
+
+A blank `unpaired_electrons` (a floating moment) is offered with SIESTA's
+`unrestricted` only (ES6).
+
+### 2a.4 How each engine reads what molbuilder writes
+
+Verified against the engines' own source, 2026-09-25 — the facts every rule
+above leans on:
+
+| engine | fact | where it is decided |
+|---|---|---|
+| SIESTA | electrons = valence − `NetCharge`, so `NetCharge -1` adds one | `siesta_init.F` |
+| SIESTA | a charged cell gets a uniform compensating background | the Poisson solve |
+| SIESTA | **SIESTA applies the Makov–Payne monopole correction itself** — only when it classifies the system as an atom or molecule **and** the cell is simple, face-centred or body-centred cubic; otherwise it prints *"Energy correction terms can not be applied"* and adds nothing. The term is in the total energy and printed as `siesta: Emadel` | `madelung.f`, `m_energies.F90`, `write_subs.F` |
+| SIESTA | `Spin.Total` is read only when `Spin.Fix` is true, and splits the electrons N↑ = (N + Spin.Total)/2 — so it is the count of unpaired electrons | `read_options.F90`, `siesta_init.F` |
+| SIESTA | `Spin.Fix` with non-collinear or spin-orbit spin stops the run | `read_options.F90` |
+| SIESTA | a polarized run with no initial moments given starts **every atom at its maximum atomic moment, aligned** (ferromagnetic), not at zero | `m_new_dm.F90` |
+| SIESTA | an odd electron count with `Spin non-polarized` runs: the top level is half filled under the electronic temperature — a restricted description of a radical, not an error | occupation by smearing |
+| PySCF | `mol.spin` is 2S = N↑ − N↓; a count and a spin of different parity is refused when the molecule is built | `gto/mole.py` |
+| PySCF | `dft.RKS` / `scf.RHF` with `mol.spin != 0` return ROKS / ROHF | `dft/__init__.py`, `scf/__init__.py` |
+| PySCF | UKS/UHF occupy exactly N↑ and N↓ from `mol.nelec`; a floating moment needs smearing with `fix_spin=False` | `scf/uhf.py`, `scf/smearing.py` |
+| PySCF | ROHF/ROKS have gradients and no analytic Hessian | `grad/`, `hessian/` |
+| TBtrans | a spin-polarized run writes one file per channel: `<label>.TBT_UP.AVTRANS_*` and `<label>.TBT_DN.AVTRANS_*` | `m_tbt_save.F90` |
+
+### 2a.5 Where the state is read
+
+| consumer | reads | today (2026-09-25) |
+|---|---|---|
+| the deck writers | the four items, through the state | read the raw fields; PySCF's class is spelled from `method` alone |
+| the settings gate | parity (finite only), the treatment against the analyzer's recommendation **for this charge and this periodicity**, the capability table, the charged-species checks keyed on the axis kinds | parity uses the run's charge on PySCF, and on SIESTA only when the charge is typed; the recommendation uses charge 0 and ignores periodicity |
+| the hand-over | the cited deck's `NetCharge` / `Spin` / `Spin.Total`; the relaxation record's state | neither is read; transport's spin starts at the class default |
+| the forms | Auto-detect fills defaults only; the chip describes the charge on the form | Auto-detect overwrites; the chip never reads the charge |
+| the read-back | the engine's own account (ES10) | nothing is parsed |
+
+## 2b. Species with charge and spin — what each needs
+
+The rules above are the mechanism. This is what they are FOR: the kinds of
+system whose charge or spin is not *neutral, closed-shell*, what the physics
+asks of each, and what molbuilder does about it.
+
+### Closed-shell neutral molecules
+
+Even electron count, `unpaired_electrons = 0`, `restricted`. The default, and
+right for most organic molecules. Nothing here is special — which is why a
+default that is silently applied to the other cases below is dangerous.
+
+### Closed-shell ions — carboxylates, ammonium, phosphates, zwitterions
+
+Even electron count **at their charge**: formate HCOO⁻ has 23 electrons neutral
+and 24 at −1, a closed shell. So parity and the open-shell recommendation are
+asked at the resolved charge (ES2, ES3), or every odd-charged closed-shell ion is
+told to go open-shell.
+
+* **The charge.** Auto-detected only for backbone phosphates (one −1 per
+  deprotonated phosphate). A peptide's charged side chains are *not* detected —
+  the builder makes the gas-phase neutral form — and are flagged
+  (`config.net_charge`); a SMILES or PDB ion must state its charge.
+* **In a periodic code (SIESTA).** The cell carries a compensating background,
+  and the energy an image-charge error that decays only as 1/L. SIESTA corrects
+  it itself for a molecule in a cubic cell (§ 2a.4) and not otherwise; molbuilder's
+  `makov_payne_correction.py` must add only what SIESTA did not — it reads
+  `siesta: Emadel` first (plan W34). The vacuum is judged against 25 Å per side
+  rather than 8.
+* **In a gas-phase code (PySCF).** No images, no correction. An anion needs
+  diffuse basis functions (`aug-`, or def2 `…D`) — without them the extra
+  electron is squeezed into valence orbitals — and a gas-phase anion can have an
+  unbound top orbital, which implicit solvent (PCM) repairs.
+* **The dipole** of an ion depends on the origin; molbuilder takes it about the
+  centre of mass (§ D8 of plan W33).
+* **Infrared strengths.** With a fixed origin the dipole's *derivative* does not
+  depend on where the origin is, and a vibration with every atom free keeps the
+  centre of mass still, so an ion's band strengths are well defined. With atoms
+  held, the free atoms' motions move the centre of mass, and an ion's strength
+  then carries a term of its charge times that motion — reference-dependent,
+  not vibrational. That is the case to treat with suspicion
+  (`science/normal-modes.md` § 4a.5).
+
+### Radicals — odd-electron molecules, neutral or ionic
+
+At least one unpaired electron, by parity. Two ways to solve it, now both
+explicit (ES5):
+
+* `unrestricted` — the two channels relax separately and capture spin
+  polarization; the price is spin contamination, which the read-back reports as
+  ⟨S²⟩ against S(S+1).
+* `restricted-open` — spin-pure, but its orbital energies depend on a
+  convention (the canonicalization), so a reported HOMO/LUMO is not unique; and
+  PySCF cannot take its analytic Hessian, so a vibration refuses it (§ 2a.3).
+
+On SIESTA a radical run `non-polarized` does not fail — its top level is half
+filled (§ 2a.4) — which is exactly why the recommendation warns.
+
+### Even-count open shells — triplet O₂, carbenes, biradicals
+
+Parity cannot see them: the count is even and the ground state is not a singlet.
+The person states `unpaired_electrons` (2 for a triplet). A broken-symmetry
+(antiferromagnetic) singlet is `unrestricted` with a count of 0 — on SIESTA a
+constrained singlet, and one that starts from SIESTA's default *ferromagnetic*
+guess (§ 2a.4), so reaching the broken-symmetry state may need initial moments
+molbuilder does not yet expose.
+
+### Open-d transition-metal complexes — Fe, Co, Ni, Mn, …
+
+Open-shell, and **which** spin is a matter of coordination, not element
+(§ 2.1). The analyzer suggests a count per element (Fe → 2) and says to verify
+it; the SIESTA deck carries a commented sweep over the plausible counts. A
+polarized SIESTA run with no count starts every atom at its maximum moment
+(§ 2a.4) — a reasonable start for a high-spin centre, a poor one for a low-spin
+one.
+
+### Noble-metal clusters, surfaces and junctions — Cu, Ag, Au
+
+Closed-shell in any extended metallic context: the s-band delocalises and the
+Stoner criterion fails (`validation.md` § 2.1). A *finite* cluster of four or
+more atoms with an even count is closed; an odd count is a genuine unpaired
+electron. **In a repeating cell** — a surface, a lead, a junction — parity does
+not apply (ES3) and the answer is closed whatever the count per cell.
+
+### Periodic metals and semiconductors
+
+The count per cell says nothing about magnetism (ES3). A magnetic element (Fe,
+Co, Ni) wants `unrestricted` with k-sampling, usually with the moment left to
+float (ES6); a non-magnetic metal wants `restricted`.
+
+### Charged periodic systems — charged slabs, charged defects in a crystal
+
+The background charge makes the energy of a charged cell non-comparable with a
+neutral one, and SIESTA's own correction does not apply (§ 2a.4: not a molecule
+in a cubic cell). A point-charge correction in a cubic box is the wrong formula
+here, so molbuilder does not offer one: it says the energy needs a
+defect-specific treatment and leaves it to the person.
+
+### Transport junctions
+
+Neutral by construction: the boundaries are open and the leads' chemical
+potentials set the electron number (`engines/transport.md` § 2a.7), so a net
+charge is refused — on the template, and on the run it cites (ES7). The spin is
+one answer shared by all five rungs, defaulted from the cited relaxation. A
+spin-polarized junction transmits in two channels (§ 2a.4), which the transport
+record reads as two, and `tbt_spin` chooses which one TBtrans reports.
+
+---
+
 ## 3. Audit checklist — what to verify at each control point
 
 When reviewing chemistry correctness in a PR, a refactor, or a structural audit,

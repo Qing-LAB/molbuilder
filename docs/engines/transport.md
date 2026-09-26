@@ -1367,6 +1367,15 @@ mesh cutoff, the orbital energy shift, the transverse k-grid and the electronic
 temperature. § 2a.3 calls them shared, and § 5 is why they cannot differ
 between the leads and the device.
 
+> **The spin comes with the citation too** *(W34, decided 2026-09-25)*: until
+> now `spin_treatment` and `spin_total` were shared by every rung and *answered
+> by nobody's run* (§ 3.8.6), so a polarized relaxation was cited into a
+> non-polarized transport calculation without a word. The cited deck's spin
+> becomes the default, a cited run carrying a net charge is refused (§ 2a.7),
+> and a spin-polarized junction's transmission is read in both TBtrans
+> channels ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+> §§ 2a.2 ES7, 2a.4).
+
 **How the third one comes to remember.** You finish a relaxation, open it in
 the Results tab, and save the structure. The tab writes that run's own settings
 into the sidecar as it saves. Cite that pair later and the settings come back
