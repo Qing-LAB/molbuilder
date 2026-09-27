@@ -41,11 +41,12 @@ Callers:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 
 def run_info_for_dir(
-    directory: Union[str, Path, None],
+    directory: Union[str, Path, None], *,
+    parsed: Optional[Tuple[Union[str, Path], Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """The ``info`` block *directory* answers for itself, or ``None``.
 
@@ -58,6 +59,10 @@ def run_info_for_dir(
 
     Never raises: a directory that cannot be read is a directory with
     nothing to say, not a failed load.
+
+    ``parsed`` is ``(path, parse)`` of a file the caller has just parsed --
+    the viewer's load -- so the relaxation is read from it rather than by
+    parsing the same file again (`contract.relaxation_of`).
     """
     if not directory:
         return None
@@ -71,7 +76,7 @@ def run_info_for_dir(
     if calculation is not None:
         out["calculation"] = calculation
     try:
-        relaxation = relaxation_of(directory)
+        relaxation = relaxation_of(directory, parsed=parsed)
     except Exception:                                       # noqa: BLE001
         relaxation = None
     if relaxation is not None:

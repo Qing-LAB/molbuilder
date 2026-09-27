@@ -793,3 +793,45 @@ def test_the_results_door_shows_the_engines_frame_and_the_structures_kinds(
         "the viewer would draw a box the engine never had",
         again["periodicity"])
 
+
+
+def test_a_load_parses_its_file_once_and_the_record_reads_that_parse(
+        client, tmp_path, monkeypatch):
+    """Loading a run folder parses its result ONCE: the directory's
+    relaxation record (`contract.relaxation_of`, the ``info`` a load carries)
+    reads the load's own parse instead of parsing the same file again.  A
+    25 MB `.out` takes seconds to parse and holds the server while it does
+    (`_refresh_if_changed`), and every load of a relaxation paid it twice.
+    The record is the one a fresh read gives.
+
+    On the measured H2 relaxation (`tests/fixtures/siesta_relax`): the road
+    makes relaxations too, but this one is small, converged and pinned.
+
+    MUTATION THIS MUST FAIL AGAINST: `_run_metadata` not handing the load's
+    parse to `run_info_for_dir`.
+    """
+    import shutil
+
+    from molbuilder.parse.contract import relaxation_of
+    from molbuilder.parse.engines.siesta_reader import SiestaReader
+
+    run = tmp_path / "01_relax" / "run-0"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "fixtures"
+                    / "siesta_relax" / "01_relax" / "run-0", run)
+    expected = relaxation_of(run)
+    assert expected is not None and expected["converged"] is True
+
+    finished = []
+    real_finish = SiestaReader.finish
+
+    def counting_finish(self):
+        finished.append(1)
+        return real_finish(self)
+
+    monkeypatch.setattr(SiestaReader, "finish", counting_finish)
+    body = client.post("/api/watch/load", json={"path": str(run)}).get_json()
+    assert body["ok"] is True, body
+    assert body["info"]["relaxation"] == expected
+    assert len(finished) == 1, (
+        f"the load read its .out {len(finished)} times -- the relaxation "
+        f"record parsed the file the load had just parsed")

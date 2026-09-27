@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 def contract_of(directory) -> Optional[Dict[str, Any]]:
@@ -101,7 +101,9 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     return None
 
 
-def relaxation_of(directory) -> Optional[Dict[str, Any]]:
+def relaxation_of(directory, *,
+                  parsed: Optional[Tuple[Any, Any]] = None
+                  ) -> Optional[Dict[str, Any]]:
     """The relaxation record -- what the run in *directory* did to the
     geometry it left -- or ``None`` (`model/parse.md` § 5b.1).
 
@@ -130,6 +132,10 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
     whether the coordinates in front of it are the ones this record is
     about, whatever order it lists them in.  ``engine`` is ``None`` when the
     directory does not declare one.
+
+    ``parsed`` is ``(path, parse)`` a caller already holds -- the viewer's
+    load of this very file -- and is used when ``path`` is the file this
+    record reads, so that file is parsed once, not twice.
     """
     import numpy as np
     directory = Path(directory)
@@ -141,7 +147,11 @@ def relaxation_of(directory) -> Optional[Dict[str, Any]]:
         path, _trail = openable_in(str(directory))
         if not path:
             return None
-        traj = detect(Path(path)).parse(path)
+        if (parsed is not None
+                and Path(parsed[0]).resolve() == Path(path).resolve()):
+            traj = parsed[1]
+        else:
+            traj = detect(Path(path)).parse(path)
     except Exception:                                       # noqa: BLE001
         return None
     frames = [fr for fr in getattr(traj, "frames", []) if fr.structure is not None]

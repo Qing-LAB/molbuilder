@@ -70,6 +70,7 @@ def wrap_trajectory(traj: Trajectory, parser_name: str,
         run_state=traj.run_state or "unknown",
         scf_converged=getattr(traj, "scf_converged", None),
         error_message=traj.error_message,
+        cause=getattr(traj, "cause", None),
         runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
         parse_warnings=warnings,
     )
@@ -365,6 +366,7 @@ def trajectory_to_legacy_dict(traj) -> Dict[str, Any]:
         run_state=traj.run_state or "unknown",
         scf_converged=getattr(traj, "scf_converged", None),
         error_message=traj.error_message,
+        cause=getattr(traj, "cause", None),
         runtime_info=dict(getattr(traj, "runtime_info", None) or {}),
         parse_warnings=list(getattr(traj, "parse_warnings", None) or []),
     ))

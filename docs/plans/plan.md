@@ -4059,9 +4059,10 @@ And the same day, after P1 and its review:
      residual's line from them (2026-09-27).
   8. No `notify` block, no notification (`ffe0e8c4`).
 * **Found reading the Results tab's code (2026-09-27), open**:
-  * loading one run parses its output twice — the viewer's parse and
-    `run_info_for_dir`'s `relaxation_of` — and a stopped run's poll reads it
-    a third time for its stop reason;
+  * ~~loading one run parses its output three times~~ — the directory's
+    metadata was composed twice per load, each composing the relaxation
+    record by a full parse, and a stopped run's poll re-read the file for
+    its stop reason; now the load's own parse serves all three (2026-09-27);
   * the run record is composed on every folder scan and no page shows it
     (the Run panel, P2);
   * the vibration deck states no SCF criteria: its `_RUNTIME_INFO` records

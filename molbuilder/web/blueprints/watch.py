@@ -366,9 +366,11 @@ def _engine_of(search_dir, payload, parser_cls) -> str:
 
 
 def _frame0_structure(
-    search_dir: "Optional[str]", data: "Optional[Dict[str, Any]]"
+    data: "Optional[Dict[str, Any]]", meta: "Dict[str, Any]"
 ) -> "Optional[Dict[str, Any]]":
-    """Frame 0 as a STRUCTURE ENVELOPE, with the run's metadata already on it.
+    """Frame 0 as a STRUCTURE ENVELOPE, with the run's metadata already on it
+    -- ``meta``, the block the same load answers with (:func:`_run_metadata`),
+    so the directory is read once per load, not once per consumer.
 
     The Results trajectory tab used to build this itself: it took the frames,
     serialised frame 0 back into an XYZ document **in the browser**
@@ -396,7 +398,7 @@ def _frame0_structure(
         # block `_run_periodicity_json` composed, under the structure's own
         # field names -- the cell, the stated 0, the kinds, and a vacuum only
         # for a run made before the deck record.
-        per = _run_periodicity_json(search_dir, data) or {}
+        per = meta.get("periodicity") or {}
         struct = Structure(
             elements=[str(a[0]) for a in first],
             positions=[[float(a[1]), float(a[2]), float(a[3])] for a in first],
@@ -407,12 +409,12 @@ def _frame0_structure(
             vacuum=(tuple(per["vacuum"]) if per.get("vacuum") is not None
                     else None),
         )
-        meta_json = _atom_metadata_json(search_dir, data)
+        meta_json = meta.get("atom_metadata")
         if meta_json:
             import json as _json
             from molbuilder.script_emit import apply_atom_metadata
             apply_atom_metadata(struct, _json.loads(meta_json))
-        info = run_info_for_dir(search_dir) if search_dir else None
+        info = meta.get("info")
         if isinstance(info, dict) and info:
             struct.apply_info_dict(info)
         return struct.to_dict()
@@ -423,7 +425,8 @@ def _frame0_structure(
 
 
 def _run_metadata(
-    search_dir: Optional[str], data: Optional[Dict[str, Any]]
+    search_dir: Optional[str], data: Optional[Dict[str, Any]],
+    parsed: Optional[Tuple[str, Any]] = None,
 ) -> Dict[str, Any]:
     """The metadata block EVERY ``/api/watch/load`` answer carries.
 
@@ -468,7 +471,9 @@ def _run_metadata(
         # in and exportFile out (molview.md § 8.4a), so an export from a
         # results view carries the contract and a transport citation of
         # that pair seals its fields rather than leaving them open.
-        "info":          run_info_for_dir(search_dir),
+        # ``parsed`` -- the file this load just parsed, and its parse -- so
+        # the directory's record reads it rather than parsing it again.
+        "info":          run_info_for_dir(search_dir, parsed=parsed),
     }
 
 
@@ -617,7 +622,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         new_data = trajectory_to_legacy_dict(traj)
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
-    new_data["stop_reason"] = _stop_reason(path, new_data.get("run_state"))
+    new_data["stop_reason"] = _stop_reason(traj)
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
@@ -632,22 +637,24 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             _attach_iter_walltime(new_data, mtime, samples)
             _state["data"]  = new_data
             _state["mtime"] = mtime
-        return dict(_state), None
+        # THE PARSE ITSELF rides the answer, not the state: a load hands it
+        # to the directory's metadata so the same file is not parsed again
+        # for it (`_run_metadata`), and nothing holds it past the request.
+        out = dict(_state)
+        out["parsed"] = (path, traj)
+        return out, None
 
 
-def _stop_reason(path: str, run_state: Optional[str]) -> Optional[str]:
-    """Why a stopped run stopped, in words: its cause from the one ending
-    reader (`_run_ending.ending_of`, `model/parse.md` § 2b), worded by the
-    SIESTA family's table (`siesta_grammar.CAUSE_WORDS`).  ``None`` for a run
-    that did not stop, or a file the ending reader does not read."""
-    if run_state not in ("stopped", "out_of_memory"):
+def _stop_reason(traj) -> Optional[str]:
+    """Why a stopped run stopped, in words: the cause the file's own parse
+    carries -- the ending reader's (`model/parse.md` § 2b), so the file is
+    not read a second time for it -- worded by the SIESTA family's table
+    (`siesta_grammar.CAUSE_WORDS`).  ``None`` for a run that did not stop,
+    or a format that names no cause."""
+    if getattr(traj, "run_state", None) not in ("stopped", "out_of_memory"):
         return None
-    from molbuilder.parse.engines import _run_ending
     from molbuilder.parse.engines.siesta_grammar import CAUSE_WORDS
-    try:
-        cause = _run_ending.ending_of(path).cause
-    except Exception:                                  # noqa: BLE001
-        return None
+    cause = getattr(traj, "cause", None)
     return CAUSE_WORDS.get(cause) if cause else None
 
 
@@ -775,7 +782,12 @@ def api_load():
         return jsonify({"ok": False, "error": err}), 500
     # Metadata search dir: the resolved run directory, else the parent of
     # the file we loaded (Watch was pointed straight at a log inside a run
-    # dir).  The directory the resolved log sits in.
+    # dir).  The directory the resolved log sits in.  ONCE per load, for
+    # the structure envelope and the answer alike, with this load's own
+    # parse handed on: the relaxation record reads the run's result, and
+    # composing the block per consumer parsed it twice more.
+    meta = _run_metadata(resolved_from_dir or os.path.dirname(path),
+                         state["data"], parsed=state.get("parsed"))
     return jsonify({
         "ok":               True,
         "path":             state["path"],
@@ -790,10 +802,8 @@ def api_load():
         # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
         # stay because the Cell page reads them directly; what changed is that
         # the browser no longer rebuilds a structure out of them.
-        "structure":        _frame0_structure(
-            resolved_from_dir or os.path.dirname(path), state["data"]),
-        **_run_metadata(resolved_from_dir or os.path.dirname(path),
-                        state["data"]),
+        "structure":        _frame0_structure(state["data"], meta),
+        **meta,
     })
 
 
@@ -868,6 +878,7 @@ def _api_load_multipart(uploaded_file):
     state, err = _refresh_if_changed()
     if err:
         return jsonify({"ok": False, "error": err}), 500
+    meta = _run_metadata(None, state["data"])
     return jsonify({
         "ok":               True,
         "path":             tmp_path,
@@ -882,14 +893,14 @@ def _api_load_multipart(uploaded_file):
         "uploaded_filename": uploaded_file.filename,
         # Frame 0 as an envelope, same as the path branch -- an upload has no
         # run directory, so it carries the geometry and nothing more.
-        "structure":        _frame0_structure(None, state["data"]),
+        "structure":        _frame0_structure(state["data"], meta),
         # An upload is one file with no run directory behind it, so it
         # has nothing to say about itself -- and it SAYS so, in the same
         # fields the other two builders answer.  One route, one response
         # shape: a reader learns what a load answers from one place, and
         # "nothing available" is a stated answer rather than a field a
         # caller has to notice is missing.
-        **_run_metadata(None, state["data"]),
+        **meta,
     })
 
 

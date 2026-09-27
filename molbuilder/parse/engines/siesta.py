@@ -272,6 +272,7 @@ class SiestaParser:
             # seen at all -- a correct final answer, not a hole.
             scf_converged  = read["scf_converged"],
             error_message  = read["error_message"],
+            cause          = read["cause"],
             runtime_info   = runtime_info,
             parse_warnings = parse_warnings,
         )

@@ -220,6 +220,10 @@ class Trajectory:
                        relaxation step mid-flight.
       error_message -- one line saying why, when the file says why.
                        Meaningful for "stopped" / "out_of_memory".
+      cause         -- WHAT STOPPED IT, as the ending reader names it: the
+                       first fatal line's marker, or the SCF's required
+                       non-convergence (`model/parse.md` § 2b).  None when
+                       nothing stopped the run or the format cannot say.
     """
     source_format: str
     frames:        List[Frame]
@@ -227,6 +231,7 @@ class Trajectory:
     run_state:     str                  = "running"
     scf_converged: Optional[bool]       = None
     error_message: Optional[str]        = None
+    cause:         Optional[str]        = None
     # CPU/GPU/host facts the generator captured at run start.  Parsers
     # populate this from on-disk metadata (``# runtime.<key>:`` lines
     # in molwatch logs; future SIESTA / other parsers may grow their

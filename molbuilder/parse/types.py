@@ -140,6 +140,10 @@ class TrajectoryResult(ParseResult):
     #: deliberate (a capped benchmark, a relaxation step mid-flight).
     scf_converged: Optional[bool] = None
     error_message: Optional[str] = None
+    #: WHAT STOPPED IT, as the ending reader names it (`model/parse.md`
+    #: § 2b): the first fatal line's marker, or the SCF's required
+    #: non-convergence; None when nothing did or the format cannot say.
+    cause:         Optional[str] = None
     runtime_info:  Dict[str, Any] = field(default_factory=dict)
     parse_warnings: List[ParseWarning] = field(default_factory=list)
     result_kind:   str = "trajectory"

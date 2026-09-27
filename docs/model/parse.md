@@ -1108,6 +1108,14 @@ A run that relaxed nothing — a force-constant run, a single point, a seed
 nothing wrote into — echoes no force tolerance and has **no record**; no
 openable output, or one that does not parse, is `None`, never a guess.
 
+**Read once per load.** The trajectory viewer's load parses that same file, so
+it hands its parse on (`relaxation_of(directory, parsed=(path, parse))`, through
+`run_info_for_dir`) and composes the directory's metadata once, for the
+structure envelope and the answer alike; the record parses the file itself only
+for a caller that has not (the structure inspector's `/api/results/contract`).
+The stop reason the viewer shows is the parse's own `cause` (§ 2b), not a
+second read.
+
 The composer (`dirs/run_info.py`) puts it beside `calculation`; the Results
 tab's structure inspector records both into the viewer's `info` store, so a
 pair exported from a finished relaxation carries them
