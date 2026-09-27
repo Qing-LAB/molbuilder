@@ -6,12 +6,10 @@ as a date; ``elapsed_s`` counts from the run's start and may be shown as
 a duration.  Feeding one to the other's formatter is the defect that
 made a six-minute SIESTA run display "last result Dec 31, 5:06 PM".
 
-Two guards here:
-  * ``cumulativeElapsed`` — a pure helper, run under node and checked
-    directly.
-  * the run-state badge — checked at source level, because its clock
-    selection sits inside a large DOM render function that cannot be
-    called without a full browser.
+The badge's clock selection is a pure function, ``badgeClocks``, run here
+under node.  (``cumulativeElapsed``, the helper the viewer's own
+per-iteration estimate divided, went with that estimate on 2026-09-27: the
+rate is the SCF-timing instrument's, `model/parse.md` § 2a P-T4.)
 """
 from __future__ import annotations
 
@@ -28,17 +26,13 @@ MODULE = ROOT / "molbuilder/web/static/lib/trajectory/core.js"
 
 
 def _run_cycle_clock(expr: str):
-    """Evaluate ``expr`` against the module's pure clock helpers under node.
-
-    The extraction window runs from ``cumulativeElapsed`` to ``fmtElapsed``
-    and so covers ``badgeClocks`` too -- both are module-level pure
-    functions, extracted for the same reason and living side by side.
-    """
+    """Evaluate ``expr`` against ``badgeClocks``, the module's pure clock
+    helper, under node."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
     src = MODULE.read_text()
-    ix  = src.index("function cumulativeElapsed")
+    ix  = src.index("function badgeClocks")
     end = src.index("function fmtElapsed", ix)
     fn  = src[ix:end].rstrip()
     full = fn + "\nconsole.log(JSON.stringify(" + expr + "));"
@@ -47,49 +41,6 @@ def _run_cycle_clock(expr: str):
     if proc.returncode != 0:
         pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
     return json.loads(proc.stdout.strip().splitlines()[-1])
-
-
-class TestCumulativeElapsed:
-    """The per-iteration ladder divides this value by `cumulative_calls`.
-
-    That division is arithmetic on a DURATION, so the accessor must yield
-    only a cumulative elapsed -- never an absolute epoch.  A first version
-    took "whichever clock the cycle carries", which made the ladder fire on
-    molwatch cycles (they have no `cumulative_calls`, so the raw epoch fell
-    through to the display) and a PySCF run read
-    "~489276.7h/iter (from SIESTA iter-1 timer)".
-    """
-
-    def test_a_siesta_cycle_reports_its_cumulative_timer(self):
-        assert _run_cycle_clock(
-            "cumulativeElapsed({cycle: 2, elapsed_s: 75.4})") == 75.4
-
-    def test_an_epoch_is_NOT_a_duration_and_must_not_match(self):
-        """The regression, stated as the rule it broke: dividing
-        1761396030 by a call count is arithmetic on a date."""
-        assert _run_cycle_clock(
-            "cumulativeElapsed({cycle: 2, wall_clock_s: 1761396030.0})"
-            " === null") is True
-
-    def test_a_cycle_with_no_timing_is_null_not_zero(self):
-        """A missing measurement must not read as 'at t=0' -- that is how
-        it becomes a plotted point at the origin."""
-        assert _run_cycle_clock("cumulativeElapsed({cycle: 1}) === null") is True
-        assert _run_cycle_clock("cumulativeElapsed(null) === null") is True
-
-    def test_non_finite_is_rejected(self):
-        """SIESTA's Fortran column overflow yields NaN on the Time field;
-        NaN must not pass as a measurement.
-
-        Compared with ``=== null`` rather than for a null RESULT:
-        JSON.stringify turns NaN into the token `null`, so a test that
-        round-trips the value through JSON cannot tell the two apart and
-        passes even when NaN leaks through.
-        """
-        assert _run_cycle_clock(
-            "cumulativeElapsed({elapsed_s: NaN}) === null") is True
-        assert _run_cycle_clock(
-            "cumulativeElapsed({elapsed_s: Infinity}) === null") is True
 
 
 class TestBadgeReadsTheRightClock:
@@ -106,8 +57,7 @@ class TestBadgeReadsTheRightClock:
     while the badge formats a duration as a date and an epoch as a duration.
     That second one was measured: **233 tests green** with the clocks swapped.
 
-    The decision now lives in a pure function beside `cumulativeElapsed`,
-    which was extracted for exactly this reason, so these run it instead.
+    The decision now lives in a pure function, so these run it instead.
     """
 
     def test_each_clock_lands_in_its_own_slot(self):
@@ -174,4 +124,5 @@ class TestBadgeReadsTheRightClock:
         """Empty is not zero: a badge showing `0s` on a run that reported no
         time is a measurement it never made."""
         got = _run_cycle_clock("badgeClocks({data: {}})")
-        assert got == {"elapsed": None, "lastResultEpoch": None}
+        assert got == {"elapsed": None, "lastResultEpoch": None,
+                       "endedLocal": None}

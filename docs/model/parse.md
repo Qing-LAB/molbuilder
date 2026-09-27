@@ -226,7 +226,9 @@ carries a clock. The run's two ends are a different reading and have their own
 names, `run_start_local` / `run_end_local` in `runtime_info`: naive, because
 SIESTA prints the node's local time with no zone (§ 5d.2). That is
 output, not missing data — and it is what lets a consumer fall back to the
-file's `mtime` deliberately instead of rendering nonsense confidently.
+file's `mtime` deliberately instead of rendering nonsense confidently. Only
+where the file states no time: an ended run is dated by `run_end_local`, and
+the trajectory badge does so (`web/trajectory.md` § 4).
 
 **P-T3 — derivation happens once, downward only.** `elapsed_s` may be derived
 from an epoch series (`t[i] - t[0]`), because a run's start is knowable from the
@@ -256,7 +258,8 @@ the other — but formatting is only the most visible half. *Arithmetic counts
 too*: dividing a cumulative time by a count is meaningful for a duration and
 nonsense for a date, so an epoch never enters a rate. The page's seconds per
 iteration are the timing instrument's, per phase (§ 5c), never a figure the
-browser computes.
+browser computes — the viewer is served the run record's own reading
+(`parse.dirs.record.scf_timing_of`).
 
 > An accessor that returned *"whichever clock this cycle carries"* was written
 > during the first pass at this rule and looked reasonable — a DIFFERENCE

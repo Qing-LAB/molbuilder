@@ -81,7 +81,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
             lifecycle: {{ loadAbort: _ac("load"), pollAbort: _ac("poll"),
                          pollInFlight: true, finishedTicks: 1,
                          pollTimer: 1 }},
-            derived: {{ scfPollHistory: [1, 2] }},
+            derived: {{}},
         }};
         {fn}
         transition({json.dumps(target)});
@@ -90,7 +90,6 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
             path:         state.fileState.path,
             timerRunning: _timerRunning,
             aborted:      _aborted,
-            scfHistory:   state.derived.scfPollHistory.length,
             finishedTicks: state.lifecycle.finishedTicks,
         }}));
     """
@@ -148,22 +147,17 @@ def test_loaded_stops_polling():
     assert out["machine"] == "LOADED"
 
 
-def test_loading_releases_the_previous_files_requests_and_estimate():
-    """A file switch must not carry the previous file's work forward.
-
-    Two things ride on it. The in-flight requests are released, so a late
-    answer for the old file cannot arrive at all; and the per-iteration
-    wall-time estimate is emptied, because it is an average over the
-    PREVIOUS run's polls and would otherwise be reported as this one's.
+def test_loading_releases_the_previous_files_requests():
+    """A file switch must not carry the previous file's work forward: the
+    in-flight requests are released, so a late answer for the old file
+    cannot arrive at all.  (The SCF line's rate rides the file's own data
+    since 2026-09-27 and is replaced with it; there is no estimate left in
+    the viewer to empty.)
     """
     out = _transition("LOADING")
     assert sorted(out["aborted"]) == ["load", "poll"], (
         f"LOADING must release the previous file's requests; released "
         f"{out['aborted']}")
-    assert out["scfHistory"] == 0, (
-        "LOADING left the previous run's poll history in place. The "
-        "per-iteration estimate is an average over those samples, so the "
-        "new file's SCF line would report the old run's speed.")
 
 
 def test_loading_resets_the_finished_counter():
@@ -322,14 +316,12 @@ def _aliased_state():
         {wiring}
         // Write through the FLAT name, read back through the BUCKET.
         state.path = "/p/x.out";
-        state.scfPollHistory.push(7);
         console.log(JSON.stringify({{
             buckets:      Object.keys(state).filter(k =>
                               ["fileState","viewState","uiPrefs","lifecycle","derived"]
                               .includes(k)),
             machine:      state.machine,
             throughFile:  state.fileState.path,
-            throughDeriv: state.derived.scfPollHistory,
         }}));
     """
     proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
@@ -360,8 +352,6 @@ def test_a_legacy_flat_name_writes_THROUGH_to_its_bucket():
     assert out["throughFile"] == "/p/x.out", (
         "writing the flat `state.path` did not reach `fileState.path`: the "
         "alias is gone and the two names are now separate storage")
-    assert out["throughDeriv"] == [7], (
-        "`state.scfPollHistory` no longer reads through to `derived`")
 
 
 @pytest.mark.parametrize("target,timer", [("LOADED", False),

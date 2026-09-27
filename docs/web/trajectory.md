@@ -110,15 +110,20 @@ facts:
 
 | detail | reads | where it comes from |
 |---|---|---|
-| **when** — "ended 14:32" | a *time of day* | the run's own per-step clock if it has one, else the file's modification time |
+| **when** — "ended 14:32" | a *time of day* | for a run that has stopped moving, the end its output states — SIESTA's `>> End of run`, `run_end_local` — else the run's own per-step clock, else the file's modification time |
 | **total** — "total 2h 15m" | a *duration* | how far into the run the last step was |
 
 **Those are two separate readings and neither substitutes for the other.** A
 PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
 A SIESTA `.out` states the time of day only at the run's two ends
 (`>> Start of run`, `>> End of run`) and carries no per-step clock — only a
-timer counting from the start — so for SIESTA the "when" of a step falls back
-to the file's mtime, deliberately; the two ends are read into the run record
+timer counting from the start. So an ended SIESTA run is dated by its own
+`>> End of run` — the node's clock, shown as written, since a time with no
+zone cannot be converted — and only a running one falls back to the file's
+mtime, the one evidence there is of its latest line. The mtime is when the
+FILE last changed, which a copy moves: until 2026-09-27 the badge dated every
+SIESTA run by it, and a run copied three days after it ended read "ended" at
+the copy's time. The two ends are in the run record too
 ([`model/parse.md`](?doc=model/parse.md) § 5d.2). The parser says *"this engine
 cannot tell you the time of day"* rather than handing over its elapsed seconds:
 a duration handed over as a time of day shows a run six minutes old as **"last
@@ -129,11 +134,16 @@ result Dec 31, 5:06 PM"** — six minutes after epoch zero
 its iteration count, the residual and ΔE, and for a device its phase (§ 2).
 **Its rate is not its own.** Seconds per iteration have one source, the
 SCF-timing instrument, one phase at a time
-([`model/parse.md`](?doc=model/parse.md) § 5c), which the Run panel shows
-([`results.md`](?doc=web/results.md) § 3a). A rate is never computed from a
+([`model/parse.md`](?doc=model/parse.md) § 5c): the server reads the run's
+timing log with the output it belongs to, through the reader the run record
+reads it by (`parse.dirs.record.scf_timing_of`), and the line shows the
+figure for the phase its current row is in — the number the Run panel shows
+([`results.md`](?doc=web/results.md) § 3a). A run with no timing log — a
+PySCF run, an output read alone — shows none. A rate is never computed from a
 timestamp: a PySCF log carries epochs, and a date divided by a count is not a
-duration. *Not yet so in the code* — the viewer still estimates its own
-(`results.md` § 0.4).
+duration. *(Until 2026-09-27 the viewer estimated its own three ways — SIESTA's
+first-iteration timer, the browser's poll times, the output's modification
+times.)*
 
 A **stopped** run — a crash, or SIESTA stopping because its SCF had to converge
 and did not — settles like a finished one: the badge shows **Stopped**, with the
@@ -231,6 +241,10 @@ header. The header's source-path line has the username redacted.
 - `test_trajectory_hide_frozen_invariants_js.py` — the force-filter (hide-frozen)
   behavior.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
+- `test_siesta_run_in_the_viewer_e2e.py` — § 4 on a SIESTA relaxation the road
+  makes: the SCF line's rate is the run record's (the timing log, one reader),
+  and the badge dates the run by its `>> End of run`, in its folder and as a
+  copy whose file time is later.
 - **The poll loop.** `test_live_poll_invariants_audit.py` was retired
   2026-09-03: 18 of its 21 tests asserted on the spelling of lines in
   `lib/trajectory/core.js` (`process/testing.md` § 3a). What replaced it is

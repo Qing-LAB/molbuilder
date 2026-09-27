@@ -4034,10 +4034,11 @@ And the same day, after P1 and its review:
   -- has its record too (`model/parse.md` § 5d.1, 2026-09-27). **Decided
   (user, 2026-09-27)**: a fact shown twice is not a fault; one fact from two
   sources is -- *"the key is to have information source unified rather than
-  worrying about repeats"*; the viewers keep their lines. **P2 still owes**:
-  the trajectory viewer's seconds per iteration and its badge's *ended* time
-  read from their one source, the SCF-timing instrument and the output's own
-  end (`web/results.md` § 0.4); the setup rows' `echo` column (§ 5d.3);
+  worrying about repeats"*; the viewers keep their lines. The trajectory
+  viewer's seconds per iteration and its badge's *ended* time are read from
+  their one source -- the SCF-timing log through the record's reader, and the
+  output's own end (2026-09-27; its three estimates are gone). **P2 still
+  owes**: the setup rows' `echo` column (§ 5d.3);
   comparing the launch rows asked with those run
   (`bench.compare_asked_to_ran`); the SCF plots by phase; the parameters
   fence narrowed to the calculation's items.

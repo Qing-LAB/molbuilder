@@ -75,13 +75,10 @@ _state: Dict[str, Any] = {
     # picks one rung and judges it.  The comment describing those keys
     # outlived them by two weeks.)
 
-    # Per-iter SCF wall-time tracker.  See ``_attach_iter_walltime``
-    # for the algorithm: file mtime is the clock source (engines like
-    # SIESTA emit per-iter timing only at end-of-run, so the .out
-    # itself has no usable per-iter timestamp mid-run, but mtime
-    # advances every time the engine flushes a line).  Each entry:
-    # ``{"mtime": float, "step_idx": int, "iters_in_step": int}``.
-    "iter_walltime_samples": [],
+    # (No per-iteration wall-time samples.  `_attach_iter_walltime` kept
+    # the output's mtimes here to estimate seconds per iteration until
+    # 2026-09-27; the rate is the SCF-timing instrument's now, read with
+    # the file -- `parse.dirs.record.scf_timing_of`.)
 }
 
 # Track the last temp file we created from a file-picker upload so
@@ -210,9 +207,6 @@ def _atom_metadata_json(
     frames = (data or {}).get("frames")
     n0 = len(frames[0]) if frames else None
     return atom_metadata_json_for_run_dir(search_dir, n0)
-
-
-_ITER_WALLTIME_BUFFER_CAP = 16
 
 
 def _run_periodicity_json(
@@ -477,99 +471,6 @@ def _run_metadata(
     }
 
 
-def _attach_iter_walltime(
-    new_data: Dict[str, Any],
-    mtime: float,
-    samples: List[Dict[str, Any]],
-) -> None:
-    """Stamp ``wall_time_per_iter_s`` onto ``new_data`` using filesystem
-    mtime as the clock source.
-
-    Why mtime instead of ``Date.now()`` / ``time.time()``:
-
-      * The .out file's mtime IS the moment the engine last flushed.
-        For SIESTA the engine emits per-iter timing only at end-of-
-        run (one diagnostic line at iter 1 of step 1, then a full
-        ``>>> timer`` block at finalisation), so mid-run the .out
-        itself carries no usable per-iter timestamp.  But mtime
-        advances every time an SCF line is written, so the file's
-        own metadata IS a per-iter clock -- no browser-clock
-        deduction, just filesystem state.
-      * Mtime is persistent across browser reloads: the user can
-        refresh the Results tab and the per-iter number survives
-        (modulo the server-side ring buffer, which is process-
-        lifetime).
-      * Engine-agnostic: works for SIESTA, PySCF, molwatch_log,
-        anything that appends lines incrementally.
-
-    Algorithm:
-
-      1. Pull the latest non-empty SCF step from ``new_data``: that
-         step's index and its current iter count.
-      2. Look backwards through ``samples`` for the most recent
-         entry **with the same ``step_idx``** -- step boundaries
-         reset the iter counter to 1, so cross-step deltas would
-         conflate inter-step bookkeeping (DM extrapolation, mesh
-         rebuild) with single-iter SCF cost.
-      3. Per-iter = ``(mtime_now - mtime_prev) / (iters_now -
-         iters_prev)``, only when both deltas are positive.  When
-         the iter delta is > 1 (poll cadence missed one or more
-         iters), the division naturally averages.
-      4. Append the new sample; cap the buffer at
-         ``_ITER_WALLTIME_BUFFER_CAP`` (16) to bound memory.
-
-    On success stamps:
-
-        new_data["wall_time_per_iter_s"]      = float  # seconds/iter
-        new_data["wall_time_per_iter_window"] = {
-            "iters":   int,   # iters covered by this measurement
-            "seconds": float, # wall-clock span
-            "step_idx": int,  # which SCF step the measurement came from
-        }
-
-    When no valid pair is available (first poll, step just changed,
-    no new iters since last poll), leaves ``new_data`` untouched
-    and the JS falls back to the snapshot ladder.
-    """
-    history = new_data.get("scf_history") or []
-    step_idx = -1
-    iters_in_step = 0
-    for i in range(len(history) - 1, -1, -1):
-        step = history[i]
-        if step:
-            step_idx = i
-            iters_in_step = len(step)
-            break
-    if step_idx < 0:
-        return
-
-    # Find the most recent same-step prior sample.  Walk backwards
-    # and stop at the first step-mismatch -- older samples can't be
-    # mixed with newer-step deltas without crossing the boundary.
-    for j in range(len(samples) - 1, -1, -1):
-        prev = samples[j]
-        if prev["step_idx"] != step_idx:
-            break
-        di = iters_in_step - prev["iters_in_step"]
-        dt = mtime - prev["mtime"]
-        if di >= 1 and dt > 0.0:
-            new_data["wall_time_per_iter_s"] = dt / di
-            new_data["wall_time_per_iter_window"] = {
-                "iters":    di,
-                "seconds":  dt,
-                "step_idx": step_idx,
-            }
-            break  # use the most-recent match; older samples are noisier
-
-    samples.append({
-        "mtime":         mtime,
-        "step_idx":      step_idx,
-        "iters_in_step": iters_in_step,
-    })
-    while len(samples) > _ITER_WALLTIME_BUFFER_CAP:
-        del samples[0]
-
-
 def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Re-parse the current file iff its mtime has advanced.
 
@@ -623,6 +524,12 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
     new_data["stop_reason"] = _stop_reason(traj)
+    # THE RATE IS THE SCF-TIMING INSTRUMENT'S (`model/parse.md` § 2a P-T4,
+    # § 5c): the run's timing log, read by the one reader the run record
+    # reads it by, re-read with the output it belongs to.  ``None`` -- not
+    # stated -- for a run with no timing log.
+    from molbuilder.parse.dirs.record import scf_timing_of
+    new_data["scf_timing"] = scf_timing_of(path) or None
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
@@ -633,8 +540,6 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     with _lock:
         if (_state["path"] == path
                 and _parser_name(_state["parser"]) == parser_cls.name):
-            samples = _state.setdefault("iter_walltime_samples", [])
-            _attach_iter_walltime(new_data, mtime, samples)
             _state["data"]  = new_data
             _state["mtime"] = mtime
         # THE PARSE ITSELF rides the answer, not the state: a load hands it
@@ -773,9 +678,6 @@ def api_load():
         _state["data"]     = None
         _state["parser"]   = parser_cls
         _state["uploaded"] = False
-        # Fresh load, fresh samples.  See ``_attach_iter_walltime`` for why
-        # cross-file deltas would be nonsense.
-        _state["iter_walltime_samples"] = []
 
     state, err = _refresh_if_changed()
     if err:
@@ -873,7 +775,6 @@ def _api_load_multipart(uploaded_file):
         _state["data"]     = None
         _state["parser"]   = parser_cls
         _state["uploaded"] = True
-        _state["iter_walltime_samples"] = []
 
     state, err = _refresh_if_changed()
     if err:

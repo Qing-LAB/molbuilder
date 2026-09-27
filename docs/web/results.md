@@ -78,14 +78,6 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **One source for two facts the trajectory viewer computes itself** (§ 3a):
-  its seconds per iteration are estimated three ways — SIESTA's first-iteration
-  timer, the browser's poll times, the output's modification times
-  (`web/blueprints/watch.py::_attach_iter_walltime`) — where the SCF-timing
-  instrument is the one source ([`trajectory.md`](?doc=web/trajectory.md) § 3);
-  and its badge's *ended* time is the output's modification time when the
-  steps carry no clock, where the output states its end. A run copied on
-  2026-09-27 that ended on 2026-09-24 read *ended 9:53 AM* — the copy's time.
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the open file's own ending.
@@ -459,7 +451,8 @@ keep their lines: a run directory copied out of its calculation keeps them too
 worrying about repeats")*. What must not happen is one fact computed from two
 kinds of evidence — a rate estimated from timestamps beside the SCF-timing
 instrument's, an end time taken from a file's modification time beside the
-output's own `>> End of run`. Two such are still on the page (§ 0.4).
+output's own `>> End of run`. The trajectory viewer did both until
+2026-09-27 ([`trajectory.md`](?doc=web/trajectory.md) § 4).
 
 **Closed, it is one line** — the engine and version, the ranks, the engine's
 wall time, how the latest run ended, whether each phase converged, and how

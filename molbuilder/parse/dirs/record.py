@@ -433,13 +433,10 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
         except Exception:                                  # noqa: BLE001
             return {}
 
-    timing = metrics(f.timing)
     mon = metrics(f.monitor_log)
     util = utilisation(mon, metrics(f.util_csv)) if f.util_csv else {}
     comp: Dict[str, Any] = {}
-    time = {k: v for k, v in timing.items()
-            if k.startswith(("s_per_iter", "iters_measured", "rows_"))
-            and v is not None}
+    time = _timing_figures(f.timing)
     if time:
         comp["time"] = time
     memory = {k: util[k] for k in ("mem_peak_gb", "mem_peak_from",
@@ -453,6 +450,41 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
     if mon.get("machine"):
         comp["host"] = {"machine": mon["machine"]}
     return {"computation": comp} if comp else {}
+
+
+def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
+    """The SCF-timing instrument's figures (§ 5c) from one timing log, by
+    its one reader: seconds per iteration, the iterations timed and -- for a
+    run with both phases -- each phase's own and its row count.  The run
+    record's and the trajectory viewer's (:func:`scf_timing_of`), so the page
+    states one number."""
+    from ..registry import parse as _parse
+    if path is None:
+        return {}
+    try:
+        got = dict(_parse(Path(path)).metrics)
+    except Exception:                                      # noqa: BLE001
+        return {}
+    return {k: v for k, v in got.items()
+            if k.startswith(("s_per_iter", "iters_measured", "rows_"))
+            and v is not None}
+
+
+def scf_timing_of(output) -> Dict[str, Any]:
+    """The SCF-timing figures of the run ``output`` is an output of --
+    ``<base>-runN.out`` -> ``<base>-runN.scf-timing.log``, found through the
+    run-file door by the output's own label, stage and run -- read as the
+    record reads them.  ``{}`` when that run has no timing log: a PySCF run
+    (the tee reads the SIESTA family's rows), an output read alone."""
+    from ...runfiles import find
+    from .rundir import labels_in, read_back
+    p = Path(output)
+    rec = read_back(p.name, labels_in(str(p.parent)))
+    if rec is None or rec.run is None:
+        return {}
+    logs = [q for q, _rf in find(p.parent, rec.label, stage=rec.stage,
+                                 run=rec.run, role=".scf-timing.log")]
+    return _timing_figures(logs[-1]) if logs else {}
 
 
 def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:

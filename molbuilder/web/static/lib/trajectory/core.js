@@ -66,14 +66,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         OOM:      "out_of_memory",
         UNKNOWN:  "unknown",
     });
-    /* HOW THE RUN ENDED -- `model/parse.md` § 2b.  These are facts about
-     * the process, not grades: a run that ENDED without converging is
-     * `ended`, and whether the SCF converged rides beside it in
-     * `scf_converged` for the reader to show.  Anything that has stopped
-     * producing output is "no longer moving" here, whichever way it
-     * stopped. */
-    const _HAS_STOPPED = Object.freeze([
-        RUN_STATE.ENDED, RUN_STATE.STOPPED, RUN_STATE.OOM]);
 
     /* THE VIEWER IS THE ONE THIS MODULE MOUNTED, and it is reached through the
      * handle that mounting returned -- `_mv.data` (molview.md § 5.6: a viewer
@@ -216,7 +208,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     //                 MolView owns that)
     //   uiPrefs    -- per-session knobs (hideFrozen etc.)
     //   lifecycle  -- controllers + timers (poll timer, abort controllers)
-    //   derived    -- recomputed from fileState (scfPollHistory)
+    //   derived    -- recomputed from fileState (none today)
     //
     // Backward-compat aliases at the end of this block keep the
     // existing ~3000 lines of render code working with the legacy
@@ -317,14 +309,12 @@ import { molviewFiles } from "../projects/molview-doors.js";
         },
 
         derived: {
-            // SCF wall-time progression tracker.  Each entry:
-            //   { ts: Date.now() ms, totalIters: int }
-            // The SCF status-line builder consumes this to compute a
-            // rolling per-iter wall-time estimate.  Per contract § 3
-            // reset matrix, derived is cleared on every transition
-            // to LOADING (file-switch / Refresh) -- so the buffer
-            // never carries stale samples from a prior file.
-            scfPollHistory: [],
+            // Empty -- the rate the SCF line shows is the timing
+            // instrument's, carried in the file's own data, so nothing is
+            // derived here (it held `scfPollHistory`, the browser's own
+            // per-iteration estimate, until 2026-09-27).  Kept
+            // present-but-empty, as spectra's is, so the five-bucket shape
+            // holds.
         },
     };
 
@@ -361,7 +351,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         alias("pollInFlight", "lifecycle");
         alias("loadAbort",    "lifecycle");
         alias("pollAbort",    "lifecycle");
-        alias("scfPollHistory", "derived");
     })();
 
     // Transition orchestrator (contract § 2).  ALL state changes
@@ -416,8 +405,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
             state.viewState.firstFit     = true;
-            // Clear derived caches.
-            state.derived.scfPollHistory.length = 0;
             // Reset the 2-tick WATCHING -> LOADED buffer counter.
             // A fresh load is a new ground truth; any stale
             // finishedTicks from a prior file/run must not carry
@@ -453,7 +440,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.info         = null;
             state.fileState.structure    = null;
             state.viewState.firstFit     = true;
-            state.derived.scfPollHistory.length = 0;
             state.machine = "IDLE";
             return;
         }
@@ -1820,218 +1806,25 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
         statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
 
-        // Wall-time annotation.  Two-stage progressive refinement:
-        //
-        //   STAGE 1 (early, only 1 sample): show SIESTA's first-iter
-        //   snapshot from the ``timer: Routine,Calls,Time,% = IterSCF``
-        //   line (parsed once at scf:1 -- verified empirically: SIESTA
-        //   emits this line exactly once per run, not per iter).
-        //
-        //   STAGE 2 (>=2 polls with iter increase): use a measured
-        //   wall-clock average from the live-poll history.  Each
-        //   render pushes (Date.now, total_SCF_iters_across_all_frames)
-        //   into state.scfPollHistory.  Two samples that span an
-        //   iter increase give us actual per-iter wall time --
-        //   including the brief CPU work between iters (DM mixing,
-        //   mesh, Etot), which is what the user actually cares about
-        //   when judging "is this run going to finish today?".
-        //
-        // The transition is automatic: as soon as the rolling-window
-        // measurement is available it replaces the snapshot.  When the
-        // user is mid-iter and the polls are too close together for
-        // an iter to have completed, we fall back to STAGE 1 so the
-        // display never goes blank.
-        //
-        // Format helper -- "X.Ys" under 60 s, "Xm Ys" otherwise.  Above
-        // 60 s the researcher's mental model switches from "seconds"
-        // to "minutes" and the rounded form is more useful.
-        const fmtWall = (s) => {
-            if (s < 60) return s.toFixed(1) + "s";
-            const m = Math.floor(s / 60);
-            const r = Math.round(s - m * 60);
-            return m + "m " + r + "s";
-        };
-
-        // Track total SCF iters across ALL frames for this poll cycle.
-        // The trajectory may have N committed frames each with their
-        // own scf_history plus an in-progress frame -- iterations are
-        // additive across them.
-        let totalIters = 0;
-        if (state.data && Array.isArray(state.data.frames)) {
-            for (const f of state.data.frames) {
-                if (f && Array.isArray(f.scf_history)) {
-                    totalIters += f.scf_history.length;
-                }
-            }
-        }
-        // Push this sample; keep last 32 (~32 polls = ~32 min at the
-        // default 60 s poll cadence -- plenty of window for averaging
-        // without unbounded growth).
-        const nowMs = Date.now();
-        state.scfPollHistory.push({ ts: nowMs, totalIters: totalIters });
-        if (state.scfPollHistory.length > 32) {
-            state.scfPollHistory.shift();
-        }
-
-        // STAGE 2a: SERVER-SIDE mtime-delta measurement.  The watch
-        // blueprint computes per-iter wall time from the .out's mtime
-        // advancement between polls (see watch.py:_attach_iter_walltime).
-        // This is the best source: mtime is filesystem state so it
-        // survives browser reload, and it's grounded in when the
-        // engine ACTUALLY wrote -- not an approximation from the
-        // browser's polling clock.  When present, prefer it over
-        // the local scfPollHistory.
-        const serverPerIter = state.data && state.data.wall_time_per_iter_s;
-        const serverWindow  = state.data && state.data.wall_time_per_iter_window;
-        let measured = null;
-        if (typeof serverPerIter === "number" && isFinite(serverPerIter)
-            && serverPerIter > 0) {
-            measured = {
-                avgPerIter:    serverPerIter,
-                itersInWindow: (serverWindow && serverWindow.iters)   || 1,
-                windowSeconds: (serverWindow && serverWindow.seconds) || serverPerIter,
-                source:        "measured",
-            };
-        }
-        // STAGE 2b: client-side rolling avg as a fallback for the
-        // first poll or two before the server has paired samples.
-        // Once the server measurement lands, this is shadowed.
-        if (measured === null && state.scfPollHistory.length >= 2) {
-            const oldest = state.scfPollHistory[0];
-            const dtS = (nowMs - oldest.ts) / 1000;
-            const di  = totalIters - oldest.totalIters;
-            if (di >= 1 && dtS > 1) {
-                measured = {
-                    avgPerIter:    dtS / di,
-                    itersInWindow: di,
-                    windowSeconds: dtS,
-                    source:        "live",
-                };
-            }
-        }
-
-        if (measured !== null) {
-            // Provenance label spelt out so the user can tell at a
-            // glance where the number came from:
-            //   "from refresh delta" -- server compared two polls'
-            //     mtimes (most trustworthy; survives browser reload).
-            //   "from poll estimate" -- client-side scfPollHistory
-            //     fallback (used during the first 1-2 polls before
-            //     the server has paired mtimes).
-            const provenanceText = measured.source === "measured"
-                ? "from refresh delta"
-                : "from poll estimate";
-            statusText += ", ~" + fmtWall(measured.avgPerIter)
-                       + "/iter (" + provenanceText + ", "
-                       + measured.itersInWindow + " iter"
-                       + (measured.itersInWindow > 1 ? "s" : "")
-                       + " in last " + fmtWall(measured.windowSeconds) + ")";
-        } else {
-            // STAGE 1: explicit precedence ladder over parser-attached
-            // walltime data.  SIESTA emits its ``timer: IterSCF`` line
-            // EXACTLY ONCE per run (verified empirically: stage3-run0
-            // with 15 geom steps + ~520 SCF cycles had a single timer
-            // line at iter 1 of step 1).  But user-facing relevance
-            // ranks the available data in a clear order:
-            //
-            //   1. Current step's most recent cycle (best -- it's
-            //      what's happening right now, accounts for any
-            //      mid-run cost changes like mesh adaptation)
-            //   2. Previous (completed) step's most recent cycle
-            //      (good -- a real average over a finished SCF run
-            //      at similar problem size)
-            //   3. Very first step's iter-1 snapshot (worst -- old,
-            //      may include warm-up costs like cache cold-start
-            //      and MPS daemon spin-up, but always present in a
-            //      well-formed SIESTA .out)
-            //   4. Nothing -- no annotation (genuinely no data yet)
-            //
-            // Each rung also carries a provenance string into the UI
-            // so the user can see WHICH source the number came from.
-            // Today (3) is the common path because SIESTA only emits
-            // once, but (1) and (2) auto-kick-in if a future SIESTA
-            // build or PySCF logs richer per-step timing.
-            const findLatestCycleWithWalltime = (step) => {
-                if (!Array.isArray(step)) return null;
-                for (let j = step.length - 1; j >= 0; j--) {
-                    if (cumulativeElapsed(step[j]) != null) return step[j];
-                }
-                return null;
-            };
-
-            let baselineCycle = null;
-            let provenance = "";
-
-            // (1) Current step
-            const currentHit = findLatestCycleWithWalltime(current);
-            if (currentHit) {
-                baselineCycle = currentHit;
-                provenance = "from current step report";
-            }
-
-            // (2) Previous (completed) step
-            if (!baselineCycle && stepIdx >= 1) {
-                const prevHit = findLatestCycleWithWalltime(history[stepIdx - 1]);
-                if (prevHit) {
-                    baselineCycle = prevHit;
-                    provenance = "from last step report";
-                }
-            }
-
-            // (3) First IterSCF snapshot anywhere -- SIESTA's
-            //     one-and-only ``timer: IterSCF`` line at iter 1 of
-            //     step 1.  Used when the live mtime-delta hasn't
-            //     produced a fresh measurement yet (e.g. the page
-            //     was just opened, the server has only seen 1 poll).
-            if (!baselineCycle) {
-                /* THE WORDING DEPENDS ON WHETHER ANOTHER MEASUREMENT CAN
-                 * STILL ARRIVE.  While the run is going, the live
-                 * mtime-delta will replace this rough number shortly, and
-                 * "refresh delta pending" tells the user to expect that.
-                 * Once the run has STOPPED nothing further will ever be
-                 * measured, so the same words promise something that
-                 * cannot come -- a run that finished nine hours ago was
-                 * still displaying "refresh delta pending" (browser walk,
-                 * 2026-08-04).
-                 *
-                 * The run state is right here on the data this function is
-                 * already reading; the ladder simply never asked. */
-                const rs = state.data && state.data.run_state;
-                const stopped = _HAS_STOPPED.indexOf(rs) !== -1;
-                for (let i = 0; i < history.length; i++) {
-                    const step = history[i];
-                    if (!Array.isArray(step)) continue;
-                    for (let j = 0; j < step.length; j++) {
-                        const c = step[j];
-                        if (cumulativeElapsed(c) != null) {
-                            baselineCycle = c;
-                            provenance = stopped
-                                ? "from SIESTA iter-1 timer; the only "
-                                  + "timing this run reported"
-                                : "from SIESTA iter-1 timer; "
-                                  + "refresh delta pending";
-                            break;
-                        }
-                    }
-                    if (baselineCycle) break;
-                }
-            }
-
-            // (4) Nothing -- leave statusText untouched.
-            if (baselineCycle !== null) {
-                const cumT = cumulativeElapsed(baselineCycle);
-                const cumN = baselineCycle.cumulative_calls;
-                // Prefer per-iter (cumulative/calls).  Fall back to
-                // raw cumulative when calls is missing (rare: Fortran
-                // column overflow on Calls but not Time -- our
-                // overflow-tolerant parser handles each field
-                // independently, see test_overflowed_time_drops_only
-                // _walltime_keeps_calls).
-                const perIter = (typeof cumN === "number" && cumN >= 1)
-                    ? cumT / cumN
-                    : cumT;
-                statusText += ", ~" + fmtWall(perIter)
-                           + "/iter (" + provenance + ")";
+        /* THE RATE IS THE SCF-TIMING INSTRUMENT'S (`model/parse.md` § 2a P-T4,
+         * § 5c): the server reads the run's timing log through the one reader
+         * the run record reads it by (`parse.dirs.record.scf_timing_of`), and
+         * this shows the figure for the phase the current row is in.  Nothing
+         * here computes one.  Until 2026-09-27 this estimated its own three
+         * ways -- SIESTA's first-iteration timer, the browser's poll times,
+         * the output's modification times -- beside the instrument's: one fact
+         * from three kinds of evidence.  No timing log (a PySCF run, an output
+         * read alone) is no rate: not stated, so not shown. */
+        const timing = (state.data && state.data.scf_timing) || null;
+        if (timing) {
+            const phase = current[current.length - 1].phase;
+            const of = (key) => (phase && Number.isFinite(timing[key + "_" + phase]))
+                ? timing[key + "_" + phase] : timing[key];
+            const perIter = of("s_per_iter");
+            const timed = of("iters_measured");
+            if (Number.isFinite(perIter)) {
+                statusText += ", " + (+perIter.toPrecision(3)) + " s/iter"
+                    + (Number.isFinite(timed) ? " (" + timed + " timed)" : "");
             }
         }
         $("scf-status").textContent = statusText;
@@ -2202,33 +1995,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         }
     }
 
-    /* An SCF cycle's CUMULATIVE ELAPSED seconds, or null.
-     *
-     * This is SIESTA's `timer: ... IterSCF N <cum_s>` reading: total
-     * seconds spent in IterSCF across `cumulative_calls` calls, counting
-     * from the start of the run.  Its one consumer divides it BY that
-     * call count to get a per-iteration time, and that division is only
-     * meaningful for a cumulative duration.
-     *
-     * So it deliberately does NOT fall back to `wall_clock_s`.  An
-     * absolute epoch is not a duration: dividing 1761396030 by a call
-     * count is arithmetic on a date.  A first version of this helper
-     * took "whichever clock the cycle carries", which made the ladder
-     * below fire on molwatch cycles for the first time -- they have no
-     * `cumulative_calls`, so the raw epoch fell straight through to the
-     * display and a PySCF run read "~489276.7h/iter (from SIESTA iter-1
-     * timer)".  Returning null for those is what keeps this ladder what
-     * it says it is (docs/model/parse.md § 2a).
-     */
-    function cumulativeElapsed(c) {
-        if (!c) return null;
-        return Number.isFinite(c.elapsed_s) ? c.elapsed_s : null;
-    }
-
-    // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
-    // Hours-and-minutes for long runs; minutes-and-seconds for medium;
-    // bare seconds for short.  Negative inputs (clock skew between
-    // server and the file's clock) are clamped to 0.
     /* Which clock the run-state badge shows, and from which series.
      *
      * TWO CLOCKS, NEITHER SUBSTITUTING FOR THE OTHER (parse.md § 2a):
@@ -2245,8 +2011,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * turned into a date, because the file does not contain the missing
      * addend (P-T3).
      *
-     * EXTRACTED 2026-09-06, for the reason `cumulativeElapsed` above was:
-     * this decision lived inside a 340-line DOM render function, so the only
+     * AN ENDED RUN'S "WHEN" IS ITS OWN END, where its output states one:
+     * `runtime_info.run_end_local`, SIESTA's `>> End of run` -- the node's
+     * clock, with no zone (P-T2).  The mtime is when the FILE last changed,
+     * which a copy moves: an output copied on 2026-09-27 of a run that ended
+     * on 2026-09-24 read "ended 9:53 AM", the copy's time.  One fact, one
+     * source; the mtime stays only where nothing in the file says when.
+     *
+     * EXTRACTED 2026-09-06: this decision lived inside a 340-line DOM
+     * render function, so the only
      * thing a test could reach was the SPELLING of its four lines.  A pin on
      * `const clockSeries   = state.data.wall_clock_s || [];` fires on a
      * rename and passes while the two clocks are swapped at their point of
@@ -2266,14 +2039,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // to hide a wrong origin behind a correct-looking difference.
         const elapsed  = lastFinite(data.elapsed_s || []);
         const lastWall = lastFinite(data.wall_clock_s || []);
+        const endedAt  = (data.runtime_info || {}).run_end_local;
         return {
             elapsed: elapsed,
             lastResultEpoch: Number.isFinite(lastWall)
                 ? lastWall
                 : (Number.isFinite(state && state.mtime) ? state.mtime : null),
+            endedLocal: (typeof endedAt === "string" && endedAt) ? endedAt : null,
         };
     }
 
+    // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
+    // Hours-and-minutes for long runs; minutes-and-seconds for medium;
+    // bare seconds for short.  Negative inputs (clock skew between
+    // server and the file's clock) are clamped to 0.
     function fmtElapsed(secs) {
         if (!Number.isFinite(secs) || secs < 0) secs = 0;
         secs = Math.floor(secs);
@@ -2288,10 +2067,25 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * difference between a 12 h-old "Ongoing" (probably stalled) and
      * one from 5 min ago.  Input is a Unix-epoch SECONDS timestamp
      * (matches the wire format of mtime / wall_clock_s).  Never
-     * pass an elapsed-seconds value here -- see cumulativeElapsed. */
+     * pass an elapsed-seconds value here -- see badgeClocks. */
     function fmtTimestamp(epochSecs) {
         if (!Number.isFinite(epochSecs)) return "";
-        const d   = new Date(epochSecs * 1000);
+        return _fmtDate(new Date(epochSecs * 1000));
+    }
+
+    /* The node's own clock as the output wrote it -- `run_end_local`,
+     * "2026-09-24T09:22:18", no zone -- in fmtTimestamp's style.  The digits
+     * are shown as written: a time with no zone is not converted, because
+     * the file does not say from which (P-T2).  Anything else is shown as
+     * it came. */
+    function fmtNodeClock(naive) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/
+            .exec(String(naive || ""));
+        if (!m) return String(naive || "");
+        return _fmtDate(new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+    }
+
+    function _fmtDate(d) {
         const now = new Date();
         const sameDay = d.getFullYear() === now.getFullYear()
             && d.getMonth() === now.getMonth()
@@ -2726,7 +2520,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // series when the engine cannot report it -- no step of a SIESTA
         // .out carries a time of day -- so each is read on its own and
         // neither substitutes for the other.
-        const { elapsed, lastResultEpoch } = badgeClocks(state);
+        const { elapsed, lastResultEpoch, endedLocal } = badgeClocks(state);
 
         // Run-state badge: authoritative when the writer emitted
         // explicit end-of-run markers (PySCF .molwatch.log:
@@ -2760,6 +2554,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             const lastResultTs = (lastResultEpoch != null)
                 ? fmtTimestamp(lastResultEpoch)
                 : "";
+            // A run that has stopped moving is dated by its own end where
+            // its output states one (badgeClocks); the fallback is the
+            // "last result" time.
+            const endedTs = endedLocal ? fmtNodeClock(endedLocal) : lastResultTs;
             const elapsedTxt = (elapsed != null)
                 ? fmtElapsed(elapsed)
                 : "";
@@ -2769,7 +2567,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 badge.classList.add("run-state-finished");
                 badgeLab.textContent = "Finished";
                 badgeDet.textContent = joinParts(
-                    lastResultTs ? "ended " + lastResultTs : "",
+                    endedTs ? "ended " + endedTs : "",
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
                 badgeDet.removeAttribute("title");
@@ -2787,7 +2585,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 const reasonTag = _stopReason(state.data, errMsg);
                 badgeDet.textContent = joinParts(
                     reasonTag ? "Reason: " + reasonTag : "",
-                    lastResultTs ? "stopped " + lastResultTs : "",
+                    endedTs ? "stopped " + endedTs : "",
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
                 // Full raw message available on hover (and for screen
@@ -2836,7 +2634,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (!C || !C.EVENT_REFRESH_REQUESTED) return;
         // Contract § 5: Refresh = file-switch with current path.
         // loadByPath -> transition('LOADING') runs the full reset
-        // matrix (scfPollHistory clear, etc.).
+        // matrix.
         const _onRefresh = () => {
             const p = state.fileState.path;
             if (!p) return;     // not yet loaded; nothing to refresh
@@ -2932,7 +2730,6 @@ import { molviewFiles } from "../projects/molview-doors.js";
         //   * stop poll timer + clear pollInFlight
         //   * empty fileState (sets path = new path)
         //   * reset viewState (firstFit=true)
-        //   * clear derived (scfPollHistory)
         // Refresh button arrives here too -- same code path, same
         // resets.  Eliminates the half-refresh class.
         transition("LOADING", { path: path });
