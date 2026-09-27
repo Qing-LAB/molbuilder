@@ -60,7 +60,7 @@ that implemented it -- rendering the decks and stopping -- produced a folder
 | **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
 | **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
 | **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
-| **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means killed — the launch gate ASKS, never decides | § 1.6 |
+| **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6 |
 | **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `task.json`'s `execution` | § 2.3.2 |
 | **who writes where** | init → the portable floor; prep → stage dirs **and the attempt in them**; launch/monitor → what a run produces (`run.json`, output, the conclusion marker); a person → anything, said aloud | § 2 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
@@ -857,12 +857,12 @@ when. Two properties make it mean what it says:
 | carries the marker | continue as § 1.6 already does, saying so: *"run-1 concluded (rc=0) — continuing into run-2"* |
 | launched, **no marker** | **warn and ask.** The run may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
 
-> **One recorded limit: the PySCF wrapper writes no marker today.** It
-> ends in ``exec`` -- the engine *replaces* the wrapper, so there is no
-> tail left to say goodbye from. A PySCF attempt therefore always reads
-> *unconcluded* and re-submission always asks, which errs on the side the
-> rule already chose: the user judges. Giving PySCF a marker means giving
-> its wrapper a tail, a change to weigh separately.
+> **Both engines' wrappers write it.** The PySCF wrapper ended in `exec` --
+> the engine *replaced* it, leaving no tail to say goodbye from -- until
+> 2026-09-08 (`308b3bb6`); it now runs the engine as its child and writes the
+> marker the same way. The name carries the stage and the run index, so in a
+> flat directory each stage keeps its own however later stages overwrite the
+> files they share.
 
 > **This answers a PROCESS question, never a chemistry one.** *Did the
 > wrapper get to finish* is what the marker knows; *did the SCF converge*
