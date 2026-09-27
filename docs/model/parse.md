@@ -1352,6 +1352,19 @@ log, so a log merely *containing* run N is not its log. `run.json`,
 `.gathered-from`, the deck and the pseudopotential files belong to the attempt,
 not to one run.
 
+**A folder read alone is still a run** (`execution/project-layout.md` § 1.4a):
+a SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output copied
+without its deck. Its output's name carries no label the folder's decks state,
+so molbuilder's names cannot find its files; the output itself says what ran.
+The run is the output the directory's status speaks for, taken as it is; its
+`fdf` log is paired by stamp, as always, since that pairing is SIESTA's own
+naming; its deck is the folder's one deck, or of several the one whose
+`SystemLabel` SIESTA's `fdf` log says it read, and none when that does not
+single one out. molbuilder's own files are not there — the wrapper log, the
+instruments, `run.json`, `.concluded` — and the fields only they state are
+simply not stated. *(Until 2026-09-27 such a folder had a status and a viewer,
+and a record of its state and nothing else, or none.)*
+
 | part | the question | read by |
 |---|---|---|
 | **computation** | what ran, where, for how long, on how much | the Run panel |
@@ -1642,11 +1655,11 @@ verdict are plan § 5t.3's P4, not yet built.*
 
 ### 5d.7 Where it is read
 
-* **The Results tab's Run panel** (`web/results.md` § 3a) — for every kind, and
-  the ONE home on the page of a run's computation facts (the viewers' copies
-  are still to go: § 0.4 there). The picker carries the record from
+* **The Results tab's Run panel** (`web/results.md` § 3a) — for every kind of
+  run, a folder read alone included. The picker carries the record from
   `/api/results/dir` in its selection event; `lib/results/run-panel.js`
-  renders it.
+  renders it. A viewer may state a fact the panel states, read through the
+  same reader (§ 3a there: one source, and a repeat is not a fault).
 * **The SCF plots** stay the trajectory's (`web/trajectory.md`): a device's two
   phases are drawn apart, each residual against the criterion its phase states
   — dHmax against the H tolerance, dDmax against the DM tolerance, the NEGF dQ

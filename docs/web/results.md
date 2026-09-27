@@ -78,13 +78,14 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **The viewers' copies of a run's computation facts** (§ 3a). The Run panel is
-  the one home of those facts, and the trajectory viewer's runtime line and the
-  spectrum viewer's Host / CPU / GPU rows are still on the page beside it. They
-  go once a folder read alone has a record too: a `.out` or a `.spectra.json`
-  in a folder with no deck has none today (`record.run_files` needs the deck to
-  say whose run it is), and those rows are all such a folder shows of how it
-  ran.
+- **One source for two facts the trajectory viewer computes itself** (§ 3a):
+  its seconds per iteration are estimated three ways — SIESTA's first-iteration
+  timer, the browser's poll times, the output's modification times
+  (`web/blueprints/watch.py::_attach_iter_walltime`) — where the SCF-timing
+  instrument is the one source ([`trajectory.md`](?doc=web/trajectory.md) § 3);
+  and its badge's *ended* time is the output's modification time when the
+  steps carry no clock, where the output states its end. A run copied on
+  2026-09-27 that ended on 2026-09-24 read *ended 9:53 AM* — the copy's time.
 - **`status`**, on the same answer — how the run is doing — is served and not
   yet shown for a run folder beyond the Run panel's verdict; the trajectory
   viewer's badge shows the open file's own ending.
@@ -434,8 +435,7 @@ has now drifted twice. Read it as a tour, and that table as the count.)*
 
 ## 3a. The Run panel — what ran, with what, and how it went
 
-**Built** (W35 P2, 2026-09-27): `lib/results/run-panel.js` and its sheet; the
-viewers' copies of the same facts are still to go (§ 0.4).
+**Built** (W35 P2, 2026-09-27): `lib/results/run-panel.js` and its sheet.
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
 When the folder the picker is bound to is a run — a run directory, a flat
@@ -449,14 +449,17 @@ hidden where there is no record: a container (a stage directory, or a
 hierarchical calculation root, whose ladder is § 2.4's), and a folder with no
 run in it.
 
-**It is the ONE home on this page of a run's computation facts.** The
-trajectory viewer's runtime line (host · ranks · SIESTA version · solver) and
-the spectrum viewer's Host / CPU / GPU rows go: two places stating one fact is
-how they come to disagree, and the spectrum's rows read *—* for every SIESTA
-vibration, whose trajectory carries no runtime block. *Not yet* (§ 0.4): a
-folder read alone has no record today, and those rows are all it shows of how
-it ran. The viewers keep what is about their file — the convergence card
-beside the plots stays.
+**A fact has one source; the page may show it twice.** The panel and a
+viewer that states the same fact read it from the same file through the same
+reader — the trajectory viewer's runtime line (SIESTA version · solver) and
+the panel's engine and solver are both the SIESTA family's line readers on the
+one `.out` (`siesta_grammar`) — so the two cannot disagree, and the viewers
+keep their lines: a run directory copied out of its calculation keeps them too
+*(user, 2026-09-27: "the key is to have information source unified rather than
+worrying about repeats")*. What must not happen is one fact computed from two
+kinds of evidence — a rate estimated from timestamps beside the SCF-timing
+instrument's, an end time taken from a file's modification time beside the
+output's own `>> End of run`. Two such are still on the page (§ 0.4).
 
 **Closed, it is one line** — the engine and version, the ranks, the engine's
 wall time, how the latest run ended, whether each phase converged, and how

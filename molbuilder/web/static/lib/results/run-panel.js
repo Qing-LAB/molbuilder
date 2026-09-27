@@ -363,8 +363,12 @@ function setupSection(rec) {
             if (r.keys && r.keys.length) p.appendChild(el("span", "rp-keys rp-mono", r.keys.join(" ")));
             tr.appendChild(p);
             tr.appendChild(el("td", "rp-mono", cell(r.default)));
+            // AN ITEM THE DECK DOES NOT SET reads "engine default" -- which
+            // only a deck that was read can say.  With none (an output read
+            // alone), what was asked is not stated, and the cell is empty.
             tr.appendChild("asked" in r ? el("td", "rp-mono", cell(r.asked))
-                                        : el("td", "rp-default", "engine default"));
+                         : rec.deck ? el("td", "rp-default", "engine default")
+                         : el("td", null, ""));
             const used = el("td", "rp-mono", cell(r.used));
             if (r.echo !== undefined) used.appendChild(el("span", "rp-echo", "engine says: " + cell(r.echo)));
             tr.appendChild(used);

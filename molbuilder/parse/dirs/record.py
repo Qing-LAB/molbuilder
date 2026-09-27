@@ -106,8 +106,15 @@ def _deck_roles(engine: str) -> List[str]:
 def run_files(directory, *, status=None,
               engine: Optional[str] = None) -> Optional[RunFiles]:
     """What the run this directory's status speaks for left, found through
-    the doors that own each name -- or ``None`` when no deck says whose run
-    it is.
+    the doors that own each name -- or ``None`` when neither a deck nor an
+    output says whose run it is.
+
+    **A FOLDER READ ALONE** -- its output named by hand, or copied without
+    its deck -- is still a run: the output the status speaks for is the run,
+    taken as it is, and the folder's one deck is its deck
+    (:func:`_alone_files`, `model/parse.md` § 5d.1).  Until 2026-09-27 such
+    a folder had a status and a viewer and a record of nothing but its
+    state, because every file was looked up by molbuilder's names.
 
     ``status`` and ``engine`` are the directory's `run_status` and
     `engine_of`, passed by a caller that already has them (the directory
@@ -121,7 +128,6 @@ def run_files(directory, *, status=None,
     to describe.
     """
     from ..contract import engine_of
-    from ..engines import siesta_grammar as _G
     from ...runfiles import find, find_by_role
     from .job import run_status
     from .rundir import labels_in, read_back
@@ -146,6 +152,10 @@ def run_files(directory, *, status=None,
     else:
         mine = decks if len({(r.label, r.stage) for _p, r in decks}) == 1 \
             else []
+    alone = _output_read_alone(d, status, speaks, engine)
+    if alone is not None:
+        return _alone_files(d, engine, status, alone,
+                            decks=[p for p, _r in decks])
     if not mine:
         return None
     deck, rec = mine[0]
@@ -166,20 +176,8 @@ def run_files(directory, *, status=None,
     out = one(".out", n) if n is not None else one(".out", None)
     pyscf_log = one(".pyscf.log", n) if n is not None else None
 
-    # THE FDF LOG IS PAIRED BY ITS STAMP: SIESTA opens it in the second it
-    # prints `>> Start of run` -- exact on 122 of 122 real outputs.
-    fdf_log = None
     out_head = _read(out, head=_HEAD)
-    if out is not None:
-        facts: Dict[str, Any] = {}
-        for line in out_head.splitlines():
-            if _G.read_launch_line(line, facts) == "run_start_local":
-                break
-        start = facts.get("run_start_local")
-        if start:
-            from ..engines.siesta_fdflog import stamp_of as _fdf_stamp
-            fdf_log = next((p for p in sorted(d.glob("fdf.*.log"))
-                            if _fdf_stamp(p) == start), None)
+    fdf_log = _fdf_log_of(d, out_head) if out is not None else None
 
     # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: a retry appends its own
     # section to the first log and opens one of its own -- the pairing
@@ -207,6 +205,80 @@ def run_files(directory, *, status=None,
         monitor_log=one(".monitor.log", n) if n is not None else None,
         util_csv=one(".util.csv", n) if n is not None else None,
         earlier=earlier)
+
+
+def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
+    """SIESTA's ``fdf.<stamp>.log`` for the ``.out`` whose head this is.
+
+    THE FDF LOG IS PAIRED BY ITS STAMP: SIESTA opens it in the second it
+    prints ``>> Start of run`` -- exact on 122 of 122 real outputs, and
+    SIESTA's own naming, so it holds in a folder molbuilder did not write.
+    """
+    from ..engines import siesta_grammar as _G
+    facts: Dict[str, Any] = {}
+    for line in out_head.splitlines():
+        if _G.read_launch_line(line, facts) == "run_start_local":
+            break
+    start = facts.get("run_start_local")
+    if not start:
+        return None
+    from ..engines.siesta_fdflog import stamp_of as _fdf_stamp
+    return next((p for p in sorted(d.glob("fdf.*.log"))
+                 if _fdf_stamp(p) == start), None)
+
+
+def _output_read_alone(d: Path, status, speaks, engine: str) -> Optional[Path]:
+    """The output the status speaks for, when no deck in the folder names it
+    -- or ``None``.
+
+    A FOLDER READ ALONE (§ 5d.1): a SIESTA run made by hand (``input.fdf``,
+    ``siesta.out``), or an output copied without its deck.  Its name carries
+    no label this folder's decks state, so molbuilder's naming cannot find
+    its files -- and the output itself says what ran.
+    """
+    from ...runfiles import role_of, stdout_roles
+    if speaks is not None or not status.active_source:
+        return None
+    path = d / status.active_source
+    return (path if path.is_file()
+            and role_of(path.name) in stdout_roles(engine) else None)
+
+
+def _alone_files(d: Path, engine: str, status, output: Path, *,
+                 decks: List[Path]) -> RunFiles:
+    """A folder read alone: the run is its output, taken as it is.  SIESTA's
+    ``fdf`` log is paired by the output's start stamp, as always, and the
+    deck is the folder's one deck -- of several, the one whose
+    ``SystemLabel`` is the one SIESTA's log says it read; none when that
+    does not single one out.  molbuilder's own files -- the wrapper log, the
+    instruments, ``run.json`` -- are not there, and their fields are simply
+    not stated."""
+    from ...runfiles import role_of
+    out = output if role_of(output.name) == ".out" else None
+    head = _read(out, head=_HEAD)
+    fdf_log = _fdf_log_of(d, head) if out is not None else None
+    return RunFiles(directory=d, engine=engine, status=status,
+                    deck=_deck_read_alone(decks, fdf_log),
+                    out=out, out_head=head,
+                    pyscf_log=None if out is not None else output,
+                    fdf_log=fdf_log)
+
+
+def _deck_read_alone(decks: List[Path],
+                     fdf_log: Optional[Path]) -> Optional[Path]:
+    """The deck of a folder read alone (:func:`_alone_files`)."""
+    if len(decks) <= 1:
+        return decks[0] if decks else None
+    if fdf_log is None:
+        return None
+    from ..fdf import system_label
+    from ..registry import parse as _parse
+    try:
+        read = (_parse(fdf_log).params.get("systemlabel") or {}).get("value")
+    except Exception:                                      # noqa: BLE001
+        return None
+    same = [p for p in decks if read and system_label(_read(p)) == read]
+    return same[0] if len(same) == 1 else None
 
 
 def _first_section_text(text: str) -> str:

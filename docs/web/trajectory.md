@@ -129,10 +129,11 @@ result Dec 31, 5:06 PM"** — six minutes after epoch zero
 its iteration count, the residual and ΔE, and for a device its phase (§ 2).
 **Its rate is not its own.** Seconds per iteration have one source, the
 SCF-timing instrument, one phase at a time
-([`model/parse.md`](?doc=model/parse.md) § 5c), and one home on the page, the
-Run panel ([`results.md`](?doc=web/results.md) § 3a). A rate is never computed
-from a timestamp: a PySCF log carries epochs, and a date divided by a count is
-not a duration.
+([`model/parse.md`](?doc=model/parse.md) § 5c), which the Run panel shows
+([`results.md`](?doc=web/results.md) § 3a). A rate is never computed from a
+timestamp: a PySCF log carries epochs, and a date divided by a count is not a
+duration. *Not yet so in the code* — the viewer still estimates its own
+(`results.md` § 0.4).
 
 A **stopped** run — a crash, or SIESTA stopping because its SCF had to converge
 and did not — settles like a finished one: the badge shows **Stopped**, with the

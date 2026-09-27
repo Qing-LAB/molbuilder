@@ -4029,13 +4029,18 @@ And the same day, after P1 and its review:
 * **Built ahead of P2, found by the 2026-09-26 review**: the run record
   (`parse/dirs/record.py`, `setup.py`), `JobDirParser` serving `status` and
   `record`, `/api/results/dir` carrying it; the Run panel
-  (`lib/results/run-panel.js`, `web/results.md` § 3a, 2026-09-27). **P2 still
-  owes**: the viewers' copies of the run's computation facts removed, once a
-  folder read alone has a record (`web/results.md` § 0.4); the setup rows'
-  `echo` column (§ 5d.3); comparing the launch rows
-  asked with those run (`bench.compare_asked_to_ran`); the SCF plots by phase; the viewer's own seconds per iteration removed (the
-  timing instrument is the one home); the parameters fence narrowed to the
-  calculation's items.
+  (`lib/results/run-panel.js`, `web/results.md` § 3a, 2026-09-27); a folder
+  read alone -- a SIESTA run named by hand, an output copied without its deck
+  -- has its record too (`model/parse.md` § 5d.1, 2026-09-27). **Decided
+  (user, 2026-09-27)**: a fact shown twice is not a fault; one fact from two
+  sources is -- *"the key is to have information source unified rather than
+  worrying about repeats"*; the viewers keep their lines. **P2 still owes**:
+  the trajectory viewer's seconds per iteration and its badge's *ended* time
+  read from their one source, the SCF-timing instrument and the output's own
+  end (`web/results.md` § 0.4); the setup rows' `echo` column (§ 5d.3);
+  comparing the launch rows asked with those run
+  (`bench.compare_asked_to_ran`); the SCF plots by phase; the parameters
+  fence narrowed to the calculation's items.
 * **The 2026-09-26 review's eight questions — decided by the user
   (2026-09-26/27)**:
   1. A force-stopped run reads `failed · stopped before its end`: `run_status`
@@ -4118,10 +4123,13 @@ the files real attempts leave. Its corrections:
 5. **Pseudopotentials** by file, uuid (the `.out` names both), sha256 and
    header — not "matches the library today".
 6. **Symptoms are P4's**; P2 carries asked ≠ used only.
-7. **One home per fact on the page**: the trajectory viewer's runtime line
+7. ~~**One home per fact on the page**: the trajectory viewer's runtime line
    and the spectrum viewer's Host/CPU/GPU rows go, in favour of the Run
-   panel; the panel is carried by the picker's selection event and cleared
-   when the folder changes.
+   panel~~ — **superseded (user, 2026-09-27): one SOURCE per fact; a fact
+   shown twice is not a fault**, and the viewers keep their lines, the
+   redundancy a run copied out of its calculation keeps. The panel is carried
+   by the picker's selection event and cleared when the folder changes
+   (built, 2026-09-27).
 8. **The SCF plots by phase**, each drawn against its own required
    criterion — dHmax against the H tolerance, dDmax against the DM tolerance,
    the NEGF dQ against the charge tolerance.
