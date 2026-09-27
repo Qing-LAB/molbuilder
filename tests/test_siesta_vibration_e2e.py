@@ -134,6 +134,31 @@ def _tick_already_relaxed(bundle):
     tmpl.write_text(head + "[item.already_relaxed]" + tail)
 
 
+def _the_monitor_closed(attempt, stage, step_words):
+    """What the monitor beside a real run said at its end
+    (`run-reports.md` § 2.1a, § 2.3): how the run ended in the Results tab's
+    words, the step in SIESTA's own, every SCF phase converged -- and a
+    utilisation basis that is the JOB's: a run started directly is its
+    process tree over the two ranks it was launched on, and a CPU run is
+    judged on no GPU."""
+    from molbuilder.runfiles import compose
+    log = (attempt / compose("H2", ".monitor.log", stage, run=0)).read_text()
+    closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
+    assert "finished" in closing and step_words in closing, closing
+    assert "converged: periodic yes" in closing, closing
+    basis = next(ln for ln in log.splitlines() if "[UTIL-BASIS]" in ln)
+    assert ("cpu% of 2 core(s) [launched on]" in basis
+            and "cpu time [process tree]" in basis
+            and "mem [process tree" in basis), basis
+    summary = next(ln for ln in log.splitlines() if "[UTIL-SUMMARY]" in ln)
+    assert "gpu" not in summary.lower(), summary
+    # a fraction of the two cores it holds -- two busy ranks, not 87445%
+    # (the first sample once took its rate over two microseconds)
+    import re
+    mean = float(re.search(r"cpu mean=(\d+)%", summary).group(1))
+    assert 20.0 <= mean <= 120.0, summary
+
+
 def _common_assertions(d):
     assert d["engine"] == "siesta" and d["schema_version"] >= 6
     # The input order: the free atom is atom 0, the held one atom 1.
@@ -194,6 +219,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     r = _jobset("launch", "run", "relax", "--bundle", str(bundle),
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
+    _the_monitor_closed(bundle / "01_relax" / "run-0", "01_relax",
+                        "Broyden opt. move")
 
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
@@ -207,6 +234,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     assert r.exit_code == 0, r.output
     attempt = bundle / "02_freq" / "run-0"
     assert (attempt / "H2.FC").is_file(), "the force-constant run must leave H2.FC"
+    _the_monitor_closed(attempt, "02_freq", "FC step")
 
     r = _jobset("summarize", "run", "freq", "--bundle", str(bundle))
     assert r.exit_code == 0, r.output

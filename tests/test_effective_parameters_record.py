@@ -93,56 +93,33 @@ def test_siesta_reads_the_deck_at_launch_not_at_generation(deck):
         "reads the file, so an edit after prep is still recorded")
 
 
-def test_siesta_records_what_the_deck_leaves_out_with_its_default(deck):
-    """A keyword absent from the deck is listed with the CATALOGUE's default,
-    said as such -- a reader chasing a surprising number has to see that it
-    was never set.  What the engine actually used is SIESTA's own fdf log, the
-    run record's third column (`model/parse.md` § 5d.3); this heading claimed
-    the engine's default until 2026-09-26."""
-    block = _effective_parameters_block(deck)
-    assert "not in the deck: the catalogue default is shown" in block
-    # this toy deck sets neither, so both must be named
-    assert "xc_authors" in block
-    assert "relax_force_tol" in block
+def test_siesta_s_fence_states_every_item_s_default_and_the_deck_as_launched(
+        deck, tmp_path):
+    """The wrapper's block, RUN as the wrapper runs it, read back through the
+    one reader both engines' blocks are read by (`model/parse.md` § 5d.3a):
+    a row for every keyword-writing catalogue item with its catalogue default
+    -- generated, so a new item joins with no edit -- and the deck the engine
+    is given, echoed at launch.  SIESTA has not started, so ``asked`` is the
+    deck's and ``used`` the fdf log's: this block leaves both empty.
 
-
-def test_an_item_the_deck_does_carry_is_not_listed_as_absent(deck, tmp_path):
-    block = _effective_parameters_block(deck)
-    absent = block.split("not in the deck:")[1]
-    assert "mesh_cutoff" not in absent, (
-        "mesh_cutoff IS in this deck; listing it as absent would be a lie "
-        "about what the engine reads")
-
-    # THE SAME RULE, THE OTHER SHAPE A DECK HAS.  `mesh_cutoff` is a `key
-    # value` line; a k-grid is a `%block`, and the reader matched the
-    # catalogue's `%block kgrid_Monkhorst_Pack` anchor whole -- space and all
-    # -- against a single whitespace-split token, so it could never match.
-    # Every SIESTA run log said "kgrid -- not in the deck" on 132 of 132
-    # decks that set one.  This test held the rule and only ever showed it a
-    # scalar.
-    blocked = tmp_path / "b.fdf"
-    blocked.write_text("SystemLabel t\n"
-                       "%block kgrid_Monkhorst_Pack\n"
-                       "4 0 0 0.0\n0 4 0 0.0\n0 0 1 0.0\n"
-                       "%endblock kgrid_Monkhorst_Pack\n", encoding="utf-8")
-    absent_b = _effective_parameters_block(blocked).split(
-        "not in the deck:")[1]
-    assert "kgrid" not in absent_b, (
-        "this deck sets a k-grid; listing it as absent would be a lie about "
-        "what the engine samples")
-
-
-def test_the_absent_list_is_generated_from_the_catalogue(deck):
-    """Not a hand-kept list: a new SIESTA item joins it with no edit here."""
+    It listed only the items the deck left out until 2026-09-26, so a run
+    recorded no default for any item it set -- the record's first column for
+    most of a deck."""
+    import subprocess
     import molbuilder.template as T
-    from molbuilder.script_emit import _catalogue
+    from molbuilder.script_emit import _catalogue, read_parameters_fence
 
-    block = _effective_parameters_block(deck)
-    declared = {i.name for i in T.select(_catalogue(), engine="siesta")
-                if parameter(i.name, "siesta").writes}
-    named = {n for n in declared if n in block}
-    assert len(named) >= 10, (
-        f"only {len(named)} of {len(declared)} keyword-writing items appear")
+    out = subprocess.run(["bash", "-c", _effective_parameters_block(deck)],
+                         cwd=deck.parent, capture_output=True, text=True,
+                         check=True).stdout
+    rows = {r["item"]: r for r in read_parameters_fence(out)}
+    writing = {i.name for i in T.select(_catalogue(), engine="siesta")
+               if parameter(i.name, "siesta").writes}
+    assert set(rows) == writing
+    assert rows["mesh_cutoff"]["default"] == parameter("mesh_cutoff",
+                                                       "siesta").default
+    assert {(r["asked"], r["used"]) for r in rows.values()} == {(None, None)}
+    assert "#   MeshCutoff 200.0 Ry" in out
 
 
 # ------------------------------------------- every route that writes, checks

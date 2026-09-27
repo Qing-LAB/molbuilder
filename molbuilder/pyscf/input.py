@@ -52,19 +52,10 @@ ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
 ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
 
-#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END, spelled once.
-#:
-#: A format molbuilder GENERATES does not get a sniffed reader
-#: (`model/parse.md` § 5.5): the end line is a string WE print, so the
-#: emitter declares it and the reader imports it -- the same rule as
-#: :data:`ROLE_GEOM_TRAJ` above, applied to a line instead of a name.
-#: `parse/engines/_run_ending.py` is the reader.
-#:
-#: It is reached only on the success path, AFTER the final geometry is
-#: written, so it means the run ended -- and it outranks anything the script
-#: caught and reported on the way (a real log carries *"Frequency analysis
-#: FAILED: ..."* three lines above it).
-END_MARKER = "Job complete in"
+#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
+#: `end_lines`, which the reader imports and which travels beside the job
+#: (`model/parse.md` § 5.5).
+from .end_lines import END_MARKER   # noqa: E402
 
 #: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
 #: derives the same answer from the same catalogue row
@@ -778,7 +769,9 @@ def spec_for(struct: Structure,
                    "      f\"({_RUNTIME_INFO['scf_conv_tol_grad_source']}); "
                    "solver {_RUNTIME_INFO['scf_solver_class']}.\")")
 
-        out += _emit_effective_parameters(cfg, is_dft)
+        out += _emit_effective_parameters(cfg, is_dft,
+                                          calculation="optimization")
+        out += _emit_runtime_from_parameters()
 
         # Construct the molwatch emitter HERE -- after the SCF setup, after
         # the _RUNTIME_INFO writes above -- and then wire the callback.
@@ -1032,7 +1025,8 @@ def render_script(struct: Structure,
     return _sc.render_deck(spec, struct, cfg,
                                   verbose=cfg.verbose_comments)
 
-def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool) -> List[str]:
+def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
+                               calculation: Optional[str] = None) -> List[str]:
     """Record, at run time, **every** parameter this run is set to.
 
     Three columns, because three different questions get asked when a result
@@ -1047,11 +1041,16 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool) -> List[str]:
     **The third column is why this exists.** A value that silently failed to
     apply -- a solver that overrode it, a wrapper that changed what it counts --
     shows up as a *disagreement between columns two and three*. A record that
-    only echoed our own intent could never show that.  ``-`` means we did not ask -- the
-    engine has no such setting: a molbuilder-level flag like ``save_optimized_xyz``
-    still decides what the run produces, so it is recorded, but there is
-    nothing to read it back from.  ``(absent)`` means we asked and the object
-    did not have it, which is itself worth seeing.
+    only echoed our own intent could never show that.  ``None`` means we did not
+    ask -- the engine has no such setting: a molbuilder-level flag like
+    ``save_optimized_xyz`` still decides what the run produces, so it is
+    recorded, but there is nothing to read it back from.  ``(absent)`` means we
+    asked and the object did not have it, which is itself worth seeing.
+
+    **The rows are `script_emit`'s** (``parameter_row``, § 5d.3a of
+    `model/parse.md`): one JSON array each, the format SIESTA's wrapper writes
+    and ``script_emit.read_parameters_fence`` reads.  ``calculation`` narrows
+    the items to the kind this deck runs.
 
     **Full coverage, and generated.**  Every catalogue item this engine
     declares appears -- values a person changed, values left at the default,
@@ -1075,27 +1074,34 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool) -> List[str]:
     out.append("        return '(absent)'")
     out.append("")
     out.append("_MB_PARAMS = {}")
-    for name in _layout.recorded_items():
+    for name in _layout.recorded_items(calculation):
         param = _sc.parameter(name, "pyscf", config=cfg)
         expr = _layout.readback(param)
         if expr and not is_dft and name in ("functional", "grid_level",
                                             "dispersion"):
             expr = None       # no such attribute on a Hartree-Fock object
-        third = f"_mb_read(lambda: {expr})" if expr else "'-'"
+        third = f"_mb_read(lambda: {expr})" if expr else "None"
         out.append(f"_MB_PARAMS[{name!r}] = ({param.default!r}, "
                    f"{param.value!r}, {third})")
     out.append("")
-    _fmt = '"#   %-26s %-18s %-18s %s"'
+    out.append("import json as _mb_json")
     out.append('print("' + _sc.begin_marker(_sc.BLOCK_PARAMETERS) + '")')
-    out.append(f'print({_fmt} % ("parameter", "catalogue", "this run", '
-               f'"engine"))')
     out.append("for _k, (_d, _r, _e) in _MB_PARAMS.items():")
-    out.append(f"    print({_fmt} % (_k, _d, _r, _e))")
+    out.append(f"    print({_sc.PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
+               f"[_k, _d, _r, _e], default=repr))")
     out.append('print("' + _sc.end_marker(_sc.BLOCK_PARAMETERS) + '")')
-    out.append("# the effective value where there is one, the request otherwise")
-    out.append("_RUNTIME_INFO.update({_k: (_r if _e == '-' else _e)")
-    out.append("                      for _k, (_d, _r, _e) in _MB_PARAMS.items()})")
     return out
+
+
+def _emit_runtime_from_parameters() -> List[str]:
+    """The optimization deck's runtime header from the record above -- the
+    effective value where there is one, the request otherwise.  Apart from
+    the record so a deck can print the record without it: the vibration
+    deck's `_RUNTIME_INFO` rides into its spectrum file, which must not become
+    a second home for every parameter."""
+    return ["# the effective value where there is one, the request otherwise",
+            "_RUNTIME_INFO.update({_k: (_r if _e is None else _e)",
+            "                      for _k, (_d, _r, _e) in _MB_PARAMS.items()})"]
 
 
 def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
@@ -1532,7 +1538,7 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
     importable** (measured 2026-09-22: not installed in that env; the
     source tree is only on ``sys.path`` when the cwd happens to be the
     repo).  So the deck cannot call :class:`StructureCodec`, the same
-    constraint that makes ``mb_monitor.py`` ship as a stdlib-only copy.
+    constraint that makes the monitor ship as a stdlib-only copy.
     Serialising a pair is ~15 lines, so it is spliced here beside the deck's
     other travelling helpers rather than added to ``MONITOR_COMPANIONS`` --
     that list is staged in two places, and the one time they diverged

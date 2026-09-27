@@ -120,24 +120,10 @@ def machine_census(points) -> List[Tuple[str, int]]:
     return [(brief, n) for _, (n, brief) in sorted(kinds.items())]
 
 
-#: The wrapper's own measurement of the NODE it landed on, logged before it
-#: launches: ``molbuilder: detected phys_cores=48, n_sockets=2,
-#: cores_per_socket=24``.  `lscpu -p=Core,Socket` ignores the affinity mask
-#: (verified), so these are the node's PHYSICAL cores, not the allocation's.
-_WRAP_NODE = re.compile(
-    r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
-    r"cores_per_socket=(\d+)")
-
-# What the run ACTUALLY used, printed by SIESTA itself and by the wrapper.
-# Formats verified against real frozen output in
-# tests/watch/fixtures/siesta_frozen/ and against the writers in SIESTA's
-# Src/runinfo_m.F90:60, Src/initparallel.F:256 and Src/diag_option.F90:385ff.
-#: The wrapper's own record of the launch it resolved (``runwrap.py``'s
-#: ``_log INFO "ranks / omp     : $_mpi_np ranks x $_omp_threads OMP threads"``).
-#: The thread count exists NOWHERE in SIESTA's output, so this is its only
-#: witness.
-_WRAP_RANKS_OMP = re.compile(
-    r"ranks\s*/\s*omp\s*:\s*(\d+)\s+ranks\s+x\s+(\d+)\s+OMP threads")
+# What the run ACTUALLY used, printed by SIESTA itself (read through
+# `parse/engines/siesta_grammar.py`) and by the wrapper (read through
+# `runwrap.read_wrapper_log`, beside the lines it writes -- two private
+# patterns stood here until 2026-09-26).
 
 
 def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
@@ -188,29 +174,34 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
     """
     eff: Dict = {}
 
-    node = _WRAP_NODE.search(wrapper_log or "")
-    if node:
-        eff["node_phys_cores"] = int(node.group(1))
-        eff["node_sockets"] = int(node.group(2))
-        eff["node_cores_per_socket"] = int(node.group(3))
+    from molbuilder.runwrap import read_wrapper_log
+    sections = read_wrapper_log(wrapper_log or "")
+    wrap = sections[0] if sections else {}
+    for key in ("node_phys_cores", "node_sockets", "node_cores_per_socket"):
+        if key in wrap:
+            eff[key] = wrap[key]
 
-    # SIESTA's own launch line, through the family's one reader of it
-    # (`parse/engines/siesta_grammar.py`; serial mode is one rank).
-    from molbuilder.parse.engines.siesta_grammar import mpi_ranks
-    ranks = mpi_ranks(out_text)
-    if ranks is not None:
-        eff["mpi_np"] = ranks
-    m = _WRAP_RANKS_OMP.search(wrapper_log)
-    if m:
-        # Only the thread count is taken from the wrapper.  Its rank
-        # count (group 1) is deliberately ignored -- see the docstring.
-        eff["omp_threads"] = int(m.group(2))
+    # SIESTA's own launch and solver lines, through the family's one reader
+    # of each (`parse/engines/siesta_grammar.py`: serial mode is one rank;
+    # the block size is the orbital distribution's, `Src/initparallel.F`).
+    from molbuilder.parse.engines import siesta_grammar as _G
+    launch: Dict = {}
+    solver: Dict = {}
+    for line in (out_text or "").splitlines():
+        _G.read_launch_line(line, launch) or _G.read_diag_line(line, solver)
+    if "n_mpi_processes" in launch:
+        eff["mpi_np"] = launch["n_mpi_processes"]
+    if "threads" in wrap:
+        # Only the thread count is taken from the wrapper.  Its rank count is
+        # deliberately ignored -- see the docstring.
+        eff["omp_threads"] = wrap["threads"]
 
-    # One reader of SIESTA's `diag:` lines: `parse/engines/_diag.py`.
-    # These were three private regexes here, and `elpa_gpu` collided with
-    # the parser's key of the same name for a different fact.
-    from molbuilder.parse.engines._diag import ran_facts
-    eff.update(ran_facts(out_text))
+    # The bench's own names for them (`bench-result@1`).
+    for ours, key, facts in (("blocksize", "blocksize", launch),
+                             ("diag_algorithm", "algorithm", solver),
+                             ("elpa_gpu", "elpa_gpu", solver)):
+        if key in facts:
+            eff[ours] = facts[key]
     return eff
 
 

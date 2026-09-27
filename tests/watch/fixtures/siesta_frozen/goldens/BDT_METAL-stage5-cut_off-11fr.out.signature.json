@@ -1,5 +1,5 @@
 {
-  "error_message": "#     propor: ERROR: IMAX = 0",
+  "error_message": null,
   "frame_count": 11,
   "frames": [
     {
@@ -115,7 +115,7 @@
   ],
   "lattice_sum": 123.15918,
   "parse_warning_count": 0,
-  "run_state": "stopped",
+  "run_state": "running",
   "runtime_info": {
     "convergence_targets": {
       "dm_tolerance": 1e-05,
@@ -129,6 +129,34 @@
     "initial_etot": -259679.119833,
     "n_mpi_processes": 20,
     "run_start_local": "2026-05-15T08:29:28",
+    "scf_criteria": {
+      "periodic": {
+        "EDM": {
+          "required": false,
+          "tolerance": 0.001,
+          "unit": "eV"
+        },
+        "Eharris": {
+          "required": false,
+          "tolerance": 0.0001,
+          "unit": "eV"
+        },
+        "FreeEng": {
+          "required": false,
+          "tolerance": 1e-05,
+          "unit": "eV"
+        },
+        "dDmax": {
+          "required": true,
+          "tolerance": 1e-05
+        },
+        "dHmax": {
+          "required": true,
+          "tolerance": 0.001,
+          "unit": "eV"
+        }
+      }
+    },
     "scf_phases": {
       "periodic": {
         "converged": true,
@@ -146,6 +174,12 @@
         "MPI"
       ],
       "version": "5.0.0-beta1-8-g9df98085f"
+    },
+    "siesta_diag": {
+      "algorithm": "D&C",
+      "diag_blocksize": 8,
+      "distribution": "4 x 5",
+      "parallel_over_k": "F"
     }
   },
   "scf_converged": true,

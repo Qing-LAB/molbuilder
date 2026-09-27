@@ -314,7 +314,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // PERSON should run them in order.  Neither
                                       // kind makes one job wait for another.
 
-  "shared": ["C.psml", "H.psml", "S.psml", "Au.psml", "mb_monitor.py"],
+  "shared": ["C.psml", "H.psml", "S.psml", "Au.psml"],
                                       // stored ONCE in the bundle root and
                                       // symlinked into every job's folder
 
@@ -411,7 +411,6 @@ bdt_au-bundle/                       ← this is the CALCULATION directory
 ├── bdt_au_01_coarse.fdf             the two decks, each carrying its token
 ├── bdt_au_02_tight.fdf
 ├── C.psml  H.psml  S.psml  Au.psml  the shared package
-├── mb_monitor.py
 ├── bdt_au_01_coarse.run.sh .sbatch  wrappers, rendered once per distinct deck
 ├── bdt_au_02_tight.run.sh  .sbatch
 ├── STAGE-PLAN.md                    a human-readable review of the jobs
@@ -491,7 +490,7 @@ A complete 2-stage ladder `job-set.json`:
 {
   "schema": "molbuilder/job-set@1",
   "name": "bdt", "engine": "siesta", "kind": "ladder",
-  "shared": ["Au.psml", "S.psml", "C.psml", "H.psml", "mb_monitor.py"],
+  "shared": ["Au.psml", "S.psml", "C.psml", "H.psml"],
   "jobs": [
     { "name": "stage1", "script": "bdt_01_stage1.fdf",
       "resources": { "domain": "htc", "time": "0-04:00:00" },
@@ -769,7 +768,7 @@ bundle/
 ├── bdt_01_coarse.fdf   bdt_02_tight.fdf  ← the decks, each carrying its token
 ├── bdt_01_coarse.run.sh   .sbatch        ← wrappers, written once
 ├── bdt_02_tight.run.sh    .sbatch
-├── Au.psml  S.psml  …  mb_monitor.py     ← the shared package (stored once)
+├── Au.psml  S.psml  …                   ← the shared package (stored once)
 │
 ├── 01_coarse/
 │   ├── bdt_01_coarse.fdf → ../bdt_01_coarse.fdf
@@ -1115,10 +1114,12 @@ the run viewer (the web run view, or `molbuilder watch`) at the directory the
 engine is running in — `<NN>_<stage>/run-<n>/` in the hierarchy, the calculation
 directory itself when flat. It resolves and streams the trajectory exactly as for
 a stand-alone job ([`running-a-job.md § 4`](?doc=execution/running-a-job.md)).
-Every job also carries **`mb_monitor.py`** (one of the `shared` files, symlinked
-into each folder): its wrapper launches it in the background to sample GPU/CPU
-utilisation into a `.util.csv` while the stage runs, so an under-utilised or
-stalled stage is visible without waiting for it to finish.
+Every job also carries **`mb_monitor.pyz`** — the monitor with the framework
+readers it reads the run through, one file, written beside the wrapper and
+brought into every attempt (`run-reports.md` § 2.3): its wrapper launches it in
+the background to report the run's state and sample CPU/GPU utilisation into a
+`.util.csv` while the stage runs, so an under-utilised or stalled stage is
+visible without waiting for it to finish.
 
 > **What you cannot do is checkpoint one stage on its own**, and that is a
 > contract rather than a missing feature. **The history is rooted at the

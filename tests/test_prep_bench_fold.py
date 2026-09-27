@@ -2261,7 +2261,6 @@ def test_summarize_writes_the_report_in_EXECUTIONS_vocabulary(calc):
     import json as _json
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.task import REPORT_ITEMS  # noqa: F401  (import health)
 
     _finished_trial_and_verdict(calc)
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",

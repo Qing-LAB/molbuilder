@@ -290,12 +290,14 @@ def test_a_file_that_carries_no_stage_never_grows_one(art):
     # The DECK each engine runs, and the file each writes its stdout to.
     # `.out` is SIESTA's: PySCF under the wrapper writes `.pyscf.log` and
     # never `.out`, so a PySCF rung's card promised a file no run produces
-    # (`model/parse.md` § 5.5).  So are the monitor's and the timing tee's
-    # files: the wrapper starts them for SIESTA only (`runwrap.py`).
+    # (`model/parse.md` § 5.5).  So is the timing tee's file: it reads the
+    # SIESTA family's rows.  The monitor's two are EVERY engine's since
+    # 2026-09-26 -- the wrapper starts it from its shared part
+    # (`run-reports.md` § 2.3).
     ("siesta", (".py", ".pyscf.log"),
      (".fdf", "-run0.out", "-run0.monitor.log", "-run0.scf-timing.log")),
-    ("pyscf", (".fdf", "-run0.out", "-run0.monitor.log", "-run0.util.csv",
-               "-run0.scf-timing.log"), (".py", "-run0.pyscf.log")),
+    ("pyscf", (".fdf", "-run0.out", "-run0.scf-timing.log"),
+     (".py", "-run0.pyscf.log", "-run0.monitor.log", "-run0.util.csv")),
 ])
 def test_the_manifest_tells_a_run_about_its_own_engine_only(
         engine, absent, present):

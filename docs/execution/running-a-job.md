@@ -104,7 +104,7 @@ What follows, and is checked in the rendered script:
 | the scheduler kills with `SIGTERM` at the time limit | `trap … TERM INT` → clean up, exit 143 |
 | the engine's exit code must be inspectable | the engine is **run, not `exec`'d**; `set +e` around it, `${PIPESTATUS[0]}` captured |
 | a run must be watchable while it runs | stdout is **teed**, never swallowed |
-| the engine env has no molbuilder in it | the monitor travels as a copied `mb_monitor.py`, not `python -m molbuilder monitor` |
+| the engine env has no molbuilder in it | the monitor travels as one copied file, `mb_monitor.pyz`, not `python -m molbuilder monitor` — holding it and the framework modules it reads the run through, each a copy of its source (`runwrap.MONITOR_BUNDLE`, `run-reports.md` § 2.3) |
 
 > **`set -e` stays ON across the preamble, and that is deliberate.**
 > A failed `module load` here means the job is about to run in the wrong
@@ -218,7 +218,7 @@ place for logic:
   > conclusion is unchanged and rests on the bullet above.*
 
   Any logic written to run there is either shell, or a shipped
-  stdlib-only file, or broken. `mb_monitor.py` is the one deliberate exception —
+  stdlib-only file, or broken. The monitor (`mb_monitor.pyz`) is the one deliberate exception —
   it is a *subprocess of the running job*, watching output from inside, so it has
   nowhere else to live. That is why it is stdlib-only, and it is not a pattern to
   copy for anything that could run on the host instead.
@@ -521,12 +521,14 @@ Unrecognised arguments are **rejected** (the wrapper exits 1) — only the flags
 above are accepted, for either engine. The `.sbatch` outer file forwards
 `"$@"`, so `sbatch my-job.sbatch --cold` still reaches the inner wrapper.
 
-### 3.5 SIESTA auto-retry on non-convergence (opt-in)
+### 3.5 SIESTA auto-retry on non-convergence
 
-A SIESTA wrapper installed **with a retry budget** (the Structure-optimization
-tab's *retries* field → `/api/run/install-wrapper` `continue_retries`, capped
-1–5) re-runs itself with `--continue` — the same warm restart you would type
-by hand — when the run failed in one of the two *retriable* ways:
+A SIESTA wrapper carries a **warm-retry budget** — the template's
+`continue_retries`, the *Warm-retry budget* setting (0–5, default 1; `0` runs
+once whatever happens, which a benchmark trial must), riding `Resources` to the
+wrapper (`job-contracts.md` § 6.2) — and re-runs itself with `--continue` — the
+same warm restart you would type by hand — when the run failed in one of the
+two *retriable* ways:
 
 - **SCF didn't converge.** With `SCF.MustConverge` (SIESTA's default; the
   generated `.fdf` doesn't override it) SIESTA *aborts with a non-zero exit*
@@ -537,6 +539,14 @@ by hand — when the run failed in one of the two *retriable* ways:
   `outcoor: Final (unrelaxed) atomic coordinates` (a converged relax prints
   `Relaxed…`); the retry resumes from the banked `.XV`/`.DM`/`.CG` with a
   fresh step budget.
+
+Which of the two happened is **asked, not grepped**: `_mb_ending stopped-by
+scf_not_conv` — did SIESTA state the SCF's failure fatal, `(required)`, and
+stop on it — and `_mb_ending relaxation-capped`, answered by `_run_ending`, in `mb_monitor.pyz`
+beside the job from the SIESTA family's own table (`run-reports.md` § 2.3). A
+tolerated non-convergence followed by some other crash is that crash, and is
+not retried. With no python beside the job the questions cannot be answered,
+the log says so, and nothing is retried.
 
 Each retry advances the run index (`-run1`, `-run2`, …) exactly like a manual
 `--continue`, re-runs with the **same** `-np`/`--omp` you launched with, and
@@ -561,10 +571,14 @@ behaves exactly as before — `--continue` stays the manual path.
   stderr to `<basename>.runwrap-<timestamp>.log`, so the full captured session
   (banner, launch line, engine output, hints) is always on disk even if you
   did not redirect it yourself.
-- **A backgrounded monitor** (`mb_monitor.py`, shipped next to **`.fdf`** jobs)
-  samples utilisation into `<basename>-runN.util.csv` and
+- **A backgrounded monitor** (`mb_monitor.pyz`, one file shipped next to **every** deck,
+  SIESTA's and PySCF's) samples utilisation into `<basename>-runN.util.csv` and
   `<basename>-runN.monitor.log`
-  every 10 s at `nice -n 19`, and is stopped when the wrapper exits.
+  every 10 s at `nice -n 19`, and is stopped when the wrapper exits. It reads
+  the run through the framework's own readers, shipped beside it — `runfiles`
+  for the names, the output's one parser (its reading pass, fed the output as
+  it grows) for where the run is, the timing instrument for its rate,
+  `run_status` for how it ended (`run-reports.md` § 2.3).
   (Disable with `MB_MONITOR=0`; override the interval with
   `MB_MONITOR_INTERVAL`.) A standalone `molbuilder monitor` CLI does the same
   for a job you point it at.
@@ -582,7 +596,10 @@ behaves exactly as before — `--continue` stays the manual path.
   > **What the percentages are a fraction OF: your allocation, not the node.**
   > Since 2026-08-26 the monitor reads its own job's cgroup, and divides by the
   > cores the job actually holds. Ask for 4 cores on a 128-core node and use
-  > them fully, and it reads ~100% — not 3%.
+  > them fully, and it reads ~100% — not 3%. A run started directly has no
+  > cgroup of its own, so there the job is its process tree and the cores are
+  > the ones it was launched on (since 2026-09-26, `run-reports.md` § 2.1a);
+  > and a GPU is sampled only for a run that uses one.
   >
   > It matters twice. Node-wide, a job cannot move the reading past its own
   > share, so a benchmark trial at 32.2% looked idle when it was at ~86% of
@@ -622,8 +639,10 @@ behaves exactly as before — `--continue` stays the manual path.
   one phase at a time ([`model/parse.md`](?doc=model/parse.md) § 5c); the
   wrapper's own total/N was a second answer, and across a device's two phases
   neither's, until 2026-09-26.
-- **Failure hints.** On a non-zero SIESTA exit that contains `propor: ERROR`,
-  the wrapper prints a three-cause hint in priority order:
+- **Failure hints.** On a non-zero SIESTA exit the wrapper prints how the
+  run ended as molbuilder reads it (`_mb_ending`, `run-reports.md` § 2.3) and
+  where the output and its own log are; when the cause was `propor`'s abort,
+  a three-cause hint in priority order:
   1. a **defective or XC-mismatched pseudopotential** — check this *first* with
      `molbuilder pseudo check`;
   2. too many **MPI ranks** for the system — retry with a lower `-np`;
@@ -640,11 +659,21 @@ is doing** is a separate, much smaller question, and
 `parse.dirs.job.run_status(run_dir)` is its one answer:
 
 ```
-{"state": running | stale | finished | failed,
+{"state": pending | queued | running | stale | finished | failed,
  "detail": "job_completed" | "no file growth in 92s" | ...,
  "last_change_at": ISO-8601 | null,
  "active_source": "<the file that answered>" | null}
 ```
+
+**Before anything is written, the launch record answers** (`project-layout.md`
+§ 1.6: *"Has this been launched?"* has no honest answer from the directory
+alone). A caller holding the attempt's `run.json` passes it
+(`run_status(d, launch=read_run_launch(d))` — the Results tab's directory door
+and the JobSet status layer both do): none is `pending` — *prepped, not
+launched* — and one is `queued` — *queued as job N*, or *launched, no output
+yet*. The monitor, beside a job that is plainly running, does not ask. *(Until
+2026-09-26 the JobSet layer answered these two above the door and the door
+answered the same attempt "running — no result file yet".)*
 
 **The status is the parsers' own answer.** Every engine parser already
 reports how its file ended — `run_state`, [`parse.md` § 2b](?doc=model/parse.md) —

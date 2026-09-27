@@ -96,7 +96,7 @@ class TestRepeatedKeywords:
 class TestTheFermiLevelIsKept:
     """SIESTA prints `Ef(eV)` in its SCF table, and the parser dropped it.
 
-    `_SCF_COLUMN_KEYS` mapped `ef` to ``None`` -- *"valid bookkeeping column
+    `SCF_COLUMN_KEYS` mapped `ef` to ``None`` -- *"valid bookkeeping column
     we don't extract"* -- since the parser was written.  For an ordinary run
     that was right: nothing plotted it.
 
@@ -111,35 +111,35 @@ class TestTheFermiLevelIsKept:
     """
 
     def test_the_closed_shell_column_lands_in_the_cycle(self):
-        from molbuilder.parse.engines.siesta import (
-            _build_cycle_dict_from_header, _parse_scf_header)
-        head = _parse_scf_header(
+        from molbuilder.parse.engines.siesta_grammar import (
+            cycle_from_header, scf_header)
+        head = scf_header(
             "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
             "dDmax     Ef(eV) dHmax(eV)")
-        cyc = _build_cycle_dict_from_header(
+        cyc = cycle_from_header(
             3, [-1.0, -2.0, -3.0, 0.01, -4.83, 0.02], head)
         assert cyc["ef"] == -4.83, cyc
 
     def test_the_spin_polarised_columns_land_too(self):
         """A collinear run prints Ef_up and Ef_dn instead of one Ef."""
-        from molbuilder.parse.engines.siesta import (
-            _build_cycle_dict_from_header, _parse_scf_header)
-        head = _parse_scf_header(
+        from molbuilder.parse.engines.siesta_grammar import (
+            cycle_from_header, scf_header)
+        head = scf_header(
             "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
             "dDmax     Ef_up Ef_dn(eV) dHmax(eV)")
-        cyc = _build_cycle_dict_from_header(
+        cyc = cycle_from_header(
             2, [-1.0, -2.0, -3.0, 0.01, -4.8, -4.9, 0.02], head)
         assert cyc["ef_up"] == -4.8 and cyc["ef_dn"] == -4.9, cyc
 
     def test_the_energy_still_lands_where_it_did(self):
         """THE DISCRIMINATING HALF: keeping a column must not move another.
         `energy` is what every plot reads."""
-        from molbuilder.parse.engines.siesta import (
-            _build_cycle_dict_from_header, _parse_scf_header)
-        head = _parse_scf_header(
+        from molbuilder.parse.engines.siesta_grammar import (
+            cycle_from_header, scf_header)
+        head = scf_header(
             "   iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     "
             "dDmax     Ef(eV) dHmax(eV)")
-        cyc = _build_cycle_dict_from_header(
+        cyc = cycle_from_header(
             3, [-1.0, -2.0, -3.0, 0.01, -4.83, 0.02], head)
         assert cyc["energy"] == -2.0 and cyc["cycle"] == 3
 

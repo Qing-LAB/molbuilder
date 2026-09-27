@@ -717,7 +717,7 @@ exists. **Never on the compute node**, which would need git there (I4).
 > heard of. Two mechanisms for keeping a state is one too many, and the one
 > that keeps it is this one.
 
-**Something already watches the run, and it is not this.** `mb_monitor.py` sits
+**Something already watches the run, and it is not this.** The monitor (`mb_monitor.pyz`) sits
 beside the job, follows the launcher's PID so it knows when the run really ended,
 reads the outputs, and can notify you — webhook, email, whatever you wire in. So
 nobody has to be at the cluster at 3am. **What it must not do is act.** It

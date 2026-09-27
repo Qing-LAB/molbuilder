@@ -186,11 +186,9 @@ def api_results_dir():
 
     from flask import jsonify, request
 
-    from molbuilder.parse import detect
-    from molbuilder.parse.dirs import (labels_in, openable_in, read_back,
-                                       run_status)
-    from molbuilder.parse.contract import engine_of
-    from molbuilder.parse.errors import ParseError
+    from molbuilder.parse import detect, parse_dir
+    from molbuilder.parse.dirs import labels_in, read_back
+    from molbuilder.parse.errors import ParseError, UnknownFormatError
     from molbuilder.runfiles import role_of
     from .files import _PickerError, _resolve_within_roots
 
@@ -206,107 +204,67 @@ def api_results_dir():
         return jsonify({"ok": False,
                         "error": f"{raw}: not a directory"}), 404
 
-    # WHAT IS THIS DIRECTORY -- asked first, because it decides whether the
-    # other questions apply at all (`model/parse.md` § 5.5,
-    # `project-layout.md` § 1.4a).  A container holds runs; it is not one, and
-    # asking `run_status` about one is how a `pseudos/` folder and a finished
-    # stage both came back *running*.
+    # THE DOOR ANSWERS the run's questions -- engine, the file to open, the
+    # run state and the record (`model/parse.md` § 5.0) -- and it owns the
+    # rules for WHAT THIS DIRECTORY IS: a container has no run state but may
+    # have a product (a transport ladder's I-V record at its root); a folder
+    # nobody described is read alone, with a run state only where its product
+    # was found.  They lived in this route until W35 P2 (2026-09-26), where
+    # nothing below the web layer could apply them.  A folder the door does
+    # not claim -- empty, or holding no file a run writes -- has no run to
+    # describe, and is still listed below.
+    try:
+        got = parse_dir(directory)
+    except UnknownFormatError as exc:
+        got, attempts = None, [str(exc)]
+    else:
+        attempts = list(got.attempts)
+
     from molbuilder import calcdirs
     place = calcdirs.container_or_run(directory)
     root = calcdirs.root_of(directory)
-
-    # TWO QUESTIONS, AND A CONTAINER ANSWERS THEM DIFFERENTLY.  *Does it
-    # have a run state?* -- no: a container is not a run, and inventing one
-    # is what made a `pseudos/` folder report *running*.  *Does it have a
-    # PRODUCT?* -- maybe: a container may also be a CALCULATION, and a
-    # calculation's own result is not any one rung's.
-    #
-    # Those were conflated until 2026-09-19: the container branch skipped
-    # `openable_in` too, so a finished five-rung transport ladder offered
-    # its five `.out` files and never its I-V curve -- which
-    # `jobset summarize run` had written at the calculation root as
-    # `<label>.transport.json`, the FIRST entry in `result_roles("transport")`.
-    # The door had the right answer the whole time and was not asked.
-    #
-    # This is not in tension with § 1.0's *"a product has ONE home, and it
-    # is the run"*: that box scopes itself to what the ENGINE produces, and
-    # a `summarize`-written aggregate spans rungs (and, once a bias sweep
-    # exists, several of them), so it belongs to the calculation.
-    #
-    # Measured over the regenerated tree before making the change: asking
-    # the door at all twelve containers returns nothing at eleven of them --
-    # stage containers, `pseudos/`, roots with no aggregate -- and the
-    # transport record at the twelfth.  It surfaces exactly what was hidden.
-    opened, attempts = openable_in(str(directory))
     ladder = None
-    if place == calcdirs.CONTAINER:
-        st = None
-        attempts.append(
-            "this directory is a container, not a run -- it has no run "
-            "state; its runs are the directories below it "
-            "(project-layout.md § 1.4)")
-        # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4;
-        # `plan.md` § 5c.3 c-d): N rungs, each a run directory below it.
-        # THE RUNGS ARE THE DESCRIPTION'S (`task.stages`, `stages.md` § 6.7:
-        # the ladder is read, never inferred); each one's state is
-        # `jobset_status`'s reading -- the one ladder door the CLI's `status`
-        # verb reads, CONSUMED here, never copied.  A described rung the
-        # job-set does not hold yet is NOT_PREPPED in the reader's own
-        # words: a transport ladder is prepped rung by rung, so the job-set
-        # grows while the description already names all five (measured
-        # 2026-09-24: a root with the seed prepped answered a one-rung
-        # ladder).  `null` for a container that is not the root.
-        if root is not None and Path(root).resolve() == directory.resolve():
-            from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
-            from molbuilder.jobset.model import JobSet
-            from molbuilder.jobset.runstatus import NOT_PREPPED, jobset_status
-            from molbuilder.task import FILENAME as TASK_FILENAME, read_task
-            try:
-                _described = [s.name for s in
-                              read_task(directory / TASK_FILENAME).stages]
-                jpath = directory / JOBSET_FILENAME
-                _known = ({s.name: s
-                           for s in jobset_status(JobSet.load(jpath),
-                                                  directory).stages}
-                          if jpath.is_file() else {})
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                attempts.append(f"the ladder could not be read: {exc}")
-            else:
-                rows = []
-                for name in _described:
-                    s = _known.get(name)
-                    rows.append(
-                        {"name": name, "seq": s.seq, "state": s.state,
-                         "detail": s.detail, "dir": s.dir,
-                         "attempt": s.attempt} if s is not None else
-                        {"name": name, "seq": None, "state": NOT_PREPPED[0],
-                         "detail": NOT_PREPPED[1], "dir": None,
-                         "attempt": None})
-                _open = [r["name"] for r in rows if r["state"] != "finished"]
-                ladder = {"complete": not _open,
-                          "first_incomplete": _open[0] if _open else None,
-                          "stages": rows}
-    else:
-        # AND A DIRECTORY THAT SAYS NOTHING IS NOT ASKED TO INVENT ONE.
-        # `run_status`'s four states are running/stale/finished/failed --
-        # there is no *there is no run here*, so an absence comes back
-        # `running, no result file yet`.  That is the same defect the
-        # container branch above fixes, arriving by the other door:
-        # measured 2026-09-19 on the regenerated tree, TEN of nineteen
-        # directories reported *running* -- `scan/`, `structure/`,
-        # `transport/` and the project root among them, none of which has
-        # ever held a run.
-        #
-        # § 1.4a: absence NARROWS the answer.  An unmarked directory may
-        # still be read alone -- its files listed, one of them opened --
-        # and `openable_in` above does exactly that.  What it may not do is
-        # assert a run state with nothing to ground it on, so the status is
-        # claimed only where there is: the record says RUN, or the door
-        # found this directory's product.  A molbuilder-made run is always
-        # stamped, so it keeps its full status from the first branch even
-        # before it writes anything.
-        st = (run_status(directory)
-              if (place == calcdirs.RUN or opened) else None)
+    # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4; `plan.md`
+    # § 5c.3 c-d): N rungs, each a run directory below it.  THE RUNGS ARE THE
+    # DESCRIPTION'S (`task.stages`, `stages.md` § 6.7: the ladder is read,
+    # never inferred); each one's state is `jobset_status`'s reading -- the
+    # one ladder door the CLI's `status` verb reads, CONSUMED here, never
+    # copied.  A described rung the job-set does not hold yet is NOT_PREPPED
+    # in the reader's own words: a transport ladder is prepped rung by rung,
+    # so the job-set grows while the description already names all five
+    # (measured 2026-09-24: a root with the seed prepped answered a one-rung
+    # ladder).  `null` for a container that is not the root.
+    if (place == calcdirs.CONTAINER and root is not None
+            and Path(root).resolve() == directory.resolve()):
+        from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
+        from molbuilder.jobset.model import JobSet
+        from molbuilder.jobset.runstatus import NOT_PREPPED, jobset_status
+        from molbuilder.task import FILENAME as TASK_FILENAME, read_task
+        try:
+            _described = [s.name for s in
+                          read_task(directory / TASK_FILENAME).stages]
+            jpath = directory / JOBSET_FILENAME
+            _known = ({s.name: s
+                       for s in jobset_status(JobSet.load(jpath),
+                                              directory).stages}
+                      if jpath.is_file() else {})
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            attempts.append(f"the ladder could not be read: {exc}")
+        else:
+            rows = []
+            for name in _described:
+                s = _known.get(name)
+                rows.append(
+                    {"name": name, "seq": s.seq, "state": s.state,
+                     "detail": s.detail, "dir": s.dir,
+                     "attempt": s.attempt} if s is not None else
+                    {"name": name, "seq": None, "state": NOT_PREPPED[0],
+                     "detail": NOT_PREPPED[1], "dir": None,
+                     "attempt": None})
+            _open = [r["name"] for r in rows if r["state"] != "finished"]
+            ladder = {"complete": not _open,
+                      "first_incomplete": _open[0] if _open else None,
+                      "stages": rows}
 
     # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
     # WITHOUT one and therefore cannot answer an underscore role at all --
@@ -352,8 +310,9 @@ def api_results_dir():
     return jsonify({
         "ok":       True,
         "run_dir":  str(directory),
-        "engine":   engine_of(str(directory)),
-        "openable": Path(opened).name if opened else None,
+        "engine":   got.engine if got is not None else "unknown",
+        "openable": (Path(got.openable).name
+                     if got is not None and got.openable else None),
         "attempts": attempts,
         # WHAT THIS DIRECTORY IS, and what it belongs to -- `null` when it
         # does not say, which the page shows as *read alone* rather than
@@ -361,13 +320,13 @@ def api_results_dir():
         # directory).
         "place":    {"role": place,
                      "calculation": str(root) if root else None},
-        # `null` for a container: it has no run state, and inventing one is
-        # the defect this route now refuses to repeat.
-        "status":   None if st is None else
-                    {"state": st.state, "detail": st.detail,
-                     "active_source": st.active_source,
-                     "last_change_at": st.last_change_at,
-                     "concluded": st.concluded},
+        # `null` where there is no run: a container, or a folder whose run
+        # the door could not ground (`RunDirResult`).
+        "status":   got.status if got is not None else None,
+        # WHAT RAN, WITH WHAT, AND HOW IT WENT (`model/parse.md` § 5d) --
+        # the Run panel's one source (`web/results.md` § 3a); `null` where
+        # `status` is.
+        "record":   got.record if got is not None else None,
         # THE LADDER, for a calculation root (§ 2.4); `null` elsewhere.
         "ladder":   ladder,
         "files":    files,

@@ -447,6 +447,11 @@ already knows the shape of.
 
 ```
 molbuilder/parse/
+│  *The `*_reader.py` reading passes with their `*_grammar.py` tables and
+│  `_section_rules.py`, the `*_rows.py` halves, `_run_ending.py` and
+│  `dirs/job.py` are stdlib-only and TRAVEL beside every job as the monitor's
+│  readers (`execution/run-reports.md` § 2.3); the registered parsers build
+│  their arrays from them.*
 ├── base.py        # the 2 ABCs                (FileParser / DirParser)
 ├── types.py       # ParseResult + 6 subclasses + ParseWarning
 ├── registry.py    # _REGISTRY, detect/parse/parse_dir/register
@@ -459,12 +464,14 @@ molbuilder/parse/
 │
 ├── engines/       # engine .out / .log → TrajectoryResult (FileParsers)
 │   ├── siesta.py · pyscf.py · molwatch.py
+│   ├── siesta_reader.py       # the SIESTA parser's reading pass — fed line by line, § 5d.5
+│   ├── molwatch_reader.py     # the molwatch parser's reading pass
 │   ├── siesta_mdnc.py         # <label>.MD.nc (netCDF) — sibling upgrade, § 5a
 │   ├── siesta_fdflog.py       # fdf.<stamp>.log → EngineParamsResult, § 5d.3
 │   ├── siesta_grammar.py      # the SIESTA family's output lines — one table, § 5d.5
+│   ├── molwatch_grammar.py    # the molwatch log's lines — header, block, footer
 │   ├── tbtrans.py             # TBtrans's .out and transmission files (not registered)
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role, § 2b
-│   ├── _diag.py               # the solver lines (bench/result.py reads them)
 │   ├── _helpers.py            # Trajectory → TrajectoryResult adapters
 │   └── _section_rules.py · _sidecar.py   # shared extraction helpers
 │
@@ -475,6 +482,7 @@ molbuilder/parse/
 │
 ├── instruments/   # what the WRAPPER measured → InstrumentResult (FileParsers)
 │   ├── scf_timing.py · monitor.py · util_csv.py
+│   ├── scf_timing_rows.py     # the timing log's rows → seconds per iteration, by phase
 │   ├── utilisation.py         # the § 5a resolver: monitor's means over the csv's
 │   └── _helpers.py
 │
@@ -872,8 +880,12 @@ unknown, or which holds two engines' outputs, needs no special case — each
 file is read by its own reader and § 5.1 picks the speaker.
 
 **A format molbuilder GENERATES does not get a sniffed reader.** Its end line
-is a string we print, so the **emitter declares the constant and the reader
-imports it** — the `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py:50`).
+is a string we print, so the **emitter's package declares the constant and the
+reader imports it** — the `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py:50`).
+The PySCF decks' two end lines live in `pyscf/end_lines.py`, which both
+emitters print from: stdlib, so the reader travels with the monitor
+(`execution/run-reports.md` § 2.3); the molwatch log's footer is its format's,
+in `molwatch_grammar`.
 PySCF's failure shapes are its own (`SystemExit` at `pyscf/input.py:378`, a
 traceback); SIESTA's `FATAL_MARKERS` are **not** shared — measured over 135
 real output files, its five OOM markers fire 0 times and the three that do
@@ -1321,7 +1333,7 @@ record
 ├── computation
 │   ├── engine    program · version · build{…} · binary · python     the .out header (read_build_line); PySCF: its own
 │   │                                                                 <job>.log; the binary: the wrapper banner
-│   ├── solver    algorithm · elpa_gpu · blocksize · distribution    the .out's diag: lines (print_diag)
+│   ├── solver    algorithm · elpa_gpu · diag_blocksize · distribution  the .out's diag: lines (print_diag)
 │   ├── host      hostname · user · cwd · conda_env · machine{…}     the wrapper log's header; the monitor's [MACHINE]
 │   │             phys_cores                                          the wrapper's "detected phys_cores="
 │   ├── launch    mode · command · job_id · launched_at               run.json
@@ -1460,11 +1472,16 @@ writer) — the provenance a transport record cites, never a newest-file guess.
 ### 5d.5 The grammar — one table per engine family, every phase
 
 **One table of SIESTA-family output lines** — SIESTA, TranSIESTA, TBtrans —
-is the grammar: `parse/engines/siesta_grammar.py`. The parser reads it, and
-**the wrapper's SCF-timing tee and the monitor get their patterns rendered
-from it**: neither can import molbuilder, and molbuilder writes both. Three
-regexes for one line is how the NEGF loop became invisible to all three at
-once. The table also holds **the build header and the launch lines SIESTA and
+is the grammar: `parse/engines/siesta_grammar.py`. The parser reads it — the
+parser's reading pass, `siesta_reader.SiestaReader`, which the monitor feeds
+the output as it grows, and both travel beside the job
+(`execution/run-reports.md` § 2.3) — and **the wrapper's SCF-timing tee gets
+its pattern rendered from it**, being shell. Three regexes for one line is how
+the NEGF loop became invisible to all three at once. The table holds each
+line's ONE reader: the SCF row's values (`scf_cycle`), the forces' `Max` line,
+the `redata:` targets, and the step SIESTA begins, in its own words and with
+its own number (`STEP_BEGIN`, `Src/state_init.F`: `Begin Broyden opt. move =
+N`, `Begin FC step = N`; a single point prints neither). The table also holds **the build header and the launch lines SIESTA and
 TBtrans both print** (`Src/version-info-template.inc`, `Src/runinfo_m.F90`,
 `Src/timestamp.f90`) with their one reader each — `read_build_line`, and
 `read_launch_line` for the ranks (serial mode is one), the start and the end —

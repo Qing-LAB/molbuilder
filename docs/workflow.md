@@ -329,7 +329,7 @@ Two scripts divide the work, and the split is the design:
 | | knows | does |
 |---|---|---|
 | **the shell half** — `install-env.sh` once, every generated `.run.sh` per run | how to reach conda/mamba (the bootstrap finds it; the wrapper carries the hook line `prep` baked from this machine) | make the environment right, then hand over — activate and exec, nothing else ([`running-a-job.md § 2.2a`](?doc=execution/running-a-job.md)) |
-| **the Python half** — molbuilder before the run, the engine and `mb_monitor.py` during it | everything that computes | describe, resolve, render, arrange, watch |
+| **the Python half** — molbuilder before the run, the engine and the monitor (`mb_monitor.pyz`) during it | everything that computes | describe, resolve, render, arrange, watch |
 
 **And the spelling convention every document uses:** `molbuilder <verb>`
 means `python -m molbuilder <verb>`, run in the activated host env from the

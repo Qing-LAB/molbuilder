@@ -1191,42 +1191,48 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
 
 
 @cli.command("monitor",
-             short_help="background job-monitor + notifier hooks (PoC)")
-@click.option("--out", "out_path", required=True,
-              type=click.Path(path_type=Path),
-              help="the SIESTA .out (or -runN.out) to watch")
-@click.option("--timing", "timing_path", required=True,
-              type=click.Path(path_type=Path),
-              help="the per-run .scf-timing.log (gives the iteration COUNT)")
-@click.option("--log", "log_path", required=True,
-              type=click.Path(path_type=Path),
-              help="append status lines here (e.g. <basename>.monitor.log)")
+             short_help="background job-monitor + notifier hooks")
+@click.option("--label", required=True,
+              help="the run's label -- the stem every file begins with")
+@click.option("--stage", default=None,
+              help="the stage token (e.g. 01_coarse); omit for none")
+@click.option("--run", "run_index", type=int, default=None,
+              help="the run index (-runN) to watch")
+@click.option("--dir", "directory", default=".",
+              type=click.Path(file_okay=False, path_type=Path),
+              show_default=True, help="the directory the run is in")
 @click.option("--interval", type=click.FloatRange(min=1.0), default=10.0,
               show_default=True, help="seconds between wakes = the util "
                                       "sample rate (status lines stay "
                                       "change-gated, so it won't spam)")
-@click.option("--util", "util_path", default=None,
-              type=click.Path(path_type=Path),
+@click.option("--util/--no-util", default=False,
               help="append change-gated cpu%/mem/GPU-sm%/VRAM samples to "
-                   "this CSV (e.g. <basename>.util.csv)")
+                   "the run's .util.csv")
+@click.option("--cores", type=click.IntRange(min=1), default=None,
+              help="the cores the run was launched on (ranks x threads); "
+                   "the denominator of cpu% for a run started directly")
+@click.option("--gpu/--no-gpu", default=False,
+              help="the run uses a GPU: sample and judge it")
 @click.option("--stall-heartbeat", "stall_heartbeat_s",
               type=click.FloatRange(min=0.0), default=600.0, show_default=True,
               help="while the job makes no SCF/geometry progress, emit at "
                    "most one liveness ping this often (no per-iter timing "
                    "is printed while stalled); 0 = silence it entirely")
 @click.option("--watch-pid", type=int, default=0,
-              help="stop when this PID (the job wrapper) disappears; "
-                   "0 = run until a .out completion marker")
+              help="stop when this PID (the job wrapper) disappears")
 @click.option("--nice", "nice_level", type=int, default=19, show_default=True,
               help="self-lower OS priority by this much so the monitor "
                    "never competes with compute ranks on the same node")
-def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
-                interval: float, util_path: Optional[Path],
+def cmd_monitor(label: str, stage: Optional[str], run_index: Optional[int],
+                directory: Path, interval: float, util: bool,
+                cores: Optional[int], gpu: bool,
                 stall_heartbeat_s: float,
                 watch_pid: int, nice_level: int) -> int:
-    """Periodically parse the running job's artifacts, append a status
-    line, and fire notifier hooks -- the front end of the job-monitor /
-    notifier surface (docs/execution/job-system.md).
+    """Watch a run the way the shipped ``mb_monitor.pyz`` does: read it
+    through the framework's own readers, append a status line to its
+    ``.monitor.log``, and fire notifier hooks (`execution/run-reports.md`
+    § 2.3).  The run is named, never pointed at: every file comes from
+    `runfiles`.
 
     Lightweight by design: sleeps between wakes, does only tail-reads, and
     self-lowers its OS priority (``--nice``) so it yields to the compute
@@ -1240,11 +1246,12 @@ def cmd_monitor(out_path: Path, timing_path: Path, log_path: Path,
         os.nice(max(0, nice_level))
     except (OSError, AttributeError):
         pass
-    _mon.register_notifier(_mon.make_log_notifier(log_path))
-    _mon.run_monitor(out_path, timing_path, log_path,
-                     interval=interval, watch_pid=watch_pid,
-                     stall_heartbeat_s=stall_heartbeat_s,
-                     util_path=util_path)
+    watched = _mon.WatchedRun(label=label, stage=stage, run=run_index,
+                              directory=directory)
+    _mon.register_notifier(_mon.make_log_notifier(watched.path(".monitor.log")))
+    _mon.run_monitor(watched, interval=interval, watch_pid=watch_pid,
+                     stall_heartbeat_s=stall_heartbeat_s, util=util,
+                     cores=cores, gpu=gpu)
     return 0
 
 
@@ -1798,7 +1805,7 @@ def cmd_runtime_info(input_path, out_path, pretty):
 
     The same dict the watcher streams to the Results tab -- includes
     ``siesta_build`` (version, parallelisations, ELPA linkage, ...),
-    ``siesta_diag`` (algorithm, GPU device, ...), ``convergence_targets``,
+    ``siesta_diag`` (algorithm, ELPA GPU key, grid, ...), ``convergence_targets``,
     ``frozen_atoms``, etc.  Useful for post-processing scripts that
     want to verify what build / diagonalizer a run actually used
     without running the full live watcher.

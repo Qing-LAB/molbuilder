@@ -93,11 +93,12 @@ def test_every_run_output_role_has_a_reader_and_nothing_else_does():
         f"and is missing {sorted(set(run_output_roles()) - set(READERS))}")
 
 
-@pytest.mark.parametrize("calculation,module", [
-    ("optimization", "molbuilder.pyscf.input"),
-    ("vibration",    "molbuilder.pyscf.vibration_emitters"),
+@pytest.mark.parametrize("calculation,constant", [
+    ("optimization", "END_MARKER"),
+    ("vibration",    "SPECTRUM_END_MARKER"),
 ])
-def test_the_deck_prints_the_end_line_its_reader_looks_for(calculation, module):
+def test_the_deck_prints_the_end_line_its_reader_looks_for(calculation,
+                                                           constant):
     """The end text exists ONCE -- rendered from the same constant the reader
     imports (`model/parse.md` § 5.5: a format molbuilder GENERATES does not
     get a sniffed reader).
@@ -122,7 +123,11 @@ def test_the_deck_prints_the_end_line_its_reader_looks_for(calculation, module):
     from molbuilder.script_emit import render_deck
     from molbuilder.structure import Structure
 
-    marker = importlib.import_module(module).END_MARKER
+    # THE EMITTERS' PACKAGE declares both lines in one stdlib module, which
+    # both decks print from and which travels beside the job for the
+    # monitor's reader (`pyscf/end_lines.py`, `run-reports.md` § 2.3).
+    marker = getattr(importlib.import_module("molbuilder.pyscf.end_lines"),
+                     constant)
     struct = Structure(elements=["O", "H", "H"],
                        positions=np.array([[0.0, 0.0, 0.119],
                                            [0.0, 0.757, -0.477],

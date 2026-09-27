@@ -90,6 +90,6 @@ def test_the_line_scanners_are_deliberately_left_alone():
     A parser matching a line from a file relies on `$`'s carve-out, because
     iterating a file hands back lines that still end in `\\n`.
     """
-    from molbuilder.parse.engines import molwatch
-    assert molwatch._ERROR_RE.match("# error: boom\n") is not None
-    assert molwatch._ERROR_RE.fullmatch("# error: boom\n") is None
+    from molbuilder.parse.engines import molwatch_grammar
+    assert molwatch_grammar.ERROR.match("# error: boom\n") is not None
+    assert molwatch_grammar.ERROR.fullmatch("# error: boom\n") is None

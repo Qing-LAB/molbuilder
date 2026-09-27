@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+from pathlib import Path
 
 import pytest
 
@@ -42,23 +44,57 @@ def _clock(values):
     return _c
 
 
-def _events(tmp_path, *, out_text="scf:  1  -1\n", grow=None,
-            notify_on_scf=False, notify_every_hours=0.0, **kw):
-    """Run the monitor and return the events its notifiers saw."""
-    out = tmp_path / "j.out"
-    out.write_text(out_text)
-    timing = tmp_path / "j.scf-timing.log"
-    timing.write_text("100.0 1 scf: 1 -1\n")
-    log = tmp_path / "j.monitor.log"
+#: The measured H2 relaxation (`tests/fixtures/siesta_relax`): label H2, stage
+#: 01_relax, run 0 -- four Broyden moves, their SCF rows at lines 385-394,
+#: 472-478, 548-551 and 620-623.  The policy is fed a REAL run as it grew; these
+#: tests wrote their own `scf:` lines until 2026-09-26.
+_H2 = (Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax"
+       / "run-0")
+_H2_OUT = "H2_01_relax-run0.out"
+#: Each tick adds one more SCF row of the first move; each adds one more move.
+_ROWS = (387, 388, 389, 390, 391, 392, 394)
+_MOVES = (478, 551, 623)
+
+
+def _replay(tmp_path, upto):
+    """The run's directory with its ``.out`` written to line ``upto``, and a
+    ``grow(to)`` that writes on, as SIESTA would."""
+    run = tmp_path / "run-0"
+    shutil.copytree(_H2, run, ignore=shutil.ignore_patterns(_H2_OUT))
+    lines = (_H2 / _H2_OUT).read_text().splitlines(keepends=True)
+    out = run / _H2_OUT
+    out.write_text("".join(lines[:upto]))
+    at = {"n": upto}
+
+    def grow(to):
+        with out.open("a") as fh:
+            fh.write("".join(lines[at["n"]:to]))
+        at["n"] = to
+    return M.WatchedRun(label="H2", stage="01_relax", run=0,
+                        directory=run), grow
+
+
+def _events(tmp_path, *, upto=386, chunks=(), notify_on_scf=False,
+            notify_every_hours=0.0, **kw):
+    """Run the monitor over the replayed run -- ``chunks`` are where the
+    output has grown to at each wake -- and return the events its notifiers
+    saw."""
+    watched, grow = _replay(tmp_path, upto)
+    it = iter(chunks)
+
+    def _sleep(_):
+        to = next(it, None)
+        if to is not None:
+            grow(to)
 
     seen = []
     M.clear_notifiers()
     M.register_notifier(lambda st, ev: seen.append(ev))
     try:
-        M.run_monitor(out, timing, log, interval=1,
+        M.run_monitor(watched, interval=1,
                       notify=NotifyPolicy(on_scf=notify_on_scf,
                                           every_hours=notify_every_hours),
-                      sleep=(grow or (lambda s: None)), **kw)
+                      sleep=_sleep, **kw)
     finally:
         M.clear_notifiers()
     return seen
@@ -74,15 +110,7 @@ def test_an_advancing_job_notifies_nothing_by_default(tmp_path):
 
     Before 2026-08-26 each of those wakes fired every registered notifier.
     """
-    n = {"i": 1}
-    timing = tmp_path / "j.scf-timing.log"
-
-    def grow(_):
-        n["i"] += 1
-        timing.write_text("".join(f"{100.0 + i} {i} scf: {i} -{i}\n"
-                                  for i in range(1, n["i"] + 1)))
-
-    seen = _events(tmp_path, grow=grow, watch_pid=0, max_ticks=6,
+    seen = _events(tmp_path, chunks=_ROWS, watch_pid=0, max_ticks=6,
                    clock=_clock([0, 1, 2, 3, 4, 5, 6, 7]))
     assert [e for e in seen if e not in ("start", "finish")] == [], (
         f"a quiet policy still notified: {seen}")
@@ -108,18 +136,10 @@ def test_one_message_per_geometry_step(tmp_path):
     module no longer keeps a marker table, because the one it used to keep
     decided the run was over and was wrong about it.
     """
-    out = tmp_path / "j.out"
-    n = {"i": 1}
-
-    def grow(_):
-        n["i"] += 1
-        out.write_text("".join(f"Begin CG move = {i}\nscf:  {i}  -{i}\n"
-                               for i in range(1, n["i"] + 1)))
-
-    seen = _events(tmp_path, out_text="Begin CG move = 1\nscf:  1  -1\n",
-                   grow=grow, watch_pid=0, max_ticks=4, notify_on_scf=True,
+    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
+                   max_ticks=3, notify_on_scf=True,
                    clock=_clock([0, 1, 2, 3, 4, 5]))
-    assert seen.count("scf_converged") == 4, seen
+    assert seen.count("scf_converged") == 3, seen
 
 
 def test_a_single_point_says_nothing_until_it_finishes(tmp_path):
@@ -127,8 +147,8 @@ def test_a_single_point_says_nothing_until_it_finishes(tmp_path):
     the whole report -- which is what it should be.  A single point that
     fired a 'converged' notice AND a 'finished' notice would be telling
     you the same thing twice."""
-    seen = _events(tmp_path, out_text="scf:  1  -1\nscf:  2  -2\n",
-                   watch_pid=999_999_999, notify_on_scf=True)
+    seen = _events(tmp_path, upto=394, watch_pid=999_999_999,
+                   notify_on_scf=True)
     assert "scf_converged" not in seen
     assert "finish" in seen
 
@@ -140,15 +160,7 @@ def test_a_single_point_says_nothing_until_it_finishes(tmp_path):
 def test_periodic_counts_hours_not_wakes(tmp_path):
     """Eight wakes an hour apart, a two-hour period: four messages, not
     eight.  The wake interval and the reporting period are independent."""
-    n = {"i": 1}
-    timing = tmp_path / "j.scf-timing.log"
-
-    def grow(_):
-        n["i"] += 1
-        timing.write_text("".join(f"{100.0 + i} {i} scf: {i} -{i}\n"
-                                  for i in range(1, n["i"] + 1)))
-
-    seen = _events(tmp_path, grow=grow, watch_pid=0, max_ticks=8,
+    seen = _events(tmp_path, chunks=_ROWS, watch_pid=0, max_ticks=8,
                    notify_every_hours=2,
                    clock=_clock([i * 3600.0 for i in range(0, 9)]))
     assert 3 <= seen.count("periodic") <= 4, seen
@@ -166,17 +178,8 @@ def test_a_step_and_a_period_on_one_wake_is_one_message(tmp_path):
     """Both triggers coming due together is one thing worth saying, not
     two.  The step is the more informative, so it wins and resets the
     clock."""
-    out = tmp_path / "j.out"
-    n = {"i": 1}
-
-    def grow(_):
-        n["i"] += 1
-        out.write_text("".join(f"Begin CG move = {i}\nscf:  {i}  -{i}\n"
-                               for i in range(1, n["i"] + 1)))
-
-    seen = _events(tmp_path, out_text="Begin CG move = 1\nscf:  1  -1\n",
-                   grow=grow, watch_pid=0, max_ticks=3,
-                   notify_on_scf=True, notify_every_hours=1,
+    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
+                   max_ticks=3, notify_on_scf=True, notify_every_hours=1,
                    clock=_clock([i * 3600.0 for i in range(0, 5)]))
     assert "periodic" not in seen, (
         f"the step already said it; {seen}")
@@ -515,7 +518,7 @@ def test_the_webhook_body_is_json_a_channel_can_render(tmp_path):
         return _Resp()
 
     hook = M.make_webhook_notifier("https://example/hook", headers={"Authorization": "Bearer t"})
-    st = M.JobStatus(elapsed_s=12.0, n_iters=3, energy="-1.5", geom_step=2)
+    st = M.JobStatus(elapsed_s=12.0, n_iters=3, energy=-1.5, geom_step=2)
     import urllib.request as _u
     real = _u.urlopen
     _u.urlopen = _fake_urlopen
@@ -532,6 +535,26 @@ def test_the_webhook_body_is_json_a_channel_can_render(tmp_path):
     # destination that does not put it there itself.
     assert any(k.lower() == "authorization" for k in sent["headers"])
     assert sent["timeout"] == M.NOTIFY_TIMEOUT_S
+
+
+def test_a_count_nothing_stated_is_sent_absent_not_zero():
+    """`run-reports.md` § 4.1a: a field the monitor could not determine is
+    left out, so a reader can tell *unknown* from *wrong*.  The iteration
+    count defaulted to 0, so a run that had stated nothing -- a PySCF Hessian
+    whose progress log holds only its preview -- was reported as zero SCF
+    iterations, on the card as ``SCF iters 0`` (2026-09-26).
+
+    MUTATION THIS MUST FAIL AGAINST: default the count to 0."""
+    rec = {"run": "J", "state": "running", "text": "x", "elapsed_s": 12.0,
+           **{f: getattr(M.JobStatus(elapsed_s=12.0), f)
+              for f in ("n_iters", "energy", "geom_step", "max_force",
+                        "per_iter_s")}}
+    assert rec["n_iters"] is None, rec
+    body, _ = M.webhook_request(
+        {"url": "https://discord.com/api/webhooks/1/t", "kind": "discord"},
+        rec)
+    names = [f["name"] for f in json.loads(body)["embeds"][0]["fields"]]
+    assert names == ["elapsed"], names
 
 
 def test_an_unreachable_destination_costs_the_run_nothing(tmp_path):
@@ -552,17 +575,8 @@ def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(tmp_path):
     Here the steps genuinely advance and the trigger is off, so a message
     would be a message the user did not ask for.
     """
-    out = tmp_path / "j.out"
-    n = {"i": 1}
-
-    def grow(_):
-        n["i"] += 1
-        out.write_text("".join(f"Begin CG move = {i}\nscf:  {i}  -{i}\n"
-                               for i in range(1, n["i"] + 1)))
-
-    seen = _events(tmp_path, out_text="Begin CG move = 1\nscf:  1  -1\n",
-                   grow=grow, watch_pid=0, max_ticks=4,
-                   notify_on_scf=False,
+    seen = _events(tmp_path, upto=394, chunks=_MOVES, watch_pid=0,
+                   max_ticks=3, notify_on_scf=False,
                    clock=_clock([0, 1, 2, 3, 4, 5]))
     assert "scf_converged" not in seen, (
         f"the trigger is off and it reported anyway: {seen}")
@@ -615,19 +629,16 @@ def test_running_twice_in_one_process_registers_one_webhook(tmp_path,
     on every call, so a second run in one process added a second copy of
     the same webhook and POSTed every event twice.
 
-    A shipped `mb_monitor.py` runs one job per process and would never have
+    The shipped monitor runs one job per process and would never have
     shown this; anything embedding the module would.  Found by reading.
     """
     monkeypatch.setenv("MB_NOTIFY_URL", "http://127.0.0.1:9/nowhere")
-    out = tmp_path / "j.out"
-    out.write_text("scf:  1  -1\n")
-    timing = tmp_path / "j.scf-timing.log"
-    timing.write_text("100.0 1 scf: 1 -1\n")
+    watched, _grow = _replay(tmp_path, 400)
 
     M.clear_notifiers()
     try:
         for _ in range(3):
-            M.run_monitor(out, timing, tmp_path / "m.log", interval=1,
+            M.run_monitor(watched, interval=1,
                           watch_pid=999_999_999, sleep=lambda s: None)
             hooks = [f for f in M._NOTIFIERS
                      if getattr(f, "__name__", "") == "webhook_notifier"]
@@ -673,14 +684,14 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
         tmp_path):
     """THE CASE THAT MOTIVATES ALL OF THIS.
 
-    `mb_monitor.py` runs on a compute node with the job's own python and no
+    The monitor runs on a compute node with the job's own python and no
     molbuilder installed.  It still has to find the destination file -- and
-    it must not answer that by keeping its own copy of the rule.  So the
-    wrapper ships `config_dir.py` beside it and the monitor imports that.
+    it must not answer that by keeping its own copy of the rule.  So
+    `config_dir.py` travels with it, in its one file (`mb_monitor.pyz`), and
+    the monitor imports that.
 
-    This writes both files into an otherwise empty directory, runs the
-    monitor there as a bare script with no molbuilder reachable, and asks it
-    where it would look.
+    This writes that file into an otherwise empty directory, runs the monitor
+    from it with no molbuilder reachable, and asks it where it would look.
     """
     import subprocess
     import sys
@@ -688,16 +699,14 @@ def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(
 
     ship = tmp_path / "jobdir"
     ship.mkdir()
-    (ship / "mb_monitor.py").write_text(runwrap._monitor_source(),
-                                        encoding="utf-8")
-    (ship / "config_dir.py").write_text(runwrap._config_dir_source(),
-                                        encoding="utf-8")
+    (ship / runwrap.MONITOR_BUNDLE).write_bytes(runwrap.monitor_bundle())
 
     env = dict(os.environ)
     env["XDG_CONFIG_HOME"] = str(tmp_path / "scratch")
     env.pop("PYTHONPATH", None)          # nothing of molbuilder reachable
     proc = subprocess.run(
         [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {runwrap.MONITOR_BUNDLE!r}); "
          "import mb_monitor; print(mb_monitor.default_notify_path())"],
         cwd=str(ship), env=env, capture_output=True, text=True, timeout=60)
     assert proc.returncode == 0, (

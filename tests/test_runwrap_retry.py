@@ -40,8 +40,12 @@ FROZEN = REPO / "tests" / "watch" / "fixtures" / "siesta_frozen"
 # in the same commit.
 SELF_LINE = '_mb_self="$(readlink -f -- "$0" 2>/dev/null || echo "$0")"'
 EXEC_LINE = 'exec bash "$_mb_self" --continue'
-SCF_MARKER = "SCF_NOT_CONV"
-GEOM_MARKER = "outcoor: Final (unrelaxed) atomic coordinates"
+#: What the retries ASK -- the door's questions (`_run_ending.QUESTIONS`),
+#: the SCF's cause rendered from the grammar's own marker.  The wrapper
+#: grepped strings of its own until 2026-09-26.
+from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
+ASK_SCF = f'_mb_ending stopped-by "{SCF_NOT_CONV_MARKER}"'
+ASK_GEOM = "_mb_ending relaxation-capped"
 
 
 @pytest.fixture
@@ -85,28 +89,30 @@ class TestRenderedContract:
     def test_no_retry_machinery_without_continue_retries(self, sandbox):
         text = _render()
         assert "_mb_warm_retry" not in text
-        assert SCF_MARKER not in text
-        assert GEOM_MARKER not in text
+        assert ASK_SCF not in text
+        assert ASK_GEOM not in text
 
     def test_scf_retry_lives_in_the_nonzero_exit_branch(self, sandbox):
         """The retriable SCF failure exits non-zero (SCF.MustConverge
-        default) — the check must run BEFORE ``exit "$_siesta_exit"``."""
+        default) — the question must be asked BEFORE ``exit
+        "$_siesta_exit"``."""
         text = _render(continue_retries=2)
         assert "_mb_warm_retry() {" in text
-        i_scf = text.index(f'grep -aq "{SCF_MARKER}"')
+        i_scf = text.index(ASK_SCF)
         i_exit = text.index('exit "$_siesta_exit"')
         assert i_scf < i_exit, (
             "SCF_NOT_CONV retry must precede the non-zero-exit exit — "
             "SIESTA aborts non-zero on SCF non-convergence")
 
-    def test_geometry_retry_uses_the_real_siesta_marker(self, sandbox):
-        """The zero-exit retry greps the marker SIESTA actually prints
-        (fixture-verified), not an invented phrase."""
+    def test_geometry_retry_is_asked_on_the_zero_exit_path(self, sandbox):
+        """The zero-exit retry asks the door whether the relaxation ran out
+        of moves -- the door reads the marker SIESTA actually prints
+        (`TestTheDoorOnRealOutput`), not an invented phrase."""
         text = _render(continue_retries=2)
-        assert GEOM_MARKER in text
+        assert ASK_GEOM in text
         assert "Geometry step did NOT converge" not in text
         # ... and it sits AFTER the non-zero-exit branch closes.
-        assert text.index('exit "$_siesta_exit"') < text.index(GEOM_MARKER)
+        assert text.index('exit "$_siesta_exit"') < text.index(ASK_GEOM)
 
     def test_reexec_is_bash_on_an_absolute_self_path(self, sandbox):
         """``exec "$0"`` PATH-searches a bare name under ``bash x.run.sh``
@@ -142,32 +148,28 @@ class TestRenderedContract:
 # --------------------------------------------------------------------- #
 
 
-class TestMarkerGroundTruth:
-    """If SIESTA's wording ever drifts, these fail first — and they pin
-    that the wrapper's grep strings match REAL output, not lore."""
+class TestTheDoorOnRealOutput:
+    """What the retries ask, answered by `_run_ending` on frozen real SIESTA
+    output -- if SIESTA's wording ever drifts, these fail first.  They pinned
+    the wrapper's own grep strings until 2026-09-26, when the wrapper began
+    asking the door."""
 
-    def test_scf_abort_fixtures_carry_the_scf_marker(self):
+    def test_the_scf_aborts_were_stopped_by_the_scf(self):
+        from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
         for name in ("hemeC-stage1-scf_not_conv-5fr.out",
                      "hemeC-stage3-scf_not_conv-1fr.out"):
-            out = (FROZEN / name).read_text(errors="replace")
-            assert SCF_MARKER in out, name
-            # The abort cascade the parser documents (siesta.py): the
-            # non-zero exit is what routes this to the wrapper's
-            # non-zero branch.
-            assert "ABNORMAL_TERMINATION" in out, name
+            end = ending_of(FROZEN / name)
+            # SIESTA stated the SCF fatal -- "(required)" -- and died: the
+            # retriable case, on the non-zero branch
+            assert QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER), name
+            assert not QUESTIONS["relaxation-capped"](end), name
 
-    def test_geometry_cap_fixture_carries_the_geom_marker(self):
-        out = (FROZEN / "hemeC-stage2-run3-finished-42fr.out").read_text(
-            errors="replace")
-        assert GEOM_MARKER in out
+    def test_the_geometry_cap_is_capped_and_no_scf_abort(self):
+        from molbuilder.parse.engines._run_ending import QUESTIONS, ending_of
+        end = ending_of(FROZEN / "hemeC-stage2-run3-finished-42fr.out")
+        assert QUESTIONS["relaxation-capped"](end)
         # ...and is NOT an SCF abort (exit 0 path).
-        assert SCF_MARKER not in out
-
-    def test_scf_abort_fixtures_do_not_false_trigger_geometry(self):
-        for name in ("hemeC-stage1-scf_not_conv-5fr.out",
-                     "hemeC-stage3-scf_not_conv-1fr.out"):
-            out = (FROZEN / name).read_text(errors="replace")
-            assert GEOM_MARKER not in out, name
+        assert not QUESTIONS["stopped-by"](end, SCF_NOT_CONV_MARKER)
 
 
 # --------------------------------------------------------------------- #

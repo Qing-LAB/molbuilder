@@ -99,6 +99,58 @@ def end_marker(name: str) -> str:
     return f"# === molbuilder {name} END ==="
 
 
+# ---- The effective-parameters block's rows (`model/parse.md` § 5d.3a) --------
+#
+# ONE FORMAT, BOTH ENGINES, AND ITS READER BESIDE IT (§ 1a): a row per
+# catalogue item, ``[item, default, asked, used]`` as one JSON array after
+# :data:`PARAMETER_ROW_PREFIX`.  JSON so a blank value, or one with spaces,
+# cannot shift a column -- the fixed-width rows PySCF printed until 2026-09-26
+# did, on a real run's blank ``ecp``.  ``None`` is "this writer cannot know":
+# SIESTA's wrapper prints its rows before SIESTA has started, so it states the
+# default and leaves ``asked`` to the deck and ``used`` to SIESTA's own fdf
+# log; PySCF's deck states all three, the last read off the live objects.
+
+#: What opens a row inside the block -- a comment in every engine's log.
+PARAMETER_ROW_PREFIX = "#   "
+_ROW_FIELDS = ("item", "default", "asked", "used")
+
+
+def parameter_row(item: str, default: Any = None, asked: Any = None,
+                  used: Any = None) -> str:
+    """One row of the block, as a writer prints it at render time."""
+    return PARAMETER_ROW_PREFIX + json.dumps([item, default, asked, used],
+                                             default=repr)
+
+
+def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
+    """Every row of every effective-parameters block in ``text``, in order:
+    ``{item, default, asked, used}``.  Lines in the block that are not rows --
+    SIESTA's wrapper echoes the deck there too -- are the block's prose and
+    are skipped."""
+    begin = begin_marker(BLOCK_PARAMETERS)
+    end = end_marker(BLOCK_PARAMETERS)
+    rows: List[Dict[str, Any]] = []
+    inside = False
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped == begin:
+            inside = True
+            continue
+        if stripped == end:
+            inside = False
+            continue
+        if not inside or not line.startswith(PARAMETER_ROW_PREFIX + "["):
+            continue
+        try:
+            arr = json.loads(line[len(PARAMETER_ROW_PREFIX):])
+        except ValueError:
+            continue
+        if (isinstance(arr, list) and len(arr) == len(_ROW_FIELDS)
+                and isinstance(arr[0], str)):
+            rows.append(dict(zip(_ROW_FIELDS, arr)))
+    return rows
+
+
 # Regex matching either marker for any block.  Group 1: block name;
 # group 2: BEGIN | END.
 #
@@ -897,8 +949,13 @@ class Parameter:
 _UNSET = object()
 
 
-def declarations(engine: str = None):
+def declarations(engine: str = None, *, calculation: str = None,
+                 stage: str = None):
     """Every item the catalogue declares, for one engine — the LIST door.
+
+    ``calculation`` and ``stage`` narrow it to the items a run of that kind and
+    rung can carry — what a record of that run lists (`model/parse.md`
+    § 5d.3) — through the catalogue's own axes (`template.select`).
 
     :func:`parameter` answers about one item by name; this answers *which items
     are there*, which is the question a record of the whole configuration asks.
@@ -911,7 +968,8 @@ def declarations(engine: str = None):
     offer, and that is how a second way of reading a declaration starts.
     """
     from . import template as _T
-    return list(_T.select(_catalogue(), engine=engine))
+    return list(_T.select(_catalogue(), engine=engine,
+                          calculation=calculation, stages=stage))
 
 
 def parameter(name: str, engine: str, *, config=None,
@@ -952,38 +1010,67 @@ def parameter(name: str, engine: str, *, config=None,
 
 
 def _deck_answer(decl, deck_text: str):
-    """What a RENDERED deck says for this item, or ``None``.
+    """What a RENDERED deck says for this item, or ``None`` -- its first
+    keyword's answer (:func:`_deck_answers`).
+
+    An item that expands to several keywords answers with the FIRST of them:
+    they are one field's expansion and a deck that disagreed with itself
+    across them would be a defect of the writer, not a state to model.  A
+    reader that needs each -- the run record's asked column (`model/parse.md`
+    § 5d.3) -- asks :func:`deck_values`.
+    """
+    answers = _deck_answers(decl, deck_text)
+    return next(iter(answers.values()), None) if answers else None
+
+
+def _deck_answers(decl, deck_text: str) -> Dict[str, Any]:
+    """``{keyword: value}`` for each keyword this item writes that the deck
+    carries, in the item's order.
 
     Read through ``parse/fdf.py``, the one fdf reader: it splits ``%block``
     from the block's name, applies fdf's keyword rule (case and ``.`` / ``-``
     / ``_`` insignificant) to that name alone, and keeps a block's BODY as its
-    value.  First occurrence wins, as ``fdf_locate`` does.
-
-    An item that expands to several keywords answers with the FIRST of them:
-    they are one field's expansion and a deck that disagreed with itself
-    across them would be a defect of the writer, not a state to model.
+    value.  First occurrence wins, as ``fdf_locate`` does.  **A scalar's value
+    is the whole line after the keyword, unit included** -- ``200.0 Ry``, not
+    ``200.0``, which is what this answered until 2026-09-26.
     """
     keys = (tuple(decl.expands) if decl.expands
             else ((decl.anchor,) if decl.anchor else ()))
     if not keys:
-        return None
+        return {}
     # `parse` imports THIS module (`parse/contract.py`), so the import is
     # function-level -- the same move that module makes in the other direction.
     from .parse.fdf import _norm, _parse_fdf
     scalars, blocks = _parse_fdf(deck_text)
-    key = keys[0]
-    if key.lower().startswith("%block"):
-        # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to take a
-        # second token from: on `%block kgrid_Monkhorst_Pack` that token is the
-        # block's own NAME, which is what this returned until 2026-09-18 -- or
-        # rather never returned, because the anchor was matched whole, spaces
-        # and all, against a single whitespace-split token.
-        return blocks.get(_norm(key[len("%block"):].strip())) or None
-    toks = scalars.get(_norm(key))
-    if toks is None:
-        return None
-    # A keyword present with no value is `.true.` to `fdf_boolean`, not absent.
-    return toks[0] if toks else ".true."
+    out: Dict[str, Any] = {}
+    for key in keys:
+        if key.lower().startswith("%block"):
+            # A BLOCK'S VALUE IS ITS BODY.  There is no `key value` line to
+            # take a second token from: on `%block kgrid_Monkhorst_Pack` that
+            # token is the block's own NAME, which is what this returned until
+            # 2026-09-18 -- or rather never returned, because the anchor was
+            # matched whole, spaces and all, against a single token.
+            body = blocks.get(_norm(key[len("%block"):].strip()))
+            if body:
+                out[key] = body
+            continue
+        toks = scalars.get(_norm(key))
+        if toks is None:
+            continue
+        # A keyword present with no value is `.true.` to `fdf_boolean`.
+        out[key] = " ".join(toks) if toks else ".true."
+    return out
+
+
+def deck_values(name: str, engine: str, deck_text: str) -> Dict[str, Any]:
+    """``{keyword: value}`` -- what a rendered deck says for EACH keyword an
+    item writes.  :func:`parameter`'s ``value`` is the first of them."""
+    from . import template as _T
+    try:
+        decl = _T.one(_catalogue(), name, engine=engine)
+    except KeyError:
+        decl = None
+    return _deck_answers(decl, deck_text) if decl is not None else {}
 
 
 

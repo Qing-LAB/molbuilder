@@ -13,7 +13,7 @@ policy;
 sits behind.
 
 A run takes hours or days on a machine you are not sitting at. Something
-beside it already watches — `mb_monitor.py`, backgrounded by the wrapper — and
+beside it already watches — the monitor, `mb_monitor.pyz`, backgrounded by the wrapper — and
 this is the rule for how it tells you what it sees.
 
 **The sentence the whole design follows:**
@@ -72,7 +72,7 @@ combine with OR, and the third is not settable at all.
 
 | occasion | set by | fires |
 |---|---|---|
-| an SCF cycle converged | `notify.on_scf_converged` | once per geometry step in a relaxation; a single point has none, and its finish message is the whole report |
+| an SCF cycle converged | `notify.on_scf_converged` | once per finished step — a relaxation's move, a force-constant run's displacement — or once per wake that finds several finished; a single point states no step, and its finish message is the whole report |
 | every N hours | `notify.every_hours` | N is a **number of hours**, not a duration string |
 | **it ended** | nothing — always on | when the watched PID goes, or the wrapper stops the monitor at the job's end (SIGTERM, which a scheduler's walltime or cancel reads the same as), however the run went. A warm retry is not an ending: the wrapper re-runs the attempt in the same PID, stops this run's monitor with SIGUSR1, and the next run's monitor reports on |
 | **it stalled** | nothing — always on | no progress for `stall_heartbeat_s`, throttled to one per window |
@@ -112,10 +112,33 @@ sweep's **32.2% read as idleness while the job was at ~86% of what it held**.
 And a job that looks starved argues for a bigger machine — which is the queue
 this practice exists to stay out of.
 
-### 2.2 A converged SCF is read from the geometry step
+**What the job holds depends on how it was started** *(2026-09-26)*:
 
-The monitor sees a cycle converge because `geom_step` advanced — SIESTA prints
-`Begin CG move = N` when it begins the next one.
+| started | the job's time and memory | the cores it holds |
+|---|---|---|
+| inside a scheduler's job (`SLURM_JOB_ID` set — `--mode submit`, or `direct` inside an allocation) | its cgroup | its allocation — the affinity mask, else `SLURM_CPUS_*` |
+| outside one — a workstation's `--mode direct` | **its process tree** — the wrapper and every descendant, the monitor excepted; memory as proportional set size, so ranks mapping one library count it once | **the cores its launch uses**, which the wrapper decides with the launcher and tells the monitor: ranks × threads for a hybrid build, the ranks for a pure-MPI one, the threads for an OpenMP-only one, one for a serial build |
+
+A run started outside a scheduler's job has no cgroup of its own: the one its
+process sits in is the launching session's — a login scope, the web server's
+service — with everything else in it. Measured on a real 2-rank relaxation,
+the reading was *"cpu mean=4% … of 40 core(s)"*: the session's time over the
+whole node. Inside an allocation the cgroup IS the job's, so it keeps it.
+
+**A GPU is sampled and judged only for a run that uses one** — the wrapper
+says so, from the same answer it launches with (`use_gpu`, either engine; a
+SIESTA deck's own GPU keywords where nothing stated it). A CPU run on a GPU
+node holds no GPU, and what the node's GPUs are doing is somebody else's: the
+same relaxation closed on *"GPU starved"*.
+
+### 2.2 A converged SCF is read from the step advancing
+
+The monitor sees a cycle converge because the step advanced — SIESTA opens
+each with its own words and number, `Begin <CG|Broyden|FIRE> opt. move = N`
+for a relaxation and `Begin FC step = N` for a force-constant run
+(`Src/state_init.F`), which the parser reads (`siesta_grammar.STEP_BEGIN`). A
+single point prints `Single-point calculation` instead and states no step — a
+transport rung is one — so its finish message is the whole report.
 
 It is read that way, and not by scanning for a convergence phrase, because
 **this module keeps no marker table**. The one it used to keep decided that a
@@ -127,7 +150,66 @@ output markers."*
 
 Reading the artifacts to **report progress** is this module's job. Reading a
 marker to decide **the run is over** is not. Same file, different question,
-different authority.
+different authority. *How* it ended is reported the way the rest of
+molbuilder reads it — `run_status`, asked once the PID has said it is over
+(§ 2.3) — so a marker never decides *when*.
+
+### 2.3 What it reads, and through what — the framework's own readers, shipped beside it *(2026-09-26)*
+
+**The monitor has no reader of its own.** Every fact it reports is read by
+the reader the rest of molbuilder reads that file with — the Results tab's
+directory door, the parser, the instruments — and those readers travel with
+the job. `runwrap.MONITOR_COMPANIONS` lists the monitor and every module its
+reading imports, and they travel as ONE file, `mb_monitor.pyz`
+(`runwrap.MONITOR_BUNDLE`) — a Python zip application holding each module's
+own file unchanged, which the job's python runs directly — that `materialize`
+brings into every attempt; each imports the next two ways, inside the package
+or from the bundle, as `config_dir` always has (`configuration.md`:
+*stdlib-only AND travels*). *(They stood beside the deck as fourteen files
+until 2026-09-26, and the Results listing read them as PySCF scripts.)*
+
+| it reports | read by | travels as |
+|---|---|---|
+| which files are this run's | `runfiles` — the rung's stem, each file's role, the run index | `runfiles.py` · `identity.py` |
+| where the run is now: its phase, iteration, energy, each residual beside the criterion the run states, a NEGF loop's charge, the step the engine began — in its own words — and how many are done, the largest force beside its tolerance | the output's ONE parser — its reading pass, fed the file as it grows, chosen by the file's ROLE: a SIESTA-family `.out` by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` (`model/parse.md` § 4); the Results tab's parser builds its frames from the same pass. Each parser states its own residuals: SIESTA's dDmax, dHmax and a NEGF loop's dQ beside their criteria; a PySCF step's last SCF cycle, its ΔE, \|g\| and ddm with no tolerance beside them — its log states the SCF tolerance in Hartree and its values in eV, and the monitor converts nothing | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` |
+| iterations and seconds per iteration, each phase apart | the SCF-timing instrument's reader, `scf_timing_metrics` | `scf_timing_rows.py` |
+| how it ended: `state`, its `detail`, each phase's convergence, the exit | `run_status` over this rung's files (`parse/dirs/job.py`) — content first, the process's `.concluded` second, age last: the Results tab's own answer | `job.py` · `_run_ending.py` · `end_lines.py` — each in `mb_monitor.pyz` |
+| which fields a report may carry | the one declaration of them (`stages.md` § 6.9) — each field's name, words, unit, and the runs that can state it | `report_fields.py` |
+
+**What stays the monitor's is what no file states**: the watched PID — *when*
+the run ended (§ 2.2) — the machine and its utilisation, when to tell
+someone, and the envelope each channel reads.
+
+**Every engine.** The wrapper launches it from its shared part, SIESTA's and
+PySCF's alike, and tells it which run it watches — the label, the stage, the
+run index — never a path: it names every file through `runfiles`.
+
+**Its words are the framework's.** `state` is `running` while the watched PID
+lives; at the end it is `run_status`'s — `finished`, `failed`, `stale` — with
+its `detail`. One case needs the monitor's own fact: a job the scheduler or a
+signal killed leaves no ending in its output and no `.concluded`, and at that
+moment `run_status` still reads *running*, its sixty-second age rule not yet
+run out. The monitor saw the PID go, so it reports `run_status`'s own word for
+that condition — `stale`, *no marker, no growth, no goodbye* — and says why. The summary line (`text`, the one every channel shows) states
+the live reading: phase, iteration, energy, residuals against their criteria,
+the charge, the step, the force against its tolerance — and at the end each
+SCF phase's convergence and, for a relaxation, whether its **geometry** relaxed
+or ran out of moves, as the output states it.
+
+**The wrapper reads the ending the same way.** Its failure hint and its warm
+retries ask `_run_ending`, in `mb_monitor.pyz` beside the job, through `_mb_ending`
+(`job-contracts.md` § 2.6) — over the output and over SIESTA's stderr, which
+the wrapper's log holds: SIESTA's `die` flushes stdout on node 0 alone
+(`Src/siesta_handlers_m.F90`), so a rank other than 0 may say why it died
+there only. The cause is the first fatal line; the `Stopping Program from
+Node` lines after it are `die`'s cascade.
+
+*(Until 2026-09-26 it kept its own reader, `parse_status`, fed the grammar's
+patterns as command-line flags, and its own states — `starting`, `running`,
+`gone`: every finish reported `gone`, a device's seconds per iteration mixed
+its two phases, and it ran only beside SIESTA. The wrapper grepped the output
+for strings it typed itself — `SCF_NOT_CONV`, `outcoor: Final (unrelaxed)`,
+`propor: ERROR`, `ERROR|aborted|Stopping`.)*
 
 ---
 
@@ -436,7 +518,10 @@ sent empty, so a reader can tell *unknown* from *wrong*.
 
 | field | where it comes from |
 |---|---|
-| `run` | the **label** (`run-identity.md` § 2 — *the stem of every file*), taken off the `.out` the monitor watches, `-runN` stripped |
+| `run` | the **label** (`run-identity.md` § 2 — *the stem of every file*), as the wrapper tells the monitor |
+| `state` · `text` | § 2.3: `running` while the watched PID lives, then `run_status`'s verdict; the summary states the live reading, and at the end the detail and each phase's convergence |
+| `n_iters` · `per_iter_s` | SCF iterations so far in the current phase — the SCF-timing instrument's rows (`scf_timing_metrics`) for SIESTA, the SCF history across a PySCF run's finished steps — and SIESTA's seconds per iteration, within an SCF: a step's boundary is not an iteration (`model/parse.md` § 5c) |
+| `energy` · `geom_step` · `max_force` | the output's one parser (§ 2.3): E_KS of the last SCF row, the step SIESTA began in its own numbering, and the largest force; or a PySCF step's energy, index and largest force. Which of them a calculation can carry is `stages.md` § 6.9's declaration |
 | `job`, `host` | `SLURM_JOB_ID` and the node's own name |
 | `sent_at` / `received_at` | the sender's clock and ours. **Both**, because when they disagree that is itself worth seeing |
 | `text` | the one-line summary. A Slack channel renders it; **Discord does not** — see § 4.1b, which is the rule for what each destination is actually sent |
@@ -659,7 +744,9 @@ damage if a destination is ever compromised: the worst it buys is noise.
 |---|---|
 | when should this calculation speak | `task.Notify` — `task.json`'s `notify` block |
 | how it reaches the wrapper | `jobset.Resources`, the road `continue_retries` already rides |
-| how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.py` line |
+| how it reaches the monitor | `--notify-on-scf` / `--notify-every-hours` on the `mb_monitor.pyz` line |
+| which run it watches | `--label` / `--stage` / `--run` on that line; every file named through `runfiles` (§ 2.3) |
+| what it reads, and with what | the framework's own readers, shipped beside it in `mb_monitor.pyz` — `runwrap.MONITOR_COMPANIONS` (§ 2.3) |
 | when to fire | `monitor.run_monitor` |
 | what a channel name resolves to | `monitor.load_channels` → `<config dir>/secrets/notify` |
 | which channels one run uses | `task.Notify.channels` → `--notify-channels` (§ 3.0) |

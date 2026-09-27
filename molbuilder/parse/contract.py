@@ -85,7 +85,7 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     """The run's own ``max_force_tol_eV_per_A`` out of a parsed
     ``convergence_targets`` block -- flat (SIESTA's echo, a single-stage
     molwatch header) or nested one level by stage (a staged molwatch
-    header, `parse.engines.molwatch.parse_convergence_line`).  One stage
+    header, `parse.engines.molwatch_grammar.parse_convergence_line`).  One stage
     nested is the run's; several is a header this run did not write alone,
     and the answer is ``None`` rather than a pick."""
     if not isinstance(targets, dict):
@@ -357,7 +357,7 @@ def _declared_in_molwatch(directory: Path) -> set:
     Only the header is read: the frames are irrelevant to the question
     and a growing log can be large.
     """
-    from molbuilder.parse.engines.molwatch import _ENGINE_RE
+    from molbuilder.parse.engines.molwatch_grammar import ENGINE as _ENGINE_RE
     out = set()
     from ..runfiles import find_by_role
     for f in find_by_role(directory, ".molwatch.log"):
@@ -403,9 +403,10 @@ def _from_cluster(directory: Path) -> set:
     Two facts are NOT warm files and stay here: the deck suffix (the
     seam's ``EngineSeam.suffix``, which `parse` may not import -- it
     lives a layer up in ``jobset``) and the wrapper's stdout name.  A
-    bare ``.py`` is deliberately not a signal either: ``mb_monitor.py``
-    and ``config_dir.py`` ship beside every flat run, so "there is a
-    python file here" says nothing about the engine.
+    bare ``.py`` is deliberately not a signal either: "there is a python
+    file here" says nothing about the engine -- a person's own script, or
+    the monitor's shipped modules as every attempt held them until
+    2026-09-26.
     """
     from molbuilder.warmfiles import WarmFilesError, inventory
     from ..runfiles import find_by_role
@@ -417,8 +418,8 @@ def _from_cluster(directory: Path) -> set:
     # (`plans/plan.md` § 5c.2 step e listed it for derivation).  The catalogue
     # does carry `.fdf -> siesta`, but deriving from it would equally give
     # `.py -> pyscf` -- and the docstring above records why that is wrong:
-    # `mb_monitor.py` and `config_dir.py` ship beside every flat run, so
-    # `find_by_role(d, ".py")` answers for a SIESTA directory.  The asymmetry
+    # a python file beside a run says nothing about its engine, so
+    # `find_by_role(d, ".py")` can answer for a SIESTA directory.  The asymmetry
     # is that one extension is generic and the other is not, which is not a
     # fact the catalogue holds and does not earn a column for one case.
     if find_by_role(directory, ".fdf"):

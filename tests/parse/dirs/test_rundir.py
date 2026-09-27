@@ -15,12 +15,12 @@ those cannot hold is what step 1 ADDS:
 2. **a directory that has not run yet is still a run directory.** A prepped
    stage is `not_run`, not `not mine`; refusing it here would make every
    consumer that asks about a ladder rung before it runs raise instead.
-3. **`active` and `openable` are different questions** (§ 5.1). Collapsing
-   them is the trap that section exists to mark, and nothing in the tree
-   held it.
+3. **what speaks for the status and what a viewer opens are different
+   questions** (§ 5.1). Collapsing them is the trap that section exists to
+   mark, and nothing in the tree held it.
 
-The other fields (`engine`, `files`, `status`) are pass-throughs of readers
-with their own tests; re-asserting them here would be a test per field.
+The other fields (`engine`, `status`) are pass-throughs of readers with their
+own tests; re-asserting them here would be a test per field.
 """
 from __future__ import annotations
 
@@ -82,11 +82,9 @@ def test_the_registry_answers_for_a_run_directory(tmp_path):
     assert got.parser_name == "jobdir"
     assert got.engine == "siesta"
     assert got.status["state"] == "finished", got.status
-    # Keyed by the ROLE since 2026-09-18 -- `_enumerate_files`' run-output
-    # buckets were `"out"` / `"molwatch"`, a private two-word nickname for a
-    # three-row catalogue column whose third row therefore had no bucket.
-    assert "hemeC-stage2-run3-finished-42fr.out" in [
-        pathlib.Path(p).name for p in got.files[".out"]]
+    # THE RECORD rides the same answer (`model/parse.md` § 5d): what ran,
+    # judged by the same `run_status` call the status above is.
+    assert got.record["verdict"]["state"] == got.status["state"], got.record
 
 
 def test_a_prepped_stage_that_has_not_run_is_still_a_run_directory(tmp_path):
@@ -97,16 +95,32 @@ def test_a_prepped_stage_that_has_not_run_is_still_a_run_directory(tmp_path):
     ladder rung before it runs -- which is the ordinary case on the Results
     tab, where four of five transport rungs are typically pending -- raise
     `UnknownFormatError` rather than answer "not run yet".
+
+    A PREPPED stage is stamped a run (`project-layout.md` § 1.4a), as prep
+    stamps it, so it has a run state before it writes a byte: ``pending`` --
+    prepped, never launched, as its missing launch record says (§ 1.6).  It
+    answered "running -- no result file yet" until 2026-09-26, while the
+    jobset layer answered the same directory "pending".  The same deck in a
+    folder nobody described is read ALONE: claimed, listed, and given no run
+    state, because nothing grounds one (§ 5.0; the route kept this rule until
+    W35 P2 moved it into the door).
     """
+    from molbuilder import calcdirs
     from support.junction import run_dir
     run = run_dir(tmp_path)                       # the .fdf, nothing else
     assert not list(pathlib.Path(run).glob("*.out"))
 
+    alone = parse_dir(run)
+    assert alone.status is None and alone.record is None, alone.status
+
+    calcdirs.write(run, role=calcdirs.RUN, root=tmp_path)
     got = parse_dir(run)
 
-    assert got.status["state"] == "running", got.status
-    assert got.status["detail"] == "no result file yet", got.status
-    assert got.active is None, "nothing here speaks for a run that has not run"
+    assert got.status["state"] == "pending", got.status
+    assert got.status["detail"] == "prepped, not launched (no run.json)", (
+        got.status)
+    assert got.status["active_source"] is None, (
+        "nothing here speaks for a run that has not run")
 
     # ...and the predicate still discriminates, or the claim above is free:
     # an empty directory is nobody's run.
@@ -146,11 +160,12 @@ def test_openable_is_not_active(tmp_path):
 
     got = parse_dir(run)
 
-    assert pathlib.Path(got.active).name == done.name, (
-        f"an unconcluded log voted for the status: {got.active}")
+    active = got.status["active_source"]
+    assert active == done.name, (
+        f"an unconcluded log voted for the status: {active}")
     assert pathlib.Path(got.openable).name == log.name, (
         f"the viewer was sent to a finished result: {got.openable}")
-    assert got.active != got.openable
+    assert active != pathlib.Path(got.openable).name
 
 
 # ---- § 5.5: what should a viewer open -- the CALCULATION decides -------- #
@@ -325,3 +340,61 @@ def test_the_door_never_offers_a_file_the_registry_refuses(tmp_path):
     assert got is None, (
         f"offered {pathlib.Path(got).name!r}, which no parser claims:\n  "
         + "\n  ".join(attempts))
+
+
+def test_a_python_file_that_names_no_job_is_nobodys_deck(
+        isolated_projects_root):
+    """`.py` is the PySCF deck's suffix, and a generic one: a person's own
+    script beside a run is not a deck -- nor were the monitor's modules,
+    fourteen `.py` files in every attempt until 2026-09-26.  Read by stem,
+    each became a label: `job.py`, `runfiles.py`, ... runs of their own in
+    the Results listing, and so many decks that a prepped PySCF attempt had
+    no record at all.  A `.py` that names no `JOB` is nobody's deck.  Through
+    the road: a PySCF relaxation described and prepped by `jobset` (no
+    engine runs), the monitor's one file beside its deck, and a person's
+    script beside both.
+
+    MUTATION THIS MUST FAIL AGAINST: take a `.py` file's stem as a label."""
+    import json
+    from click.testing import CliRunner
+    from molbuilder import describe as D
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.parse.dirs.rundir import labels_in
+    from molbuilder.pyscf.stages import default_pyscf_stages
+    from molbuilder.scheduler import Environment, Topology
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    root = isolated_projects_root
+    struct = Structure.from_xyz("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+    StructureCodec().write(struct, root / "in.xyz")
+    dest = root / "t" / "calc"
+    cfg, stages = PySCFConfig(job_name="H2"), default_pyscf_stages("publishable")
+    D.write_description(
+        D.build_description(struct, cfg, stages, engine="pyscf",
+                            shape="hierarchical", name="H2",
+                            source=str(root / "in.xyz")),
+        dest, struct=struct)
+    (dest / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    (dest / "environment.json").write_text(
+        Environment(scheduler="workstation",
+                    topology=Topology(sockets=1, cores_per_socket=4)
+                    ).to_json() + "\n")
+    r = CliRunner().invoke(jobset_group, ["prep", "run", stages[0].name,
+                                          "--bundle", str(dest),
+                                          "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    attempt = next(dest.glob("*_*/run-0"))
+    token = attempt.parent.name
+    assert (attempt / "mb_monitor.pyz").is_file()
+    (attempt / "plot_energies.py").write_text(
+        "import json\nprint(json.load(open('energies.json')))\n")
+    assert labels_in(str(attempt)) == ["H2", f"H2_{token}"]
+    got = parse_dir(str(attempt))
+    assert got.record is not None, "a prepped PySCF attempt has a record"
+    assert got.record["deck"]["path"] == f"H2_{token}.py", got.record["deck"]
+    # ...and it has not been launched, which its launch record says
+    assert got.status["state"] == "pending", got.status

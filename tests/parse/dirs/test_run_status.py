@@ -105,11 +105,11 @@ def test_a_finished_pyscf_run_reads_its_own_stdout(tmp_path):
     The end line is the SPECTRUM deck's, which is not the relaxation deck's:
     that is why a reader taught only "Job complete in" fixes neither.
     """
-    from molbuilder.pyscf.vibration_emitters import END_MARKER
+    from molbuilder.pyscf.end_lines import SPECTRUM_END_MARKER
     (tmp_path / "spectra.spectra-run0.pyscf.log").write_text(
         "converged SCF energy = -1028.273\n"
         "Phase 4 done: 36 modes with ES data\n"
-        f"{END_MARKER} 5090.8 s\n"
+        f"{SPECTRUM_END_MARKER} 5090.8 s\n"
         "Results: /x/spectra.spectra.json\n", encoding="utf-8")
     s = run_status(tmp_path)
     assert s.state == "finished"

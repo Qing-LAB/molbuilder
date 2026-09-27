@@ -38,7 +38,7 @@ test.  Each file's basename encodes its expected shape so a failure
 message points at the run-state pattern, e.g.::
 
     hemeC-stage1-scf_not_conv-5fr.out
-    BDT-stage3-propor_error-32fr.out
+    BDT-stage3-geom_cap-32fr.out
 
 Coverage matrix:
 
@@ -51,12 +51,19 @@ Coverage matrix:
   * ``hemeC-stage2-run3-finished-42fr.out``     finished / 42 frames
     -- exercises: full successful geometry optimisation, scf_converged
        rule firing every step, end_of_run marker, lattice extraction.
-  * ``BDT-stage3-propor_error-32fr.out``        error / propor: ERROR / 32 frames
-    -- exercises: fatal_propor_error rule path (different shape from
-       fatal_scf_not_conv); tunneling project with NEGF setup.
-  * ``BDT_METAL-stage5-propor_error-11fr.out``  error / propor: ERROR / 11 frames
-    -- exercises: fatal_propor_error with smaller frame count + metal
-       (different element set + force scale).
+  * ``BDT-stage3-geom_cap-32fr.out``            ended / geometry cap / 32 frames
+    -- exercises: a relaxation that ran out of moves (``outcoor: Final
+       (unrelaxed)``) in a build that ECHOES ITS DECK into the output; the
+       echo carries molbuilder's own comment naming ``propor: ERROR``,
+       which must not read as the run speaking.
+  * ``BDT_METAL-stage5-cut_off-11fr.out``       running / cut off / 11 frames
+    -- exercises: an output that ends mid-SCF with no ending marker (metal:
+       different element set + force scale), and the same echoed comment.
+
+  *Both were named ``propor_error`` until 2026-09-26, after the reading the
+  parser gave them: it matched its fatal markers inside SIESTA's echo of the
+  deck (`siesta_grammar.INPUT_ECHO_BEGIN`).  Neither contains a propor
+  error; the rule path is held by `test_siesta_parser_exit_status.py`.*
 
 Together these touch every section rule in the SIESTA parser's list and
 both terminal ``run_state`` values the corpus can hold -- ``ended`` and
@@ -182,9 +189,12 @@ def test_corpus_covers_every_run_state():
 
     `model/parse.md` § 2b's vocabulary is
     ``running``/``ended``/``stopped``/``out_of_memory``/``unknown``.
-    ``running`` is excluded because a torn live run is not reproducible
-    as a fixture, and ``out_of_memory`` because the corpus has no OOM
-    capture yet -- when one is added, assert it here."""
+    ``running`` is the output that ends with no ending marker -- the
+    cut-off BDT_METAL run.  ``out_of_memory`` is excluded because the corpus
+    has no OOM capture yet, and so is ``propor: ERROR``: the two files once
+    counted for it held only molbuilder's own deck comment naming it, echoed
+    by SIESTA (read as the run's failure until 2026-09-26).  When a real
+    capture of either is added, assert it here."""
     pairs = _frozen_files()
     if not pairs:
         pytest.skip("no frozen SIESTA fixtures")
@@ -202,11 +212,14 @@ def test_corpus_covers_every_run_state():
             error_messages.add(g["error_message"][:20])
     assert "ended"   in states, "corpus lacks a run that reached its end"
     assert "stopped" in states, "corpus lacks a run that stopped short"
+    assert "running" in states, "corpus lacks an output with no ending"
     # Different error paths through the parser must each be represented.
     assert any(e.startswith("SCF_NOT_CONV") for e in error_messages), (
         "corpus lacks a SCF_NOT_CONV failure")
-    assert any("propor" in e for e in error_messages), (
-        "corpus lacks a propor ERROR failure")
+    # ...and no error comes from the deck's own echo, which is how two files
+    # read as propor failures they never had.
+    assert not any(e.lstrip().startswith("#") for e in error_messages), (
+        f"an error message is a deck comment: {sorted(error_messages)}")
 
 
 # --------------------------------------------------------------------

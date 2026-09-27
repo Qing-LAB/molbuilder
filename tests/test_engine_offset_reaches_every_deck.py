@@ -103,7 +103,13 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
         return dest, stage, r.output
     assert r.exit_code == 0, r.output
     suffix = ".fdf" if engine == "siesta" else ".py"
-    deck = next(next(dest.glob(f"*_{stage}")).glob(f"*{suffix}"))
+    # THE DECK BY ITS NAME, through the catalogue -- not the first file with
+    # the suffix: a stage directory may hold other `.py` files than the deck
+    # (the monitor's modules stood there as fourteen of them until
+    # 2026-09-26; a person's own scripts still may).
+    from molbuilder.runfiles import compose
+    stage_dir = next(dest.glob(f"*_{stage}"))
+    deck = stage_dir / compose(name, suffix, stage_dir.name)
     return dest, stage, deck.read_text()
 
 

@@ -228,10 +228,11 @@ def test_render_siesta_emits_propor_diagnostic():
     # from ${PIPESTATUS[0]} (awk must not mask SIESTA's exit), not $?.
     assert "set +e" in text
     assert "_siesta_exit=${PIPESTATUS[0]}" in text
-    # Propor detection.  2026-05-30: stdout filename is dynamic
-    # (``$_out_file`` so --continue can write -runN.out); the grep
-    # reads from that variable, not the baked basename.
-    assert 'grep -aq "propor: ERROR" "$_out_file"' in text
+    # The hint is gated by the framework's reading of the cause -- the
+    # table's own marker, asked of the door beside the job
+    # (`test_the_wrapper_asks_how_the_run_ended_over_both_channels`).
+    from molbuilder.parse.engines.siesta_grammar import PROPOR_MARKER
+    assert f'_mb_ending stopped-by "{PROPOR_MARKER}"' in text
     # THE ORDER IS THE CLAIM.  Three independent `in text` assertions stood
     # here and a reordering passed all three -- including the exact revert
     # the 2026-06-26 change was made to prevent, putting `-np` back first so
@@ -251,6 +252,70 @@ def test_render_siesta_emits_propor_diagnostic():
     assert "bash hemeC.run.sh -np 8" in text   # names the actual basename
     # Re-exit with SIESTA's code.
     assert 'exit "$_siesta_exit"' in text
+
+
+def test_the_wrapper_asks_how_the_run_ended_over_both_channels(tmp_path):
+    """THE WRAPPER ASKS, IT DOES NOT GREP (`run-reports.md` § 2.3): its failure
+    hint and its warm retries ask `_run_ending`, shipped beside the job in
+    `mb_monitor.pyz`, through the rendered ``_mb_ending`` -- run here in bash,
+    as the wrapper runs it.
+
+    Over BOTH of SIESTA's channels: its ``die`` writes the message to stdout
+    and stderr and flushes stdout on node 0 alone (``Src/siesta_handlers_m
+    .F90``), so a rank other than 0 that dies may say why in this wrapper's
+    log only -- and a run that died before its first line has no output at
+    all.  A measured fixture, API-level by necessity (a death on a chosen
+    rank cannot be produced on demand): the frozen hemeC run's own ending --
+    ``SCF_NOT_CONV: ... (required).``, then eight nodes'
+    ``ABNORMAL_TERMINATION`` / ``Stopping Program from Node`` -- whole, and
+    with the dying lines reaching the wrapper's log alone.
+
+    The cause is what SIESTA SAYS stopped it: ``(required)`` makes the SCF's
+    failure fatal (`siesta_grammar.SCF_NOT_CONV_REQUIRED`), and ``die``'s
+    lines after it are the cascade -- the warm retry asks for exactly that."""
+    import subprocess
+    from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
+    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
+
+    _bind()
+    text = render_run_wrapper(Path("/x/hemeC.fdf"),
+                              resources=Resources(mpi_np=8))
+    start = text.index("_mb_ending_able() {")
+    func = text[start:text.index("\n}\n", text.index("_mb_ending() {")) + 3]
+    (tmp_path / MONITOR_BUNDLE).write_bytes(monitor_bundle())
+    real = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
+            / "hemeC-stage3-scf_not_conv-1fr.out").read_text(errors="replace")
+    cut = real.index("ABNORMAL_TERMINATION")
+    (tmp_path / "whole-run0.out").write_text(real)
+    (tmp_path / "rank-run0.out").write_text(real[:cut])
+    (tmp_path / "wrapper.log").write_text(real[cut:])
+    (tmp_path / "empty.log").write_text("")
+
+    def ask(out, log, *question):
+        script = ("_log() { :; }\n_mb_py=python3\n"
+                  f"_out_file={out}\n_runwrap_log={log}\n{func}"
+                  "_mb_ending " + " ".join(f"'{q}'" for q in question)
+                  + "\n")
+        return subprocess.run(["bash", "-c", script], cwd=tmp_path,
+                              capture_output=True, text=True, timeout=60)
+
+    for out, log in (("whole-run0.out", "empty.log"),
+                     ("rank-run0.out", "wrapper.log")):
+        said = ask(out, log)
+        assert said.returncode == 0, said.stderr
+        assert said.stdout.startswith("stopped -- SCF_NOT_CONV:"), (
+            out, said.stdout)
+        assert ask(out, log, "stopped-by", SCF_NOT_CONV_MARKER
+                   ).returncode == 0, out
+        for cascade in ("abnormal_termination", "stopping program from node"):
+            assert ask(out, log, "stopped-by", cascade).returncode == 1, (
+                out, cascade)
+    # with no word from the dying ranks the output alone proves no death
+    said = ask("rank-run0.out", "empty.log")
+    assert said.stdout.startswith("the output states no ending"), said.stdout
+    # and with no output at all, the log is still heard
+    assert ask("absent-run0.out", "wrapper.log", "stopped-by",
+               "abnormal_termination").returncode == 0
 
 
 def test_render_siesta_emits_build_probe_block():

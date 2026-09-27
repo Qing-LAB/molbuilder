@@ -18,6 +18,7 @@ nothing:
   cgroup shows only granted GPUs — so only the MODEL may appear.
 """
 import os
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -114,15 +115,24 @@ def test_machine_line_puts_the_model_last(monkeypatch):
     assert m["gpu"] == "NVIDIA A100-SXM4-80GB"
 
 
+def _real_run(tmp_path):
+    """A copy of the measured H2 relaxation (`tests/fixtures/siesta_relax`)
+    as the run the monitor watches -- a real run's files, not written here."""
+    import shutil
+    src = (Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax"
+           / "run-0")
+    run = tmp_path / "run-0"
+    shutil.copytree(src, run)
+    return monitor.WatchedRun(label="H2", stage="01_relax", run=0,
+                              directory=run)
+
+
 def test_the_machine_is_the_logs_first_line(tmp_path):
     """Written at START, not in the terminal block: a monitor killed with
     its allocation must still have said where it died.  First line, so the
     reader's cheapest scan finds it."""
-    out = tmp_path / "j.out"
-    out.write_text("scf:   1   -100.5\n")
-    timing = tmp_path / "j.scf-timing.log"
-    timing.write_text("100.0 1 scf: 1 -100.5\n")
-    log = tmp_path / "j.monitor.log"
+    watched = _real_run(tmp_path)
+    log = watched.path(".monitor.log")
     it = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0])
     last = [0.0]
 
@@ -130,7 +140,7 @@ def test_the_machine_is_the_logs_first_line(tmp_path):
         last[0] = next(it, last[0])
         return last[0]
 
-    monitor.run_monitor(out, timing, log, interval=1,
+    monitor.run_monitor(watched, interval=1,
                         watch_pid=999_999_999,      # gone on tick 1
                         sleep=lambda s: None, clock=clock)
     first = log.read_text(encoding="utf-8").splitlines()[0]
@@ -158,17 +168,14 @@ def test_a_monitor_missing_its_companion_still_monitors(tmp_path, monkeypatch):
     monkeypatch.setattr(monitor, "_secrets_dir", _no_companion)
     monkeypatch.delenv("MOLBUILDER_NOTIFY_FILE", raising=False)
 
-    out = tmp_path / "j.out"
-    out.write_text("scf:   1   -100.5\n")
-    timing = tmp_path / "j.scf-timing.log"
-    timing.write_text("100.0 1 scf: 1 -100.5\n")
-    log = tmp_path / "j.monitor.log"
+    watched = _real_run(tmp_path)
+    log = watched.path(".monitor.log")
     it = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0]); last = [0.0]
 
     def clock():
         last[0] = next(it, last[0]); return last[0]
 
-    monitor.run_monitor(out, timing, log, interval=1,
+    monitor.run_monitor(watched, interval=1,
                         watch_pid=999_999_999,
                         sleep=lambda s: None, clock=clock)
     text = log.read_text(encoding="utf-8")

@@ -78,18 +78,9 @@ from ..structure import Structure
 #: ``PySCFSpectraEngine.label`` until P3 retired that class.
 PYSCF_ENGINE_LABEL = "PySCF (analytic Hessian + dα/dR)"
 
-#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END, spelled once --
-#: `pyscf/input.py`'s :data:`~molbuilder.pyscf.input.END_MARKER` for the
-#: spectrum deck, which does not print that one.  A format molbuilder
-#: GENERATES does not get a sniffed reader (`model/parse.md` § 5.5), so the
-#: emitter declares the line and `parse/engines/_run_ending.py` imports it.
-#:
-#: **Two lines, not one, and that is the whole reason this constant exists
-#: separately.** The two spectrum runs in the tree end with *"Total wall
-#: time: 5090.8 s"*, not with the relaxation deck's *"Job complete in"* --
-#: and they are exactly the two directories that reported `running` for
-#: months (`plans/plan.md` § 5c.2), because nothing read this file at all.
-END_MARKER = "Total wall time:"
+#: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- the spectrum
+#: deck's own, declared in `end_lines` beside the relaxation deck's.
+from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 
 from ..spectra.results import SCHEMA_VERSION
 
@@ -974,6 +965,13 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
         out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
         out.append("# DIIS/damp stop applying under it, by design.")
         out.append("mf = mf.newton()")
+    # THE RECORD, before the equilibrium SCF runs (`model/parse.md` § 5d.3a):
+    # every item this kind carries, what it was set to and what the live
+    # objects hold -- the optimization deck's own emitter, so the two decks
+    # cannot record differently.  This deck printed none until 2026-09-26.
+    from .input import _emit_effective_parameters
+    out.extend(_emit_effective_parameters(cfg, method.endswith("KS"),
+                                          calculation="vibration"))
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
     # The equilibrium SCF halts UNCONDITIONALLY on non-convergence --
@@ -1786,7 +1784,7 @@ def _emit_final_summary() -> List[str]:
     out.append("#  Done")
     out.append("# ============================================================")
     out.append("t1 = time.time()")
-    out.append("print(f'" + END_MARKER + " {t1 - t0:.1f} s')")
+    out.append("print(f'" + SPECTRUM_END_MARKER + " {t1 - t0:.1f} s')")
     out.append("print(f'Results: {JSON_PATH}')")
     out.append("")
     return out

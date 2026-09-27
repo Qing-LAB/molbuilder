@@ -29,7 +29,7 @@ import pytest
 pytestmark = pytest.mark.module
 
 ENGINES = Path(__file__).resolve().parents[2] / "molbuilder" / "parse" / "engines"
-OWNER = "molwatch.py"
+OWNER = "molwatch_grammar.py"
 
 #: Fragments that only appear in a regex written to match a molwatch line.
 #: Keyed by the grammar, so a failure names which format was re-spelled.
@@ -113,7 +113,7 @@ def test_the_footer_reader_puts_error_above_concluded():
     `# error:` from an earlier one. Both readers used to spell this rule out
     separately, free to disagree about which marker wins.
     """
-    from molbuilder.parse.engines.molwatch import parse_conclusion_line
+    from molbuilder.parse.engines.molwatch_grammar import parse_conclusion_line
 
     out = {}
     for line in ("# error: attempt one died", "# concluded: success"):

@@ -15,7 +15,6 @@ Forbidden by the doc:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -178,15 +177,7 @@ class SidecarResult(ParseResult):
 
 @dataclass(frozen=True)
 class RunDirResult(ParseResult):
-    """One RUN DIRECTORY -> the four questions anything asks about one.
-
-    **ZERO OF THESE SEVEN FIELDS HAS A PRODUCTION READER (2026-09-18).**  The
-    table below names one for each, and none of them reads this TYPE: they
-    read the underlying functions -- `contract.engine_of`, `job.run_status`,
-    `rundir.openable_in` -- directly.  `parse_dir` has no production caller,
-    so no `RunDirResult` is built outside the tests.  The consumer this was
-    made for is the Results file picker, which is a browser; if that surface
-    is never built, these fields go with it.
+    """One directory -> what a run directory is asked, answered once.
 
     `model/parse.md` § 5.0.  **No field is added without naming its reader**
     -- that is the rule the deleted predecessor broke: it answered eleven
@@ -197,40 +188,39 @@ class RunDirResult(ParseResult):
     ============  ==========================================  =================
     field         the question                                who reads it
     ============  ==========================================  =================
-    ``engine``    which engine ran                            `/api/watch/*`'s
-                                                              ``format``
-    ``status``    how is it doing                             `jobset/runstatus`
-    ``files``     what is here                                `jobset/summarize`
-    ``active``    which file speaks for the run's STATUS       the status
-                                                              combiner
-    ``openable``  what a VIEWER should load                    `web/watch`
-    ``attempts``  what was tried, for the refusal              `web/watch`
+    ``engine``    which engine ran                            the Results page
+    ``status``    how is it doing -- ``None`` where there is  `/api/results/dir`
+                  no run to ask about
+    ``openable``  what a VIEWER should load                    the Results page
+    ``attempts``  what was tried, for the refusal              `/api/results/dir`
+    ``record``    what ran, with what, and how it went        the Run panel
+                  (§ 5d) -- ``None`` where ``status`` is
     ============  ==========================================  =================
 
-    **``active`` and ``openable`` are different questions** (§ 5.1), and
-    conflating them is the trap that section exists to mark.  ``active``
-    considers RESULT files only -- every ``.out`` plus each molwatch log whose
-    footer concludes the run -- because letting an unconcluded log vote would
-    let a prep-time seed outrank a real ``.out``.  ``openable`` PREFERS an
-    unconcluded molwatch log: that is exactly the run in progress somebody
-    wants to watch.  A directory mid-run therefore has an ``openable`` and no
-    ``active``, and that is correct in both directions.
+    **One reader, the Results route** (W35 P2, 2026-09-26): `/api/results/dir`
+    asks `parse_dir` and serves these as they are.  `files` and `active` stood
+    here until then with no reader: the route lists the directory itself, and
+    ``status["active_source"]`` is the file the status speaks for.
 
-    **``active`` is a bare FILENAME and ``openable`` is a PATH**, which is the
-    same distinction showing up in the types.  ``active`` is
-    ``RunStatus.active_source`` unchanged, and that value is serialized into
-    the status envelope the browser reads, where a server-side absolute path
-    has no business; the directory it is relative to is ``run_dir``, right
-    beside it.  ``openable`` is handed to a reader that opens it.  A caller
-    that wants the path composes ``run_dir`` with ``active``.
+    **``status`` and ``record`` are there only where a run is** -- the
+    directory is stamped a run, or, read alone, the door found its product
+    (§ 5.5, `project-layout.md` § 1.4a).  A container is not a run, and a
+    folder nobody described is not asked to invent one: `run_status` has no
+    *there is no run here*, so asking it anyway is how a `pseudos/` folder
+    reported *running*.
+
+    **``openable`` is a PATH**, handed to a reader that opens it, while
+    ``status["active_source"]`` is a bare FILENAME -- the file whose
+    run-state the status is, serialized to the browser, where a server-side
+    path has no business.  Different questions (§ 5.1): a directory mid-run
+    has an ``openable`` and no ``active_source``.
     """
     run_dir:  str = ""
     engine:   str = "unknown"
-    files:    Dict[str, List[Path]] = field(default_factory=dict)
-    active:   Optional[str] = None
     openable: Optional[str] = None
     attempts: List[str] = field(default_factory=list)
-    status:   Dict[str, Any] = field(default_factory=dict)
+    status:   Optional[Dict[str, Any]] = None
+    record:   Optional[Dict[str, Any]] = None
     result_kind: str = "rundir"
 
 

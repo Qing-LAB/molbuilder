@@ -11,34 +11,16 @@ from click.testing import CliRunner
 from molbuilder.cli import cli
 
 
-_STUB_OUT = dedent("""\
-    Siesta Version  : 5.4.2
-    Architecture   : x86_64-linux-gnu
-    Compiler version: GNU Fortran 13.3.0
-    Parallelisations: MPI, OPENMP
-
-    NetCDF support
-    ELPA support
-
-    * Running on 4 MPI processes
-
-    redata: Diag.Algorithm = ELPA-1STAGE
-    redata: Diag.ELPA.GPU = T
-
-    ELPA: NVIDIA GPU detected: NVIDIA A100-SXM4-40GB (sm_80)
-
-    siesta: System type = molecule
-
-    siesta: Final energy (eV):
-    siesta:  Total =          -1234.567
-
-    End of run: 25-JUN-2026 12:00:00
-    """)
+#: A REAL SIESTA 5.4.2 run (``tests/watch/fixtures/siesta_frozen``).  A
+#: hand-written stub stood here until 2026-09-26, its header lines ones SIESTA
+#: never prints.
+_REAL = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
+         / "hemeC-stage2-run3-finished-42fr.out")
 
 
 def _write_stub(dir_: Path, name: str = "job.out") -> Path:
     p = dir_ / name
-    p.write_text(_STUB_OUT)
+    p.write_text(_REAL.read_text(errors="replace"))
     return p
 
 
@@ -50,9 +32,8 @@ def test_default_path_writes_sidecar_next_to_input(tmp_path):
     sidecar = tmp_path / "job.runtime_info.json"
     assert sidecar.exists()
     data = json.loads(sidecar.read_text())
-    assert data["siesta_build"]["version"] == "5.4.2"
-    assert data["siesta_diag"]["algorithm"] == "ELPA-1STAGE"
-    assert data["siesta_diag"]["elpa_gpu"] is True
+    assert data["siesta_build"]["version"].startswith("5.4.2")
+    assert data["siesta_diag"]["algorithm"] == "D&C"
 
 
 def test_explicit_out_path(tmp_path):
@@ -64,7 +45,7 @@ def test_explicit_out_path(tmp_path):
     assert result.exit_code == 0
     assert target.exists()
     data = json.loads(target.read_text())
-    assert data["siesta_build"]["parallelisations"] == ["MPI", "OPENMP"]
+    assert data["siesta_build"]["parallelisations"] == ["MPI"]
 
 
 def test_stdout_mode_emits_json(tmp_path):
@@ -73,7 +54,7 @@ def test_stdout_mode_emits_json(tmp_path):
     result = runner.invoke(cli, ["runtime-info", str(p), "--out", "-"])
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["siesta_diag"]["gpu_device"] == "NVIDIA A100-SXM4-40GB"
+    assert data["siesta_diag"]["distribution"] == "2 x 4"
     # No sidecar file created in stdout mode.
     assert not (tmp_path / "job.runtime_info.json").exists()
 
@@ -101,7 +82,7 @@ def test_frozen_atoms_set_serialised_as_sorted_list(tmp_path):
     """runtime_info["frozen_atoms"] is a Python set in-memory.  The
     sidecar emitter must convert it to a sorted list (JSON-native +
     deterministic ordering) -- not bail with TypeError."""
-    out_text = _STUB_OUT + dedent("""\
+    out_text = _REAL.read_text(errors="replace") + dedent("""\
 
         siesta: Constraints applied in the following order:
         siesta: Constraint (3): pos

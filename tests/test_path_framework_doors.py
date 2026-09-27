@@ -17,10 +17,11 @@ from molbuilder import runfiles
 from molbuilder.runfiles import canonical_role, find, find_by_role
 
 
-# `_stage_state(observed, launch, label, stage, out_glob)` -- the label and the
-# stage come BEFORE the glob, and none of the three has a default.  These three
-# tests caught the reorder by failing, which is the argument for them: an empty
-# label matches nothing, so a positional slip reports every rung as unstarted.
+# `_stage_state(observed, launch, out_glob)` -- the rung's glob has no default:
+# a glob that matched nothing would report every rung as unstarted.  The
+# no-output answers these pin -- `pending`, `queued` -- are the directory
+# door's since 2026-09-26 (`parse.dirs.job.run_status`'s `launch`); this layer
+# asks it.
 def _touch(d, *names):
     for n in names:
         p = d / n
@@ -196,7 +197,7 @@ def test_a_pyscf_rung_that_only_wrote_pyscf_log_is_not_reported_queued(tmp_path)
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.pyscf.log")
     state, _detail = _stage_state(tmp_path, {"job_id": 481923},
-                                  "bdt", "01_relax", "bdt_01_relax*")
+                                  "bdt_01_relax*")
     assert state != "queued", (
         "a rung whose engine wrote .pyscf.log has produced output; reporting "
         "it queued is § 1.6's exact forbidden line")
@@ -223,7 +224,7 @@ def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_pa
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.parse.log")       # molbuilder read this dir
     state, detail = _stage_state(tmp_path, {"job_id": 481923},
-                                 "bdt", "01_relax", "bdt_01_relax*")
+                                 "bdt_01_relax*")
     assert state == "queued", (
         f"got {state!r} ({detail!r}) -- molbuilder's own reading log was "
         f"counted as the engine having produced output")
@@ -231,7 +232,7 @@ def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_pa
 
     # ...and the wrapper's session log, written at launch, is not output either.
     _touch(tmp_path, "bdt_01_relax.runwrap-20260918-090000.log")
-    assert _stage_state(tmp_path, {"job_id": 481923}, "bdt", "01_relax",
+    assert _stage_state(tmp_path, {"job_id": 481923},
                         "bdt_01_relax*")[0] == "queued"
 
 
@@ -251,15 +252,14 @@ def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.molwatch.log")     # the prep seed, nothing else
-    state, detail = _stage_state(tmp_path, None, "bdt", "01_relax",
-                                 "bdt_01_relax*")
+    state, detail = _stage_state(tmp_path, None, "bdt_01_relax*")
     assert state == "pending", (
         f"got {state!r} ({detail!r}) -- the prep-time seed was counted as the "
         f"engine having produced output")
 
     # ...and once the engine's own stdout exists, it HAS started.
     _touch(tmp_path, "bdt_01_relax-run0.out")
-    assert _stage_state(tmp_path, {"job_id": 7}, "bdt", "01_relax",
+    assert _stage_state(tmp_path, {"job_id": 7},
                         "bdt_01_relax*")[0] != "pending"
 
 
@@ -272,8 +272,7 @@ def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_coarse.out")            # only the FIRST rung ran
-    state, detail = _stage_state(tmp_path, None, "bdt", "02_fine",
-                                 "bdt_02_fine*")
+    state, detail = _stage_state(tmp_path, None, "bdt_02_fine*")
     assert state == "pending", (
         f"rung 02_fine has written nothing; got {state!r} ({detail!r}) — it "
         f"has read its sibling's .out")
@@ -290,8 +289,7 @@ def test_a_hierarchical_rung_is_found_although_the_shape_says_star(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_tight.out")
-    state, _d = _stage_state(tmp_path, {"mode": "direct"}, "bdt",
-                             "01_tight", "*")
+    state, _d = _stage_state(tmp_path, {"mode": "direct"}, "*")
     assert state != "queued" and state != "pending"
 
 
@@ -455,24 +453,21 @@ def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():
     assert "*.STRUCT_OUT" in pats, "SIESTA's own name has no home of ours"
 
 
-def test_stage_state_cannot_be_asked_without_a_label(tmp_path):
-    """No default for the label, because an empty one matches NOTHING.
-
-    `runfiles.parse` states the rule this rests on: *"``label`` is required, and
-    that is the whole reason this can be exact."*  So a default of ``""`` would
+def test_stage_state_cannot_be_asked_without_its_rung(tmp_path):
+    """No default for the rung's glob, because one that matches NOTHING would
     not degrade — it would report *"prepped, not launched"* for a rung that has
-    finished, which is § 1.6's forbidden line reached by a signature rather than
-    by a bug.  Asserted as the outcome pair: the call is refused without a
-    label, and answers with one, on the same directory.
+    finished, which is § 1.6's forbidden line reached by a signature rather
+    than by a bug.  Asserted as the outcome pair: the call is refused without
+    the glob, and answers with it, on the same directory.
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_tight.out")
     with pytest.raises(TypeError):
-        _stage_state(tmp_path, None)                       # no label, no stage
-    state, _d = _stage_state(tmp_path, None, "bdt", "01_tight", "*")
+        _stage_state(tmp_path, None)                       # no rung named
+    state, _d = _stage_state(tmp_path, None, "*")
     assert state != "pending", (
-        "with the label given, this rung's .out is visible — which is exactly "
-        "what a defaulted empty label would have hidden")
+        "with the rung named, its .out is visible — which is exactly what a "
+        "glob matching nothing would have hidden")
 
 
 def test_read_system_degrades_on_a_missing_bundle():

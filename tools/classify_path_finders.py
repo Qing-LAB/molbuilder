@@ -95,6 +95,12 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
     #  spells the layout it searches is a door only until the layout has a
     #  finder -- which is what this tool's own `--check` said by failing when
     #  the entries came unanchored.)
+    ("molbuilder/parse/dirs/record.py", "run_files", "fdf.*.log"):
+        ("foreign - not a name we compose",
+         "`fdf.<stamp>.log` is SIESTA's own log of every key it read, named "
+         "after the moment it opened it (`Src/reinit_m.F90`); molbuilder "
+         "composes none of it, and the record pairs it with the `.out` by "
+         "that stamp (`model/parse.md` § 5d.1)"),
     ("molbuilder/parse/engines/tbtrans.py", "transmission_files",
      "{label}{tag}AVTRANS_*"):
         ("foreign - not a name we compose",

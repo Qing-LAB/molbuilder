@@ -792,3 +792,69 @@ def test_configured_but_not_live_is_a_state_the_page_can_report(client):
     got = c.get("/api/notify/listener").get_json()
     assert got["configured"] is True
     assert got["live"] is False, "this app started before the file existed"
+
+
+# --------------------------------------------------------------------- #
+#  what a report may carry, for THIS calculation                         #
+# --------------------------------------------------------------------- #
+
+def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
+        client):
+    """`stages.md` § 6.9: a report field is offered for a calculation only
+    when its runs can state it, and a description naming one they cannot is
+    refused at save.  The Task-setup card's offer (this route) and the save
+    (the description's codec) are two doors onto the one declaration, so
+    they are asked the same question here -- every field, every calculation
+    either engine renders -- and must answer it the same way.  API-level:
+    the codec's refusal is the rule under test, and it is reached through
+    `Task.from_dict` exactly as a save reaches it.
+
+    Not vacuous: seconds per iteration is not offered for a PySCF run (the
+    timing instrument is the SIESTA wrapper's), nor a step for a transport
+    one (its rungs are single points)."""
+    from molbuilder.report_fields import NAMES
+    from molbuilder.task import SCHEMA, Task
+
+    c, _ = client
+
+    def described(engine, calculation, report):
+        d = {"schema": SCHEMA, "engine": {"name": engine},
+             "shape": "hierarchical", "run": {"name": "J", "id": "J_H2"},
+             "varies": [], "calculation": calculation,
+             "stages": [{"name": "s", "enabled": True, "overrides": {}}],
+             "notify": {"report": report}}
+        if calculation == "transport":
+            # its identity is the junction it cites (run-identity.md 2.0a)
+            d["slots"] = {"junction": "p/optimization/relax"}
+            d["run"]["id"] = "J_p_optimization_relax"
+        else:
+            d["structure"] = {"source": "h2.xyz", "formula": "H2", "atoms": 2}
+        return Task.from_dict(d)
+
+    offered_somewhere = {}
+    for engine, calculation in (("siesta", "optimization"),
+                                ("siesta", "vibration"),
+                                ("siesta", "transport"),
+                                ("pyscf", "optimization"),
+                                ("pyscf", "vibration")):
+        r = c.get("/api/notify/report-fields",
+                  query_string={"engine": engine, "calculation": calculation})
+        assert r.status_code == 200, r.data
+        offered = [f["name"] for f in r.get_json()["fields"]]
+        assert all(f["offered_as"] for f in r.get_json()["fields"])
+        for name in NAMES:
+            try:
+                described(engine, calculation, [name])
+                accepted = True
+            except ValueError as exc:
+                accepted = False
+                assert repr(name) in str(exc), str(exc)
+            assert accepted == (name in offered), (
+                f"{engine} {calculation}: {name!r} is "
+                f"{'accepted' if accepted else 'refused'} at save but "
+                f"{'offered' if name in offered else 'not offered'} by the "
+                f"card")
+        offered_somewhere[(engine, calculation)] = set(offered)
+    assert "per_iter_s" not in offered_somewhere[("pyscf", "optimization")]
+    assert "geom_step" not in offered_somewhere[("siesta", "transport")]
+    assert "max_force" in offered_somewhere[("siesta", "transport")]

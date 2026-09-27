@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from molbuilder.parse import detect
-from molbuilder.parse.instruments.scf_timing import scf_timing_metrics
+from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
 
 _HERE = Path(__file__).parent / "fixtures" / "transiesta"
 

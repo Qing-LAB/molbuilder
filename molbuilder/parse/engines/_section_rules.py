@@ -19,6 +19,8 @@ Scope (locked 2026-05-29):
   * **SIESTA + molwatch** consume this module; ``pyscf.py`` uses
     its own hand-rolled scanner (no win from the abstraction
     given its JSON-like log format).
+  * **Stdlib only, and it travels beside every job** with the two
+    reading passes that run on it (`runwrap.MONITOR_COMPANIONS`).
 
 Module layout:
 

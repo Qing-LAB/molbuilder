@@ -31,7 +31,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # The channel-name rule, from the module that owns the file those names
@@ -244,6 +244,96 @@ def _run_index_resolver(basename: str, ext: str) -> str:
         f'_out_file="{basename}-run${{_run_n}}{ext}"\n'
         f'echo "[molbuilder] run index: $_run_n  ->  $_out_file"\n'
         f"\n"
+    )
+
+
+def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
+                   notify_every_hours: float, notify_channels,
+                   notify_report, *, cores: str, gpu: bool,
+                   unwatchable: Optional[str] = None) -> str:
+    """Bash that launches the background monitor -- the SAME block for every
+    engine (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).
+
+    It tells the monitor WHICH RUN it watches -- the label, the stage token,
+    the run index the resolver just chose -- and never a path: the monitor
+    names its log, its utilisation CSV and every file it reads through
+    `runfiles`, and reads them through the framework's readers that travel
+    beside it (:data:`MONITOR_COMPANIONS`).  Until 2026-09-26 this block sat
+    in the SIESTA branch alone, spelled four paths by hand and passed the
+    grammar's patterns as flags.
+
+    It tells it WHAT THE JOB HOLDS too (`run-reports.md` § 2.1a): ``cores``
+    is the shell arithmetic for the cores this engine is launched on -- a run
+    started directly has no allocation, so its percentages are fractions of
+    these -- and ``gpu`` whether the run uses a GPU, without which none is
+    sampled or judged.
+
+    ``unwatchable`` is why this run cannot be watched, when it cannot: the
+    block then says so in the log and starts nothing.
+
+    It runs with the JOB's OWN python from the working dir -- no molbuilder
+    install, no numpy, no repo on PATH -- sleeps between wakes, and runs at
+    `nice -n 19` so it never competes with the compute ranks.  Opt out with
+    ``MB_MONITOR=0``.  Stopped by ``_mb_stop_monitor``; it also exits when
+    this wrapper's PID (``$$``) disappears.
+    """
+    head = (
+        # A '# ---' header in the EMITTED text: § 2.6's anatomy guard reads
+        # blocks by these headers, and this real compute-node work was
+        # structurally invisible to it (D9, user decision 2026-08-13).
+        f"# --- Background job monitor ---------------------------\n"
+        f'_monitor_pid=""\n'
+        # The interpreter is PROBED (python3 first, python second): bare
+        # `python` does not exist on python3-only hosts, and the backgrounded
+        # launch swallowed the 127 -- the log then said "monitor: pid=N" for
+        # a monitor that died at exec (R9, 2026-08-12).  Probed whether or
+        # not a monitor starts: the wrapper's `_mb_ending` asks with it.
+        f'_mb_py="$(command -v python3 || command -v python || true)"\n'
+    )
+    if unwatchable:
+        return head + f'_log INFO "monitor: not started -- {unwatchable}"\n'
+    return head + (
+        f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
+        f'&& command -v nice >/dev/null 2>&1 '
+        f'&& [ -n "$_mb_py" ] '
+        f'&& [ -f {MONITOR_BUNDLE} ]; then\n'
+        f'    nice -n 19 "$_mb_py" {MONITOR_BUNDLE} '
+        # INDEXED LIKE THE OUTPUT IS: the run index the resolver chose, so a
+        # re-run's monitor log and util.csv never interleave with or
+        # truncate an earlier run's (found 2026-08-27 by reading the write
+        # mode).  The monitor composes both names from it.
+        f'--label "{label}" '
+        + (f'--stage "{stage}" ' if stage else "")
+        + f'--run "$_run_n" --util --cores "{cores}" '
+        + ("--gpu " if gpu else "")
+        + f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
+        f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
+        + (f'--notify-on-scf ' if notify_on_scf else "")
+        + (f'--notify-every-hours {notify_every_hours:g} '
+           if notify_every_hours > 0 else "")
+        # ABSENT is "every channel this machine has" and `""` is "none", so
+        # the flag is emitted whenever the description said anything at all
+        # -- including when what it said was nothing at all
+        # (`run-reports.md` 3.0).
+        + ("" if notify_channels is None
+           else f'--notify-channels "{",".join(notify_channels)}" ')
+        # ABSENT is "every field the monitor can determine" and "" is "the
+        # summary line alone" (`stages.md` 6.9).  BAKED HERE, so a running
+        # job's report format cannot change because `task.json` was edited
+        # while it sat in the queue.
+        + ("" if notify_report is None
+           else f'--notify-report "{",".join(notify_report)}" ')
+        + f'--watch-pid $$ >/dev/null 2>&1 &\n'
+        f'    _monitor_pid=$!\n'
+        f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
+        f'${{MB_MONITOR_INTERVAL:-10}}s, quiet-when-stalled, util-sampling; '
+        f'reads the run through the framework shipped beside it) -> the '
+        f'run\'s .monitor.log + .util.csv"\n'
+        f'else\n'
+        f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
+        f'nice + a python interpreter + {MONITOR_BUNDLE} beside the '
+        f'job)"\n'
+        f'fi\n'
     )
 
 
@@ -1430,6 +1520,49 @@ def _siesta_scf_timing_func() -> str:
     )
 
 
+def _ending_question_func() -> str:
+    """Bash defining ``_mb_ending`` -- the wrapper's one door onto how the
+    run ended (`execution/run-reports.md` § 2.3).
+
+    THE WRAPPER ASKS, IT DOES NOT GREP.  It decided its warm retries and its
+    failure hints by grepping the output for strings it typed itself --
+    ``SCF_NOT_CONV``, ``outcoor: Final (unrelaxed) ...``, ``propor: ERROR``,
+    ``ERROR|aborted|Stopping`` -- until 2026-09-26.  ``_run_ending.py``
+    travels beside every job (:data:`MONITOR_COMPANIONS`), so the wrapper runs
+    it with the job's own python over the output and over SIESTA's stderr,
+    which the session log holds, and the markers keep their one home: the
+    SIESTA family's table.
+
+    ``_mb_ending QUESTION [ARG]`` answers by exit status (0 yes, 1 no, 2 the
+    ending cannot be read); ``_mb_ending`` alone prints the ending in words.
+    With no python beside the job it answers 2 -- no hint and no warm retry.
+    ``_mb_ending_able`` asks that in THIS shell, so the one place that asks
+    first can say so once: an ask inside ``$( )`` cannot set anything its
+    caller sees.
+    """
+    return (
+        "# How the run ended, asked of the framework: `_run_ending`, in\n"
+        f"# {MONITOR_BUNDLE} beside the job, reads the output and\n"
+        "# SIESTA's stderr (this wrapper's log) with the SIESTA family's own\n"
+        "# table (run-reports.md 2.3).  _mb_ending QUESTION [ARG]: exit 0 yes,\n"
+        "# 1 no, 2 cannot read; _mb_ending alone: the ending in words.\n"
+        "_mb_ending_able() {\n"
+        f'    [ -n "$_mb_py" ] && [ -f {MONITOR_BUNDLE} ]\n'
+        "}\n"
+        "_mb_ending() {\n"
+        "    _mb_ending_able || return 2\n"
+        f'    "$_mb_py" {MONITOR_BUNDLE} ending "$_out_file" '
+        '--stderr "$_runwrap_log" "$@"\n'
+        "}\n"
+    )
+
+
+#: What the wrapper's log says when the ending cannot be asked.
+_ENDING_UNREADABLE = ("the ending cannot be read here (needs a python "
+                      "interpreter + mb_monitor.pyz beside the job): no "
+                      "failure hint, no warm retry")
+
+
 def _gpu_runtime_defaults_block() -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
@@ -1815,59 +1948,43 @@ The wrapper needs the atom count to state its occupancy NOTICE
 
 
 def _effective_parameters_block(script_path: "Path") -> str:
-    """The parameters SIESTA will actually read, echoed into the run log.
+    """What SIESTA will be given, echoed into the run log at launch.
 
-    **The deck is the input, so the record is the deck** -- comments and blank
-    lines stripped, which is exactly the set of lines libfdf parses.  It is read
-    at LAUNCH rather than baked at generation, so a deck somebody hand-edited
-    after `prep` records what the engine will really see, not what we once
-    wrote.
+    **The one block both engines write** (`model/parse.md` § 5d.3a): a row per
+    catalogue item -- ``[item, default, asked, used]``, `script_emit`'s format
+    and its reader -- then the deck as the engine will read it.  SIESTA is a
+    separate process that has not started when this runs, so the rows carry
+    the item's catalogue DEFAULT only: what the deck asks for is the deck
+    itself, which the record reads from the attempt, and what SIESTA used is
+    its own ``fdf.<stamp>.log``.  The default is baked here because it is a
+    fact of the catalogue this wrapper was rendered from -- the run's own
+    record of it, never today's catalogue read later.
 
-    Two columns cannot be had here the way PySCF has three.  PySCF can read its
-    own objects back after setup; SIESTA is a separate process that has not
-    started yet, so *what the engine holds* is only knowable from its own output
-    afterwards.  What the wrapper can say honestly is *what it is being given*.
-
-    **What the deck does not carry is recorded too.** A keyword left out takes
-    the engine's own default, and a reader chasing a surprising number needs to
-    know that it was never set rather than assume the deck is the whole story.
-    That list is baked at generation time, because it comes from the catalogue.
+    **The deck is read at LAUNCH**, comments and blank lines stripped -- the
+    lines libfdf parses -- so a deck somebody hand-edited after `prep` is
+    recorded as the engine will see it.
     """
+    import shlex as _shlex
     from . import script_emit as _sc
 
     script_name = script_path.name
-    try:
-        deck_text = script_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        deck_text = ""          # the caller already refuses a missing deck
-    absent = []
-    for item in _sc.declarations(engine="siesta"):
-        param = _sc.parameter(item.name, "siesta", deck_text=deck_text)
-        if param.writes and param.value is None:
-            absent.append(f"{item.name} (catalogue default {param.default!r})")
-
     lines = [
         "",
         "# --- What the engine will read ------------------------------",
         f'echo "{_sc.begin_marker(_sc.BLOCK_PARAMETERS)}"',
+    ]
+    for item in _sc.declarations(engine="siesta"):
+        param = _sc.parameter(item.name, "siesta")
+        if param.writes:
+            lines.append("echo " + _shlex.quote(
+                _sc.parameter_row(item.name, param.default)))
+    lines += [
         f'grep -v "^[[:space:]]*#" "{script_name}" | grep -v "^[[:space:]]*$"'
         ' | sed "s/^/#   /"',
+        f'echo "{_sc.end_marker(_sc.BLOCK_PARAMETERS)}"',
+        "",
     ]
-    if absent:
-        # THE CATALOGUE'S DEFAULT, SAID AS SUCH.  This heading promised the
-        # engine's ("the engine default applies") over the catalogue's value:
-        # `negf_eq_pole_ev (catalogue default 0.0)` where SIESTA ran 0.2507
-        # Ry.  What the engine actually used is SIESTA's own fdf log, read by
-        # the run record (`model/parse.md` § 5d.3).
-        lines.append(
-            'echo "#   -- not in the deck: the catalogue default is shown; the '
-            'value the engine used is in its fdf.*.log --"')
-        for row in absent:
-            lines.append(f'echo "#   {row}"')
-    lines.append(f'echo "{_sc.end_marker(_sc.BLOCK_PARAMETERS)}"')
-    lines.append("")
     return "\n".join(lines) + "\n"
-
 
 
 def _wants_gpu(script_path: Path, resources=None) -> bool:
@@ -2008,16 +2125,11 @@ def render_run_wrapper(script_path: Path, *,
         # SAME REASON as the channel names above: this becomes SHELL.
         # And the vocabulary is closed, so a name outside it is a typo
         # the person can still fix rather than a field that silently
-        # never arrives (`stages.md` 6.9).
-        from .task import REPORT_ITEMS
-        bad = [n for n in notify_report if n not in REPORT_ITEMS]
-        if bad:
-            raise WrapperError(
-                f"notify report field(s) {', '.join(map(repr, bad))}: "
-                f"the fields are {', '.join(REPORT_ITEMS)}.  These are "
-                f"the report's own names, not labels, and the "
-                f"calculation's own name is always sent and is not "
-                f"among them.")
+        # never arrives -- the one declaration's sentence (`stages.md` 6.9).
+        from .report_fields import refusal
+        why = [w for w in (refusal(n) for n in notify_report) if w]
+        if why:
+            raise WrapperError(f"notify report field: {why[0]}")
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
     category = EXTENSION_TO_CATEGORY.get(suffix)
@@ -2170,6 +2282,27 @@ def render_run_wrapper(script_path: Path, *,
 
     basename = script_path.stem
     script_name = script_path.name
+    # WHICH RUN THE MONITOR WATCHES, as the grammar reads this deck's name
+    # (`run-reports.md` § 2.3): the label it was told and the stage token.
+    # Without a label the deck's stem stands for it -- every file of the
+    # rung begins with it, so the names compose the same.
+    from .runfiles import RunFileError as _RunFileError
+    from .runfiles import compose as _rf_compose
+    from .runfiles import parse as _rf_parse
+    _named = _rf_parse(script_name, label) if label else None
+    watch_label, watch_stage = ((label, _named.stage) if _named is not None
+                                else (basename, None))
+    # A NAME THE MONITOR CANNOT COMPOSE is said here, not found there: it
+    # names every file through `runfiles`, and a deck pointed at by hand as
+    # `my.relaxation.fdf` gives a stem no run label can be -- the monitor
+    # then died at start with its stderr at /dev/null, leaving no log at all.
+    try:
+        _rf_compose(watch_label, ".monitor.log", watch_stage)
+        unwatchable = None
+    except _RunFileError:
+        unwatchable = (f"the deck's name {basename} is not a run label the "
+                       f"file catalogue can read back (letters, digits, "
+                       f"- and _ only)")
     # Shell-safety: both basename and script_name are interpolated
     # raw into bash f-strings throughout this module (inside
     # ``"..."``, inside glob lists, inside ``$(...)``, etc.).
@@ -3033,22 +3166,32 @@ def render_run_wrapper(script_path: Path, *,
             # CPU-bind policy).  See _gpu_per_rank_launcher_block.__doc__.
             + f'_siesta_target="{_prog}"\n'
             + (_gpu_per_rank_launcher_block() if gpu_mode else "")
+            # ``_mb_cores``: the cores THIS launch uses -- what the job holds
+            # when it was started directly, the monitor's cpu% denominator
+            # (`run-reports.md` § 2.1a).  Decided here, with the launcher:
+            # ranks x threads only for a hybrid build, and one core for a
+            # serial one, whatever -np and -omp said.
             + f'if [ "$_has_mpi" = 1 ]; then\n'
             f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'
             f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
+            f'        _mb_cores=$(( _mpi_np * _omp_threads ))\n'
             f'    else\n'
             f'        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
+            f'        _mb_cores=$_mpi_np\n'
             f'    fi\n'
             f'elif [ "$_has_omp" = 1 ]; then\n'
             f'    _launch_cmd="{_prog}"\n'
             f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
+            f'    _mb_cores=$_omp_threads\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
             f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
+            f'    _mb_cores=$_mpi_np\n'
             f'else\n'
             f'    _launch_cmd="{_prog}"\n'
             f'    _launch_note="serial build (no parallelisation compiled in)"\n'
+            f'    _mb_cores=1\n'
             f"fi\n"
             f"\n"
         )
@@ -3611,19 +3754,21 @@ def render_run_wrapper(script_path: Path, *,
     # finished PySCF one, which is what `submit.py` refuses a ladder on.
     # The cost is the one already accepted above: one extra bash process.
     if category == "siesta":
-        from .parse.engines import siesta_grammar as _siesta_grammar
         # Always-on launch-command audit log + the --dry-run preview, both
         # extracted into named block-emitters (see their docstrings for
         # the goal/contract).  Order: log the resolved command, then the
         # dry-run guard (exits before launch), then the real launch.
+        # The cause a failure is asked about is the table's own marker.
+        from .parse.engines import siesta_grammar as _G
         launch_block = (
             _siesta_resolved_log_block(script_name, gpu_mode)
             + _siesta_dry_run_block(script_name, gpu_mode)
             + _siesta_scf_timing_func()
             + f"# --- Launch SIESTA + capture exit -----------------------\n"
-            f"# `set +e` lets us inspect the exit code; the diagnostic\n"
-            f"# below reads the .out for ``propor: ERROR`` and prints a\n"
-            f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
+            f"# `set +e` lets us inspect the exit code; on a failure the\n"
+            f"# ending is asked of the framework (_mb_ending) and a stop by\n"
+            f"# propor gets its retry suggestion.  Then we re-exit with\n"
+            f"# SIESTA's code.\n"
             f"# stdout is piped through _mb_scf_tee, which writes the .out\n"
             f"# AND the per-iteration .scf-timing.log (running-a-job.md § 4.1); SIESTA's\n"
             f"# stderr stays on the wrapper's stderr (runwrap log).  We read\n"
@@ -3631,88 +3776,12 @@ def render_run_wrapper(script_path: Path, *,
             f'_scf_timing_log="${{_out_file%.out}}.scf-timing.log"\n'
             f'_log INFO "scf timing  : per-iteration stamps -> '
             f'$_scf_timing_log"\n'
-            # A '# ---' header in the EMITTED text: § 2.6's anatomy guard
-            # reads blocks by these headers, and this real compute-node
-            # work was structurally invisible to it (D9, user decision
-            # 2026-08-13: document, don't soften the claim).
-            f"# --- Background job monitor ---------------------------\n"
-            # The monitor is the SELF-CONTAINED, stdlib-only ``mb_monitor.py``
-            # shipped next to this wrapper (a copy of molbuilder/monitor.py).
-            # It runs with the JOB's OWN python from the working dir -- NO
-            # molbuilder install, NO numpy, NO repo on PATH, NO separate env
-            # (the backend siesta env has none of those).  Each interval it
-            # parses .out + .scf-timing.log, appends status to
-            # <basename>.monitor.log, and fires notifier hooks.  It sleeps
-            # between wakes (0 CPU while idle) and runs at `nice -n 19` (+ a
-            # self-nice) so it never competes with the compute ranks.  Opt
-            # out with MB_MONITOR=0.  Stopped by _mb_stop_monitor; also
-            # self-exits when this wrapper's PID ($$) disappears.
-            f'_monitor_pid=""\n'
-            # The interpreter is PROBED (python3 first, python second):
-            # bare `python` does not exist on python3-only hosts, and the
-            # backgrounded launch swallowed the 127 -- the log then said
-            # "monitor: pid=N" for a monitor that died at exec (R9,
-            # 2026-08-12).
-            f'_mb_py="$(command -v python3 || command -v python || true)"\n'
-            f'if [ "${{MB_MONITOR:-1}}" = "1" ] '
-            f'&& command -v nice >/dev/null 2>&1 '
-            f'&& [ -n "$_mb_py" ] '
-            f'&& [ -f mb_monitor.py ]; then\n'
-            f'    nice -n 19 "$_mb_py" mb_monitor.py '
-            f'--out "$_out_file" --timing "$_scf_timing_log" '
-            # INDEXED LIKE THE OUTPUT IS.  `_out_file` already carries
-            # `-run${_run_n}` and the resolver auto-advances, so a re-run
-            # never overwrites a result.  These two did NOT: the monitor
-            # log was appended to (two runs interleaved with no marker) and
-            # `util.csv` is written with `write_text`, so a re-run
-            # TRUNCATED it -- and `util.csv` is what a benchmark is
-            # measured from, so re-running destroyed the measurement it
-            # existed to repeat.  Found 2026-08-27 by reading the write
-            # mode rather than the design.
-            #
-            # Not a sweep problem: a flat LADDER stage re-run loses its
-            # util.csv today for the same reason.  In hierarchical each
-            # attempt is its own directory, so the index is 0 and these
-            # names simply match the `.out` beside them.
-            f'--log "{basename}-run${{_run_n}}.monitor.log" '
-            f'--util "{basename}-run${{_run_n}}.util.csv" '
-            # The SCF-row pattern, from the one grammar: the shipped monitor
-            # cannot import molbuilder (`model/parse.md` § 5d.5).
-            f'--scf-row "{_siesta_grammar.SCF_ROW_ERE}" '
-            f'--scf-energy-field {_siesta_grammar.SCF_E_KS_FIELD} '
-            f'--geom-row "{_siesta_grammar.GEOM_MOVE.pattern}" '
-            f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
-            f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
-            + (f'--notify-on-scf ' if notify_on_scf else "")
-            + (f'--notify-every-hours {notify_every_hours:g} '
-               if notify_every_hours > 0 else "")
-            # ABSENT is "every channel this machine has" and `""` is "none",
-            # so the flag is emitted whenever the description said anything
-            # at all -- including when what it said was nothing at all
-            # (`run-reports.md` 3.0).  A description that names no channels
-            # renders no flag, exactly as it did before channels existed.
-            + ("" if notify_channels is None
-               else f'--notify-channels "{",".join(notify_channels)}" ')
-            # ABSENT is "every field the monitor can determine" and ""
-            # is "the summary line alone", so -- exactly as for the
-            # channels -- the flag is emitted whenever the description
-            # said anything at all (`stages.md` 6.9).  BAKED HERE, so a
-            # running job's report format cannot change because
-            # `task.json` was edited while it sat in the queue.
-            + ("" if notify_report is None
-               else f'--notify-report "{",".join(notify_report)}" ')
-            + f'--watch-pid $$ >/dev/null 2>&1 &\n'
-            f'    _monitor_pid=$!\n'
-            f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
-            f'${{MB_MONITOR_INTERVAL:-10}}s, quiet-when-stalled, util-sampling, '
-            f'self-contained mb_monitor.py) '
-            f'-> {basename}-run${{_run_n}}.monitor.log + '
-            f'{basename}-run${{_run_n}}.util.csv"\n'
-            f'else\n'
-            f'    _log INFO "monitor: not started (set MB_MONITOR=1; needs '
-            f'nice + a python interpreter + mb_monitor.py beside the '
-            f'job)"\n'
-            f'fi\n'
+            + _ending_question_func()
+            + _monitor_block(watch_label, watch_stage, notify_on_scf,
+                             notify_every_hours, notify_channels,
+                             notify_report,
+                             cores="$_mb_cores", gpu=gpu_mode,
+                             unwatchable=unwatchable)
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={continue_retries}\n'
                f'# Warm-retry: re-exec this wrapper with --continue (advance\n'
@@ -3769,8 +3838,10 @@ def render_run_wrapper(script_path: Path, *,
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"
             f'    echo "===== {_prog_label} exited with code $_siesta_exit =====" >&2\n'
-            f'    if grep -aq "propor: ERROR" "$_out_file" "$_runwrap_log" '
-            f'2>/dev/null; then\n'
+            f'    _mb_ending_able || _log WARN "{_ENDING_UNREADABLE}"\n'
+            f'    _mb_said=$(_mb_ending) || _mb_said=""\n'
+            f'    [ -z "$_mb_said" ] || echo "how it ended: $_mb_said" >&2\n'
+            f'    if _mb_ending stopped-by "{_G.PROPOR_MARKER}"; then\n'
             f"        cat <<HINT >&2\n"
             f"\n"
             f"SIESTA crashed with 'propor: ERROR: IMAX = 0' during startup.\n"
@@ -3804,31 +3875,26 @@ def render_run_wrapper(script_path: Path, *,
             f"   metal also triggers IMAX=0; set an initial Spin.Total.\n"
             f"   (molbuilder's preflight normally catches this pre-run.)\n"
             f"\n"
-            f"Full SIESTA output: $_out_file\n"
             f"HINT\n"
-            f'    elif grep -aq "ERROR\\|aborted\\|Stopping" '
-            f'"$_out_file" "$_runwrap_log" 2>/dev/null; then\n'
-            f'        echo "Other SIESTA error detected; check '
-            f'$_out_file / $_runwrap_log for details." >&2\n'
             f"    fi\n"
+            f'    echo "the output: $_out_file -- this wrapper\'s log: '
+            f'$_runwrap_log" >&2\n'
             + (f'    # SCF_NOT_CONV abort: with SCF.MustConverge (SIESTA\n'
                f'    # default true) an unconverged SCF stops the run\n'
-               f'    # NON-zero after banking the density matrix -- so this\n'
-               f'    # is where the retriable case lands (verified against\n'
-               f'    # the frozen hemeC scf_not_conv fixtures: SCF_NOT_CONV\n'
-               f'    # -> ABNORMAL_TERMINATION -> MPI abort).  A warm\n'
+               f'    # NON-zero after banking the density matrix, and SIESTA\n'
+               f'    # says so -- "(required)" on its SCF_NOT_CONV line, then\n'
+               f'    # ABNORMAL_TERMINATION (Src/siesta_forces.F90) -- so the\n'
+               f'    # retry asks whether THAT stopped it.  A warm\n'
                f'    # --continue restart resumes SCF from that .DM with a\n'
                f'    # fresh iteration budget.  Crash classes above (propor\n'
                f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
                f'    # cannot fix a defective pseudo or a bad rank count.\n'
                f'    if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
-               f'       && grep -aq "SCF_NOT_CONV" "$_out_file" '
-               f'2>/dev/null; then\n'
+               f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        _mb_warm_retry "SCF did not converge '
                f'(SIESTA aborted under SCF.MustConverge)"\n'
                f'    elif [ "$_siesta_retry" -gt 0 ] \\\n'
-               f'       && grep -aq "SCF_NOT_CONV" "$_out_file" '
-               f'2>/dev/null; then\n'
+               f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        echo "SCF still unconverged after '
                f'$_siesta_retry_max warm retry(s); re-run with --continue '
                f'to extend, or revisit mixing/smearing." >&2\n'
@@ -3847,20 +3913,17 @@ def render_run_wrapper(script_path: Path, *,
                f"# --- Geometry-cap check + warm-retry "
                f"(up to {continue_retries} retries) ---\n"
                f"# A relaxation that exhausts its MD step budget UNCONVERGED\n"
-               f"# still exits 0 and prints the final-geometry block header\n"
-               f'# "outcoor: Final (unrelaxed) atomic coordinates" (a\n'
-               f'# converged relax prints "Relaxed atomic coordinates";\n'
-               f"# verified against the frozen hemeC-stage2 42-frame\n"
-               f"# fixture).  Warm --continue resumes from the banked\n"
-               f"# .XV/.DM/.CG with a fresh step budget.  Single-point runs\n"
-               f"# never print the marker, so they cannot false-trigger.\n"
+               f"# still exits 0 and prints its final geometry as unrelaxed\n"
+               f"# (a converged one as relaxed; Src/siesta_analysis.F90).\n"
+               f"# Warm --continue resumes from the banked .XV/.DM/.CG with\n"
+               f"# a fresh step budget.  A single point prints neither, so\n"
+               f"# it cannot false-trigger.\n"
+               f'_mb_ending_able || _log WARN "{_ENDING_UNREADABLE}"\n'
                f'if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
-               f'   && grep -aq "outcoor: Final (unrelaxed) atomic '
-               f'coordinates" "$_out_file" 2>/dev/null; then\n'
+               f'   && _mb_ending relaxation-capped; then\n'
                f'    _mb_warm_retry "geometry relaxation hit its step cap '
                f'unconverged"\n'
-               f'elif grep -aq "outcoor: Final (unrelaxed) atomic '
-               f'coordinates" "$_out_file" 2>/dev/null; then\n'
+               f'elif _mb_ending relaxation-capped; then\n'
                f'    echo "WARNING: geometry still unconverged after '
                f'$_siesta_retry_max warm retry(s); re-run with --continue '
                f'to extend the relaxation." >&2\n'
@@ -3888,8 +3951,15 @@ def render_run_wrapper(script_path: Path, *,
             f'    _log INFO "dry-run complete; no PySCF launched"\n'
             f'    exit 0\n'
             f'fi\n'
+            + _monitor_block(watch_label, watch_stage, notify_on_scf,
+                             notify_every_hours, notify_channels,
+                             notify_report,
+                             # OpenMP only: `-np` is accepted and ignored.
+                             cores="$_omp_threads",
+                             gpu=_wants_gpu(script_path, resources),
+                             unwatchable=unwatchable)
             # NOT `exec`: the shell has to outlive the engine to conclude.
-            f"set +e\n"
+            + f"set +e\n"
             f"{inner}\n"
             f"_pyscf_exit=$?\n"
             f"set -e\n"
@@ -4040,7 +4110,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# --- Per-run log file (current directory; see docs/execution/running-a-job.md § 5) -\n"
         f'_runwrap_log="$PWD/{basename}.runwrap-$(date +%Y%m%d-%H%M%S).log"\n'
         f"# ABSOLUTE, and it has to be: every later reference -- the\n"
-        f"# propor/ERROR hints grep \"$_out_file\" \"$_runwrap_log\" -- must\n"
+        f"# ending read over it (_mb_ending), for SIESTA's stderr -- must\n"
         f"# resolve wherever it runs from.  (A comment here claimed the\n"
         f"# wrapper 'cd's into run-<n>/ after this point' -- the attempt-dir\n"
         f"# cd was retired 2026-08-10, and this wrapper twice states it\n"
@@ -4114,49 +4184,96 @@ def render_run_wrapper(script_path: Path, *,
     )
 
 
-#: Every file that must sit BESIDE a SIESTA job for its monitor to run --
-#: the monitor itself, and the one module it imports when it ships alone.
-#: `write_run_wrapper` writes them next to the wrapper; `materialize`
-#: brings each into every attempt.  ONE list, because there were two.
-MONITOR_COMPANIONS = ("mb_monitor.py", "config_dir.py")
+#: Every file that travels BESIDE a job for its monitor, as
+#: ``{name beside the job: the module whose source it is}``: the monitor, the
+#: one module it reads its channels through, and every framework module it
+#: reads the RUN through -- the names (`runfiles`, `identity`), the output's
+#: one parser (each engine family's reading pass, its grammar, and the rule
+#: engine they run on), the timing instrument's rows, how a run ended (the
+#: PySCF end lines, `_run_ending`), `run_status` itself, and what a report may
+#: carry (`report_fields`) -- `execution/run-reports.md` § 2.3.
+#:
+#: **A verbatim copy of each module's own file**, not a copy of its logic:
+#: each imports the next two ways -- from the package, or from beside the job
+#: -- as `config_dir` always has, so the monitor reads a run with the readers
+#: the Results tab's directory door reads it with.  The rule for joining is
+#: `configuration.md`'s: *stdlib-only AND travels*, and
+#: `tests/test_layering.py` imports the whole set with molbuilder absent.
+#:
+#: They travel as ONE file, :data:`MONITOR_BUNDLE`, which `render_wrappers`
+#: writes next to the wrapper and `materialize` brings into every attempt.
+#: ONE table, because there were two lists.
+MONITOR_COMPANIONS: Dict[str, str] = {
+    "mb_monitor.py":       "molbuilder.monitor",
+    "config_dir.py":       "molbuilder.config_dir",
+    "runfiles.py":         "molbuilder.runfiles",
+    "identity.py":         "molbuilder.identity",
+    "siesta_reader.py":    "molbuilder.parse.engines.siesta_reader",
+    "siesta_grammar.py":   "molbuilder.parse.engines.siesta_grammar",
+    "molwatch_reader.py":  "molbuilder.parse.engines.molwatch_reader",
+    "molwatch_grammar.py": "molbuilder.parse.engines.molwatch_grammar",
+    "_section_rules.py":   "molbuilder.parse.engines._section_rules",
+    "scf_timing_rows.py":  "molbuilder.parse.instruments.scf_timing_rows",
+    "end_lines.py":        "molbuilder.pyscf.end_lines",
+    "_run_ending.py":      "molbuilder.parse.engines._run_ending",
+    "report_fields.py":    "molbuilder.report_fields",
+    "job.py":              "molbuilder.parse.dirs.job",
+}
 
 
-def _config_dir_source() -> str:
-    """`config_dir.py`'s source, to travel beside the monitor.
+#: THE ONE FILE that travels beside every job for its monitor: a Python zip
+#: application (PEP 441) holding every module of :data:`MONITOR_COMPANIONS`,
+#: each its own file verbatim under its shipped name, and a ``__main__`` that
+#: runs the monitor.  ``python mb_monitor.pyz ...`` is the monitor; ``python
+#: mb_monitor.pyz ending OUTPUT ...`` is `_run_ending`'s door, which
+#: `monitor.main` hands on.  Fourteen files stood beside the deck until
+#: 2026-09-26 -- read as PySCF scripts, listed as runs of their own -- and one
+#: file holds them all (user: *"can't we just put it in one single Python
+#: file?"*): still the package's own files, so still no second copy of any
+#: reader.
+MONITOR_BUNDLE = "mb_monitor.pyz"
 
-    Read rather than restated, for the reason its own test gives: three
-    modules once spelled this rule independently and two said so in prose --
-    *"a comment is not a mechanism"*.  The module is eight lines of stdlib
-    with no molbuilder imports, which is what lets it ship.
-    """
-    from . import config_dir as _cd
-    try:
-        return Path(_cd.__file__).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise WrapperError(
-            f"could not read the config-dir source to ship: {exc}") from None
+#: The bundle's entry: the monitor, whose exit status is the process's --
+#: `_run_ending`'s questions answer by it.
+_BUNDLE_MAIN = "import mb_monitor\nraise SystemExit(mb_monitor.main())\n"
 
 
-def _monitor_source() -> str:
-    """The stdlib-only monitor's source, to travel beside a SIESTA job.
+def monitor_bundle() -> bytes:
+    """The bytes of :data:`MONITOR_BUNDLE` -- each module's own file, read
+    (:func:`companion_source`), zipped beside the entry.  The same sources
+    give the same bytes (fixed member times), so a re-prep writes the file it
+    found."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        members = [("__main__.py", _BUNDLE_MAIN)] + [
+            (name, companion_source(name)) for name in MONITOR_COMPANIONS]
+        for name, text in members:
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            z.writestr(info, text)
+    return buf.getvalue()
 
-    GOAL: make the background monitor runnable by a generated job with the
-    JOB's OWN python, from the working directory -- molbuilder is never
-    installed and the backend env has no numpy/molbuilder, so the monitor
-    cannot be reached as ``python -m molbuilder monitor``.  A verbatim copy of
-    the stdlib-only module solves it (`running-a-job.md` § 4.1).
+
+def companion_source(name: str) -> str:
+    """The text that travels as ``name`` -- its module's own file, read.
+
+    Read rather than restated: three modules once spelled the config-dir rule
+    independently and two said so in prose, *"a comment is not a mechanism"*.
 
     **Returned as text rather than copied to a destination.**  Step 4 is on
     floor 3, and floor 3 does not touch the disk (`script-preparation.md` § 5,
-    W7); the ``shutil.copyfile`` this replaces was the last write in this
-    module with no counterpart on the caller's side.
+    W7).
     """
-    from . import monitor as _monitor
+    import importlib
     try:
-        return Path(_monitor.__file__).read_text(encoding="utf-8")
-    except OSError as exc:
+        module = importlib.import_module(MONITOR_COMPANIONS[name])
+        return Path(module.__file__).read_text(encoding="utf-8")
+    except (KeyError, ImportError, OSError) as exc:
         raise WrapperError(
-            f"could not read the monitor source to ship: {exc}") from None
+            f"could not read {name!r} to ship beside the job: {exc}") from None
 
 
 @dataclass(frozen=True)
@@ -4165,18 +4282,21 @@ class RenderedWrapper:
     `script-preparation.md` § 5, W7.
 
     Named texts in the order they are written, plus which of them the shell
-    must be able to execute.  The wrapper is always ``files[0]``: it is what
-    step 4 exists to produce, and the ``.sbatch`` and the shipped monitor are
-    things it needs beside it.
+    must be able to execute, and the one binary file beside them: the monitor
+    with its readers (:data:`MONITOR_BUNDLE`).  The wrapper is always
+    ``files[0]``: it is what step 4 exists to produce, and the ``.sbatch`` and
+    the bundle are things it needs beside it.
 
-    **Why a set rather than one string.**  A deck is one file; a wrapper is up
-    to three, and which of them exist depends on facts only this layer holds --
-    whether the machine has a queue, whether the deck is SIESTA's.  Returning
-    the set keeps those decisions on floor 3 where they are made, and leaves
-    the disk to the caller.
+    **Why a set rather than one string.**  A deck is one file; a wrapper comes
+    with others, and which of them exist depends on facts only this layer
+    holds -- whether the machine has a queue.  Returning the set keeps those
+    decisions on floor 3 where they are made, and leaves the disk to the
+    caller.
     """
     files: Tuple[Tuple[str, str], ...]
     executable: Tuple[str, ...] = ()
+    #: Named BYTES -- the monitor's bundle, which is a zip and no text.
+    blobs: Tuple[Tuple[str, bytes], ...] = ()
 
     @property
     def wrapper_name(self) -> str:
@@ -4253,22 +4373,18 @@ def render_wrappers(script_path: Path, *,
     # ``job.run.sh`` and lose the "spectra" tag.
     files = [(script_path.stem + ".run.sh", text)]
 
-    # The background monitor travels WITH a SIESTA job because it has to run
-    # under the job's own python (`running-a-job.md` § 4.1).
-    if script_path.suffix.lower() == ".fdf":
-        # THE NAMES COME FROM MONITOR_COMPANIONS, and every stager reads
-        # that constant.  This writer and `materialize._bring`'s extras
-        # were two hand-kept lists of "what travels with the monitor";
-        # `config_dir.py` was added here (2026-08-26, with notify) and
-        # never there -- bench trials render INTO their attempt and got
-        # it, run attempts LINK from the stage dir and did not, so every
-        # production run's monitor died at import, stderr to /dev/null:
-        # no [MACHINE], no status, no util.csv, no reports.  Found
-        # 2026-08-28 by a run whose bench had all four.
-        sources = {"mb_monitor.py": _monitor_source,
-                   "config_dir.py": _config_dir_source}
-        for name in MONITOR_COMPANIONS:
-            files.append((name, sources[name]()))
+    # THE MONITOR TRAVELS WITH EVERY JOB, and the framework it reads the run
+    # through with it: it runs under the job's own python
+    # (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).  It travelled only
+    # beside a `.fdf` until 2026-09-26, so no PySCF run was ever watched.
+    #
+    # ONE FILE, BUILT FROM ONE TABLE: the bundle holds every module of
+    # MONITOR_COMPANIONS, and every stager brings the bundle.  This writer and
+    # `materialize._bring`'s extras were two hand-kept lists of "what travels
+    # with the monitor" until 2026-08-28; `config_dir.py` was added here and
+    # never there, and every production run's monitor died at import, stderr
+    # to /dev/null.  A single file cannot be half-shipped.
+    blobs = ((MONITOR_BUNDLE, monitor_bundle()),)
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue.  Resolving its header values lives here because only
@@ -4283,7 +4399,93 @@ def render_wrappers(script_path: Path, *,
             _validate_rendered_wrapper(sbatch, script_path)
             files.append((script_path.stem + ".sbatch", sbatch))
 
-    return RenderedWrapper(files=tuple(files), executable=(files[0][0],))
+    return RenderedWrapper(files=tuple(files), executable=(files[0][0],),
+                           blobs=blobs)
+
+
+# ---- Reading back what this module writes into the wrapper log -------------
+#
+# THE READER LIVES WITH ITS WRITER (`model/parse.md` § 1a): every line below is
+# one this module writes, and nothing else reads them.  `bench/result.py`
+# kept two private patterns for two of them until 2026-09-26.
+#
+# ONE SECTION PER RUN.  A warm retry re-execs this wrapper with its output
+# still going to the first log, and opens a log of its own -- measured on the
+# 2026-09-25 device: its first log holds run 0 and then run 1, its second run
+# 1 alone -- so a log is read as sections, each opening with the start
+# banner, and the run a log is FOR is its first section's.
+
+#: The line every section opens with (``_log STAGE`` in ``env_activation``).
+WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
+#: ``(key, pattern)`` for the header lines -- the ``_log INFO`` lines of
+#: ``env_activation``, the run-index line, the banner's program lines.
+_WRAPPER_LOG_LINES = (
+    ("hostname",       re.compile(r"\] hostname:\s+(\S+)")),
+    ("user",           re.compile(r"\] user:\s+(\S+)")),
+    ("cwd",            re.compile(r"\] cwd:\s+(.+?)\s*$")),
+    ("conda_env",      re.compile(r"\] CONDA_DEFAULT_ENV=(\S+)")),
+    ("python",         re.compile(r"\] which python:\s+(\S+)")),
+    ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) binary\s*:\s*(\S+)")),
+    ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) version\s*:\s*(\S+)")),
+)
+#: ``[molbuilder] run index: <N>  ->  <out>`` -- which run the section is.
+_WRAP_RUN_INDEX = re.compile(r"^\[molbuilder\] run index:\s*(\d+)")
+#: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
+#: the NODE's physical cores (`lscpu -p=Core,Socket` ignores the affinity mask,
+#: verified), not the allocation's.
+_WRAP_NODE = re.compile(
+    r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
+    r"cores_per_socket=(\d+)")
+#: ``ranks / omp : <N> ranks x <M> OMP threads`` -- written BEFORE the launch,
+#: so its ranks are what was ASKED; the thread count is written nowhere else.
+_WRAP_RANKS_OMP = re.compile(
+    r"ranks\s*/\s*omp\s*:\s*(\d+)\s+ranks\s+x\s+(\d+)\s+OMP threads")
+#: ``benchmark: <Program> wall <s>s`` -- the engine's own wall, launch to exit.
+_WRAP_WALL = re.compile(r"benchmark:\s+\S+\s+wall\s+([0-9.]+)s")
+
+
+def read_wrapper_log(text: str) -> List[Dict[str, Any]]:
+    """One dict per run section of a wrapper log, in order -- ``run_index``,
+    the host lines, ``binary`` / ``engine_version``, ``node_phys_cores`` (and
+    its sockets), ``ranks_asked`` / ``threads``, ``engine_elapsed_s``.  A key
+    is absent when its section does not state it."""
+    sections: List[Dict[str, Any]] = []
+    cur: Optional[Dict[str, Any]] = None
+    for line in (text or "").splitlines():
+        if WRAPPER_LOG_START in line:
+            cur = {}
+            sections.append(cur)
+            continue
+        if cur is None:            # before any banner: a log from before it
+            cur = {}
+            sections.append(cur)
+        m = _WRAP_RUN_INDEX.match(line)
+        if m:
+            cur.setdefault("run_index", int(m.group(1)))
+            continue
+        m = _WRAP_NODE.search(line)
+        if m:
+            for key, g in (("node_phys_cores", 1), ("node_sockets", 2),
+                           ("node_cores_per_socket", 3)):
+                cur.setdefault(key, int(m.group(g)))
+            continue
+        m = _WRAP_RANKS_OMP.search(line)
+        if m:
+            cur.setdefault("ranks_asked", int(m.group(1)))
+            cur.setdefault("threads", int(m.group(2)))
+            continue
+        m = _WRAP_WALL.search(line)
+        if m:
+            cur.setdefault("engine_elapsed_s", float(m.group(1)))
+            continue
+        for key, pat in _WRAPPER_LOG_LINES:
+            m = pat.search(line)
+            if m:
+                cur.setdefault(key, m.group(1))
+                break
+    # A section with nothing in it -- the `launched-by:` line the launcher
+    # writes ahead of the first banner -- is no run.
+    return [sec for sec in sections if sec]
 
 
 def write_run_wrapper(script_path: Path, *,
@@ -4321,6 +4523,9 @@ def write_run_wrapper(script_path: Path, *,
     for name, text in rendered.files:
         written = _sc_write.write_script(parent / name, text)
         written.chmod(0o755 if name in rendered.executable else 0o644)
+    for name, data in rendered.blobs:
+        (parent / name).write_bytes(data)
+        (parent / name).chmod(0o644)
     return parent / rendered.wrapper_name
 
 

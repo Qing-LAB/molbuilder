@@ -302,6 +302,24 @@ def channels():
     return jsonify({"ok": True, **_state()})
 
 
+@bp.route("/api/notify/report-fields", methods=["GET"])
+def report_fields():
+    """The fields a report of THIS calculation can carry, in order, with the
+    words the card offers each by -- `task-setup.md` § 9b, `stages.md` § 6.9.
+
+    Answered from the one declaration (`report_fields`), which a
+    description is checked against at save and the monitor reads beside the
+    job: the card offers exactly what could arrive, and keeps no list.
+    ``engine`` and ``calculation`` narrow it; either absent narrows nothing.
+    """
+    from ...report_fields import for_run
+    engine = (request.args.get("engine") or "").strip().lower() or None
+    calculation = (request.args.get("calculation") or "").strip() or None
+    return jsonify({"ok": True,
+                    "fields": [{"name": f.name, "offered_as": f.offered_as}
+                               for f in for_run(engine, calculation)]})
+
+
 @bp.route("/api/notify/channels/<name>", methods=["PUT"])
 def save_channel(name: str):
     """Add or update one channel, `0600`, in the one right place.

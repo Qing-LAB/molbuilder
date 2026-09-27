@@ -252,6 +252,20 @@ def test_the_basis_line_names_every_rung(sol, monkeypatch):
     assert "peak" in line
 
 
+def test_a_process_tree_is_named_even_when_the_last_read_met_an_exit(
+        monkeypatch):
+    """A run started directly is read from its process tree, and the line
+    says so however one last read went: at the end the wrapper spawns
+    `sleep`s while it waits for the monitor, and a read that meets one
+    exiting returns nothing.  A PySCF water run closed on "cpu time
+    [unavailable]" (2026-09-26, `test_vibration_e2e.py`).  API-level: the
+    race is timing, which the road reaches only by chance."""
+    monkeypatch.setattr(M, "_read_tree_cpu_ns", lambda root, skip: None)
+    monkeypatch.setattr(M, "_read_tree_mem_gb", lambda root, skip: (0.5, "Pss"))
+    line = M.measurement_provenance(M._Basis(8, "launched on", tree=1))
+    assert "cpu time [process tree]" in line, line
+
+
 def test_the_basis_line_admits_when_it_is_the_NODE(tmp_path, monkeypatch):
     """The fallback must be visible. A node-wide number presented without
     that label is exactly the defect this change exists to end."""

@@ -61,6 +61,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
 
+from . import report_fields as _report_fields
 from .identity import normalise_id, run_id
 from .persist import check_schema, read_json, write_json
 # The record's spelling for the two asks.  A TOP-LEVEL import because it is
@@ -117,16 +118,6 @@ _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
 #: because a knob you might instead measure has one home, not two.
 _ALLOCATION_KEYS = ("domain", "time", "mem")
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
-
-#: WHAT a report may carry, in the report's OWN field names
-#: (`run-reports.md` § 4.1a).  One vocabulary, so what a person ticks, what
-#: travels and what a listener parses are the same words -- a second set of
-#: labels here would be a translation table nobody could see
-#: (`stages.md` § 6.9).
-#:
-#: **The name is not on this list because it is not optional**: every report
-#: carries the calculation's label and its job id, in the title, first.
-REPORT_ITEMS = ("elapsed_s", "n_iters", "energy", "geom_step", "per_iter_s")
 
 #: The two SCHEDULER asks a run owns, admitted to `execution` by name
 #: (`stages.md` § 6.8e).  They are not catalogue items and never will be: the
@@ -258,8 +249,9 @@ class Notify:
     always said by omitting it.  Absent also means the feature is off — no
     default cadence is invented on anyone's behalf.
     """
-    #: Fire when an SCF cycle reaches its criterion — once in a single point,
-    #: once per geometry step in a relaxation.
+    #: Fire when a step's SCF reaches its criterion -- a relaxation's move, a
+    #: force-constant run's displacement (`run-reports.md` § 2.2).  A single
+    #: point states no step, and its finish message is the whole report.
     on_scf_converged: bool = False
     #: Fire every N hours.  ``0`` is off; HOURS, because the point of this is
     #: reassurance over a long run, not a live feed.
@@ -812,7 +804,8 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
                 varies=varies, stages=stages, calculation=calc, bench=bench,
                 execution=execution,
                 allocation=_allocation_from_obj(obj),
-                notify=_notify_from_obj(obj),
+                notify=_notify_from_obj(obj, engine=engine,
+                                        calculation=calc),
                 slots=slots, bias=bias)
 
 
@@ -909,7 +902,8 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
                       mem=_canon(canonical_mem, "mem"))
 
 
-def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
+def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
+                     calculation: str) -> "Notify":
     """``notify`` -> :class:`Notify`; absent is an empty one, which is off.
 
     Both fields are refused by TYPE rather than coerced.  ``"true"`` is not
@@ -984,12 +978,11 @@ def _notify_from_obj(obj: Mapping[str, Any]) -> "Notify":
                     f"summary line alone")
         items = []
         for item in got:
-            if item not in REPORT_ITEMS:
-                _refuse(f"notify.report: {item!r} is not a report field. "
-                        f"The fields are {', '.join(REPORT_ITEMS)} -- these "
-                        f"are the report's own names (run-reports.md 4.1a), "
-                        f"not labels. The calculation's name and job id are "
-                        f"always sent and are not on the list")
+            # THE ONE DECLARATION answers, for THIS calculation: a field its
+            # runs can never state is refused by name (`stages.md` § 6.9).
+            why = _report_fields.refusal(str(item), engine, calculation)
+            if why is not None:
+                _refuse(f"notify.report: {why}")
             if item not in items:
                 items.append(item)
         report = tuple(items)

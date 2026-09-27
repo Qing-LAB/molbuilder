@@ -14,7 +14,7 @@ User-reported failing line (BDT optimization stage 2, run 0):
 Two pathologies at once:
 
   1. ``-593325.460881280.683754`` -- two tight-packed f10.6 columns
-     (handled by the pre-existing ``_SCF_TIGHT_PACK_RE``).
+     (handled by the grammar's tight-pack separator).
   2. trailing ``**********`` -- Fortran field overflow (the NEW
      case this test pins).
 
@@ -34,7 +34,7 @@ emits:
   * ``E_KS`` line -- total energy overflow.
 
 The fix routes EVERY single-column ``float(...)`` in the parser
-through ``_parse_fortran_float`` so the overflow path is uniform
+through the grammar's ``fortran_float`` so the overflow path is uniform
 across SCF / forces / cell / coords / energy / max-force.
 """
 from __future__ import annotations
@@ -43,15 +43,15 @@ import math
 
 import pytest
 
-from molbuilder.parse.engines.siesta import (
-    _parse_fortran_float,
-    _parse_scf_floats,
+from molbuilder.parse.engines.siesta_grammar import (
+    fortran_float,
+    scf_floats,
+    scf_row,
 )
-from molbuilder.parse.engines.siesta_grammar import scf_row
 
 
 # --------------------------------------------------------------------- #
-#  _parse_fortran_float -- the single-token helper                       #
+#  fortran_float -- the single-token helper                       #
 # --------------------------------------------------------------------- #
 
 
@@ -60,15 +60,15 @@ class TestParseFortranFloat:
     Fortran's all-asterisks overflow indicator as NaN."""
 
     def test_normal_float_passes_through(self):
-        assert _parse_fortran_float("-152787.998333") == -152787.998333
-        assert _parse_fortran_float("1.0e-6") == 1.0e-6
-        assert _parse_fortran_float("0") == 0.0
+        assert fortran_float("-152787.998333") == -152787.998333
+        assert fortran_float("1.0e-6") == 1.0e-6
+        assert fortran_float("0") == 0.0
 
     @pytest.mark.parametrize("tok", [
         "**", "***", "**********", "*" * 20,
     ])
     def test_all_asterisks_returns_nan(self, tok):
-        result = _parse_fortran_float(tok)
+        result = fortran_float(tok)
         assert math.isnan(result), (
             f"`{tok}` should parse as NaN (Fortran field overflow); "
             f"got {result!r}"
@@ -80,7 +80,7 @@ class TestParseFortranFloat:
         a real format error so the parser warns instead of silently
         coercing to NaN."""
         with pytest.raises(ValueError):
-            _parse_fortran_float("*")
+            fortran_float("*")
 
     @pytest.mark.parametrize("tok", [
         "", "siesta:", "abc", "12.3.4", "1.0e", "12*",
@@ -91,11 +91,11 @@ class TestParseFortranFloat:
         permissive ``try: float ... except: NaN`` blanket; it has
         ONE Fortran-specific escape hatch and that's it."""
         with pytest.raises(ValueError):
-            _parse_fortran_float(tok)
+            fortran_float(tok)
 
 
 # --------------------------------------------------------------------- #
-#  _parse_scf_floats -- the user's actual failing line                   #
+#  scf_floats -- the user's actual failing line                   #
 # --------------------------------------------------------------------- #
 
 
@@ -116,7 +116,7 @@ class TestParseSCFLine:
             "the SCF row grammar must match the user's failing line"
         )
         assert row.iscf == 2
-        vals = _parse_scf_floats(self.USER_LINE[row.columns_at:].lstrip())
+        vals = scf_floats(self.USER_LINE[row.columns_at:].lstrip())
         assert vals is not None, (
             "user's failing line must parse to a value list, not "
             "None; if this returns None the pre-2026-06-14 bug is "
@@ -125,7 +125,7 @@ class TestParseSCFLine:
 
     def test_user_reported_line_values(self):
         row = scf_row(self.USER_LINE)
-        vals = _parse_scf_floats(self.USER_LINE[row.columns_at:].lstrip())
+        vals = scf_floats(self.USER_LINE[row.columns_at:].lstrip())
         assert vals is not None
         # 6 columns after iscf: Eharris, E_KS, FreeEng, dDmax, Ef, dHmax.
         assert len(vals) == 6, (
@@ -152,14 +152,14 @@ class TestParseSCFOverflowVariants:
 
     def test_clean_closed_shell_unchanged(self):
         rest = "  -1234.5  -1234.5  -1234.5  0.001  0.5  0.001"
-        vals = _parse_scf_floats(rest)
+        vals = scf_floats(rest)
         assert vals == [-1234.5, -1234.5, -1234.5, 0.001, 0.5, 0.001]
 
     def test_overflow_alone(self):
         """Overflow with whitespace separators (no tight-pack
         adjacency).  All-asterisks -> NaN; otherwise unchanged."""
         rest = "  -1.0  -1.0  -1.0  0.001  **********  0.5"
-        vals = _parse_scf_floats(rest)
+        vals = scf_floats(rest)
         assert vals is not None
         assert vals[:4] == [-1.0, -1.0, -1.0, 0.001]
         assert math.isnan(vals[4])
@@ -168,7 +168,7 @@ class TestParseSCFOverflowVariants:
     def test_tight_pack_alone(self):
         """Pre-existing case the 2026-05-28 patch fixed."""
         rest = "  -1.0  -1.0  -1.0  -1.929956131.029438  -1.0  -1.0"
-        vals = _parse_scf_floats(rest)
+        vals = scf_floats(rest)
         assert vals is not None
         # ``-1.929956`` and ``131.029438`` were tight-packed; expect
         # them as separate tokens after the SCF parser splits them.
@@ -183,7 +183,7 @@ class TestParseSCFOverflowVariants:
             "  -152787.998333  -593325.180671  "
             "-593325.460881280.683754  6.401317**********"
         )
-        vals = _parse_scf_floats(rest)
+        vals = scf_floats(rest)
         assert vals is not None
         assert len(vals) == 6
         assert math.isnan(vals[5])
@@ -196,7 +196,7 @@ class TestParseSCFOverflowVariants:
         rest = "  1.0  2.0  some_text  3.0  4.0  5.0"
         # No column-position fallback context, so a real garbage
         # token has to fail both layers -> None.
-        assert _parse_scf_floats(rest) is None
+        assert scf_floats(rest) is None
 
     def test_minus_separator_triple_glue_bdt_au_regression(self):
         """The BDT-Au-junction stage3-run0 regression (2026-06-15):
@@ -215,7 +215,7 @@ class TestParseSCFOverflowVariants:
         # User's literal failing line from line 1422 of the .out.
         rest = ("  -660624.384691  -760090.911374  -760091.068034 "
                 "45.787763-15.068303410.273625")
-        vals = _parse_scf_floats(rest)
+        vals = scf_floats(rest)
         assert vals is not None, (
             "regex tight-pack alone must recover this -- column-"
             "position fallback isn't reachable from the test "
@@ -245,23 +245,23 @@ class TestParseSCFOverflowVariants:
         data_start = scf_row(line).columns_at
         expected = [-660624.384691, -760090.911374, -760091.068034,
                     45.787763, -15.068303, 410.273625]
-        vals = _parse_scf_floats(line[data_start:].lstrip(),
+        vals = scf_floats(line[data_start:].lstrip(),
                                   line=line, data_start=data_start)
         # (B-7, 2026-08-13: ``vals`` was computed and never asserted, and
         # the fallback was only ever called as the bare helper -- so the
-        # DISPATCH wiring in _parse_scf_floats could be deleted with every
+        # DISPATCH wiring in scf_floats could be deleted with every
         # test green.)  The regex path resolves this case:
         assert vals == pytest.approx(expected)
         # ...and when layer 1 CANNOT (a rest-string it can't split), the
         # dispatcher itself must fall through to the column slicer:
-        via_dispatch = _parse_scf_floats("not floats at all",
+        via_dispatch = scf_floats("not floats at all",
                                          line=line, data_start=data_start)
         assert via_dispatch == pytest.approx(expected), (
             "the column-position fallback is not reachable through "
-            "_parse_scf_floats -- the dispatch wiring is broken")
+            "scf_floats -- the dispatch wiring is broken")
         # The column path stays tested directly too:
-        from molbuilder.parse.engines.siesta import _parse_scf_floats_by_columns
-        cols = _parse_scf_floats_by_columns(line, data_start)
+        from molbuilder.parse.engines.siesta_grammar import scf_floats_by_columns
+        cols = scf_floats_by_columns(line, data_start)
         assert cols == pytest.approx(expected)
 
 

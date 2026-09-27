@@ -108,13 +108,14 @@ flowchart TB
   L2 -->|reads/writes| L1
 ```
 
-**The L1 index, grouped by the object each module owns.** All 27 of them —
+**The L1 index, grouped by the object each module owns.** All 28 of them —
 this is the list `tests/test_layering.py` enforces, and
 `tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
 fails if the two drift apart. *(It compares the two SETS and not this count,
 which is how the sentence read "26" while both sets held 27 — `ref`, deleted
-2026-09-17 with the paths standard, § 5l; the count is 27 again since
-`calcdirs` landed 2026-09-19. A membership check is not a count
+2026-09-17 with the paths standard, § 5l; the count was 27 again when
+`calcdirs` landed 2026-09-19, and is 28 with `report_fields`, 2026-09-26. A
+membership check is not a count
 check; `web-api.md` § 3's route index had the mirror of this the same day.)* *(The diagram above named `pseudos` and `checkpoint` as L1 until
 2026-08-24; both are L2. A picture that disagrees with the enforced rule is
 how "which layer does this go in?" becomes a guess.)*
@@ -122,7 +123,7 @@ how "which layer does this go in?" becomes a guess.)*
 | the object | modules | what they own |
 |---|---|---|
 | **geometry** | `structure` · `cell` · `selection` · `periodicity_gate` · `chemistry` · `residues` · `engine_atom_index` | atoms and positions, the cell, an atom selection, chemical facts, and how an atom is numbered for a given engine |
-| **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding |
+| **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` · `report_fields` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding, **what a run's report may carry and which runs can state each field** (`engines/stages.md` § 6.9 — L1 and stdlib because it travels beside every job with the monitor, and `task` checks a description against it) |
 | **the job as described** | `task` · `calcdirs` · `config` · `identity` · `runfiles` · `paths` · `warmfiles` · `annotations_fdf` | `task.json`, **a directory's own account of where it sits** (`calcdir.json` — `project-layout.md` § 1.4a, and L1 for `task`'s reason and on `task` itself: a calculation root needs no record because `task.json`'s `shape` already answers, so the reader of one must read the other), the engine-knob dataclasses, how a run id is written, **the run-file name grammar and the catalogue of what molbuilder writes**, **the two layouts and where every file sits in them, with the search for each name it composes** (`project-layout.md` § 4.5 — was `jobset/shape.py` on floor 4 until 2026-09-08), the warm-file rules, the fdf annotation strategies |
 | **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
 | **infrastructure** | `persist` · `config_dir` · `constants` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, **the physical constants**, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
@@ -209,7 +210,7 @@ concerns leak into each other — see
 | `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning) | `render_wrappers`, `write_run_wrapper`, `render_sbatch` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (scheduler / routing / script-gen) | `get_scheduler`, `get_routing`, `get_script_generation`, `require_activation`, `write_config_scope` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
-| `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs (`mb_monitor.py`) | copied verbatim to targets | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
+| `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs, in one file with the readers it reads through (`mb_monitor.pyz`) | copied verbatim to targets, inside the bundle | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 
 **The start-here map for *running* a molbuilder-generated job** on any target
 (single-task everywhere · JobSet from the CLI · the browser job system as the

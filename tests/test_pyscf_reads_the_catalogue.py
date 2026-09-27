@@ -213,12 +213,16 @@ def _run_record(text: str, **engine_state):
 
 def test_the_record_covers_every_parameter_this_engine_declares():
     """Full coverage is the point: defaults, customised values, and the ones
-    that never reach the engine at all."""
+    that never reach the engine at all -- every item an optimization carries,
+    read back through the ONE reader of the block, the same one SIESTA's
+    wrapper output is read by (`model/parse.md` § 5d.3a)."""
     from molbuilder.pyscf.layout import recorded_items
+    from molbuilder.script_emit import read_parameters_fence
 
-    rec, _ = _run_record(_render())
-    assert set(rec) == set(recorded_items())
-    assert len(rec) >= 40, f"only {len(rec)} parameters recorded"
+    _, out = _run_record(_render())
+    rows = read_parameters_fence(out)
+    assert [r["item"] for r in rows] == recorded_items("optimization")
+    assert len(rows) >= 30, f"only {len(rows)} parameters recorded"
 
 
 def test_the_record_shows_the_catalogue_default_beside_what_this_run_asked():
@@ -243,9 +247,11 @@ def test_a_setting_the_engine_silently_overrode_is_visible_as_a_disagreement():
 
 
 def test_a_parameter_the_engine_has_no_setting_for_is_marked_not_asked():
-    rec, _ = _run_record(_render())
-    assert rec["save_optimized_xyz"][2] == "-"
-    assert rec["optimizer"][2] == "-"
+    from molbuilder.script_emit import read_parameters_fence
+    _, out = _run_record(_render())
+    rows = {r["item"]: r for r in read_parameters_fence(out)}
+    assert rows["save_optimized_xyz"]["used"] is None
+    assert rows["optimizer"]["used"] is None
 
 
 def test_the_record_is_fenced_so_one_reader_serves_either_engine():
@@ -261,7 +267,7 @@ def test_a_new_catalogue_item_joins_the_record_without_an_edit():
     from molbuilder.pyscf.layout import recorded_items
 
     block = _record_block(_render())
-    names = list(recorded_items())
+    names = list(recorded_items("optimization"))
     assert names, "the catalogue produced no recorded items -- the record vanished"
     for name in names:
         assert f"_MB_PARAMS[{name!r}]" in block, f"{name} missing from the record"

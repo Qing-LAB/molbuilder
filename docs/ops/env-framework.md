@@ -240,7 +240,7 @@ informational, and the installer gives the package its own non-fatal step.
 available at RUN time on a machine this process cannot probe, which is why
 neither can be left to "whatever that env happened to need":
 
-* **`python`** — a generated wrapper backgrounds `mb_monitor.py` on whatever
+* **`python`** — a generated wrapper backgrounds `mb_monitor.pyz` on whatever
   `command -v python3` finds *after* the env is activated, so an env declaring
   none falls through its own empty `bin/` to the compute node's interpreter.
   `molbuilder-siesta` was that env until 2026-09-17; measured inside it,

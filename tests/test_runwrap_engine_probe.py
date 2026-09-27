@@ -62,6 +62,26 @@ _ALLOW_S = 60
 @pytest.fixture
 def wrapper(tmp_path, monkeypatch):
     """A rendered SIESTA wrapper, cut off before the engine launch."""
+    w, text = _trimmed(tmp_path, monkeypatch)
+    cut = text.find("mpirun")
+    # Echo the wrapper's OWN parsed value, so a test can assert what the
+    # probe put in it rather than that the script merely survived.
+    w.write_text(text[:cut] + '\necho "PROBE_VER=${_siesta_ver:-}"\nexit 0\n')
+    return w
+
+
+@pytest.fixture
+def launcher(tmp_path, monkeypatch):
+    """The same wrapper run THROUGH the launcher choice, stopping at the
+    banner that follows it, and saying the cores that launch will use."""
+    w, text = _trimmed(tmp_path, monkeypatch)
+    cut = text.find('echo "===== molbuilder SIESTA run-wrapper')
+    w.write_text(text[:cut] + '\necho "MB_CORES=${_mb_cores:-}"\nexit 0\n')
+    return w
+
+
+def _trimmed(tmp_path, monkeypatch):
+    """The rendered wrapper's path and text, its bootstrap dropped."""
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -99,11 +119,7 @@ def wrapper(tmp_path, monkeypatch):
     start = text.rfind('if [ "$_mb_help" = "0" ]; then', 0, pre)
     close = text.find("\nfi\n", text.find("which python:", pre))
     text = text[:start] + "set -u\n" + text[close + 4:]
-    cut = text.find("mpirun")
-    # Echo the wrapper's OWN parsed value, so a test can assert what the
-    # probe put in it rather than that the script merely survived.
-    w.write_text(text[:cut] + '\necho "PROBE_VER=${_siesta_ver:-}"\nexit 0\n')
-    return w
+    return w, text
 
 
 def _siesta(bin_dir: Path, body: str) -> None:
@@ -113,11 +129,11 @@ def _siesta(bin_dir: Path, body: str) -> None:
     s.chmod(0o755)
 
 
-def _run(wrapper: Path, bin_dir: Path):
+def _run(wrapper: Path, bin_dir: Path, *args: str):
     env = {**os.environ, "MB_LAUNCHED_BY": "manual",
            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     t0 = time.time()
-    proc = subprocess.run(["bash", str(wrapper)], cwd=wrapper.parent,
+    proc = subprocess.run(["bash", str(wrapper), *args], cwd=wrapper.parent,
                           capture_output=True, text=True,
                           timeout=_ALLOW_S, env=env)
     return proc, time.time() - t0
@@ -176,3 +192,34 @@ def test_a_working_probe_is_still_read(wrapper, tmp_path):
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "PROBE_VER=5.4.2-stub" in (proc.stdout + proc.stderr), (
         "the version the probe reported never reached the wrapper")
+
+
+@pytest.mark.parametrize("parallelisations,cores", [
+    ("MPI, OpenMP", "12"),       # hybrid: 4 ranks x 3 threads
+    ("MPI", "4"),                # pure MPI: the threads are irrelevant
+    ("OpenMP", "3"),             # OpenMP only: one process, its threads
+    (None, "4"),                 # no answer: the mpirun fallback, 4 ranks
+    ("none", "1"),               # serial: one core whatever was asked
+])
+def test_the_cores_the_monitor_is_told_are_the_launchers(launcher, tmp_path,
+                                                          parallelisations,
+                                                          cores):
+    """What a run started directly HOLDS is the cores its launch uses
+    (`run-reports.md` § 2.1a) -- the monitor's cpu% denominator -- and the
+    launcher decides that from the build, not from -np x -omp: a pure-MPI
+    build launched with ``-omp 3`` holds 4 cores, not 12, and read 25 % busy
+    at full load while the monitor was told the product (2026-09-26).
+
+    MUTATION THIS MUST FAIL AGAINST: tell the monitor -np x -omp."""
+    bin_dir = tmp_path / "bin"
+    said = ('    echo "Parallelisations: %s"\n' % parallelisations
+            if parallelisations is not None else "")
+    _siesta(bin_dir,
+            'if [ "${1:-}" = "--version" ]; then\n'
+            '    echo "Version         : 5.4.2-stub"\n'
+            + said +
+            '    exit 0\n'
+            'fi\n')
+    proc, _ = _run(launcher, bin_dir, "-np", "4", "-omp", "3")
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert f"MB_CORES={cores}\n" in proc.stdout, proc.stdout[-500:]

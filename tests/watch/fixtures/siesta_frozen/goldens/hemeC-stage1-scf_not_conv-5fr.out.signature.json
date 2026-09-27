@@ -69,6 +69,34 @@
     "initial_etot": -12728.905077,
     "n_mpi_processes": 8,
     "run_start_local": "2026-05-28T19:41:39",
+    "scf_criteria": {
+      "periodic": {
+        "EDM": {
+          "required": false,
+          "tolerance": 0.001,
+          "unit": "eV"
+        },
+        "Eharris": {
+          "required": false,
+          "tolerance": 0.0001,
+          "unit": "eV"
+        },
+        "FreeEng": {
+          "required": false,
+          "tolerance": 0.001,
+          "unit": "eV"
+        },
+        "dDmax": {
+          "required": true,
+          "tolerance": 0.001
+        },
+        "dHmax": {
+          "required": true,
+          "tolerance": 0.001,
+          "unit": "eV"
+        }
+      }
+    },
     "scf_phases": {
       "periodic": {
         "converged": false,
@@ -89,6 +117,12 @@
         "MPI"
       ],
       "version": "5.4.2"
+    },
+    "siesta_diag": {
+      "algorithm": "D&C",
+      "diag_blocksize": 4,
+      "distribution": "2 x 4",
+      "parallel_over_k": "F"
     }
   },
   "scf_converged": false,

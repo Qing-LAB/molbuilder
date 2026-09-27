@@ -480,9 +480,9 @@ where every caller gets it.)*
 
 **The other shape is outside it for a reason that is not about writing at all:
 `monitor.py` SHIPS BESIDE A JOB** *(stated here 2026-09-13)*. It travels to the
-machine that runs the job as `mb_monitor.py` and is executed by **the job's own
+machine that runs the job inside `mb_monitor.pyz` and is executed by **the job's own
 python**, in a backend env where molbuilder is not installed
-(`runwrap.MONITOR_COMPANIONS`, `execution/running-a-job.md` § 2.0a). So its
+(`runwrap.MONITOR_BUNDLE`, `execution/running-a-job.md` § 2.0a). So its
 writes — the `util.csv` header and its rows — use `pathlib`:
 importing `persist` here would make the monitor die at import on every node, with
 stderr going to `/dev/null`, which costs the run's status, its utilisation trace
@@ -493,11 +493,18 @@ and its reports and says nothing.
 *depends only on stdlib*, never *imports nothing of ours* (`config_dir.py`'s own
 header says so, and `scheduler/record.py` imports `persist` on the strength of
 it). What kills the import on a compute node is that `persist.py` is not
-THERE: `runwrap` ships exactly two files beside the job, `_monitor_source` and
-`_config_dir_source`. So the monitor's real rule is **stdlib-only AND travels**,
-and today that set is exactly `{config_dir}` — reached through the two-way
-import in `monitor._secrets_dir`, whose `ModuleNotFoundError` `load_channels`
-catches as reports-off rather than as a dead monitor. **Do not route these
+THERE: `runwrap` ships beside the job exactly the modules
+`runwrap.MONITOR_COMPANIONS` names, in one file (`mb_monitor.pyz`,
+`runwrap.MONITOR_BUNDLE`). So the monitor's real rule is
+**stdlib-only AND travels**, and that set is the monitor, `config_dir`, and the
+framework readers it reads a run through (`execution/run-reports.md` § 2.3:
+`runfiles`, `identity`, the two parsers' reading passes `siesta_reader` and
+`molwatch_reader` with their grammars and `_section_rules`,
+`scf_timing_rows`, `end_lines`, `_run_ending`, `job`, and `report_fields` —
+what a report may carry) — each reached through
+the same two-way import `monitor._secrets_dir` uses for `config_dir`, whose
+`ModuleNotFoundError` `load_channels` catches as reports-off rather than as a
+dead monitor. **Do not route these
 through the one writer.** They are the one place in this document where a truncated file is the
 cheaper risk, and the trade is deliberate.
 

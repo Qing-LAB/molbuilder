@@ -907,6 +907,14 @@ calculation.
 |---|---|---|
 | the ticks — *when* to speak | `notify.on_scf_converged`, `notify.every_hours` | **yes** |
 | the channel list — *which* channels, **by name** | `notify.channels` | **yes**, and safely: a name is a label the person chose, not a credential |
+| the report fields — *what* each message carries | `notify.report` | **yes** |
+
+**The report fields offered are this calculation's.** The card asks
+`GET /api/notify/report-fields?engine=<e>&calculation=<c>` and offers what the
+server answers: the fields a run of that engine and kind can state, from the
+one declaration ([`stages.md`](?doc=engines/stages.md) § 6.9) — so a PySCF
+calculation is not offered seconds per iteration, and a transport calculation
+is not offered a step. The page keeps no list of its own.
 
 **The names come from the server; the secrets never do.** The list is painted
 from `GET /api/notify/channels`, which reports a name, whether it is configured

@@ -45,9 +45,8 @@ Robustness:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import numpy as np
 
@@ -57,201 +56,16 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
-from ._section_rules import (
-    CONTINUE, END_BUBBLE, END_SECTION,
-    SectionRule, compile_rules, matches_regex_ci, starts_with_ci,
-)
 from ._sidecar import read_frozen_atoms
 
 
-# Compiled regexes kept around for on_start callbacks to extract
-# captured groups (rule matchers only decide whether to dispatch).
-_BEGIN_RE       = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
-_HEADER_RE      = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
-_ENGINE_RE      = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
-_RUNTIME_RE     = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
-_CONV_KEY = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?"
-_CONVERGENCE_RE = re.compile(
-    # Two header shapes share this regex:
-    #   FLAT:   # convergence.<leaf>:        <val>      -- single-stage runs
-    #   NESTED: # convergence.<stage>.<leaf>: <val>     -- staged runs (#534)
-    # The capture group catches either bare ``<leaf>`` or
-    # ``<stage>.<leaf>``; ``_on_convergence`` splits the dotted form.
-    # A segment is ``[A-Za-z0-9_]+`` -- DIGIT-FIRST INCLUDED, because the
-    # nested form's first segment is a stage token and those lead with the
-    # zero-padded ordinal (``01_coarse``, `job-contracts.md` § 6.3).  The
-    # identifier-shaped ``[a-zA-Z_]`` head that stood here was written
-    # against the ``stage1.<leaf>`` example in the emitter's comment, so
-    # every real staged header parsed to an EMPTY target dict and the
-    # Results card said "not found in source" over eight present lines
-    # (found by the 2026-08-19 E2E run).  ``_CONV_KEY`` is the ONE spelling
-    # of the key grammar -- the section rule's start pattern below uses the
-    # same fragment, because the drift lived exactly in its inline copy.
-    r"^#\s*convergence\.(" + _CONV_KEY + r"):\s*(.*)$")
-_ERROR_RE       = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
-_CONCLUDED_RE   = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
-
-
-def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
-    """Apply one ``# convergence.<key>: <value>`` header line to
-    ``targets`` and return whether the line matched.
-
-    THE one reader of the convergence-header grammar.  The molwatch
-    parser's own handler delegates here, and the PySCF trajectory
-    parser's sibling-log enrichment imports this instead of keeping a
-    private copy -- the private copy it kept "to avoid coupling" was
-    letter-first and flat-only, so a staged header (digit-first
-    ``01_coarse.<leaf>`` keys) read as EMPTY on the trajectory-view
-    path while the molwatch-view path, once fixed, read it fine
-    (2026-08-19).  Coupling to the format's owner is the point.
-
-    Both header shapes land as the callers expect (#534):
-
-      * flat   ``convergence.<leaf>``          -> ``targets[<leaf>]``
-      * nested ``convergence.<stage>.<leaf>``  -> ``targets[<stage>][<leaf>]``
-
-    Stamps ``source = "molwatch_header"`` on the first hit.
-    """
-    m = _CONVERGENCE_RE.match(line)
-    if not m:
-        return False
-    full_key, val = m.group(1), m.group(2).strip()
-    targets.setdefault("source", "molwatch_header")
-
-    def _coerce(s):
-        if s == "None" or s == "null":
-            return None
-        if s in ("True", "False"):
-            return s == "True"
-        try:
-            return int(s)
-        except ValueError:
-            pass
-        try:
-            return float(s)
-        except ValueError:
-            pass
-        return s
-
-    if "." in full_key:
-        stage_name, leaf_key = full_key.split(".", 1)
-        stage_bucket = targets.setdefault(stage_name, {})
-        if not isinstance(stage_bucket, dict):
-            # Defensive: a flat-shape run that reused a stage-name as a
-            # leaf key (hand-edited file) is not silently clobbered.
-            return True
-        stage_bucket[leaf_key] = _coerce(val)
-        return True
-    targets[full_key] = _coerce(val)
-    return True
-
-
-def parse_runtime_line(line: str, runtime_info: Dict[str, Any]) -> bool:
-    """Apply one ``# runtime.<key>: <value>`` header line to
-    ``runtime_info`` and return whether the line matched.
-
-    **THE one reader of the runtime-header grammar**, and the sibling of
-    :func:`parse_convergence_line` above -- same shape, same reason.
-
-    The FORMAT is shared on purpose: `siesta.py` notes that the /spectra
-    script writers and the Build SIESTA writers *"use IDENTICAL line
-    format"*, and `molbuilder.runtime_info` owns the write side.  What was
-    not shared was the READER.  Until 2026-09-05 this module and
-    `engines/siesta.py` each carried their own regex and a
-    character-identical ten-line coercion -- so a `.molwatch.log` and a
-    `.out` carrying the same header were parsed by two copies of one
-    grammar, free to drift apart the way the convergence header already
-    did (a private copy read a staged header as EMPTY, 2026-08-19).
-
-    Coercion, in order: ``None`` -> ``None``; ``True`` / ``False`` ->
-    ``bool``; anything ``int()`` accepts -> ``int``; otherwise the raw
-    string.  Floats stay strings, which is the behaviour both copies had
-    and is not changed here -- a value like ``1.5`` was never coerced by
-    either reader, and widening it belongs with whoever needs it.
-    """
-    m = _RUNTIME_RE.match(line)
-    if not m:
-        return False
-    key, val = m.group(1), m.group(2).strip()
-    if val == "None":
-        runtime_info[key] = None
-    elif val in ("True", "False"):
-        runtime_info[key] = (val == "True")
-    else:
-        try:
-            runtime_info[key] = int(val)
-        except ValueError:
-            runtime_info[key] = val
-    return True
-
-
-def parse_conclusion_line(line: str, out: Dict[str, Any]) -> bool:
-    """Apply one ``# error:`` / ``# concluded:`` FOOTER line to ``out``
-    and return whether the line matched.
-
-    **THE one reader of the conclusion-footer grammar**, and the third
-    sibling of :func:`parse_convergence_line` and
-    :func:`parse_runtime_line`.
-
-    ``engines/pyscf.py`` kept private copies of both regexes -- byte for
-    byte the same right-hand side, padding included -- until 2026-09-05,
-    so a `.molwatch.log` read through the trajectory path and the same
-    file read through the molwatch path answered from two copies of one
-    grammar.  The convergence header in this same file already drifted
-    that way (2026-08-19), which is why the rule here is one reader, not
-    two that happen to agree.
-
-    **Error outranks concluded, and the LAST error wins.**  A log is
-    appended across attempts, so a later `# error:` describes a later
-    attempt; a `# concluded:` after an error does not un-fail the run,
-    because the error is the more specific claim.  Callers scan in file
-    order and let this decide.
-    """
-    m = _ERROR_RE.match(line)
-    if m:
-        out["run_state"] = "stopped"
-        out["error_message"] = m.group(1).strip()
-        return True
-    if _CONCLUDED_RE.match(line):
-        if out.get("run_state") != "stopped":
-            out["run_state"] = "ended"
-        return True
-    return False
-
-
-
-def scan_conclusion(path) -> str:
-    """The run-state a molwatch log's FOOTER states, without building a
-    Trajectory -- ``"running"`` when it carries no footer.
-
-    The cheap door onto :func:`parse_conclusion_line`, for a caller that
-    wants only how the run ended (`model/parse.md` § 2b), and the sibling of
-    ``_run_ending.scan_ending`` on the ``.out`` side.  A status probe over a
-    whole directory must not full-parse to reach one string: doing that is
-    what made ``run_status`` create and grow a ``.parse.log`` beside every
-    molwatch log it looked at, on every Watch poll.
-
-    **Every line, in file order**, because this grammar's rule is *error
-    outranks concluded and the LAST error wins* -- a tail-only read would
-    answer ``"ended"`` for a log whose earlier attempt failed.  Only lines
-    opening with ``#`` are offered, which is all either pattern can match.
-    """
-    out: Dict[str, Any] = {}
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            if line[:1] == "#":
-                parse_conclusion_line(line, out)
-    return out.get("run_state") or "running"
-
-
-def _maybe_float(token: str) -> Optional[float]:
-    """Convert a token to float; return None for the literal 'None' / 'null'."""
-    if token == "None" or token == "null":
-        return None
-    try:
-        return float(token)
-    except ValueError:
-        return None
+# THE GRAMMAR IS `molwatch_grammar`'s -- header, step block and footer, each
+# line with its one reader -- which this parser, the PySCF parser, the ending
+# scan and the monitor all read.  It stood here until 2026-09-26; it moved so
+# the monitor, which runs where numpy does not, reads a PySCF run's progress
+# with the same lines (`execution/run-reports.md` § 2.3).
+from . import molwatch_grammar as _MG
+from .molwatch_reader import MolwatchReader
 
 
 def _parse_molwatch_log(path: str) -> Trajectory:
@@ -267,364 +81,52 @@ def _parse_molwatch_log(path: str) -> Trajectory:
 
 
 def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
-    engine = "molwatch"
-    frames: List[Frame] = []
-    run_state: str = "running"    # parse.md 2b, P-S1
-    error_message: Optional[str] = None
-    runtime_info: Dict[str, Any] = {}
-
-    # In-block accumulators; commit only on a matching `end` marker.
-    in_block = False
-    block_idx: Optional[int] = None
-    block_frame: List[List[Any]] = []
-    block_energy: Optional[float] = None
-    block_forces: List[List[float]] = []
-    block_max_force: Optional[float] = None
-    block_scf: List[Dict[str, Any]] = []
-    block_wall_clock_s: Optional[float] = None
-
-    def _reset_block() -> None:
-        nonlocal in_block, block_idx, block_frame, block_energy
-        nonlocal block_forces, block_max_force, block_scf, block_wall_clock_s
-        in_block        = False
-        block_idx       = None
-        block_frame     = []
-        block_energy    = None
-        block_forces    = []
-        block_max_force = None
-        block_scf       = []
-        block_wall_clock_s = None
-
-    # ---- header / footer on_start callbacks ----
-
-    def _on_error(line: str, line_no: int) -> None:
-        nonlocal run_state, error_message
-        m = _ERROR_RE.match(line)
-        if m:
-            error_message = m.group(1).strip()
-            run_state = "stopped"
-
-    def _on_concluded(line: str, line_no: int) -> None:
-        nonlocal run_state
-        if run_state != "stopped":
-            run_state = "ended"
-
-    def _on_engine(line: str, line_no: int) -> None:
-        nonlocal engine
-        m = _ENGINE_RE.match(line)
-        if m:
-            engine = m.group(1)
-
-    def _on_runtime(line: str, line_no: int) -> None:
-        parse_runtime_line(line, runtime_info)
-
-    def _on_convergence(line: str, line_no: int) -> None:
-        """``# convergence.<key>: <value>`` populates
-        ``runtime_info["convergence_targets"]``.  Stamps
-        ``source = "molwatch_header"`` on first hit.
-
-        Two header shapes share this handler (#534):
-
-          * Flat (legacy / single-stage): ``# convergence.<leaf>:
-            <val>`` lands at ``convergence_targets[<leaf>] = val``.
-          * Nested (staged runs): ``# convergence.<stage>.<leaf>:
-            <val>`` lands at
-            ``convergence_targets[<stage>][<leaf>] = val``.
-
-        The two never mix on a single run — the emitter picks one
-        shape based on whether its input dict has nested-dict
-        values.  Reader-side: callers detect nested-shape by
-        checking ``any(isinstance(v, dict) for v in ct.values()
-        if k != "source")``.  The ``source`` key sits at top-level
-        in either shape.
-        """
-        ct = runtime_info.setdefault("convergence_targets", {})
-        if not parse_convergence_line(line, ct) and len(ct) == 0:
-            # No match and nothing accumulated: drop the empty dict so
-            # absence still reads as absence downstream.
-            runtime_info.pop("convergence_targets", None)
-
-    # ---- block boundary on_start callbacks ----
-
-    def _on_block_begin(line: str, line_no: int) -> None:
-        nonlocal in_block, block_idx
-        m = _BEGIN_RE.search(line)
-        _reset_block()
-        in_block = True
-        if m:
-            try:
-                block_idx = int(m.group(1))
-            except ValueError:
-                block_idx = None
-
-    def _on_block_end(line: str, line_no: int) -> None:
-        nonlocal in_block
-        if not in_block:
-            return
-        if block_frame:
-            elements  = [row[0] for row in block_frame]
-            positions = np.array([row[1:4] for row in block_frame],
-                                 dtype=float)
-            struct = Structure(elements=elements, positions=positions)
-            forces_arr = (np.asarray(block_forces, dtype=float)
-                          if block_forces else None)
-            idx = (block_idx if block_idx is not None
-                   else len(frames))
-            frames.append(Frame(
-                structure   = struct,
-                step_index  = idx,
-                energy      = block_energy,
-                forces      = forces_arr,
-                max_force   = block_max_force,
-                # Always a list (possibly empty) -- the .molwatch.log
-                # format always carries an scf_history block per step.
-                # None is reserved for parsers with no SCF data source.
-                scf_history  = list(block_scf),
-                # The emitter stamps its own time.time(), so this
-                # log DOES carry a time of day (parse.md § 2a).
-                # ``elapsed_s`` is left unset: deriving it from the
-                # epoch series has exactly one home, and it is not
-                # here (P-T3 -- trajectory_result_to_legacy_dict does).
-                wall_clock_s = block_wall_clock_s,
-            ))
-        _reset_block()
-
-    # ---- scalar key:value on_start callbacks ----
-
-    def _on_energy(line: str, line_no: int) -> None:
-        nonlocal block_energy
-        block_energy = _maybe_float(line.strip().split(":", 1)[1].strip())
-
-    def _on_max_force(line: str, line_no: int) -> None:
-        nonlocal block_max_force
-        block_max_force = _maybe_float(
-            line.strip().split(":", 1)[1].strip())
-
-    def _on_wall_time(line: str, line_no: int) -> None:
-        nonlocal block_wall_clock_s
-        block_wall_clock_s = _maybe_float(
-            line.strip().split(":", 1)[1].strip())
-
-    # ---- multi-line section consume callbacks ----
-
-    def _consume_coords(line: str, line_no: int) -> str:
-        stripped = line.strip()
-        if not stripped or ":" in stripped:
-            return END_BUBBLE
-        parts = stripped.split()
-        if len(parts) < 4:
-            return END_BUBBLE
-        try:
-            x = float(parts[1])
-            y = float(parts[2])
-            z = float(parts[3])
-        except ValueError:
-            return END_BUBBLE
-        block_frame.append([parts[0], x, y, z])
-        return CONTINUE
-
-    def _consume_forces(line: str, line_no: int) -> str:
-        stripped = line.strip()
-        if not stripped or ":" in stripped:
-            return END_BUBBLE
-        parts = stripped.split()
-        if len(parts) < 4:
-            return END_BUBBLE
-        try:
-            fx = float(parts[1])
-            fy = float(parts[2])
-            fz = float(parts[3])
-        except ValueError:
-            return END_BUBBLE
-        block_forces.append([fx, fy, fz])
-        return CONTINUE
-
-    def _consume_scf(line: str, line_no: int) -> str:
-        stripped = line.strip()
-        if stripped.startswith("scf_history end"):
-            return END_SECTION
-        if not stripped or stripped.startswith("#"):
-            return CONTINUE
-        parts = stripped.split()
-        if len(parts) < 5:
-            return CONTINUE
-        try:
-            cycle = int(parts[0])
-            energy = float(parts[1])
-            delta_E = float(parts[2])
-        except ValueError:
-            return CONTINUE
-        gnorm = _maybe_float(parts[3])
-        ddm   = _maybe_float(parts[4])
-        # Optional 6th column: wall_time(s) -- epoch seconds when the
-        # emitter saw this SCF cycle finish.  Older .molwatch.log
-        # files (pre-2026-06-20) have 5 columns; we surface None for
-        # those.  The column keeps its on-disk name; the PARSED key is
-        # ``wall_clock_s`` because it is an epoch, where SIESTA's
-        # same-position value is ``elapsed_s`` (parse.md § 2a).
-        # Per-cycle time = scf[i+1] - scf[i] of whichever is present.
-        wall_clock_s = (_maybe_float(parts[5])
-                        if len(parts) >= 6 else None)
-        block_scf.append({
-            "cycle":     cycle,
-            "energy":    energy,
-            "delta_E":   delta_E,
-            "gnorm":     gnorm,
-            "ddm":       ddm,
-            "wall_clock_s": wall_clock_s,
-        })
-        return CONTINUE
-
-    # ---- rule tables ----
-
-    block_begin_rule = SectionRule(
-        name="block_begin",
-        aliases=["==== molwatch step N begin ===="],
-        start=matches_regex_ci(
-            r"====\s*molwatch\s+step\s+\d+\s+begin\s*===="),
-        on_start=_on_block_begin,
-    )
-    block_end_rule = SectionRule(
-        name="block_end",
-        aliases=["==== molwatch step N end ===="],
-        start=matches_regex_ci(
-            r"====\s*molwatch\s+step\s+\d+\s+end\s*===="),
-        on_start=_on_block_end,
-    )
-
-    out_block_rules: List[SectionRule] = [
-        SectionRule(
-            name="fatal_error",
-            aliases=["# error: ..."],
-            start=matches_regex_ci(r"^#\s*error:\s*."),
-            on_start=_on_error,
-        ),
-        SectionRule(
-            name="concluded",
-            aliases=["# concluded: ..."],
-            start=matches_regex_ci(_CONCLUDED_RE.pattern),
-            on_start=_on_concluded,
-        ),
-        SectionRule(
-            name="engine",
-            aliases=["# engine: ..."],
-            start=matches_regex_ci(r"^#\s*engine:\s*\S"),
-            on_start=_on_engine,
-        ),
-        SectionRule(
-            name="runtime",
-            aliases=["# runtime.<key>: ..."],
-            start=matches_regex_ci(
-                r"^#\s*runtime\.[a-zA-Z_][a-zA-Z0-9_]*:"),
-            on_start=_on_runtime,
-        ),
-        SectionRule(
-            name="convergence",
-            aliases=["# convergence.<key>: ...",
-                     "# convergence.<stage>.<key>: ..."],
-            # Accept both flat (``# convergence.<leaf>:``) and nested
-            # (``# convergence.<stage>.<leaf>:``) shapes per #534
-            # commit 3b.  The handler (`_on_convergence`) re-applies
-            # the full _CONVERGENCE_RE and splits the dotted form.
-            start=matches_regex_ci(
-                r"^#\s*convergence\." + _CONV_KEY + r":"),
-            on_start=_on_convergence,
-        ),
-        block_begin_rule,
-    ]
-
-    in_block_rules: List[SectionRule] = [
-        block_begin_rule,
-        block_end_rule,
-        SectionRule(
-            name="coords",
-            aliases=["coordinates (Ang):"],
-            start=starts_with_ci("coordinates"),
-            consume=_consume_coords,
-        ),
-        SectionRule(
-            name="forces",
-            aliases=["forces (eV/Ang):"],
-            start=starts_with_ci("forces"),
-            consume=_consume_forces,
-        ),
-        SectionRule(
-            name="scf_history",
-            aliases=["scf_history begin"],
-            start=starts_with_ci("scf_history begin"),
-            consume=_consume_scf,
-        ),
-        SectionRule(
-            name="energy",
-            aliases=["energy (eV):"],
-            start=starts_with_ci("energy (eV):"),
-            on_start=_on_energy,
-        ),
-        SectionRule(
-            name="max_force",
-            aliases=["max_force (eV/Ang):"],
-            start=starts_with_ci("max_force (eV/Ang):"),
-            on_start=_on_max_force,
-        ),
-        SectionRule(
-            name="wall_time",
-            aliases=["wall_time:"],
-            start=starts_with_ci("wall_time:"),
-            on_start=_on_wall_time,
-        ),
-    ]
-
-    out_compiled = compile_rules(out_block_rules)
-    in_compiled  = compile_rules(in_block_rules)
-
-    # ---- state-machine driver ----
-    active: Optional[SectionRule] = None
-
+    """The log through the one reading pass (`molwatch_reader`), and a Frame
+    per step block it read -- the arrays are this module's alone."""
+    reader = MolwatchReader()
     with open(path, "r", errors="replace") as fh:
         for line_no, raw in enumerate(fh, start=1):
-            line = raw.rstrip("\n")
-
-            if active is not None:
-                sentinel = active.consume(line, line_no)
-                if sentinel == CONTINUE:
-                    continue
-                if sentinel == END_SECTION:
-                    active = None
-                    continue
-                if sentinel == END_BUBBLE:
-                    active = None
-                    # fall through to scan-state dispatch
-                else:
-                    active = None
-                    continue
-
-            compiled = in_compiled if in_block else out_compiled
-            rule = compiled.find_match(line)
-            if rule is not None:
-                if rule.on_start is not None:
-                    rule.on_start(line, line_no)
-                if rule.consume is not None:
-                    active = rule
-
-    # Torn final block at EOF: drop it (in_block True, no `end` seen).
-
-    # Surface the .molstruct.json sidecar's frozen_atoms list (same
-    # contract as SIESTA + PySCF parsers).  Used by the trajectory
-    # inspector's "Hide frozen atoms" overlay.
+            reader.feed(raw.rstrip("\n"), line_no)
+    read = reader.finish()
+    runtime_info = read["runtime_info"]
+    frames: List[Frame] = []
+    for block in read["blocks"]:
+        coords = block["coords"]
+        frames.append(Frame(
+            structure   = Structure(
+                elements=[row[0] for row in coords],
+                positions=np.array([row[1:4] for row in coords], dtype=float)),
+            step_index  = block["index"],
+            energy      = block["energy"],
+            forces      = (np.asarray(block["forces"], dtype=float)
+                           if block["forces"] else None),
+            max_force   = block["max_force"],
+            # Always a list (possibly empty) -- the .molwatch.log format
+            # always carries an scf_history block per step.  None is
+            # reserved for parsers with no SCF data source.
+            scf_history  = list(block["scf_history"]),
+            # The emitter stamps its own time.time(), so this log DOES carry
+            # a time of day (parse.md § 2a).  ``elapsed_s`` is left unset:
+            # deriving it from the epoch series has exactly one home, and it
+            # is not here (P-T3 -- trajectory_result_to_legacy_dict does).
+            wall_clock_s = block["wall_clock_s"],
+        ))
+    # Surface the .molstruct.json sidecar's frozen_atoms list (same contract
+    # as the SIESTA + PySCF parsers) for the "Hide frozen atoms" overlay.
     frozen = sorted(read_frozen_atoms(path))
     if frozen:
         runtime_info["frozen_atoms"] = frozen
 
     _scan_log.info(
-        f"parsed {len(frames)} frames, run_state={run_state}")
-    if error_message:
-        _scan_log.error(error_message)
+        f"parsed {len(frames)} frames, run_state={read['run_state']}")
+    if read["error_message"]:
+        _scan_log.error(read["error_message"])
     return Trajectory(
-        source_format = engine,
+        source_format = read["engine"],
         frames        = frames,
         lattice       = None,
-        run_state     = run_state,
-        error_message = error_message,
+        run_state     = read["run_state"],
+        error_message = read["error_message"],
         runtime_info  = runtime_info,
     )
 
@@ -667,7 +169,7 @@ class MolwatchLogFileParser(FileParser):
                 head = [next(fh, "") for _ in range(5)]
         except OSError:
             return False
-        return any(_HEADER_RE.match(line) for line in head)
+        return any(_MG.HEADER.match(line) for line in head)
 
     @classmethod
     def parse(cls, path: Path) -> TrajectoryResult:

@@ -44,7 +44,26 @@ def test_the_timing_log_drops_the_warm_up_delta(tmp_path):
     f = tmp_path / "job-run0.scf-timing.log"
     f.write_text(_TIMING)
     m = parse(f).metrics
-    assert m == {"s_per_iter": 2.5, "iters_measured": 2}
+    assert m == {"s_per_iter": 2.5, "iters_measured": 2, "rows": 4}
+
+
+def test_a_relaxations_step_boundaries_are_not_iterations():
+    """The delta INTO a new SCF's first row holds the previous SCF's end, the
+    forces, the move and the next step's setup -- not an iteration, for the
+    reason the first delta is dropped.  A measured fixture: the timing log of
+    a real 2-rank H2 CG relaxation (2026-09-26, `fixtures/scf_timing/`),
+    five SCFs of 8, 6, 4, 6 and 6 iterations; its four boundaries took about
+    2.4 s each against 0.58 s an iteration within an SCF, and averaged in
+    they read 0.8 s.
+
+    MUTATION THIS MUST FAIL AGAINST: keep the deltas into iteration 1."""
+    from pathlib import Path
+    from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
+    text = (Path(__file__).parent / "fixtures" / "scf_timing"
+            / "h2mon_01_coarse-run0.scf-timing.log").read_text()
+    m = scf_timing_metrics(text)
+    # 29 deltas, 4 of them boundaries, the first dropped as warm-up
+    assert m == {"s_per_iter": 0.6, "iters_measured": 24, "rows": 30}, m
 
 
 def test_the_monitor_states_the_machine_and_the_verdict(tmp_path):

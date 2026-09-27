@@ -161,6 +161,11 @@ _L1_MODULES = {
                          # the jobset seam, the wrapper generator and
                          # validation must all reach ONE loader or the
                          # vocabulary forks again (U1, 2026-08-13).
+    "report_fields",     # WHAT a run report may carry -- the one
+                         # declaration (engines/stages.md 6.9).  L1 and
+                         # stdlib-only because it TRAVELS beside every job
+                         # with the monitor, and ``task`` validates a
+                         # description's ``notify.report`` against it.
     "task",              # the task.json codec (engines/stages.md 6) -- one
                          # calculation's description: engine name, shape,
                          # base, varies, stages.  L1 because it imports only
@@ -248,10 +253,11 @@ _L2_MODULES = {
                          # `scheduler.record` -- for their own paths lazily,
                          # because those import `config_dir` themselves.
                          # HARD CONSTRAINT: nothing that SHIPS BESIDE A JOB may
-                         # import it (`runwrap.MONITOR_COMPANIONS` is
-                         # `mb_monitor.py` + `config_dir.py`, run by the job's
-                         # own python in an env with no molbuilder).  That is
-                         # why the table is not in `config_dir`.
+                         # import it (`runwrap.MONITOR_COMPANIONS`: the monitor,
+                         # `config_dir` and the framework readers it reads a run
+                         # through, run by the job's own python in an env with
+                         # no molbuilder).  That is why the table is not in
+                         # `config_dir`.
     "pseudos",           # PSML header parser + coverage check -- L2 because
                          # resolve_psml_lib anchors relative paths on the
                          # projects/ convention (imports projects, L2).  Its
@@ -269,8 +275,9 @@ _L2_MODULES = {
     "diagnostics",       # capabilities snapshot
     "envs",              # subprocess dispatch
     "runwrap",           # bash-wrapper emitter
-    "monitor",           # background job-monitor + notifier hooks (PoC,
-                         # § 11.0b); stdlib-only, parses run artifacts
+    "monitor",           # background job-monitor + notifier hooks; stdlib-
+                         # only, reads a run through the framework's readers
+                         # shipped beside it (execution/run-reports.md § 2.3)
     "auth_setup",        # interactive auth/secret bootstrap wizard; L2 --
                          # imported only by runtime_config (L2) + cli (L3),
                          # imports no molbuilder domain modules
@@ -498,39 +505,44 @@ def test_module_does_not_import_from_higher_layer(rel_path: Path):
 def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path):
     """The premise the whole monitor rests on, reproduced rather than asserted.
 
-    `runwrap.MONITOR_COMPANIONS` travels to the machine that runs the job and is
+    `runwrap.MONITOR_COMPANIONS` travels to the machine that runs the job --
+    inside ONE file, `mb_monitor.pyz` (`runwrap.MONITOR_BUNDLE`) -- and is
     executed by **the job's own python**, inside a backend env where molbuilder
-    is not installed and numpy is not either.  So every module in that set has
-    to import with the package absent -- `monitor`'s molbuilder imports are
-    inside functions or guarded by ``ImportError`` (the SIESTA grammar, which
-    the wrapper passes as flags instead), with a flat fallback (``from
-    config_dir import config_dir``), and `config_dir` imports nothing of ours
-    at all.
+    is not installed and numpy is not either.  So every module in that table has
+    to import with the package absent, each reaching the next through its
+    two-way import -- the package first, the copy in the bundle second -- as
+    `config_dir` always has.
 
-    The layering table above cannot see this.  It would let `config_dir` import
-    `persist` -- both L1, perfectly legal, and fatal here, because only these
-    two files travel.  And the failure is SILENT: `runwrap` records the last
-    time it happened (`config_dir.py` added to one stager and not the other), and
-    what it cost was *every production run's monitor dying at import with stderr
-    to /dev/null* -- no [MACHINE] line, no status, no util.csv, no reports.
+    **And it has to READ with the framework's readers, not merely import.**
+    Since 2026-09-26 the monitor reads a run through the Results tab's own
+    status door and the output's one parser -- each family's reading pass --
+    shipped beside it (`execution/run-reports.md` § 2.3).  So the probe stages the whole table
+    into a copy of a REAL finished run -- the measured H2 relaxation under
+    `tests/fixtures/siesta_relax` (an API-level test on a measured fixture: the
+    road cannot run with molbuilder absent) -- and asks the shipped monitor how
+    it ended.  It must be the SHIPPED readers answering, from the bundle, and
+    their answer must be the package's own `run_status`'s.
 
-    It is also the reason `placement` is its own module rather than a table
-    inside `config_dir`: it asks `monitor` and `runtime_config` for their paths,
-    and either import would have travelled into this directory.
+    The layering table above cannot see this.  It would let a travelling module
+    import `persist` -- both L1, perfectly legal, and fatal here, because only
+    these files travel.  And the failure is SILENT: `runwrap` records the last
+    time it happened (`config_dir.py` added to one stager and not the other),
+    and what it cost was *every production run's monitor dying at import with
+    stderr to /dev/null* -- no [MACHINE], no status, no util.csv, no reports.
     """
+    import json
+    import shutil
     import subprocess
     import sys
 
-    from molbuilder.runwrap import (MONITOR_COMPANIONS, _config_dir_source,
-                                    _monitor_source)
+    from molbuilder.parse.dirs import run_status
+    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
 
-    sources = {"mb_monitor.py": _monitor_source(),
-               "config_dir.py": _config_dir_source()}
-    assert set(sources) == set(MONITOR_COMPANIONS), (
-        "a third file started travelling and this test does not stage it: "
-        f"{sorted(set(MONITOR_COMPANIONS) - set(sources))}")
-    for name, text in sources.items():
-        (tmp_path / name).write_text(text, encoding="utf-8")
+    src = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax"
+           / "01_relax" / "run-0")
+    run = tmp_path / "run-0"
+    shutil.copytree(src, run)
+    (run / MONITOR_BUNDLE).write_bytes(monitor_bundle())
 
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
 
@@ -539,25 +551,55 @@ def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path)
     # (it is deliberately not pip-installed -- it runs as `python -m molbuilder`
     # from the repo root).
     control = subprocess.run([sys.executable, "-c", "import molbuilder"],
-                             cwd=tmp_path, env=env, capture_output=True,
+                             cwd=run, env=env, capture_output=True,
                              text=True, timeout=120)
     assert control.returncode != 0, (
         "molbuilder is importable from the staging directory, so this test "
         "cannot reproduce a compute node.  Is it pip-installed?")
 
     probe = (
-        "import mb_monitor\n"
-        # and the flat fallback must actually resolve, not merely not raise
-        "p = mb_monitor.default_notify_path()\n"
-        "assert p.name == 'notify', p\n"
-        "print('ok', p)\n"
+        # the bundle runs with itself first on the path, as `python
+        # mb_monitor.pyz` puts it
+        f"import sys; sys.path.insert(0, {MONITOR_BUNDLE!r})\n"
+        "import json, os, mb_monitor as M\n"
+        # the flat fallback must actually resolve, not merely not raise
+        "assert M.default_notify_path().name == 'notify'\n"
+        # the readers are the COPIES beside the job, not molbuilder's -- and
+        # so is everything the parser itself reads through
+        "P = sys.modules[M.SiestaReader.__module__]\n"
+        "where = {n: getattr(o, '__module__', getattr(o, '__name__', ''))\n"
+        "         for n, o in (('status', M.run_status),\n"
+        "                      ('siesta', M.SiestaReader),\n"
+        "                      ('molwatch', M.MolwatchReader),\n"
+        "                      ('grammar', P._G), ('rules', P.compile_rules),\n"
+        "                      ('names', M._rf))}\n"
+        "where['from'] = os.path.basename(os.path.dirname(M.__file__))\n"
+        "w = M.WatchedRun(label='H2', stage='01_relax', run=0)\n"
+        "st = w.conclude(w.read(0.0, 1.0))\n"
+        "print(json.dumps({'where': where, 'state': st.state,\n"
+        "                  'detail': st.detail, 'converged': st.converged,\n"
+        "                  'energy': st.energy, 'text': st.as_text()}))\n"
     )
-    done = subprocess.run([sys.executable, "-c", probe], cwd=tmp_path, env=env,
+    done = subprocess.run([sys.executable, "-c", probe], cwd=run, env=env,
                           capture_output=True, text=True, timeout=120)
     assert done.returncode == 0, (
-        "a file that ships beside a job cannot be imported without molbuilder:\n"
-        f"{done.stdout}{done.stderr}")
-    assert done.stdout.startswith("ok "), done.stdout
+        "a file that ships beside a job cannot be imported, or cannot read the "
+        f"run, without molbuilder:\n{done.stdout}{done.stderr}")
+    got = json.loads(done.stdout.strip().splitlines()[-1])
+    assert got["where"] == {"status": "job", "siesta": "siesta_reader",
+                            "molwatch": "molwatch_reader",
+                            "grammar": "siesta_grammar",
+                            "rules": "_section_rules",
+                            "names": "runfiles",
+                            "from": MONITOR_BUNDLE}, got["where"]
+
+    # THE SAME ANSWER THE PACKAGE GIVES: one status door, shipped or not.
+    here = run_status(src, "H2_01_relax*")
+    assert (got["state"], got["detail"]) == (here.state, here.detail), got
+    speaker = here.endings[here.active_source]
+    assert got["converged"] == {k: v for k, v in speaker.phases.items()}, got
+    assert got["energy"] is not None, (
+        f"the shipped parser read no energy off the real .out: {got['text']}")
 
 
 def _declared_all(tree: ast.AST) -> list[str] | None:

@@ -183,6 +183,15 @@ def labels_in(directory: str) -> List[str]:
     for deck_role, label_of in _DECK_READERS:
         for deck in find_by_role(directory, deck_role):
             label = label_of(_read_head(str(deck)))
+            # A `.py` THAT NAMES NO `JOB` IS NOT A DECK.  The suffix is
+            # generic, and beside every job sit the framework modules its
+            # monitor runs on (`runwrap.MONITOR_COMPANIONS`): read by stem,
+            # `job.py` and `runfiles.py` became labels -- runs of their own
+            # in the Results listing, and decks enough that a prepped PySCF
+            # attempt had no record (2026-09-26).  An `.fdf` keeps its stem:
+            # SIESTA names its files `siesta` when no SystemLabel is stated.
+            if label is None and deck_role == ".py":
+                continue
             if label and label not in stems:
                 stems.append(label)
             stem = os.path.splitext(os.path.basename(str(deck)))[0]
@@ -371,13 +380,24 @@ def _read_head(path: str, limit: int = 65536) -> str:
 
 
 class JobDirParser(DirParser):
-    """A run directory → :class:`RunDirResult`.
+    """A directory → :class:`RunDirResult` — what `/api/results/dir` serves.
 
-    Composes the readers that already exist — `job.run_status`,
-    `job._enumerate_files`, `contract.engine_of` — plus the discovery chain
-    above.  It inlines no file-level parsing: every file it reads goes through
-    a registered `FileParser`, via those callees (`model/parse.md` § 1's rule
-    for a DirParser, and § 5.4's).
+    Composes the readers that already exist — `calcdirs.container_or_run`,
+    `job.run_status`, `contract.engine_of`, `record.run_record` — plus the
+    discovery chain above.  It inlines no file-level parsing (`model/parse.md`
+    § 1's rule for a DirParser, and § 5.4's).
+
+    **What the directory IS decides what is asked of it** (§ 5.0,
+    `project-layout.md` § 1.4a), and the rules live here, not in a caller:
+
+    * a CONTAINER is not a run: no run state and no record — but it may be a
+      calculation, whose own product (a transport ladder's I–V record) the
+      discovery still offers;
+    * a RUN is asked everything, even before it has written a byte;
+    * a directory that does not say is read ALONE: listed, searched, and given
+      a run state and a record only where the search found this directory's
+      product — `run_status` has no *there is no run here*, so asking it
+      anyway is how ten of nineteen folders reported *running* (2026-09-19).
     """
     name = "jobdir"
     label = "A run directory"
@@ -385,45 +405,60 @@ class JobDirParser(DirParser):
 
     @classmethod
     def can_parse(cls, run_dir: Path) -> bool:
-        """Is this a run directory? — it holds something a run produced.
+        """Does this directory answer for itself? — it SAYS what it is, or it
+        holds a file a run writes.
 
-        Cheap on purpose (§ 1's ABC): a listing, no parse.  A directory with a
-        deck but no output is still one — that is `not_run`, not `not mine`.
+        Said: a calculation root or a ``calcdir.json`` (§ 1.4a) — a stamped
+        run that has written nothing yet is still a run, and a container is
+        answered too, with no run state.  Unsaid: a file whose role the
+        catalogue declares (`runfiles.role_of`) — a deck, a run's output, a
+        product.  An empty folder, or one of notes, is nobody's.  Cheap on
+        purpose (§ 1's ABC): one listing, one small JSON read.
         """
         d = Path(run_dir)
         if not d.is_dir():
             return False
-        from molbuilder.runfiles import find_by_role
-        for role in (".out", ".molwatch.log", ".fdf", ".py"):
-            if find_by_role(str(d), role):
-                return True
-        return False
+        from molbuilder import calcdirs
+        from molbuilder.runfiles import role_of
+        if calcdirs.container_or_run(d) is not None:
+            return True
+        return any(e.is_file() and role_of(e.name) is not None
+                   for e in d.iterdir())
 
     @classmethod
     def parse(cls, run_dir: Path) -> RunDirResult:
-        from .job import _enumerate_files, run_status
+        from molbuilder import calcdirs
+        from .job import run_status
+        from .record import run_record
         from ..contract import engine_of
 
         d = str(Path(run_dir))
-        st = run_status(d)
-        files = _enumerate_files(Path(d))
+        place = calcdirs.container_or_run(d)
+        engine = engine_of(d)
         openable, attempts = openable_in(d)
+        status = record = None
+        if place == calcdirs.CONTAINER:
+            attempts.append(
+                "this directory is a container, not a run -- it has no run "
+                "state; its runs are the directories below it "
+                "(project-layout.md § 1.4)")
+        elif place == calcdirs.RUN or openable:
+            # WITH ITS LAUNCH RECORD: an attempt prepped and never launched
+            # is `pending`, not "running" (`run_status`).
+            from molbuilder.jobset.materialize import read_run_launch
+            st = run_status(d, launch=read_run_launch(d))
+            # ``active_source`` is the status's own pick -- stage, then mtime
+            # (§ 5.1, user ruling 2026-09-04) -- and a bare filename.
+            status = {"state": st.state, "detail": st.detail,
+                      "last_change_at": st.last_change_at,
+                      "active_source": st.active_source}
+            record = run_record(d, status=st, engine=engine)
         return RunDirResult(
             **ParseResult.envelope(cls.name, d),
             run_dir=d,
-            engine=engine_of(d),
-            files={k: list(v) for k, v in files.items()},
-            # ACTIVE IS THE STATUS'S OWN PICK -- stage, then mtime (§ 5.1,
-            # user ruling 2026-09-04).  It is not recomputed here: two rules
-            # for "which file speaks for the directory" is the defect that
-            # ruling settled.  `summarize`'s highest-`-runN` rule was
-            # WITHDRAWN, not beaten: it is handed a basename that already
-            # carries the stage, so the stage is not a variable there
-            # (`plan.md` § 5c, `model/parse.md` § 5.1).
-            active=st.active_source,
+            engine=engine,
             openable=openable,
             attempts=attempts,
-            status={"state": st.state, "detail": st.detail,
-                    "last_change_at": st.last_change_at,
-                    "active_source": st.active_source},
+            status=status,
+            record=record,
         )

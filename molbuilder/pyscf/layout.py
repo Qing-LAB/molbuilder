@@ -228,8 +228,9 @@ _READBACK = {
     "max_memory_mb": "mol.max_memory",
 }
 
-def recorded_items():
-    """**Every** catalogue item this engine declares, in catalogue order.
+def recorded_items(calculation: Optional[str] = None):
+    """**Every** catalogue item this engine declares, in catalogue order --
+    for ``calculation`` when given, the items a run of that kind carries.
 
     Not a curated list.  The record is meant to answer *what was this run set
     to* without qualification, so it covers the whole vocabulary: the values a
@@ -242,7 +243,8 @@ def recorded_items():
     new item.
     """
     from .. import script_emit as _sc
-    return [it.name for it in _sc.declarations(engine="pyscf")]
+    return [it.name for it in _sc.declarations(engine="pyscf",
+                                               calculation=calculation)]
 
 
 #: Anchors that name a CALL rather than a setting.  ``mf.newton()`` returns a

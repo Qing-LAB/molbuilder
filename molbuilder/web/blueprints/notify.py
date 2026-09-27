@@ -65,8 +65,8 @@ This module never sets that flag.
 reading the server's key file is enough to forge a report.  Ed25519 would
 close it -- the cluster would hold a private key and this side only a
 public one, making this file not a secret at all -- and it is not used
-because it is **not in the standard library**, which `mb_monitor.py` is
-restricted to: it ships to a compute node where molbuilder is not
+because it is **not in the standard library**, which the monitor is
+restricted to: it ships to a compute node (`mb_monitor.pyz`) where molbuilder is not
 installed and runs under whatever python the job's env has.
 """
 from __future__ import annotations
@@ -80,6 +80,8 @@ import re
 import time
 from collections import deque
 from typing import Any, Dict, NoReturn, Optional
+
+from ...report_fields import NAMES
 
 from flask import Blueprint, abort, jsonify, request
 
@@ -103,9 +105,10 @@ SCHEMA = 1
 #: nothing saying which calculation, on which machine, or when it was sent.
 #: Two jobs running produced indistinguishable lines.  These are results,
 #: not diagnostics -- somebody parses them later with no session to ask.
+#: The report's own fields are the one declaration's (`report_fields`,
+#: `stages.md` § 6.9), so a field the monitor sends is a field kept here.
 _FIELDS = ("run", "job", "array", "host", "sent_at",
-           "event", "text", "state", "elapsed_s", "n_iters", "energy",
-           "geom_step", "per_iter_s")
+           "event", "text", "state") + NAMES
 
 #: One rotating file per user, 1 MB × 5.  A cap is not optional on a file
 #: fed from the internet: without one a leaked key fills the disk the

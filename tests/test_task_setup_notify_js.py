@@ -50,7 +50,7 @@ def _run(controls: dict, task: dict | None, want: str):
         # without it would exercise a different function than the page runs.
         # `notifyValues` asks BOTH selectors, so the harness needs both or
         # it exercises a different function than the page runs.
-        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
@@ -229,7 +229,7 @@ def test_an_unparseable_document_loses_nothing():
         # without it would exercise a different function than the page runs.
         # `notifyValues` asks BOTH selectors, so the harness needs both or
         # it exercises a different function than the page runs.
-        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         # `applyNotifyToDoc` calls it, so the harness needs it too: the
@@ -365,7 +365,7 @@ def test_a_card_write_moves_the_MODEL_too_not_only_the_buffer():
         pytest.skip("node not available")
     src = VIEWER.read_text(encoding="utf-8")
     fns = "\n\n".join([
-        _slice(src, "const REPORT_ITEMS = [", "/** Paint one tick per report"),
+        _slice(src, "//: ``null`` until the server has answered", "/** Paint one tick per report"),
         _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
         _slice(src, "function notifyValues()", "/** Write the policy INTO"),
         _slice(src, "function keepingPagePut(fn)", "/** Fill the card FROM"),
@@ -432,3 +432,46 @@ def test_no_two_elements_share_an_id_in_the_task_setup_page():
     ids = re.findall(r'\bid="([^"]+)"', html)
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     assert not dupes, f"duplicate id(s) in task_setup.html: {dupes}"
+
+
+def test_a_card_that_could_not_ask_keeps_the_descriptions_report_list():
+    """`stages.md` § 6.9: which report fields a calculation can carry is the
+    SERVER's answer (`GET /api/notify/report-fields`).  Until it has answered
+    -- or when it could not -- the card does not know, and not knowing is not
+    "none": it took the unanswered question for an empty list, so the next
+    tick anywhere on the card rewrote a description's `notify.report` to
+    `[]`, the summary line alone.  Driven through the real functions.
+
+    MUTATION THIS MUST FAIL AGAINST: read an unknown field list as empty."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    src = VIEWER.read_text(encoding="utf-8")
+    fns = "\n\n".join([
+        _slice(src, "//: ``null`` until the server has answered",
+               "/** Paint one tick per report"),
+        _slice(src, "function channelSelection()", "/** Paint one tick per channel"),
+        _slice(src, "function notifyValues()", "/** Write the policy INTO"),
+        _slice(src, "function currentTask()", "function wireChannels()"),
+    ])
+    harness = f"""
+        const _els = {{
+            "ts-report-all":   {{ checked: false }},
+            "ts-report-items": {{ querySelectorAll: () => [] }},
+            "ts-notify-all":   {{ checked: true }},
+            "ts-notify-scf":   {{ checked: true }},
+        }};
+        const $ = (id) => _els[id] || null;
+        let _doc = JSON.stringify({{ notify: {{ on_scf_converged: true,
+                                               report: ["energy", "n_iters"] }} }});
+        const _cm = {{ getValue: () => _doc }};
+        {fns}
+        console.log(JSON.stringify(notifyValues()));
+    """
+    proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
+                          capture_output=True, text=True, timeout=20)
+    if proc.returncode != 0:
+        pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
+    got = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert got == {"on_scf_converged": True,
+                   "report": ["energy", "n_iters"]}, got

@@ -260,14 +260,13 @@ def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
 # step N begin ====`` block; footer markers (``# concluded:`` /
 # ``# error:``) appear after the last ``==== ... end ====`` block.
 # The step-begin marker and the footer grammar belong to the molwatch
-# format, so they are imported from the module that owns it.  Private
+# format, so they are read through its grammar, `molwatch_grammar`.  Private
 # copies of all three stood here until 2026-09-05 -- byte for byte the
 # same, padding included -- which is exactly how the convergence header
 # below came to drift.
-from .molwatch import _BEGIN_RE as _MW_STEP_BEGIN_RE   # noqa: E402
+from . import molwatch_grammar as _MG   # noqa: E402
 # The convergence-header grammar has ONE reader --
-# ``molwatch.parse_convergence_line`` (imported in
-# ``_read_molwatch_metadata``).  The private regex + coercion that
+# ``molwatch_grammar.parse_convergence_line``.  The private regex + coercion that
 # stood here, kept "to avoid coupling", were letter-first and
 # flat-only: a staged header's digit-first ``01_coarse.<leaf>`` keys
 # read as EMPTY on this path while the molwatch path read them fine
@@ -300,7 +299,6 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     log_path = _sibling_molwatch_log(traj_path)
     if log_path is None:
         return {}
-    from .molwatch import parse_convergence_line
     out: Dict[str, object] = {}
     convergence: Dict[str, object] = {}
 
@@ -309,9 +307,9 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     try:
         with open(log_path, "r", errors="replace") as fh:
             for line in fh:
-                if _MW_STEP_BEGIN_RE.search(line):
+                if _MG.BLOCK_BEGIN.search(line):
                     break
-                parse_convergence_line(line.rstrip("\n"), convergence)
+                _MG.parse_convergence_line(line.rstrip("\n"), convergence)
     except OSError:
         return {}
     if len(convergence) > 1:      # more than the "source" stamp alone
@@ -338,9 +336,8 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     # error outranks concluded, last error wins.  That rule used to be
     # spelled out here as well as in `molwatch`, in two copies free to
     # disagree about which marker beats which.
-    from .molwatch import parse_conclusion_line
     for raw in tail.splitlines():
-        parse_conclusion_line(raw, out)
+        _MG.parse_conclusion_line(raw, out)
     return out
 
 
@@ -677,6 +674,39 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
         error_message = error_message,
         runtime_info  = runtime_info,
     )
+
+
+
+# PySCF's own report of itself, near the top of the log its logger writes
+# (``pyscf/lib/misc.py`` ``format_sys_info``): ``System: ... Threads <n>``,
+# ``Python <v>``, ``numpy <v>  scipy <v>  h5py <v>``, ``PySCF version <v>``.
+# The run record's engine facts (`model/parse.md` § 5d.2): a deck is written
+# before the run and cannot know the version that ran it.
+_SYS_THREADS = re.compile(r"^System:.*\bThreads\s+(\d+)")
+_SYS_PYTHON = re.compile(r"^Python\s+(\S+)")
+_SYS_NUMPY = re.compile(r"^numpy\s+(\S+)\s+scipy\s+(\S+)")
+_SYS_VERSION = re.compile(r"^PySCF version\s+(\S+)")
+
+
+def read_pyscf_sys_info(text: str) -> Dict[str, Any]:
+    """``{version, python, numpy, scipy, threads}`` from a PySCF log -- each
+    absent when the log does not state it."""
+    out: Dict[str, Any] = {}
+    for line in (text or "").splitlines():
+        for key, pat in (("version", _SYS_VERSION), ("python", _SYS_PYTHON)):
+            m = pat.match(line)
+            if m:
+                out.setdefault(key, m.group(1))
+        m = _SYS_NUMPY.match(line)
+        if m:
+            out.setdefault("numpy", m.group(1))
+            out.setdefault("scipy", m.group(2))
+        m = _SYS_THREADS.match(line)
+        if m:
+            out.setdefault("threads", int(m.group(1)))
+        if "version" in out and "threads" in out and "numpy" in out:
+            break
+    return out
 
 
 class PySCFParser:

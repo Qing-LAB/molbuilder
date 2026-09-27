@@ -177,6 +177,40 @@ def test_the_xyz_sniffer_does_not_claim_siestas_forces_file(tmp_path):
     assert detect(str(xyz)).name == "pyscf"
 
 
+def test_nothing_shipped_beside_a_job_is_claimed_as_its_output(tmp_path):
+    """Every attempt holds the monitor's one file, `mb_monitor.pyz` -- a zip of
+    the framework modules it runs on (`runwrap.MONITOR_BUNDLE`) -- beside the
+    engine's own files, and those modules QUOTE the engines' lines:
+    `siesta_reader.py` names ``Begin Broyden opt. move`` in its docstring, a
+    SIESTA content marker.  When the modules stood beside the deck as files
+    (until 2026-09-26) the registry claimed that one as a SIESTA output and
+    the Results tab listed it openable.  Neither the bundle nor any Python
+    file is a run's output -- a module unpacked from it, or a person's own
+    script quoting a line.
+
+    API-level over the registry, on the real shipped bytes and sources: the
+    Results listing asks exactly this of each file.
+
+    MUTATION THIS MUST FAIL AGAINST: drop the SIESTA sniffer's ``.py`` guard.
+    """
+    from molbuilder.parse import detect
+    from molbuilder.parse.errors import UnknownFormatError
+    from molbuilder.runwrap import (MONITOR_BUNDLE, MONITOR_COMPANIONS,
+                                    companion_source, monitor_bundle)
+
+    (tmp_path / MONITOR_BUNDLE).write_bytes(monitor_bundle())
+    with pytest.raises(UnknownFormatError):
+        detect(str(tmp_path / MONITOR_BUNDLE))
+    claimed = {}
+    for name in MONITOR_COMPANIONS:
+        (tmp_path / name).write_text(companion_source(name), encoding="utf-8")
+        try:
+            claimed[name] = detect(str(tmp_path / name)).name
+        except UnknownFormatError:
+            pass
+    assert not claimed, claimed
+
+
 def test_a_parser_raises_ParseError_even_when_the_name_is_not_ours(tmp_path):
     """A PARSER RAISES `ParseError`.  Anything else escapes the web layer.
 

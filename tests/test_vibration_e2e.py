@@ -111,6 +111,12 @@ def _prep_and_run(bundle):
 def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
         tmp_path, monkeypatch):
     bundle = _describe(tmp_path, monkeypatch)
+    # A converged SCF is worth a message (`stages.md` § 6.9's neighbour,
+    # `notify.on_scf_converged`): asked for here the way a person asks, in
+    # the description, so the monitor beside the run is told to send them.
+    task = json.loads((bundle / "task.json").read_text())
+    task["notify"] = {"on_scf_converged": True}
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
     d = _prep_and_run(bundle)
 
     from molbuilder.spectra.results import SCHEMA_VERSION
@@ -156,6 +162,35 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     assert th["g_eh"] == th["grid"]["g_eh"][k]
     assert th["s_eh_k"] == th["grid"]["s_eh_k"][k]
     assert "the headline and the grid alike" in th["note"]
+
+    # THE MONITOR BESIDE IT read the run with the framework's readers
+    # (`run-reports.md` § 2.3): how it ended in the Results tab's words,
+    # the progress log's last step -- and the JOB's basis, a run started
+    # directly being its process tree, a CPU run judged on no GPU (§ 2.1a).
+    from molbuilder.runfiles import compose
+    log = (bundle / "01_freq" / "run-0"
+           / compose("W", ".monitor.log", "01_freq", run=0)).read_text()
+    closing = [ln for ln in log.splitlines() if "[STATUS]" in ln][-1]
+    assert "finished" in closing and "| step " in closing, closing
+    # the force beside the stage's own tolerance, from the header the deck
+    # wrote over prep's seed -- read afresh, not from the seed's old offset
+    assert "max force" in closing and "(tol 0.0102" in closing, closing
+    # PySCF's own SCF, as its progress log states it: the last cycle and
+    # its residuals (`molwatch_reader.MolwatchReader.now`)
+    assert "SCF iteration" in closing and "dE " in closing, closing
+    # every finished step is a converged SCF -- the first one too: a PySCF
+    # block is written when its step ENDS, and the rule once needed a step
+    # before it, so a run whose steps all ended between two wakes sent none
+    said = [ln for ln in log.splitlines() if "[NOTIFY]" in ln]
+    assert any("scf_converged" in ln for ln in said), said
+    basis = next(ln for ln in log.splitlines() if "[UTIL-BASIS]" in ln)
+    assert ("[launched on]" in basis and "cpu time [process tree]" in basis
+            and "mem [process tree" in basis), basis
+    summary = next(ln for ln in log.splitlines() if "[UTIL-SUMMARY]" in ln)
+    assert "gpu" not in summary.lower(), summary
+    import re
+    mean = float(re.search(r"cpu mean=(\d+)%", summary).group(1))
+    assert 0.0 < mean <= 120.0, summary
 
     # The Results door loads it -- the tab's half of the bar.
     from molbuilder.sidecars.spectra import parse_spectra_json

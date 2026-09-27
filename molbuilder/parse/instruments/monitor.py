@@ -40,8 +40,18 @@ _SUMMARY_CPU = re.compile(r"cpu mean=(\d+(?:\.\d+)?)%")
 _SUMMARY_GPU = re.compile(r"gpu\d+ sm mean=(\d+(?:\.\d+)?)%")
 
 
+#: The closing ``[UTIL-BASIS]`` line (`monitor.measurement_provenance`):
+#: ``...; mem [<source>]; peak <X> GB (kernel counter); limit <Y> GB`` -- what
+#: the memory figures are fractions of, the kernel's own peak where it keeps
+#: one, and the limit.  Read since 2026-09-26 (`model/parse.md` § 5c.1).
+_BASIS_MEM = re.compile(r"mem \[([^\]]+)\]")
+_BASIS_PEAK = re.compile(r"peak ([0-9.]+) GB \(kernel counter\)")
+_BASIS_LIMIT = re.compile(r"limit ([0-9.]+) GB")
+
+
 def monitor_metrics(text: str) -> Dict[str, Any]:
-    """``{machine, bound, stated_cpu_mean_pct, stated_gpu_sm_mean_pct}``.
+    """``{machine, bound, stated_cpu_mean_pct, stated_gpu_sm_mean_pct,
+    mem_basis, mem_peak_kernel_gb, mem_limit_gb}``.
 
     Absent facts are absent: ``machine`` is ``{}`` for a log predating the
     line, ``bound`` is ``None`` without a summary, and the stated means
@@ -70,6 +80,16 @@ def monitor_metrics(text: str) -> Dict[str, Any]:
         # MAX across devices -- the same rule the csv path uses, or the two
         # sources would answer differently on a multi-GPU node.
         out["stated_gpu_sm_mean_pct"] = max(gpu)
+    basis = ""
+    for ln in text.splitlines():
+        if "[UTIL-BASIS]" in ln:
+            basis = ln                               # last one wins
+    for key, pat, cast in (("mem_basis", _BASIS_MEM, str),
+                           ("mem_peak_kernel_gb", _BASIS_PEAK, float),
+                           ("mem_limit_gb", _BASIS_LIMIT, float)):
+        m = pat.search(basis)
+        if m:
+            out[key] = cast(m.group(1))
     return out
 
 

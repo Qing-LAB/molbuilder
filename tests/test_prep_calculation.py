@@ -319,7 +319,7 @@ def test_the_warm_retry_budget_travels_the_described_route(calc):
 def test_the_descriptions_notify_block_reaches_the_wrapper(calc):
     """`task.json` says WHEN this calculation should speak up, and the
     monitor is what speaks -- so the policy has to survive the whole trip:
-    description -> `Resources` -> the emitted `mb_monitor.py` line.
+    description -> `Resources` -> the emitted monitor line.
 
     **This is the link a wrapper-level test cannot see.**  Tests that build
     a `Resources` by hand and render from it pass whether or not `prep`

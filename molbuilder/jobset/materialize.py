@@ -860,8 +860,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # makov_payne_correction.py: the post-run script a CHARGED deck's own
     # header instructs the user to run "after SIESTA finishes" -- HERE,
     # beside the .out.
-    from ..runwrap import MONITOR_COMPANIONS
-    for extra in (*MONITOR_COMPANIONS, "makov_payne_correction.py"):
+    from ..runwrap import MONITOR_BUNDLE
+    for extra in (MONITOR_BUNDLE, "makov_payne_correction.py"):
         _bring(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):
@@ -1019,10 +1019,66 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
+def read_run_launch(attempt_dir) -> Optional[dict]:
+    """``run.json`` from an attempt, or ``None`` when there is none -- the
+    reader beside :func:`write_run_launch`.
+
+    `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
+    from the directory alone"*, so this file is the answer.  Present but
+    unreadable reads ``{}``: launched, the details lost.  *(It was a private
+    `runstatus._launch_record` until 2026-09-26, when the run record became
+    its second reader.)*
+    """
+    if attempt_dir is None:
+        return None
+    p = Path(attempt_dir) / RUN_LAUNCH_FILE
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:                                      # noqa: BLE001
+        return {}
+
+
+#: What a gathered rung took from which upstream attempt, one ``<file> <-
+#: <attempt>`` line each -- an attempt's own file, beside ``run.json``:
+#: written by `prep`'s gather (:func:`write_gathered_from`) and read by the
+#: run record's provenance (:func:`read_gathered_from`, `model/parse.md`
+#: § 5d.4).  *(Both sat in `prep` until 2026-09-26, so the record imported
+#: the conductor to read one file.)*
+GATHERED_FROM_FILE = ".gathered-from"
+
+
+def write_gathered_from(attempt_dir, gathered) -> None:
+    """``gathered`` -- ``[(source attempt, filename), ...]`` in the order
+    taken -- as the attempt's ``.gathered-from``."""
+    (Path(attempt_dir) / GATHERED_FROM_FILE).write_text(
+        "".join(f"{fn} <- {src}\n" for src, fn in gathered),
+        encoding="utf-8")
+
+
+def read_gathered_from(attempt_dir) -> List[dict]:
+    """``[{"file", "from"}]`` -- what this attempt was gathered from, in the
+    order it was taken; ``[]`` when it gathered nothing."""
+    p = Path(attempt_dir) / GATHERED_FROM_FILE
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        name, sep, src = line.partition(" <- ")
+        if sep and name.strip() and src.strip():
+            out.append({"file": name.strip(), "from": src.strip()})
+    return out
+
+
 __all__ = ["Attempt", "trial_dir", "trial_work_dir",
            "TRIAL_PREFIX", "trials_in", "launched_trials",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "run_dir",
            "resolve_attempt",
            "prepare_attempt",
-           "write_run_launch", "RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE"]
+           "write_run_launch", "read_run_launch", "RUN_LAUNCH_SCHEMA",
+           "RUN_LAUNCH_FILE",
+           "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

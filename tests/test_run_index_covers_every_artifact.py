@@ -34,7 +34,7 @@ The run index is a property of *a directory that already holds attempts* —
 the wrapper scans for `-runN` and advances past the highest — so a
 hand-assembled directory would prove the wrapper indexes files in a layout
 nobody ever creates. Prep is what makes one, and prep is what ships the real
-`mb_monitor.py` into it (`jobset/prep.py:181`), so the monitor here is the
+`mb_monitor.pyz` into it (`jobset/prep.py:181`), so the monitor here is the
 real one writing real samples to the flags the real wrapper passed it.
 
 **Only two things are stubbed, and neither is under test.** `siesta`, because
@@ -78,7 +78,7 @@ def _a_prepared_calculation(tmp_path: Path) -> Path:
     """A real one-stage ladder, prepped by the real `prep_jobset`.
 
     Returns the stage directory -- deck, wrapper and the shipped
-    `mb_monitor.py`, exactly as a person would find it after `jobset prep`.
+    `mb_monitor.pyz`, exactly as a person would find it after `jobset prep`.
     """
     root = tmp_path / "calc"
     root.mkdir()
@@ -97,9 +97,9 @@ def _a_prepared_calculation(tmp_path: Path) -> Path:
     prep_jobset(jobset, root, env="molbuilder-siesta", emit_sbatch=False)
 
     stage = root / STAGE_DIR
-    assert (stage / "mb_monitor.py").exists(), (
-        "prep did not ship mb_monitor.py -- this test would then be measuring "
-        "nothing, so it is a precondition rather than an assertion")
+    assert (stage / "mb_monitor.pyz").exists(), (
+        "prep did not ship mb_monitor.pyz -- this test would then be "
+        "measuring nothing, so it is a precondition rather than an assertion")
     binned = stage / "bin"
     binned.mkdir()
     for name, body in (("siesta", _ENGINE), ("conda", _CONDA)):

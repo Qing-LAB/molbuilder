@@ -2,7 +2,7 @@
 
 **Module:** floor 1, and **stdlib-only**, which is the property the whole
 design rests on.  The monitor ships beside a job
-(``runwrap.MONITOR_COMPANIONS``) and runs under the JOB's python with no
+(``runwrap.MONITOR_BUNDLE``) and runs under the JOB's python with no
 molbuilder installed; ``config_dir.py`` already travels for that reason.  A
 path module a running job cannot import is a path module the job works
 around.

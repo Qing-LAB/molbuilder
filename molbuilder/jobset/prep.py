@@ -46,7 +46,8 @@ import numpy as np
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
-from .materialize import job_dir_names, shape_of, materialize
+from .materialize import (job_dir_names, shape_of, materialize,
+                          write_gathered_from)
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
@@ -2036,9 +2037,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
         _sh.copy2(src, attempt_dir / filename)
         gathered.append((str(matching[0].relative_to(base)), filename))
     if gathered:
-        (attempt_dir / ".gathered-from").write_text(
-            "".join(f"{fn} <- {src}\n" for src, fn in gathered),
-            encoding="utf-8")
+        write_gathered_from(attempt_dir, gathered)
     return gathered
 
 

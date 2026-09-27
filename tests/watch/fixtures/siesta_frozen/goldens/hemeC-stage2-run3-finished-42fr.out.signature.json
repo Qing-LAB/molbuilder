@@ -440,6 +440,34 @@
     "n_mpi_processes": 8,
     "run_end_local": "2026-05-31T00:29:50",
     "run_start_local": "2026-05-30T20:16:41",
+    "scf_criteria": {
+      "periodic": {
+        "EDM": {
+          "required": false,
+          "tolerance": 0.001,
+          "unit": "eV"
+        },
+        "Eharris": {
+          "required": false,
+          "tolerance": 0.0001,
+          "unit": "eV"
+        },
+        "FreeEng": {
+          "required": false,
+          "tolerance": 0.0001,
+          "unit": "eV"
+        },
+        "dDmax": {
+          "required": true,
+          "tolerance": 0.0001
+        },
+        "dHmax": {
+          "required": true,
+          "tolerance": 0.001,
+          "unit": "eV"
+        }
+      }
+    },
     "scf_phases": {
       "periodic": {
         "converged": true,
@@ -460,6 +488,12 @@
         "MPI"
       ],
       "version": "5.4.2"
+    },
+    "siesta_diag": {
+      "algorithm": "D&C",
+      "diag_blocksize": 8,
+      "distribution": "2 x 4",
+      "parallel_over_k": "F"
     }
   },
   "scf_converged": true,

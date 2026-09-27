@@ -285,15 +285,19 @@ bdt-relax/                            the CALCULATION — the user typed this na
 │                                        the id — label plus formula
 ├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
 │                                        reservation), from the hand-over
-├── Au.psml  S.psml  mb_monitor.py       copied in by `prep` from the library
+├── Au.psml  S.psml                   copied in by `prep` from the library
 │                                        (or by `describe --psml-lib`) — § 2.6
 │
 ├── 01_coarse/                        a STAGE — written by `prep`
 │   ├── <label>_01_coarse.fdf            the deck, rendered for THIS machine
 │   ├── <label>_01_coarse.run.sh         its wrapper
+│   ├── mb_monitor.pyz                   beside the wrapper: ONE file, the monitor
+│   │                                    and the framework modules it reads the
+│   │                                    run through (`runwrap.MONITOR_BUNDLE`)
 │   ├── Au.psml → ../Au.psml          shared, linked up
 │   ├── run-0/                        an ATTEMPT
 │   │   ├── run.json                  how it was launched, what it continued from
+│   │   ├── mb_monitor.pyz            the monitor's file, brought in to run from here
 │   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
 │   │   └── <label>_01_coarse-run0.out   molbuilder named this: stage + attempt
 │   ├── run-1/                        a redo — run-0 is untouched
@@ -322,10 +326,10 @@ in the document that draws the picture people copy from.)*
 ```mermaid
 flowchart TB
     subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["template.toml · task.json<br/>pseudopotentials · monitor"]
+      T["template.toml · task.json<br/>pseudopotentials"]
     end
     subgraph ST["<b>a stage</b> — one science setting, built by prep"]
-      D["the rendered deck · its wrapper<br/>links up to the shared package"]
+      D["the rendered deck · its wrapper · the monitor's shipped set<br/>links up to the shared package"]
       subgraph AT["<b>an attempt</b> — one invocation, never modified"]
         O["run.json · the engine's output<br/>.XV · .DM · .out"]
       end
@@ -2237,7 +2241,7 @@ so an exemption cannot quietly outlive the code it excused.
 #### What `paths` owns
 
 `molbuilder/paths.py` — **L1, and stdlib-only, which is load-bearing.** The
-monitor ships beside a job (`runwrap.MONITOR_COMPANIONS`) and runs under the
+monitor ships beside a job (`runwrap.MONITOR_BUNDLE`) and runs under the
 JOB's python with no molbuilder installed; `config_dir.py` already travels for
 exactly this reason. A path module that a running job cannot import is a path
 module the job works around.
@@ -2335,8 +2339,11 @@ override** — they are the composers, not sites someone read and excused.
 spelled inside a script molbuilder *emits*. `siesta/makov_payne.py` carries
 `glob("*-run*.out")` as template **text** for a script that ships beside a job —
 data here, code there, and no AST pass over `molbuilder/` reaches it. Recorded
-in `plans/plan.md` § 5k: it cannot use `runfiles` until `runfiles` joins
-`runwrap.MONITOR_COMPANIONS`.
+in `plans/plan.md` § 5k: it could not use `runfiles` until `runfiles` joined
+`runwrap.MONITOR_COMPANIONS` — **which it did on 2026-09-26**, with the monitor
+reading every run through the framework (`run-reports.md` § 2.3); it travels
+inside `mb_monitor.pyz`, so a script beside a job reaches it by putting that
+file on its path.
 
 **Two composers are known and NOT closed**, because closing them is a decision
 rather than a migration:

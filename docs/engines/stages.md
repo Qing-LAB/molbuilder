@@ -1723,14 +1723,29 @@ you have to go and look up, which is the thing a notification exists to save
 you. So the list below is *what else*, and it can be empty; it can never
 remove the name.
 
-| item | what it is |
-|---|---|
-| `elapsed_s` | wall seconds since the monitor started watching |
-| `n_iters` | SCF iterations in the current cycle |
-| `energy` | the last energy printed |
-| `geom_step` | which geometry move the relaxation is on |
-| `per_iter_s` | seconds per SCF iteration — the number that says *is this
-  going to finish* |
+| item | what it is | reported for |
+|---|---|---|
+| `elapsed_s` | wall seconds since the monitor started watching | every run |
+| `n_iters` | SCF iterations run so far in the current phase — a SIESTA run's timing rows, a PySCF run's SCF history across its steps | every run |
+| `energy` | the last energy printed | every run |
+| `geom_step` | which step the run is on, in the engine's own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` — a transport rung is a single point and states no step |
+| `max_force` | the largest force on an atom (eV/Å) — the number a relaxation converges on | every run |
+| `per_iter_s` | seconds per SCF iteration — the number that says *is this going to finish* | SIESTA — the timing instrument is its wrapper's tee |
+
+**Offered for what the run can state** *(2026-09-26)*. Each item says which
+engines and calculation kinds can report it — which runs write what it is read
+from ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3). The Task-setup
+card offers only those, and a description naming one its calculation cannot
+report is **refused at save, by name**: a field that can never arrive is a
+tick that silently means nothing. The table is ONE declaration,
+`molbuilder/report_fields.py`, and the description, the wrapper, the monitor
+(it travels beside the job), the listener and the card all read it — none
+keeps a list. *(Until 2026-09-26 the list stood in four hand-kept copies, and
+the card offered every field to every calculation: seconds per iteration to a
+PySCF run, which has no timing instrument, and a step to a transport rung.)*
+A field is *offered* for the runs that can state it; a run that has not
+stated it yet — a PySCF Hessian whose progress log holds only its preview —
+still sends it absent, never as zero.
 
 **Absent is every item**, not none. `notify.report` omitted means the report
 carries everything the monitor could determine, which is what every
@@ -1779,10 +1794,10 @@ projects/BDT-Au/optimization/bdt-relax/     ← the folder: the user typed this
 ├── <label>.template.toml               ← the science backbone
 ├── task.json                          ← what each stage tunes, and the run id
 ├── Au.psml  S.psml  C.psml  H.psml    ← shared, stored ONCE
-├── mb_monitor.py
 ├── 01_coarse/                         ← written by `prep`, on the target
 │   ├── <label>_01_coarse.fdf             ← template ⊕ coarse ⊕ this machine
 │   ├── <label>_01_coarse.run.sh          ← its wrapper, for this machine
+│   ├── mb_monitor.pyz                 ← the monitor's one file, beside it
 │   ├── Au.psml → ../Au.psml  …        ← shared, linked in
 │   └── run-0/  run-1/                 ← what each attempt produced
 └── 02_tight/

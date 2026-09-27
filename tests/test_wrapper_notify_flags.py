@@ -57,7 +57,7 @@ def _monitor_line(tmp_path: Path, **kw) -> str:
     f.write_text("SystemLabel job\nNumberOfAtoms 8\n")
     text = runwrap.render_run_wrapper(f, resources=Resources(mpi_np=4, **kw))
     lines = [ln for ln in text.splitlines()
-             if "mb_monitor.py" in ln and "--out" in ln]
+             if "mb_monitor.py" in ln and "--label" in ln]
     assert len(lines) == 1, f"expected one monitor launch, got {len(lines)}"
     return lines[0]
 
@@ -198,23 +198,6 @@ def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
         assert got == expected, (channels, line)
 
 
-def test_the_two_copies_of_the_report_vocabulary_agree():
-    """**Written twice, and it has to be.**  `task.REPORT_ITEMS` is what a
-    description is validated against; `monitor.REPORT_ITEMS` is what the
-    monitor accepts -- and `monitor.py` ships to a compute node as a
-    standalone file with no molbuilder importable, so it cannot import the
-    first.  The wire between them is `--notify-report`, and a field in one
-    list and not the other is a tick that silently never arrives
-    (`stages.md` § 6.9)."""
-    from molbuilder import monitor as M
-    from molbuilder.task import REPORT_ITEMS as FROM_TASK
-    assert tuple(M.REPORT_ITEMS) == tuple(FROM_TASK)
-    # ...and the card displays exactly those, no more and no fewer: a key in
-    # `_CARD_FIELDS` that is not a report item could never be asked for, and
-    # an item with no card row could be asked for and never shown.
-    assert tuple(k for _, k, _ in M._CARD_FIELDS) == tuple(FROM_TASK)
-
-
 def test_the_report_selection_reaches_the_monitor(tmp_path):
     """Baked at `prep`, so a running job's format cannot change because
     `task.json` was edited while it queued (`stages.md` § 6.9)."""
@@ -246,7 +229,7 @@ def test_a_report_field_that_is_not_one_is_refused_at_the_wrapper(tmp_path):
     """`task.json` checks the names on the way in, but `Resources` can be
     built directly -- and a field that silently never arrives is the failure
     this whole area keeps producing."""
-    with pytest.raises(runwrap.WrapperError, match="the fields are"):
+    with pytest.raises(runwrap.WrapperError, match="is not a report field"):
         _monitor_line(tmp_path, notify_report=("cpu_temperature",))
 
 
@@ -283,8 +266,12 @@ def test_every_flag_emitted_is_one_the_monitor_accepts(tmp_path):
     import subprocess
     import sys
 
+    # EVERYTHING THAT TRAVELS, as the run directory holds it: the shipped
+    # monitor imports the framework's readers beside it at start.
+    for name in runwrap.MONITOR_COMPANIONS:
+        (tmp_path / name).write_text(runwrap.companion_source(name),
+                                     encoding="utf-8")
     shipped = tmp_path / "mb_monitor.py"
-    shipped.write_text(runwrap._monitor_source(), encoding="utf-8")
     proc = subprocess.run([sys.executable, str(shipped), "--help"],
                           capture_output=True, text=True, timeout=60,
                           cwd=str(tmp_path))
@@ -318,3 +305,45 @@ def test_no_destination_or_credential_is_written_into_the_wrapper(tmp_path):
     for leak in ("hooks.slack.com", "discord.com/api/webhooks",
                  "authorization:", "bearer ", "--notify-url", "notify_token"):
         assert leak not in lowered, f"the wrapper carries {leak!r}"
+
+
+# --------------------------------------------------------------------- #
+#  what the job holds, and whether it can be watched                     #
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("deck,use_gpu,told", [
+    # (a SIESTA GPU deck needs the GPU env to render: `test_gpu_loadbalance`)
+    ("job.fdf", False, False),
+    ("job.py", True, True),           # PySCF's GPU is the same answer
+    ("job.py", False, False),
+])
+def test_the_monitor_is_told_whether_the_run_uses_a_gpu(tmp_path, deck,
+                                                        use_gpu, told):
+    """A GPU is sampled and judged only for a run that uses one, and the
+    wrapper says so from the answer it launches with -- `use_gpu`, either
+    engine (`run-reports.md` § 2.1a).  The PySCF wrapper said no, always,
+    so a PySCF run on a GPU was judged on its CPU alone (2026-09-26).
+
+    MUTATION THIS MUST FAIL AGAINST: never pass ``--gpu`` for a ``.py``."""
+    f = tmp_path / deck
+    f.write_text("SystemLabel job\nNumberOfAtoms 8\n" if deck.endswith(".fdf")
+                 else 'JOB = "job"\n')
+    text = runwrap.render_run_wrapper(
+        f, resources=Resources(mpi_np=4, use_gpu=use_gpu))
+    line = next(ln for ln in text.splitlines()
+                if "mb_monitor.py" in ln and "--label" in ln)
+    assert ("--gpu" in line.split()) is told, line
+
+
+def test_a_deck_the_monitor_cannot_name_is_said_not_watched(tmp_path):
+    """The monitor names every file through `runfiles`, and a deck pointed at
+    by hand as ``my.relaxation.fdf`` gives a stem no run label can be: it
+    died at start with its stderr at /dev/null and left no log at all.  The
+    wrapper says it at render, in its own log, and starts nothing."""
+    f = tmp_path / "my.relaxation.fdf"
+    f.write_text("SystemLabel my\nNumberOfAtoms 8\n")
+    text = runwrap.render_run_wrapper(f, resources=Resources(mpi_np=4))
+    assert not [ln for ln in text.splitlines()
+                if "mb_monitor.py" in ln and "--label" in ln], (
+        "a monitor that cannot compose its own log's name was launched")
+    assert "monitor: not started -- the deck's name my.relaxation" in text

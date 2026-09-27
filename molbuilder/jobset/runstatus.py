@@ -19,13 +19,12 @@ it inspects the tree, changes nothing.
 from __future__ import annotations
 
 import dataclasses
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
-from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
+from .materialize import (attempts, job_dir_names, read_run_launch,
                           latest_attempt, run_dir, shape_of,
                           stage_refs)
 from .model import JobSet
@@ -37,26 +36,8 @@ from .model import JobSet
 # question -- could a stage here hand state to the next one?
 from ..warmfiles import carry_inventory as _carry_inventory
 from ..paths import attempt_name
-from ..runfiles import find, is_stage_token, stdout_roles
+from ..runfiles import is_stage_token
 
-#: What "THE ENGINE HAS PRODUCED SOMETHING" means -- and it is the narrow half
-#: of the catalogue's `output` column, not the whole of it
-#: (`runfiles.Artifact.output == "stdout"`, `model/parse.md` § 5.5).
-#:
-#: A ``"stdout"`` file exists BECAUSE THE PROCESS STARTED -- the shell creates
-#: it at the redirect -- which is exactly this question.  A ``"progress"`` file
-#: is SEEDED at prep, before the engine exists, so counting it here reports a
-#: rung you prepared and never launched as `running`.  Measured 2026-09-18
-#: against a CO2 job prepped through the UI and deliberately not launched, and
-#: on 28 of 107 directories in `projects/`.
-#:
-#: TWO WIDENINGS CORRECTED, both on 2026-09-18.  It was
-#: `roles_ending(".out", ".log")` -- 11 roles, 8 of which no engine writes,
-#: including `.parse.log`, molbuilder's own log of READING a run, so a queued
-#: rung flipped to `running` the moment molbuilder looked at its directory.
-#: Narrowing that to `run_output_roles()` fixed those eight and kept the
-#: seeded progress log; this is the second half.
-_OUTPUT_ROLES = stdout_roles()
 
 
 def _warm_files(engine: str):
@@ -167,24 +148,6 @@ def _warm_present(stage_dir: Path, label: str, engine: str) -> List[str]:
     return out
 
 
-def _launch_record(attempt: Optional[Path]) -> Optional[Dict[str, Any]]:
-    """``run.json`` from an attempt, or ``None`` — fail-soft on a bad file.
-
-    `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
-    from the directory alone"*, so this file is the answer and status must read
-    it rather than infer from an absence of output.
-    """
-    if attempt is None:
-        return None
-    p = attempt / RUN_LAUNCH_FILE
-    if not p.is_file():
-        return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return {}                # present but unreadable: launched, details lost
-
-
 def _label_of(job: Any, fallback: str) -> str:
     """The label THIS job's files carry, read off its own deck.
 
@@ -235,55 +198,26 @@ NOT_PREPPED = ("not-started", "no directory yet (not prepped)")
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
-                 label: str, stage: Optional[str], out_glob: str) -> tuple:
+                 out_glob: str) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
 
     ``observed`` is the latest attempt where there is one, and the stage
     container for a flat run (`project-layout.md` § 1.5) — the caller resolves
     that, because *where a run happens* is a layout question and this layer
-    only reads.
-
-    ``label`` and ``stage`` have NO DEFAULTS, and that is the point: an empty
-    label matches nothing (`runfiles.parse` requires it), so a caller that
-    forgot to pass one would get *"no output"* for every stage -- § 1.6's
-    forbidden line, arrived at by a default rather than by a bug.
+    only reads.  ``out_glob`` narrows the directory to THIS rung's files --
+    the flat shape keeps every stage in one.
 
     ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
     *never started*, which no amount of looking at an empty directory can do:
     § 1.6's *"a queued cluster job has produced nothing yet, so 'no output' and
     'not started' look identical"*, and its promise that status can then say
-    *"queued as job 481923"* rather than guessing from an absence.
+    *"queued as job 481923"* rather than guessing from an absence.  The
+    directory door answers both from it (`parse.dirs.job.run_status`): the
+    rule stood HERE, above the door, until 2026-09-26, so the Results tab's
+    directory door answered the same attempt "running".
     """
     if not observed.is_dir():
         return NOT_PREPPED
-    # WHICH FILES ARE THIS RUNG'S, asked of the grammar rather than spelled
-    # (`project-layout.md` § 4.5).  ``label`` + ``stage`` is the right narrowing
-    # in BOTH shapes and needs no shape knowledge at all: the deck is
-    # ``<label>_<token>`` whichever layout it sits in (`prep` composes it with
-    # `runfiles.stem` either way), so the token in the filename selects the rung
-    # in flat and is simply redundant in the hierarchy.  ``out_glob`` stays for
-    # `run_status` below, which buckets the ENGINE's files too -- a vocabulary
-    # `runfiles.WRITTEN` deliberately does not carry.
-    #
-    # WHICH ROLES COUNT AS OUTPUT IS A SET, AND THE CATALOGUE HOLDS IT.  This
-    # passed ``role="*.out"`` / ``"*.log"`` until 2026-09-08 -- a wildcard in a
-    # role, the same fault as declaring one (§ 5l.3) -- and it could not simply
-    # ask for `.out` and `.log`, because that drops `.pyscf.log`, where PySCF
-    # writes *"and not to .out"*, so a finished PySCF rung would report itself
-    # QUEUED (§ 1.6's forbidden line).  `stdout_roles()` derives it from the
-    # catalogue's `output` column, so a new engine's stdout joins the set
-    # without editing this line -- and a new `.log` row that is NOT an
-    # engine's stdout stays out of it, which is the half the old
-    # `roles_ending(".out", ".log")` got wrong.
-    has_output = any(find(observed, label, role=r, stage=stage)
-                     for r in _OUTPUT_ROLES)
-    if not has_output:
-        if launch is None:
-            return ("pending", "prepped, not launched (no run.json)")
-        jid = launch.get("job_id")
-        mode = launch.get("mode") or "?"
-        return ("queued", (f"queued as job {jid}" if jid
-                           else f"launched ({mode}), no output yet"))
     try:
         # THROUGH THE PACKAGE THAT OWNS THE QUESTION, never the module
         # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
@@ -292,7 +226,7 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         # THE SAME GLOB THE EXISTENCE CHECK USED.  It stopped at the gate
         # above until 2026-09-08, so a flat calculation's every stage row
         # showed the newest stage's state.
-        st = run_status(observed, out_glob)
+        st = run_status(observed, out_glob, launch=launch)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
     # `run_status` returns a `RunStatus` since 2026-09-09; both fields are
@@ -330,7 +264,7 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         # read the attempt only, so a grouped-submitted trial answered
         # § 1.6's exact forbidden line ("prepped, not launched") while
         # its record sat one level up from where anyone looked.
-        launch = _launch_record(
+        launch = read_run_launch(
             attempt if attempt is not None
             else (d if jobset.kind == "sweep" else None))
         # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
@@ -339,16 +273,15 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         token = refs[job.name].token
         # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
         # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
-        # (`resolve._label_for`) -- so asking `runfiles.find` for the jobset's
-        # name matched NOTHING for a trial, `has_output` was always False, and
-        # a finished trial answered § 1.6's forbidden "prepped, not launched".
-        # Read off the deck the way `summarize` does (`Path(job.script).stem`
-        # minus the stage suffix), which is the name the files actually carry.
+        # (`resolve._label_for`) -- so narrowing by the jobset's name matched
+        # NOTHING for a trial, and a finished trial answered § 1.6's forbidden
+        # "prepped, not launched".  Read off the deck the way `summarize` does
+        # (`Path(job.script).stem` minus the stage suffix), which is the name
+        # the files actually carry.
         job_label = _label_of(job, label)
         out_glob = (sh.stage_glob(token, job_label)
                     if (sh is not None and token) else "*")
-        state, detail = _stage_state(observed, launch, job_label,
-                                     token or None, out_glob)
+        state, detail = _stage_state(observed, launch, out_glob)
         stages.append(StageStatus(
             ref=refs[job.name], dir=d.name, state=state, detail=detail,
             attempt=(attempt.name if attempt else None),

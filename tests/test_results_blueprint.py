@@ -920,23 +920,26 @@ class TestTheContractEndpoint:
         stage = client.get("/api/results/dir?path=" + str(calc / "01_seed")).get_json()
         assert stage["ok"] and stage["ladder"] is None
 
-    def test_a_run_with_no_output_yet_still_reports_running(self, isolated):
+    def test_a_launched_run_with_no_output_yet_reports_queued(self, isolated):
         """The other side, so the fix above cannot be a blanket silence.
 
-        A stamped run that has launched and written nothing is genuinely
-        *running*, and that is the one case where `run_status`'s default is
-        the truth.  The record is what separates it from the folder above.
+        A stamped run that has launched and written nothing has a status:
+        its launch record says it was sent, so it is ``queued``
+        (`running-a-job.md` § 4.2).  The record is what separates it from
+        the folder above.
         """
         from molbuilder import calcdirs
+        from molbuilder.jobset.materialize import write_run_launch
         root, client = isolated
         calc = root / "calc"
-        (calc / "01_a" / "run-0").mkdir(parents=True)
+        run = calc / "01_a" / "run-0"
+        run.mkdir(parents=True)
         calcdirs.write(calc / "01_a", role=calcdirs.CONTAINER, root=calc)
-        calcdirs.write(calc / "01_a" / "run-0", role=calcdirs.RUN, root=calc)
-        body = client.get(
-            "/api/results/dir?path=" + str(calc / "01_a" / "run-0")).get_json()
+        calcdirs.write(run, role=calcdirs.RUN, root=calc)
+        write_run_launch(run, mode="direct", command=["bash", "run.sh"])
+        body = client.get("/api/results/dir?path=" + str(run)).get_json()
         assert body["place"]["role"] == "run"
-        assert body["status"] is not None and body["status"]["state"] == "running"
+        assert body["status"] is not None and body["status"]["state"] == "queued"
 
     def test_no_deck_answers_null(self, isolated):
         root, client = isolated

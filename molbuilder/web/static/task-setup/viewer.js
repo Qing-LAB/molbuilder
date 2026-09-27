@@ -3286,9 +3286,16 @@ function readNotifyFromTask(task) {
                  && Array.isArray(n.report)) ? n.report : null;
     const repAll = $("ts-report-all");
     if (repAll) repAll.checked = rep === null;
-    paintReportTicks(rep);
     paintNotifyNote();
-    paintReportNote();
+    // THIS CALCULATION'S FIELDS, asked before they are painted: the ticks
+    // offered are the ones its engine and kind can state (§ 6.9).
+    const engine = String((task && task.engine && task.engine.name)
+                          || "siesta").toLowerCase();
+    const calculation = (task && task.calculation) || "optimization";
+    loadReportFields(engine, calculation).then(() => {
+        paintReportTicks(rep);
+        paintReportNote();
+    });
 }
 
 /** One line saying what this calculation will actually send. */
@@ -3870,19 +3877,46 @@ let _machineChannels = [];
 let _channelsKnown = false;
 
 /** The names ticked right now, or `null` for "every channel". */
-/* WHAT A REPORT MAY CARRY -- the report's own field names, and their labels.
- * `stages.md` § 6.9.  The keys are the wire's (`run-reports.md` § 4.1a); the
- * labels are this page's, and only this page's.
+/* WHAT A REPORT OF THIS CALCULATION MAY CARRY -- asked of the server, which
+ * answers from the one declaration (`report_fields`, `stages.md` § 6.9): the
+ * fields a run of this engine and kind can state, in the wire's own names
+ * (`run-reports.md` § 4.1a), with the words to offer each by.  The page keeps
+ * no list: the same table checks the description at save and travels beside
+ * the job to the monitor.  It kept one until 2026-09-26, and offered every
+ * field to every calculation -- seconds per iteration to PySCF, which has no
+ * timing instrument, and a step to a transport rung.
  *
  * THE CALCULATION'S NAME IS NOT HERE, on purpose: it is always sent, so
  * offering a box for it would be offering a choice that does not exist. */
-const REPORT_ITEMS = [
-    ["elapsed_s",  "How long it has been running"],
-    ["n_iters",    "SCF iterations"],
-    ["energy",     "The last energy"],
-    ["geom_step",  "Which geometry step"],
-    ["per_iter_s", "Seconds per SCF iteration"],
-];
+//: ``null`` until the server has answered -- NOT KNOWN, which is not the
+//: same as "none": a card that took an unanswered question for an empty
+//: list rewrote a description's `notify.report` to `[]` on its next tick.
+let _reportFields = null;
+//: The `<engine>/<calculation>` `_reportFields` answers, or `null`.
+let _reportFieldsFor = null;
+//: The latest ask: an older answer arriving later does not overwrite it.
+let _reportFieldsAsk = 0;
+
+/** Ask which fields a report of this engine and calculation can carry. */
+async function loadReportFields(engine, calculation) {
+    const key = engine + "/" + calculation;
+    if (_reportFieldsFor === key && _reportFields !== null) return;
+    const ask = ++_reportFieldsAsk;
+    let got = null;
+    try {
+        const q = new URLSearchParams({ engine: engine,
+                                        calculation: calculation });
+        const d = await (await fetch("/api/notify/report-fields?" + q)).json();
+        // NOTHING OFFERED rather than a guess on a malformed answer: a card
+        // that invented the list would be the second copy this replaced.
+        if (d && Array.isArray(d.fields)) got = d.fields;
+    } catch (e) {
+        got = null;
+    }
+    if (ask !== _reportFieldsAsk) return;       // a later ask answers instead
+    _reportFields = got;
+    _reportFieldsFor = got === null ? null : key;
+}
 
 /** The ticked report fields, or `null` for "every field it can work out".
  *  Same two-state shape as `channelSelection`, for the same reason. */
@@ -3891,11 +3925,18 @@ function reportSelection() {
     if (all && all.checked) return null;
     const host = $("ts-report-items");
     if (!host) return null;
+    if (_reportFields === null) {
+        // NOT KNOWN which fields apply: the description's own list stands.
+        // A card that could not ask must not rewrite what it was told.
+        const t = currentTask();
+        const n = t && t.notify;
+        return (n && Array.isArray(n.report)) ? n.report : null;
+    }
     // ORDER IS THE VOCABULARY'S, not the DOM's -- two people who ticked the
     // same boxes must write the same file.
     const on = new Set(Array.from(host.querySelectorAll("input[type=checkbox]"))
                             .filter(b => b.checked).map(b => b.value));
-    return REPORT_ITEMS.map(p => p[0]).filter(k => on.has(k));
+    return _reportFields.map(f => f.name).filter(k => on.has(k));
 }
 
 /** Paint one tick per report field. */
@@ -3906,7 +3947,7 @@ function paintReportTicks(chosen) {
     const all = $("ts-report-all");
     const picking = !(all && all.checked);
     host.textContent = "";
-    for (const [key, label] of REPORT_ITEMS) {
+    for (const { name: key, offered_as: label } of (_reportFields || [])) {
         const id = "ts-rep-" + key;
         const row = document.createElement("label");
         row.className = "ts-notify-opt";
@@ -3943,15 +3984,20 @@ function paintReportNote() {
     const sel = reportSelection();
     // THE NAME IS NAMED, every time, because it is the part that is not a
     // choice and the part a person most needs to know is there.
-    if (sel === null) {
+    if (_reportFields === null && sel !== null) {
+        note.textContent = "Could not ask this server which fields a report"
+            + " of this calculation can carry; the description's own list ("
+            + (sel.join(", ") || "none") + ") is kept as it is.";
+    } else if (sel === null) {
         note.textContent = "Each message: this calculation's name and job id,"
             + " the state, and every field the monitor can work out.";
     } else if (!sel.length) {
         note.textContent = "Each message: this calculation's name and job id,"
             + " the state, and the one-line summary \u2014 no field grid.";
     } else {
-        const labels = REPORT_ITEMS.filter(p => sel.indexOf(p[0]) !== -1)
-                                   .map(p => p[1].toLowerCase());
+        const labels = (_reportFields || [])
+            .filter(f => sel.indexOf(f.name) !== -1)
+            .map(f => f.offered_as.toLowerCase());
         note.textContent = "Each message: this calculation's name and job id,"
             + " the state, plus " + labels.join(", ") + ".";
     }

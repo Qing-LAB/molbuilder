@@ -51,7 +51,7 @@ def test_every_recipe_has_required_fields():
 #: which is why neither can be left to "whatever that env happened to need".
 _UNIFORM_PACKAGES = (
     # `installation.md`, "Choosing the Python every env is built on": one
-    # value, no exception.  A generated wrapper backgrounds `mb_monitor.py`
+    # value, no exception.  A generated wrapper backgrounds `mb_monitor.pyz`
     # with whatever `command -v python3` finds AFTER the env is activated, so
     # an env declaring no python falls through its own empty `bin/` to the
     # COMPUTE NODE's interpreter -- a version nothing declares, probes at prep

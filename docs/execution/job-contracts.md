@@ -209,11 +209,13 @@ invariant 6a.
 A wrapper activates and execs. An engine reads and writes. There is one more
 thing in that directory, and it has the narrowest job of all.
 
-**`mb_monitor.py` runs beside the engine and watches it.** It is backgrounded by
-the wrapper at low priority, follows the launcher's **PID** — so it knows
-authoritatively when the run ended, rather than guessing from output markers —
-parses the run's artifacts as they grow, and appends what it learns to a log
-beside them. The wrapper also stops it, and says why: at the job's end
+**The monitor runs beside the engine and watches it** — every engine's, from one
+file, `mb_monitor.pyz`. It
+is backgrounded by the wrapper at low priority, follows the launcher's **PID** —
+so it knows authoritatively when the run ended, rather than guessing from
+output markers — reads the run's artifacts as they grow through the
+framework's own readers, which travel with it (`run-reports.md` § 2.3), and
+appends what it learns to a log beside them. The wrapper also stops it, and says why: at the job's end
 (SIGTERM), or before a warm retry re-runs the attempt in the same PID
 (SIGUSR1, not an ending) — and waits for its closing lines
 (`running-a-job.md` § 4.1). It carries a **notifier hook** — a destination the user configures in their own
@@ -250,7 +252,7 @@ flowchart TB
       direction TB
       W["<b>the wrapper</b> .run.sh<br/><i>activates, then execs</i><br/>changes no directory · reads no config"]
       E["<b>the engine</b> siesta / python<br/><i>reads what is here, writes beside it</i><br/>knows nothing of stages or descriptions"]
-      M["<b>the monitor</b> mb_monitor.py<br/><i>watches the launcher's PID, appends to a log</i><br/>never decides · never edits the calculation"]
+      M["<b>the monitor</b> mb_monitor.pyz<br/><i>watches the launcher's PID, appends to a log</i><br/>never decides · never edits the calculation"]
       W -->|"exec"| E
       W -.->|"backgrounds, low priority"| M
       M -.->|"observes"| E
@@ -946,11 +948,11 @@ wrapper contains these and nothing else:
 | **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
 | **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
-| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records |
+| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records; the cap is asked of `_mb_ending` (the launch row), never grepped |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
-| **Background job monitor** | launches the self-contained `mb_monitor.py` beside the run (nice 19, self-exits with the wrapper; opt out `MB_MONITOR=0`) — real compute-node work, headered and listed since 2026-08-13 (it was structurally invisible to the guard) |
+| **Background job monitor** | launches `mb_monitor.pyz` beside the run — one file, the monitor with the framework's readers it reads the run through (`run-reports.md` § 2.3; nice 19, self-exits with the wrapper; opt out `MB_MONITOR=0`) — real compute-node work, headered and listed since 2026-08-13 (it was structurally invisible to the guard) |
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
-| **Launch SIESTA + capture exit** | the exec, and the exit code |
+| **Launch SIESTA + capture exit** | the exec, and the exit code — and `_mb_ending`, the one door onto how the run ended: `_run_ending`, run as `mb_monitor.pyz ending …` beside the job, read over the output and SIESTA's stderr (the wrapper's log). A failure prints its answer; the `propor` hint and the warm retries are gated by its questions (`run-reports.md` § 2.3) |
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
 only the blocks of a minimal CPU wrapper — the five conditional rows above
@@ -2211,7 +2213,7 @@ route at all. It rides the allocation for the reason `continue_retries` does —
 *carried there, it cannot be forgotten by one of them.*), and
 `notify_on_scf` / `notify_every_hours` (**added 2026-08-26** — WHEN this
 calculation should say something, read from the description's notify block at
-prep and rendered as flags on the wrapper's `mb_monitor.py` line, never as a
+prep and rendered as flags on the wrapper's `mb_monitor.pyz` line, never as a
 scheduler directive. They ride here for the same reason again, and the
 reason is now three-for-three: the alternative is a second hand-maintained
 road from a job to its wrapper, and this one has already lost a field to a

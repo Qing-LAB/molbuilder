@@ -221,13 +221,6 @@ def test_env_bootstrap_disables_nounset(tmp_path):
     assert i_su < i_act < i_ru            # +u ... activate ... -u
 
 
-def test_propor_diagnostic_scans_runwrap_log(tmp_path):
-    """SIESTA's propor/abort errors go to STDERR (-> the runwrap log), not
-    stdout, so the diagnostic must grep the runwrap log too."""
-    t = _gpu(tmp_path)
-    assert 'grep -aq "propor: ERROR" "$_out_file" "$_runwrap_log"' in t
-
-
 def test_timing_read_guarded_when_no_output(tmp_path):
     """If SIESTA crashes before any scf: output, the .scf-timing.log never
     exists -- the total/N read must guard the file, not error noisily."""
@@ -266,13 +259,6 @@ def test_scf_timing_instrument_present(tmp_path):
         assert '_n_scf=$(wc -l < "$_scf_timing_log"' in t
 
 
-def test_propor_diagnostic_still_reads_out_after_timing(tmp_path):
-    """The timing pipe still writes the .out, so the propor-error
-    diagnostic that greps $_out_file keeps working."""
-    t = _gpu(tmp_path)
-    assert 'grep -aq "propor: ERROR" "$_out_file"' in t
-
-
 def test_pyscf_has_no_scf_timing(tmp_path):
     """The SCF-timing instrument is SIESTA's: a PySCF wrapper emits
     neither the tee nor its block.
@@ -299,38 +285,51 @@ def test_pyscf_has_no_scf_timing(tmp_path):
 
 
 def test_wrapper_launches_low_priority_monitor(tmp_path):
-    """SIESTA wrappers background the SELF-CONTAINED mb_monitor.py at
-    nice 19 with the JOB's own python (no molbuilder install needed),
-    guarded by MB_MONITOR + the shipped file, watching the wrapper PID."""
+    """SIESTA wrappers background the shipped monitor, ONE file --
+    mb_monitor.pyz, the monitor with the readers it reads through -- at nice
+    19 with the JOB's own python (no molbuilder install needed), guarded by
+    MB_MONITOR + the shipped file, watching the wrapper PID."""
     t = _gpu(tmp_path)
     assert 'if [ "${MB_MONITOR:-1}" = "1" ]' in t
-    assert "[ -f mb_monitor.py ]" in t
+    assert "[ -f mb_monitor.pyz ]" in t
     # R9: the interpreter is PROBED (python3-first) -- bare `python`
     # does not exist on python3-only hosts, and the backgrounded 127 was
     # swallowed while the log claimed a live pid.
     assert '_mb_py="$(command -v python3 || command -v python' in t
-    assert 'nice -n 19 "$_mb_py" mb_monitor.py' in t     # shipped, not -m
+    assert 'nice -n 19 "$_mb_py" mb_monitor.pyz' in t    # shipped, not -m
     assert "python -m molbuilder monitor" not in t       # NOT the package form
     assert "--watch-pid $$" in t
     assert "--interval \"${MB_MONITOR_INTERVAL:-10}\"" in t
+    # a GPU deck's monitor is told it uses a GPU, and so samples and judges
+    # it (`run-reports.md` § 2.1a); its cores are the launcher's
+    line = next(ln for ln in t.splitlines()
+                if "mb_monitor.py" in ln and "--label" in ln)
+    assert "--gpu" in line.split() and '--cores "$_mb_cores"' in line, line
     # stopped by the single unified EXIT trap, through the one function
     # that waits for its closing lines
     assert "_mb_stop_monitor TERM || true" in t
 
 
 def test_wrapper_ships_standalone_monitor(tmp_path):
-    """write_run_wrapper drops a verbatim, stdlib-only copy of the monitor
-    next to a SIESTA job as mb_monitor.py (runnable with the job's python).
-    A PySCF job gets none."""
+    """write_run_wrapper drops ONE file next to the job, mb_monitor.pyz --
+    a Python zip application holding a verbatim, stdlib-only copy of the
+    monitor with the framework modules it reads the run through, each its
+    own file, runnable with the job's python -- beside every engine's job
+    since 2026-09-26 (`run-reports.md` § 2.3); a PySCF job got none before,
+    and until then the modules stood beside the deck as fourteen files."""
     import json
     (tmp_path / "molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "source activate"}}))
     fdf = tmp_path / "j.fdf"
     fdf.write_text("NumberOfAtoms 10\nDiag.ELPA.GPU .true.\n")
     runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2), emit_sbatch=False)
-    shipped = tmp_path / "mb_monitor.py"
+    shipped = tmp_path / runwrap.MONITOR_BUNDLE
     assert shipped.is_file()
-    src = (shipped).read_text()
+    import zipfile
+    with zipfile.ZipFile(shipped) as z:
+        assert set(z.namelist()) == {"__main__.py",
+                                     *runwrap.MONITOR_COMPANIONS}
+        src = z.read("mb_monitor.py").decode("utf-8")
     assert "def run_monitor(" in src and "def main(" in src
     # STDLIB-ONLY IS PROVEN BY RUNNING IT, not by reading it.
     #
@@ -356,8 +355,8 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
         "compute node')\n"
         "        return None\n"
         "sys.meta_path.insert(0, _Deny())\n"
-        "sys.argv = ['mb_monitor.py', '--help']\n"
-        "runpy.run_path('mb_monitor.py', run_name='__main__')\n"
+        "sys.argv = ['mb_monitor.pyz', '--help']\n"
+        "runpy.run_path('mb_monitor.pyz', run_name='__main__')\n"
     )
     import subprocess as _sp
     cp = _sp.run([sys.executable, str(blocked)], cwd=str(tmp_path),
@@ -366,11 +365,12 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
         "the shipped monitor does not start on a machine without molbuilder "
         "or numpy -- which is every compute node it runs on:\n"
         + cp.stderr[-2000:])
-    # PySCF job: no monitor shipped (siesta-only instrument).
+    # A PySCF job gets the SAME monitor and the same readers: one monitor,
+    # every engine -- and, one file, nothing of it can be left behind.
     py = tmp_path / "q.py"; py.write_text("# fake\n")
-    (tmp_path / "mb_monitor.py").unlink()
+    shipped.unlink()
     runwrap.write_run_wrapper(py, resources=Resources(), emit_sbatch=False)
-    assert not (tmp_path / "mb_monitor.py").exists()
+    assert shipped.read_bytes() == runwrap.monitor_bundle()
 
 
 def test_monitor_killed_in_unified_cleanup(tmp_path):

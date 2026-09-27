@@ -26,9 +26,9 @@ Any command that is missing or fails degrades to ``None`` fields -- never
 an exception.
 
 This module is NOT shipped beside a job.  The files that travel are
-`runwrap.MONITOR_COMPANIONS` (``mb_monitor.py``, ``config_dir.py``); this
-one imports `..persist`, `..config_dir`, `.quantities` and `.admit` where
-it needs them.  Its docstring claimed "stdlib-only ... meant to also ship
+`runwrap.MONITOR_COMPANIONS` -- the monitor and the framework readers it
+reads a run through; this one imports `..persist`, `..config_dir`,
+`.quantities` and `.admit` where it needs them.  Its docstring claimed "stdlib-only ... meant to also ship
 to the target" until 2026-09-13, and `diagnostics.local_facts` placed
 itself by that claim (K-Y3).  The RECORD is JSON and reads anywhere.
 """

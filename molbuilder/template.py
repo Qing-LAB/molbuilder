@@ -1070,8 +1070,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
                      else it.default),
             recommended=(),
         )
-        for it in select(parsed, engine=eng)
-        if not it.calculations or calculation in it.calculations
+        for it in select(parsed, engine=eng, calculation=calculation)
     ]
     return _emit(items, engines=(eng,), title=title)
 
@@ -1309,9 +1308,7 @@ def apply_recommended(config, calculation: str, *, engine: str = ""):
     template from, so the template starts where the kind says it should."""
     eng = engine or _engine_name(type(config))
     updates = {}
-    for it in select(catalogue(), engine=eng):
-        if it.calculations and calculation not in it.calculations:
-            continue
+    for it in select(catalogue(), engine=eng, calculation=calculation):
         rec = recommended_for(it, calculation)
         if rec is not None and hasattr(config, it.name):
             updates[it.name] = rec
@@ -1538,7 +1535,7 @@ def _check_engine(t: "Template", engine) -> None:
 def select(t: "Template", *, category=None, engine=None,
            kind=None, read_by=None, allocation=None,
            citation=None, role=None, stages=None,
-           shared=None) -> List[Item]:
+           shared=None, calculation=None) -> List[Item]:
     """The items matching every filter given, **in category order**.
 
     One function, one file, every reader (`engines/template.md` § 8.0).
@@ -1604,6 +1601,13 @@ def select(t: "Template", *, category=None, engine=None,
             # case -- so it matches every name asked about.
             if it.stages and stages not in it.stages:
                 continue
+        # A CALCULATION KIND, read as the stage is: "does this item apply to
+        # it?".  An item declaring no calculations applies to every kind.
+        # The template writer and `apply_recommended` each spelled this as a
+        # filter of their own until 2026-09-26.
+        if (calculation is not None and it.calculations
+                and calculation not in it.calculations):
+            continue
         out.append(it)
 
     def _rank(it: Item) -> int:

@@ -34,18 +34,34 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Dict, List, Optional
+from dataclasses import dataclass, field, replace
+from typing import Any, Dict, List, Optional
 
-from molbuilder.identity import parse_stage_token
+# IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`,
+# `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
+# `run_status` itself.  So what it reads with is stdlib-only and travels too,
+# imported two ways -- from the package, or from beside the job -- as
+# `config_dir` always has been.
+try:                                        # inside molbuilder
+    # RELATIVE, as every shipped module's is: beside a job where `molbuilder`
+    # happens to be importable, an absolute import would bind this file to
+    # the package while the monitor reads with the shipped copies -- two
+    # versions of one reader in one process.
+    from ... import runfiles as _rf
+    from ...identity import parse_stage_token
+    from ..engines import _run_ending as _re
+except ImportError:                         # beside a job, as the monitor's
+    import runfiles as _rf
+    from identity import parse_stage_token
+    import _run_ending as _re
 
 
-# Run-state detection is fully delegated to the engine trajectory
-# parsers (detect().parse() -> traj.run_state); the end-of-run and
-# failure markers live in engines/siesta.py + engines/pyscf.py, NOT
-# here.  Nothing in this module greps .out content: the engine parsers
-# own how a run ended, and this module owns only the two questions no
-# single file can answer (which file speaks, and staleness).
+# How each file says its run ended is `_run_ending`'s -- one reader per
+# role, over the SIESTA family's table (`siesta_grammar`) and the PySCF
+# decks' end lines -- and it is the scan the full parsers agree with
+# (`tests/test_run_ending_one_table.py`).  Nothing in this module greps an
+# output: it owns only the two questions no single file can answer (which
+# file speaks, and staleness).
 #
 # *(Those three lines used to end "(enforced by the engine parsers own
 # it)" -- two half-sentences spliced -- and cited
@@ -120,8 +136,6 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
     answer, where the directory has already selected the stage.
     """
-    from molbuilder.runfiles import find_by_role, run_output_roles
-
     by_kind: Dict[str, List[Path]] = {
         "fdf": [], "xv": [], "struct_out": [],
         "molstruct_json": [], "ani": [],
@@ -136,7 +150,7 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     # exact case `runfiles.find_by_role` says it exists to end, and which
     # every sibling in this package converted on 2026-09-08
     # (`atom_metadata.py`, `contract.py`, `rundir.py`).
-    by_kind["fdf"] = sorted(p for p in find_by_role(run_dir, ".fdf")
+    by_kind["fdf"] = sorted(p for p in _rf.find_by_role(run_dir, ".fdf")
                             if p in narrowed)
     # WHICH FILES ARE A RUN'S OUTPUT IS THE CATALOGUE'S QUESTION, and the
     # buckets are keyed by the ROLE because the role is what they are.  The
@@ -144,8 +158,8 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     # 2026-09-18 and did not name `.pyscf.log`, so a finished PySCF run that
     # writes no molwatch log had no result file at all as far as this module
     # was concerned (`model/parse.md` § 5.5, R-RO1).
-    for role in run_output_roles():
-        by_kind[role] = sorted(p for p in find_by_role(run_dir, role)
+    for role in _rf.run_output_roles():
+        by_kind[role] = sorted(p for p in _rf.find_by_role(run_dir, role)
                                if p in narrowed)
 
     # ...AND THE ENGINE'S OWN OUTPUTS STAY LITERAL, because molbuilder
@@ -180,9 +194,8 @@ def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
     kill never does.  An engine that dies before printing leaves a marker
     and no output at all -- the case content cannot see.
     """
-    from molbuilder.runfiles import find_by_role, latest_run, parse as rf_parse
     narrowed = {c.name for c in run_dir.glob(match)}
-    marks = [m for m in find_by_role(run_dir, ".concluded")
+    marks = [m for m in _rf.find_by_role(run_dir, ".concluded")
              if m.name in narrowed]
     if marks:
         # THE INDEX IS ASKED FOR, and the rule is `attempt_concluded`'s: the
@@ -191,9 +204,9 @@ def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
         # newer unconcluded `.out` is a previous re-run's goodbye.
         best = None
         for m in marks:
-            got = rf_parse(m.name, _label_of_marker(m.name))
+            got = _rf.parse(m.name, _label_of_marker(m.name))
             idx = getattr(got, "run", None) if got else None
-            newest = latest_run(run_dir, _label_of_marker(m.name))
+            newest = _rf.latest_run(run_dir, _label_of_marker(m.name))
             if newest is not None and idx is not None and idx < newest:
                 continue                 # a previous attempt's goodbye
             key = (idx if idx is not None else -1, m.stat().st_mtime)
@@ -224,8 +237,7 @@ def _label_of_marker(name: str) -> str:
     that is always False -- `QUALIFIERS` is a tuple -- so the literal was
     always used while the docstring claimed otherwise.)*
     """
-    from molbuilder.runfiles import QUALIFIERS
-    cut = name.rfind("-" + QUALIFIERS[0])
+    cut = name.rfind("-" + _rf.QUALIFIERS[0])
     return name[:cut] if cut > 0 else name
 
 
@@ -252,8 +264,8 @@ def _rc_ok(concluded: str) -> bool:
 # field is what got the decoder deleted, as this module's docstring says.)
 
 
-def _output_endings(paths: List[Path]) -> Dict[str, str]:
-    """Each run-output file's run-state, by filename — ONE loop, one door.
+def _output_endings(paths: List[Path]) -> "Dict[str, _re.RunEnding]":
+    """Each run-output file's ending, by filename — ONE loop, one door.
 
     This was two functions, `_out_conclusions` and `_molwatch_conclusions`,
     each hard-wired to one role and each knowing that role's reader.  Adding
@@ -274,14 +286,13 @@ def _output_endings(paths: List[Path]) -> Dict[str, str]:
     here because the roles come from the same catalogue view its `READERS`
     are checked against.
     """
-    from molbuilder.parse.engines._run_ending import ending_of
-    states: Dict[str, str] = {}
+    endings: "Dict[str, _re.RunEnding]" = {}
     for path in paths:
         try:
-            states[path.name] = ending_of(path).run_state or "unknown"
+            endings[path.name] = _re.ending_of(path)
         except OSError:
             continue
-    return states
+    return endings
 
 
 # ---- status + progress ---------------------------------------------- #
@@ -292,7 +303,11 @@ def _output_endings(paths: List[Path]) -> Dict[str, str]:
 #: annotation alone would refuse nothing.  Until 2026-09-09 the function
 #: returned `Dict[str, Any]` and a test asserted `s["state"] in (all four)`,
 #: which passes whatever the code returns.
-RUN_STATES: "tuple[str, ...]" = ("running", "stale", "finished", "failed")
+#: ``pending`` and ``queued`` are the states before anything is written --
+#: never launched, and launched and silent -- which a caller holding the
+#: attempt's launch record gets (`run_status`'s ``launch``).
+RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running", "stale",
+                                 "finished", "failed")
 
 
 @dataclass(frozen=True)
@@ -312,13 +327,18 @@ class RunStatus:
     #: "rc=1 (walltime)", "0_NORMAL_EXIT" -- or None if it never said
     #: goodbye.  Reported BESIDE the state, not folded into it.
     #:
-    #: **NO PRODUCTION READER TODAY.**  Added for the Transport tab, which
-    #: was then reverted off it: `classify_citation` asks about a DECK
-    #: (`attempt_concluded(dir, deck.stem)`) and this answers about a
-    #: DIRECTORY -- measured, a neighbour rung's marker reported for a
-    #: citation that concluded cleanly.  The state machine above still uses
-    #: the evidence, so it is not dead; the FIELD is unread.
+    #: Read by the monitor's closing report (`run-reports.md` § 2.3), which
+    #: asks about this rung's own files.  *(It had no reader from the day the
+    #: Transport tab was reverted off it: `classify_citation` asks about a
+    #: DECK and this answers about a DIRECTORY -- measured, a neighbour rung's
+    #: marker reported for a citation that concluded cleanly.)*
     concluded:      "Optional[str]" = None
+    #: Every run-output file's ending (`_run_ending.RunEnding`: how it ended,
+    #: whether each SCF phase converged, the error), by filename -- the ONE
+    #: scan the state above was judged from.  Readers: the run record's
+    #: verdict and its earlier runs (`model/parse.md` § 5d.6), and the
+    #: monitor's closing report -- so none of them scans the files again.
+    endings:        "Dict[str, Any]" = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.state not in RUN_STATES:
@@ -327,9 +347,22 @@ class RunStatus:
                 f"got {self.state!r}")
 
 
-def run_status(run_dir, match: str = "*") -> "RunStatus":
+#: A caller that does not hold the attempt's launch record -- the monitor,
+#: beside a job that is running.  Distinct from ``None``, which is the record
+#: saying the attempt was never launched.
+_UNASKED = object()
+
+
+def run_status(run_dir, match: str = "*", *,
+               launch: Any = _UNASKED) -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
+
+    ``launch`` is the attempt's launch record, ``run.json``
+    (`jobset.materialize.read_run_launch`): ``None`` when it was never
+    launched.  It is what tells *never launched* from *launched, nothing
+    written yet* before any output exists (`project-layout.md` § 1.6) --
+    ``pending`` and ``queued`` -- and a caller that holds it passes it.
 
     **The status IS the parser's answer**, plus the two things no parser
     can know.  Every engine parser already reports how its file ended --
@@ -358,12 +391,11 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
     ten fields with no reader anywhere, and reached the per-file
     run-states by building every PLOT and discarding them.
     """
-    from molbuilder.parse.engines._run_ending import CONCLUDED
-    from molbuilder.runfiles import run_output_roles, stdout_roles
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, match)
-    states = _output_endings(
-        [p for role in run_output_roles() for p in files[role]])
+    endings = _output_endings(
+        [p for role in _rf.run_output_roles() for p in files[role]])
+    states = {name: e.run_state or "unknown" for name, e in endings.items()}
     # WHICH OF THEM MAY SPEAK is the catalogue's `output` column, not a rule
     # written here.  A "stdout" file exists because the PROCESS started, so it
     # counts whether or not it ended; a "progress" file is SEEDED at prep, so
@@ -371,16 +403,16 @@ def run_status(run_dir, match: str = "*") -> "RunStatus":
     # outvotes its own result (`model/parse.md` § 5.5, § 5.1).  That pair of
     # rules was two hand-written functions until 2026-09-18, and the seed half
     # was the only one that said WHY.
-    speaks = set(stdout_roles())
-    outputs = [p for role in run_output_roles() for p in files[role]]
-    return _build_status(
-        [p for role in run_output_roles() for p in files[role]
-         if role in speaks or states.get(p.name) in CONCLUDED],
+    speaks = set(_rf.stdout_roles())
+    outputs = [p for role in _rf.run_output_roles() for p in files[role]]
+    return replace(_build_status(
+        [p for role in _rf.run_output_roles() for p in files[role]
+         if role in speaks or states.get(p.name) in _re.CONCLUDED],
         states,
         _process_conclusion(run_dir, match),
         # LIVENESS IS NOT THE SPEAKER, so it gets its own list: every
         # run-output file, INCLUDING the progress log that may not speak.
-        fresh_paths=outputs)
+        fresh_paths=outputs, launch=launch), endings=endings)
 
 
 
@@ -389,6 +421,7 @@ def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
                   concluded: Optional[str] = None,
                   fresh_paths: "List[Path]" = (),
+                  launch: Any = _UNASKED,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
@@ -420,6 +453,19 @@ def _build_status(out_paths: List[Path],
                 detail=(f"concluded ({concluded}) before any output"
                         if not rc_ok else f"concluded ({concluded})"),
                 concluded=concluded)
+        # NOTHING WRITTEN YET, and the launch record says which nothing
+        # (`project-layout.md` § 1.6): never launched is ``pending``,
+        # launched and silent is ``queued`` -- the words the jobset layer
+        # used for them above this door until 2026-09-26, while this door
+        # answered the same directory "running".
+        if launch is not _UNASKED:
+            if launch is None:
+                return RunStatus(state="pending",
+                                 detail="prepped, not launched (no run.json)")
+            jid = launch.get("job_id")
+            return RunStatus(state="queued", detail=(
+                f"queued as job {jid}" if jid else
+                f"launched ({launch.get('mode') or '?'}), no output yet"))
         return RunStatus(state="running", detail="no result file yet")
     # Active source = highest stage, latest mtime.
     sorted_outs = sorted(

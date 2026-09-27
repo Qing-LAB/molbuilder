@@ -319,11 +319,11 @@ def test_a_field_that_is_not_a_report_field_is_refused_by_name(bad, why):
 
 def test_the_refusal_names_the_fields_that_do_exist():
     """A refusal that does not say what IS allowed makes the person guess."""
-    from molbuilder.task import REPORT_ITEMS
+    from molbuilder.report_fields import NAMES
     with pytest.raises(ValueError) as exc:
         _task(notify={"report": ["nonsense"]})
     said = str(exc.value)
-    for item in REPORT_ITEMS:
+    for item in NAMES:
         assert item in said, (
             f"the refusal does not name {item!r}, so the reader cannot tell "
             f"what to write instead: {said}")
@@ -334,20 +334,3 @@ def test_a_repeated_field_is_kept_once_and_in_order():
     order, and a duplicate is a slip rather than a second request."""
     t = _task(notify={"report": ["energy", "n_iters", "energy"]})
     assert t.notify.report == ("energy", "n_iters")
-
-
-def test_the_two_vocabularies_are_the_same_list():
-    """`task.REPORT_ITEMS` is what a description is validated against;
-    `monitor.REPORT_ITEMS` is what the report actually builds.
-
-    They are written twice ON PURPOSE -- the monitor ships to a compute node
-    as a standalone stdlib-only script and cannot import from here -- so the
-    honest guard is to feed one to the other rather than to trust a comment.
-    A name accepted at save that the monitor does not know would be a tick
-    that silently does nothing.
-    """
-    from molbuilder.task import REPORT_ITEMS as DESCRIBED
-    from molbuilder.monitor import REPORT_ITEMS as BUILT
-    assert tuple(DESCRIBED) == tuple(BUILT), (
-        "the description's field list and the monitor's have drifted:\n"
-        f"  described: {DESCRIBED}\n  built:     {BUILT}")

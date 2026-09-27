@@ -14,7 +14,7 @@ from molbuilder.bench.result import (
 # The wrapper's own instruments are registered parsers since 2026-09-04
 # (`parse.md` § 5c); the logic is unchanged, only its address moved.
 from molbuilder.parse.instruments.monitor import monitor_metrics
-from molbuilder.parse.instruments.scf_timing import scf_timing_metrics
+from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
 from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
 
@@ -46,7 +46,7 @@ def test_parse_scf_timing_steady_state():
 
 def test_parse_scf_timing_too_few():
     assert scf_timing_metrics("100.0 1 scf: 1\n") == \
-        {"s_per_iter": None, "iters_measured": 0}
+        {"s_per_iter": None, "iters_measured": 0, "rows": 1}
     assert scf_timing_metrics("")["s_per_iter"] is None
 
 

@@ -99,12 +99,24 @@ def _emit(tmp_path, resources=None, emit_sbatch=True):
 def _shell(files):
     """The emitted files bash actually runs.
 
-    A wrapper drops more than scripts beside the job -- `mb_monitor.py` rides
-    along and is Python.  Reading that as bash proves nothing; it gets the
-    word-level check below instead, because it runs on the node too.
+    A wrapper drops more than scripts beside the job -- `mb_monitor.pyz` rides
+    along, a zip of the monitor's Python modules.  Reading that as bash proves
+    nothing; it gets the word-level check below instead, because it runs on
+    the node too.
     """
     return [p for p in files
             if p.name.endswith((".run.sh", ".sbatch"))]
+
+
+def _texts(path):
+    """``[(name, text)]`` a shipped file carries -- each module of the
+    monitor's bundle (a zip) as the text it is, any other file whole."""
+    import zipfile
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            return [(f"{path.name}:{n}", z.read(n).decode("utf-8"))
+                    for n in z.namelist()]
+    return [(path.name, path.read_text())]
 
 
 # ------------------------------------------------------------------ #
@@ -145,10 +157,11 @@ def test_no_emitted_wrapper_invokes_git(tmp_path, kwargs):
     for other in emitted:
         if other in _shell(emitted):
             continue
-        hit = _GIT_WORD.search(other.read_text())
-        assert hit is None, (
-            f"{other.name} is shipped to the compute node and mentions git "
-            f"(checkpointing.md I4).")
+        for name, text in _texts(other):
+            hit = _GIT_WORD.search(text)
+            assert hit is None, (
+                f"{name} is shipped to the compute node and mentions git "
+                f"(checkpointing.md I4).")
 
 
 def test_the_check_does_not_fire_on_words_that_merely_contain_git(tmp_path):

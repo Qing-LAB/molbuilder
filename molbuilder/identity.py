@@ -49,7 +49,10 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
-from .runfiles import patterns as _runfile_patterns
+try:                                   # inside molbuilder
+    from .runfiles import patterns as _runfile_patterns
+except ImportError:                    # beside a job -- it travels with the
+    from runfiles import patterns as _runfile_patterns   # monitor (runwrap.MONITOR_COMPANIONS)
 
 
 @dataclass(frozen=True)

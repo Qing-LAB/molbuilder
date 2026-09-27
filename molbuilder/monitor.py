@@ -3,14 +3,16 @@
 The front end of the job-monitor/watcher + notifier surface
 (`execution/running-a-job.md` § 4.1, `execution/job-contracts.md` — the
 monitor's section).  A lightweight, periodically-waking process that
-**parses** a running job's artifacts (the SIESTA ``.out`` + per-run
-``.scf-timing.log``), appends a structured status line to
-``<basename>.monitor.log``, samples utilisation into
-``<basename>.util.csv``, and notifies -- rarely, and only when the
-calculation's own policy says to.
+**reads** a running job's artifacts -- every engine's -- through the
+framework's own readers, which travel beside it
+(`execution/run-reports.md` § 2.3), appends a status line to its
+``.monitor.log``, samples utilisation into its ``.util.csv``, and
+notifies -- rarely, and only when the calculation's own policy says to.
 
 **It never runs inside molbuilder.**  A verbatim copy of this file ships
-beside the job as ``mb_monitor.py`` and runs with the JOB's own python from
+beside the job inside ``mb_monitor.pyz`` -- one file, holding it as
+``mb_monitor.py`` with the framework modules it reads through
+(`runwrap.MONITOR_BUNDLE`) -- and runs with the JOB's own python from
 the working directory: molbuilder is deliberately never pip-installed into
 any env, so ``import molbuilder`` fails on a compute node whatever
 interpreter is found.  That is why this module is stdlib-only, and it is a
@@ -44,9 +46,8 @@ them and ``""`` for none (`run-reports.md` 3.0).
 
 CLI (also available as ``molbuilder monitor``)::
 
-    nice -n 19 python mb_monitor.py \\
-        --out job-run0.out --timing job-run0.scf-timing.log \\
-        --log job.monitor.log --util job.util.csv \\
+    nice -n 19 python mb_monitor.pyz \\
+        --label job --stage 01_coarse --run 0 --util --cores 8 \\
         --notify-every-hours 6 --watch-pid $$ &
 
 **Where** a name POINTS is never here and never in the description: the
@@ -61,21 +62,22 @@ also be registered programmatically::
 
 Design notes:
 - **stdlib-only hot path** -- no heavy imports in the loop.
-- Each tick reads only the **tail** of the ``.out`` (cheap on a large
-  file) and the whole (tiny) timing log for the iteration COUNT.
+- Each tick feeds each live output's parser only what the file GAINED since
+  the last wake -- one reader per file, kept between wakes -- so a large
+  output costs its growth, never its length; the timing log is read by the
+  timing instrument's own reader.
 - It stops when ``--watch-pid`` goes away (the job wrapper's PID) or when
   the wrapper stops it: SIGTERM at the job's end -- the scheduler's own
   SIGTERM at a walltime or a cancel reads the same -- and SIGUSR1 when one
   attempt is retried in place, which is not an ending.  Output markers are
   not consulted: they can appear before a run is actually over, which would
   end the sampling early (`job-contracts.md`, the monitor's section).
-- The reliable live per-iteration estimate is ``elapsed / n_iters``
-  (running average) -- consistent with the benchmark's ``total/N`` metric
-  (§ 11.0); SIESTA's own per-scf time is not trusted.  It is reported
-  ONLY while the job is progressing: a stalled job's ``elapsed /
-  frozen_n_iters`` keeps inflating with wall time and is meaningless, so
-  it is suppressed (§ 11.0c).
-- **Quiet when stalled** -- the loop wakes often (default 60 s) but logs
+- The seconds per iteration are the timing instrument's, one phase at a
+  time (`scf_timing_metrics`, `model/parse.md` § 5c) -- SIESTA's own
+  per-scf time is not trusted.  They are reported ONLY while the job is
+  progressing: a stalled job's figure describes iterations that are no
+  longer happening, so it is suppressed (§ 11.0c).
+- **Quiet when stalled** -- the loop wakes often (default 10 s) but logs
   a ``[STATUS]`` line only when the SCF iteration count / geometry move /
   energy / state actually changed.  A persistent stall emits at most one
   throttled ``[STALL]`` heartbeat per ``--stall-heartbeat`` window
@@ -100,157 +102,329 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence,
 
 
 # --------------------------------------------------------------------- #
-#  Parsed status                                                        #
+#  What it reads, and through what                                      #
 # --------------------------------------------------------------------- #
+#
+# THE MONITOR HAS NO READER OF ITS OWN (`execution/run-reports.md` § 2.3).
+# Every fact below is read by the reader the rest of molbuilder reads that
+# file with -- `run_status`, the Results tab's own status door; the ONE
+# SIESTA parser's and the ONE molwatch parser's reading passes, fed as the
+# output grows; the timing instrument; `runfiles` for every name; and what a
+# report may carry, from the one declaration of it -- and those
+# modules travel beside the job (`runwrap.MONITOR_COMPANIONS`): imported from
+# the package here, from the copies beside the job there, as `config_dir`
+# always has been.  Until 2026-09-26 it kept a reader of its own, fed the
+# grammar's patterns as command-line flags, and ran only beside SIESTA.
+try:                                        # inside molbuilder
+    from .parse.engines import _run_ending as _ending
+    from . import report_fields as _fields
+    from . import runfiles as _rf
+    from .parse.dirs.job import run_status
+    from .parse.engines.molwatch_reader import MolwatchReader
+    from .parse.engines.siesta_reader import SiestaReader
+    from .parse.instruments.scf_timing_rows import scf_timing_metrics
+except ImportError:                         # beside the job
+    import _run_ending as _ending
+    import report_fields as _fields
+    import runfiles as _rf
+    from job import run_status
+    from molwatch_reader import MolwatchReader
+    from siesta_reader import SiestaReader
+    from scf_timing_rows import scf_timing_metrics
 
 
 @dataclass
 class JobStatus:
-    """One snapshot of a running (or finished) SIESTA job.
+    """One snapshot of the watched run, in the framework's words.
 
-    ``per_iter_s`` is the **running average** ``elapsed / n_iters`` -- the
-    live, reliable per-iteration estimate (§ 11.0); ``None`` until the
-    first SCF iteration appears.
+    ``state`` is ``running`` while the watched PID lives, and at the end
+    `run_status`'s verdict with its ``detail`` (`run-reports.md` § 2.3).  The
+    rest is the live reading: each field present only when the run's files
+    state it, ``None`` otherwise -- a reader must be able to tell *not
+    stated* from zero.  Each residual, the step and the finished steps are
+    the output's own parser's (`LIVE_READERS`); the monitor displays them.
     """
-    state: str = "starting"          # starting | running | done | gone
+    state: str = "running"
     elapsed_s: float = 0.0
-    n_iters: int = 0
-    scf_iter: Optional[str] = None   # last iteration number (as printed)
+    detail: Optional[str] = None
+    #: The SCF phase the latest row belongs to (SIESTA family): ``periodic``,
+    #: or TranSIESTA's ``negf``.
+    phase: Optional[str] = None
+    #: SCF iterations run so far in that phase -- a SIESTA run's timing rows,
+    #: a PySCF run's SCF history across its finished steps.
+    n_iters: Optional[int] = None
+    #: The latest row's own iteration number, as the output printed it.
+    cycle: Optional[int] = None
+    #: The timing instrument's seconds per iteration, that phase's own.
     per_iter_s: Optional[float] = None
-    energy: Optional[str] = None     # last reported total energy (as printed)
-    geom_step: Optional[int] = None  # geometry-relaxation move # (CG/FIRE/...)
-    progressing: bool = True         # did the iteration count advance since the
-                                     # previous tick?  Set by run_monitor, not
-                                     # parse_status (which is stateless).  When
-                                     # False the per-iter estimate is suppressed
-                                     # -- ``elapsed / frozen_n_iters`` only
-                                     # inflates and means nothing (§ 11.0c).
+    energy: Optional[float] = None
+    geom_step: Optional[int] = None
+    #: What a step of this run IS, in the engine's own words (``Broyden opt.
+    #: move``, ``FC step``); ``None`` when the output names none.
+    step_kind: Optional[str] = None
+    #: How many steps have finished -- each one an SCF that reached its
+    #: criterion (`run-reports.md` § 2.2).  SIESTA begins step N once N are
+    #: done; a PySCF block is written when its step ends.
+    steps_done: Optional[int] = None
+    #: ``{name: (value, tolerance or None, unit)}`` -- dDmax, dHmax, and a
+    #: NEGF loop's dQ, each beside the criterion the run states for it.
+    residuals: Dict[str, Tuple[float, Optional[float], str]] = field(
+        default_factory=dict)
+    max_force: Optional[float] = None
+    max_force_tol: Optional[float] = None
+    #: At the end: each SCF phase's convergence, and the process's goodbye.
+    converged: Dict[str, Optional[bool]] = field(default_factory=dict)
+    #: At the end of a relaxation: whether its geometry converged, as the
+    #: output states it (`_run_ending.RunEnding.relaxed`); ``None`` for a run
+    #: that relaxes nothing.
+    relaxed: Optional[bool] = None
+    exit: Optional[str] = None
+    progressing: bool = True         # did the run advance since the
+                                     # previous tick?  Set by run_monitor.
+                                     # When False the per-iter estimate is
+                                     # suppressed -- a stalled rate is not
+                                     # a rate (§ 11.0c).
 
     def as_text(self) -> str:
-        """One-line human/notifier summary.
-
-        ``avg_per_iter`` is shown ONLY while the job is progressing: a
-        stalled job's ``elapsed / n_iters`` keeps growing with wall time
-        even though no iteration completed, so reporting it is actively
-        misleading (§ 11.0c).
-        """
-        bits = [f"state={self.state}",
-                f"elapsed={self.elapsed_s:.0f}s",
-                f"scf_iters={self.n_iters}"]
-        if self.geom_step is not None:
-            bits.append(f"geom_move={self.geom_step}")
-        if self.scf_iter is not None:
-            bits.append(f"last_iter={self.scf_iter}")
-        if self.per_iter_s is not None and self.progressing:
-            bits.append(f"avg_per_iter={self.per_iter_s:.2f}s")
+        """The summary line every channel shows: the state, then where the
+        run is -- phase, iteration, energy, each residual against its
+        criterion, the force against its tolerance, the step, the rate --
+        and at the end how each phase converged and the exit."""
+        head = self.state + (f" ({self.detail})" if self.detail else "")
+        bits = [head]
+        if self.phase or self.cycle is not None:
+            bits.append(" ".join(b for b in (
+                self.phase, "SCF",
+                f"iteration {self.cycle}" if self.cycle is not None else "")
+                if b))
+        if self.n_iters:
+            bits.append(f"{self.n_iters} SCF rows")
         if self.energy is not None:
-            bits.append(f"energy={self.energy}")
-        return " ".join(bits)
+            bits.append(f"E {self.energy:.6f} eV")
+        for name, (value, tol, unit) in self.residuals.items():
+            bits.append(f"{name} {value:.3g}{(' ' + unit) if unit else ''}"
+                        + (f" (tol {tol:g})" if tol is not None else ""))
+        if self.max_force is not None:
+            bits.append(f"max force {self.max_force:.4g} eV/Ang"
+                        + (f" (tol {self.max_force_tol:g})"
+                           if self.max_force_tol is not None else ""))
+        if self.geom_step is not None:
+            bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
+        if self.per_iter_s is not None and self.progressing:
+            bits.append(f"{self.per_iter_s:.2f} s/iter")
+        if self.converged:
+            bits.append("converged: " + ", ".join(
+                f"{ph} {'yes' if ok else 'no' if ok is False else '?'}"
+                for ph, ok in self.converged.items()))
+        if self.relaxed is not None:
+            bits.append("geometry relaxed" if self.relaxed
+                        else "geometry did not converge within its moves")
+        if self.exit:
+            bits.append(f"exit {self.exit.split(' at ')[0]}")
+        bits.append(f"elapsed {self.elapsed_s:.0f} s")
+        return " | ".join(bits)
 
 
-# NO COMPLETION MARKERS HERE.  `job-contracts.md` states the rule this
-# module follows: the monitor "follows the launcher's PID -- so it knows
-# authoritatively when the run ended, rather than guessing from output
-# markers".  A private marker tuple lived here until 2026-08-26 and did
-# exactly the guessing the contract forbids.
-#
-# It was not harmless.  `siesta: Final energy` prints BEFORE a run is over,
-# so the loop could return while the job was still holding CPUs and GPUs --
-# ending the utilisation sampling that is the whole reason this process
-# exists, and skipping the ticks a notifier hook would have fired.  The
-# watched PID cannot be early: the wrapper outlives the engine it launched.
-#
-# THE ROW GRAMMAR IS NOT THIS FILE'S (`model/parse.md` § 5d.5).  In the package
-# it is imported from `parse.engines.siesta_grammar`, the one table the parser
-# and the wrapper's timing tee read too; shipped standalone as `mb_monitor.py`,
-# with no molbuilder beside it, the wrapper passes the same pattern with
-# ``--scf-row``, rendered from that table.  This file matched ``scf:`` alone
-# until 2026-09-26, and reported a TranSIESTA device as making no progress for
-# 7.6 hours of NEGF iterations.
-# The same holds for the E_KS column and the geometry-step line, passed as
-# ``--scf-energy-field`` and ``--geom-row``.  In the package they come from
-# the table; standalone with no flags they are None, and the monitor still
-# counts iterations from the timing log but reports no energy and no step.
-try:
-    from molbuilder.parse.engines.siesta_grammar import (
-        GEOM_MOVE as _GEOM_MOVE, SCF_E_KS_FIELD as _SCF_E_KS_FIELD,
-        SCF_ROW_ERE as _SCF_ROW_ERE)
-except ImportError:                       # the shipped copy: the flags
-    _SCF_ROW_ERE, _SCF_E_KS_FIELD, _GEOM_MOVE = None, None, None
-_SCF_LINE = re.compile(_SCF_ROW_ERE) if _SCF_ROW_ERE else None
-# The highest move number in the .out tail is the current geometry step
-# (None for a single point, which prints none).  The literal ``move = <N>``
-# (and case-sensitive ``Begin``) is what keeps narrative text like "begin to
-# move 8 atoms" from matching (audit 2026-06-27 B-5).
-_GEOM_LINE = _GEOM_MOVE
+# NO COMPLETION MARKERS DECIDE ANYTHING HERE.  `job-contracts.md` states the
+# rule: the monitor "follows the launcher's PID -- so it knows authoritatively
+# when the run ended, rather than guessing from output markers".  A private
+# marker tuple lived here until 2026-08-26 and did exactly the guessing the
+# contract forbids: `siesta: Final energy` prints BEFORE a run is over, so the
+# loop could return while the job was still holding CPUs and GPUs.  HOW the
+# run ended is reported the way the Results tab reads it -- `run_status`,
+# asked once the PID has said it is over (`run-reports.md` § 2.2).
+
+#: ROLE -> the reading pass of that file's ONE parser -- chosen by what the
+#: file IS, never by the engine, as `_run_ending.READERS` chooses how it
+#: ENDED.  A SIESTA-family `.out` is its own live channel; a PySCF run's is
+#: its progress log (its stdout is block-buffered and says nothing live).
+#: Each is built for the rung's stage: a staged progress log keys its targets
+#: by it.
+LIVE_READERS: Dict[str, Callable[[Optional[str]], Any]] = {
+    ".out":          lambda stage: SiestaReader(),
+    ".molwatch.log": lambda stage: MolwatchReader(stage=stage),
+}
+
+#: What a live reading must state to say where the run IS.
+_POSITION = ("cycle", "step", "energy")
 
 
-def _tail_bytes(path: Path, nbytes: int = 16384) -> str:
-    """Return the last ``nbytes`` of ``path`` as text ('' if absent)."""
-    try:
-        size = path.stat().st_size
-        with path.open("rb") as fh:
-            if size > nbytes:
-                fh.seek(-nbytes, os.SEEK_END)
-            data = fh.read()
-        return data.decode("utf-8", "replace")
-    except OSError:
-        return ""
+#: How much of a file's beginning, and of what was last read, identifies it
+#: between wakes.
+_HEAD_BYTES = 256
+_TAIL_BYTES = 64
 
 
-def parse_status(out_path: Path, timing_path: Path,
-                 start_epoch: float, now_epoch: float) -> JobStatus:
-    """Parse a :class:`JobStatus` from the job artifacts.
+class _Growth:
+    """One output as it grows, fed to its reader a line at a time -- the
+    monitor never reads a growing output whole.  A last line still being
+    written waits for its newline.
 
-    ``n_iters`` (the reliable count) comes from the per-run timing log;
-    ``scf_iter`` / ``energy`` -- E_KS, the energy the parser reports -- from
-    the last SCF row of either phase.  It reports what
-    the artifacts SAY and never judges whether the run is over -- that is
-    the watched PID's answer alone.  Pure reads -- never raises on a
-    missing/locked file.
+    **A file rewritten in place is read afresh**, and it is told by its
+    CONTENT, not its size: a PySCF deck truncates the progress log prep
+    seeded and writes its own header, and by the next wake the new file is
+    longer than the old -- read on from the old offset, the header and its
+    convergence targets were skipped (measured on a real water run,
+    2026-09-26: its force had no tolerance beside it).  So each wake checks
+    that the file still begins as it did and still holds, just before the
+    offset, what was last read there."""
+
+    def __init__(self, reader):
+        self.reader = reader
+        self.offset = 0
+        self.partial = ""
+        self.head = b""
+        self.tail = b""
+
+    def _same_file(self, fh) -> bool:
+        if fh.read(len(self.head)) != self.head:
+            return False
+        fh.seek(self.offset - len(self.tail))
+        return fh.read(len(self.tail)) == self.tail
+
+    def feed_from(self, path: Path, make) -> None:
+        try:
+            with path.open("rb") as fh:
+                if self.offset and not self._same_file(fh):
+                    self.reader, self.offset, self.partial = make(), 0, ""
+                    self.head = self.tail = b""
+                fh.seek(self.offset)
+                data = fh.read()
+        except OSError:
+            return
+        if self.offset < _HEAD_BYTES:
+            self.head = (self.head + data)[:_HEAD_BYTES]
+        self.offset += len(data)
+        self.tail = (self.tail + data)[-_TAIL_BYTES:]
+        text = self.partial + data.decode("utf-8", "replace")
+        lines = text.split("\n")
+        self.partial = lines.pop()
+        for line in lines:
+            self.reader.feed(line.rstrip("\r"))
+
+
+@dataclass
+class WatchedRun:
+    """The run this monitor watches, as the wrapper names it -- the label,
+    the stage token, the run index -- in the directory the job runs in.
+
+    Every file is named and found through `runfiles` (`run-reports.md`
+    § 2.3), the way `project-layout.md` § 4.5 has every caller ask for our
+    names; the wrapper passes no paths.
     """
-    st = JobStatus(elapsed_s=max(0.0, now_epoch - start_epoch))
+    label: str
+    stage: Optional[str] = None
+    run: Optional[int] = None
+    directory: Path = field(default_factory=lambda: Path("."))
+    #: Each live output, and the reader fed from it.
+    _growth: Dict[Path, "_Growth"] = field(default_factory=dict)
 
-    # N (count) + last iteration number from the timing log.
-    timing_path = Path(timing_path)
-    last_line = ""
+    @property
+    def stem(self) -> str:
+        """``<label>[_<stage>]`` -- the rung's files all begin with it."""
+        return _rf.stem(self.label, self.stage)
+
+    def path(self, role: str) -> Path:
+        """This run's file in ``role`` -- the one run index's."""
+        return self.directory / _rf.compose(self.label, role, self.stage,
+                                            run=self.run)
+
+    def files(self) -> Dict[str, Path]:
+        """This run's files by role: its own run index's, and the rung's
+        carried ones -- the progress log carries no index."""
+        out: Dict[str, Path] = {}
+        for p, rf in _rf.find(self.directory, self.label, stage=self.stage):
+            if rf.run is None or rf.run == self.run:
+                out[rf.role] = p
+        return out
+
+    def read(self, start_epoch: float, now_epoch: float) -> JobStatus:
+        """Where the run is now, as its files' own parsers read them -- each
+        fed what the file gained since the last wake.  Never raises on a
+        missing or locked file, and never judges whether the run is over:
+        that is the watched PID's answer alone."""
+        st = JobStatus(elapsed_s=max(0.0, now_epoch - start_epoch))
+        files = self.files()
+        # EVERY CHANNEL THAT STATES WHERE THE RUN IS, and the freshest of
+        # them speaks -- the rule `run_status` measures liveness by.  A
+        # channel that states nothing is not a candidate: a SIESTA run's
+        # progress log is the prep's seed, whose mtime says nothing about the
+        # run (a copied tree reorders it).
+        heard = []
+        for role, path in files.items():
+            make = LIVE_READERS.get(role)
+            if make is None:
+                continue
+            grow = self._growth.get(path)
+            if grow is None:
+                grow = self._growth[path] = _Growth(make(self.stage))
+            grow.feed_from(path, lambda: make(self.stage))
+            state = grow.reader.now()
+            if any(k in state for k in _POSITION):
+                heard.append((_mtime(path), state))
+        if heard:
+            self._apply(st, max(heard, key=lambda h: h[0])[1])
+        timing = files.get(".scf-timing.log")
+        if timing is not None:
+            try:
+                m = scf_timing_metrics(timing.read_text(encoding="utf-8",
+                                                        errors="replace"))
+            except OSError:
+                m = {}
+            st.n_iters = m.get("rows") or st.n_iters
+            st.per_iter_s = m.get("s_per_iter")
+        return st
+
+    @staticmethod
+    def _apply(st: JobStatus, state: Dict[str, Any]) -> None:
+        """A parser's live reading onto the report -- as the parser states
+        it: the residuals come with the criteria the run states for them."""
+        st.phase = state.get("phase")
+        st.cycle = state.get("cycle")
+        st.energy = state.get("energy")
+        if "step" in state:
+            st.geom_step = state["step"]
+            st.step_kind = state.get("step_kind")
+        st.steps_done = state.get("steps_done")
+        if "scf_rows" in state:
+            st.n_iters = state["scf_rows"]
+        st.residuals.update(state.get("residuals") or {})
+        if state.get("max_force") is not None:
+            st.max_force = state["max_force"]
+            st.max_force_tol = (state.get("targets") or {}).get(
+                "max_force_tol_eV_per_A")
+
+    def conclude(self, st: JobStatus) -> JobStatus:
+        """How the run ended, as the Results tab reads it: `run_status` over
+        this rung's own files (`run-reports.md` § 2.3) -- its state and
+        detail, each phase's convergence from the ending of the file that
+        speaks, and the process's goodbye."""
+        try:
+            rs = run_status(self.directory, self.stem + "*")
+        except Exception:                               # noqa: BLE001
+            return st           # an unreadable directory says nothing
+        st.state, st.detail = rs.state, rs.detail
+        if rs.state == "running":
+            # The PID is gone and nothing says how: no ending in the output,
+            # no `.concluded` -- `run_status`'s own `stale`, which its age
+            # rule would reach in a minute (§ 2.3).
+            st.state = "stale"
+            st.detail = ("the job's process ended with no ending in its "
+                         "output and no exit recorded")
+        ending = rs.endings.get(rs.active_source) if rs.active_source else None
+        if ending is not None and ending.phases:
+            st.converged = dict(ending.phases)
+        if ending is not None:
+            st.relaxed = ending.relaxed
+        st.exit = rs.concluded
+        return st
+
+
+def _mtime(path: Path) -> float:
     try:
-        if timing_path.is_file():
-            with timing_path.open("r", encoding="utf-8", errors="replace") as fh:
-                n = 0
-                for line in fh:
-                    if line.strip():
-                        n += 1
-                        last_line = line
-                st.n_iters = n
+        return path.stat().st_mtime
     except OSError:
-        pass
-    if last_line:
-        parts = last_line.split()
-        # timing line: <epoch.ns> <iter#> <scf: ...>
-        if len(parts) >= 2:
-            st.scf_iter = parts[1]
-    if st.n_iters > 0:
-        st.per_iter_s = st.elapsed_s / st.n_iters
-        st.state = "running"
-
-    # Last energy + geometry step + done marker from the .out tail.
-    tail = _tail_bytes(Path(out_path))
-    if tail:
-        lines = tail.splitlines()
-        for line in reversed(lines if _SCF_LINE is not None else ()):
-            if _SCF_LINE.match(line):
-                f = line.split()
-                if _SCF_E_KS_FIELD is not None and len(f) > _SCF_E_KS_FIELD:
-                    st.energy = f[_SCF_E_KS_FIELD]
-                break
-        # Highest geometry-move number in the tail (None if not relaxing).
-        for line in reversed(lines if _GEOM_LINE is not None else ()):
-            gm = _GEOM_LINE.search(line)
-            if gm:
-                st.geom_step = int(gm.group(1))
-                break
-    return st
+        return 0.0
 
 
 # --------------------------------------------------------------------- #
@@ -490,6 +664,162 @@ def _read_mem_limit_gb() -> Optional[float]:
         except (OSError, ValueError):
             pass
     return None
+
+
+# --------------------------------------------------------------------- #
+#  A run started DIRECTLY has no job cgroup: its job is its process tree  #
+# --------------------------------------------------------------------- #
+#
+# Under a scheduler the job is its cgroup, and the readers above read it.
+# A run started directly (`running-a-job.md` § 5.4, ``--mode direct``) has
+# none: `/proc/self/cgroup` then names the cgroup the LAUNCHING session sits
+# in -- a login scope, the web server's service -- and every other process
+# there.  MEASURED 2026-09-26 on a real 2-rank H2 relaxation: the monitor
+# reported "cpu mean=4% of 40 core(s) [affinity]; cpu time [cgroup-v2]" --
+# the session's CPU over the whole node, which is § 2.1a's defect exactly.
+# So there the job is the watched process and its descendants, and the cores
+# it holds are the ones it was launched on.
+
+_PROC = "/proc"
+
+
+def _in_scheduler_job() -> bool:
+    """Is this run inside a scheduler's job?  Then the job is its cgroup."""
+    return bool(os.environ.get("SLURM_JOB_ID"))
+
+
+def _proc_stat(pid: str) -> Optional[List[str]]:
+    """``/proc/<pid>/stat``'s fields after the command name (which may hold
+    spaces and parentheses, so the split is at the LAST ``)``)."""
+    try:
+        with open(f"{_PROC}/{pid}/stat", "rb") as fh:
+            raw = fh.read().decode("ascii", "replace")
+    except OSError:
+        return None
+    return raw[raw.rfind(")") + 2:].split()
+
+
+def _tree(root: int, skip: int) -> List[int]:
+    """The watched process and every descendant -- the job, when it has no
+    cgroup of its own -- minus ``skip`` (this monitor, a child of the
+    wrapper it watches) and whatever it started."""
+    kids: Dict[int, List[int]] = {}
+    try:
+        names = os.listdir(_PROC)
+    except OSError:
+        return []
+    for name in names:
+        if not name.isdigit():
+            continue
+        f = _proc_stat(name)
+        if f is None or len(f) < 2:
+            continue
+        try:
+            kids.setdefault(int(f[1]), []).append(int(name))
+        except ValueError:
+            continue
+    out: List[int] = []
+    todo = [root]
+    while todo:
+        pid = todo.pop()
+        if pid == skip or pid in out:
+            continue
+        out.append(pid)
+        todo.extend(kids.get(pid, ()))
+    return out
+
+
+def _read_tree_cpu_ns(root: int, skip: int) -> Optional[int]:
+    """CPU-nanoseconds the tree has consumed: each live process's own time
+    and its reaped children's (``utime + stime + cutime + cstime``), so a
+    rank that has exited still counts once, in whoever waited for it.
+
+    ``None`` -- no reading -- when a process listed a moment ago is gone: it
+    may have been reaped between its parent's read and its own, and then its
+    time is in neither, to land whole in the next reading as a spike.  A
+    missed reading only lengthens the next interval."""
+    hz = os.sysconf("SC_CLK_TCK") or 100
+    total = 0
+    for pid in _tree(root, skip):
+        f = _proc_stat(str(pid))
+        if f is None or len(f) < 15:
+            return None
+        try:
+            total += sum(int(x) for x in f[11:15])
+        except ValueError:
+            return None
+    return total * (1000000000 // hz)
+
+
+def _read_tree_mem_gb(root: int, skip: int) -> Optional[Tuple[float, str]]:
+    """``(GB the tree holds, which reading)``: each process's PROPORTIONAL
+    set size where the kernel reports one (``smaps_rollup``'s ``Pss``) --
+    MPI ranks map the same libraries and shared segments, and summing their
+    RSS counts those pages once per rank -- else its RSS."""
+    total_kb = 0
+    how = "Pss"
+    seen = False
+    for pid in _tree(root, skip):
+        kb = None
+        try:
+            with open(f"{_PROC}/{pid}/smaps_rollup", encoding="ascii") as fh:
+                for line in fh:
+                    if line.startswith("Pss:"):
+                        kb = int(line.split()[1])
+                        break
+        except (OSError, ValueError, IndexError):
+            kb = None
+        if kb is None:
+            try:
+                with open(f"{_PROC}/{pid}/status", encoding="ascii") as fh:
+                    for line in fh:
+                        if line.startswith("VmRSS:"):
+                            kb = int(line.split()[1])
+                            how = "RSS"
+                            break
+            except (OSError, ValueError, IndexError):
+                kb = None
+        if kb is not None:
+            total_kb += kb
+            seen = True
+    return (round(total_kb / 1048576.0, 2), how) if seen else None
+
+
+@dataclass(frozen=True)
+class _Basis:
+    """What this run's percentages are fractions OF and whose time and
+    memory they count -- resolved ONCE, at start: a basis that changed
+    mid-series would silently change what every number means (§ 2.1a)."""
+    cores: int
+    cores_from: str
+    #: The job's process-tree root when it has no cgroup of its own.
+    tree: Optional[int] = None
+
+    def cpu_ns(self) -> Optional[Tuple[int, str]]:
+        if self.tree is None:
+            return _read_cpu_used_ns()
+        ns = _read_tree_cpu_ns(self.tree, os.getpid())
+        return (ns, "process tree") if ns is not None else None
+
+    def mem_gb(self) -> Optional[Tuple[float, str]]:
+        if self.tree is None:
+            return _read_mem_used_gb()
+        got = _read_tree_mem_gb(self.tree, os.getpid())
+        return (got[0], f"process tree {got[1]}") if got else None
+
+
+def _basis(watch_pid: int = 0, cores: Optional[int] = None) -> _Basis:
+    """The job this run's numbers are about.  Under a scheduler -- or with
+    no process to watch -- its cgroup and its allocation; started directly,
+    the watched process tree and the cores it was launched on (``cores``,
+    the wrapper's ranks x threads), else its affinity, labelled as such."""
+    if watch_pid > 0 and not _in_scheduler_job():
+        if cores and cores > 0:
+            return _Basis(int(cores), "launched on", tree=watch_pid)
+        n, src = _alloc_cores()
+        return _Basis(n, src, tree=watch_pid)
+    n, src = _alloc_cores()
+    return _Basis(n, src)
 
 
 _GPU_QUERY = ["nvidia-smi",
@@ -758,9 +1088,9 @@ def _secrets_dir():
     """Where every credential lives, from the one module that defines it.
 
     Imported two ways because this file runs two ways: inside the package on
-    a login node, and as a standalone `mb_monitor.py` on a compute node with
-    no molbuilder installed.  The wrapper ships `config_dir.py` beside it
-    (`runwrap._config_dir_source`), so the SAME LINES answer on both
+    a login node, and from `mb_monitor.pyz` on a compute node with no
+    molbuilder installed, where `config_dir.py` travels with it in that one
+    file (`runwrap.MONITOR_BUNDLE`), so the SAME LINES answer on both
     machines.
 
     Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
@@ -780,7 +1110,7 @@ def _secrets_dir():
     """
     try:
         from .config_dir import secrets_dir     # inside the package
-    except ImportError:                          # shipped beside the job
+    except ImportError:                          # in the shipped bundle
         from config_dir import secrets_dir
     return secrets_dir()
 
@@ -971,10 +1301,10 @@ def is_channel_name(name: str) -> bool:
     """Is this a usable channel name?
 
     **The door for everyone**, and it has to be here: this module ships to a
-    compute node as a standalone file, where the only molbuilder module it
-    can reach is one that TRAVELS WITH IT -- today just `config_dir`, through
-    the two-way import in `_secrets_dir`.  `task.py` is not on that list, so
-    this end is the only one that CAN own the rule.  `task.py` validates the names a description carries
+    compute node as a standalone file, where the only molbuilder modules it
+    can reach are the ones that TRAVEL WITH IT (`runwrap.MONITOR_COMPANIONS`,
+    each through a two-way import like `_secrets_dir`'s).  `task.py` is not
+    among them, so this end is the only one that CAN own the rule.  `task.py` validates the names a description carries
     by asking this, rather than restating a regex that would then be free to
     drift from the file those names have to match.
     """
@@ -993,31 +1323,14 @@ USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
 #: the two are meant to look alike (user, 2026-09-02): Discord takes the int,
 #: Slack takes the same value as ``#rrggbb``.
 _STATE_COLOR = {
-    "done":     0x2ECC71,   # green
+    "finished": 0x2ECC71,   # green
     "failed":   0xE74C3C,   # red
+    "stale":    0xE67E22,   # orange -- ended with nothing saying how
     "running":  0x3498DB,   # blue
     "test":     0x95A5A6,   # grey
 }
 _COLOR_FALLBACK = 0x95A5A6
 
-#: WHAT a report may carry, in the report's own field names.
-#:
-#: **Written twice, and it has to be** -- exactly as `is_channel_name` is.
-#: `task.REPORT_ITEMS` is the copy a description is validated against; this
-#: is the copy the MONITOR uses, and this module ships to a compute node as
-#: a standalone file with no molbuilder importable.  The wire between them is
-#: the `--notify-report` flag, and `tests/test_wrapper_notify_flags.py` pins
-#: that the two lists agree.
-REPORT_ITEMS = ("elapsed_s", "n_iters", "energy", "geom_step", "per_iter_s")
-
-#: The numeric fields a chat card shows, in order, with their units.  ONE
-#: list, so Discord and Slack cannot drift apart in what they display.  Its
-#: keys are `REPORT_ITEMS`, in display order.
-_CARD_FIELDS = (("elapsed",   "elapsed_s",  " s"),
-                ("SCF iters", "n_iters",    ""),
-                ("energy",    "energy",     ""),
-                ("geom step", "geom_step",  ""),
-                ("per iter",  "per_iter_s", " s"))
 
 
 def _card(report: Dict[str, Any],
@@ -1041,14 +1354,16 @@ def _card(report: Dict[str, Any],
     # every field the monitor could determine; `()` is the summary line with
     # no grid; and a field the monitor never determined stays absent whether
     # or not it was asked for.
+    # ONE list of fields for both chat destinations, so Discord and Slack
+    # cannot drift apart in what they display: the declaration's.
     fields = []
-    for label, key, suffix in _CARD_FIELDS:
-        if items is not None and key not in items:
+    for f in _fields.FIELDS:
+        if items is not None and f.name not in items:
             continue
-        val = report.get(key)
+        val = report.get(f.name)
         if val is None or val == "":
             continue                 # absent stays absent -- unknown is not 0
-        fields.append((label, f"{val}{suffix}"))
+        fields.append((f.card, f"{val}{f.unit}"))
     return {"title": title[:256],
             "text": str(report.get("text") or "") or "(no summary)",
             "color": _STATE_COLOR.get(state, _COLOR_FALLBACK),
@@ -1268,7 +1583,7 @@ def _report_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
     if value is None:
         return None
     return tuple(n for n in (p.strip() for p in value.split(","))
-                 if n in REPORT_ITEMS)
+                 if n in _fields.NAMES)
 
 
 def _channels_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
@@ -1370,11 +1685,10 @@ def make_webhook_notifier(url: str, *,
             # whole Discord body -- Discord ignores a bare `text`
             # (`run-reports.md` § 4.1b).
             "state":      status.state,
+            # EVERY FIELD THE DECLARATION NAMES, by its own name -- which is
+            # the status's attribute (`report_fields`, `stages.md` § 6.9).
+            **{f.name: getattr(status, f.name) for f in _fields.FIELDS},
             "elapsed_s":  round(status.elapsed_s, 1),
-            "n_iters":    status.n_iters,
-            "energy":     status.energy,
-            "geom_step":  status.geom_step,
-            "per_iter_s": status.per_iter_s,
         }
         # THE ENVELOPE IS THE DESTINATION'S, and one producer decides it --
         # the User-Agent among it, without which Discord's edge answers 403
@@ -1392,7 +1706,7 @@ def make_webhook_notifier(url: str, *,
     return _hook
 
 
-def run_identity(out: Optional[Path] = None) -> Dict[str, str]:
+def run_identity(watched: Optional["WatchedRun"] = None) -> Dict[str, str]:
     """Who this report is ABOUT — gathered once, sent on every line.
 
     **A report with no identity is a result you cannot use.**  Until
@@ -1403,25 +1717,23 @@ def run_identity(out: Optional[Path] = None) -> Dict[str, str]:
     own health, so every line has to stand on its own -- somebody will
     parse this file a year from now with no session to ask.
 
-    ``run`` is the **label** in `run-identity.md`'s sense: *"the label = the
-    SystemLabel literal = the stem of every file"*, so the ``.out`` this
-    monitor was pointed at already carries it.  ``-runN`` is a per-attempt
-    suffix the wrapper adds and is stripped, because the label names the
-    calculation and not the attempt.
+    ``run`` is the rung's **stem** -- the label and the stage token, *"the
+    stem of every file"* (`run-identity.md`) -- as `runfiles` composes it
+    for the run the wrapper named.  It was cut off the ``.out``'s name by a
+    regex of its own until 2026-09-26: our filename grammar read outside
+    `runfiles` (`project-layout.md` § 4.5).  The run index is left out
+    because the stem names the calculation and not the attempt.
 
     Everything is best-effort: an identity that cannot be gathered must
     never stop a run reporting.  A missing field is simply absent, which a
     reader can tell from a wrong one.
     """
     ident: Dict[str, str] = {}
-    if out is not None:
-        stem = Path(out).name
-        for suffix in (".out", ".log"):
-            if stem.endswith(suffix):
-                stem = stem[: -len(suffix)]
-        stem = re.sub(r"-run\d+$", "", stem)
-        if stem:
-            ident["run"] = stem[:200]
+    if watched is not None:
+        try:
+            ident["run"] = watched.stem[:200]
+        except Exception:                               # noqa: BLE001
+            pass                     # an identity never stops a report
     for key, var in (("job", "SLURM_JOB_ID"), ("array", "SLURM_ARRAY_TASK_ID")):
         v = os.environ.get(var)
         if v:
@@ -1457,7 +1769,7 @@ def _install_env_notifiers(log: Optional[Path] = None,
     **Registers once per process.**  :data:`_NOTIFIERS` is module state and
     ``run_monitor`` calls this every time, so without the guard a second
     call in one process adds a second copy of every webhook and every
-    event is POSTed twice.  A shipped `mb_monitor.py` runs one job per
+    event is POSTed twice.  The shipped monitor runs one job per
     process and would never have shown it; anything embedding this would.
     """
     if any(getattr(fn, "__name__", "") == "webhook_notifier"
@@ -1520,27 +1832,38 @@ def _append(log_path: Path, line: str) -> None:
 
 
 def _progressed(curr: JobStatus, prev: JobStatus) -> bool:
-    """Did real work advance between two ticks?  True iff the SCF
-    iteration count or the geometry-move number went up."""
-    if curr.n_iters > prev.n_iters:
+    """Did real work advance between two ticks?  True iff the SCF row count,
+    the row's own iteration, the phase or the step moved."""
+    if (curr.n_iters or 0) > (prev.n_iters or 0):
         return True
+    if (curr.phase, curr.cycle) != (prev.phase, prev.cycle):
+        return curr.cycle is not None
     return (curr.geom_step or 0) > (prev.geom_step or 0)
 
 
-def run_monitor(out: Path, timing: Path, log: Path, *,
+def run_monitor(watched: "WatchedRun", *,
                 interval: float = 10.0,
                 watch_pid: int = 0,
                 start_epoch: Optional[float] = None,
                 max_ticks: Optional[int] = None,
                 stall_heartbeat_s: float = 600.0,
-                util_path: Optional[Path] = None,
+                util: bool = False,
+                cores: Optional[int] = None,
+                gpu: bool = False,
                 util_change_frac: float = 0.10,
                 util_keepalive_s: float = 300.0,
                 sampler: Optional[Callable[[], "UtilSample"]] = None,
                 notify: "NotifyPolicy" = NotifyPolicy(),
                 sleep: Callable[[float], None] = time.sleep,
                 clock: Callable[[], float] = time.time) -> JobStatus:
-    """Periodically parse + log + notify until the watched job ends.
+    """Periodically read + log + notify until the watched job ends.
+
+    ``watched`` names the run; its log and its utilisation CSV (with
+    ``util``) are its own files, named through `runfiles`.  Every reading is
+    the framework's (:class:`WatchedRun`, `run-reports.md` § 2.3).
+    ``cores`` is what a run started directly was launched on and ``gpu``
+    whether it uses a GPU -- the wrapper's to say (:func:`_basis`,
+    :func:`_make_default_sampler`).
 
     Returns the final :class:`JobStatus`.  ``max_ticks`` bounds the loop
     (tests pass a small value); ``sleep``/``clock`` are injectable for
@@ -1559,19 +1882,19 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
     line fires only when the job actually advanced
     (SCF iteration or geometry move) or its energy/state changed.  A
     long stall emits at most one throttled ``[STALL]`` heartbeat every
-    ``stall_heartbeat_s`` seconds -- with NO per-iteration estimate,
-    because ``elapsed / frozen_n_iters`` only inflates and is meaningless
-    when no iteration has completed.  This keeps a stalled job from
-    flushing a misleading timing line on every wake.  Set
+    ``stall_heartbeat_s`` seconds -- with NO per-iteration figure, which
+    describes iterations that are no longer happening.  This keeps a
+    stalled job from flushing a misleading timing line on every wake.  Set
     ``stall_heartbeat_s <= 0`` to silence the stall heartbeat entirely
     (the log then goes quiet until the job next progresses or ends).
     """
-    out, timing, log = Path(out), Path(timing), Path(log)
+    log = watched.path(".monitor.log")
+    util_path: Optional[Path] = watched.path(".util.csv") if util else None
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers(log, run_identity(out), notify.channels,
+    _install_env_notifiers(log, run_identity(watched), notify.channels,
                            notify.report)
 
-    st0 = parse_status(out, timing, start, clock())
+    st0 = watched.read(start, clock())
     # FIRST line, before [MONITOR] start: the machine is known now, and a
     # run killed with its allocation still says where it died -- writing it
     # in the terminal block (as [UTIL-BASIS] is) would lose exactly the
@@ -1592,7 +1915,12 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
 
     # --- utilization sampling setup (same loop, separate change-gated
     # output file; § 11.0e).  ``sampler`` is injectable for tests. ---
-    _sample = sampler if sampler is not None else _make_default_sampler(clock)
+    # WHAT THE JOB HOLDS, once (§ 2.1a): its cgroup and allocation under a
+    # scheduler; started directly, the watched process tree and the cores
+    # it was launched on.
+    basis = _basis(watch_pid, cores)
+    _sample = (sampler if sampler is not None
+               else _make_default_sampler(clock, basis, gpu))
     util_accum = UtilAccum()
     util_prev: Optional[UtilSample] = None
     util_ngpu = 0
@@ -1627,6 +1955,12 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
 
     prev = st0
     last_emit = start          # wall time of the last [STATUS]/[STALL] line
+    # A RUN IS JUDGED STALLED ONLY ONCE IT HAS BEEN SEEN MOVING.  A PySCF
+    # spectrum deck's progress log holds its preview and nothing more, so a
+    # run that never states progress read as stalled every heartbeat and
+    # told every channel so, for its whole length (found 2026-09-26).
+    seen_moving = any(v is not None
+                      for v in (st0.cycle, st0.geom_step, st0.energy))
     ticks = 0
     while True:
         sleep(interval)
@@ -1641,23 +1975,26 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         alive = _pid_alive(watch_pid) and _STOPPED_BY is None
         if alive:
             _util_tick(now)
-        st = parse_status(out, timing, start, now)
+        st = watched.read(start, now)
         if not alive:
-            st.state = "gone"
+            # HOW IT ENDED is the Results tab's reading, asked now that the
+            # PID has said it is over (`run-reports.md` § 2.2-2.3).
+            st = watched.conclude(st)
 
         st.progressing = _progressed(st, prev)
+        seen_moving = seen_moving or st.progressing
 
         if not alive:
-            # Terminal: the cumulative ``elapsed / n_iters`` over the whole
-            # run IS a valid final average, so report it (force-show even
-            # though this last tick added no new iteration).
+            # Terminal: the timing instrument's figure over the whole run IS
+            # the run's average, so report it (force-show even though this
+            # last tick added no new iteration).
             st.progressing = True
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             if util_path is not None:
                 _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
                              f"{util_accum.summary()}")
                 _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
-                             f"{measurement_provenance()}")
+                             f"{measurement_provenance(basis)}")
             # The series' end, after the lines above: a GPU sample can take
             # seconds, and the wrapper waits for this process only so long.
             _util_tick(now, force=True, count=False)
@@ -1679,8 +2016,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             return st
 
         if not st.progressing:
-            # (1) Never report the wrong estimate while LIVE + stalled:
-            # elapsed / frozen-iters only inflates with wall time.
+            # (1) No rate while LIVE + stalled: the figure describes
+            # iterations that are no longer happening (§ 11.0c).
             st.per_iter_s = None
 
         changed = (st.progressing
@@ -1689,7 +2026,8 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
         if changed:
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             last_emit = now
-        elif stall_heartbeat_s > 0 and now - last_emit >= stall_heartbeat_s:
+        elif (seen_moving and stall_heartbeat_s > 0
+              and now - last_emit >= stall_heartbeat_s):
             # (2) Throttled liveness ping only -- no iteration-time message.
             _append(log, f"[{_iso(now)}] [STALL] no SCF/geometry progress "
                          f"for {now - last_emit:.0f}s; state={st.state} "
@@ -1705,16 +2043,16 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
 
         # --- the two settable triggers (§ 2.9) ---------------------------
         #
-        # A GEOMETRY STEP ADVANCING means the previous SCF cycle reached its
-        # criterion -- SIESTA prints `Begin CG move = N` when it starts the
-        # next one.  Read that way rather than by scanning for a convergence
-        # phrase, because this file no longer keeps a marker table: the one
-        # it used to keep decided the run was over and was wrong about it.
-        # A single point has no move lines, so nothing fires and the finish
-        # message is the whole report -- which is what it should be.
-        if (notify.on_scf and st.geom_step is not None
-                and prev.geom_step is not None
-                and st.geom_step > prev.geom_step):
+        # A STEP FINISHING means its SCF reached its criterion
+        # (`run-reports.md` § 2.2): SIESTA begins step N once N are done
+        # (`Begin <CG|Broyden|FIRE> opt. move = N`, `Begin FC step = N`), and
+        # a PySCF block is written when its step ends -- the parser counts
+        # them (`JobStatus.steps_done`).  Read that way rather than by
+        # scanning for a convergence phrase: a marker table here once decided
+        # the run was over and was wrong about it.  A single point states no
+        # step, so nothing fires and the finish message is the whole report.
+        if (notify.on_scf and st.steps_done is not None
+                and st.steps_done > (prev.steps_done or 0)):
             _fire(st, "scf_converged")
             last_notify = now
         elif notify_period_s > 0 and now - last_notify >= notify_period_s:
@@ -1729,7 +2067,7 @@ def run_monitor(out: Path, timing: Path, log: Path, *,
             return st
 
 
-def measurement_provenance() -> str:
+def measurement_provenance(basis: Optional[_Basis] = None) -> str:
     """One line naming what every percentage in this run is a fraction OF.
 
     **A percentage whose denominator is invisible is how the Au-BDT-Au sweep
@@ -1739,50 +2077,75 @@ def measurement_provenance() -> str:
     say where it came from cannot be checked at all, so the rung that
     answered is part of the measurement, not a debug aid.
     """
-    cores, csrc = _alloc_cores()
-    cpu = _read_cpu_used_ns()
-    mem = _read_mem_used_gb()
-    bits = [f"cpu% of {cores} core(s) [{csrc}]",
-            f"cpu time [{cpu[1] if cpu else 'unavailable'}]",
+    b = basis if basis is not None else _basis()
+    # A PROCESS TREE IS ITS OWN SOURCE.  One read at the end that met a
+    # process exiting -- the wrapper's `sleep`s while it waits for this
+    # monitor -- says nothing about what every sample was read from; a PySCF
+    # water run closed on "cpu time [unavailable]" (2026-09-26).
+    if b.tree is not None:
+        cpu_from = "process tree"
+    else:
+        cpu = b.cpu_ns()
+        cpu_from = cpu[1] if cpu else "unavailable"
+    mem = b.mem_gb()
+    bits = [f"cpu% of {b.cores} core(s) [{b.cores_from}]",
+            f"cpu time [{cpu_from}]",
             f"mem [{mem[1] if mem else 'unavailable'}]"]
-    peak = _read_mem_peak_gb()
+    # The kernel's peak and limit are a CGROUP's: a process tree has neither.
+    peak = _read_mem_peak_gb() if b.tree is None else None
     if peak is not None:
         bits.append(f"peak {peak:g} GB (kernel counter)")
-    lim = _read_mem_limit_gb()
+    lim = _read_mem_limit_gb() if b.tree is None else None
     bits.append(f"limit {lim:g} GB" if lim is not None
                 else "limit not stated")
     return "; ".join(bits)
 
 
-def _make_default_sampler(clock: Callable[[], float]
-                          ) -> Callable[[], "UtilSample"]:
+#: The shortest interval a CPU rate is taken over.  A process tree's counters
+#: tick in 1/``SC_CLK_TCK`` s (10 ms), and the monitor's first sample follows
+#: the sampler's baseline by microseconds: one tick over those read as
+#: 262144% on a real 2-rank run (2026-09-26).  Shorter than this, a sample
+#: states no rate and the baseline waits for the next.
+_RATE_MIN_S = 1.0
+
+
+def _make_default_sampler(clock: Callable[[], float],
+                          basis: Optional[_Basis] = None,
+                          gpu: bool = False) -> Callable[[], "UtilSample"]:
     """A stateful sampler closure.
 
-    cpu% is ``delta cpu-time / (delta wall-time x cores allocated)``, so it
-    holds the previous cumulative reading and the wall clock that went with
-    it.  **The denominator is the allocation**, resolved once up front: it
-    cannot change during a run, and re-reading it per tick would let a
-    percentage silently change meaning mid-series.  GPU presence is probed
-    once too (no per-tick ``nvidia-smi -L``).
+    cpu% is ``delta cpu-time / (delta wall-time x cores held)``, so it holds
+    the previous cumulative reading and the wall clock that went with it.
+    **The denominator is what the job holds** (:func:`_basis`), resolved once
+    up front: it cannot change during a run, and re-reading it per tick
+    would let a percentage silently change meaning mid-series.
+
+    **GPUs are sampled only for a run that uses one** (``gpu``, the wrapper's
+    to say): a CPU run on a GPU node holds no GPU, and what the node's GPUs
+    are doing is somebody else's -- it was sampled anyway until 2026-09-26,
+    and a CPU-only relaxation closed on *"GPU starved"*.  Presence is probed
+    once (no per-tick ``nvidia-smi -L``).
     """
-    cores, _ = _alloc_cores()
-    first = _read_cpu_used_ns()
+    b = basis if basis is not None else _basis()
+    cores = b.cores
+    first = b.cpu_ns()
     state = {"ns": first[0] if first else None, "t": clock()}
-    gpu_on = _gpu_present()
+    gpu_on = gpu and _gpu_present()
 
     def _s() -> "UtilSample":
         now = clock()
-        cur = _read_cpu_used_ns()
+        cur = b.cpu_ns()
         cpu_pct = None
-        if cur is not None and state["ns"] is not None:
-            d_ns = cur[0] - state["ns"]
-            d_t = now - state["t"]
-            if d_t > 0 and cores > 0 and d_ns >= 0:
-                cpu_pct = round(100.0 * d_ns / (d_t * 1e9 * cores), 1)
-        if cur is not None:
-            state["ns"] = cur[0]
-        state["t"] = now
-        mem = _read_mem_used_gb()
+        d_t = now - state["t"]
+        if d_t >= _RATE_MIN_S:
+            if cur is not None and state["ns"] is not None:
+                d_ns = cur[0] - state["ns"]
+                if cores > 0 and d_ns >= 0:
+                    cpu_pct = round(100.0 * d_ns / (d_t * 1e9 * cores), 1)
+            if cur is not None:
+                state["ns"] = cur[0]
+            state["t"] = now
+        mem = b.mem_gb()
         return UtilSample(epoch=now, cpu_pct=cpu_pct,
                           mem_gb=mem[0] if mem is not None else None,
                           gpus=_sample_gpus() if gpu_on else [])
@@ -1818,13 +2181,12 @@ def make_log_notifier(log: Path) -> Notifier:
 # --------------------------------------------------------------------- #
 #
 # CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
-# urllib/dataclasses/pathlib/typing) -- no molbuilder, no numpy.  That is
-# what lets the run-wrapper SHIP this file as ``mb_monitor.py`` next to the
-# job and run it with the JOB's own python (e.g. the minimal
+# urllib/dataclasses/pathlib/typing) and the framework modules that travel
+# with it (`runwrap.MONITOR_COMPANIONS`) -- no molbuilder package, no numpy.
+# That is what lets the run-wrapper SHIP this file as ``mb_monitor.py`` next
+# to the job and run it with the JOB's own python (e.g. the minimal
 # ``molbuilder-siesta-gpu`` env, which has no numpy/molbuilder), from the
-# working directory, with no install and no repo on PATH.  Its one import of
-# ours -- the SIESTA grammar -- is guarded, and the wrapper passes the same
-# patterns as flags; everything else stays stdlib.
+# working directory, with no install and no repo on PATH.
 
 
 #: Why this process was stopped, or None: ``"SIGTERM"`` -- the job ended (the
@@ -1858,35 +2220,36 @@ def _sleep_until_stopped(seconds: float) -> None:
 
 
 def main(argv=None) -> int:
-    """argparse entry for the SHIPPED standalone ``mb_monitor.py``.
+    """The entry of the SHIPPED bundle, ``mb_monitor.pyz``
+    (`runwrap.MONITOR_BUNDLE`): argparse for the monitor, and ``ending ...``
+    handed to `_run_ending`'s door, which travels in the same file -- the
+    wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``.
 
     Mirrors the ``molbuilder monitor`` click command but with zero
     third-party deps so it runs in any python.  Self-lowers priority via
     ``os.nice`` and installs the default PoC log notifier.
     """
+    import sys
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["ending"]:
+        return _ending.main(args[1:])
     import argparse
     p = argparse.ArgumentParser(
         prog="mb_monitor",
         description="molbuilder background job-monitor + notifier hooks "
-                    "(self-contained; § 11.0b)")
-    p.add_argument("--out", required=True, help="SIESTA .out to watch")
-    p.add_argument("--scf-row", default=None, dest="scf_row",
-                   help="the SCF-row pattern, rendered by the wrapper from "
-                        "parse/engines/siesta_grammar.py (the shipped copy "
-                        "cannot import it)")
-    p.add_argument("--scf-energy-field", type=int, default=None,
-                   dest="scf_energy_field",
-                   help="the whitespace field of an SCF row holding E_KS, "
-                        "from the same table")
-    p.add_argument("--geom-row", default=None, dest="geom_row",
-                   help="the geometry-step line's pattern, from the same "
-                        "table")
-    p.add_argument("--timing", required=True,
-                   help="per-run .scf-timing.log (iteration COUNT)")
-    p.add_argument("--log", required=True,
-                   help="append status lines here (<basename>.monitor.log)")
+                    "(reads the run through the framework's readers, which "
+                    "travel in this same file; execution/run-reports.md "
+                    "§ 2.3).  `ending OUTPUT ...` asks how a run ended.")
+    # WHICH RUN, never a path: every file is named through `runfiles`
+    # (`run-reports.md` § 2.3), from the identity the wrapper was rendered for.
+    p.add_argument("--label", required=True,
+                   help="the run's label -- the stem every file begins with")
+    p.add_argument("--stage", default=None,
+                   help="the stage token (e.g. 01_coarse); omit for none")
+    p.add_argument("--run", type=int, default=None, dest="run_index",
+                   help="the run index the wrapper resolved (-runN)")
     p.add_argument("--interval", type=float, default=10.0,
-                   help="seconds between wakes (default 5; this is the "
+                   help="seconds between wakes (default 10; this is the "
                         "utilization sample rate -- status lines stay "
                         "change-gated, so a fast rate does not spam)")
     p.add_argument("--stall-heartbeat", type=float, default=600.0,
@@ -1896,10 +2259,18 @@ def main(argv=None) -> int:
                         "(seconds, default 600); no per-iter timing is "
                         "printed while stalled.  Use 0 to silence the "
                         "stall heartbeat entirely")
-    p.add_argument("--util", default=None, dest="util_path",
+    p.add_argument("--util", action="store_true", dest="util",
                    help="append change-gated cpu%%/mem/GPU-sm%%/VRAM samples "
-                        "to this CSV (e.g. <basename>.util.csv); omit to "
-                        "disable utilization sampling")
+                        "to the run's .util.csv")
+    # WHAT THE JOB HOLDS, from the wrapper that launched it (§ 2.1a): the
+    # cores a run started directly was launched on -- under a scheduler the
+    # allocation answers instead -- and whether it uses a GPU at all.
+    p.add_argument("--cores", type=int, default=None, dest="cores",
+                   help="the cores the run was launched on (ranks x "
+                        "threads); the denominator of cpu%% for a run "
+                        "started directly")
+    p.add_argument("--gpu", action="store_true", dest="gpu",
+                   help="the run uses a GPU: sample and judge it")
     p.add_argument("--util-keepalive", type=float, default=300.0,
                    dest="util_keepalive_s",
                    help="even with no >10%% change, write a util row at "
@@ -1914,8 +2285,8 @@ def main(argv=None) -> int:
     # the destination is the user's file on this machine (NOTIFY_FILE).
     p.add_argument("--notify-on-scf", action="store_true",
                    dest="notify_on_scf",
-                   help="notify when a geometry step completes (one SCF "
-                        "cycle reached its criterion)")
+                   help="notify when a step finishes (its SCF reached its "
+                        "criterion)")
     p.add_argument("--notify-every-hours", type=float, default=0.0,
                    dest="notify_every_hours",
                    help="notify every N hours; 0 = never (default)")
@@ -1935,16 +2306,11 @@ def main(argv=None) -> int:
     p.add_argument("--notify-report", type=str, default=None,
                    dest="notify_report",
                    help="comma-separated report fields ("
-                        + ", ".join(REPORT_ITEMS)
+                        + ", ".join(_fields.NAMES)
                         + "); omit for all of them, pass '' for none")
-    a = p.parse_args(argv)
-    global _SCF_LINE, _SCF_E_KS_FIELD, _GEOM_LINE
-    if a.scf_row:
-        _SCF_LINE = re.compile(a.scf_row)
-    if a.scf_energy_field is not None:
-        _SCF_E_KS_FIELD = a.scf_energy_field
-    if a.geom_row:
-        _GEOM_LINE = re.compile(a.geom_row)
+    a = p.parse_args(args)
+    watched = WatchedRun(label=a.label, stage=a.stage or None,
+                         run=a.run_index)
     signal.signal(signal.SIGTERM, _on_stop_signal)
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, _on_stop_signal)
@@ -1952,12 +2318,12 @@ def main(argv=None) -> int:
         os.nice(max(0, a.nice_level))
     except (OSError, AttributeError):
         pass
-    register_notifier(make_log_notifier(a.log))
-    run_monitor(a.out, a.timing, a.log,
+    register_notifier(make_log_notifier(watched.path(".monitor.log")))
+    run_monitor(watched,
                 interval=a.interval, watch_pid=a.watch_pid,
                 sleep=_sleep_until_stopped,
                 stall_heartbeat_s=a.stall_heartbeat_s,
-                util_path=a.util_path,
+                util=a.util, cores=a.cores, gpu=a.gpu,
                 util_keepalive_s=a.util_keepalive_s,
                 notify=NotifyPolicy(
                     on_scf=a.notify_on_scf,
@@ -1969,7 +2335,8 @@ def main(argv=None) -> int:
 
 __all__ = [
     "JobStatus",
-    "parse_status",
+    "WatchedRun",
+    "LIVE_READERS",
     "run_monitor",
     "register_notifier",
     "clear_notifiers",
@@ -1979,7 +2346,6 @@ __all__ = [
     "channels_for",
     "is_channel_name",
     "NotifyPolicy",
-    "REPORT_ITEMS",
     "webhook_request",
     "channel_kind",
     "NOTIFY_FILENAME",

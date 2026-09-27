@@ -268,6 +268,20 @@ PY_LEDGER: dict[str, tuple[int | None, str, str]] = {
         "at which bias point -- and expresses no stage: the points come "
         "from `transport.stages.bias_points` and the token from "
         "`bias_token`, so nothing here is a second spelling of either"),
+    "--stage": (
+        None, "molbuilder/cli.py",
+        "the stage TOKEN a watched run's files carry (`01_coarse`), on "
+        "`molbuilder monitor` -- which names every file of the run through "
+        "`runfiles`, so it is told the label, the token and the run index the "
+        "wrapper resolved, as the shipped monitor's own `--stage` is "
+        "(`run-reports.md` § 2.3).  It expresses no stage: it names one the "
+        "grammar already reads back"),
+    "_stage_name": (
+        None, "molbuilder/parse/dirs/setup.py",
+        "which stage a run record's deck belongs to, read back off the "
+        "deck's own name by `identity.parse_stage_token` -- so the setup "
+        "section asks the catalogue for that stage's items.  A reader of "
+        "the token, not a way to say one"),
     "_resolve_stage": (
         None, "molbuilder/jobset/_cli.py",
         "the CLI's single door onto the resolver -- which jobs a verb acts "

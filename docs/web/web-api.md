@@ -500,7 +500,11 @@ that greps `get("path")` alone misses three blueprints.
 browser goes through one of the four above — checked 2026-08-25, which is when
 `/api/spectra/load` (1 route) and `/api/checkpoint/*` (6) were brought onto it.
 
-## 3. Endpoint index — all 99 routes
+## 3. Endpoint index — all 100 routes
+
+> **100 since 2026-09-26**, when `GET /api/notify/report-fields` landed —
+> the Task-setup card's report fields for the open calculation, from the
+> one declaration ([`stages.md`](?doc=engines/stages.md) § 6.9).
 
 > **99 since 2026-09-25**, when `POST /api/modify/calibrate` was retired
 > (`model/structure-periodicity.md` § 6.0, plan § 5q D3). Counted without
@@ -561,7 +565,8 @@ because `path` was in the GET's answer and in no other (found in the browser,
 
 | Method · Path | Purpose |
 |---|---|
-| GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** — for Slack and Discord the address *is* the credential, and masking only that kind is a rule mislabelling can defeat. The only one of these the Task-setup tab calls |
+| GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** — for Slack and Discord the address *is* the credential, and masking only that kind is a rule mislabelling can defeat. One of the two the Task-setup tab calls |
+| GET `/api/notify/report-fields` | The fields a report of this calculation can carry, in order, with the words the Task-setup card offers each by — `?engine=&calculation=` narrow it — from the one declaration (`report_fields`) a description is checked against at save. The other one the Task-setup tab calls ([`task-setup.md`](?doc=web/task-setup.md) § 9b) |
 | PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `<config dir>/secrets/notify` — the path taken from the monitor's own function so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*. The one thing it clears is the retired single-destination shape's top-level `url`/`key`/`headers` |
 | DELETE `/api/notify/channels/<name>` | Remove one. **Absent is off**, and off is a state you can reach without a shell |
 | POST `/api/notify/channels/<name>/test` | Send one report to that channel and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |

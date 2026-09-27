@@ -189,7 +189,7 @@ def test_a_stored_line_stands_on_its_own(store):
     """
     client, reports = store
     from molbuilder import monitor as M
-    ident = M.run_identity("BDT_Au_relax-run0.out")
+    ident = M.run_identity(M.WatchedRun(label="BDT_Au_relax", run=0))
     body = {**ident, "sent_at": 1756000000.5, "event": "scf_converged",
             "state": "running", "n_iters": 7, "energy": "-1740.21",
             "geom_step": 3, "elapsed_s": 1234.5}
@@ -612,7 +612,7 @@ def test_the_MONITOR_signs_what_the_LISTENER_verifies(store):
     real = _u.urlopen
     _u.urlopen = _fake_urlopen
     try:
-        hook(M.JobStatus(elapsed_s=90.0, n_iters=7, energy="-1740.2",
+        hook(M.JobStatus(elapsed_s=90.0, n_iters=7, energy=-1740.2,
                          geom_step=3), "scf_converged")
     finally:
         _u.urlopen = real
@@ -625,7 +625,7 @@ def test_the_MONITOR_signs_what_the_LISTENER_verifies(store):
     kept = _lines(log_root)[0]
     assert kept["event"] == "scf_converged"
     assert kept["geom_step"] == 3 and kept["n_iters"] == 7
-    assert kept["energy"] == "-1740.2"
+    assert kept["energy"] == -1740.2, "the number the reader read"
 
 
 def test_the_monitor_does_not_send_the_key_itself(store):

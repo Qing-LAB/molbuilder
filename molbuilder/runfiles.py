@@ -878,15 +878,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # before the change, and a cold sweep that misses one leaves it to be
     # appended to or truncated by the next run.
     #
-    # SIESTA'S, all three, and they carried no engine until 2026-09-26: the
-    # wrapper starts the monitor and the timing tee in its SIESTA branch only
-    # (`runwrap.py`), so a PySCF rung's card promised three files no PySCF run
-    # has written -- the `.out` row's fault again.  `patterns()` ignores the
-    # column, so the cold sweep still knows them in any directory.
-    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe",
-             engine="siesta"),
+    # EVERY ENGINE'S, the monitor's two: the wrapper starts it from its shared
+    # part since 2026-09-26 (`run-reports.md` § 2.3).  The timing tee is
+    # SIESTA's alone -- it reads the SIESTA family's rows -- so its row names
+    # the engine: a PySCF rung's card must not promise a file no PySCF run
+    # writes (the `.out` row's fault, found 2026-09-26).  `patterns()` ignores
+    # the column, so the cold sweep still knows them in any directory.
+    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe"),
     Artifact(".util.csv", "processor and memory samples taken while it ran",
-             attempt="maybe", engine="siesta"),
+             attempt="maybe"),
     Artifact(".scf-timing.log", "wall time per SCF iteration, both phases "
                                 "of a TranSIESTA device", attempt="always",
              engine="siesta"),
