@@ -631,23 +631,24 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
 
 
 def _register_default_engines() -> None:
-    """Late binding to avoid an import cycle: the engine config classes
-    live in modules that themselves import from validation.  Importing
-    them here at module-import time would loop; importing inside a
-    function called from validate() is safe because by then both modules
-    are fully loaded.  Only the config CLASS is imported eagerly (as a
-    registry key); the validator BODY for spectra/transport imports its
-    engine lazily at call time (see the wrappers above)."""
-    try:
-        from ..siesta import SiestaConfig
-        _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
-    except ImportError:
-        pass
-    try:
-        from ..pyscf import PySCFConfig
-        _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
-    except ImportError:
-        pass
+    """Register each engine's validator and each kind's -- AT IMPORT, called
+    just below.  The engine config classes are imported in here only to keep
+    the registrations together: nothing in `siesta/`, `pyscf/` or `config/`
+    imports `validation`, so there is no cycle to avoid.  *(This said the
+    late import avoided one, and that it ran from `validate()`; neither was
+    true -- the layer review, 2026-09-27.)*
+
+    **An import that fails here RAISES.**  A missing engine config is a
+    broken install, and the ``except ImportError: pass`` that stood here
+    until 2026-09-27 would have left that engine's scientific validation
+    silently absent -- every deck of it passing a gate that checked nothing.
+    Only the config CLASS is imported eagerly (as a registry key); the
+    validator BODY for spectra/transport imports its engine lazily at call
+    time (see the wrappers above)."""
+    from ..siesta import SiestaConfig
+    from ..pyscf import PySCFConfig
+    _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
+    _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
     # NO SPECTRA ROW.  A vibration's science is the KIND's, keyed by
     # `task.calculation` below -- `_validate_vibration_kind` runs
     # `spectra_render_checks` against the deck's config view.  The row that

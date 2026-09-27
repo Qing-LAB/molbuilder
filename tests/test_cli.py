@@ -100,7 +100,7 @@ def _make_capture(captured):
 
 def test_build_peptide_routes_to_build_peptide(monkeypatch, capsys, tmp_path):
     captured = []
-    monkeypatch.setattr("molbuilder.build_peptide", _make_capture(captured))
+    monkeypatch.setattr("molbuilder.peptide.build_peptide", _make_capture(captured))
     rc = cli.main(["peptide", "ARNDC", "--out", str(tmp_path / "p.xyz")])
     assert rc == 0
     assert len(captured) == 1
@@ -115,7 +115,7 @@ def test_build_dna_passes_backend_and_form(monkeypatch, tmp_path):
     builder.  This catches the click-decorator -> kwargs mapping; if
     a flag is dropped, the test fails -- a real bug."""
     captured = []
-    monkeypatch.setattr("molbuilder.build_dna", _make_capture(captured))
+    monkeypatch.setattr("molbuilder.nucleic.build_dna", _make_capture(captured))
     rc = cli.main([
         "dna", "ATGC",
         "--backend", "rdkit",
@@ -135,7 +135,7 @@ def test_build_dna_passes_backend_and_form(monkeypatch, tmp_path):
 
 def test_build_dna_no_protonate_phosphates_flag(monkeypatch, tmp_path):
     captured = []
-    monkeypatch.setattr("molbuilder.build_dna", _make_capture(captured))
+    monkeypatch.setattr("molbuilder.nucleic.build_dna", _make_capture(captured))
     cli.main([
         "dna", "ATGC",
         "--no-protonate-phosphates",
@@ -150,7 +150,7 @@ def test_build_rna_default_form_is_a(monkeypatch, tmp_path):
     the builder must NOT receive a form kwarg (the builder library
     has its own RNA default)."""
     captured = []
-    monkeypatch.setattr("molbuilder.build_rna", _make_capture(captured))
+    monkeypatch.setattr("molbuilder.nucleic.build_rna", _make_capture(captured))
     cli.main(["rna", "AUGC", "--out", str(tmp_path / "r.xyz")])
     _seq, kwargs = captured[0]
     # When --form isn't passed, cli should not inject a default form
@@ -169,7 +169,7 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
     documented in cli.py.  Verify it actually writes to stdout."""
     from molbuilder.structure import Structure
     monkeypatch.setattr(
-        "molbuilder.build_peptide",
+        "molbuilder.peptide.build_peptide",
         lambda seq, **kwargs: Structure(
             elements=["C"], positions=np.array([[0.1, 0.2, 0.3]]),
             title="x", vacuum=(12.0, 12.0, 12.0)),

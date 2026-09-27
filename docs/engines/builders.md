@@ -346,7 +346,7 @@ The nucleic commands add `--backend`, `--form`, `--terminal`, and
 the `add_hydrogens` tri-state — are reachable from the Python API:
 
 ```python
-from molbuilder import build_dna
+from molbuilder.nucleic import build_dna
 
 # explicit mismatched duplex; relieve the steric clash for a clean DFT start
 dna = build_dna("ATGC,CCAT", backend="threedna", relax_clashes=True)

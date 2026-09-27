@@ -102,7 +102,7 @@ def test_build_dna_3to5_label_produces_same_polymer_as_bare():
     """End-to-end check: build_dna('3'-CGTA-5'') and build_dna('ATGC')
     must produce the same atomic structure (modulo title)."""
     pytest.importorskip("rdkit")
-    from molbuilder import build_dna
+    from molbuilder.nucleic import build_dna
     s_bare = build_dna("ATGC", backend="rdkit", add_hydrogens=False,
                        protonate_phosphates=False)
     s_rev  = build_dna("3'-CGTA-5'", backend="rdkit", add_hydrogens=False,

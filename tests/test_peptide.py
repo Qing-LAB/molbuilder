@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-molbuilder = pytest.importorskip("molbuilder")
-build_peptide = pytest.importorskip("molbuilder").build_peptide
+build_peptide = pytest.importorskip("molbuilder.peptide").build_peptide
 
 
 @pytest.fixture

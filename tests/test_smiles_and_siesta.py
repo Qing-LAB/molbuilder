@@ -10,8 +10,9 @@ import os
 
 import pytest
 
-import molbuilder
+from molbuilder.nucleic import build_dna
 from molbuilder.siesta import SiestaConfig, render_fdf
+from molbuilder.smiles import build_from_smiles
 
 
 # --------------------------------------------------------------------- #
@@ -21,7 +22,7 @@ from molbuilder.siesta import SiestaConfig, render_fdf
 
 def _smiles_or_skip(smiles: str, **kw):
     try:
-        return molbuilder.build_from_smiles(smiles, **kw)
+        return build_from_smiles(smiles, **kw)
     except ImportError as e:
         pytest.skip(f"RDKit not installed: {e}")
 
@@ -53,7 +54,7 @@ def test_smiles_bdt_has_two_sulphurs():
 
 
 def test_render_fdf_dna_4mer():
-    dna = molbuilder.build_dna("ATGC")
+    dna = build_dna("ATGC")
     # 2026-05-27: system_name dropped from dataclass.  SystemName is
     # now driven by system_label (one job-name field).
     cfg = SiestaConfig(system_label="test_dna",

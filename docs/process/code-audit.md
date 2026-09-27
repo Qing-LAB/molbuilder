@@ -288,8 +288,11 @@ A7).
 
 Look for: each import a diff adds — absolute or relative, at the top of a
 module or inside a function — against the importing module's layer and the
-imported one's in § 3's index; a module the index does not list has no layer
-yet, and the diff that adds it says which.
+imported one's (§ 3's layer key: L1 is the index, L3 the two surfaces and
+`__main__`, every other module L2), and anything the package root
+(`molbuilder/__init__.py`) imports, which loads under every module and so may
+only be L1. A new module that is core goes into § 3's index in the diff that
+adds it; otherwise it is L2.
 
 ### 1c.2 How to report one
 

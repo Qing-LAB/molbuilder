@@ -80,7 +80,14 @@ Two habits make the reuse rule work:
 ## 3. Subsystem index (by layer)
 
 **Layer key.** **L1** core types (import nothing above them) · **L2** domain
-verbs (may import L1) · **L3** surfaces (cli / web; may import both). This is
+verbs (may import L1) · **L3** surfaces (cli / web; may import both).
+**Which is which is read, never judged:** L1 is exactly the index below; L3
+is `cli` and `web`, and `__main__`, the `python -m molbuilder` entry, which
+calls `cli`; every other module is L2. **The package root**
+(`molbuilder/__init__.py`) loads before every module inside it, so it imports
+only L1 — `structure` — and re-exports no builder: each caller imports the
+builder it uses from its own module *(the layer review, 2026-09-27: the root's
+re-exported peptide and nucleic builders loaded under every core module).* This is
 the load-bearing invariant — it is what stops the registry/abstraction tangle
 from growing back — and **review keeps it** (`process/code-audit.md` § 1c (e)),
 against the index below, *(user, 2026-09-27: "a static code review problem")*.

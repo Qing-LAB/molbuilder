@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import molbuilder
+from molbuilder.peptide import build_peptide
 from molbuilder.structure import Structure
 
 
@@ -51,7 +51,7 @@ def test_a_path_is_refused_and_the_door_is_named(tmp_path):
     `str(tmp_path / "pep.xyz")` is the one that used to slip through and
     produce *"Expected xyz header but got: invalid literal for int()"*.
     """
-    s = molbuilder.build_peptide("ARNDC")
+    s = build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
     p.write_text(s.to_xyz())
 
@@ -71,7 +71,7 @@ def test_a_path_is_refused_and_the_door_is_named(tmp_path):
 
 def test_the_text_the_file_holds_still_parses(tmp_path):
     """The reader did not get narrower about DOCUMENTS, only about paths."""
-    s = molbuilder.build_peptide("ARNDC")
+    s = build_peptide("ARNDC")
     p = tmp_path / "pep.xyz"
     p.write_text(s.to_xyz())
     s2 = Structure.from_xyz(p.read_text())
@@ -102,7 +102,7 @@ def test_from_xyz_short_atom_line_raises():
 def test_from_pdb_text():
     """A PDB written by molbuilder must round-trip without losing the
     residue-level metadata that the writer puts there."""
-    s = molbuilder.build_peptide("ARNDC")
+    s = build_peptide("ARNDC")
     pdb = s.to_pdb()
     s2 = Structure.from_pdb(pdb)
     assert s2.n_atoms == s.n_atoms
@@ -113,7 +113,7 @@ def test_from_pdb_text():
 
 
 def test_a_pdb_file_is_read_through_the_door(tmp_path):
-    s = molbuilder.build_peptide("ARNDC")
+    s = build_peptide("ARNDC")
     p = tmp_path / "pep.pdb"
     p.write_text(s.to_pdb())
     from molbuilder.workingcopy_structure import StructureCodec

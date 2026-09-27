@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder import build_dna, build_rna
+from molbuilder.nucleic import build_dna, build_rna
 from molbuilder.builders.backends import available_backends
 
 

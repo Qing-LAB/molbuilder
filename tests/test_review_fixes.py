@@ -187,8 +187,8 @@ def test_s7_pdb_residue_id_caps_at_9999():
 
 def test_t3_protonate_noop_on_peptide():
     pytest.importorskip("PeptideBuilder")
-    import molbuilder
-    s = molbuilder.build_peptide("AC", add_hydrogens=False)
+    from molbuilder.peptide import build_peptide
+    s = build_peptide("AC", add_hydrogens=False)
     assert "P" not in s.elements
     assert formal_charge_from_phosphates(s) == 0
     s2, n_added = protonate_phosphate_oxygens(s)

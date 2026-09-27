@@ -119,7 +119,7 @@ def test_polymer_orientation_normal_chain_no_warn():
     from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
-    from molbuilder import build_dna
+    from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")
     issues = validate(s, SiestaConfig())
     assert [i for i in issues if i.where == "polymer.orientation"] == []
@@ -137,7 +137,7 @@ def test_polymer_orientation_reversed_listing_warns():
     from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
-    from molbuilder import build_dna
+    from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")
     rid_max = max(s.residue_ids)
     rid_min = min(s.residue_ids)
@@ -162,7 +162,7 @@ def test_polymer_orientation_no_phosphorus_silent():
     """A peptide (no P, no O3') must not trigger the polymer-orientation
     check -- it's not a nucleic acid."""
     pytest.importorskip("PeptideBuilder")
-    from molbuilder import build_peptide
+    from molbuilder.peptide import build_peptide
     s = build_peptide("ARNDC")
     issues = validate(s, SiestaConfig())
     assert [i for i in issues if i.where == "polymer.orientation"] == []
@@ -177,7 +177,7 @@ def test_h_ratio_runs_after_layer2_protonation():
     from molbuilder.builders.backends import available_backends
     if not available_backends().get("threedna"):
         pytest.skip("threedna backend not installed")
-    from molbuilder import build_dna
+    from molbuilder.nucleic import build_dna
     s = build_dna("ATGC", backend="threedna")     # default: add_hydrogens=True
     issues = validate(s, SiestaConfig())
     h_ratio_warns = [i for i in issues if i.where == "geometry.h_ratio"]

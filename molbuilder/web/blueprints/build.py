@@ -75,10 +75,10 @@ from ._shared import (
     struct_from_body as _struct_from_body,
 )
 
-from molbuilder import (
-    build_dna, build_from_name, build_from_smiles,
-    build_peptide, build_rna,
-)
+from molbuilder.nucleic import build_dna, build_rna
+from molbuilder.peptide import build_peptide
+from molbuilder.pubchem import build_from_name
+from molbuilder.smiles import build_from_smiles
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.structure import Structure

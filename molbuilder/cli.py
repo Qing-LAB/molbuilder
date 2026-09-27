@@ -345,7 +345,7 @@ def _build_options(*, nucleic: bool):
 @_build_options(nucleic=False)
 def cmd_peptide(sequence, out, pdb, pyscf_atom_block, title):
     """Build a polypeptide from a 1-letter sequence (with [SEP] etc)."""
-    from molbuilder import build_peptide
+    from molbuilder.peptide import build_peptide
     s = build_peptide(sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
@@ -355,7 +355,7 @@ def cmd_peptide(sequence, out, pdb, pyscf_atom_block, title):
 def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build single-stranded DNA from a sequence."""
-    from molbuilder import build_dna
+    from molbuilder.nucleic import build_dna
     kwargs = dict(title=title, backend=backend, terminal=terminal,
                   protonate_phosphates=not no_protonate_phosphates)
     if form is not None:
@@ -369,7 +369,7 @@ def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
 def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
             backend, form, terminal, no_protonate_phosphates):
     """Build single-stranded RNA from a sequence."""
-    from molbuilder import build_rna
+    from molbuilder.nucleic import build_rna
     kwargs = dict(title=title, backend=backend, terminal=terminal,
                   protonate_phosphates=not no_protonate_phosphates)
     if form is not None:
@@ -382,7 +382,7 @@ def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
 @_build_options(nucleic=False)
 def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a SMILES string (needs rdkit)."""
-    from molbuilder import build_from_smiles
+    from molbuilder.smiles import build_from_smiles
     s = build_from_smiles(sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
@@ -391,7 +391,7 @@ def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
 @_build_options(nucleic=False)
 def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a common or IUPAC name (needs pubchempy)."""
-    from molbuilder import build_from_name
+    from molbuilder.pubchem import build_from_name
     s = build_from_name(sequence, title=title)
     _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 

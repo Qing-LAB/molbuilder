@@ -1,14 +1,17 @@
 """molbuilder -- build 3-D molecules from sequences / SMILES / names.
 
-Public API:
+Public API -- each builder from its own module:
 
-    >>> import molbuilder
-    >>> s = molbuilder.build_peptide("ARNDC")               # 1-letter
-    >>> s = molbuilder.build_peptide("AR[SEP]C")            # phospho-Ser
-    >>> s = molbuilder.build_dna("ATGCATGCAT")
-    >>> s = molbuilder.build_rna("AUGCAUGCAU")
-    >>> s = molbuilder.build_from_smiles("Sc1ccc(S)cc1")    # 1,4-BDT
-    >>> s = molbuilder.build_from_name("benzene")           # PubChem lookup
+    >>> from molbuilder.peptide import build_peptide
+    >>> s = build_peptide("ARNDC")                          # 1-letter
+    >>> s = build_peptide("AR[SEP]C")                       # phospho-Ser
+    >>> from molbuilder.nucleic import build_dna, build_rna
+    >>> s = build_dna("ATGCATGCAT")
+    >>> s = build_rna("AUGCAUGCAU")
+    >>> from molbuilder.smiles import build_from_smiles
+    >>> s = build_from_smiles("Sc1ccc(S)cc1")               # 1,4-BDT
+    >>> from molbuilder.pubchem import build_from_name
+    >>> s = build_from_name("benzene")                      # PubChem lookup
 
     # Load existing geometry from disk (auto-detects format):
     >>> from molbuilder.workingcopy_structure import StructureCodec
@@ -32,18 +35,18 @@ from pathlib import Path
 from typing import Union
 
 from .structure import Structure
-from .peptide import build_peptide
-from .nucleic import build_dna, build_rna
 
 __version__ = "1.1.0"
 
+#: THE BUILDERS ARE NOT RE-EXPORTED HERE.  Python loads this module before
+#: any module inside the package, so whatever it imports loads under every
+#: one of them: re-exporting the peptide and nucleic builders made
+#: `molbuilder.constants` -- which imports nothing -- load 9 molbuilder
+#: modules, and put the domain layer under every core module (the layer
+#: review, 2026-09-27; `architecture.md` § 3).  Each caller imports the
+#: builder it uses from its own module.
 __all__ = [
     "Structure",
-    "build_peptide",
-    "build_dna",
-    "build_rna",
-    "build_from_smiles",
-    "build_from_name",
     "__version__",
 ]
 
@@ -81,10 +84,10 @@ def repo_root() -> Path:
     falls back, so a caller that needs a file under it checks for that file.
 
     **Callers inside the import chain must import it lazily.**  ``__init__``
-    imports ``structure`` -> ... -> ``builders.backends._threedna`` and
-    ``projects``, so a module-level ``from molbuilder import repo_root`` in
-    any of those is a cycle.  Import it inside the function instead; modules
-    outside the chain (``references.py``) may import it at module level.
+    imports ``structure`` and nothing else, so a module-level
+    ``from molbuilder import repo_root`` in a module ``structure`` imports
+    would be a cycle.  Import it inside the function there; a module outside
+    that chain (``references.py``) may import it at module level.
     """
     return Path(__file__).resolve().parent.parent
 
@@ -107,20 +110,3 @@ def repo_root() -> Path:
 # which reads the pair, applies the sidecar through the one applier, and
 # refuses an extension it does not know.  A second name for it is what lets
 # the geometry and its sidecar drift apart.
-
-# --------------------------------------------------------------------- #
-#  Optional builders -- imported lazily so users without RDKit /        #
-#  PubChemPy don't pay the import cost.                                 #
-# --------------------------------------------------------------------- #
-
-
-def build_from_smiles(smiles: str, **kwargs):
-    """Build a Structure from a SMILES string (RDKit + ETKDG + MMFF)."""
-    from .smiles import build_from_smiles as _impl
-    return _impl(smiles, **kwargs)
-
-
-def build_from_name(name: str, **kwargs):
-    """Build a Structure from a common/IUPAC name (PubChem lookup + RDKit)."""
-    from .pubchem import build_from_name as _impl
-    return _impl(name, **kwargs)
