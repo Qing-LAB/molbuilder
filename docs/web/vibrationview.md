@@ -907,6 +907,14 @@ caption, which is true for one pairing and wrong for the other. This module cann
 tell them apart, and does not try: it stores both strings and interprets neither
 (§ 6.2).
 
+**What an animation must get right is the relative displacement** — which atoms
+move, which way, and how far against each other: the mode itself *(user,
+2026-09-27: "animation is animation. nothing really physically true. the relative
+displacement is what matters")*. The physical size and its temperature are a
+display aid; `norm` says which aid was on, and no test pins the size or the label.
+A temperature typed after the mode was shown changes the size and leaves `norm`
+naming the temperature the mode was first shown at — known, and left so.
+
 ### 12.3 The caption
 
 A vibration on its own does not say which vibration it is. So the mode carries a

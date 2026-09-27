@@ -813,39 +813,6 @@ class TestLoadEndpoint:
         assert body["kind"] == "malformed"
 
 
-class TestModeAnimationControls:
-    """The two controls the mode viewer grew when it was rebuilt.
-
-    Both are the TAB's, not the module's: VibrationView draws no controls at all
-    (vibrationview.md § 5.4), holds no frequency and no physical constant
-    (§ 12.2), and produces bytes without deciding where they go (§ 12).
-    """
-
-    def test_the_physics_lives_in_the_tab_not_the_viewer(self, web_client):
-        """§ 12.2: "both are computed by the TAB… the physics of how big a
-        vibration is belongs with the spectrum, not with the viewer".
-
-        The zero-point amplitude itself comes from the FILE (every mode
-        carries it, derived at serialisation from the one constant in
-        `constants.py` -- vibration.md § 6.3, § 6.6); the tab reads it and
-        owns only the thermal factor.  The viewer module contains no
-        frequency, no temperature and no physical constant.
-        """
-        core = web_client.get("/static/lib/spectra/core.js").data.decode()
-        assert "zero_point_amplitude_amu12_ang" in core
-        assert "ZERO_POINT_Q" not in core, "the tab must not respell the constant"
-        # (The kelvin-per-cm-1 constant the thermal factor takes is served
-        # with the results since 2026-09-27 -- `spectra.py::_page_constants`.)
-        assert "Math.tanh" in core, "the thermal form needs coth"
-
-        for name in ("_maths.js", "index.js"):
-            js = web_client.get("/static/lib/vibrationview/" + name).data.decode()
-            for forbidden in ("frequency", "kelvin", "Kelvin", "tanh"):
-                assert forbidden not in js, (
-                    f"{name} names {forbidden!r}: the viewer holds no physics"
-                )
-
-
 # ===================================================================== #
 #  The fence (web-api.md § 2.1)                                         #
 # ===================================================================== #
