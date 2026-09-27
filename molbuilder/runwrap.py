@@ -307,7 +307,6 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
         + f'--run "$_run_n" --util --cores "{cores}" '
         + ("--gpu " if gpu else "")
         + f'--interval "${{MB_MONITOR_INTERVAL:-10}}" '
-        f'--stall-heartbeat "${{MB_MONITOR_STALL_HEARTBEAT:-600}}" '
         + (f'--notify-on-scf ' if notify_on_scf else "")
         + (f'--notify-every-hours {notify_every_hours:g} '
            if notify_every_hours > 0 else "")
@@ -326,7 +325,7 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
         + f'--watch-pid $$ >/dev/null 2>&1 &\n'
         f'    _monitor_pid=$!\n'
         f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
-        f'${{MB_MONITOR_INTERVAL:-10}}s, quiet-when-stalled, util-sampling; '
+        f'${{MB_MONITOR_INTERVAL:-10}}s, util-sampling; '
         f'reads the run through the framework shipped beside it) -> the '
         f'run\'s .monitor.log + .util.csv"\n'
         f'else\n'

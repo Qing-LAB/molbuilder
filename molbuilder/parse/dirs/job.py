@@ -14,8 +14,12 @@ in the file:
 
 * **which file speaks for the directory** -- a folder holds one ``.out``
   per run index and one molwatch log per stage;
-* **staleness** -- no ending marker and no growth is a dead job, not a
-  slow one, and only the filesystem can tell those apart.
+* **whether it was launched**, before anything is written -- the
+  attempt's launch record answers (``launch``).
+
+A file with no ending is ``running`` -- not finished -- however long it
+has been quiet: nothing in it or beside it tells a slow step from a
+stopped one (user, 2026-09-26: *"It shows what it is"*).
 
 *(Until 2026-09-04 this module was a ``JobDirParser`` returning an
 eleven-field ``JobResult``: job type, system label, geometry, plots,
@@ -61,7 +65,7 @@ except ImportError:                         # beside a job, as the monitor's
 # decks' end lines -- and it is the scan the full parsers agree with
 # (`tests/test_run_ending_one_table.py`).  Nothing in this module greps an
 # output: it owns only the two questions no single file can answer (which
-# file speaks, and staleness).
+# file speaks, and whether it was launched).
 #
 # *(Those three lines used to end "(enforced by the engine parsers own
 # it)" -- two half-sentences spliced -- and cited
@@ -306,14 +310,14 @@ def _output_endings(paths: List[Path]) -> "Dict[str, _re.RunEnding]":
 #: ``pending`` and ``queued`` are the states before anything is written --
 #: never launched, and launched and silent -- which a caller holding the
 #: attempt's launch record gets (`run_status`'s ``launch``).
-RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running", "stale",
+RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
                                  "finished", "failed")
 
 
 @dataclass(frozen=True)
 class RunStatus:
-    """How a run directory is doing: the parser's verdict, plus the two
-    things no single file can answer.
+    """How a run directory is doing: the parser's verdict, plus what no
+    single file can answer.
 
     `state` is one of :data:`RUN_STATES`; `active_source` names the file that
     spoke for the directory (highest stage, newest mtime) and is `None` when
@@ -364,10 +368,10 @@ def run_status(run_dir, match: str = "*", *,
     written yet* before any output exists (`project-layout.md` § 1.6) --
     ``pending`` and ``queued`` -- and a caller that holds it passes it.
 
-    **The status IS the parser's answer**, plus the two things no parser
-    can know.  Every engine parser already reports how its file ended --
-    ``run_state`` on the result, ``model/parse.md`` § 2b -- so this asks
-    them and then settles the two questions a single file cannot:
+    **The status IS the parser's answer**, plus what no parser can know.
+    Every engine parser already reports how its file ended -- ``run_state``
+    on the result, ``model/parse.md`` § 2b -- so this asks them and then
+    settles what a single file cannot:
 
     * **which file speaks for the directory.**  A folder holds one
       ``.out`` per run index and one molwatch log per stage; a parser
@@ -379,12 +383,8 @@ def run_status(run_dir, match: str = "*", *,
       `Shape.stage_glob` and its comment says why -- but the call through to
       here passed no filter, so in the flat shape (one directory, every
       stage) a finished rung reported the newest rung's state.  Measured
-      2026-09-08: with a later stage's `.out` present a stale rung read
-      "running"; with that one file moved aside, "stale".
-    * **staleness.**  A file with no ending marker is honestly
-      "running" -- nothing IN it separates a slow DFT step from a job
-      the scheduler killed.  Only the filesystem can, so the age check
-      lives here (``_build_status``).
+      2026-09-08: with a later stage's `.out` present, a finished rung
+      read the later rung's "running".
 
     Callers wanted exactly this and had to take it out of an
     eleven-field summary: ``decode_run_dir`` answered ``status`` plus
@@ -404,15 +404,12 @@ def run_status(run_dir, match: str = "*", *,
     # rules was two hand-written functions until 2026-09-18, and the seed half
     # was the only one that said WHY.
     speaks = set(_rf.stdout_roles())
-    outputs = [p for role in _rf.run_output_roles() for p in files[role]]
     return replace(_build_status(
         [p for role in _rf.run_output_roles() for p in files[role]
          if role in speaks or states.get(p.name) in _re.CONCLUDED],
         states,
         _process_conclusion(run_dir, match),
-        # LIVENESS IS NOT THE SPEAKER, so it gets its own list: every
-        # run-output file, INCLUDING the progress log that may not speak.
-        fresh_paths=outputs, launch=launch), endings=endings)
+        launch=launch), endings=endings)
 
 
 
@@ -420,7 +417,6 @@ def run_status(run_dir, match: str = "*", *,
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
                   concluded: Optional[str] = None,
-                  fresh_paths: "List[Path]" = (),
                   launch: Any = _UNASKED,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
@@ -428,21 +424,14 @@ def _build_status(out_paths: List[Path],
     footer concludes (`runfiles.Artifact.output`, `model/parse.md` § 5.5) —
     and the run's PROCESS conclusion.
 
-    **Content first, process second, age last.**  An output that states how
-    it ended is the strongest evidence and keeps the answer it always gave.
-    The marker speaks where content is silent, which is exactly where the
-    age rule used to guess.
+    **Content first, process second.**  An output that states how it ended
+    is the strongest evidence and keeps the answer it always gave.  The
+    marker speaks where content is silent.  Where neither says anything the
+    run is ``running`` -- not finished -- however long it has been quiet
+    (`running-a-job.md` § 4.2).
 
-    ``out_paths`` are the files that may SPEAK; ``fresh_paths`` is every
-    run-output file and is what STALENESS is measured on.  They are two lists
-    because they answer two questions (§ 5.5, *liveness is not the speaker*):
-    an unconcluded progress log must not outrank a real result, and it is
-    also the only thing proving a block-buffered run alive.
-
-    ``last_change_at`` stays the SPEAKER's mtime, paired with
-    ``active_source`` beside it -- a timestamp taken from a file other than
-    the one named would be a third answer nobody asked for.  The age that
-    decided `stale` is reported in ``detail``.
+    ``out_paths`` are the files that may SPEAK; ``last_change_at`` is the
+    speaker's mtime, paired with ``active_source`` beside it.
     """
     if not out_paths:
         # No output at all: the marker is the whole answer.
@@ -477,27 +466,10 @@ def _build_status(out_paths: List[Path],
 
     state = "running"
     detail = "running"
-    # LIVENESS IS NOT THE SPEAKER (`model/parse.md` § 5.5).  Staleness is
-    # measured on the FRESHEST run-output file, which is not necessarily the
-    # one that speaks: the wrapper runs the engine with no `-u`, so its stdout
-    # is BLOCK-BUFFERED -- a real PySCF log grew 13 KB across 146 s, two
-    # flushes in the whole run -- while the progress log flushes per step and
-    # is deliberately NOT a speaker until its footer concludes.  Taking the
-    # speaker's mtime therefore reported a live run as dead.
-    #
-    # `run_status` is the only caller and always passes it; the empty default
-    # is not a fallback to the old rule but the degenerate case (no run output
-    # at all), which the `if not out_paths` branch above has already returned
-    # for.  A `None` default that quietly restored the pre-2026-09-18 rule
-    # stood here for four commits -- a shim for a caller that does not exist.
-    _fresh = fresh_paths or out_paths
-    age_s = max(0.0, _wall_now() - max(p.stat().st_mtime for p in _fresh))
-    # THIS LAYER SETTLES WHAT CONTENT CANNOT (`model/parse.md` § 2b).  The
-    # engine parser reports how the run ENDED from markers alone --
+    # The engine parser reports how the run ENDED from markers alone --
     # "running"|"ended"|"stopped"|"out_of_memory"|"unknown" -- and a file
-    # with no ending marker is honestly "running": nothing IN it can tell
-    # a slow DFT step from a job the scheduler killed.  Only the
-    # filesystem can, so the age check lives here and nowhere else.
+    # with no ending marker is honestly "running": not finished, however
+    # long it has been quiet (`running-a-job.md` § 4.2).
     #
     # Note what is NOT consulted: whether the SCF converged.  That is
     # P-S2's reported fact, carried beside this state for the reader to
@@ -510,15 +482,15 @@ def _build_status(out_paths: List[Path],
         state, detail = "failed", "stopped before its end -- see the .out"
     elif concluded is not None and concluded != _ENGINE_EXIT_MARKER:
         # Content is silent, the process is not: the run is over and the
-        # marker says how.  The age rule below only guesses `stale`.
+        # marker says how.
         #
         # THE ENGINE'S OWN MARKER IS EXCLUDED, because it cannot be
         # ATTRIBUTED.  A `.concluded` carries a label and a `-run<N>`, so
         # `_process_conclusion` can refuse a previous attempt's goodbye;
         # `0_NORMAL_EXIT` is a bare filename carrying neither, so a leftover
-        # from an earlier attempt promoted a silent, un-growing output to
-        # `finished` -- measured `stale` -> `finished` on a copy of
-        # `BDT-withAuJunction`, and back to `stale` with the marker removed.
+        # from an earlier attempt promoted a silent output to `finished` --
+        # measured on a copy of `BDT-withAuJunction`, and undone with the
+        # marker removed.
         # `_process_conclusion` already refuses it on the STAGE axis when
         # narrowed, for the same reason; this is the ATTEMPT axis.
         #
@@ -531,10 +503,6 @@ def _build_status(out_paths: List[Path],
             state, detail = "finished", f"concluded ({concluded})"
         else:
             state, detail = "failed", f"concluded ({concluded})"
-    elif age_s > 60.0:
-        # No marker, no growth, no goodbye: a killed job, and only the
-        # clock can say so.
-        state, detail = "stale", f"no file growth in {int(age_s)}s"
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),
@@ -542,8 +510,3 @@ def _build_status(out_paths: List[Path],
                      concluded=concluded)
 
 
-def _wall_now() -> float:
-    """Wall-clock now() in POSIX seconds.  Indirected so tests can
-    monkeypatch without touching time.time globally."""
-    import time
-    return time.time()

@@ -209,12 +209,10 @@ class Trajectory:
                        grade for the science.  Authoritative when the
                        writer emitted explicit markers (`# concluded:` /
                        `# error:` in .molwatch.log; `>> End of run` in
-                       SIESTA's .out).  Defaults to "running" when no
-                       marker is found -- content alone cannot tell a
-                       slow run from one that died quietly, so the
-                       DirParser settles that with file age.  Long
-                       iteration times (some DFT steps take hours) make
-                       any content-only stall heuristic unreliable.
+                       SIESTA's .out).  Defaults to "running" -- not
+                       finished -- when no marker is found: nothing
+                       tells a slow run from one that died quietly, and
+                       some DFT steps take hours.
       scf_converged -- P-S2: True | False | None (no SCF, or the format
                        cannot say).  A REPORTED FACT.  Nothing derives
                        `run_state` from it: not converging is normal and

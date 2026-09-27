@@ -281,9 +281,9 @@ closed:
 
 | value | means | evidence |
 |---|---|---|
-| `running` | still producing output | no ending marker (a `DirParser` confirms with file age — content alone cannot tell *running* from *died quietly*) |
+| `running` | not finished — no ending yet | no ending marker, however long the file has been quiet: nothing in it or beside it tells *running* from *died quietly* |
 | `ended` | the engine reached its own end | `>> End of run` — **that line only**. SIESTA prints `Job completed` beside it, and the corpus has no `.out` carrying one without the other, so a second marker would buy nothing and could fire on a line that merely mentions the phrase |
-| `stopped` | it did not reach its end | an abort marker, or no ending marker and no growth |
+| `stopped` | it did not reach its end | an abort marker |
 | `out_of_memory` | the kernel or scheduler killed it for memory | an OOM marker |
 | `unknown` | no evidence either way | unreadable, empty, or a format with no markers |
 
@@ -890,14 +890,6 @@ PySCF's failure shapes are its own (`SystemExit` at `pyscf/input.py:378`, a
 traceback); SIESTA's `FATAL_MARKERS` are **not** shared — measured over 135
 real output files, its five OOM markers fire 0 times and the three that do
 fire are SIESTA's alone.
-
-#### Liveness is not the speaker
-
-`active` is § 5.1's pick — highest stage, newest mtime, concluded results
-only. **Staleness is measured on the FRESHEST run-output file**, because an
-engine's stdout is block-buffered: a real PySCF log grew 13 KB across 146 s,
-two flushes in the whole run. Asking the speaker's mtime reports a live run
-as stale.
 
 #### The rules
 

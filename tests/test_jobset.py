@@ -1084,8 +1084,7 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
     at the gate and never reached here.
 
     MEASURED 2026-09-08 on a built fixture: with the later rung's `.out`
-    present a finished, day-old rung read ('running', 'running'); with that one
-    file moved aside and nothing else changed, ('stale', ...).
+    present a finished, day-old rung read ('running', 'running').
     """
     from molbuilder.parse.dirs.job import run_status
     old = tmp_path / "bdt_01_coarse-run0.out"
@@ -1557,7 +1556,7 @@ def test_status_reads_the_attempt_because_that_is_where_the_run_happened(tmp_pat
     # verdicts.  `!= "pending"` would also pass for "unknown", which is what
     # this reports when the decoder THROWS -- a broken decoder would look like
     # a working fix.
-    assert st.state in ("running", "finished", "failed", "stale")
+    assert st.state in ("running", "finished", "failed")
     assert "not launched" not in st.detail
 
 
@@ -2909,20 +2908,19 @@ def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
     _describe(tmp_path, "flat")
     old = tmp_path / "JOB_01_coarse-run0.out"
     new_ = tmp_path / "JOB_03_tight-run0.out"
-    old.write_text("Job completed\n")
-    new_.write_text("still going, no end marker\n")
+    old.write_text("Siesta Version: 5.4.2\nsiesta: iscf\n>> End of run:  1-JAN-2026\n")
+    new_.write_text("Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n")
     past = _time.time() - 86400
     os.utime(old, (past, past))
     for a in (tmp_path / "run.json",):
         a.write_text('{"mode": "direct"}')
 
     by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
-    assert by_name["coarse"].detail != by_name["tight"].detail, (
-        "both rungs reported the same state -- the newest file spoke for the "
-        "whole directory, which is the flat-shape bug this narrows")
-    assert "86" in by_name["coarse"].detail, (
-        f"coarse should report its OWN day-old file, got "
-        f"{by_name['coarse'].detail!r}")
+    assert (by_name["coarse"].state, by_name["tight"].state) == (
+        "finished", "running"), (
+        "the rungs did not each report their own file -- the newest one spoke "
+        "for the whole directory, which is the flat-shape bug this narrows: "
+        f"{by_name['coarse']} / {by_name['tight']}")
 
 
 def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_path):

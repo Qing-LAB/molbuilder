@@ -56,7 +56,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * tab.  The badge said Stopped the whole time, so it looked fine.
      *
      * NOT to be confused with the STATUS envelope's state
-     * ("running"|"stale"|"failed"|"finished", parse/dirs/job.py::_build_status),
+     * ("pending"|"queued"|"running"|"failed"|"finished", parse/dirs/job.py),
      * which is a different field for a different consumer (jobset/runstatus).
      * "failed" is not a run_state and never reaches this file. */
     const RUN_STATE = Object.freeze({

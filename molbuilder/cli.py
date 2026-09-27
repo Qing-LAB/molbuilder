@@ -1213,11 +1213,6 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
                    "the denominator of cpu% for a run started directly")
 @click.option("--gpu/--no-gpu", default=False,
               help="the run uses a GPU: sample and judge it")
-@click.option("--stall-heartbeat", "stall_heartbeat_s",
-              type=click.FloatRange(min=0.0), default=600.0, show_default=True,
-              help="while the job makes no SCF/geometry progress, emit at "
-                   "most one liveness ping this often (no per-iter timing "
-                   "is printed while stalled); 0 = silence it entirely")
 @click.option("--watch-pid", type=int, default=0,
               help="stop when this PID (the job wrapper) disappears")
 @click.option("--nice", "nice_level", type=int, default=19, show_default=True,
@@ -1226,7 +1221,6 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
 def cmd_monitor(label: str, stage: Optional[str], run_index: Optional[int],
                 directory: Path, interval: float, util: bool,
                 cores: Optional[int], gpu: bool,
-                stall_heartbeat_s: float,
                 watch_pid: int, nice_level: int) -> int:
     """Watch a run the way the shipped ``mb_monitor.pyz`` does: read it
     through the framework's own readers, append a status line to its
@@ -1250,8 +1244,7 @@ def cmd_monitor(label: str, stage: Optional[str], run_index: Optional[int],
                               directory=directory)
     _mon.register_notifier(_mon.make_log_notifier(watched.path(".monitor.log")))
     _mon.run_monitor(watched, interval=interval, watch_pid=watch_pid,
-                     stall_heartbeat_s=stall_heartbeat_s, util=util,
-                     cores=cores, gpu=gpu)
+                     util=util, cores=cores, gpu=gpu)
     return 0
 
 

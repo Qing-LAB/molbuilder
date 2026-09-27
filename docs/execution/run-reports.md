@@ -67,20 +67,27 @@ it is the same one that lets a queue name into a description while keeping
 
 ## 2. When it speaks
 
-Three occasions. They are **not** a choice between: the two settable ones
-combine with OR, and the third is not settable at all.
+Four occasions. They are **not** a choice between: the two settable ones
+combine with OR, and the start and the end are not settable at all.
 
 | occasion | set by | fires |
 |---|---|---|
 | an SCF cycle converged | `notify.on_scf_converged` | once per finished step — a relaxation's move, a force-constant run's displacement — or once per wake that finds several finished; a single point states no step, and its finish message is the whole report |
-| every N hours | `notify.every_hours` | N is a **number of hours**, not a duration string |
+| every N hours | `notify.every_hours` | N is a **number of hours**, not a duration string; each says where the run is — the step, the SCF iteration, the energy, each residual against its criterion — as last read |
+| **it started** | nothing — always on | once, when the monitor starts watching the run |
 | **it ended** | nothing — always on | when the watched PID goes, or the wrapper stops the monitor at the job's end (SIGTERM, which a scheduler's walltime or cancel reads the same as), however the run went. A warm retry is not an ending: the wrapper re-runs the attempt in the same PID, stops this run's monitor with SIGUSR1, and the next run's monitor reports on |
-| **it stalled** | nothing — always on | no progress for `stall_heartbeat_s`, throttled to one per window |
 
-**Nothing is reported before an SCF converges.** A half-finished cycle is not
-news; the iteration count and running energy are already in the monitor log and
-on the Watch tab. The exception is trouble — an abort, a scheduler timeout, a
-stall — which is worth saying whenever it happens, whatever the policy says.
+**Between the start and the end, nothing is reported before an SCF
+converges.** A half-finished cycle is not news; the iteration count and running
+energy are already in the monitor log and on the Watch tab. Trouble — an abort,
+a scheduler timeout — ends the run, and the end always reports.
+
+**The monitor judges no stall** *(user, 2026-09-26: "No stalling")*. A step can
+take hours, and nothing in the output tells a slow one from a stuck one; how the
+run uses what it holds is in the utilisation record, for the person to read.
+*(A `[STALL]` line after ten minutes without progress came in on 2026-06-27 and
+went to every channel from 2026-08-26 — set off by healthy runs: BDT-Au111's SCF
+went quiet for over ten minutes 26 times. Removed 2026-09-26.)*
 
 **Ending is not settable** because switching it off is the one thing nobody
 wants: a run that finishes at 3am saying so is the reason the hook exists.
@@ -185,12 +192,12 @@ PySCF's alike, and tells it which run it watches — the label, the stage, the
 run index — never a path: it names every file through `runfiles`.
 
 **Its words are the framework's.** `state` is `running` while the watched PID
-lives; at the end it is `run_status`'s — `finished`, `failed`, `stale` — with
-its `detail`. One case needs the monitor's own fact: a job the scheduler or a
-signal killed leaves no ending in its output and no `.concluded`, and at that
-moment `run_status` still reads *running*, its sixty-second age rule not yet
-run out. The monitor saw the PID go, so it reports `run_status`'s own word for
-that condition — `stale`, *no marker, no growth, no goodbye* — and says why. The summary line (`text`, the one every channel shows) states
+lives; at the end it is `run_status`'s — `finished` or `failed` — with its
+`detail`. One case needs the monitor's own fact: a job the scheduler or a
+signal killed leaves no ending in its output and no `.concluded`, which
+`run_status` reads as *running* — not finished. The monitor saw the PID go, so
+it says `failed`, *stopped before its end*, as `run_status` says of an output
+that records its own stop — and says why. The summary line (`text`, the one every channel shows) states
 the live reading: phase, iteration, energy, residuals against their criteria,
 the charge, the step, the force against its tolerance — and at the end each
 SCF phase's convergence and, for a relaxation, whether its **geometry** relaxed

@@ -74,14 +74,11 @@ Design notes:
   end the sampling early (`job-contracts.md`, the monitor's section).
 - The seconds per iteration are the timing instrument's, one phase at a
   time (`scf_timing_metrics`, `model/parse.md` § 5c) -- SIESTA's own
-  per-scf time is not trusted.  They are reported ONLY while the job is
-  progressing: a stalled job's figure describes iterations that are no
-  longer happening, so it is suppressed (§ 11.0c).
-- **Quiet when stalled** -- the loop wakes often (default 10 s) but logs
-  a ``[STATUS]`` line only when the SCF iteration count / geometry move /
-  energy / state actually changed.  A persistent stall emits at most one
-  throttled ``[STALL]`` heartbeat per ``--stall-heartbeat`` window
-  instead of flushing a (misleading) timing line every wake.
+  per-scf time is not trusted.
+- **It judges no stall** (`run-reports.md` § 2): a step can take hours, and
+  nothing in the output tells a slow one from a stuck one.  The loop wakes
+  often (default 10 s) but logs a ``[STATUS]`` line only when the SCF
+  iteration count / geometry move / energy / state changed.
 """
 
 from __future__ import annotations
@@ -179,11 +176,6 @@ class JobStatus:
     #: that relaxes nothing.
     relaxed: Optional[bool] = None
     exit: Optional[str] = None
-    progressing: bool = True         # did the run advance since the
-                                     # previous tick?  Set by run_monitor.
-                                     # When False the per-iter estimate is
-                                     # suppressed -- a stalled rate is not
-                                     # a rate (§ 11.0c).
 
     def as_text(self) -> str:
         """The summary line every channel shows: the state, then where the
@@ -210,7 +202,7 @@ class JobStatus:
                            if self.max_force_tol is not None else ""))
         if self.geom_step is not None:
             bits.append(f"{self.step_kind or 'step'} {self.geom_step}")
-        if self.per_iter_s is not None and self.progressing:
+        if self.per_iter_s is not None:
             bits.append(f"{self.per_iter_s:.2f} s/iter")
         if self.converged:
             bits.append("converged: " + ", ".join(
@@ -346,10 +338,9 @@ class WatchedRun:
         st = JobStatus(elapsed_s=max(0.0, now_epoch - start_epoch))
         files = self.files()
         # EVERY CHANNEL THAT STATES WHERE THE RUN IS, and the freshest of
-        # them speaks -- the rule `run_status` measures liveness by.  A
-        # channel that states nothing is not a candidate: a SIESTA run's
-        # progress log is the prep's seed, whose mtime says nothing about the
-        # run (a copied tree reorders it).
+        # them speaks.  A channel that states nothing is not a candidate: a
+        # SIESTA run's progress log is the prep's seed, whose mtime says
+        # nothing about the run (a copied tree reorders it).
         heard = []
         for role, path in files.items():
             make = LIVE_READERS.get(role)
@@ -406,11 +397,11 @@ class WatchedRun:
         st.state, st.detail = rs.state, rs.detail
         if rs.state == "running":
             # The PID is gone and nothing says how: no ending in the output,
-            # no `.concluded` -- `run_status`'s own `stale`, which its age
-            # rule would reach in a minute (§ 2.3).
-            st.state = "stale"
-            st.detail = ("the job's process ended with no ending in its "
-                         "output and no exit recorded")
+            # no `.concluded` -- stopped before its end, which `run_status`
+            # calls `failed` when the output records the stop itself (§ 2.3).
+            st.state = "failed"
+            st.detail = ("stopped before its end: no ending in its output "
+                         "and no exit recorded")
         ending = rs.endings.get(rs.active_source) if rs.active_source else None
         if ending is not None and ending.phases:
             st.converged = dict(ending.phases)
@@ -1039,7 +1030,8 @@ def _util_csv_row(s: UtilSample, ngpu: int) -> str:
 # --------------------------------------------------------------------- #
 
 # A notifier is ``fn(status, event)`` where ``event`` is one of
-# "start" | "tick" | "finish".  Register as many as you like; they are
+# "start" | "scf_converged" | "periodic" | "finish" (`run-reports.md` § 2).
+# Register as many as you like; they are
 # called in registration order and individually guarded (one failing
 # hook never breaks the loop or the other hooks).
 Notifier = Callable[[JobStatus, str], None]
@@ -1325,7 +1317,6 @@ USER_AGENT = "molbuilder (https://github.com/qqing/molbuilder, 1.0)"
 _STATE_COLOR = {
     "finished": 0x2ECC71,   # green
     "failed":   0xE74C3C,   # red
-    "stale":    0xE67E22,   # orange -- ended with nothing saying how
     "running":  0x3498DB,   # blue
     "test":     0x95A5A6,   # grey
 }
@@ -1846,7 +1837,6 @@ def run_monitor(watched: "WatchedRun", *,
                 watch_pid: int = 0,
                 start_epoch: Optional[float] = None,
                 max_ticks: Optional[int] = None,
-                stall_heartbeat_s: float = 600.0,
                 util: bool = False,
                 cores: Optional[int] = None,
                 gpu: bool = False,
@@ -1877,16 +1867,11 @@ def run_monitor(watched: "WatchedRun", *,
     2026-08-26 they were the same thing: a webhook configured against this
     fired on every changed sample, which for a running job is every wake.
 
-    Wakes every ``interval`` seconds (short, so progress is reported
-    promptly) but is QUIET when nothing changed (§ 11.0c): a ``[STATUS]``
-    line fires only when the job actually advanced
-    (SCF iteration or geometry move) or its energy/state changed.  A
-    long stall emits at most one throttled ``[STALL]`` heartbeat every
-    ``stall_heartbeat_s`` seconds -- with NO per-iteration figure, which
-    describes iterations that are no longer happening.  This keeps a
-    stalled job from flushing a misleading timing line on every wake.  Set
-    ``stall_heartbeat_s <= 0`` to silence the stall heartbeat entirely
-    (the log then goes quiet until the job next progresses or ends).
+    Wakes every ``interval`` seconds but is QUIET when nothing changed: a
+    ``[STATUS]`` line is written only when the job advanced (SCF iteration
+    or geometry move) or its energy/state changed.  **It judges no stall**
+    (`run-reports.md` § 2): a step can take hours, and nothing in the output
+    tells a slow one from a stuck one.
     """
     log = watched.path(".monitor.log")
     util_path: Optional[Path] = watched.path(".util.csv") if util else None
@@ -1954,13 +1939,6 @@ def run_monitor(watched: "WatchedRun", *,
             util_last_log = now
 
     prev = st0
-    last_emit = start          # wall time of the last [STATUS]/[STALL] line
-    # A RUN IS JUDGED STALLED ONLY ONCE IT HAS BEEN SEEN MOVING.  A PySCF
-    # spectrum deck's progress log holds its preview and nothing more, so a
-    # run that never states progress read as stalled every heartbeat and
-    # told every channel so, for its whole length (found 2026-09-26).
-    seen_moving = any(v is not None
-                      for v in (st0.cycle, st0.geom_step, st0.energy))
     ticks = 0
     while True:
         sleep(interval)
@@ -1981,14 +1959,7 @@ def run_monitor(watched: "WatchedRun", *,
             # PID has said it is over (`run-reports.md` § 2.2-2.3).
             st = watched.conclude(st)
 
-        st.progressing = _progressed(st, prev)
-        seen_moving = seen_moving or st.progressing
-
         if not alive:
-            # Terminal: the timing instrument's figure over the whole run IS
-            # the run's average, so report it (force-show even though this
-            # last tick added no new iteration).
-            st.progressing = True
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
             if util_path is not None:
                 _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
@@ -2015,31 +1986,9 @@ def run_monitor(watched: "WatchedRun", *,
             _fire(st, "finish")
             return st
 
-        if not st.progressing:
-            # (1) No rate while LIVE + stalled: the figure describes
-            # iterations that are no longer happening (§ 11.0c).
-            st.per_iter_s = None
-
-        changed = (st.progressing
-                   or st.energy != prev.energy
-                   or st.state != prev.state)
-        if changed:
+        if (_progressed(st, prev) or st.energy != prev.energy
+                or st.state != prev.state):
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
-            last_emit = now
-        elif (seen_moving and stall_heartbeat_s > 0
-              and now - last_emit >= stall_heartbeat_s):
-            # (2) Throttled liveness ping only -- no iteration-time message.
-            _append(log, f"[{_iso(now)}] [STALL] no SCF/geometry progress "
-                         f"for {now - last_emit:.0f}s; state={st.state} "
-                         f"scf_iters={st.n_iters} "
-                         f"(alive={alive})")
-            # A stall IS worth telling someone about, whatever the policy
-            # says: it is the "something special" case -- a job that has
-            # stopped moving but not stopped running.  Already throttled to
-            # one per `stall_heartbeat_s`, so it cannot become noise.
-            _fire(st, "stall")
-            last_notify = now
-            last_emit = now
 
         # --- the two settable triggers (§ 2.9) ---------------------------
         #
@@ -2252,13 +2201,6 @@ def main(argv=None) -> int:
                    help="seconds between wakes (default 10; this is the "
                         "utilization sample rate -- status lines stay "
                         "change-gated, so a fast rate does not spam)")
-    p.add_argument("--stall-heartbeat", type=float, default=600.0,
-                   dest="stall_heartbeat_s",
-                   help="when the job is making no SCF/geometry progress, "
-                        "emit at most one liveness ping this often "
-                        "(seconds, default 600); no per-iter timing is "
-                        "printed while stalled.  Use 0 to silence the "
-                        "stall heartbeat entirely")
     p.add_argument("--util", action="store_true", dest="util",
                    help="append change-gated cpu%%/mem/GPU-sm%%/VRAM samples "
                         "to the run's .util.csv")
@@ -2322,7 +2264,6 @@ def main(argv=None) -> int:
     run_monitor(watched,
                 interval=a.interval, watch_pid=a.watch_pid,
                 sleep=_sleep_until_stopped,
-                stall_heartbeat_s=a.stall_heartbeat_s,
                 util=a.util, cores=a.cores, gpu=a.gpu,
                 util_keepalive_s=a.util_keepalive_s,
                 notify=NotifyPolicy(

@@ -107,15 +107,6 @@ class TestTheStatusUsesIt:
                           "bdt-run0__concluded": "rc=1 at Fri Sep 11"})
         assert run_status(tmp_path).state == "failed"
 
-    def test_no_marker_and_no_growth_is_still_stale_not_failed(self, tmp_path):
-        """The age rule survives: a killed job leaves no goodbye, and only
-        the clock can say so."""
-        import os, time
-        _dir(tmp_path, **{"bdt__fdf": "x", "bdt-run0__out": RUNNING_OUT})
-        old = time.time() - 3600
-        os.utime(tmp_path / "bdt-run0.out", (old, old))
-        assert run_status(tmp_path).state == "stale"
-
 
 class TestTheEnginesOwnMarkerCountsForACitation:
     """SIESTA writes `0_NORMAL_EXIT` as its last act on a clean exit, so a
@@ -164,14 +155,10 @@ class TestTheEngineMarkerMayNotDecide:
 
     def test_a_leftover_marker_does_not_promote_a_silent_output(self,
                                                                 tmp_path):
-        import os
-        import time
         _dir(tmp_path, **{"bdt__fdf": "x", "bdt-run0__out": RUNNING_OUT,
                           "0_NORMAL_EXIT": ""})
-        old = time.time() - 3600
-        os.utime(tmp_path / "bdt-run0.out", (old, old))
         st = run_status(tmp_path)
-        assert st.state == "stale", (
+        assert st.state == "running", (
             "a marker that cannot be attributed to an attempt decided the "
             f"state anyway: {st}")
         assert st.concluded == "0_NORMAL_EXIT", (

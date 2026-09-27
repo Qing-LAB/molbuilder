@@ -1118,7 +1118,7 @@ Every job also carries **`mb_monitor.pyz`** — the monitor with the framework
 readers it reads the run through, one file, written beside the wrapper and
 brought into every attempt (`run-reports.md` § 2.3): its wrapper launches it in
 the background to report the run's state and sample CPU/GPU utilisation into a
-`.util.csv` while the stage runs, so an under-utilised or stalled stage is
+`.util.csv` while the stage runs, so how the stage uses what it holds is
 visible without waiting for it to finish.
 
 > **What you cannot do is checkpoint one stage on its own**, and that is a

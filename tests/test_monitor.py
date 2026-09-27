@@ -130,19 +130,20 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(tmp_path):
     assert "job ended" in (run / "H2_01_relax-run0.monitor.log").read_text()
 
 
-def test_a_killed_job_is_stale_not_running(tmp_path):
+def test_a_killed_job_is_failed_stopped_before_its_end(tmp_path):
     """The one case the monitor's own fact settles (§ 2.3): the PID is gone,
     the output records no ending and the process no goodbye -- a kill.
-    `run_status` still reads *running* for a minute, until its age rule runs
-    out; the monitor, which saw the PID go, says `run_status`'s own `stale`
-    and why.  The run is the H2 relaxation cut mid-step with its `.concluded`
-    taken away, which is what a walltime leaves."""
+    `run_status` reads *running* -- not finished; the monitor, which saw the
+    PID go, says `failed`, stopped before its end, and why.  The run is the
+    H2 relaxation cut mid-step with its `.concluded` taken away, which is
+    what a walltime leaves."""
     run, watched, _grow = _replay(tmp_path, upto=476)
     (run / "H2_01_relax-run0.concluded").unlink()
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
-    assert final.state == "stale", final.as_text()
+    assert final.state == "failed", final.as_text()
+    assert "stopped before its end" in final.detail, final.detail
     assert "no exit recorded" in final.detail
 
 
@@ -175,68 +176,20 @@ def test_each_advance_is_a_status_line_stating_where_the_run_is(tmp_path):
     assert "max force 0.2546 eV/Ang (tol 0.01)" in lines[-1], lines[-1]
 
 
-def test_a_stalled_run_is_quiet_inside_its_window(tmp_path):
-    """A live run that does not advance must not flush a line every wake,
-    and inside its heartbeat window says nothing at all."""
+def test_a_run_that_does_not_advance_writes_and_sends_nothing(tmp_path):
+    """A live run that does not advance -- for over an hour here, as a heavy
+    SCF step does -- adds no status line and tells no channel anything: the
+    monitor judges no stall (`run-reports.md` § 2)."""
     run, watched, _grow = _replay(tmp_path, upto=400)
     seen = []
     monitor.register_notifier(lambda st, ev: seen.append(ev))
     monitor.run_monitor(watched, interval=1, watch_pid=0,
                         sleep=lambda s: None, max_ticks=4,
-                        stall_heartbeat_s=1000.0,
-                        clock=_fake_clock([0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0]))
+                        clock=_fake_clock([0.0, 0.0, 0.0, 1200.0, 2400.0,
+                                           3600.0, 4800.0]))
     text = (run / "H2_01_relax-run0.monitor.log").read_text()
-    assert "[STATUS]" not in text and "[STALL]" not in text
+    assert "[STATUS]" not in text, text
     assert [e for e in seen if e not in ("start", "finish")] == [], seen
-
-
-def test_the_stall_ping_is_throttled_and_carries_no_rate(tmp_path):
-    """A long stall emits at most one [STALL] per window, with no seconds per
-    iteration in it -- a stalled rate is not a rate (§ 11.0c)."""
-    run, watched, _grow = _replay(tmp_path, upto=400)
-    monitor.run_monitor(watched, interval=1, watch_pid=0,
-                        sleep=lambda s: None, max_ticks=3,
-                        stall_heartbeat_s=5.0,
-                        # ticks at 3 (<5), 6 (>=5 -> STALL), 9 (<5 since).
-                        clock=_fake_clock([0.0, 0.0, 0.0, 3.0, 6.0, 9.0]))
-    text = (run / "H2_01_relax-run0.monitor.log").read_text()
-    stalls = [ln for ln in text.splitlines() if "[STALL]" in ln]
-    assert len(stalls) == 1, stalls
-    assert "s/iter" not in stalls[0] and "[STATUS]" not in text
-
-
-def test_a_run_never_seen_moving_is_never_called_stalled(tmp_path):
-    """A stall is a run that STOPPED moving (`run-reports.md` § 2): one whose
-    files have stated no position yet -- the head of the real H2 output,
-    before its first step or SCF row, as a large system's setup looks for
-    hours; a PySCF Hessian's progress log, which holds its preview and no
-    more -- cannot be called stalled, and must not tell every channel so
-    every heartbeat, as it did until 2026-09-26.
-
-    MUTATION THIS MUST FAIL AGAINST: judge a stall without having seen the
-    run move."""
-    run, watched, _grow = _replay(tmp_path, upto=100)
-    seen = []
-    monitor.register_notifier(lambda st, ev: seen.append(ev))
-    monitor.run_monitor(watched, interval=1, watch_pid=0,
-                        sleep=lambda s: None, max_ticks=4,
-                        stall_heartbeat_s=5.0,
-                        clock=_fake_clock([0.0, 0.0, 0.0, 6.0, 12.0, 18.0,
-                                           24.0]))
-    text = (run / "H2_01_relax-run0.monitor.log").read_text()
-    assert "[STALL]" not in text, text
-    assert "stall" not in seen, seen
-
-
-def test_a_zero_heartbeat_is_silent(tmp_path):
-    run, watched, _grow = _replay(tmp_path, upto=400)
-    monitor.run_monitor(watched, interval=1, watch_pid=0,
-                        sleep=lambda s: None, max_ticks=5,
-                        stall_heartbeat_s=0.0,
-                        clock=_fake_clock([0.0, 0.0, 0.0, 100.0, 200.0,
-                                           300.0, 400.0, 500.0]))
-    text = (run / "H2_01_relax-run0.monitor.log").read_text()
-    assert "[STALL]" not in text and "[STATUS]" not in text
 
 
 def test_util_sampling_is_change_gated_and_summarised(tmp_path):

@@ -187,21 +187,6 @@ def test_a_step_and_a_period_on_one_wake_is_one_message(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  the exceptional case                                                  #
-# --------------------------------------------------------------------- #
-
-def test_a_stall_reports_whatever_the_policy_says(tmp_path):
-    """A job that has stopped moving but not stopped running is the
-    "something special" case -- worth saying even when the user asked for
-    nothing.  Already throttled to one per stall_heartbeat_s, so it cannot
-    become the noise this file exists to remove."""
-    seen = _events(tmp_path, watch_pid=0, max_ticks=3,
-                   stall_heartbeat_s=10,
-                   clock=_clock([0.0, 100.0, 200.0, 300.0]))
-    assert "stall" in seen, seen
-
-
-# --------------------------------------------------------------------- #
 #  the destination -- the user's file, never the description              #
 # --------------------------------------------------------------------- #
 

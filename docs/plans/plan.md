@@ -3925,9 +3925,7 @@ And the same day, after P1 and its review:
    sampled, a deck name the catalogue cannot read back is said in the log
    instead of killing the monitor at start. Each parser states its own
    residuals; a PySCF step's SCF iteration and ΔE, |g|, ddm reach the report;
-   `n_iters` unstated is absent, not 0; a run is judged stalled only once seen
-   moving (a PySCF Hessian's preview-only log told every channel "stalled"
-   every ten minutes); every finished step is an SCF-converged message, a
+   `n_iters` unstated is absent, not 0; every finished step is an SCF-converged message, a
    PySCF relaxation's first included; the seconds per iteration exclude a
    relaxation's step boundaries (0.84 → 0.58 s on a real H2 run); the
    process-tree reading takes no rate from a read a reaped rank crossed.
@@ -4014,12 +4012,19 @@ And the same day, after P1 and its review:
   never-launched attempt `pending` and a launched, silent one `queued`, from
   its `run.json` (`run_status`'s `launch`) — the rule the jobset layer kept
   above the door, which answered the same attempt "running".
-* **Open, for the user**: the stall window is NOT a Task-setup setting — a
-  fixed 600 s, changed only by `MB_MONITOR_STALL_HEARTBEAT` at launch — and a
-  run whose iterations or steps take longer is reported stalled while it
-  works (BDT-Au111's timing log has 26 gaps over 600 s). Proposed: a
-  `notify` field on the Task-setup card, the person's to set, like
-  `every_hours`.
+* **Decided (user, 2026-09-26)** — *"Starting and finishing message is okay.
+  No stalling"*, and the SCF-convergence messages are by design: a run tells
+  its channels when it starts, on each converged SCF and every N hours as
+  ticked, and when it ends; the monitor judges no stall — no `[STALL]` line,
+  no stall message, no `--stall-heartbeat`, no rate hidden as "stalled"
+  (`run-reports.md` § 2). The stall ping came in on 2026-06-27 (`01ba00d5`)
+  and went to every channel from 2026-08-26 (`958d46d2`).
+* **Decided (user, 2026-09-26)** — *"It shows what it is. Not finished, error,
+  or finish"*: `run_status` has no `stale` state and no age rule — a file with
+  no ending is `running`, not finished, however long it is quiet
+  (`running-a-job.md` § 4.2). The monitor, which sees the PID go, says a run
+  with no ending and no exit recorded `failed`, stopped before its end.
+  `stale` came in on 2026-06-19 (`d620b1da`).
 * **Open**: a PySCF progress log states its SCF tolerance in Hartree beside
   values in eV, so the monitor shows PySCF's ΔE with no tolerance.
 * The runaway symptom (§ 5d.6) cannot be "|ts-Vha| exceeds 1 eV": the

@@ -131,91 +131,23 @@ def test_a_seed_molwatch_log_is_a_live_view_not_a_result(tmp_path):
 #  The state nothing asserted
 # ---------------------------------------------------------------------------
 
-def test_a_dead_run_goes_stale_rather_than_running_for_ever(tmp_path):
-    """No ending marker and no growth is a dead job, not a live one.
-
-    `run_status`'s docstring names staleness as one of the two reasons
-    the module exists -- *"Only the filesystem can [tell], so the age
-    check lives here and nowhere else"* -- and NOTHING in the tree
-    asserted it.  The two places that mention the state both spell
-    `assert state in ("running", "stale", "finished", "failed")`, which
-    is membership in the set of every possible answer and is therefore
-    free: it passes whatever the code returns.
-
-    Measured 2026-09-05: deleting the whole `elif age_s > 60.0` branch
-    left **368 tests passing**.  The user-visible consequence is a job
-    the scheduler killed -- no marker written, no further writes --
-    reporting `running` on the Results tab and in `jobset status`
-    for ever, which is precisely the 2026-07-27 regression the
-    `failed` test above was written for, in the neighbouring branch.
-    """
+def test_an_output_with_no_ending_is_running_however_long_it_is_quiet(tmp_path):
+    """No ending marker is *running* -- not finished -- and an hour without a
+    write changes nothing (`running-a-job.md` § 4.2): a healthy SIESTA SCF
+    step goes quiet for over twelve minutes, and nothing in the file or
+    beside it tells a slow run from a stopped one (user, 2026-09-26: *"It
+    shows what it is.  Not finished, error, or finish."*)."""
     import os
+    import time
 
     (tmp_path / "dead.fdf").write_text("SystemLabel dead\n")
     out = tmp_path / "dead.out"
     # Started, never finished: no ">> End of run", no fatal marker.
     out.write_text("Siesta Version: 5.4.2\nsiesta: iscf   Eharris\nscf:  1  -100.0\n")
-
-    old = _wall_now_for_test() - 3600.0        # an hour with no write
+    old = time.time() - 3600.0                   # an hour with no write
     os.utime(out, (old, old))
-
     s = run_status(tmp_path)
-    assert s.state == "stale", (
-        f"an hour-dead run reports {s['state']!r}: {s}")
-    assert "no file growth" in s.detail, s.detail
-
-    # ...and a run touched JUST NOW is still running, or the check above
-    # would pass on a clock bug that ages everything.
-    now = _wall_now_for_test()
-    os.utime(out, (now, now))
-    fresh = run_status(tmp_path)
-    assert fresh.state == "running", (
-        f"a run written this second reports {fresh['state']!r}: {fresh}")
-
-
-def _wall_now_for_test() -> float:
-    """The same clock `run_status` measures age against."""
-    from molbuilder.parse.dirs.job import _wall_now
-    return _wall_now()
-
-
-def test_a_live_run_is_not_stale_because_its_stdout_is_block_buffered(tmp_path):
-    """LIVENESS IS NOT THE SPEAKER (`model/parse.md` § 5.5).
-
-    The wrapper runs `python script > $_out_file 2>&1` with no `-u`, so an
-    engine's stdout is BLOCK-BUFFERED: a real PySCF log grew 13 KB across
-    146 s -- two flushes in the whole run.  The progress log flushes per step
-    and is what proves the run alive, but it is deliberately NOT a SPEAKER
-    until its footer concludes (a seed must not outrank a result), so asking
-    the speaker's mtime reports a live run as dead.
-
-    Staleness is therefore measured on the FRESHEST run-output file, while
-    which file SPEAKS is unchanged.
-    """
-    import os
-
-    log = tmp_path / "w_01_coarse-run0.pyscf.log"
-    log.write_text("cycle= 1 E= -76.3\n", encoding="utf-8")   # no end line
-    old = _wall_now_for_test() - 600.0                          # ten minutes
-    os.utime(log, (old, old))
-
-    # No progress log yet: the stdout is all there is, and it has not moved.
-    assert run_status(tmp_path).state == "stale"
-
-    # The run IS alive -- it is stepping, and the step log says so.
-    mw = _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=False)
-    now = _wall_now_for_test()
-    os.utime(mw, (now, now))
-    s = run_status(tmp_path)
-    assert s.state == "running", (
-        f"a run whose progress log moved this second reports {s.state!r} "
-        f"-- liveness was taken from the block-buffered stdout: {s}")
-    # ...and the SPEAKER is still the stdout, not the unconcluded seed.
-    assert s.active_source == "w_01_coarse-run0.pyscf.log"
-
-    # Once nothing grows at all, it is stale again.
-    os.utime(mw, (old, old))
-    assert run_status(tmp_path).state == "stale"
+    assert s.state == "running", s
 
 
 def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
@@ -235,6 +167,7 @@ def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     Results tab reports the run's state from a stage it has left behind.
     """
     import os
+    import time
 
     (tmp_path / "job.fdf").write_text("SystemLabel job\n")
     done = "Siesta Version: 5.4.2\nsiesta: iscf\n>> End of run:  1-JAN-2026\n"
@@ -245,7 +178,7 @@ def test_the_active_file_is_the_highest_stage_not_the_newest_write(tmp_path):
     final.write_text(done)          # stage 3 finished...
     coarse.write_text(running)      # ...then stage 1 was re-run and is live
 
-    now = _wall_now_for_test()
+    now = time.time()
     os.utime(final,  (now - 600, now - 600))   # older write, higher stage
     os.utime(coarse, (now,       now))         # newest write, lower stage
 

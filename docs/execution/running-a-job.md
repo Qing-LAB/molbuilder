@@ -659,8 +659,8 @@ is doing** is a separate, much smaller question, and
 `parse.dirs.job.run_status(run_dir)` is its one answer:
 
 ```
-{"state": pending | queued | running | stale | finished | failed,
- "detail": "job_completed" | "no file growth in 92s" | ...,
+{"state": pending | queued | running | finished | failed,
+ "detail": "job_completed" | "prepped, not launched (no run.json)" | ...,
  "last_change_at": ISO-8601 | null,
  "active_source": "<the file that answered>" | null}
 ```
@@ -684,16 +684,19 @@ end-of-run marker, and the only one a PySCF attempt has). A molwatch log
 contributes nothing — which is what keeps a prep-time seed from ever
 steering the state.
 
-Two things are settled here rather than in a parser, because they are not
-in the file:
+What is settled here rather than in a parser, because it is not in the
+file:
 
 - **which file speaks for the directory** — a folder holds one `.out` per
   run index and one molwatch log per stage, and a parser sees one file.
   Highest stage, newest mtime.
-- **staleness** — a file with no ending marker is honestly *running*;
-  nothing in it separates a slow DFT step from a job the scheduler killed.
-  Only the filesystem can, so the age check (> 60 s without growth) lives
-  here.
+
+**A file with no ending is *running* — not finished — however long it has
+been quiet** *(user, 2026-09-26: "It shows what it is. Not finished, error, or
+finish.")*. Nothing in it or beside it tells a slow DFT step from a job the
+scheduler killed. *(A `stale` state — no growth for sixty seconds — stood here
+from 2026-06-19 until 2026-09-26; a healthy SIESTA SCF step goes quiet for over
+twelve minutes.)*
 
 `failed` comes from a fatal marker in the `.out`, a torn run whose last SCF
 block did not converge, or an error footer in the molwatch log. Whether the

@@ -801,8 +801,8 @@ class TestTheContractEndpoint:
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.
 
-        Its four states are running / stale / finished / failed, so an
-        absence of evidence comes back as **running, no result file yet** —
+        Asked without a launch record, an absence of evidence comes back
+        as **running, no result file yet** —
         and every consumer that asks it about a directory that is not a run
         gets that.  MEASURED 2026-09-19 on the regenerated tree: TEN of
         nineteen directories under one project reported *running*, among
