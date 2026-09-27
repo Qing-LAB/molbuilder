@@ -38,6 +38,9 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
+# THE SESSION LOG'S LINES are its one module's, which travels beside the
+# job: the wrapper renders them, every reader reads with them.
+from .wrapper_log import RUN_INDEX_LINE, WRAPPER_LOG_START
 
 if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # Under TYPE_CHECKING because the annotation is all this module needs:
@@ -245,7 +248,7 @@ def _run_index_resolver(basename: str, ext: str) -> str:
         f"    _run_n=0   # first run\n"
         f"fi\n"
         f'_out_file="{basename}-run${{_run_n}}{ext}"\n'
-        f'echo "[molbuilder] run index: $_run_n  ->  $_out_file"\n'
+        f'echo "{RUN_INDEX_LINE} $_run_n  ->  $_out_file"\n'
         f"\n"
     )
 
@@ -3664,7 +3667,7 @@ def render_run_wrapper(script_path: Path, *,
         f"}}\n"
         f"trap _mb_on_signal TERM INT\n"
         f"\n"
-        f"_log STAGE \"===== molbuilder wrapper start =====\"\n"
+        f"_log STAGE \"{WRAPPER_LOG_START}\"\n"
         f'_log INFO "timestamp:  $(date \'+%Y-%m-%d %H:%M:%S %Z\')"\n'
         f'_log INFO "hostname:   $(hostname)"\n'
         f'_log INFO "user:       ${{USER:-?}}"\n'
@@ -4224,6 +4227,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "_run_ending.py":      "molbuilder.parse.engines._run_ending",
     "report_fields.py":    "molbuilder.report_fields",
     "job.py":              "molbuilder.parse.dirs.job",
+    "wrapper_log.py":      "molbuilder.wrapper_log",
 }
 
 
@@ -4415,91 +4419,6 @@ def render_wrappers(script_path: Path, *,
 
     return RenderedWrapper(files=tuple(files), executable=(files[0][0],),
                            blobs=blobs)
-
-
-# ---- Reading back what this module writes into the wrapper log -------------
-#
-# THE READER LIVES WITH ITS WRITER (`model/parse.md` § 1a): every line below is
-# one this module writes, and nothing else reads them.  `bench/result.py`
-# kept two private patterns for two of them until 2026-09-26.
-#
-# ONE SECTION PER RUN.  A warm retry re-execs this wrapper with its output
-# still going to the first log, and opens a log of its own -- measured on the
-# 2026-09-25 device: its first log holds run 0 and then run 1, its second run
-# 1 alone -- so a log is read as sections, each opening with the start
-# banner, and the run a log is FOR is its first section's.
-
-#: The line every section opens with (``_log STAGE`` in ``env_activation``).
-WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
-#: ``(key, pattern)`` for the header lines -- the ``_log INFO`` lines of
-#: ``env_activation``, the run-index line, the banner's program lines.
-_WRAPPER_LOG_LINES = (
-    ("hostname",       re.compile(r"\] hostname:\s+(\S+)")),
-    ("user",           re.compile(r"\] user:\s+(\S+)")),
-    ("cwd",            re.compile(r"\] cwd:\s+(.+?)\s*$")),
-    ("conda_env",      re.compile(r"\] CONDA_DEFAULT_ENV=(\S+)")),
-    ("python",         re.compile(r"\] which python:\s+(\S+)")),
-    ("binary",         re.compile(r"^\s+(?:SIESTA|TBtrans) binary\s*:\s*(\S+)")),
-    ("engine_version", re.compile(r"^\s+(?:SIESTA|TBtrans) version\s*:\s*(\S+)")),
-)
-#: ``[molbuilder] run index: <N>  ->  <out>`` -- which run the section is.
-_WRAP_RUN_INDEX = re.compile(r"^\[molbuilder\] run index:\s*(\d+)")
-#: ``molbuilder: detected phys_cores=48, n_sockets=2, cores_per_socket=24`` --
-#: the NODE's physical cores (`lscpu -p=Core,Socket` ignores the affinity mask,
-#: verified), not the allocation's.
-_WRAP_NODE = re.compile(
-    r"detected\s+phys_cores=(\d+),\s*n_sockets=(\d+),\s*"
-    r"cores_per_socket=(\d+)")
-#: ``ranks / omp : <N> ranks x <M> OMP threads`` -- written BEFORE the launch,
-#: so its ranks are what was ASKED; the thread count is written nowhere else.
-_WRAP_RANKS_OMP = re.compile(
-    r"ranks\s*/\s*omp\s*:\s*(\d+)\s+ranks\s+x\s+(\d+)\s+OMP threads")
-#: ``benchmark: <Program> wall <s>s`` -- the engine's own wall, launch to exit.
-_WRAP_WALL = re.compile(r"benchmark:\s+\S+\s+wall\s+([0-9.]+)s")
-
-
-def read_wrapper_log(text: str) -> List[Dict[str, Any]]:
-    """One dict per run section of a wrapper log, in order -- ``run_index``,
-    the host lines, ``binary`` / ``engine_version``, ``node_phys_cores`` (and
-    its sockets), ``ranks_asked`` / ``threads``, ``engine_elapsed_s``.  A key
-    is absent when its section does not state it."""
-    sections: List[Dict[str, Any]] = []
-    cur: Optional[Dict[str, Any]] = None
-    for line in (text or "").splitlines():
-        if WRAPPER_LOG_START in line:
-            cur = {}
-            sections.append(cur)
-            continue
-        if cur is None:            # before any banner: a log from before it
-            cur = {}
-            sections.append(cur)
-        m = _WRAP_RUN_INDEX.match(line)
-        if m:
-            cur.setdefault("run_index", int(m.group(1)))
-            continue
-        m = _WRAP_NODE.search(line)
-        if m:
-            for key, g in (("node_phys_cores", 1), ("node_sockets", 2),
-                           ("node_cores_per_socket", 3)):
-                cur.setdefault(key, int(m.group(g)))
-            continue
-        m = _WRAP_RANKS_OMP.search(line)
-        if m:
-            cur.setdefault("ranks_asked", int(m.group(1)))
-            cur.setdefault("threads", int(m.group(2)))
-            continue
-        m = _WRAP_WALL.search(line)
-        if m:
-            cur.setdefault("engine_elapsed_s", float(m.group(1)))
-            continue
-        for key, pat in _WRAPPER_LOG_LINES:
-            m = pat.search(line)
-            if m:
-                cur.setdefault(key, m.group(1))
-                break
-    # A section with nothing in it -- the `launched-by:` line the launcher
-    # writes ahead of the first banner -- is no run.
-    return [sec for sec in sections if sec]
 
 
 def write_run_wrapper(script_path: Path, *,

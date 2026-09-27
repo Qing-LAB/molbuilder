@@ -54,10 +54,12 @@ try:                                        # inside molbuilder
     # the package while the monitor reads with the shipped copies -- two
     # versions of one reader in one process.
     from ... import runfiles as _rf
+    from ... import wrapper_log as _wl
     from ...identity import parse_stage_token
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
+    import wrapper_log as _wl
     from identity import parse_stage_token
     import _run_ending as _re
 
@@ -286,7 +288,8 @@ def _rc_ok(concluded: str) -> bool:
 # field is what got the decoder deleted, as this module's docstring says.)
 
 
-def _output_endings(paths: List[Path]) -> "Dict[str, _re.RunEnding]":
+def _output_endings(paths: List[Path],
+                    run_dir: Path) -> "Dict[str, _re.RunEnding]":
     """Each run-output file's ending, by filename — ONE loop, one door.
 
     This was two functions, `_out_conclusions` and `_molwatch_conclusions`,
@@ -302,6 +305,9 @@ def _output_endings(paths: List[Path]) -> "Dict[str, _re.RunEnding]":
     inside the user's project directory (measured: 540 B after one
     ``run_status``, 1080 B after two, over 67 logs).
 
+    A SIESTA output is read with its run's session log as the run's
+    stderr (:func:`_stderr_of`), as the wrapper's own question reads it.
+
     FAIL-SOFT ON A READ, and only on a read: a file that cannot be opened
     contributes nothing rather than taking the walk down.  A file whose ROLE
     has no reader is NOT absorbed -- `ending_of` raises, and it cannot happen
@@ -309,12 +315,35 @@ def _output_endings(paths: List[Path]) -> "Dict[str, _re.RunEnding]":
     are checked against.
     """
     endings: "Dict[str, _re.RunEnding]" = {}
+    logs: Dict[str, Dict[Any, Path]] = {}
     for path in paths:
         try:
-            endings[path.name] = _re.ending_of(path)
+            endings[path.name] = _re.ending_of(
+                path, stderr=_stderr_of(run_dir, path, logs))
         except OSError:
             continue
     return endings
+
+
+def _stderr_of(run_dir: Path, path: Path,
+               logs: Dict[str, Dict[Any, Path]]) -> Optional[Path]:
+    """Where the run that wrote ``path`` sent its stderr, when it kept it
+    apart: a SIESTA-family output's session log -- the log whose first
+    section is that run (`wrapper_log.logs_by_run`), the one the wrapper's
+    own ending question reads (`_mb_ending --stderr`).  SIESTA's ``die``
+    flushes stdout on node 0 alone, so a rank other than 0 that dies may say
+    why only there.  ``None`` for any other output -- a PySCF log takes its
+    stderr in -- and for a run with no log.  ``logs`` holds each label's
+    table for the rest of this walk."""
+    if _rf.role_of(path.name) != ".out":
+        return None
+    label = _label_of_run_file(path.name)
+    got = _rf.parse(path.name, label)
+    if got is None or got.run is None:
+        return None
+    if label not in logs:
+        logs[label] = _wl.logs_by_run(run_dir, label)
+    return logs[label].get((got.stage, got.run))
 
 
 # ---- status + progress ---------------------------------------------- #
@@ -412,8 +441,9 @@ def run_status(run_dir, match: str = "*", *,
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, match)
     endings = _output_endings(
-        [p for role in _rf.run_output_roles() for p in files[role]])
+        [p for role in _rf.run_output_roles() for p in files[role]], run_dir)
     states = {name: e.run_state or "unknown" for name, e in endings.items()}
+    messages = {name: e.error_message for name, e in endings.items()}
     # WHICH OF THEM MAY SPEAK is the catalogue's `output` column, not a rule
     # written here.  A "stdout" file exists because the PROCESS started, so it
     # counts whether or not it ended; a "progress" file is SEEDED at prep, so
@@ -428,7 +458,8 @@ def run_status(run_dir, match: str = "*", *,
         states,
         _process_conclusion(run_dir, match),
         launch=launch,
-        monitor_ended=lambda: _monitor_ended(run_dir, match)),
+        monitor_ended=lambda: _monitor_ended(run_dir, match),
+        out_messages=messages),
         endings=endings)
 
 
@@ -445,6 +476,7 @@ def _build_status(out_paths: List[Path],
                   concluded: Optional[str] = None,
                   launch: Any = _UNASKED,
                   monitor_ended: Callable[[], bool] = lambda: False,
+                  out_messages: Optional[Dict[str, Optional[str]]] = None,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
@@ -509,10 +541,16 @@ def _build_status(out_paths: List[Path],
     # show, never folded into it.
     if active_state == "ended":
         state, detail = "finished", "job_completed"
-    elif active_state == "out_of_memory":
-        state, detail = "failed", "out of memory"
-    elif active_state == "stopped":
-        state, detail = "failed", "stopped before its end -- see the .out"
+    elif active_state in ("out_of_memory", "stopped"):
+        # WHAT STOPPED IT, in the run's own words: the line its ending
+        # reader kept -- from the output, or from the stderr a rank other
+        # than 0 died on (`_stderr_of`).
+        said = (out_messages or {}).get(active.name)
+        state = "failed"
+        detail = ("out of memory" if active_state == "out_of_memory"
+                  else "stopped before its end")
+        if said:
+            detail += f": {said}"
     elif concluded is not None and concluded != _ENGINE_EXIT_MARKER:
         # Content is silent, the process is not: the run is over and the
         # marker says how.

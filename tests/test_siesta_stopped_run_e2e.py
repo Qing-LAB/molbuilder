@@ -1,0 +1,260 @@
+"""A SIESTA run that SIESTA stops, made on the road, and what each reader says
+about it.
+
+``jobset init`` -> ``prep run coarse`` -> ``launch run --mode direct`` on an
+H2 relaxation whose SCF cannot converge within its cap: ten cycles of plain
+linear mixing at weight 0.001 against a DM tolerance of 1e-8, set in the
+calculation's template, with ``SCF.MustConverge`` left at SIESTA's default --
+abort.  SIESTA prints
+``SCF_NOT_CONV: ... (required)`` and ``die``s, and ``die`` writes its own
+cascade after it; the wrapper retries once, warm, as run 1 (`job-contracts.md`
+§ 2.6), and run 1 stops the same way.
+
+What each reader must say (`running-a-job.md` § 4.2, `model/parse.md` § 2b):
+the folder is ``failed``, its detail quoting the line that stopped it -- the
+SCF's, not the cascade's; the viewer's stop reason is that cause in the
+table's words; the run's session log is found as the run's; and a rank other
+than 0 that dies says why only on stderr -- so the same run with its output
+cut before the stopping lines, as node 0's missing flush leaves it, still
+reads stopped, from the session log.
+
+They replace two checks that read frozen outputs of older runs -- the
+viewer's stop reason on a hemeC stage, and the setup's ``in_deck`` on a
+TranSIESTA device's fdf log: this run is made here, by the road.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from _road import conda_hook, env_available, env_bin
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+CONDA_SH = conda_hook()
+
+pytestmark = pytest.mark.skipif(
+    not (CONDA_SH.is_file() and env_available("molbuilder-siesta")),
+    reason="needs the molbuilder-siesta env + a detectable conda hook")
+
+#: The calculation's own values: an SCF that cannot reach 1e-8 in ten cycles
+#: of plain linear mixing at 0.001 -- no Pulay history, which otherwise
+#: extrapolates past the small weight and converges H2 in nine (measured) --
+#: each inside its item's declared range.
+_CANNOT_CONVERGE = {"max_scf_iter": "10", "mixing_weight": "0.001",
+                    "pulay_history": "0", "dm_tolerance": "1e-08"}
+
+
+def _jobset(*args):
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, list(args))
+
+
+def _set_item(template: Path, name: str, value: str) -> None:
+    """``[item.<name>]``'s ``value``, as a person sets it in the template."""
+    text = template.read_text()
+    head, sep, tail = text.partition(f"[item.{name}]")
+    assert sep, f"no [item.{name}] in {template.name}"
+    body, nxt, rest = tail.partition("\n[item.")
+    lines = body.split("\n")
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("value = "))
+    lines[at] = f"value = {value}"
+    template.write_text(head + sep + "\n".join(lines) + nxt + rest)
+
+
+@pytest.fixture(scope="module")
+def stopped(isolated_projects_root_module, tmp_path_factory):
+    """The attempt directory of the stopped run, made on the road."""
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    tree = isolated_projects_root_module
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "pseudopotential").mkdir()
+    shutil.copy(FIXTURES / "psml" / "H.psml",
+                tree / "pseudopotential" / "H.psml")
+    StructureCodec().write(
+        Structure(elements=["H", "H"],
+                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
+                  cell=np.diag([10.0, 10.0, 10.0]),
+                  axis_kind=("isolated",) * 3),
+        tree / "P" / "structure" / "h2.xyz")
+
+    mp = pytest.MonkeyPatch()
+    try:
+        # THE SUITE'S CONFIG RULE, which its autouse fixture applies per test
+        # and so not to a module's fixture: no read of the developer's
+        # config directory (`conftest.config_root_is_never_the_developers`).
+        mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
+        mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+        # ...and the box probed, as a real one is before its first prep.
+        from conftest import write_machine_record
+        write_machine_record()
+        mp.chdir(tree.parent)
+        # The wrapper finds the engine BY NAME after activating the env; the
+        # env's own bin goes ahead of the suite's stub toolchain so the real
+        # engine is the one on the road.
+        bin_ = env_bin("molbuilder-siesta")
+        assert (bin_ / "siesta").is_file(), bin_
+        mp.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+
+        r = _jobset("init", "--structure", "P/structure/h2.xyz",
+                    "--bundle", "P/opt/R", "--engine", "siesta",
+                    "--shape", "hierarchical", "--calculation", "optimization",
+                    "--name", "H2", "--psml-lib", "pseudopotential")
+        assert r.exit_code == 0, r.output
+        bundle = tree / "P" / "opt" / "R"
+        (bundle / ".molbuilder.json").write_text(json.dumps(
+            {"script_generation": {"activation": "conda activate",
+                                   "preamble": f"source {CONDA_SH}"}}))
+        task = json.loads((bundle / "task.json").read_text())
+        task["execution"] = {**task.get("execution", {}), "mpi_np": 1}
+        assert [s["name"] for s in task["stages"]] == ["coarse"], task
+        (bundle / "task.json").write_text(json.dumps(task, indent=2))
+        for name, value in _CANNOT_CONVERGE.items():
+            _set_item(bundle / "H2.template.toml", name, value)
+
+        r = _jobset("prep", "run", "coarse", "--bundle", str(bundle),
+                    "--target", "this")
+        assert r.exit_code == 0, r.output
+        attempt = bundle / "01_coarse" / "run-0"
+        deck = (attempt / "H2_01_coarse.fdf").read_text()
+        assert any(ln.split()[:2] == ["MaxSCFIterations", "10"]
+                   for ln in deck.splitlines()), deck[-2000:]
+        # The run fails -- that is its point -- so the verb's exit is not
+        # asserted; what it left is.
+        _jobset("launch", "run", "coarse", "--bundle", str(bundle),
+                "--mode", "direct", "--yes")
+        assert (attempt / "H2_01_coarse-run0.out").is_file(), \
+            sorted(p.name for p in attempt.iterdir())
+        yield attempt
+    finally:
+        mp.undo()
+
+
+def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
+    """The folder's status quotes the line that stopped the run -- the SCF's,
+    which SIESTA states as fatal, and not the ``die`` lines after it."""
+    from molbuilder.parse.dirs import run_status
+    from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
+
+    st = run_status(stopped)
+    assert st.state == "failed", st
+    assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
+    # the latest run speaks -- the warm retry's -- and the one before it
+    # stopped the same way
+    assert st.active_source == "H2_01_coarse-run1.out", st
+    for name in ("H2_01_coarse-run0.out", "H2_01_coarse-run1.out"):
+        end = st.endings[name]
+        assert (end.run_state, end.cause) == ("stopped",
+                                              SCF_NOT_CONV_MARKER), end
+
+
+def test_the_viewer_says_why_in_the_ending_readers_words(stopped,
+                                                         monkeypatch):
+    """The viewer's "Reason:" line is the server's: the file's cause as the
+    one ending reader states it, in the SIESTA family's words
+    (`siesta_grammar.CAUSE_WORDS`) -- the browser keeps no copy of the
+    markers.
+
+    MUTATION THIS MUST FAIL AGAINST: take the LAST fatal line as the cause.
+    """
+    from molbuilder import diagnostics
+    from molbuilder.diagnostics import Capabilities
+    from molbuilder.parse.engines.siesta_grammar import (CAUSE_WORDS,
+                                                         SCF_NOT_CONV_MARKER)
+    from molbuilder.web.app import create_app
+
+    root = next(p for p in stopped.parents if p.name == "projects")
+
+    class _Root(Capabilities):
+        def file_picker_roots(self):  # type: ignore[override]
+            return ((root.resolve(), "road"),)
+
+    app = create_app(config={})
+    diagnostics.set_capabilities(_Root())
+    out = stopped / "H2_01_coarse-run0.out"
+    body = app.test_client().post("/api/watch/load",
+                                  json={"path": str(out)}).get_json()
+    assert body["ok"] is True, body
+    assert body["data"]["run_state"] == "stopped"
+    assert body["data"]["stop_reason"] == CAUSE_WORDS[SCF_NOT_CONV_MARKER]
+
+
+def test_each_run_is_paired_with_its_own_session_log(stopped):
+    """The warm retry re-execs the wrapper with its output still going to
+    the first log and opens a log of its own, so the first log holds run 0
+    AND run 1's section.  A run's log is the one whose FIRST section is that
+    run -- the pairing the run record and ``run_status`` both use
+    (`wrapper_log.logs_by_run`)."""
+    from molbuilder.wrapper_log import first_run_index, log_of_run
+
+    first = log_of_run(stopped, "H2", 0, "01_coarse")
+    second = log_of_run(stopped, "H2", 1, "01_coarse")
+    assert first is not None and second is not None and first != second, (
+        sorted(p.name for p in stopped.iterdir()))
+    assert (first_run_index(first), first_run_index(second)) == (0, 1)
+    assert "run index: 1" in first.read_text(errors="replace"), (
+        "the retry's section did not reach the first log, so this run does "
+        "not show why the FIRST section decides")
+    assert log_of_run(stopped, "H2", 2, "01_coarse") is None
+    assert log_of_run(stopped, "H2", 0, None) is None
+
+
+def test_a_rank_that_said_why_only_on_stderr_is_still_heard(stopped,
+                                                             tmp_path):
+    """SIESTA's ``die`` writes its message to stderr too, and flushes stdout
+    on node 0 alone: a rank other than 0 that dies may leave the output with
+    no ending and say why only on stderr, which the wrapper keeps in its
+    session log.  The run above, its latest output cut before the first
+    line that stopped it, is that: it must still read stopped, from that
+    run's log.
+
+    MUTATION THIS MUST FAIL AGAINST: ``run_status`` reading the output alone.
+    """
+    from molbuilder.parse.dirs import run_status
+    from molbuilder.parse.engines import siesta_grammar as G
+    from molbuilder.wrapper_log import log_of_run
+
+    run = tmp_path / "01_coarse" / "run-0"
+    shutil.copytree(stopped, run)
+    out = run / "H2_01_coarse-run1.out"
+    text = out.read_text(errors="replace")
+    cut = text.index(G.SCF_NOT_CONV_MARKER.upper())
+    out.write_text(text[:cut])
+    log = log_of_run(run, "H2", 1, "01_coarse")
+    assert G.SCF_NOT_CONV_MARKER.upper() in log.read_text(errors="replace"), (
+        "SIESTA's stderr did not reach the session log -- this run cannot "
+        "show a rank's stderr, and the premise of the test is wrong")
+
+    st = run_status(run)
+    assert st.state == "failed", st
+    assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
+
+
+def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
+    """`engine_only` names what the engine read and nobody wrote
+    (`model/parse.md` § 5d.3).  SIESTA reads some keys twice, each time its
+    own default -- `MD.FinalTimeStep` and `DM.NumberPulay` in this run's fdf
+    log -- and such a key is not the deck's; `MeshCutoff`, which the deck
+    sets, is.
+
+    MUTATION THIS MUST FAIL AGAINST: `in_deck` from a top-level `default`
+    alone -- a key read several times has none.
+    """
+    from molbuilder.parse import detect
+    from molbuilder.parse.dirs.setup import _engine_only
+
+    log = sorted(stopped.glob("fdf.*.log"))[0]
+    res = detect(log).parse(log)
+    rows = {r["key"].lower(): r for r in _engine_only(res.params, set())}
+    for key in ("md.finaltimestep", "dm.numberpulay"):
+        assert len(rows[key]["readings"]) == 2, rows[key]
+        assert rows[key]["in_deck"] is False, rows[key]
+    assert rows["meshcutoff"]["in_deck"] is True, rows["meshcutoff"]

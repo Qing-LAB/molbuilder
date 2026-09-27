@@ -632,7 +632,10 @@ flowchart TD
 
 *Its end* is `>> End of run`, a PySCF deck's end line or a `# concluded:`
 footer; *a stop* is a fatal marker, a Python traceback, an `# error:` footer or
-an out-of-memory line (`model/parse.md` § 2b). The marker speaks where content
+an out-of-memory line (`model/parse.md` § 2b) — for a SIESTA run, in its output
+or in the stderr its wrapper kept, the session log whose first section is the
+run: a rank other than 0 that dies may say why only there. The detail quotes
+the line. The marker speaks where content
 is silent — an engine that died before its first line, a PySCF `SystemExit` —
 and counts only at the highest run index the run's files reached
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): an earlier
@@ -655,7 +658,7 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | `queued` | queued as job N · launched (direct), no output yet |
 | `running` | running · no result file yet |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped before its end -- see the .out · out of memory · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded |
+| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so

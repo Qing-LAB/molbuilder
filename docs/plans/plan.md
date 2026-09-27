@@ -4044,7 +4044,9 @@ And the same day, after P1 and its review:
      browser that the file list lists and opens its files — **open**.
   4. One SIESTA ending reader, the reading pass; `ending_of(path)` the one
      door (`ffe0e8c4`).
-  5. `run_status` reads SIESTA's stderr as the wrapper does — **open**.
+  5. `run_status` reads SIESTA's stderr as the wrapper does: the session
+     log whose first section is the run (`wrapper_log`, which now travels),
+     and a stop's detail quotes the line that stopped it (2026-09-27).
   6. The memory peak shown is the job's own: the kernel's counter when the
      job has its own cgroup, the largest sample otherwise — `utilisation()`
      decides, the record and the bench summary carry it (2026-09-27).
@@ -4063,8 +4065,10 @@ And the same day, after P1 and its review:
     (the Run panel, P2);
   * the vibration deck states no SCF criteria: its `_RUNTIME_INFO` records
     neither tolerance, so its residuals show none;
-  * two tests read old frozen outputs (the stop-reason route, the `fdf` log's
-    `in_deck`) — to be replaced by runs made through `jobset`.
+  * ~~two tests read old frozen outputs~~ — replaced by a SIESTA run the road
+    makes and stops (`tests/test_siesta_stopped_run_e2e.py`, 2026-09-27); the
+    device's `fdf` log still answers what only a device run shows (a key read
+    as `CG` and `cg`).
 * The runaway symptom (§ 5d.6) cannot be "|ts-Vha| exceeds 1 eV": the
   converging device swung −1.39 → +1.95 eV in its first two NEGF iterations.
   P4 sets the rule on the two measured runs.

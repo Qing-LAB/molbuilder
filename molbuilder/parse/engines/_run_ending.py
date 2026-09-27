@@ -127,7 +127,10 @@ def _siesta_ending(path, stderr=None) -> RunEnding:
     if stderr is None or Path(path).exists():
         reader.feed_text(_read(path))
     if stderr is not None and reader.run_state == "running":
-        reader.new_channel().feed_text(_read(stderr))
+        try:
+            reader.new_channel().feed_text(_read(stderr))
+        except OSError:
+            pass    # a log that cannot be read says nothing; the output has
     got = reader.finish()
     return RunEnding(got["run_state"], got["scf_converged"],
                      got["error_message"], got["phases"],

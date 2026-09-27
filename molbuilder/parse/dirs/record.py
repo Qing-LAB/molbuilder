@@ -182,18 +182,18 @@ def run_files(directory, *, status=None,
                             if _fdf_stamp(p) == start), None)
 
     # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: a retry appends its own
-    # section to the first log and opens one of its own (`runwrap`'s reader).
-    from ...runwrap import read_wrapper_log
+    # section to the first log and opens one of its own -- the pairing
+    # `run_status` reads SIESTA's stderr by (`wrapper_log.log_of_run`).
+    from ...wrapper_log import log_of_run, read_wrapper_log
     section: Dict[str, Any] = {}
     section_text = ""
-    for p, _rf in reversed([(p, rf) for p, rf in listing
-                            if rf.role == ".runwrap-{stamp}.log"]):
-        text = _read(p)
+    log = log_of_run(d, label, n, stage) if n is not None else None
+    if log is not None:
+        text = _read(log)
         sections = read_wrapper_log(text)
-        if sections and sections[0].get("run_index") == n:
+        if sections:
             section = sections[0]
             section_text = _first_section_text(text)
-            break
 
     earlier = tuple((k, one(".out", k) or one(".pyscf.log", k))
                     for k in runs[:-1])
@@ -212,7 +212,7 @@ def run_files(directory, *, status=None,
 def _first_section_text(text: str) -> str:
     """The first run section of a wrapper log, as text -- where its
     effective-parameters block sits."""
-    from ...runwrap import WRAPPER_LOG_START
+    from ...wrapper_log import WRAPPER_LOG_START
     lines, seen = [], 0
     for line in text.splitlines():
         if WRAPPER_LOG_START in line:

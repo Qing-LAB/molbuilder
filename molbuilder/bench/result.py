@@ -122,7 +122,7 @@ def machine_census(points) -> List[Tuple[str, int]]:
 
 # What the run ACTUALLY used, printed by SIESTA itself (read through
 # `parse/engines/siesta_grammar.py`) and by the wrapper (read through
-# `runwrap.read_wrapper_log`, beside the lines it writes -- two private
+# `wrapper_log.read_wrapper_log`, the lines' one reader -- two private
 # patterns stood here until 2026-09-26).
 
 
@@ -174,7 +174,7 @@ def parse_effective_run(out_text: str = "", wrapper_log: str = "") -> Dict:
     """
     eff: Dict = {}
 
-    from molbuilder.runwrap import read_wrapper_log
+    from molbuilder.wrapper_log import read_wrapper_log
     sections = read_wrapper_log(wrapper_log or "")
     wrap = sections[0] if sections else {}
     for key in ("node_phys_cores", "node_sockets", "node_cores_per_socket"):

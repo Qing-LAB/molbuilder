@@ -52,23 +52,23 @@ def test_the_engine_s_own_log_says_what_it_used_and_what_nobody_set():
     assert kgrid[2].split()[:3] == ["0", "0", "1"]
 
 
-def test_a_key_read_only_as_defaults_is_not_the_deck_s():
-    """`engine_only` names what the engine read and nobody wrote (§ 5d.3).
-    `MD.TypeOfRun` was read four times in the diverged device's log -- none,
-    CG, none, cg -- each `# default value`: not the deck's, and `CG`/`cg`
-    are one setting read twice.  `MeshCutoff`, which the deck set, is.
+def test_one_setting_read_in_two_cases_is_one_reading():
+    """TranSIESTA reads `MD.TypeOfRun` four times -- none, CG, none, cg --
+    each `# default value`: two settings, not four, because fdf matches a
+    value's words case-blind.  The fdf log's reader keeps each distinct
+    reading once.
 
-    MUTATION THIS MUST FAIL AGAINST: `in_deck` from a top-level `default`
-    alone (a multi-reading key has none), or readings compared by case.
+    On the 2026-09-25 device's own log: only a TranSIESTA run reads a key
+    that way, and a device run takes hours, not a test's minutes.  Whether a
+    key is the deck's is checked on a run the road makes
+    (`test_siesta_stopped_run_e2e.py`).
+
+    MUTATION THIS MUST FAIL AGAINST: readings compared by case.
     """
-    from molbuilder.parse.dirs.setup import _engine_only
     path = _HERE / "fdf.20260925T194936.695.log"
     res = detect(path).parse(path)
-    rows = {r["key"].lower(): r for r in _engine_only(res.params, set())}
-    run = rows["md.typeofrun"]
-    assert run["in_deck"] is False
-    assert [r["value"] for r in run["readings"]] == ["none", "CG"]
-    assert rows["meshcutoff"]["in_deck"] is True
+    readings = res.params["mdtypeofrun"]["readings"]
+    assert [r["value"] for r in readings] == ["none", "CG"]
 
 
 def test_each_phase_is_timed_on_its_own():

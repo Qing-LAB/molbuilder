@@ -147,6 +147,10 @@ _L1_MODULES = {
     "runfiles",          # the run-file GRAMMAR, and its reader
                          # (`job-contracts.md` § 2.2a).  L1 on stdlib alone,
                          # which is what lets it travel beside a job.
+    "wrapper_log",       # the wrapper's session log: its lines and their
+                         # one reader.  L1 on stdlib + `runfiles`, because
+                         # it travels beside a job: the monitor pairs a run
+                         # with its log exactly as the Results tab does.
     "identity",          # the run id: normalise once, build from inputs
                          # (execution/run-identity.md 2-3).  L1 on stdlib
                          # alone, and that is load-bearing: the CLI, the web
