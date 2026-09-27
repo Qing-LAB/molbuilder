@@ -1107,18 +1107,27 @@
             return (selEl && selEl.value) ? selEl.value : "";
         }
 
-        function _onPageShow(_evt) {
-            // ``event.persisted`` is true for bfcache restore, false
-            // for a fresh navigation.  We force-rescan in BOTH cases
-            // -- the fresh-navigation case is already handled by the
-            // initial onChange fire, so the second invocation is a
-            // cheap no-op for empty cachedResults; the bfcache case
-            // is the load-bearing one.
-            //
-            // RE-READ, NOT RE-POINT (2026-09-19): coming back to the tab
-            // shows what was written while you were away; it does not adopt
-            // wherever the sidebar has since gone.
-            _rescanBound();
+        function _onPageShow(evt) {
+            /* A FRESH LOAD IS NOT A RE-ENTRY.  ``pageshow`` fires on every
+             * load (``persisted`` false) as well as on a restore from the
+             * back/forward cache (``persisted`` true), and only the restore
+             * comes back holding an old listing.  On a fresh load the mount
+             * has already scanned -- the initial bind below -- so scanning
+             * again here emptied the menu it had just filled and asked the
+             * server for the same answer twice on every visit (`results.md`
+             * § 2.2: one scan).  This called the fresh case "a cheap
+             * no-op"; it was a full second scan from the day the hook was
+             * added (2026-06-02) to 2026-09-27, and the menu it emptied at
+             * the moment the page finished loading is what
+             * `test_results_file_picker_e2e.py` read, under load.  A fresh
+             * load whose mount found no folder still gets its initial bind
+             * here.
+             *
+             * RE-READ, NOT RE-POINT (2026-09-19): coming back to the tab
+             * shows what was written while you were away; it does not adopt
+             * wherever the sidebar has since gone. */
+            if (evt && evt.persisted) _rescanBound();
+            else if (boundDir === null) _alignToSidebar();
         }
 
         function _onVisibilityChange(_evt) {

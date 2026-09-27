@@ -147,6 +147,7 @@ tab has had, so the division is written out in full:
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
 | **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
 | **Come back to the browser tab** | re-reads the folder already bound, so files written while you were away appear. It does **not** re-point |
+| **Open the tab** | binds the panel to the folder this tab was last pointed at and scans it **once**. The browser's `pageshow` fires on every load, but only a page restored from the back/forward cache comes back holding an old listing, so only that restore re-reads (`file-picker.js::_onPageShow`). Until 2026-09-27 every load scanned twice, and the second scan emptied the menu the first had filled, at the moment the load completed |
 
 **A double-click shows a file; it never mounts one here.** The interaction
 model (2026-06-07) says a double-click runs the active tab's *"use this file"*
@@ -207,7 +208,7 @@ file is current" twice, by two different routes.**
 
 ```mermaid
 flowchart TD
-  T["Reload (bind to the sidebar) · tab re-entry (re-read) · your pick"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
+  T["opening the tab (its initial bind) · Reload (bind to the sidebar) ·<br/>tab re-entry (re-read) — each ONE scan"] --> S["scan it — list the folder,<br/>keep the result-class files, newest first"]
   S --> E{"any results?"}
   E -->|"none"| N["say so in the menu AND announce<br/>'nothing selected' — the panel clears"]
   E -->|"some"| K{"is the file we were<br/>already showing one of them?"}

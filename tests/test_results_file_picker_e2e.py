@@ -23,13 +23,15 @@ Root cause was TWO compounding issues in ``lib/results/file-picker.js``:
 
 The fix:
 
-  * ``pageshow`` + ``visibilitychange`` event hooks call ``_forceRescan()``
-    which resets ``lastScannedDir`` and re-fires ``_onSelectionChange``
-    so a same-dir re-entry triggers the rescan branch.
+  * a fresh visit scans once, at mount; a restore from the back/forward
+    cache (``pageshow`` with ``persisted``) and ``visibilitychange`` ->
+    visible re-read the folder the panel is bound to (``_rescanBound``).
   * ``fetch(..., { cache: "no-store" })`` on the directory listing so
     the rescan actually reaches the server.
 
-These tests exercise both fixes end-to-end.
+These tests exercise both fixes end-to-end.  Each reads the menu only after
+the scan has landed (``_open_results``): the picker bar is always visible, so
+its visibility says nothing about the scan.
 """
 from __future__ import annotations
 
@@ -92,6 +94,47 @@ def project_with_one_out(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 
+#: Installed on the page before any of its own scripts, on every navigation:
+#: counts the page's folder scans -- its calls to the picker's door -- and
+#: the picker's announcements, which close each scan (`results.md` § 2.2);
+#: and marks the task after `pageshow`, by which every `pageshow` handler has
+#: run -- this listener is the first registered, so its timer is queued
+#: before the page's own handlers run.
+_WATCH_THE_PICKER = """(() => {
+    window.__mbScans = 0;
+    window.__mbAnnounced = 0;
+    window.__mbShown = false;
+    window.addEventListener("pageshow", () => {
+        setTimeout(() => { window.__mbShown = true; }, 0);
+    });
+    const fetch0 = window.fetch;
+    window.fetch = function (input) {
+        const url = String((input && input.url) || input || "");
+        if (url.indexOf("/api/results/dir") !== -1) window.__mbScans += 1;
+        return fetch0.apply(this, arguments);
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+        const C = (window.molbuilder || {}).constants || {};
+        document.addEventListener(C.EVENT_FILE_SELECTED,
+                                  () => { window.__mbAnnounced += 1; });
+    });
+})();"""
+
+
+def _open_results(page, base_url):
+    """Open the tab and wait until the load is over -- its ``pageshow``
+    handled -- and its scan has LANDED: the picker's announcement, which it
+    makes once per scan.  What follows reads the menu that scan built.
+
+    Not the picker bar's visibility: the bar is always visible (since
+    2026-06-15), so waiting for it returned at once and the tests read the
+    menu mid-scan.  Needs `_WATCH_THE_PICKER`, which `_setup_modify_dir`
+    installs."""
+    page.goto(f"{base_url}/results")
+    page.wait_for_function(
+        "() => window.__mbShown && window.__mbAnnounced >= 1", timeout=10000)
+
+
 def _picker_options(page):
     return page.evaluate(
         "() => Array.from(document.querySelectorAll("
@@ -111,6 +154,7 @@ def _option_basenames(opts):
 
 
 def _setup_modify_dir(page, base_url, dir_path):
+    page.add_init_script(_WATCH_THE_PICKER)
     page.goto(f"{base_url}/molbuilder")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.projects "
@@ -149,10 +193,7 @@ class TestStaleResultsRefresh:
         _setup_modify_dir(page, flask_server, dir_str)
 
         # First /results visit -- only run1.out exists.
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
+        _open_results(page, flask_server)
         opts1 = _option_basenames(_picker_options(page))
         assert opts1 == ["run1.out"]
 
@@ -174,18 +215,9 @@ class TestStaleResultsRefresh:
         time.sleep(0.5)
 
         # Re-visit /results.  Pre-fix this returned to the cached scan
-        # (only run1.out).  Post-fix both files appear.
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
-        # Wait for the rescan to land -- the force-rescan on pageshow
-        # fires the second scan; allow a tick for fetch + DOM update.
-        page.wait_for_function(
-            "() => Array.from(document.querySelectorAll("
-            "    '#results-file-picker-select option')).length >= 2",
-            timeout=5000,
-        )
+        # (only run1.out).  Post-fix both files appear -- from the visit's
+        # one scan, not served from the browser's cache.
+        _open_results(page, flask_server)
         opts2 = _option_basenames(_picker_options(page))
         # Both files present.  Newest first per the picker's mtime sort.
         assert set(opts2) == {"run1.out", "run2.out"}
@@ -200,10 +232,10 @@ class TestPageshowForcesRescan:
             self, page, flask_server, project_with_one_out):
         proj_dir, dir_str = project_with_one_out
         _setup_modify_dir(page, flask_server, dir_str)
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
+        _open_results(page, flask_server)
+        # The first scan has landed without the new file, so only the
+        # event below can bring it in.
+        assert _option_basenames(_picker_options(page)) == ["run1.out"]
 
         # Add a new file + dispatch a pageshow event manually.  This
         # mimics what the browser does on bfcache restore.
@@ -238,10 +270,8 @@ class TestVisibilityChangeForcesRescan:
             self, page, flask_server, project_with_one_out):
         proj_dir, dir_str = project_with_one_out
         _setup_modify_dir(page, flask_server, dir_str)
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
+        _open_results(page, flask_server)
+        assert _option_basenames(_picker_options(page)) == ["run1.out"]
 
         (proj_dir / "run2.out").write_text(
             "Siesta Version: 5.4.2\n"
@@ -266,33 +296,35 @@ class TestVisibilityChangeForcesRescan:
         assert set(opts) == {"run1.out", "run2.out"}
 
 
-class TestNoStaleScanOnRevisit:
-    """Even the same-dir, same-files revisit case must NOT show stale
-    relative-time text.  After a rescan the meta line + dropdown
-    re-render from the fresh response, not from the cached one."""
+class TestOneScanPerVisit:
+    """Opening the tab reads its folder ONCE (`results.md` § 2.2: one scan,
+    one choice, one announcement), and a revisit lists the folder's result
+    again -- not doubled, not emptied.
 
-    def test_revisit_replaces_dropdown_in_place(
+    Until 2026-09-27 this read the menu straight after waiting for the
+    picker bar, which is always visible, while the page scanned twice per
+    visit: at mount, and again on ``pageshow``, which fires on every fresh
+    load as well as on a restore from the back/forward cache.  The second
+    scan empties the filled menu and refills it when its reply lands, and it
+    starts as the load completes -- where the read was.  So the read found
+    an empty menu whenever that reply took longer than two Playwright round
+    trips: it failed in two loaded batches (2026-09-21, 2026-09-26) and
+    passed alone.
+
+    MUTATION THIS MUST FAIL AGAINST: the picker scanning again on a fresh
+    load's ``pageshow`` (`file-picker.js::_onPageShow`) -- two scans.
+    """
+
+    def test_each_visit_scans_once_and_lists_the_one_result(
             self, page, flask_server, project_with_one_out):
-        proj_dir, dir_str = project_with_one_out
+        _proj_dir, dir_str = project_with_one_out
         _setup_modify_dir(page, flask_server, dir_str)
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
-        opts1 = _picker_options(page)
-        assert len(opts1) == 1   # only run1.out
-
-        # Re-visit /results without changing anything.
-        page.goto(f"{flask_server}/molbuilder")
-        page.wait_for_timeout(300)
-        page.goto(f"{flask_server}/results")
-        page.wait_for_selector(
-            "#results-file-picker-bar:not([hidden])", timeout=5000,
-        )
-        opts2 = _picker_options(page)
-        # Still exactly one entry; bar didn't double-up or disappear.
-        assert len(opts2) == 1
-        assert "run1.out" in opts2[0]
+        for visit in ("first visit", "revisit"):
+            _open_results(page, flask_server)
+            assert page.evaluate("() => window.__mbScans") == 1, visit
+            assert _option_basenames(_picker_options(page)) == ["run1.out"], (
+                visit)
+            page.goto(f"{flask_server}/molbuilder")
 
 
 class TestResultsDecoupledFromSidebar:
