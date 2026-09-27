@@ -281,7 +281,7 @@ Held inside one viewer, and nowhere else:
 | the amplitude | `setAmplitude` | the maths, the export stamp |
 | the frame rate, and the cycle length | `setFps` / `setCycleSec` | the clock, the export stamp |
 | the frame number, and whether it is running | `play` / `pause`, and the loop | the maths, the export stamp |
-| the normalization label | `showMode` | the export stamp only |
+| the normalization label | `showMode`, or `setAmplitude` with the size | the export stamp only |
 | the caption, and whether it is shown | `showMode` / `setLabelVisible` | the drawing (§ 12.3) |
 
 ### 6.2 Amplitude has one home, and the caller decides what goes in it
@@ -433,7 +433,7 @@ setStructure({ elements, positions })      install the equilibrium; redraw + ref
 showMode({ index, displacements, basis?, norm?, label? })
                                            scatter, mark what is held still, animate
 play()  pause()  isPlaying()               the clock
-setAmplitude(Å)                            live: the next frame reads it
+setAmplitude(Å[, norm])                    live: the next frame reads it
 setFps(n)  setCycleSec(s)                  how smooth, and how long a cycle (§ 10.1)
 setLabelVisible(on)                        show or hide the caption (§ 12.3)
 exportAnimation(opts) -> Promise<result>   § 12
@@ -910,10 +910,9 @@ tell them apart, and does not try: it stores both strings and interprets neither
 **What an animation must get right is the relative displacement** — which atoms
 move, which way, and how far against each other: the mode itself *(user,
 2026-09-27: "animation is animation. nothing really physically true. the relative
-displacement is what matters")*. The physical size and its temperature are a
-display aid; `norm` says which aid was on, and no test pins the size or the label.
-A temperature typed after the mode was shown changes the size and leaves `norm`
-naming the temperature the mode was first shown at — known, and left so.
+displacement is what matters")*. The size is a display aid and the temperature
+just a label on it; `setAmplitude(size, norm)` sets the two together, so a saved
+animation names the setting it was drawn at.
 
 ### 12.3 The caption
 

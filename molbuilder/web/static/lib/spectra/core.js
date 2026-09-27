@@ -3178,7 +3178,10 @@
         state.animTemperature = t;
         const inputs = _animationInputs();
         if (!inputs.ready || !state.vib) return;
-        state.vib.setAmplitude(inputs.amplitude);
+        // The size and the label naming its setting go together, so a saved
+        // animation says the temperature it was drawn at (vibrationview.md
+        // § 6.1).  A drawing aid either way (§ 12.2), not a physical claim.
+        state.vib.setAmplitude(inputs.amplitude, inputs.norm);
         _reportSwing(inputs);
     }
 

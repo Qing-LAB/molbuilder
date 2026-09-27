@@ -267,9 +267,14 @@ export async function mount(hostEl, opts) {
         /* The live knobs (§ 9.2): plain writes the running loop picks up on its
          * next frame. No rebuild, no re-registration — a slider drag never stops
          * the animation. */
-        setAmplitude(a) {
+        setAmplitude(a, norm) {
             if (disposed || typeof a !== "number" || !isFinite(a)) return;
             amplitude = a;
+            // THE LABEL TRAVELS WITH THE NUMBER (§ 6.1): a caller that changes
+            // what the size stands for -- the thermal size taken at another
+            // temperature -- restates `norm` with it, so the export names the
+            // setting the picture was drawn at.  Omitted, the label stands.
+            if (norm !== undefined && norm !== null) modeNorm = String(norm);
             if (!playing) draw();          // paused: show the change now
         },
 
