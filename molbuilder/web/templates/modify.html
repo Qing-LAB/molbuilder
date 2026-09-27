@@ -664,6 +664,13 @@
             </button>
           </div>
           <p id="slab-a-derived" class="modify-op-hint" hidden></p>
+          {#- WHAT THE MEASUREMENT FOUND, one row per note at its own severity,
+              drawn by the one findings renderer (`science/validation.md`
+              § 4.1 R2a).  The notes describe the value in the box, so the
+              next measurement replaces them and a value typed or picked from
+              the table clears them. -#}
+          <ul id="slab-lattice-findings" class="issues-panel" hidden
+              aria-label="What the lattice measurement found"></ul>
         </fieldset>
 
         <fieldset class="modify-op-block">

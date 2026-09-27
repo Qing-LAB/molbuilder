@@ -1210,3 +1210,84 @@ def test_a_checkbox_sits_beside_its_own_text(page, flask_server):
         f"the checkbox is {box['width']:.1f}px wide inside a "
         f"{row['width']:.1f}px row -- it has been stretched by the row's "
         f"align-items, which paints the tick centred in empty space")
+
+
+# --------------------------------------------------------------------- #
+#  "From a bulk run…" -- the measurement's notes are findings           #
+#                                                                       #
+#  Contract: docs/science/validation.md § 4.1 R2a (a notice is a        #
+#  finding, drawn by the one renderer).  Until 2026-09-27 the panel     #
+#  joined the route's notes into its status line with `·`, in the worst #
+#  one's tone, so "not the bulk crystal you meant" read as one clause   #
+#  of a run-on line beside the comparisons (plan W19).                  #
+# --------------------------------------------------------------------- #
+
+@pytest.fixture
+def stretched_gold(tmp_path, monkeypatch):
+    """A perfect fcc gold crystal stretched to a = 4.35 Å -- 7% from the
+    experimental constant and 5% from PBE's, which the route says at two
+    severities."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    a = 4.35
+    base = np.array([[0, 0, 0], [.5, .5, 0], [.5, 0, .5], [0, .5, .5]]) * a
+    pos = np.vstack([base + np.array([i, j, k]) * a
+                     for i in range(2) for j in range(2) for k in range(2)])
+    path = tmp_path / "Au-stretched.xyz"
+    StructureCodec().write(
+        Structure(elements=["Au"] * len(pos), positions=pos,
+                  cell=np.diag([2 * a] * 3)), path)
+    return path
+
+
+def test_a_measured_lattices_notes_are_rows_each_at_its_own_severity(
+        page, flask_server, stretched_gold):
+    """Every note the route answers with is a row of its own, at its own
+    severity and in the route's order; the status line says only what was
+    measured; and a value typed into the box takes the notes away, since
+    they describe the file the value came from.
+
+    MUTATION THIS MUST FAIL AGAINST: the notes joined into the status line
+    in the worst one's tone (`modify/slab-panel.js` before 2026-09-27).
+    """
+    _open(page, flask_server)
+    page.locator("#optab-btn-slab").click()
+    page.wait_for_selector("#optab-panel-slab.is-active", timeout=_ACT_MS)
+    # The panel's menu is in: the element the measurement names is Au.
+    page.wait_for_function(
+        "() => document.getElementById('slab-element').value === 'Au'",
+        timeout=_ACT_MS)
+
+    page.locator("#slab-pick-run").click()
+    row = page.locator(
+        f"dialog li.tp-node[data-path$='/{stretched_gold.name}'] > .tp-row")
+    row.wait_for(state="visible", timeout=_ACT_MS)
+    row.click()
+    with page.expect_response("**/api/modify/lattice-from-run") as answer:
+        page.locator("dialog [data-action='confirm']").click()
+    said = answer.value.json()
+    assert said["ok"] is True, said
+    notes = said["notes"]
+    assert len({n["severity"] for n in notes}) >= 2, (
+        f"the crystal should draw notes at two severities; it drew {notes}")
+
+    findings = page.locator("#slab-lattice-findings")
+    findings.wait_for(state="visible", timeout=_ACT_MS)
+    rows = findings.locator("li.issue-item").all()
+    assert [(r.get_attribute("data-severity"),
+             r.locator(".issue-msg").inner_text()) for r in rows] == [
+        (n["severity"], n["message"]) for n in notes]
+
+    status = page.locator("#app-notifications .app-notification",
+                          has_text=stretched_gold.name)
+    assert "app-notification--info" in status.get_attribute("class")
+    line = status.locator(".app-notification__msg").inner_text()
+    assert f"a = {said['a']:.4f} Å" in line, line
+    assert not [n for n in notes if n["message"] in line], line
+
+    page.locator("#slab-a").fill("4.2")
+    findings.wait_for(state="hidden", timeout=_ACT_MS)
+    assert findings.locator("li.issue-item").count() == 0

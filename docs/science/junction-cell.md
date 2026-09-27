@@ -164,6 +164,13 @@ recognised as such.
 > refusing on your behalf.** A backend that second-guessed the setup would be
 > claiming to know a convergence you ran and it did not.
 
+**What it saw reaches you as findings**: one row per note under the lattice
+box, each at its own severity, drawn by the one renderer
+([`science/validation.md`](?doc=science/validation.md) § 4.1 R2a), while the
+status line states only the measured value. The notes describe the value in
+the box, so the next measurement replaces them, and a value typed or picked
+from the table clears them.
+
 ## 2b. The cell shape is not a free switch
 
 The slab builders take an `orthogonal` flag, but on two of the three surfaces

@@ -5,7 +5,9 @@
  * validating endpoint returns and puts every entry on screen.
  *
  * USED BY: the structure-optimization tab (SIESTA + PySCF panels), the
- * transport tab, the spectra tab/inspector.  Nothing else renders a finding.
+ * transport tab, the spectra tab/inspector, MolView's notices, and the Modify
+ * tab's slab panel (the lattice measurement's notes).  Nothing else renders a
+ * finding.
  *
  * WHY THIS EXISTS (contract R2, docs/science/validation.md § 4.1).  There were
  * FOUR implementations of this one job — one per tab plus the per-card panels

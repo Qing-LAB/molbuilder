@@ -22,6 +22,8 @@
 "use strict";
 
 import { runOp } from "./viewer.js";
+import { clear as clearFindings, render as renderFindings }
+    from "../lib/validation-findings.js";
 
 const GROWS = [["+z", "+z (up)"], ["-z", "-z (down)"]];
 const REGISTRY_NAMES = ["A", "B", "C"];
@@ -342,11 +344,21 @@ export function init(viewer) {
         // wipe a number the user can see is right.
         if (box && typeof value === "number" && value > 0) {
             box.value = value.toFixed(4);
+            forgetMeasuredNotes();
         }
         onLatticeInputsChanged();
     }
 
     function onLatticeRefPicked() { fillFromLatticeRef(); }
+
+    /* THE NOTES DESCRIBE THE VALUE IN THE BOX -- the file it was measured
+     * from -- so a value that did not come off that file takes them away: a
+     * published reference picked, or a number typed.  A failed measurement
+     * leaves both the box and its notes as they were; a new one replaces
+     * them (`renderFindings` clears before it draws). */
+    function forgetMeasuredNotes() {
+        clearFindings({ panel: $("slab-lattice-findings") });
+    }
 
     /* TYPING MAKES IT CUSTOM.  Without this the radio would go on claiming
      * "Experimental" beside a number nobody published, which is exactly the
@@ -418,19 +430,14 @@ export function init(viewer) {
         // not out of the published table, and the row has to say so.
         markCustom();
         onLatticeInputsChanged();
-        const said = (j.notes || []).map((n) => n.message).join("  ·  ");
-        // WORST OF THE THREE, not "is any of them warn".  The vocabulary is
-        // error > warn > info (`science/validation.md` § 4.1 R4), and until
-        // 2026-09-11 an error in the notes was said in the info tone -- the
-        // downgrade R4 forbids by name.  This is the STATUS line's tone, which
-        // `page-shell.css` owns and which has all three; the notes themselves
-        // are rendered by the findings module wherever they are shown.
-        const worst = (notes) => notes.some((n) => n && n.severity === "error")
-            ? "error"
-            : notes.some((n) => n && n.severity === "warn") ? "warn" : "info";
-        say(worst(j.notes || []),
-            `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`
-            + (said ? "  ·  " + said : ""));
+        // THE NOTES ARE FINDINGS, one row each at its own severity, drawn by
+        // the one renderer under the box (`science/validation.md` § 4.1 R2a).
+        // They were joined into this message in the worst one's tone until
+        // 2026-09-27, so "this is probably not bulk" read as one clause of a
+        // run-on line beside the reassuring comparisons (plan W19).
+        renderFindings(j.notes || [], { panel: $("slab-lattice-findings") });
+        say("info",
+            `${j.element}${j.n_atoms} from ${j.source}: a = ${j.a.toFixed(4)} Å`);
     }
 
     /* ── Apply ───────────────────────────────────────────────────────────
@@ -475,6 +482,7 @@ export function init(viewer) {
     if (aBox) aBox.addEventListener("input", () => {
         markCustom();
         onLatticeInputsChanged();
+        forgetMeasuredNotes();
     });
     const regBox = $("slab-registry");
     if (regBox) regBox.addEventListener("change", renderSequence);
