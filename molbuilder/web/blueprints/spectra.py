@@ -89,6 +89,20 @@ def spectrum_calculation_page():
 # ===================================================================== #
 
 
+def _page_constants():
+    """The physical constants the spectrum page converts the file's numbers
+    with, from their one home (`molbuilder.constants`) -- served with every
+    load rather than copied into the browser (`architecture.md` § 3; user,
+    2026-09-27: one source per fact).  Named by what each converts."""
+    from molbuilder import constants as C
+    return {
+        "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
+        "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
+        "boltzmann_hartree_k": C.BOLTZMANN_HARTREE_K,      # k_B in Eh/K
+        "cm1_kelvin":          C.CM1_EV / C.BOLTZMANN_EV_K,   # hc/k_B, K per cm-1
+    }
+
+
 def _loaded(results):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
@@ -119,6 +133,9 @@ def _loaded(results):
     one clause, and the spectrum still opens.
     """
     payload = results.to_dict()
+    # THE PAGE'S CONSTANTS RIDE WITH THE RESULTS: the reply the page already
+    # fetches, so serving them costs no round trip (`_page_constants`).
+    payload["constants"] = _page_constants()
 
     # THE METHODS PARAGRAPH GAINS THE ONE FACT IT COULD NOT CARRY.  It is
     # composed in the deck composer, before the job runs, and which

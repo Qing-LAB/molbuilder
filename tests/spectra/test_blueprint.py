@@ -834,7 +834,8 @@ class TestModeAnimationControls:
         core = web_client.get("/static/lib/spectra/core.js").data.decode()
         assert "zero_point_amplitude_amu12_ang" in core
         assert "ZERO_POINT_Q" not in core, "the tab must not respell the constant"
-        assert "CM1_IN_KELVIN" in core
+        # (The kelvin-per-cm-1 constant the thermal factor takes is served
+        # with the results since 2026-09-27 -- `spectra.py::_page_constants`.)
         assert "Math.tanh" in core, "the thermal form needs coth"
 
         for name in ("_maths.js", "index.js"):

@@ -161,16 +161,17 @@ the one home:
   installed → *interpolate* the value in from `constants`
   (`siesta/makov_payne.py` is the exemplar: it interpolates
   `HARTREE_EV` and `BOHR_ANGSTROM` in by name);
-* the **browser**, which cannot import Python. A *table* is **served** —
-  that is [`process/code-audit.md` § 3.6](?doc=process/code-audit.md)'s
+* the **browser**, which cannot import Python. A value is **served**, table
+  or scalar — [`process/code-audit.md` § 3.6](?doc=process/code-audit.md)'s
   ruling (*"shipping a periodic table into JavaScript is the same mistake
-  with a longer commute"*), and `web/blueprints/modify.py` serves the
-  lattice parameters that way. A handful of **scalars** is *pinned*
-  instead: serving five numbers adds a round trip and a failure mode to a
-  panel that works offline, and buys nothing a test does not. So the copy
-  stays in the `.js` and a test asserts it equals `constants`
-  (`tests/test_units.py`). The distinction is table vs scalar, not
-  Python vs JavaScript;
+  with a longer commute"*) — in the reply the page already fetches:
+  `web/blueprints/modify.py` serves the lattice parameters, and
+  `/api/spectra/load` carries the four constants the spectrum page converts
+  with (`web/blueprints/spectra.py::_page_constants` — Hartree in eV and in
+  kcal/mol, Boltzmann in Eh/K, kelvin per cm⁻¹), so the browser holds no
+  copy and nothing needs pinning *(user, 2026-09-27: one source per fact.
+  Until then those four were copied into `lib/spectra/core.js` and held equal
+  by a test that read the file, which `testing.md` gives no place)*;
 * a **class body copied by `inspect.getsource`**, where a module-level
   import would not travel with the copy → pin the literal to `constants`
   with a test rather than letting it stand alone.

@@ -636,10 +636,15 @@
     // hammering the API forever.
     const WATCH_MAX_ERRORS = 5;
 
-    // Hartree-to-eV conversion factor.  Used by the ES panel to
-    // present MO energies in user-friendly units instead of Eh.
-    // CODATA 2018 value.
-    const EH_TO_EV = 27.211386245988;
+    /* THE PHYSICAL CONSTANTS THIS PAGE CONVERTS WITH ARE SERVED, not copied:
+     * `/api/spectra/load` sends them with every result, from their one home
+     * (`molbuilder.constants`; `web/blueprints/spectra.py::_page_constants`),
+     * and `renderResults` takes them in before any panel draws.  Four
+     * numbers stood here as copies until 2026-09-27 -- Hartree to eV, to
+     * kcal/mol, Boltzmann in Eh/K, and kelvin per cm-1 -- held equal to
+     * Python by a test that read this file (`architecture.md` § 3; user:
+     * one source per fact). */
+    const K = {};
 
     // ----- Listener bookkeeping ---------------------------------
     //
@@ -1462,6 +1467,7 @@
     }
 
     function renderResults(results, path) {
+        if (results && results.constants) Object.assign(K, results.constants);
         if (!results) {
             els.resultsSummary.hidden = true;
             // Contract § 2: route fileState writes through
@@ -1887,10 +1893,10 @@
         if (es) {
             const homo = es.mo_energies_eq_eh[es.homo_index_in_window];
             const lumo = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
-            if (homo != null) vals.push((homo * EH_TO_EV).toFixed(3));
-            if (lumo != null) vals.push((lumo * EH_TO_EV).toFixed(3));
+            if (homo != null) vals.push((homo * K.hartree_ev).toFixed(3));
+            if (lumo != null) vals.push((lumo * K.hartree_ev).toFixed(3));
             if (homo != null && lumo != null)
-                vals.push(((lumo - homo) * EH_TO_EV).toFixed(3));
+                vals.push(((lumo - homo) * K.hartree_ev).toFixed(3));
         }
         return vals.some(v => v.toLowerCase().includes(filt));
     }
@@ -1915,13 +1921,13 @@
         const es = m.electronic_structure;
         if (!es) return null;
         const e = es.mo_energies_eq_eh[es.homo_index_in_window];
-        return e == null ? null : e * EH_TO_EV;
+        return e == null ? null : e * K.hartree_ev;
     }
     function _lumoEq(m) {
         const es = m.electronic_structure;
         if (!es) return null;
         const e = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
-        return e == null ? null : e * EH_TO_EV;
+        return e == null ? null : e * K.hartree_ev;
     }
     function _gapEq(m) {
         const h = _homoEq(m), l = _lumoEq(m);
@@ -1937,8 +1943,8 @@
         const hm = es.mo_energies_minus_eh[es.homo_index_in_window];
         const lm = es.mo_energies_minus_eh[es.homo_index_in_window + 1];
         if ([h, l, hp, lp, hm, lm].some(x => x == null)) return null;
-        const dPlus  = ((lp - hp) - (l - h)) * EH_TO_EV * 1000;  // meV
-        const dMinus = ((lm - hm) - (l - h)) * EH_TO_EV * 1000;
+        const dPlus  = ((lp - hp) - (l - h)) * K.hartree_ev * 1000;  // meV
+        const dMinus = ((lm - hm) - (l - h)) * K.hartree_ev * 1000;
         return Math.max(Math.abs(dPlus), Math.abs(dMinus));
     }
 
@@ -2263,9 +2269,9 @@
         }
 
         // Convert MO arrays to eV.
-        const eq    = es.mo_energies_eq_eh.map(e => e * EH_TO_EV);
-        const minus = es.mo_energies_minus_eh.map(e => e * EH_TO_EV);
-        const plus  = es.mo_energies_plus_eh.map(e => e * EH_TO_EV);
+        const eq    = es.mo_energies_eq_eh.map(e => e * K.hartree_ev);
+        const minus = es.mo_energies_minus_eh.map(e => e * K.hartree_ev);
+        const plus  = es.mo_energies_plus_eh.map(e => e * K.hartree_ev);
         const hi    = es.homo_index_in_window;
         const li    = hi + 1;
 
@@ -2561,9 +2567,8 @@
     // every mode carries `zero_point_amplitude_amu12_ang`, derived at every
     // serialisation from the one constant in constants.py (vibration.md
     // § 6.3, § 6.6).  A second spelling of it stood here until 2026-09-24.
-    // ħω / k_B per cm⁻¹, in kelvin: the temperature at which a mode's quantum
-    // is comparable to kT.
-    const CM1_IN_KELVIN = 1.4387768775281484;
+    // ħω / k_B per cm⁻¹, in kelvin -- the temperature at which a mode's
+    // quantum is comparable to kT -- is `K.cm1_kelvin`, served (see `K`).
 
     /* Above this, calling a nearest neighbour a "bond" would be a claim rather
      * than a label, so the readout says "nearest contact" instead.  Generous on
@@ -2582,7 +2587,7 @@
         if (mode === "thermal") {
             const t = Number(temperatureK);
             if (isFinite(t) && t > 0) {
-                const x = CM1_IN_KELVIN * nu / (2 * t);
+                const x = K.cm1_kelvin * nu / (2 * t);
                 // coth(x); at large x this is 1 and the mode is in its ground
                 // state, which is why a stiff mode at room temperature comes back
                 // barely different from zero-point.
@@ -3301,8 +3306,8 @@
     // .thermo-chart box owns it), and a plain degrade when Plotly is
     // not on the page (/results loads it; /spectra does not mount
     // this panel at all).
-    var _KB_EH      = 3.166811563e-6;   // Boltzmann, Eh/K -- the deck's value
-    var _EH_TO_KCAL = 627.509474;
+    // Boltzmann in Eh/K and Hartree in kcal/mol are `K.boltzmann_hartree_k`
+    // and `K.hartree_kcal_mol`, served with the results (see `K`).
 
     function renderThermoPanel(results) {
         const th   = (results && results.thermo) || {};
@@ -3324,7 +3329,7 @@
             let head = "At T = " + th.temperature_K + " K, P = "
                      + th.pressure_atm + " atm: ZPE "
                      + Number(th.zpe_eh).toFixed(6) + " Eh ("
-                     + (th.zpe_eh * _EH_TO_KCAL).toFixed(1) + " kcal/mol)";
+                     + (th.zpe_eh * K.hartree_kcal_mol).toFixed(1) + " kcal/mol)";
             if (th.g_eh != null) {
                 // The headline names its regime: full RRHO for a free
                 // molecule, the vibrational sums when atoms are held --
@@ -3356,10 +3361,10 @@
         const t = _esTheme();
         // E_elec off the grid identity -- exact, not a fit.
         const eRef = grid.h_eh[0] - grid.zpe_eh[0] - grid.u_vib_eh[0]
-                   - _KB_EH * T[0];
-        const gRel = grid.g_eh.map((g) => (g - eRef) * _EH_TO_KCAL);
-        const hRel = grid.h_eh.map((h) => (h - eRef) * _EH_TO_KCAL);
-        const ts   = T.map((Ti, i) => Ti * grid.s_eh_k[i] * _EH_TO_KCAL);
+                   - K.boltzmann_hartree_k * T[0];
+        const gRel = grid.g_eh.map((g) => (g - eRef) * K.hartree_kcal_mol);
+        const hRel = grid.h_eh.map((h) => (h - eRef) * K.hartree_kcal_mol);
+        const ts   = T.map((Ti, i) => Ti * grid.s_eh_k[i] * K.hartree_kcal_mol);
         const config = {
             displaylogo: false, responsive: true,
             modeBarButtonsToRemove: ["select2d", "lasso2d",
@@ -3393,10 +3398,10 @@
             const d = Math.abs(T[i] - th.temperature_K);
             if (d < dmin) { dmin = d; i0 = i; }
         }
-        const zpe  = grid.zpe_eh[i0] * _EH_TO_KCAL;
-        const uth  = (grid.u_vib_eh[i0] + _KB_EH * T[i0]) * _EH_TO_KCAL;
-        const mts  = -T[i0] * grid.s_eh_k[i0] * _EH_TO_KCAL;
-        const gnet = (grid.g_eh[i0] - eRef) * _EH_TO_KCAL;
+        const zpe  = grid.zpe_eh[i0] * K.hartree_kcal_mol;
+        const uth  = (grid.u_vib_eh[i0] + K.boltzmann_hartree_k * T[i0]) * K.hartree_kcal_mol;
+        const mts  = -T[i0] * grid.s_eh_k[i0] * K.hartree_kcal_mol;
+        const gnet = (grid.g_eh[i0] - eRef) * K.hartree_kcal_mol;
         Plotly.react(els.thermoDecomp, [{
             type: "bar",
             x: ["ZPE", "U_vib + kT", "−T·S",

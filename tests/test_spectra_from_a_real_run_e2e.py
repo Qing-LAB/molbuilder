@@ -447,3 +447,39 @@ def test_switching_files_replaces_the_view_it_does_not_merge(
 
     unexpected = [e for e in errors if _PLOTLY_HIDDEN_RESIZE not in e]
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
+
+
+def test_the_thermo_panel_states_the_zero_point_energy_in_kcal_mol(
+        page, flask_server, co2_run):
+    """The page converts the file's Hartree with the constants the server
+    serves with the results (`web/blueprints/spectra.py::_page_constants`,
+    from `molbuilder.constants`), and keeps no copy of them.  So the zero-
+    point energy the thermochemistry note states in kcal/mol is the file's
+    ``zpe_eh`` times that one constant.
+
+    MUTATION THIS MUST FAIL AGAINST: the page not taking the served
+    constants (`renderResults`) -- the figure reads NaN.
+    """
+    import re
+
+    from molbuilder import constants as C
+
+    zpe_eh = json.loads(co2_run.read_text())["thermo"]["zpe_eh"]
+    page.add_init_script(
+        "try {"
+        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(co2_run.parent))});"
+        "} catch (_) {}")
+    page.goto(f"{flask_server}/results")
+    page.wait_for_function(
+        "(want) => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')].some(o => o.value === want)",
+        arg=str(co2_run), timeout=20000)
+    page.select_option("#results-file-picker-select", value=str(co2_run))
+    note = page.wait_for_function(
+        "() => { const t = (document.getElementById('thermo-note') || {})"
+        ".textContent || ''; return /kcal\\/mol/.test(t) ? t : null; }",
+        timeout=30000).json_value()
+    stated = re.search(r"ZPE \S+ Eh \((\S+) kcal/mol\)", note)
+    assert stated, note
+    assert float(stated.group(1)) == pytest.approx(
+        zpe_eh * C.HARTREE_EV / C.KCAL_MOL_EV, abs=0.051), (note, zpe_eh)

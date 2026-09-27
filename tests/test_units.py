@@ -225,32 +225,3 @@ def test_an_ARRAY_converts_elementwise():
     out = length_ang(np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0]]), "Bohr")
     assert out.shape == (2, 3)
     assert out[1][2] == pytest.approx(2 * BOHR_ANGSTROM)
-
-
-@pytest.mark.parametrize("js_name,expected_expr", [
-    ("EH_TO_EV",      "HARTREE_EV"),
-    ("_KB_EH",        "BOLTZMANN_HARTREE_K"),
-    ("_EH_TO_KCAL",   "HARTREE_EV / KCAL_MOL_EV"),
-    ("CM1_IN_KELVIN", "CM1_EV / BOLTZMANN_EV_K"),
-])
-def test_the_browsers_copy_of_a_constant_equals_the_one_home(js_name,
-                                                             expected_expr):
-    """`spectra/core.js` cannot import Python, so it carries its own
-    scalars.  `architecture.md` § 3 allows that for a handful of numbers
-    and requires this pin: the copy is only legal while it is equal.
-
-    Every row derives exactly from `constants`.  (The zero-point amplitude is
-    no longer the browser's to compute: every mode in the file carries it,
-    vibration.md § 6.3.)
-    """
-    import re
-    from pathlib import Path
-    import molbuilder.constants as C
-
-    js = (Path(__file__).resolve().parent.parent / "molbuilder" / "web"
-          / "static" / "lib" / "spectra" / "core.js").read_text()
-    m = re.search(rf"\b{re.escape(js_name)}\s*=\s*([0-9.eE+-]+)", js)
-    assert m, f"{js_name} is no longer in core.js -- drop this row or fix it"
-    expected = eval(expected_expr, {k: getattr(C, k) for k in dir(C)})
-    assert float(m.group(1)) == pytest.approx(expected, rel=1e-9), (
-        f"core.js {js_name} = {m.group(1)} but {expected_expr} = {expected}")
