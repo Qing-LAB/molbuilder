@@ -28,35 +28,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from molbuilder import diagnostics
+from _road import conda_hook, env_available, env_bin
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def _conda_hook() -> Path:
-    binary = diagnostics.detect().conda_binary
-    if not binary:
-        return Path("/nonexistent/conda.sh")
-    return Path(binary).parent.parent / "etc" / "profile.d" / "conda.sh"
-
-
-CONDA_SH = _conda_hook()
-
-
-def _env_bin() -> Path:
-    """The ``molbuilder-siesta`` env's own ``bin``, through the product's
-    resolver -- never a guess at the layout and never the host's PATH
-    (`test_siesta_keyword_smoke.py` says why)."""
-    from molbuilder.envs.install import _env_prefix
-    caps = diagnostics.detect()
-    if not caps.env_available("molbuilder-siesta"):
-        return Path("/nonexistent")
-    prefix = _env_prefix("molbuilder-siesta", caps.conda_binary)
-    return Path(prefix) / "bin" if prefix else Path("/nonexistent")
+CONDA_SH = conda_hook()
 
 pytestmark = pytest.mark.skipif(
     not (CONDA_SH.is_file()
-         and diagnostics.detect().env_available("molbuilder-siesta")),
+         and env_available("molbuilder-siesta")),
     reason="needs the molbuilder-siesta env + a detectable conda hook")
 
 
@@ -87,9 +68,9 @@ def _describe(tree, monkeypatch, positions):
     # wants the env's REAL engine on that same road, so the env's own bin
     # goes in front of the stubs -- the binary the product finds when the
     # person launches, and never /usr/local/bin's.
-    env_bin = _env_bin()
-    assert (env_bin / "siesta").is_file(), env_bin
-    monkeypatch.setenv("PATH", f"{env_bin}{os.pathsep}{os.environ['PATH']}")
+    bin_ = env_bin("molbuilder-siesta")
+    assert (bin_ / "siesta").is_file(), bin_
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
 
     r = CliRunner().invoke(jobset_group, [
         "init", "--structure", "P/structure/h2.xyz",
