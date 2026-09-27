@@ -58,7 +58,6 @@
   "run_state": "stopped",
   "runtime_info": {
     "convergence_targets": {
-      "dm_tolerance": 0.001,
       "max_displ_ang": 0.2,
       "max_force_tol_eV_per_A": 0.04,
       "max_geom_iter": 80,

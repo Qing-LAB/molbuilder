@@ -6,7 +6,7 @@ Contract:
 * Flat header lines (legacy single-stage runs)::
 
     # convergence.max_force_tol_eV_per_A: 0.023
-    # convergence.scf_energy_tol:         1e-9
+    # convergence.energy_step_tol_eV:         1e-9
 
   parser → ``runtime_info["convergence_targets"] = {key: val, ...}``
 
@@ -18,9 +18,9 @@ Contract:
   while parsing every real staged header to an empty dict::
 
     # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
-    # convergence.01_coarse.scf_energy_tol:         1e-7
+    # convergence.01_coarse.energy_step_tol_eV:         1e-7
     # convergence.02_tight.max_force_tol_eV_per_A: 0.023
-    # convergence.02_tight.scf_energy_tol:         1e-9
+    # convergence.02_tight.energy_step_tol_eV:         1e-9
 
   parser → ``runtime_info["convergence_targets"] = {stage_name:
                                                     {key: val}}``
@@ -58,13 +58,13 @@ def test_emitter_writes_flat_lines_for_flat_input(tmp_path):
         runtime_info=None,
         convergence_targets={
             "max_force_tol_eV_per_A": 0.023,
-            "scf_energy_tol":         1.0e-9,
+            "energy_step_tol_eV":         1.0e-9,
             "max_geom_iter":          200,
         },
     )
     body = out.read_text()
     assert "# convergence.max_force_tol_eV_per_A: 0.023" in body
-    assert "# convergence.scf_energy_tol: 1e-09"        in body
+    assert "# convergence.energy_step_tol_eV: 1e-09"        in body
     assert "# convergence.max_geom_iter: 200"           in body
     # No nested-shape lines.
     assert "convergence.stage" not in body
@@ -89,21 +89,21 @@ def test_emitter_writes_nested_lines_for_nested_input(tmp_path):
         convergence_targets={
             "01_coarse": {
                 "max_force_tol_eV_per_A": 0.103,
-                "scf_energy_tol":         1.0e-7,
+                "energy_step_tol_eV":         1.0e-7,
                 "max_geom_iter":          50,
             },
             "02_tight": {
                 "max_force_tol_eV_per_A": 0.023,
-                "scf_energy_tol":         1.0e-9,
+                "energy_step_tol_eV":         1.0e-9,
                 "max_geom_iter":          200,
             },
         },
     )
     body = out.read_text()
     assert "# convergence.01_coarse.max_force_tol_eV_per_A: 0.103" in body
-    assert "# convergence.01_coarse.scf_energy_tol: 1e-07"         in body
+    assert "# convergence.01_coarse.energy_step_tol_eV: 1e-07"         in body
     assert "# convergence.02_tight.max_force_tol_eV_per_A: 0.023" in body
-    assert "# convergence.02_tight.scf_energy_tol: 1e-09"         in body
+    assert "# convergence.02_tight.energy_step_tol_eV: 1e-09"         in body
     # No flat-shape lines.
     assert "# convergence.max_force" not in body
 
@@ -117,7 +117,7 @@ _SAMPLE_FLAT = """\
 # molwatch trajectory log v1
 # engine: pyscf
 # convergence.max_force_tol_eV_per_A: 0.023
-# convergence.scf_energy_tol: 1e-09
+# convergence.energy_step_tol_eV: 1e-09
 # convergence.max_geom_iter: 200
 
 ==== molwatch step 0 begin ====
@@ -136,10 +136,10 @@ _SAMPLE_NESTED = """\
 # molwatch trajectory log v1
 # engine: pyscf
 # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
-# convergence.01_coarse.scf_energy_tol: 1e-07
+# convergence.01_coarse.energy_step_tol_eV: 1e-07
 # convergence.01_coarse.max_geom_iter: 50
 # convergence.02_tight.max_force_tol_eV_per_A: 0.023
-# convergence.02_tight.scf_energy_tol: 1e-09
+# convergence.02_tight.energy_step_tol_eV: 1e-09
 # convergence.02_tight.max_geom_iter: 200
 
 ==== molwatch step 0 begin ====
@@ -167,7 +167,7 @@ def test_parser_reads_flat_header_as_flat_dict(tmp_path):
     traj = _parse(_SAMPLE_FLAT, tmp_path)
     ct = traj.runtime_info["convergence_targets"]
     assert ct["max_force_tol_eV_per_A"] == pytest.approx(0.023)
-    assert ct["scf_energy_tol"]         == pytest.approx(1.0e-9)
+    assert ct["energy_step_tol_eV"]         == pytest.approx(1.0e-9)
     assert ct["max_geom_iter"]          == 200
     assert ct["source"] == "molwatch_header"
 
@@ -178,10 +178,10 @@ def test_parser_reads_nested_header_as_nested_dict(tmp_path):
     ct = traj.runtime_info["convergence_targets"]
     assert isinstance(ct["01_coarse"], dict)
     assert ct["01_coarse"]["max_force_tol_eV_per_A"] == pytest.approx(0.103)
-    assert ct["01_coarse"]["scf_energy_tol"]         == pytest.approx(1.0e-7)
+    assert ct["01_coarse"]["energy_step_tol_eV"]         == pytest.approx(1.0e-7)
     assert ct["01_coarse"]["max_geom_iter"]          == 50
     assert ct["02_tight"]["max_force_tol_eV_per_A"] == pytest.approx(0.023)
-    assert ct["02_tight"]["scf_energy_tol"]         == pytest.approx(1.0e-9)
+    assert ct["02_tight"]["energy_step_tol_eV"]         == pytest.approx(1.0e-9)
     assert ct["source"] == "molwatch_header"
 
 

@@ -230,7 +230,7 @@ def test_the_convergence_record_describes_this_rung_and_no_other():
     assert set(targets["02_medium"]) == {
         "max_force_tol_eV_per_A", "rms_force_tol_eV_per_A",
         "max_displ_ang", "rms_displ_ang", "energy_step_tol_eV",
-        "scf_energy_tol", "max_scf_iter", "max_geom_iter"}
+        "max_scf_iter", "max_geom_iter"}
 
 
 def test_the_recorded_targets_are_this_rungs_resolved_values():
@@ -240,12 +240,11 @@ def test_the_recorded_targets_are_this_rungs_resolved_values():
     carried every rung's targets."""
     HA_BOHR_TO_EV_ANG = 51.42208619
     text = _deck(token="03_tight", geom_gmax=2.0e-4, geom_grms=1.0e-4,
-                 geom_max_steps=100, scf_conv_tol=1.0e-10)
+                 geom_max_steps=100)
     m = re.search(r"_CONVERGENCE_TARGETS = (\{.*?\n\})", text, re.S)
     row = ast.literal_eval(m.group(1))["03_tight"]
     assert row["max_force_tol_eV_per_A"] == pytest.approx(
         2.0e-4 * HA_BOHR_TO_EV_ANG)
     assert row["rms_force_tol_eV_per_A"] == pytest.approx(
         1.0e-4 * HA_BOHR_TO_EV_ANG)
-    assert row["scf_energy_tol"] == 1.0e-10
     assert row["max_geom_iter"] == 100

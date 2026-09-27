@@ -247,8 +247,10 @@ def test_the_siesta_parser_reads_convergence_targets_from_the_input_echo():
     assert ct.get("max_force_tol_eV_per_A") == 0.02, (
         "0.04 is the SIESTA default -- reading it back here means the echo "
         "was not parsed and a default leaked through instead")
-    assert ct.get("dm_tolerance") == 1e-4
     assert ct.get("max_scf_iter") == 500
+    # the SCF's own criteria beside them, per phase (`web/trajectory.md` § 3)
+    crit = traj.runtime_info["scf_criteria"]["periodic"]
+    assert crit["dDmax"]["tolerance"] == 1e-4
 
 
 _SIESTA_WITH_REDATA = (
@@ -307,12 +309,16 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
     # Every key the threshold lines need, + the source tag
     # (`web/trajectory.md` § 3: the targets come from the run's own
     # output, and the label says which reader found them).
-    for key in ("max_force_tol_eV_per_A", "dm_tolerance",
+    for key in ("max_force_tol_eV_per_A",
                 "max_scf_iter", "max_geom_iter", "max_displ_ang", "source"):
         assert key in ct, (
             f"convergence_targets missing documented key {key!r}: "
             f"{sorted(ct)}")
     assert ct["source"] == "siesta_input_echo"
+    # THE SCF'S CRITERIA reach the page too -- the residual plot's line is
+    # drawn from them (`web/trajectory.md` § 3).
+    assert (runtime_info["scf_criteria"]["periodic"]["dDmax"]["tolerance"]
+            == 1e-4), runtime_info.get("scf_criteria")
     # max_geom_iter is the optimization-step cap (MD.NumCGsteps);
     # added 2026-06-13 after the user reported the gap in the
     # trajectory inspector's convergence summary.

@@ -921,14 +921,8 @@ class SiestaReader:
             return True
         # THE SCF CRITERIA, from the one reader of the redata pairs: each
         # tolerance keyed by the row column it bounds, with whether SIESTA
-        # requires it.  The DM tolerance also stays a convergence target --
-        # the summary band's row -- from that same reading.
-        col = _G.read_criterion_line(line, self._scf_criteria)
-        if col:
-            if (col == "dDmax"
-                    and "tolerance" in self._scf_criteria.get(col, {})):
-                self._set_conv_target("dm_tolerance",
-                                      self._scf_criteria[col]["tolerance"])
+        # requires it (`web/trajectory.md` § 3).
+        if _G.read_criterion_line(line, self._scf_criteria):
             return True
         # What the binary says about itself (``runtime_info["siesta_build"]``).
         build: Dict[str, Any] = {}

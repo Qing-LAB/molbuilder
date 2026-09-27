@@ -283,10 +283,10 @@ class MolwatchReader:
         max_force, cycle, residuals, scf_cycles, last_cycle, steps_done,
         scf_rows, targets}``, each present only when the log states it:
         the step's index, energy and largest force; its SCF's last cycle
-        and that cycle's residuals -- ``{name: (value, None, unit)}``, the
-        log stating no tolerance in their units (its ``scf_energy_tol`` is
-        PySCF's, in Hartree); how many steps are done and how many SCF
-        cycles they ran.
+        and that cycle's residuals -- ``{name: (value, tolerance, unit)}``,
+        each beside the criterion the log states for it
+        (`molwatch_grammar.scf_criteria`), ``None`` where it states none;
+        how many steps are done and how many SCF cycles they ran.
 
         A PREVIEW IS NOT PROGRESS: the step-0 block of kind
         ``initial_preview`` (`molwatch_grammar.PREVIEW_KIND`) shows the input
@@ -308,8 +308,11 @@ class MolwatchReader:
                 out["last_cycle"] = last
                 if last.get("cycle") is not None:
                     out["cycle"] = last["cycle"]
+                crit = _MG.scf_criteria(self.runtime_info).get(
+                    _MG.SCF_PHASE, {})
                 residuals = {
-                    name: (last[key], None, unit)
+                    name: (last[key],
+                           (crit.get(name) or {}).get("tolerance"), unit)
                     for name, key, unit in (("dE", "delta_E", "eV"),
                                             ("|g|", "gnorm", "eV"),
                                             ("ddm", "ddm", ""))
@@ -329,7 +332,11 @@ class MolwatchReader:
     def finish(self) -> Dict[str, Any]:
         """The end of the log -- a torn final block is dropped -- and the
         reading: ``{blocks, engine, run_state, error_message,
-        runtime_info}``."""
+        runtime_info}``, the SCF's criteria among the runtime facts
+        (``scf_criteria``, `web/trajectory.md` § 3)."""
+        crit = _MG.scf_criteria(self.runtime_info)
+        if crit:
+            self.runtime_info["scf_criteria"] = crit
         return {"blocks": self.blocks, "engine": self.engine,
                 "run_state": self.run_state,
                 "error_message": self.error_message,

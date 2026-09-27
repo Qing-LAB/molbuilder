@@ -151,18 +151,13 @@ class MolwatchEmitter:
                     # Displacement thresholds (Å convention)
                     "max_displ_ang",
                     "rms_displ_ang",
-                    # Energy-step + SCF self-consistency
+                    # Energy step.  The SCF's own criteria are not
+                    # targets: the runtime block states what the solver
+                    # read back (`molwatch_grammar.scf_criteria`).
                     "energy_step_tol_eV",
-                    "scf_energy_tol",
                     # Iter caps (integers, surfaced for the UI)
                     "max_scf_iter",
                     "max_geom_iter",
-                    # Legacy alias (SIESTA-side parser writes
-                    # ``scf_grad_tol`` for the gradient norm; keep
-                    # accepting it on the emitter for round-trip
-                    # symmetry with the parser, even though
-                    # ``rms_force_tol_eV_per_A`` is the canonical key).
-                    "scf_grad_tol",
                 )
 
                 def _is_nested(ct):

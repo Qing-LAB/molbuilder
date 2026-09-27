@@ -1163,7 +1163,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // Two header shapes are normalised to a single flat dict:
     //
     //   FLAT (legacy, single-stage):
-    //     {max_force_tol_eV_per_A: 0.023, scf_energy_tol: 1e-9, ...,
+    //     {max_force_tol_eV_per_A: 0.023, max_scf_iter: 100, ...,
     //      source: "molwatch_header"}
     //     -> returned as-is.
     //
@@ -1207,6 +1207,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const flat = Object.assign({}, leaf);
         if (typeof ct.source === "string") flat.source = ct.source;
         return flat;
+    }
+
+    // THE SCF'S CRITERIA -- `{phase: {residual: {tolerance, unit,
+    // required}}}`, one structure for every engine (web/trajectory.md § 3)
+    // -- or `{}` when the run states none.
+    function _scfCriteria() {
+        const rt = state.data && state.data.runtime_info;
+        const crit = rt && rt.scf_criteria;
+        return (crit && typeof crit === "object") ? crit : {};
     }
 
     // Render the convergence-summary section above the plots row.
@@ -1267,12 +1276,21 @@ import { molviewFiles } from "../projects/molview-doors.js";
             rows.push(["max |F|",
                 ct.max_force_tol_eV_per_A.toFixed(4) + " eV/Å"]);
         }
-        if (typeof ct.dm_tolerance === "number") {
-            rows.push(["DM tolerance", ct.dm_tolerance.toExponential(2)]);
-        }
-        if (typeof ct.scf_energy_tol === "number") {
-            rows.push(["SCF energy tol",
-                ct.scf_energy_tol.toExponential(2) + " Ha"]);
+        // THE SCF'S CRITERIA, every engine's in one shape
+        // (`runtime_info.scf_criteria`, web/trajectory.md § 3): one row per
+        // residual the SCF had to bring below its tolerance, in that
+        // residual's own unit.  The phase is named only when the run has
+        // two (a TranSIESTA device).
+        const crit = _scfCriteria();
+        const critPhases = Object.keys(crit);
+        for (const ph of critPhases) {
+            for (const [res, c] of Object.entries(crit[ph] || {})) {
+                if (!c || typeof c.tolerance !== "number") continue;
+                rows.push(["SCF " + res + " tol"
+                           + (critPhases.length > 1 ? " (" + ph + ")" : ""),
+                    c.tolerance.toExponential(2) + (c.unit ? " " + c.unit : "")
+                    + (c.required === false ? " (not required)" : "")]);
+            }
         }
         if (typeof ct.max_scf_iter === "number") {
             rows.push(["MaxSCFIterations", String(ct.max_scf_iter)]);
@@ -1695,11 +1713,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const scfEnergyEl = $("scf-energy-plot");
         const scfGnormEl  = $("scf-gnorm-plot");
         const history = state.data && state.data.scf_history;
-        // Local theme + targets lookups so this can be reasoned
-        // about in isolation; both helpers are cheap (one
-        // getComputedStyle, one runtime_info read).
+        // Local theme lookup so this can be reasoned about in isolation
+        // (one getComputedStyle); the criteria are read where the line is.
         const theme = _themeColors();
-        const ct = _convergenceTargets();
         const hideScf = () => {
             section.hidden = true;
             scfEnergyEl.hidden = true;
@@ -2044,19 +2060,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
         const resPlotEl = $("scf-gnorm-plot");
         if (residual !== null) {
             resPlotEl.hidden = false;
-            // SCF-tolerance threshold line, if we know the target.
-            // dm_tolerance is dimensionless (DM convergence) and
-            // applies to dHmax-style residuals; scf_grad_tol /
-            // scf_energy_tol apply to PySCF's |g|.  Pick the one
-            // that's relevant to the trace we're plotting; skip if
-            // neither was found in the source.
+            // THE PLOTTED RESIDUAL'S OWN CRITERION, in its phase
+            // (web/trajectory.md § 3): SIESTA's rows state their phase
+            // (`periodic`, `negf`); rows that state none are the run's one
+            // phase.  A line only where the run requires the criterion.
             const scfShapes = [];
             const scfAnnotations = [];
-            const scfTol = (residualName === "dHmax")
-                ? (ct && typeof ct.dm_tolerance === "number"
-                    ? ct.dm_tolerance : null)
-                : (ct && typeof ct.scf_grad_tol === "number"
-                    ? ct.scf_grad_tol : null);
+            const crit = _scfCriteria();
+            const critPhases = Object.keys(crit);
+            const rowPhase = current[current.length - 1].phase
+                || (critPhases.length === 1 ? critPhases[0] : null);
+            const c = rowPhase && crit[rowPhase]
+                ? crit[rowPhase][residualName] : null;
+            const scfTol = (c && typeof c.tolerance === "number"
+                            && c.required !== false) ? c.tolerance : null;
             if (scfTol != null) {
                 scfShapes.push({
                     type: "line", xref: "paper",

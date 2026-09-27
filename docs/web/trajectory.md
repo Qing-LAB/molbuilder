@@ -88,7 +88,14 @@ requires (SIESTA's `Require H/DM convergence for SCF`):
 | dDmax | the largest density-matrix change per iteration (dimensionless) | the DM tolerance | `redata: DM tolerance for SCF`; TranSIESTA's `ts:` echo |
 | dHmax | the largest Hamiltonian change (eV) | the H tolerance | `redata: Hamiltonian tolerance for SCF`; the `ts:` echo |
 | dQ | a NEGF loop's charge error (electrons) | the charge tolerance | the `ts:` echo |
+| dE | PySCF's energy change between cycles (eV) | its energy tolerance | what the deck read back (`scf_conv_tol`) |
 | \|g\| | PySCF's orbital-gradient norm — an energy (eV): dE over dimensionless orbital rotations | its gradient tolerance | what the deck read back (`scf_conv_tol_grad`) |
+
+PySCF states both tolerances in Hartree and requires both (`scf.hf.kernel`);
+the progress log's reader states them in eV, the unit of the residuals beside
+them, under the run's one phase, `scf` (`molwatch_grammar.scf_criteria`). A row
+that states no phase is judged in the run's one phase. The summary band lists
+every criterion, and the SCF-residual plot draws the line of the one it plots.
 
 ## 4. Is it done, and how fast?
 

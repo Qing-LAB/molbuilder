@@ -4026,10 +4026,6 @@ And the same day, after P1 and its review:
   (`running-a-job.md` § 4.2). The monitor, which sees the PID go, says a run
   with no ending and no exit recorded `failed`, stopped before its end.
   `stale` came in on 2026-06-19 (`d620b1da`).
-* **Open**: a PySCF progress log states its SCF tolerance in Hartree beside
-  values in eV, so the monitor shows PySCF's ΔE with no tolerance. (Its
-  orbital-gradient norm is now written in eV, as an energy — the 2026-09-26
-  review; the tolerances are the open half.)
 * **Built ahead of P2, found by the 2026-09-26 review**: the run record
   (`parse/dirs/record.py`, `setup.py`), `JobDirParser` serving `status` and
   `record`, `/api/results/dir` carrying it. **P2 still owes**: the Run panel
@@ -4037,23 +4033,34 @@ And the same day, after P1 and its review:
   asked with those run (`bench.compare_asked_to_ran`); the SCF plots by phase; the viewer's own seconds per iteration removed (the
   timing instrument is the one home); the parameters fence narrowed to the
   calculation's items.
-* **Open, for the user (2026-09-26 review)**:
-  1. A killed run reads `running` on the Results tab — its files show no
-     ending — while the monitor's closing line says `failed — stopped before
-     its end`. Should `run_status` read the monitor's closing line?
-  2. A flat stage's launch writes no `run.json`, so a launched flat stage
-     reads `pending`, not `queued`.
-  3. A folder read alone that holds only a product (a spectrum) reads
-     `pending — prepped, not launched` though nothing prepped it.
-  4. How a SIESTA run ended is implemented twice — the reading pass and
-     `_run_ending.scan_ending` — kept in agreement by a test: one reader
-     behind both doors?
-  5. `run_status` reads endings without SIESTA's stderr, which the wrapper
-     passes: a rank other than 0 may state its fatal line only there.
-  6. Which memory peak the record shows — the process's or the kernel's.
-  7. Convert PySCF's stated tolerances to eV so its residuals show one.
-  8. With no `notify` block the start and the end still go to every channel
-     on the machine — intended?
+* **The 2026-09-26 review's eight questions — decided by the user
+  (2026-09-26/27)**:
+  1. A force-stopped run reads `failed · stopped before its end`: `run_status`
+     reads the monitor's closing record after the output's ending and the
+     marker (`ffe0e8c4`).
+  2. Flat stages record their launch too — **open**: the record's name and
+     its readers are to be designed in `project-layout.md` § 1.6.3.
+  3. A folder read alone that holds only a product: obsolete; confirm in the
+     browser that the file list lists and opens its files — **open**.
+  4. One SIESTA ending reader, the reading pass; `ending_of(path)` the one
+     door (`ffe0e8c4`).
+  5. `run_status` reads SIESTA's stderr as the wrapper does — **open**.
+  6. The memory peak shown is the job's own: the kernel's counter when the
+     job has its own cgroup, the largest sample otherwise — **open**.
+  7. Tolerances in the residuals' units: PySCF's SCF criteria stated in eV
+     in `runtime_info.scf_criteria` beside SIESTA's; the viewer draws every
+     residual's line from them (2026-09-27).
+  8. No `notify` block, no notification (`ffe0e8c4`).
+* **Found reading the Results tab's code (2026-09-27), open**:
+  * loading one run parses its output twice — the viewer's parse and
+    `run_info_for_dir`'s `relaxation_of` — and a stopped run's poll reads it
+    a third time for its stop reason;
+  * the run record is composed on every folder scan and no page shows it
+    (the Run panel, P2);
+  * the vibration deck states no SCF criteria: its `_RUNTIME_INFO` records
+    neither tolerance, so its residuals show none;
+  * two tests read old frozen outputs (the stop-reason route, the `fdf` log's
+    `in_deck`) — to be replaced by runs made through `jobset`.
 * The runaway symptom (§ 5d.6) cannot be "|ts-Vha| exceeds 1 eV": the
   converging device swung −1.39 → +1.95 eV in its first two NEGF iterations.
   P4 sets the rule on the two measured runs.

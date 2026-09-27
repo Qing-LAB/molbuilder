@@ -301,6 +301,7 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
         return {}
     out: Dict[str, object] = {}
     convergence: Dict[str, object] = {}
+    runtime: Dict[str, object] = {}
 
     # Header scan: read until the first ``==== molwatch step N
     # begin ====`` line (exclusive).  Header is normally <50 lines.
@@ -309,11 +310,17 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
             for line in fh:
                 if _MG.BLOCK_BEGIN.search(line):
                     break
-                _MG.parse_convergence_line(line.rstrip("\n"), convergence)
+                (_MG.parse_convergence_line(line.rstrip("\n"), convergence)
+                 or _MG.parse_runtime_line(line.rstrip("\n"), runtime))
     except OSError:
         return {}
     if len(convergence) > 1:      # more than the "source" stamp alone
         out["convergence_targets"] = convergence
+    # THE SCF'S CRITERIA, as the molwatch parser states them for the same
+    # log (`molwatch_grammar.scf_criteria`, `web/trajectory.md` § 3).
+    crit = _MG.scf_criteria(runtime)
+    if crit:
+        out["scf_criteria"] = crit
 
     # THE FOOTER, through its one reader, over the whole file in order: a
     # log is appended across attempts, and an earlier attempt's error
@@ -645,8 +652,9 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     # directly — same data, same field names, just sourced via the
     # sibling file.
     mw_meta = _read_molwatch_metadata(path)
-    if "convergence_targets" in mw_meta:
-        runtime_info["convergence_targets"] = mw_meta["convergence_targets"]
+    for key in ("convergence_targets", "scf_criteria"):
+        if key in mw_meta:
+            runtime_info[key] = mw_meta[key]
     run_state = mw_meta.get("run_state", "unknown")
     error_message = mw_meta.get("error_message")
 

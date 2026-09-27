@@ -32,7 +32,6 @@ would not have had them, because I would not have thought to put them there.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -274,6 +273,29 @@ def test_a_run_is_one_entry_in_the_picker_and_it_is_the_log(
         f"five (2026-08-04).")
 
 
+def _open_in_results(page, flask_server, d, log):
+    """Open ``log`` on the Results tab the way a person does -- the folder
+    set, the file picked from the dropdown -- and return the list the page's
+    errors collect into."""
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: (errors.append(m.text)
+                                  if m.type == "error" else None))
+
+    page.add_init_script(
+        "try {"
+        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(d))});"
+        "} catch (_) {}")
+    page.goto(f"{flask_server}/results")
+    page.wait_for_selector("#results-file-picker-select", timeout=20000)
+    page.wait_for_function(
+        "(want) => [...document.querySelectorAll("
+        "  '#results-file-picker-select option')].some(o => o.value === want)",
+        arg=str(log), timeout=20000)
+    page.select_option("#results-file-picker-select", value=str(log))
+    return errors
+
+
 def test_the_viewer_draws_the_run_this_suite_just_optimised(
         page, flask_server, co2_optimization):
     """The other end, in a browser: the energy curve is the run's own steps.
@@ -311,22 +333,7 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         f"nature; if that changed, the plot's null point changed with it "
         f"and the assertion below is measuring something else.")
 
-    errors = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: (errors.append(m.text)
-                                  if m.type == "error" else None))
-
-    page.add_init_script(
-        "try {"
-        f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(d))});"
-        "} catch (_) {}")
-    page.goto(f"{flask_server}/results")
-    page.wait_for_selector("#results-file-picker-select", timeout=20000)
-    page.wait_for_function(
-        "(want) => [...document.querySelectorAll("
-        "  '#results-file-picker-select option')].some(o => o.value === want)",
-        arg=str(log), timeout=20000)
-    page.select_option("#results-file-picker-select", value=str(log))
+    errors = _open_in_results(page, flask_server, d, log)
 
     # Read at the moment the condition holds: the inspector re-renders on
     # its poll and replaces the plot node, so waiting and then evaluating
@@ -381,6 +388,73 @@ def test_the_viewer_draws_the_run_this_suite_just_optimised(
         f"The energy plot above already agreed with the log, so this is the "
         f"viewer alone -- the run reached the page and not the 3-D window.")
 
+    assert errors == [], f"the page reported JS errors: {errors}"
+
+
+def test_the_scf_criteria_this_run_used_reach_the_page_in_ev(
+        page, flask_server, co2_optimization):
+    """PySCF's SCF criteria as the run stated them, in the unit of the
+    residuals they bound (`web/trajectory.md` § 3).
+
+    The deck reads the two tolerances back off its solver into the log's
+    runtime header, in Hartree; the log's reader states them in eV
+    (`molwatch_grammar.scf_criteria`), the unit the step blocks carry dE and
+    |g| in.  The page lists both beside the targets and draws the |g|
+    plot's line at its tolerance -- which no PySCF run drew before
+    2026-09-27, when the page read a key no deck wrote and showed the energy
+    tolerance in Hartree.
+
+    MUTATION THIS MUST FAIL AGAINST: the deck's parameters record writing
+    over the read-back (the runtime fact); the reader stating the Hartree
+    values (the served tolerances); the card keeping the old rows, or the
+    plot reading its line from anything but the criteria (the page's half).
+    """
+    import math
+
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.constants import HARTREE_EV
+
+    d = co2_optimization.parent
+    log = d / "co2opt.molwatch.log"
+    cfg = PySCFConfig(job_name="co2opt", method="RHF", basis="STO-3G")
+    grad = (cfg.scf_conv_tol_grad if cfg.scf_conv_tol_grad > 0
+            else math.sqrt(cfg.scf_conv_tol))       # PySCF's own rule
+    want = {"dE": cfg.scf_conv_tol * HARTREE_EV, "|g|": grad * HARTREE_EV}
+
+    runtime = _trajectory(log).runtime_info
+    # the value PySCF uses, as the deck read it back -- not the
+    # configuration's 0 for "unset", which the parameters record wrote over
+    # it until 2026-09-27
+    assert float(runtime["scf_conv_tol_grad"]) == pytest.approx(grad), runtime
+    crit = runtime["scf_criteria"]
+    assert list(crit) == ["scf"], crit
+    for residual, tolerance in want.items():
+        got = crit["scf"][residual]
+        assert got["unit"] == "eV" and got["required"] is True, got
+        assert got["tolerance"] == pytest.approx(tolerance, rel=1e-6), (
+            residual, got, tolerance)
+
+    errors = _open_in_results(page, flask_server, d, log)
+    shown = page.wait_for_function(
+        """() => {
+            const dl = document.querySelector("#convergence-summary-targets");
+            const plot = document.querySelector("#scf-gnorm-plot");
+            const shapes = plot && plot.layout && plot.layout.shapes;
+            if (!dl || !shapes || !shapes.length) return null;
+            const rows = {};
+            const dts = dl.querySelectorAll("dt");
+            for (const dt of dts) rows[dt.textContent] =
+                dt.nextElementSibling ? dt.nextElementSibling.textContent : "";
+            return {rows: rows, line: shapes[0].y0};
+        }""",
+        timeout=30000, polling=250).json_value()
+    for residual, tolerance in want.items():
+        value, unit = shown["rows"][f"SCF {residual} tol"].split()
+        assert unit == "eV", shown["rows"]
+        assert float(value) == pytest.approx(tolerance, rel=5e-3), (
+            residual, value, tolerance)
+    assert not any(v.endswith(" Ha") for v in shown["rows"].values()), shown
+    assert shown["line"] == pytest.approx(want["|g|"], rel=1e-6), shown
     assert errors == [], f"the page reported JS errors: {errors}"
 
 

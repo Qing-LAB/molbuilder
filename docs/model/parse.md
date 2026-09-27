@@ -605,8 +605,8 @@ flowchart LR
 | reads | a SIESTA-family `.out` | a `.molwatch.log`; `stage` picks a staged header's targets |
 | `feed(line, line_no=None)` · `feed_text(text)` | one line without its newline · a whole text | the same |
 | `now()` | where the run is, as read so far; commits nothing | the last finished step block |
-| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` | `{blocks, engine, run_state, error_message, runtime_info}` |
-| also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets |
+| `finish()` | `{steps, live_scf, lattice, run_state, scf_converged, error_message, runtime_info, warnings}` | `{blocks, engine, run_state, error_message, runtime_info}` — `runtime_info.scf_criteria` among them |
+| also | `criteria(negf=None)` — each phase's `{column: {tolerance, unit, required}}` | `targets()` — the rung's convergence targets; its criteria are `molwatch_grammar.scf_criteria(runtime_info)` — `{"scf": {dE, \|g\|: {tolerance, unit, required}}}`, PySCF's `conv_tol` and `conv_tol_grad` as the deck read them back, in eV |
 
 `now()` states a key only when the output does:
 
@@ -614,7 +614,7 @@ flowchart LR
 |---|---|---|
 | `phase` · `cycle` · `energy` | the latest SCF row: `periodic` or `negf`, its iteration, its E_KS | — · the last step's last SCF cycle · the last step's energy |
 | `dDmax` · `dHmax` · `dq` | the latest row's residuals, `dq` in the NEGF phase | — |
-| `residuals` | {`dDmax`, `dHmax`, `dQ`: (value, tolerance, unit)}, each beside the tolerance its phase states | {`dE`, \|g\|, `ddm`: (value, None, unit)}: the log states PySCF's tolerance in Hartree beside values in eV, and nothing converts |
+| `residuals` | {`dDmax`, `dHmax`, `dQ`: (value, tolerance, unit)}, each beside the tolerance its phase states | {`dE`, \|g\|, `ddm`: (value, tolerance, unit)}: dE and \|g\| beside PySCF's tolerances, in eV like the values; `ddm` has none |
 | `step` · `step_kind` · `steps_done` | from `Begin <kind> = N`: step N begins once N are done | the block's index · — · the finished blocks, the preview excluded |
 | `max_force` · `max_force_constrained` | the latest `Max` line, and whether it was the constrained one | the last step's · — |
 | `criteria` · `targets` | per phase, as `criteria()` · the `redata:` limits | — · as `targets()` |

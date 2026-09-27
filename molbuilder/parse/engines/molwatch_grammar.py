@@ -80,6 +80,45 @@ def field_value(line: str) -> Optional[float]:
     return maybe_float(rest.strip()) if sep else None
 
 
+#: Hartree in eV (CODATA 2018): PySCF states its SCF tolerances in Hartree,
+#: and the step blocks carry the SCF's residuals in eV.
+_HARTREE_EV = 27.211386245988
+#: The one SCF phase of a run this log records -- the key its
+#: :func:`scf_criteria` are stated under, beside SIESTA's ``periodic`` and
+#: ``negf`` (`web/trajectory.md` § 3).
+SCF_PHASE = "scf"
+
+
+def scf_criteria(runtime_info: Dict[str, Any]) -> Dict[str, Any]:
+    """What the SCF had to reach, in the shape every engine states it in
+    (`web/trajectory.md` § 3): ``{SCF_PHASE: {residual: {tolerance, unit,
+    required}}}`` -- ``{}`` when the log states neither tolerance.
+
+    PySCF converges when the energy change is below ``conv_tol`` AND the
+    orbital-gradient norm below ``conv_tol_grad`` (``scf.hf.kernel``), so
+    both are required.  They are the values the deck read back off the
+    solver (``# runtime.scf_conv_tol`` / ``scf_conv_tol_grad``, in Hartree),
+    and are stated here in eV, the unit of the ``dE`` and ``|g|`` the step
+    blocks carry.
+    """
+    out: Dict[str, Any] = {}
+    for residual, key in (("dE", "scf_conv_tol"),
+                          ("|g|", "scf_conv_tol_grad")):
+        try:
+            tolerance = float(runtime_info[key])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if residual == "|g|" and tolerance <= 0 and "dE" in out:
+            # A gradient tolerance of 0 is the configuration's "unset" -- no
+            # norm is below 0 -- and PySCF's unset one is sqrt(conv_tol).
+            # Logs written before 2026-09-27 state the 0: the deck's
+            # parameters record overwrote the value it had read back.
+            tolerance = (out["dE"]["tolerance"] / _HARTREE_EV) ** 0.5
+        out[residual] = {"tolerance": tolerance * _HARTREE_EV, "unit": "eV",
+                         "required": True}
+    return {SCF_PHASE: out} if out else {}
+
+
 def parse_convergence_line(line: str, targets: Dict[str, Any]) -> bool:
     """Apply one ``# convergence.<key>: <value>`` header line to
     ``targets`` and return whether the line matched.
@@ -225,7 +264,7 @@ def scan_conclusion(path) -> str:
 #: the norm is an energy (Hartree over dimensionless orbital rotations), so
 #: eV is norm x Hartree->eV = old x (27.211386245988 / 51.42208619).
 OLD_GNORM_HEADER = "gnorm(eV/Ang)"
-OLD_GNORM_TO_EV = 27.211386245988 / 51.42208619
+OLD_GNORM_TO_EV = _HARTREE_EV / 51.42208619
 
 
 def scf_history_row(line: str) -> Optional[Dict[str, Any]]:

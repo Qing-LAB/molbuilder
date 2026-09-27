@@ -1099,10 +1099,19 @@ def _emit_runtime_from_parameters() -> List[str]:
     effective value where there is one, the request otherwise.  Apart from
     the record so a deck can print the record without it: the vibration
     deck's `_RUNTIME_INFO` rides into its spectrum file, which must not become
-    a second home for every parameter."""
-    return ["# the effective value where there is one, the request otherwise",
+    a second home for every parameter.
+
+    **It fills; it never overwrites** what the deck already read off the
+    solver.  PySCF leaves ``conv_tol_grad`` unset until ``kernel()``, so the
+    record reads it back as nothing and falls back to the request -- 0, the
+    configuration's "let PySCF derive it" -- while the deck had read back the
+    value PySCF will use, sqrt(conv_tol).  Overwriting put that 0 in every
+    PySCF log's header until 2026-09-27."""
+    return ["# the effective value where there is one, the request otherwise;",
+            "# what the deck read off the solver above stands",
             "_RUNTIME_INFO.update({_k: (_r if _e is None else _e)",
-            "                      for _k, (_d, _r, _e) in _MB_PARAMS.items()})"]
+            "                      for _k, (_d, _r, _e) in _MB_PARAMS.items()",
+            "                      if _k not in _RUNTIME_INFO})"]
 
 
 def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
@@ -1457,7 +1466,6 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     out.append(f"        'max_displ_ang':          {float(cfg.geom_dmax)!r},")
     out.append(f"        'rms_displ_ang':          {float(cfg.geom_drms)!r},")
     out.append(f"        'energy_step_tol_eV':     {_energy_tol_eV!r},")
-    out.append(f"        'scf_energy_tol':         {float(cfg.scf_conv_tol)!r},")
     out.append(f"        'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
     out.append(f"        'max_geom_iter':          {int(cfg.geom_max_steps)!r},")
     out.append("    },")
