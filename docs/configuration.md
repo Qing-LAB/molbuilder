@@ -479,34 +479,37 @@ refused for a section the patch never touched — and that now lives in the door
 where every caller gets it.)*
 
 **The other shape is outside it for a reason that is not about writing at all:
-`monitor.py` SHIPS BESIDE A JOB** *(stated here 2026-09-13)*. It travels to the
-machine that runs the job inside `mb_monitor.pyz` and is executed by **the job's own
-python**, in a backend env where molbuilder is not installed
-(`runwrap.MONITOR_BUNDLE`, `execution/running-a-job.md` § 2.0a). So its
-writes — the `util.csv` header and its rows — use `pathlib`:
-importing `persist` here would make the monitor die at import on every node, with
-stderr going to `/dev/null`, which costs the run's status, its utilisation trace
-and its reports and says nothing.
+`monitor.py` SHIPS BESIDE A JOB.** It travels to the machine that runs the job
+inside `mb_monitor.pyz` and is executed by **the job's own python**, in a
+backend env where molbuilder is not installed (`runwrap.MONITOR_BUNDLE`,
+`execution/running-a-job.md` § 2.0a). So its two files — the
+`-runN.util.csv` it writes and the `-runN.monitor.log` it appends to
+(`execution/run-reports.md` § 2.5) — use `pathlib`: importing `persist` here
+would make the monitor die at import on every node, with stderr going to
+`/dev/null`, which costs the run's status, its utilisation trace and its
+reports and says nothing.
 
-**And the reason is SHIPPING, not stdlib-ness** *(stated exactly, 2026-09-21)*.
-`persist.py` is itself pure stdlib — so is `config_dir.py`; the property is
-*depends only on stdlib*, never *imports nothing of ours* (`config_dir.py`'s own
-header says so, and `scheduler/record.py` imports `persist` on the strength of
-it). What kills the import on a compute node is that `persist.py` is not
-THERE: `runwrap` ships beside the job exactly the modules
-`runwrap.MONITOR_COMPANIONS` names, in one file (`mb_monitor.pyz`,
-`runwrap.MONITOR_BUNDLE`). So the monitor's real rule is
-**stdlib-only AND travels**, and that set is the monitor, `config_dir`, and the
-framework readers it reads a run through (`execution/run-reports.md` § 2.3:
-`runfiles`, `identity`, the two parsers' reading passes `siesta_reader` and
-`molwatch_reader` with their grammars and `_section_rules`,
-`scf_timing_rows`, `end_lines`, `_run_ending`, `job`, and `report_fields` —
-what a report may carry) — each reached through
-the same two-way import `monitor._secrets_dir` uses for `config_dir`, whose
-`ModuleNotFoundError` `load_channels` catches as reports-off rather than as a
-dead monitor. **Do not route these
-through the one writer.** They are the one place in this document where a truncated file is the
-cheaper risk, and the trade is deliberate.
+**And the reason is SHIPPING, not stdlib-ness.** `persist.py` is itself pure
+stdlib — so is `config_dir.py`; the property is *depends only on stdlib*, never
+*imports nothing of ours* (`config_dir.py`'s own header says so, and
+`scheduler/record.py` imports `persist` on the strength of it). What kills the
+import on a compute node is that `persist.py` is not THERE: what travels is
+exactly the modules `runwrap.MONITOR_COMPANIONS` names, in one file
+(`execution/run-reports.md` § 2.3). So the monitor's real rule is
+**stdlib-only AND travels**, and each of those modules imports the next two
+ways — from the package, or from the bundle.
+
+**What a missing module costs** — which only an incomplete bundle can cause:
+
+| missing | what happens |
+|---|---|
+| `config_dir` | imported only when the channels are read; `load_channels` catches the `ModuleNotFoundError`, logs *reports off*, and the monitor keeps monitoring |
+| any reader the monitor imports at start | the monitor cannot start, and with its output at `/dev/null` it leaves no log at all |
+| the whole bundle | the wrapper logs *monitor: not started*, and `_mb_ending` answers that the ending cannot be read — no failure hint and no warm retry (`execution/job-contracts.md` § 2.6) |
+
+**Do not route these through the one writer.** They are the one place in this
+document where a truncated file is the cheaper risk, and the trade is
+deliberate.
 
 **An append is the other, and it is a real exception**, not an oversight: a
 log is added to rather than replaced, so there is no previous content to

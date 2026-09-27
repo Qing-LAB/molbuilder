@@ -13,7 +13,8 @@ concern); [`science/validation.md`](?doc=science/validation.md)
 value owner — what numbers the convergence/quality knobs should carry);
 [`execution/job-system.md`](?doc=execution/job-system.md) (running a stage ladder
 on a scheduler) + [`engines/stages.md`](?doc=engines/stages.md) (what a stage is,
-and where its deck comes from).
+and where its deck comes from); [`model/parse.md`](?doc=model/parse.md) (reading
+what SIESTA wrote: its output lines § 5d.5, the run record § 5d).
 
 This is how molbuilder turns a `Structure` + a `SiestaConfig` into a
 **SIESTA-runnable `.fdf` text**. SIESTA is a periodic-DFT code (Soler et al. 2002 — see References); a `.fdf`
@@ -276,10 +277,11 @@ says what is wrong and leaves it alone. The thresholds are
 of its images; it does not make the image energy small. SIESTA gives any charged
 cell a uniform compensating background — that makes the periodic electrostatics
 finite, it corrects nothing — and the monopole's image energy falls only as
-1/L: q²α/2L, ≈ 0.37 eV for q = 1 at L ≈ 55 Å in a simple cubic cell (α = 2.837,
-Makov–Payne — see References). *(This said "below ~1 meV" until 2026-09-26.)*
-The term is SIESTA's own where it applies it (`siesta: Emadel`, a molecule in a
-simple, face- or body-centred cubic cell — `science/chemistry-correctness.md`
+1/L: q²α/2L, ≈ 0.37 eV for q = 1 at L ≈ 55 Å — 25 Å of vacuum on each side of a
+~5 Å molecule — in a simple cubic cell (α = 2.837, Makov–Payne — see
+References). The term is SIESTA's own where it applies it (`siesta: Emadel`, a
+molecule in a simple, face- or body-centred cubic cell —
+[`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
 § 2a.4). A neutral molecule needs ≥ 8 Å, enough that basis orbitals (4–7 Å per
 atom at DZP) cannot reach across the gap, which is 2×vacuum.
 
@@ -311,11 +313,11 @@ post-process script beside the deck — `prep._siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why
-one writer owns both routes. **It double-counts wherever SIESTA applied the
-term itself** (`siesta: Emadel` ≠ 0) and is written for a charged slab where
-the monopole formula does not hold: W34's P2 keys it on the axis kinds and
-makes it read `Emadel` — `science/chemistry-correctness.md` § 2a.4,
-`plans/plan.md` § 5s.)*
+one writer owns both routes. **It adds only what SIESTA did not** — it reads
+`siesta: Emadel` first — and a charged slab or crystal, where the monopole
+formula does not hold, gets no script:
+[`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+§ 2b owns the rule.)*
 
 ---
 
@@ -629,22 +631,24 @@ stages separable — the filename is the separation, and the person picks one
 name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
 and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 
-> **Landed 2026-08-10.** The log used to carry a `-stage<N>` infix while the deck
-> carried `_<name>` — two spellings of one idea. `molwatch_log_basename` now takes
-> the stage's artifact token, and the run decoder reads it back through
-> `identity.parse_stage_token` rather than keeping a second regex.
+`molwatch_log_basename` takes the stage's artifact token, and the run decoder
+reads it back through `identity.parse_stage_token` — one spelling, no second
+regex.
 
-When the resolved charge ≠ 0, **`prep`** also drops a `makov_payne_correction.py`
-script next to the `.fdf` (§ 4 — and its double count, which W34's P2
-removes). And
-each per-stage `.molwatch.log` carries `# stage: <name>` + `# convergence.<key>:
-<value>` headers (`max_force_ev_per_ang`, `max_steps`) so the Results inspector
-draws the right threshold for the running stage.
+For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
+script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries
+`# stage: <name>` + `# convergence.<key>: <value>` headers
+(`max_force_ev_per_ang`, `max_steps`) so the Results inspector draws the right
+threshold for the running stage.
 
-A verbose "Run with" header suggests the canonical invocation
-(`mpirun -np 4 siesta < JOB.fdf > JOB.out`) that keeps the run directory named per
-the job-layout protocol so the Results tab's directory discovery finds the log
-(it falls back to `<basename>.out` when no `.molwatch.log` is present).
+A verbose "Run with" header names the managed way first — `molbuilder jobset
+launch run <stage>`, or the wrapper beside the deck by hand — and then the plain
+`mpirun -np N siesta < <deck>.fdf > <deck>.out`, whose names come from
+`runfiles` like every name a deck prints. The Results tab opens the run's own
+`.out` before the seeded `.molwatch.log`
+([`model/parse.md`](?doc=model/parse.md) § 5.5); how the `.out` is read — its
+lines, its two SCF phases, how it ended — is `model/parse.md` § 4a–4b, § 5d.5
+and § 2b.
 
 *(A second sibling module, `siesta/memory.py` — `parse_fdf_mem_inputs:181` — is a
 peak-memory estimator that reads a rendered `.fdf` to size an sbatch `--mem`

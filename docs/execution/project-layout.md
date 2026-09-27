@@ -32,14 +32,8 @@ stays one level down.** The folder `init` writes travels to any machine
 unchanged; **`prep` adds stage dirs *and the attempt inside them*; `launch`
 runs what prep set up and records that it ran.**
 
-*(Corrected 2026-09-08. This said "`launch` adds attempts" and was wrong in
-the direction that matters: `prepare_attempt` -- "set ONE stage up to run" --
-resolves the next `run-<n>`, creates it and links the deck in, all of it
-design and none of it spending a queue slot, while `_launch_dir` REFUSES a
-hierarchical stage with no attempt open (C5, 2026-08-12) precisely because
-opening one is not launch's job. The old line was not merely stale: a caller
-that implemented it -- rendering the decks and stopping -- produced a folder
-`launch` refuses, and one did.)*
+*(Opening an attempt is design and spends no queue slot, so it is prep's; `launch`
+refuses a hierarchical stage with no attempt open — § 1.6.2.)*
 
 ```
 <project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
@@ -47,10 +41,11 @@ that implemented it -- rendering the decks and stopping -- produced a folder
   <name>.source.xyz  (+.molstruct.json) the structure pair
   pseudos/  (H.psml, ...)               travel with the calculation
   01_coarse/                            <- prep writes the stage (hierarchical shape)
-    <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine
-    run-0/  run-1/                      <- attempts: PREP opens and links each one;
+    <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine,
+    mb_monitor.pyz                         and the monitor beside them
+    run-0/  run-1/                      <- attempts: PREP opens each and copies its inputs in;
                                            launch runs it and writes run.json
-      *-run0.out  *.concluded           the output + the conclusion marker (rc inside)
+      *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
   bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
@@ -59,10 +54,10 @@ that implemented it -- rendering the decks and stopping -- produced a folder
 |---|---|---|
 | **portable floor** | the calculation folder never names a machine — copy it anywhere | § 1 |
 | **two shapes** | `flat` (everything beside task.json) or `hierarchical` (one dir per stage) — declared at init, never inferred | § 1 |
-| **attempt = run-N** | every try is its own numbered dir; warm files LINK from the previous attempt | § 1.5 |
-| **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6 |
+| **attempt = run-N** | every try is its own numbered dir; warm files are COPIED from the attempt you name | § 1.5, § 1.6 |
+| **the conclusion marker** | the wrapper's last act writes `<basename>-runN.concluded` with the rc; absent means still running or force-stopped — the launch gate ASKS, never decides | § 1.6.3 |
 | **a report, not an input** | `jobset summarize` PRINTS what was measured and what to write; nothing applies it. What a run uses is `task.json`'s `execution` | § 2.3.2 |
-| **who writes where** | init → the portable floor; prep → stage dirs **and the attempt in them**; launch/monitor → what a run produces (`run.json`, output, the conclusion marker); a person → anything, said aloud | § 2 |
+| **who writes where** | init → the portable floor; prep → stage dirs **and the attempt in them**; launch → `run.json`; the run → its output, the monitor's files and the wrapper's conclusion marker; a person → anything, said aloud | § 2, § 1.6.3 |
 | **invariants** | the cross-level rules, each with its reason | § 7 |
 
 ---
@@ -80,7 +75,7 @@ that implemented it -- rendering the decks and stopping -- produced a folder
 
 | origin | examples |
 |---|---|
-| **rendered** — translated out of the template and the other sources | the deck, the run script, the monitor script |
+| **rendered** — translated out of the template and the other sources | the deck, the run script, the monitor (`mb_monitor.pyz`) |
 | **copied** — raw data the engine needs, taken as-is | pseudopotentials, the structure, warm files from a run you named |
 
 **So the inventory is not a list anybody maintains** — it follows from those two
@@ -130,7 +125,7 @@ flowchart TB
 ```
 
 **Once it is prepared it needs nothing but the engine's environment and a
-shell.** That is why the run script and the monitor script sit inside it rather
+shell.** That is why the run script and the monitor sit inside it rather
 than being invoked from somewhere clever.
 
 **A follow-up stage takes two inputs**, and `prep` writes a whole new directory
@@ -246,6 +241,10 @@ flowchart LR
 
 ```
 au_bdt_relax/
+├── task.json  <label>.template.toml   the description: this root IS the run
+├── pseudos/                        the library's copies (§ 2.6) …
+├── Au.psml  S.psml                 … copied again beside the decks: SIESTA
+│                                      opens them only where it runs
 ├── <label>_01_coarse.fdf           coarse   ─┐ the decks: one per stage,
 ├── <label>_03_tight.fdf            tight     ─┘ told apart by their TOKEN
 │                                               (decision 27 — the ordinal
@@ -256,14 +255,21 @@ au_bdt_relax/
 │                                      each stage is started on its own — which
 │                                      is what makes "one stage at a time" the
 │                                      same act in both shapes.
+├── mb_monitor.pyz                  the monitor, ONE file, beside the wrappers
 ├── <label>_01_coarse-run0.out      stage 1, first attempt   ─┐ told apart
 ├── <label>_01_coarse-run1.out      stage 1, a redo           │ by INDEX
 ├── <label>_03_tight-run0.out       tight, first attempt     ─┘
+├── <label>_01_coarse-run0.concluded     the run's own records carry the
+├── <label>_01_coarse-run0.monitor.log   index too: the marker (§ 1.6.3), the
+│     (and .util.csv, .scf-timing.log)   monitor's pair, the timing log
+├── <label>_01_coarse.runwrap-<stamp>.log   the wrapper's session log
 │
 ├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
 ├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
 └── <label>.ANI  <label>.EIG        ⚠ likewise
 ```
+
+*No `run.json` here: a flat stage's launch writes none (§ 1.6.3).*
 
 *`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
 run id, which carries the formula as well and lives in `task.json`
@@ -285,7 +291,7 @@ bdt-relax/                            the CALCULATION — the user typed this na
 │                                        the id — label plus formula
 ├── <label>.source.xyz  + sidecar        the structure pair (§ 6.3's .source
 │                                        reservation), from the hand-over
-├── Au.psml  S.psml                   copied in by `prep` from the library
+├── pseudos/  Au.psml  S.psml         the library's copies, gathered by `prep`
 │                                        (or by `describe --psml-lib`) — § 2.6
 │
 ├── 01_coarse/                        a STAGE — written by `prep`
@@ -294,13 +300,17 @@ bdt-relax/                            the CALCULATION — the user typed this na
 │   ├── mb_monitor.pyz                   beside the wrapper: ONE file, the monitor
 │   │                                    and the framework modules it reads the
 │   │                                    run through (`runwrap.MONITOR_BUNDLE`)
-│   ├── Au.psml → ../Au.psml          shared, linked up
-│   ├── run-0/                        an ATTEMPT
-│   │   ├── run.json                  how it was launched, what it continued from
-│   │   ├── mb_monitor.pyz            the monitor's file, brought in to run from here
+│   ├── Au.psml  S.psml               real copies, beside the deck
+│   ├── run-0/                        an ATTEMPT — prep opened it and COPIED in
+│   │   │                                the deck, wrapper, monitor and pseudos
+│   │   ├── run.json                  written by launch: how, when, from what
 │   │   ├── <label>.XV  <label>.DM    SIESTA named these: bare
-│   │   └── <label>_01_coarse-run0.out   molbuilder named this: stage + attempt
-│   ├── run-1/                        a redo — run-0 is untouched
+│   │   ├── <label>_01_coarse-run0.out        molbuilder named these: stage +
+│   │   ├── <label>_01_coarse-run0.concluded  run index — the output, the
+│   │   └── …-run0.monitor.log  .util.csv  .scf-timing.log   wrapper's marker,
+│   │                                    the monitor's pair, the timing log
+│   ├── run-1/                        a redo — run-0 is untouched; its first
+│   │                                    run is -run0 again (§ 1.6.1)
 │   └── bench/                        a BENCHMARK — its own little world
 │
 └── 02_tight/
@@ -309,34 +319,35 @@ bdt-relax/                            the CALCULATION — the user typed this na
         └── <label>.XV                a real copy of 01_coarse/run-0's
 ```
 
+*Every directory `prep` makes also holds its `calcdir.json` (§ 1.4a), and each
+start of a wrapper its `<basename>.runwrap-<stamp>.log`.*
+
 **The deck repeats the stage its directory already names, on purpose.** Without
 it every stage directory holds an identically-named deck, and two swapped by a
 bad copy or a resumed `prep` disagree with nothing; with it,
 `01_coarse/<label>_02_tight.fdf` is wrong on sight (`run-identity.md § 3.2`,
 decision 21).
 
-**And the stdout keeps its `-run<N>` counter here too**, even though `run-0/`
-already says which attempt it is — for the same self-check reason, and because
-there is only one wrapper: `runwrap.py` writes `<basename>-run${_run_n}.out`
-with no branch on shape. `job-contracts.md` § 6.3's Files table is the authority
-and says so in those words. *(This tree drew a counterless `<label>_01_coarse.out`
-until 2026-08-16 — the exact reading § 6.3 records itself correcting, surviving
-in the document that draws the picture people copy from.)*
+**And the stdout keeps its `-run<N>` counter here too**, because there is one
+wrapper and it writes `<basename>-run${_run_n}.out` with no branch on shape
+(`job-contracts.md` § 6.3). Inside an attempt the counter numbers the
+wrapper's *runs*, not the attempt: it starts at 0 in each attempt and advances
+when the wrapper runs again there — a warm retry (§ 1.6.1).
 
 ```mermaid
 flowchart TB
     subgraph CALC["<b>the calculation</b> — portable, names no machine"]
-      T["template.toml · task.json<br/>pseudopotentials"]
+      T["template.toml · task.json<br/>pseudos/"]
     end
     subgraph ST["<b>a stage</b> — one science setting, built by prep"]
-      D["the rendered deck · its wrapper · the monitor's shipped set<br/>links up to the shared package"]
-      subgraph AT["<b>an attempt</b> — one invocation, never modified"]
-        O["run.json · the engine's output<br/>.XV · .DM · .out"]
+      D["the rendered deck · its wrapper · mb_monitor.pyz<br/>copies of the pseudopotentials"]
+      subgraph AT["<b>an attempt</b> — one launch, closed when it ends"]
+        O["copies of the stage's files · run.json<br/>the output · .XV · .DM · -runN.concluded"]
       end
       BN["<b>bench/</b> — trials that measure this stage"]
     end
     CALC --> ST
-    D --> AT
+    D -->|"copied in"| AT
     ST -.-> BN
 ```
 
@@ -454,7 +465,7 @@ number of levels hoping to find it.
 > **A directory states its place. Nothing infers it.**
 
 **This is affordable because [invariant 6a](#7-the-invariants) already holds:**
-*every directory and every link in this tree is made by Python.* A tree whose
+*every directory in this tree is made by Python.* A tree whose
 directories all have a creator inside molbuilder is a tree whose directories can
 all be stamped by that creator, at the moment it makes them. There is no
 population to migrate and no heuristic to tune — only a fact that was known at
@@ -534,7 +545,7 @@ calculation it belongs to, which rung it is, what its siblings are.
 | what the directory says | what a reader may answer |
 |---|---|
 | `calcdir.json`, or `task.json` at a root | everything: its role, container-or-run, its calculation, its rung, its siblings, the ladder it sits in |
-| nothing, but a run left evidence — a deck, a file in a stdout role, a conclusion record | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says which of the two it is doing |
+| nothing, but a run left evidence — a deck, a file in a stdout role, a conclusion marker | what is here: the files, which have parsers, which one to open, how the run ended. **Nothing above it**, and the reader says which of the two it is doing |
 | nothing, and no evidence a run happened | the files, and no run state at all |
 
 **The third row is a rule in its own right, and it is the one defect that
@@ -641,13 +652,14 @@ the reason to re-run at all.
 
 **Inside the attempt directory**, which was created and filled when you prepared
 the stage (§ 1.6, and § 2.5 step 4). By the time anything is launched it already
-holds its inputs. The wrapper is invoked there; it activates and execs, and every
-later line of it — the launch, the monitor, the SCF tee, the failure hints —
-works relative to the current directory, so everything lands in the attempt with
-no change to the wrapper at all.
+holds its inputs. The wrapper is invoked there; it activates the environment and
+runs the engine as its child, and every later line of it — the launch, the
+monitor, the SCF tee, the failure hints, the conclusion marker — works relative
+to the current directory, so everything lands in the attempt with no change to
+the wrapper at all.
 
 ```
-prepare  →  01_coarse/run-0/ exists, deck linked, inputs copied
+prepare  →  01_coarse/run-0/ exists, its inputs copied in
 submit   →  launched there
 ```
 
@@ -662,22 +674,22 @@ of it is in place before the engine sees the directory:
 
 | | How | Why |
 |---|---|---|
-| the deck, **the wrapper**, the monitor, the pseudopotentials | **linked** from the container | one real copy each, shared by every attempt, and the engine only reads them. The deck is shared because a different deck would mean different science, and different science is a stage (§ 1.5a) |
+| the deck, **the wrapper**, the monitor, the pseudopotentials | **copied** from the stage directory, refreshed by every prep until launch | the run directory holds everything its engine reads, and a link holds nothing once the folder moves. The deck is the stage's one deck because a different deck would mean different science, and different science is a stage (§ 1.5a) |
 | whatever this run continues from | **copied** | that run has already finished — you looked at it and chose it — and a link would let this engine write back over it |
 | everything the run writes | created in place | it is already the working directory |
 
-**One rule generates that whole table: link what the engine only reads, copy
-what it writes.** A deck and a pseudopotential are read, so one copy serves every
-attempt. A `.XV` is written, so a link would reach back and destroy the result
-you built on.
+**One rule generates that whole table: every file goes in as a real file,
+never a link** *(user, 2026-08-24)*. A link dangles once the folder is synced
+to another machine; and for the warm files it would do worse — the engine
+writes them, so a link would reach back and destroy the result you built on.
 
 **Everything is *reachable from inside the attempt*, including the wrapper and
-the monitor.** That is the point of linking them rather than invoking them from
-a level up: once the directory is prepared it needs **nothing but the engine's
-environment and a shell**, so `cd`ing into it and running the wrapper by hand is
-an ordinary thing to do — on a laptop, on a login node, or inside a scheduler's
-job script. A directory that only worked when launched from elsewhere would be
-one you could not debug.
+the monitor.** That is the point of copying them in rather than invoking them
+from a level up: once the directory is prepared it needs **nothing but the
+engine's environment and a shell**, so `cd`ing into it and running the wrapper
+by hand is an ordinary thing to do — on a laptop, on a login node, or inside a
+scheduler's job script. A directory that only worked when launched from
+elsewhere would be one you could not debug.
 
 #### 1.5b Two levels, two reasons — the directory says what happened
 
@@ -696,8 +708,8 @@ somebody changed the science, a new `run-` number means somebody decided to keep
 going.
 
 **Every attempt of a stage runs the same deck.** A different deck means different
-science, and different science is a stage. That is why § 1.5's table links the
-deck rather than copying it — there is never a second version of it to hold.
+science, and different science is a stage. That is why § 1.5's table copies the
+stage's one deck into each attempt and never renders one per attempt.
 
 **The case that looks like it needs a third mechanism does not.** *"Coarse hit
 its step limit and I want to keep going, but with a tighter force tolerance"* is
@@ -755,123 +767,117 @@ can spend a week computing from a geometry you would have rejected in a minute.
 > **The decision to continue is the user's, made after looking. molbuilder's job
 > is to make continuing correct once that decision is taken.**
 
-#### Who makes the attempt directory
+#### 1.6.1 Attempt and run — two counters
+
+| | an attempt | a run |
+|---|---|---|
+| is | one launch of a stage or a trial | one start of the wrapper inside the attempt |
+| named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file the wrapper writes |
+| numbered by | `prep`: the next unused `n` (§ 4.3) | the wrapper: the highest `-run<N>` output beside it plus one, else 0 |
+| a new one when | you prep and launch again (§ 1.5) | the wrapper warm-retries in place (`running-a-job.md` § 3.5) |
+
+In the flat shape the two coincide: the index is all that tells attempts apart.
+In the hierarchy an attempt holds one run, or more when a warm retry re-runs it
+in place (`run-0/` holding `-run0` and `-run1`), and closes when its launch ends
+(§ 1.5). **The launch gate, the run record and the marker `run_status` counts
+read the attempt's latest run**: the highest index its files reached
+(`runfiles.latest_run`).
+
+#### 1.6.2 Who makes the attempt directory
 
 **Python, when you prepare the stage** — step 4 of § 2.5, not when you submit and
 not by the wrapper. By the time anything is launched the directory already exists
-and already holds its inputs; the wrapper activates the environment and execs the
-engine (`running-a-job.md § 2.2a`).
+and already holds its inputs; the wrapper activates the environment and runs the
+engine as its child (`running-a-job.md § 2.2a`).
 
 Preparing does five things: **resolve** the next `run-<n>` (highest plus one, or
-`run-0`); **create** it; **link** the deck, the monitor and the shared package in;
-**copy** whatever this run continues from; and **report** what it did, so you can
-read it before committing a week of cluster time.
-
-That last one is why this belongs to prepare rather than submit. Preparing is
-still design — you are arranging files and can look at the result — and the split
-between preparing and starting is what gives you somewhere to look. Submitting is
-then a plain "yes, that one."
-
-That is also where the work already lives: `jobset/materialize.py` creates job
-directories and lays relative symlinks. Doing it one level down is the same
-operation in the same module.
+`run-0`); **create** it, stamped with its `calcdir.json` (§ 1.4a); **copy** the
+deck, the wrapper, `mb_monitor.pyz` and the pseudopotentials in (§ 1.5);
+**copy** whatever this run continues from; and **report** what it did, so you
+can read it before committing a week of cluster time. That last one is why this
+belongs to prepare rather than submit: preparing is still design, and the split
+gives you somewhere to look; submitting is then a plain "yes, that one"
+(`jobset/materialize.py::prepare_attempt`).
 
 **Preparing again is safe until the run has been launched.** Otherwise splitting
 the two steps leaks directories — prepare, change your mind, prepare again, and
-an empty `run-3` sits there forever. A run becomes untouchable once it has *run*
-(§ 1.5); before that, re-preparing is just changing your mind about the setup,
-which is the entire reason the step is separate.
+an empty `run-3` sits there forever. Until launch the last attempt is reused and
+its inputs refreshed; once launched it is untouchable (§ 1.5), and the next prep
+opens a new one.
 
-#### The one file the split needs
+#### 1.6.3 The launch record and the conclusion marker — `run.json`, and the other file
 
 *Has this been launched?* has no honest answer from the directory alone. A queued
 cluster job has produced nothing yet, so "no output" and "not started" look
 identical — and re-preparing would quietly rewrite the setup under a job already
-in the queue.
+in the queue. Nor does *launched* say *over*: it spans three states that must not
+be treated alike — still running, ran to its own end (converged *or* errored —
+both are conclusions), and force-stopped (walltime kill, node death, `kill -9`).
+Two small files answer the two questions *(the second decided by the user,
+2026-08-28)*:
 
-So **submitting writes one small file into the attempt**, `run.json`
-(`molbuilder/run-launch@1`): how it was launched, the exact command, the
-scheduler's job id, when, and **what it continued from**.
+| file | written by | when | it says | absent means |
+|---|---|---|---|---|
+| `run.json` (`molbuilder/run-launch@1`) | `launch`, into the attempt | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
+| `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns and before it stops the monitor | *the process ended on its own* — the exit code and the time | still running, or force-stopped: the files cannot tell which |
+| `.continued-from` | `prep` | when it copies warm files in | which attempt they came from, for `launch` to write into `run.json` | the run starts from the structure |
 
-It earns its place three times over: preparing reads it and refuses to reuse a
-launched attempt; `status` can say *queued as job 481923* instead of guessing
-from an absence (the id is `run.json`'s own `job_id` field); and the last field
-is the run's provenance — *this geometry came from `01_coarse/run-0`* — which is
-worth recording whether or not anything reads it back. A benchmark **trial
-directory is its own attempt** and gets the same file on launch — which is what
-lets `submit bench <stage>` pick the next *unlaunched* trial by its absence
-(§ 6.1 registry row).
+- **`run.json` is written at launch, never at completion** — written when the
+  job finished, it would leave a running direct attempt reading as never
+  launched, a double-submit window — and a failed *start* records nothing, so a
+  refused launch leaves the attempt as prepare left it. It earns its place three
+  times: prepare refuses to reuse a launched attempt; status says *queued as job
+  481923* ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); and
+  `continued_from` is the run's provenance (`checkpointing.md` **S3**). A
+  benchmark **trial directory is its own attempt** and gets the same file,
+  which is how `submit bench <stage>` picks the next *unlaunched* trial
+  (`job-contracts.md` § 6.1).
+  **A flat stage's launch writes none**: there is no attempt directory to hold
+  it.
+- **An error is a conclusion**: an engine returning nonzero still reaches the
+  wrapper's main line, so the marker carries that code — *"because of error or
+  whatever — but the process is done."* **A forced stop leaves no marker, by
+  construction**: it is never written from the cleanup trap, which does run on
+  a walltime SIGTERM. Both engines' wrappers write it, since each runs its
+  engine as a child (`running-a-job.md` § 2.2a); it is indexed like the stdout,
+  so a warm-retry chain concludes once, at its last run, and each flat stage
+  keeps its own.
+- **`.continued-from` carries the provenance because `run.json` cannot exist
+  before launch** — its presence marks the attempt launched. The field to read
+  is `run.json`'s.
 
-It is written **when the launch succeeds, not when the job finishes**: after
-`sbatch` accepts the job, and in direct mode as soon as the process *starts*.
-The distinction is the point — this file's presence answers "was this
-launched?", and recording at completion (as the code did until 2026-08-12) left
-a RUNNING direct attempt reading as never launched for its whole runtime, a
-standing double-submit window. A failed **start** still records nothing, so a
-refused launch leaves the attempt exactly as prepare left it — still safe to
-prepare again.
+What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
-> **How `continued_from` reaches it** *(added 2026-08-10 with the
-> implementation, because the contract asked for the field without saying who
-> carries it)*. **Prepare** is what knows which attempt the files were copied
-> from; **submit** is what writes `run.json`. `run.json` itself cannot be the
-> carrier — its *presence* is what marks an attempt as launched, so it must not
-> exist beforehand. So prepare leaves a one-line `.continued-from` in the
-> attempt and submit reads it back into the record.
->
-> It is a private carrier between two steps of one act, not a second history:
-> the answer a reader is meant to consult is `run.json`'s field
-> (`checkpointing.md` **S3**). Small text either way, so it lands in git with
-> the rest of the container.
+| moment | the attempt holds | `run_status` |
+|---|---|---|
+| prepped | `calcdir.json`; copies of the deck, the wrapper, `mb_monitor.pyz`, the pseudopotentials; the molwatch seed; the warm files and `.continued-from` if it continues | `pending` |
+| launched | + `run.json` | `queued` |
+| running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` |
+| concluded | + `-run0.concluded` | `finished` or `failed` — the output's ending first |
+| force-stopped | as *running*; no marker comes | `running`: no file tells it from a live run |
 
+#### 1.6.4 What reads them
 
-#### The other file — has the process CONCLUDED
+`prep` reads `run.json` to never reuse a launched attempt (§ 1.6.2);
+`run_status` reads both after the output's own ending
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); the run record
+reads them as its launch and its exit
+([`model/parse.md`](?doc=model/parse.md) § 5d.2). And **`launch run`, re-submitting
+over a launched attempt**, reads the marker:
 
-*Decided by the user, 2026-08-28, closing the review's O1.*
-
-`run.json` says a run was **started**. Nothing said it was **over** — and
-*launched* spans three states that must not be treated alike: still running,
-ran to its own end (converged *or* errored — both are conclusions), and
-force-stopped (walltime kill, node death, `kill -9`).
-
-So **the wrapper writes one more small file as its last act on the main
-path**: `<basename>-run<N>.concluded`, carrying the engine's exit code and
-when. Two properties make it mean what it says:
-
-* **An error is a conclusion.** The engine returning nonzero still reaches
-  the wrapper's tail, so the marker is written with that code. *"The
-  calculation has been done — because of error or whatever — but the process
-  is done."*
-* **A forced stop leaves no marker, by construction.** The marker is written
-  on the wrapper's main line, after the engine invocation returns — never
-  from the cleanup trap, which *does* run on a walltime SIGTERM. A kill at
-  any point stops the script before the write. Absence therefore means
-  exactly *this process never got to say goodbye*: still running, or
-  force-stopped — and the files alone cannot tell those two apart, which is
-  the point of the rule below.
-
-**What `launch run` does with it, re-submitting over a launched attempt:**
-
-| the latest attempt | behaviour |
+| the latest attempt's latest run | behaviour |
 |---|---|
-| carries the marker | continue as § 1.6 already does, saying so: *"run-1 concluded (rc=0) — continuing into run-2"* |
-| launched, **no marker** | **warn and ask.** The run may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
-
-> **Both engines' wrappers write it.** The PySCF wrapper ended in `exec` --
-> the engine *replaced* it, leaving no tail to say goodbye from -- until
-> 2026-09-08 (`308b3bb6`); it now runs the engine as its child and writes the
-> marker the same way. The name carries the stage and the run index, so in a
-> flat directory each stage keeps its own however later stages overwrite the
-> files they share.
+| carries the marker | continue, saying so: *"concluded (rc=0 at …): continuing 01_coarse/run-1 -> run-2"* |
+| launched, **no marker** | **warn and ask.** It may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
 
 > **This answers a PROCESS question, never a chemistry one.** *Did the
 > wrapper get to finish* is what the marker knows; *did the SCF converge*
-> stays with the engine's own output and its one reader (the § 2.5 ending
-> scanner). A marker with `rc=0` beside a non-converged `.out` is a run that
-> concluded without converging — both true, two facts, two files.
+> stays with the engine's own output and its one reader, the ending scan
+> ([`model/parse.md`](?doc=model/parse.md) § 2b). A marker with `rc=0` beside
+> a non-converged `.out` is a run that concluded without converging — both
+> true, two facts, two files.
 
-
-#### Continuing from an earlier run is a copy, not a link
+#### 1.6.5 Continuing from an earlier run is a copy, not a link
 
 Because stages are set up one at a time, **the run you continue from has already
 finished** — that is what you just looked at. Its files are sitting on disk when
@@ -892,30 +898,27 @@ afterwards.
 This is the same shape one level down: a redo of a stage — `run-1` after
 `run-0` — copies from the attempt you name, for the same reason.
 
-> **One amendment** *(user, 2026-08-21: "a run stopped due to the server
-> running out of time — you submit again and by default it continues;
-> that's the natural workflow")*: re-submitting a stage whose latest
-> attempt has already been launched **continues from that latest attempt
-> by default** — the submission door opens the next `run-<n>` warm from
-> it, says so out loud, and launches that. The same stage's *latest*
-> attempt is the one source that is never a guess: a wall-killed run's
-> newest state *is* the state. Everything else stays something you say —
-> an older attempt or another stage is the explicit `--from`, a fresh
-> start is `prep run <stage>` first — and when the launched run left no
-> state to continue (it likely died at startup), the door refuses with
-> that story rather than silently starting fresh. Benchmark trials are
-> untouched: § 1.5's immutability refusal stands.
+> **Re-submitting continues by default** *(user, 2026-08-21: "you submit
+> again and by default it continues")*: re-submitting a stage whose latest
+> attempt has been launched opens the next `run-<n>` warm from that attempt,
+> says so, and launches it — after the marker check of § 1.6.4. The same
+> stage's *latest* attempt is the one source that is never a guess: a
+> wall-killed run's newest state *is* the state. Everything else stays
+> something you say — an older attempt or another stage is `--from`, a fresh
+> start is `prep run <stage>` first — and a launched run that left no state to
+> continue (it likely died at startup) is refused with that story, never
+> silently started fresh. Benchmark trials keep § 1.5's immutability refusal.
 
 > **What this removes.** Nothing has to point at a file that does not exist yet,
 > so there are no dangling links to resolve, no question of *which attempt will
-> the producer use*, and nothing to swap at run time. Those problems only arise
-> when a whole chain is submitted at once, which is exactly what this does not
-> do. A design that never creates the problem beats one that solves it.
+> the producer use*, and nothing to swap at run time — problems that arise only
+> when a chain is submitted at once. A design that never creates the problem
+> beats one that solves it.
 
-#### What is not touched
+#### 1.6.6 What is not touched
 
 **The flat case.** A plain run directory *is* a run (§ 1.4), so `bash job.run.sh`
-in it behaves exactly as it does today.
+runs in it, in place.
 
 **A stage starts because a person prepped it and submitted it.** A `JobSet`
 carries no scheduler dependency and no instruction to take a file from another
@@ -923,23 +926,19 @@ job; `jobset` cannot thread one and there is no flag that asks for it.
 
 **The reason is scientific rather than technical.** Whether stage 2 should start
 depends on what stage 1 actually produced, and that is a judgement — so no field
-in a description, and no flag at launch, is permitted to make it. (The earlier
-scheduler-chained design: `archive/2026-08-10-stage-chaining.md`.)
+in a description, and no flag at launch, is permitted to make it.
 
-#### `--cold`, and running a stage by hand
+#### 1.6.7 `--cold`, and running a stage by hand
 
-`--cold` means *start this run clean*. Today it moves warm files aside because
-the run directory is reused; with a directory per attempt there is nothing to
-move — a fresh attempt is empty unless something is copied in. So `--cold`
-becomes simply *skip the copy*, and it moves to whatever command starts the run.
-The move-aside machinery, and its `job-contracts.md § 4` requirement that the
-glob cover every file the warm branch reads, stay as they are **for the flat
-case**, which still reuses one directory.
-
-> **Open** (§ 8): what you type to set up and start one stage. It has to name the
-> stage, optionally name the run to continue from, and accept `--cold`. It must
-> exist before the wrapper's directory-making prologue is retired, or the manual
-> path breaks with nothing behind it.
+`--cold` means *start this run clean*. With a directory per attempt that is
+simply *skip the copy* — a fresh attempt is empty unless something is copied
+in — so it belongs to the command that sets the run up:
+`jobset prep run <stage> --cold`, then `jobset launch run <stage>`
+([`job-system.md`](?doc=execution/job-system.md) § 5.3 owns what you type). The
+flat shape reuses one directory, so there the wrapper's own `--cold` names the
+warm files a clean start would overwrite and refuses until `--force`
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.4,
+`job-contracts.md` § 4).
 
 ---
 
@@ -1611,14 +1610,14 @@ right name.
 | Output | What it is |
 |---|---|
 | `<NN>_<stage>/<label>_<NN>_<stage>.fdf` | the deck, finally real — every value resolved |
-| `<NN>_<stage>/<label>_<NN>_<stage>.run.sh` (+ `.sbatch`) | the wrapper, activation baked in |
-| `<NN>_<stage>/run-<n>/` | a fresh attempt, inputs linked, warm files copied in |
-| `run.json` | what this attempt is: its mode, its command, and **what it continued from** |
+| `<NN>_<stage>/<label>_<NN>_<stage>.run.sh` (+ `.sbatch`), `mb_monitor.pyz` | the wrapper, activation baked in, and the monitor beside it |
+| `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, its inputs copied in, warm files copied from the run you named |
 | the printed report | what was resolved, measured and copied — the thing you check before submitting |
 
 **Re-running `prep` is safe until the run is launched.** It rebuilds the attempt
-from the same inputs. Once something has been submitted into it, that attempt is
-finished with (§ 1.5) and the next `prep` makes a new one.
+from the same inputs. Once something has been submitted into it — `launch`'s
+`run.json` is what says so (§ 1.6.3) — that attempt is finished with (§ 1.5)
+and the next `prep` makes a new one.
 
 ### 2.4 The whole sequence, once through
 
@@ -1701,12 +1700,13 @@ unnumbered thing; all now say "the stage's `bench/` container" in words.)*
 Three rules, and everything else follows:
 
 > **The browser writes level ③ and nothing else, and writes nothing that names a
-> machine. `prep` writes ④ and ⑤. The engine writes the directory it was launched
-> in, once, and nothing ever writes there again.**
+> machine. `prep` writes ④ and ⑤, and `launch` adds `run.json`. The run — the
+> engine, its wrapper and its monitor — writes the directory it was launched in,
+> once, and nothing ever writes there again.**
 
-> **Every directory and every link in this tree is made by Python. The wrapper
-> activates an environment and execs an engine, in a directory it was handed**
-> (`running-a-job.md § 2.2a`).
+> **Every directory in this tree is made by Python, and every file put in one is
+> a real file, never a link. The wrapper activates an environment and runs an
+> engine as its child, in a directory it was handed** (`running-a-job.md § 2.2a`).
 
 The engine never writes above itself — whatever a run continues from is a real
 copy put there before it starts (§ 1.6).
@@ -2279,7 +2279,8 @@ surface is stdlib-only.
   stdlib-only and cannot travel with a job. Callers that have a description
   pass what they read from it.
 - **Never answer a question about CONTENT.** *What is in this directory, and
-  how is the run doing* is `parse.dirs.job.run_status` (§ 5c of the plan).
+  how is the run doing* is `parse.dirs.job.run_status`
+  (`running-a-job.md` § 4.2).
   `paths` says where to look; the reader says what is there.
 
 #### How a violation is noticed
@@ -2338,12 +2339,13 @@ override** — they are the composers, not sites someone read and excused.
 **What neither half can see, and this is a limit rather than a caveat:** a name
 spelled inside a script molbuilder *emits*. `siesta/makov_payne.py` carries
 `glob("*-run*.out")` as template **text** for a script that ships beside a job —
-data here, code there, and no AST pass over `molbuilder/` reaches it. Recorded
-in `plans/plan.md` § 5k: it could not use `runfiles` until `runfiles` joined
-`runwrap.MONITOR_COMPANIONS` — **which it did on 2026-09-26**, with the monitor
-reading every run through the framework (`run-reports.md` § 2.3); it travels
-inside `mb_monitor.pyz`, so a script beside a job reaches it by putting that
-file on its path.
+data here, code there, and no AST pass over `molbuilder/` reaches it. The
+door is within its reach: `runfiles` travels beside every job inside
+`mb_monitor.pyz` (`runwrap.MONITOR_COMPANIONS`, `run-reports.md` § 2.3), so a
+script beside a job reaches it by putting that file on its path. **It is not
+closed**: the emitted script keeps its own `.out` regexes for `E_KS` and the
+cell, and tries `<label>.out` — a name no wrapper writes — before that glob
+(`plans/plan.md` § 5t.4).
 
 **Two composers are known and NOT closed**, because closing them is a decision
 rather than a migration:
@@ -2616,14 +2618,12 @@ than no invariant, because it fails a directory that is working correctly.
 **Ownership**
 
 6. **[hierarchical] Generate writes only level ③** (§ 2.5 step 3); **prepare writes only one
-   attempt at ⑤** (step 4); the engine writes only the directory it was launched
+   attempt at ⑤** (step 4); the run writes only the directory it was launched
    in.
-6a. **Every directory and every link in this tree is made by Python.** The
-   wrapper activates an environment and execs an engine in a directory it was
-   handed, and does nothing else (`running-a-job.md § 2.2a`). ✅ **Held since
-   2026-08-10**, when `runwrap.py`'s `attempt_dirs` prologue — the one place
-   that created and arranged an attempt in shell, and the only place in the
-   system that changed directory — was retired. *Test:* render a wrapper for
+6a. **Every directory in this tree is made by Python, and every file put in one
+   is a real file.** The wrapper activates an environment and runs the engine
+   as its child in a directory it was handed; it creates no directory and
+   arranges no file (`running-a-job.md § 2.2a`). *Test:* render a wrapper for
    each engine and assert its text contains no `cd` command
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
@@ -2637,11 +2637,12 @@ than no invariant, because it fails a directory that is working correctly.
    created answers, and that the `role` in each record agrees with the name
    grammar the creator used — two statements of one fact that cannot then
    drift.
-7. **[hierarchical] A shared file exists once, at ③**, and is linked into each stage. Never
-   copied per stage.
+7. **[hierarchical] A shared file's source exists once, at ③** (`pseudos/`), and
+   each stage and attempt receives a real copy of it, never a link (§ 1.5).
 8. **Every directory is a container or a run, never both** (§ 1.4). A run's
    output stays inside it; nothing a run writes appears above it.
-8a. **[hierarchical] An attempt is immutable.** Once written it never changes, and once archived
+8a. **[hierarchical] An attempt is immutable.** Once its launch has ended — warm
+   retries included, which run within it (§ 1.6.1) — it never changes, and once archived
    it must never differ from its recorded checksum — which is
    `checkpointing.md`'s I2 applied to a directory instead of a file (§ 11).
 9. **The description is the only source at ③.** No produce and no run modifies it

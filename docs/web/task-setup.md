@@ -604,7 +604,7 @@ its point count:
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
 | a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is also a pin in force over the template, for the trials and the run alike *(user rule, 2026-08-20)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
-| a notify-card tick | `task.json`'s `notify` | **when this run should say something, and to which channels by name** — on each SCF convergence, every N hours, or neither; a run ending always reports and so is not offered. Portable in the way § 6.1 requires: *"every six hours, to `slack`"* is true wherever the file is opened, because a name is a label the person chose and grants nothing. **What that name resolves to is not written here and must not be** — a description travels, so the address and its credential stay in the config directory of the machine that runs the job, set on the [This machine](?doc=web/this-machine.md) tab |
+| the notify card | `task.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`stages.md`](?doc=engines/stages.md) § 6.9; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
 | a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
 
 ```jsonc
@@ -883,25 +883,19 @@ true of all of it should stay on screen while you work through the parts.
 
 ## 9b. *Tell me how it is going* — and the one file it writes
 
-**It is out of the flow, deliberately** — it lives in the sticky rail under
-*What gets written* (§ 9a.1). Everything in the main column is what the
-calculation *is*; this is what it *says while it runs*, which is a different
-question, and one answer covers every stage. It sat between "Where it runs" and
-"Stages" until 2026-08-27 and interrupted the setup (user: *"it breaks the
-flow"*); it sat at the bottom of the column until 2026-09-01, where being last
-made it easy to miss (user: *"visually would be easy to find and logically
-that's a global setup too"*). The rail is both: never in the way, never off
-screen.
+**It is out of the flow, deliberately** — in the sticky rail under *What gets
+written* (§ 9a.1). The main column is what the calculation *is*; this is what
+it *says while it runs*, one answer for every stage, and the rail keeps it out
+of the way and on screen (user: *"logically that's a global setup too"*).
 
-**This card writes `task.json` and nothing else.** It was one card over two
-files until 2026-08-31 — the ticks into the description, the address and key
-into `config_dir()/notify` — and the separation was held by a comment in the
-template. It is now held by the architecture: the address and the key are on
-the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)), where
-they belong, because they are a fact about the box and not about this
-calculation.
+**This card writes `task.json` and nothing else.** The addresses and keys are
+on the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)),
+because they are a fact about the box, not about this calculation.
 
-**What the card asks, and what travels:**
+**What the card asks, and what travels** — the `notify` block,
+[`stages.md`](?doc=engines/stages.md) § 6.9; the start and the end of a run are
+always reported, so they are not offered
+([`run-reports.md`](?doc=execution/run-reports.md) § 2):
 
 | | writes | travels? |
 |---|---|---|
@@ -912,21 +906,21 @@ calculation.
 **The report fields offered are this calculation's.** The card asks
 `GET /api/notify/report-fields?engine=<e>&calculation=<c>` and offers what the
 server answers: the fields a run of that engine and kind can state, from the
-one declaration ([`stages.md`](?doc=engines/stages.md) § 6.9) — so a PySCF
-calculation is not offered seconds per iteration, and a transport calculation
-is not offered a step. The page keeps no list of its own.
+one declaration ([`run-reports.md`](?doc=execution/run-reports.md) § 4.1a) — so
+a PySCF calculation is not offered seconds per iteration, and a transport
+calculation is not offered a step. The page keeps no list of its own; when it
+cannot ask, the description's own list stands rather than being rewritten.
 
 **The names come from the server; the secrets never do.** The list is painted
 from `GET /api/notify/channels`, which reports a name, whether it is configured
-on this machine, and how the last test went — never an address and never a key.
-Nothing on this page has ever seen one, and now nothing on this page *can*.
+on this machine, and how the last test went — never an address and never a key,
+so nothing on this page *can* see one.
 
 **Ticking nothing means nothing is sent**, and that is a real state rather than
 an oversight ([`run-reports.md`](?doc=execution/run-reports.md) § 3.0): reports
 off for this calculation on a machine where they are otherwise set up. A
-description with **no** `channels` key — one written by hand, or before
-2026-08-31 — means *every channel on this machine*, so nothing that already
-worked stops working.
+description with **no** `channels` key — one written by hand, say — means
+*every channel on this machine*, so nothing that already worked stops working.
 
 **A ticked name this machine does not have is shown as such**, not hidden. That
 is the travelling case — a description written at a desk and opened on a

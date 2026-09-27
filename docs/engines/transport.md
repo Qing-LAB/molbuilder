@@ -1002,33 +1002,27 @@ curves plus whatever is derived across it — an average, a spread, a set of
 couplings. § 2a.9's axis rule is what keeps that additive rather than a rewrite.
 
 
-**The report, rung by rung** *(W35, decided 2026-09-26 — contract, not yet
-built; `model/parse.md` § 5d)*. Each rung has its run record — computation,
-setup with what the engine used, the deck, every iteration, the verdict — and
-the transport record composes the five and adds the science:
+**The report, rung by rung** ([`model/parse.md`](?doc=model/parse.md) § 5d).
+Each rung has its run record — computation, setup with what the engine used,
+the deck, the verdict — and the transport record composes the five rungs'
+records and adds the science:
 
 | rung | the science it reports | the symptoms it watches |
 |---|---|---|
 | seed | the converged energy and E_F of the periodic junction | as any SCF |
 | electrode_L · electrode_R | each lead's E_F — the reference for T(E), and the two must agree | as any SCF |
-| device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's; the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | `model/parse.md` § 5d.6 — a first-step dQ above 0.1 % of the total charge names a set-up fault within one iteration |
-| transmission | T(E_F) and G = G₀·T(E_F), with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; eigenchannels and DOS when asked; the I–V with its treatment named (§ 2a.10) | the run's end, and the channels it wrote |
+| device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's; the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
+| transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10) | the run's end, and the channels it wrote |
 
-**Composed on read, so a ladder in progress has a report.** The record was
-written only by `jobset summarize run`, which refused until the transmission
-had output; the rungs that had run said nothing. **The provenance is what was
-gathered**, read from each rung's `.gathered-from` — never the newest attempt
-by file time.
+**Shown, not listed**: each rung's convergence is drawn by the SCF plots the
+trajectory viewer uses, and T(E) per bias point and channel, the I–V, the
+device DOS, each electrode's spectral and bulk DOS and the eigenchannels are
+plots — the transmission deck asks TBtrans for all of them.
 
-**The contour is stated, not left to the engine** *(W35)*. A device deck with
-no `contour.eq` gets TranSIESTA's continued-fraction fallback — 42 poles
-(`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for — and on
-2026-09-25 that lost 29 electrons on the first NEGF step, before any mixing,
-and diverged to 584; 123 poles on the same deck conserved the charge to 0.024
-electrons by step 4. The device deck therefore writes an explicit equilibrium
-contour — a circle and a tail whose lower bound sits below the seed's lowest
-eigenvalue, the manual's own rule — and the settings gate refuses one that
-cannot cover the spectrum.
+**Composed on read, so a ladder in progress has a report**: the transport
+record is composed from whichever rungs' records exist, each time it is read.
+**The provenance is what was gathered**, read from each rung's `.gathered-from`
+— never the newest attempt by file time.
 
 ### 2a.13 The full map
 
@@ -1082,6 +1076,7 @@ one set for all of them is a compromise none of them asked for.
 |---|---|---|---|
 | *the bias point(s)* | `TS.Voltage` | Which voltage this device is converged at — and, via § 2a.10, what the result may be called. Binds the transmission: each transmission point reads **its own** point's Hamiltonian | 3 |
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
+| *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
 | `elecs_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device uses the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert | 3 |
 

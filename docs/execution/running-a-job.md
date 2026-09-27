@@ -31,7 +31,7 @@ flowchart LR
     C["Copy<br/>scp the run dir<br/>to the target"]
     P["Prep / doctor<br/>(target)<br/>bake activation, verify env"]
     R["Run<br/>(compute node)<br/>bash .run.sh / sbatch .sbatch"]
-    W["Watch<br/>run viewer / molbuilder watch<br/>+ the decoded-run view"]
+    W["Watch<br/>the Results tab: viewer + Run panel<br/>or molbuilder watch"]
     G --> C --> P --> R --> W
 ```
 
@@ -48,7 +48,7 @@ self-containment is a deliberate contract (§ 2).
 | Understand why the wrapper is self-contained and what it may read when | **§ 2 — The standalone contract** |
 | Know how many MPI ranks / OMP threads a run actually uses, and how GPUs are pinned | **§ 3 — Runtime resource resolution** |
 | See what flags `bash my-job.run.sh` accepts | **§ 3.4** |
-| Watch a running job and read failure hints | **§ 4 — Watching a run** |
+| Watch a running job, read failure hints, or ask how a run is doing | **§ 4 — Watching a run, and reading it back** |
 | Configure envs, activation, and the SLURM header via `molbuilder.json` | **§ 5 — Configuration** |
 | Snapshot / restore a run directory | **§ 6 — Checkpointing** |
 
@@ -165,14 +165,15 @@ clean-shell bootstrap, then launches the engine.
 ### 2.2a What the wrapper may do — bash is a bootstrap, not a program
 
 § 2.1 already says it in passing: the wrapper emits the activation form verbatim
-inside a clean-shell bootstrap, **then launches the engine**. That is the whole
-job, and it is worth stating as a rule because it is easy to break by accretion.
+inside a clean-shell bootstrap, **then launches the engine**. The rule is worth
+stating because it is easy to break by accretion.
 
-> **The wrapper does two things: it makes the environment right, and it execs.
-> Everything else belongs to Python, on the host, before the wrapper is ever
-> invoked.**
+> **The wrapper makes the environment right, runs the engine as its child, and
+> reports on the run it started — its output, its monitor, how it ended. It
+> creates no directory and arranges no file: that is Python's, on the host,
+> before the wrapper is invoked.**
 
-**Why bash at all**, and why only these two:
+**Why bash at all:**
 
 - **Activation mutates the shell's own environment.** `conda activate` /
   `module load` change `PATH` and friends *in the calling process*. A Python
@@ -180,21 +181,26 @@ job, and it is worth stating as a rule because it is easy to break by accretion.
 - **The launcher must be the shell's direct child.** `mpirun` / `srun` want to
   inherit the activated environment and sit in the process tree where signals
   and scheduler accounting expect them.
+- **The shell must outlive the engine.** The engine is run, not `exec`'d
+  (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5)
+  and write the conclusion marker as its last act
+  ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
 
 Everything else — resolving which directory to run in, creating it, arranging
-files, recording what happened — is **decision and arrangement**, and none of it
+files, recording the launch — is **decision and arrangement**, and none of it
 needs the activated environment. It is Python's.
 
-**The test, when adding to a wrapper:** *does this need the activated shell?* If
-it computes, decides, or arranges files, the answer is no and it belongs upstream.
+**The test, when adding to a wrapper:** *does this need the activated shell, or
+this run's own ending?* If it computes, decides or arranges anything else, it
+belongs upstream. The one decision made on the node is the warm retry, because
+only this run's ending can make it — and the wrapper asks the framework's
+reader for that ending rather than grepping for it (§ 3.5).
 
-> **The rule holds with no exception**, and the reason it can is that nothing
-> arrives at a run directory needing to be resolved. What a stage continues
-> from is a **real file, copied in at `prep`** from the run you name
+> **Nothing arrives at a run directory needing to be resolved.** What a stage
+> continues from is a **real file, copied in at `prep`** from the run you name
 > ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) — present and
 > local before the wrapper starts. There is nothing for bash to dereference,
-> localize or wait for. (A wrapper block that did such work for an earlier
-> design: `archive/2026-08-10-stage-chaining.md`.)
+> localize or wait for.
 
 **This is forced, not stylistic.** Two facts make the compute node the wrong
 place for logic:
@@ -207,32 +213,21 @@ place for logic:
   `command -v python3 || command -v python` and carries on without one, because
   the activation line is *declared by the operator*
   (§ 5.2 below; `script_generation.activation` has no default) — the env a wrapper lands in
-  need not be one of ours at all.
+  need not be one of ours at all. With no interpreter the run goes unwatched,
+  with no failure hint and no warm retry, and the log says so.
 
-  > *This bullet read "there may be no Python at all", evidenced by
-  > `molbuilder-siesta` declaring `siesta`, `numactl`, `git` and nothing else.
-  > That env pins the global python like every other since 2026-09-17: the probe
-  > was otherwise falling through the env's empty `bin/` to whatever the node
-  > shipped, unprobed at prep time, and on a node shipping none the wrapper
-  > logged `monitor: not started` and the calculation ran unwatched. The
-  > conclusion is unchanged and rests on the bullet above.*
+  Any logic written to run there is either shell, or a shipped stdlib-only
+  file, or broken. **`mb_monitor.pyz` is that one shipped file**: it holds the
+  monitor — a *subprocess of the running job*, watching it from inside — and
+  the reader the wrapper asks how the run ended (`python mb_monitor.pyz ending
+  …`, § 3.5). Neither has anywhere else to live, which is why the file is
+  stdlib-only; it is not a pattern to copy for anything that could run on the
+  host instead.
 
-  Any logic written to run there is either shell, or a shipped
-  stdlib-only file, or broken. The monitor (`mb_monitor.pyz`) is the one deliberate exception —
-  it is a *subprocess of the running job*, watching output from inside, so it has
-  nowhere else to live. That is why it is stdlib-only, and it is not a pattern to
-  copy for anything that could run on the host instead.
-
-**The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
-prologue (2026-08-06) scanned for run directories, created one, symlinked the
-deck and shared package in, copied warm files and `cd`'d in — a second
-implementation of `jobset/materialize.py` in shell, one level down. **It was
-also the only place in the system that changed directory**, so retiring it
-restored the rule above rather than tidying it: **no generated wrapper contains
-a `cd` at all**, on either engine. The behaviour it established is right and
-lives in `jobset/materialize.py::prepare_attempt`, in Python, where the layout
-layer owns it. See [`project-layout.md`](?doc=execution/project-layout.md)
-§ 1.6 and invariant 6a.
+**No generated wrapper contains a `cd`**, on either engine: the caller decides
+the directory, and the layout layer — `jobset/materialize.py::prepare_attempt`
+— makes and fills it ([`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6, invariant 6a).
 
 ### 2.3 Env routing
 
@@ -375,64 +370,24 @@ notice at all** rather than one built on an invented number.
 > header's `-n` disagrees with the resolved count, so the mistake cannot
 > pass the check you run before spending a queue slot.
 
-> ### ⚠ The clamp is gone — corrected 2026-08-11, removed 2026-09-03
+> #### What `propor: IMAX = 0` depends on — and why no rank count is refused
 >
-> This section used to say *"a run with more MPI ranks than atoms **aborts**
-> inside SIESTA at `propor IMAX = 0` (no `BlockSize` can fix it)"*, presenting
-> the atom count as the physical constraint. **The project's own empirical sweep
-> says otherwise**, and it is recorded in
-> `siesta/input.py::_auto_block_size`'s 2026-05-28 note:
+> *(User ruling, 2026-09-03: "we had that problem because of a psml related
+> issue, not a size issue.")*
 >
 > | | |
 > |---|---|
-> | **where the crash is** | `matel_table.F90`'s MPI de-duplication of **radial-function tables** — not in any BLACS distribution |
-> | **what it depends on** | `mpi_np` against the molecule's **species count and radial-table size** |
-> | **what it does not depend on** | `BlockSize` — *"SIESTA crashes identically with BlockSize = 1, 2, 4 at `mpi_np` = 15 on hemeC-dithiol"* |
+> | **where it is raised** | `propor` (`Src/propor.f`), called only from `matel_table.F90`, which deduplicates the **radial-function tables** across MPI ranks — not in any BLACS distribution |
+> | **when** | the table handed to it is all zeros |
+> | **its two causes, in the order to check them** | 1. a **defective or XC-mismatched pseudopotential** — commoner and cheaper to check ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md); `molbuilder pseudo check`); 2. the **rank count** against the species count and radial-table size |
+> | **not a cause** | `BlockSize` — the crash is identical at 1, 2 and 4 (`mpi_np` = 15, hemeC-dithiol); the atom count, a proxy that a few-species system exceeds safely and a many-species one crashes below; the spin — `propor` takes no spin argument and never sees the density matrix |
 >
-> So `n_atoms` is **not** the quantity the failure is a function of. It is a
-> cheap proxy: a molecule with few species and many atoms can exceed it safely,
-> and one with many species and few atoms can crash below it.
->
-> **This paragraph used to end *"the clamp is worth keeping — it costs nothing
-> and prevents the common case"*. That was the wrong conclusion, and the clamp
-> was removed on 2026-09-03** *(user ruling)*. It does not cost nothing: it
-> refuses rank counts that would have run, and it teaches a rule that is not
-> true. And the case it was credited with preventing was not a size case at
-> all — *"we had that problem because of a psml related issue, not a size
-> issue"*, which is the cause the hint list below already ranks **first**.
-> Whether a rank count suits a system is the user's judgement, and what the
-> wrapper owes them is the objective number, not a limit: orbitals per rank,
-> § 3.1a.
->
-> **This is the second place `n_atoms` stood where a different quantity belongs.**
-> The first was `BlockSize`'s bound, which is **orbitals** over ranks
-> ([`tuning.md § 2.11`](?doc=engines/tuning.md), settled 2026-08-11) — and note
-> that the two are *different* corrections, not one: the block bound is about
-> **matrix distribution**, this is about **radial tables**. What they share is a
-> habit of reaching for the atom count because it is the number to hand.
->
-> **C12 is settled** (2026-09-03): the clamp is not replaced by a
-> species-aware bound. There is no bound. The `.fdf` carries
-> `NumberOfSpecies` and it stays available for a diagnostic, but a rank count
-> is not refused on a guess about the system.
->
-> **And `propor: IMAX = 0` has two causes, neither of which is ranks alone.**
-> The wrapper's own failure hint (§ 4.1) already orders them correctly and
-> this section did not: a **defective or XC-mismatched pseudopotential**
-> ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md)), and the
-> rank count against the species/radial tables. Reading § 3.1 alone, a user
-> met one cause presented as *the* cause — and it is the one the hint list
-> deliberately ranks **second**, because the pseudopotential is both commoner
-> and cheaper to check.
->
-> **A third cause was listed here until 2026-09-17 — "zero net spin on an
-> open-shell metal" — and it is not one.** `propor` is a forty-line
-> vector-proportionality utility (`Src/propor.f`) called only from
-> `matel_table.F90`, where it deduplicates radial-function tables; it takes no
-> spin argument and never sees the density matrix. `IMAX = 0` is raised when
-> the table handed to it is all zeros, which is the first cause above. Both
-> surviving causes are consistent with that reading, and the spin one never
-> was.
+> So nothing lowers or refuses a rank count, and no species-aware bound
+> replaces the atom clamp: whether a rank count suits a system is the user's
+> judgement, and what the wrapper owes them is the objective number — orbitals
+> per rank, above. The `.fdf` keeps `NumberOfSpecies` for a diagnostic.
+> `BlockSize`'s bound is a different correction — **orbitals** over ranks, for
+> matrix distribution ([`tuning.md § 2.11`](?doc=engines/tuning.md)).
 
 ### 3.2 OMP threads and BLAS
 
@@ -523,219 +478,237 @@ above are accepted, for either engine. The `.sbatch` outer file forwards
 
 ### 3.5 SIESTA auto-retry on non-convergence
 
-A SIESTA wrapper carries a **warm-retry budget** — the template's
-`continue_retries`, the *Warm-retry budget* setting (0–5, default 1; `0` runs
-once whatever happens, which a benchmark trial must), riding `Resources` to the
-wrapper (`job-contracts.md` § 6.2) — and re-runs itself with `--continue` — the
-same warm restart you would type by hand — when the run failed in one of the
-two *retriable* ways:
+A SIESTA wrapper **re-runs itself warm**, with `--continue`, when its run ended
+in one of two ways a warm restart can fix. The budget is the template's
+`continue_retries` (*Warm-retry budget*, 0–5, default 1), carried on
+`Resources` (`job-contracts.md` § 6.2) and bounded by the exported
+`MB_RETRY_N`; a benchmark trial's is `0`, one run whatever happens.
 
-- **SCF didn't converge.** With `SCF.MustConverge` (SIESTA's default; the
-  generated `.fdf` doesn't override it) SIESTA *aborts with a non-zero exit*
-  after printing `SCF_NOT_CONV:` — but it has already banked the density
-  matrix, so a warm `--continue` resumes SCF from that `.DM` with a fresh
-  iteration budget.
-- **The relaxation hit its step cap.** That run *exits 0* and prints
-  `outcoor: Final (unrelaxed) atomic coordinates` (a converged relax prints
-  `Relaxed…`); the retry resumes from the banked `.XV`/`.DM`/`.CG` with a
-  fresh step budget.
+| the run ended | SIESTA shows it by | the wrapper asks | the retry resumes from |
+|---|---|---|---|
+| its SCF did not converge, and SIESTA stopped on it | `SCF_NOT_CONV: … (required)`, then a nonzero exit (`SCF.MustConverge`: SIESTA's default, false in a benchmark trial's deck) | `_mb_ending stopped-by scf_not_conv` | the banked `.DM`, with a fresh SCF budget |
+| a relaxation used all its moves, unconverged | exit 0, and `outcoor: Final (unrelaxed) atomic coordinates` (a converged one prints `Relaxed…`) | `_mb_ending relaxation-capped` | the banked `.XV`/`.DM`/`.CG`, with a fresh step budget |
 
-Which of the two happened is **asked, not grepped**: `_mb_ending stopped-by
-scf_not_conv` — did SIESTA state the SCF's failure fatal, `(required)`, and
-stop on it — and `_mb_ending relaxation-capped`, answered by `_run_ending`, in `mb_monitor.pyz`
-beside the job from the SIESTA family's own table (`run-reports.md` § 2.3). A
-tolerated non-convergence followed by some other crash is that crash, and is
-not retried. With no python beside the job the questions cannot be answered,
-the log says so, and nothing is retried.
+The wrapper **asks, never greps**: `_mb_ending` runs `python mb_monitor.pyz
+ending` over the output and SIESTA's stderr (`run-reports.md` § 2.3). **Never
+retried**, because running again cannot fix it: a crash — `propor`'s
+`IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
+one; a **diverged** SCF, whose retry resumes from the diverged density and is
+the same run again — the monitor warns instead (`model/parse.md` § 5d.6); and
+anything, when no python is beside the job (the log says so).
 
-Each retry advances the run index (`-run1`, `-run2`, …) exactly like a manual
-`--continue`, re-runs with the **same** `-np`/`--omp` you launched with, and
-is counted via the exported `MB_RETRY_N` so the budget is a hard bound. Crash
-classes (propor `IMAX = 0`, generic aborts) are **never** retried — re-running
-cannot fix a defective pseudopotential or a bad rank count. When the budget is
-exhausted and the run is still unconverged, the wrapper says so on stderr and
-(SCF case) keeps SIESTA's non-zero exit. Without a retry budget the wrapper
-behaves exactly as before — `--continue` stays the manual path.
+```mermaid
+flowchart LR
+    X["SIESTA exits"] --> Q{"how did it end?"}
+    Q -->|"stopped on SCF_NOT_CONV, not diverged"| B{"budget left?"}
+    Q -->|"a relaxation out of moves"| B
+    Q -->|"anything else"| C["conclude: write -runN.concluded"]
+    B -->|"yes"| R["re-exec with --continue"]
+    B -->|"no: say so"| C
+```
+
+**A retry stays in its attempt**: the wrapper re-execs itself in the same
+process and directory, with the same `-np`/`--omp`, so the run index advances
+in place (`-run0` → `-run1`, [`project-layout.md`](?doc=execution/project-layout.md)
+§ 1.6.1) and only the last run writes the conclusion marker. The monitor is
+stopped with SIGUSR1, not an ending (§ 4.1).
 
 ---
 
-## 4. Watching a run
+## 4. Watching a run, and reading it back
+
+### 4.0 Which question, which reader
+
+| the question | the reader | owned by |
+|---|---|---|
+| how is it going, right now? | the monitor, beside the job | [`run-reports.md`](?doc=execution/run-reports.md) § 2 |
+| how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
+| which engine ran? | `parse.contract.engine_of` | § 4.2 |
+| what ran, with what, and how did it go? | the run record, `parse_dir(dir).record` | [`model/parse.md`](?doc=model/parse.md) § 5d |
+| which file should a viewer open? | `parse.dirs.openable_in` | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
 ### 4.1 The wrapper's own instruments
 
-- **A run banner** prints before the engine starts — date, host, cwd, conda
-  env, engine binary + version, launch mode, threading, and (GPU mode) a single
-  authoritative `GPU resources` line (`N ranks × M threads`, `mps=on/off`,
-  `ranks/GPU`, `GPU0 NUMA`) plus an `nvidia-smi dmon` hint.
-- **A combined session log.** The wrapper tees *all* of its own stdout and
-  stderr to `<basename>.runwrap-<timestamp>.log`, so the full captured session
-  (banner, launch line, engine output, hints) is always on disk even if you
-  did not redirect it yourself.
-- **A backgrounded monitor** (`mb_monitor.pyz`, one file shipped next to **every** deck,
-  SIESTA's and PySCF's) samples utilisation into `<basename>-runN.util.csv` and
-  `<basename>-runN.monitor.log`
-  every 10 s at `nice -n 19`, and is stopped when the wrapper exits. It reads
-  the run through the framework's own readers, shipped beside it — `runfiles`
-  for the names, the output's one parser (its reading pass, fed the output as
-  it grows) for where the run is, the timing instrument for its rate,
-  `run_status` for how it ended (`run-reports.md` § 2.3).
-  (Disable with `MB_MONITOR=0`; override the interval with
-  `MB_MONITOR_INTERVAL`.) A standalone `molbuilder monitor` CLI does the same
-  for a job you point it at.
+| instrument | file | engines | written | read by |
+|---|---|---|---|---|
+| **run banner** — host, cwd, env, engine binary and version, launch mode, threading, GPU resources | the session log | both | before the engine starts | a person; the run record |
+| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
+| **the engine's stdout**, teed | `<basename>-runN.out` · `-runN.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
+| **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
+| **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) and the engine's wall time | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
+| **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
+| **conclusion marker** — exit code and time | `-runN.concluded` | both | the wrapper's last act, main line only | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
-  It ends when the **watched PID** goes or the wrapper stops it — SIGTERM at
-  the job's end, which the scheduler's own walltime or cancel reads the same
-  as, and SIGUSR1 when a warm retry re-runs the attempt in place, which is
-  not an ending and sends no "it ended" (`run-reports.md` § 2). The wrapper
-  waits up to ten seconds for its closing lines. It never reads the engine's
-  output for a phrase that looks like the end: a marker can appear before a
-  run is over, and one did — `siesta: Final energy` prints early, so the
-  monitor could stop sampling while the job still held its CPUs and GPUs
-  (`job-contracts.md`, the monitor's section; fixed 2026-08-26).
+**The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
+run with the framework's own readers. What it reads, when it speaks (never
+about a stall), what its percentages are fractions of — what the job **holds**,
+never the node — its lifecycle and its switches are all
+[`run-reports.md`](?doc=execution/run-reports.md) § 2's; each run states its
+utilisation basis on a `[UTIL-BASIS]` line, to read before comparing two runs.
 
-  > **What the percentages are a fraction OF: your allocation, not the node.**
-  > Since 2026-08-26 the monitor reads its own job's cgroup, and divides by the
-  > cores the job actually holds. Ask for 4 cores on a 128-core node and use
-  > them fully, and it reads ~100% — not 3%. A run started directly has no
-  > cgroup of its own, so there the job is its process tree and the cores are
-  > the ones it was launched on (since 2026-09-26, `run-reports.md` § 2.1a);
-  > and a GPU is sampled only for a run that uses one.
-  >
-  > It matters twice. Node-wide, a job cannot move the reading past its own
-  > share, so a benchmark trial at 32.2% looked idle when it was at ~86% of
-  > what it held. And a job that *looks* starved argues for asking for a
-  > bigger machine — which is the longer queue you were avoiding by asking for
-  > a small one. Memory is the same change: the reading was every process on
-  > the machine, including other people's jobs.
-  >
-  > Each run states its own basis on a `[UTIL-BASIS]` line in the monitor log —
-  > how many cores, and which source answered for each reading. *(Written when
-  > the monitor stops — which, since 2026-09-26, includes the wrapper stopping
-  > it. Before that the wrapper's kill came first and 0 of 9 monitor logs
-  > carried the line.)* Read it before
-  > comparing two runs: cgroup v1 and v2 spell these files differently, and
-  > where no cgroup is readable the numbers fall back to the node and say so.
-- **Notifications, if you set them up.** The monitor can tell you a run
-  reached a milestone without you being at the cluster. **When** is the
-  calculation's own setting, in `task.json`'s `notify` block: on each SCF
-  convergence, every N hours, or neither — a run ending always reports.
-  **Where** is yours and never travels with the description: a JSON file at
-  `<config dir>/secrets/notify`,
-  mode 0600, holding a `url` and either a `key` or `headers`.
-  Absent means no notifier at all and a run that behaves exactly as before.
-
-  Slack and Discord put the credential in the URL, because a third party
-  handed nothing but a URL has nowhere else to keep one. **A molbuilder
-  listener takes a plain URL and a `key` that signs the body and never
-  travels** — so a captured report is valid for that one body and cannot be
-  altered or reused to send another. `molbuilder notify-token <user>` issues
-  the key and prints the file to save.
-- **An SCF-timing tee** stamps every SCF row of either phase — SIESTA's
-  `scf:` and TranSIESTA's `ts-scf:`, from the one grammar
-  (`parse/engines/siesta_grammar.py`, [`model/parse.md`](?doc=model/parse.md)
-  § 5d.5) — into `<basename>-runN.scf-timing.log`, and logs the engine's wall
-  time beside the row count, using `PIPESTATUS` so the tee never masks
-  SIESTA's exit code. The seconds PER ITERATION are the timing instrument's,
-  one phase at a time ([`model/parse.md`](?doc=model/parse.md) § 5c); the
-  wrapper's own total/N was a second answer, and across a device's two phases
-  neither's, until 2026-09-26.
-- **Failure hints.** On a non-zero SIESTA exit the wrapper prints how the
-  run ended as molbuilder reads it (`_mb_ending`, `run-reports.md` § 2.3) and
-  where the output and its own log are; when the cause was `propor`'s abort,
-  a three-cause hint in priority order:
-  1. a **defective or XC-mismatched pseudopotential** — check this *first* with
-     `molbuilder pseudo check`;
-  2. too many **MPI ranks** for the system — retry with a lower `-np`;
-  3. **zero net spin** on an open-shell metal — which is **not** a cause
-     (below: `propor` never sees the density), and which the wrapper prints
-     until W34's P2 removes it (`plans/plan.md` § 5s.4).
+**It is told *when* the run ended, and never reads that from the output**: the
+watched PID goes, or the wrapper stops it — SIGTERM at the job's end, SIGUSR1
+for a warm retry, which is not an ending (`run-reports.md` § 2.4). *How* it
+ended is `run_status`'s answer. An ending phrase can print before the run is
+over (`siesta: Final energy`); a monitor that stopped on one would stop
+sampling a job still holding its CPUs.
 
 ### 4.2 Reading a run directory back — `run_status` and `engine_of`
 
-Pointing the run viewer (the web Results tab, or `molbuilder watch`) at a
-run directory resolves the trajectory via the discovery chain in
-[`job-contracts § 2.4`](?doc=execution/job-contracts.md). Asking **how that run
-is doing** is a separate, much smaller question, and
-`parse.dirs.job.run_status(run_dir)` is its one answer:
+**This section owns a run directory's state** — its evidence, their order, and
+each surface's words. A file's own ending is
+[`model/parse.md`](?doc=model/parse.md) § 2b's.
 
-```
-{"state": pending | queued | running | finished | failed,
- "detail": "job_completed" | "prepped, not launched (no run.json)" | ...,
- "last_change_at": ISO-8601 | null,
- "active_source": "<the file that answered>" | null}
+#### The call
+
+```python
+run_status(run_dir, match="*", *, launch=<not asked>) -> RunStatus   # parse/dirs/job.py
 ```
 
-**Before anything is written, the launch record answers** (`project-layout.md`
-§ 1.6: *"Has this been launched?"* has no honest answer from the directory
-alone). A caller holding the attempt's `run.json` passes it
-(`run_status(d, launch=read_run_launch(d))` — the Results tab's directory door
-and the JobSet status layer both do): none is `pending` — *prepped, not
-launched* — and one is `queued` — *queued as job N*, or *launched, no output
-yet*. The monitor, beside a job that is plainly running, does not ask. *(Until
-2026-09-26 the JobSet layer answered these two above the door and the door
-answered the same attempt "running — no result file yet".)*
+| argument | meaning |
+|---|---|
+| `run_dir` | the attempt (`run-<n>/`), or the calculation itself in the flat shape |
+| `match` | narrows to one rung: the flat shape keeps every stage in one directory |
+| `launch` | `read_run_launch(dir)` (`jobset/materialize.py`) — the `run.json` dict, or `None`; left out, *not asked* |
 
-**The status is the parsers' own answer.** Every engine parser already
-reports how its file ended — `run_state`, [`parse.md` § 2b](?doc=model/parse.md) —
-so `run_status` asks the registry for each result file: every `.out`, plus
-each `*.molwatch.log` whose footer concludes the run (the engine-neutral
-end-of-run marker, and the only one a PySCF attempt has). A molwatch log
-**without** a conclusion footer is a live view, not a result, and
-contributes nothing — which is what keeps a prep-time seed from ever
-steering the state.
+| field | holds |
+|---|---|
+| `state` | `pending` · `queued` · `running` · `finished` · `failed`, a closed set |
+| `detail` | one line for a person (the states, below) |
+| `last_change_at` | the speaking file's mtime, ISO-8601 UTC — shown, never judged |
+| `active_source` | the speaking file's name, or `None` |
+| `concluded` | the conclusion marker's text, `rc=0 at …`, beside the state |
+| `endings` | each output file's ending and its SCF phases' convergence — read by the run record and the monitor, so nothing scans twice |
 
-What is settled here rather than in a parser, because it is not in the
-file:
+`/api/results/dir` serves the first four ([`web/results.md`](?doc=web/results.md) § 2.3).
 
-- **which file speaks for the directory** — a folder holds one `.out` per
-  run index and one molwatch log per stage, and a parser sees one file.
-  Highest stage, newest mtime.
+| caller | `launch` | `match` |
+|---|---|---|
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the attempt's or a trial's; none for a flat stage | the rung's glob |
+| `JobDirParser` — `/api/results/dir`, the run record | the directory's | `*` |
+| the monitor's closing line | not asked | its run's stem |
 
-**A file with no ending is *running* — not finished — however long it has
-been quiet** *(user, 2026-09-26: "It shows what it is. Not finished, error, or
-finish.")*. Nothing in it or beside it tells a slow DFT step from a job the
-scheduler killed. *(A `stale` state — no growth for sixty seconds — stood here
-from 2026-06-19 until 2026-09-26; a healthy SIESTA SCF step goes quiet for over
-twelve minutes.)*
+`run_status` has no answer *there is no run here*: asked without `launch`, a
+directory with nothing written reads `running — no result file yet`. So the
+directory door asks what a directory is first, and asks a container nothing
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a).
 
-`failed` comes from a fatal marker in the `.out`, a torn run whose last SCF
-block did not converge, or an error footer in the molwatch log. Whether the
-SCF **converged** is deliberately not folded in: that is a fact the reader
-shows beside the state, never inside it.
+#### Which file speaks
 
-Its consumer is the JobSet status layer (`molbuilder/jobset/runstatus.py`,
-per stage), which is what `jobset status` and the bench summary read.
+An engine's captured stdout (`.out`, `.pyscf.log`) speaks, because it exists
+only once the process started; a progress log (`.molwatch.log`) speaks once its
+footer concludes, because prep seeds it before the engine starts. Each is read
+by its role's scan for ending markers, `_run_ending.ending_of`
+([`model/parse.md`](?doc=model/parse.md) § 5.4) — not parsed through the
+registry. Of several, the highest stage speaks, then the newest mtime *(user
+ruling, 2026-09-04: a re-run of an earlier rung must not take over the state)*
+— the mtime picks *which* file, never *whether* the run is alive.
 
-> **This was an eleven-field summary until 2026-09-04, and the other ten
-> fields are deleted rather than fixed.** `decode_run_dir` returned a
-> `JobResult` carrying job type, system label, geometry, plot buckets,
-> progress counters, a source-file index, a per-stage engine-input envelope
-> and a diagnostics block. Measured across the tree, **ten of the eleven had
-> no reader anywhere**, and the eleventh — this one — was obtained by parsing
-> every `.out` to build the plot data and then discarding it. **741 lines of product code**
-> produced one field that was used. *(An earlier draft of this note said
-> 1,414; that number counted `dirs/_assembler_helpers.py` — excluded on the
-> grounds that it "was never dead and is still read by both `coords/`
-> parsers". **It was dead, and that sentence is why it survived**: both
-> `coords/` parsers IMPORT it and re-export its names, and neither calls one.
-> A re-export reads as a caller to a grep and to a reviewer. The module went
-> on 2026-09-06, so the honest figure is the larger one.)*
->
-> Four code-quality defects went with them, none needing a fix: a second
-> `LatticeConstant` reader that disagreed with its sibling on units and
-> silently read an unknown unit as Bohr, a second `SystemLabel` regex that
-> returned a different answer on a directive with a trailing comment, a
-> private call into the `.XV` reader that bypassed the registered parser,
-> and a cell read from the input file while the coordinates came from the
-> output.
+#### The order of evidence
+
+```mermaid
+flowchart TD
+    S{"does a file speak?"} -->|"yes"| E{"what ending does it state?"}
+    E -->|"its end"| FIN["finished"]
+    E -->|"a stop, or out of memory"| FAIL["failed"]
+    E -->|"none"| M1{"a marker at the latest run index?"}
+    M1 -->|"rc 0"| FIN
+    M1 -->|"nonzero rc"| FAIL
+    M1 -->|"none"| RUN["running"]
+    S -->|"no"| M2{"a marker at the latest run index?"}
+    M2 -->|"rc 0"| FIN
+    M2 -->|"nonzero rc"| FAIL
+    M2 -->|"none"| L{"the launch record"}
+    L -->|"no run.json"| PEN["pending"]
+    L -->|"run.json"| Q["queued"]
+    L -->|"not asked"| RUN
+```
+
+*Its end* is `>> End of run`, a PySCF deck's end line or a `# concluded:`
+footer; *a stop* is a fatal marker, a Python traceback, an `# error:` footer or
+an out-of-memory line (`model/parse.md` § 2b). The marker speaks where content
+is silent — an engine that died before its first line, a PySCF `SystemExit` —
+and counts only at the highest run index the run's files reached
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): an earlier
+one, beside a newer silent output, is a previous run's goodbye. SIESTA's own
+`0_NORMAL_EXIT`, which names no run, counts only where no output exists.
+
+**Convergence never decides the state** (P-S2): an unconverged SCF is a fact
+beside it, in `endings`. A run SIESTA *stopped* because its SCF had to converge
+is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
+
+#### The states
+
+| state | detail |
+|---|---|
+| `pending` | prepped, not launched (no run.json) |
+| `queued` | queued as job N · launched (direct), no output yet |
+| `running` | running · no result file yet |
+| `finished` | job_completed · concluded (rc=0 at …) |
+| `failed` | stopped before its end -- see the .out · out of memory · concluded (rc=1 at …) |
+
+**Silence is not death.** A healthy SIESTA SCF step can print nothing for over
+twelve minutes, and a job the scheduler kills leaves no trace in its output, so
+a file with no ending is `running` — not finished — however long it has been
+quiet *(user, 2026-09-26: "It shows what it is")*. A forced stop writes no
+marker and stays `running` here; the monitor, which saw its PID go, closes its
+own log with *failed — stopped before its end*
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.3), and `launch run`
+asks the person before continuing
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.4).
+
+**Before the first output**, a direct launch reads `queued` (its `run.json` is
+written as the process starts), and so does one killed before writing anything
+— an engine that merely died still reaches the wrapper's marker and reads
+`failed`; a flat stage, whose launch writes no `run.json`, reads `pending`.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> pending: prepped
+    pending --> queued: run.json written
+    queued --> running: first output
+    queued --> failed: nonzero marker, no output
+    running --> finished: an end, else marker rc 0
+    running --> failed: a stop, else nonzero marker
+    note right of running: no clock moves a run out of here
+```
+
+#### The words on each surface
+
+| surface | its words | read from |
+|---|---|---|
+| a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
+| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` | `ended` → `finished`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
+| the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
+| a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s, plus `not-started` (no directory yet) and `unknown` (unreadable) | `jobset/runstatus.py` |
+| the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
+| the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, except that `running` after the PID has gone is `failed`, *stopped before its end* |
+
+The badge reads a **file** and the panel the **run**, so they can differ: a
+`-run0.out` that stopped reads Stopped while its warm retry keeps the attempt
+`running`.
+
+#### Worked examples
+
+The attempt `01_coarse/run-0/` of `bdt`, as prep left it
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3), then as the
+run goes:
+
+| it also holds | `state` — `detail` |
+|---|---|
+| nothing more | `pending` — prepped, not launched (no run.json) |
+| `run.json`, `"job_id": "481923"` | `queued` — queued as job 481923 |
+| `bdt_01_coarse-run0.out`, no `>> End of run`, quiet for 40 minutes | `running` — running |
+| the `.out` ends `>> End of run`; `-run0.concluded` reads `rc=0 at …` | `finished` — job_completed |
+| the `.out` stopped on `SCF_NOT_CONV … (required)`; the warm retry's `-run1.out` is printing | `running` — `-run1.out` speaks: same stage, newer |
+| killed at walltime: no ending in the `.out`, no `.concluded` | `running` — the monitor's log says *failed*; `launch run` asks |
+| no `.out` (SIESTA died before its first line); `-run0.concluded` reads `rc=1 at …` | `failed` — concluded (rc=1 at …) before any output |
 
 #### Which engine ran — `engine_of`
 
 `parse.contract.engine_of(run_dir)` answers `"siesta"` / `"pyscf"` /
-`"unknown"`. **This section owns that rule**, because nine places in the
-code and the docs cite it here; it stated no rule at all until 2026-09-04,
-and the one place that spelled out an order (`web-api.md`) spelled out an
-order that had already been measured wrong and replaced.
+`"unknown"`, and this section owns the rule.
 
 **The engine is DECLARED when the script is generated**, because that is the
 only moment it is known for certain, and a run directory gets copied away
@@ -745,26 +718,21 @@ precedence list:
 | tier | evidence | where it is written |
 |---|---|---|
 | **declaration** | the PROVENANCE `engine` key of any deck or wrapper | [`job-contracts § 3.2`](?doc=execution/job-contracts.md) |
-| **declaration** | the `.molwatch.log` `# engine:` header | [`§ 4.1`](#41-the-wrappers-own-instruments) |
+| **declaration** | the `.molwatch.log` `# engine:` header | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 4 |
 | *fallback* | which files are present | only when nothing declared |
 
 **The declarations are weighed TOGETHER.** One distinct answer among them is
 the answer. Two is a run that contradicts itself, and that is `"unknown"` —
-the same rule and the same reason as `contract_of`: a directory that says two
+the same rule and the same reason as `contract_of`
+([`model/parse.md`](?doc=model/parse.md) § 5b): a directory that says two
 things cannot be made to say one by picking, and an answer that might be the
-other engine's is worth less than no answer.
+other engine's is worth less than no answer. No order is used, because a
+first-hit list lets one stale `.run.sh` outrank two agreeing declarations.
 
 **The sniff is consulted only when nothing declared**, for a directory
-molbuilder did not write. It never overrules a declaration, because it is
-evidence of a different kind: files outlive the run that wrote them, so a
-stale `.fdf` beside a freshly re-prepped PySCF deck is not a second opinion,
-it is litter.
-
-> **Why this is not a first-hit-wins list**, which is what shipped on the
-> morning of 2026-09-04 and was wrong by that afternoon: racing the rungs let
-> ONE stale `.run.sh` outrank two agreeing declarations, because it happened
-> to be read first. The bug is not in the order — it is in having an order at
-> all. Corroboration cannot be expressed as precedence.
+molbuilder did not write, and never overrules a declaration: files outlive the
+run that wrote them, so a stale `.fdf` beside a freshly re-prepped PySCF deck
+is litter, not a second opinion.
 
 
 ## 5. Configuration — `molbuilder.json`

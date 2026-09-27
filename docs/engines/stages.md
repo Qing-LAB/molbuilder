@@ -1605,6 +1605,64 @@ not relaxing the check.
 > something none of them says. Readers that predate the key are not a concern —
 > they ship together with the writer.
 
+### 6.9 `notify` — when this calculation speaks, to whom, and with what
+
+`notify` is the calculation's reporting **policy**: when to speak, to which of
+the running machine's channels — **by name** — and which fields a chat card
+shows. It travels with the description; what a channel name resolves to never
+does ([`run-reports.md`](?doc=execution/run-reports.md) § 1).
+
+```json
+"notify": {"on_scf_converged": true, "every_hours": 6,
+           "channels": ["slack"], "report": ["elapsed_s", "energy", "max_force"]}
+```
+
+| key | type | absent | empty | refused at save |
+|---|---|---|---|---|
+| `on_scf_converged` | boolean | `false` | — | anything but a JSON boolean |
+| `every_hours` | number of hours | never | `0` is never | a string (`"6h"`), a negative or a non-finite number |
+| `channels` | list of channel names | **every channel the running machine has** | `[]` — **none**: reports off for this calculation | a name that is not letters, digits, `-` and `_` |
+| `report` | list of report field names | **every field the run states** | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state |
+
+What each occasion is and what every message carries are
+[`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
+channels a list selects is § 3.0 there. The start and the end of a run are
+always reported, so they are not keys. `notify` present but empty is refused:
+absent and empty would be two spellings of one state. **Absent and `[]` are two
+states for `channels` and for `report`**, so the serializer writes `[]` rather
+than dropping it: a person who unticked every box asked for something
+different from a person who never looked.
+
+**The name is not on the `report` list, because it is not optional.** Every
+report carries the run's name and, under a scheduler, its job id — in a chat
+card's title, first. A report you cannot attribute to a job is a notification
+you have to go and look up. So `report` is *what else*: it can be empty, and
+it can never remove the name.
+
+**A field is offered for what the run can state.** The fields, their units and
+which runs state each are [`run-reports.md`](?doc=execution/run-reports.md)
+§ 4.1a's table, read from the one declaration, `molbuilder/report_fields.py`,
+which the description, the wrapper, the monitor, the listener and the
+Task-setup card all read — none keeps a list. The card offers only those
+([`task-setup.md`](?doc=web/task-setup.md) § 9b), and a description naming a
+field its calculation can never report is **refused at save, by name**: a field
+that can never arrive is a tick that silently means nothing. **One vocabulary**:
+a field's name is the report's own wire name, so what you tick, what travels
+and what a listener parses are the same word.
+
+**A list is a ceiling, never a floor.** Asking for `energy` on a run that has
+not printed one yields no `energy` field, not an empty one. And `report` shapes
+a chat card — the fields in its grid; our own listener receives the whole
+record ([`run-reports.md`](?doc=execution/run-reports.md) § 4.1b).
+
+**It is fixed at `prep`, not read at run time.** The wrapper bakes the whole
+block into the monitor's command line
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.6), carried there on
+`jobset.Resources` ([`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.2) — so what a running job reports cannot change because `task.json` was
+edited while it sat in the queue, and the monitor needs no access to the
+description.
+
 ---
 
 ## 6b. Open questions about the description
@@ -1704,71 +1762,6 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
 **The test:** the decks are portable — an engine with no molbuilder present runs
 them correctly. The wrappers are not, and are not meant to be: they are baked for
 a target (§ 8).
-
-### 6.9 `notify.report` — WHAT each report carries
-
-`notify` says **when** this calculation speaks (§ 6.8's neighbour: `on_scf_converged`,
-`every_hours`) and **to whom** (`channels`). `report` says **what is in the
-message**.
-
-```json
-"notify": {"every_hours": 6, "channels": ["lab"],
-           "report": ["elapsed_s", "n_iters", "energy"]}
-```
-
-**The name is not on the list, because it is not optional.** Every report
-carries the calculation's label and, when there is one, the scheduler job id —
-in the title, first. A report you cannot attribute to a job is a notification
-you have to go and look up, which is the thing a notification exists to save
-you. So the list below is *what else*, and it can be empty; it can never
-remove the name.
-
-| item | what it is | reported for |
-|---|---|---|
-| `elapsed_s` | wall seconds since the monitor started watching | every run |
-| `n_iters` | SCF iterations run so far in the current phase — a SIESTA run's timing rows, a PySCF run's SCF history across its steps | every run |
-| `energy` | the last energy printed | every run |
-| `geom_step` | which step the run is on, in the engine's own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` — a transport rung is a single point and states no step |
-| `max_force` | the largest force on an atom (eV/Å) — the number a relaxation converges on | every run |
-| `per_iter_s` | seconds per SCF iteration — the number that says *is this going to finish* | SIESTA — the timing instrument is its wrapper's tee |
-
-**Offered for what the run can state** *(2026-09-26)*. Each item says which
-engines and calculation kinds can report it — which runs write what it is read
-from ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3). The Task-setup
-card offers only those, and a description naming one its calculation cannot
-report is **refused at save, by name**: a field that can never arrive is a
-tick that silently means nothing. The table is ONE declaration,
-`molbuilder/report_fields.py`, and the description, the wrapper, the monitor
-(it travels beside the job), the listener and the card all read it — none
-keeps a list. *(Until 2026-09-26 the list stood in four hand-kept copies, and
-the card offered every field to every calculation: seconds per iteration to a
-PySCF run, which has no timing instrument, and a step to a transport rung.)*
-A field is *offered* for the runs that can state it; a run that has not
-stated it yet — a PySCF Hessian whose progress log holds only its preview —
-still sends it absent, never as zero.
-
-**Absent is every item**, not none. `notify.report` omitted means the report
-carries everything the monitor could determine, which is what every
-description written before 2026-09-02 already meant and must keep meaning.
-An empty list `[]` is a real answer and a different one: *the name, the state
-and the summary line, and no field grid*.
-
-**Anything the monitor could not determine stays absent**, list or no list.
-Asking for `energy` on a run that has not printed one yields no `energy`
-field, not an empty one — § 4.1a of [`run-reports.md`](?doc=execution/run-reports.md)
-is the rule and this does not weaken it. **A list is a ceiling, never a
-floor.**
-
-**It is fixed at `prep`, not read at run time.** The selection is baked into
-the monitor's own command line by the wrapper, exactly as the cadence and the
-channel names already are (§ 8) — so what a running job reports cannot change
-under it because somebody edited `task.json` while it was queued, and the
-monitor needs no access to the description at all.
-
-**One vocabulary.** These are the report's own field names
-([`run-reports.md § 4.1a`](?doc=execution/run-reports.md)), not a second set of
-labels — so what you tick, what travels, and what a listener parses are the
-same words. A name that is not one of them is refused at save, by name.
 
 ### 7.1 The layout: portable above, machine-specific below
 
@@ -2046,7 +2039,7 @@ alone.*
 **Neither is the wrapper's job.** `running-a-job.md § 6.2` records that the
 wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is
 deliberately git-agnostic, so init is CLI/UI-only"* — so the second boundary is
-observed where a run is already being watched: the decoded run reports `finished`
+observed where a run is already being watched: `run_status` reports `finished`
 (`running-a-job.md § 4.2`), and the surface or the CLI takes the checkpoint. A
 wrapper that committed to git would be a wrapper that needs git on the compute
 node, which is exactly what the standalone contract forbids.
@@ -2071,13 +2064,12 @@ tags added no information, and they filled the one namespace you were meant to b
 naming things in yourself. A history where most tags are machine-made is one
 where your own are hard to find, which is the opposite of what a tag is for.
 
-**What a stage boundary still buys you.** The decoded run reports `finished` /
-`failed` (`running-a-job.md § 4.2` — four keys: `state`, `detail`,
-`last_change_at`, `active_source`; the step counts this sentence promised were
-among the ten fields deleted with the run decoder on 2026-09-04), so whatever offers the
-save at that moment knows enough to **draft** the note — *"tight converged, 41
-steps"* rather than *"stage 2 done"*. You confirm or edit it; nothing is written
-without you (`checkpointing.md` § 9, L3).
+**What a stage boundary still buys you.** `run_status` reports `finished` /
+`failed` (`running-a-job.md § 4.2`), and the run's record whether each SCF
+phase converged ([`model/parse.md`](?doc=model/parse.md) § 5d.6), so whatever
+offers the save at that moment knows enough to **draft** the note — *"tight
+converged"* rather than *"stage 2 done"*. You confirm or edit it; nothing is
+written without you (`checkpointing.md` § 9, L3).
 
 **And re-entering costs no new verb.** The folder stops being *the current state
 of one calculation* and becomes a chain of states you can go back into: restore

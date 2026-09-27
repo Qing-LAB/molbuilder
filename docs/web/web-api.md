@@ -502,76 +502,43 @@ browser goes through one of the four above — checked 2026-08-25, which is when
 
 ## 3. Endpoint index — all 100 routes
 
-> **100 since 2026-09-26**, when `GET /api/notify/report-fields` landed —
-> the Task-setup card's report fields for the open calculation, from the
-> one declaration ([`stages.md`](?doc=engines/stages.md) § 6.9).
-
-> **99 since 2026-09-25**, when `POST /api/modify/calibrate` was retired
-> (`model/structure-periodicity.md` § 6.0, plan § 5q D3). Counted without
-> the notify listener's `POST /api/<route>`, which registers only on a
-> machine with notify keys — the test environment has none.
-
-> **99 on 2026-09-19**, when `GET /api/task-setup/folder` landed — the
-> Task setup page's one per-directory answer ([`task-setup.md`](?doc=web/task-setup.md)
-> § 2.1). The count was 97 rather than 98 at that moment because
-> `GET /api/results/dir` had shipped on 2026-09-18 and was never given a row;
-> both are documented in § 4 now. The count test compares a NUMBER against
-> Flask's URL map, so it says the total drifted and never which row is
-> missing — the same limitation the 2026-08-10 note below records.
-
-> **97 on every server, supervised or not.** It was 98 until 2026-09-17, when
-> `POST /api/transport/render` was deleted — a browser renders no deck, and no
-> browser had called it since 2026-08-29. It was 96 until 2026-09-15,
-> because `POST /api/jupyter/start` and `POST /api/jupyter/stop` were
-> registered inside `if os.environ.get(SUPERVISED_ENV) == "1":` — so the URL
-> map itself depended on how the process had been started, and this count
-> depended on which of the two you measured. They now register always and
-> answer **404** when there is no supervisor to ask, which is the same thing
-> a client sees and is decided when the answer is knowable
-> (`plan.md` § 5n, J3).
-
-> **Three routes below no longer exist** (found 2026-08-10 while correcting
-> an earlier count): `/api/files/result-list`,
-> `/api/selection/refresh-hash` and `/api/selection/save-sidecar`. The count
-> test compares a NUMBER against Flask's URL map, so it caught that the total
-> had drifted but not which rows were stale — and the heading had been wrong
-> long enough that the removals are not this session's. Each needs checking for
-> *retired* versus *renamed* before its row is deleted, which is task #38's
-> sweep, not a silent edit here.
-
-Section 4 groups the full catalogue by owner and purpose; update this count
-whenever a route is added or removed. (The count — pinned by `test_http_status_contract.py` — is taken
-with the rate limiter disabled, the test-config default; a production config
-with rate limiting on registers a few additional admin/auth routes.)
+**How the count is taken:** every rule in Flask's URL map except Flask's own
+`static`, on an app built with the rate limiter disabled and no notify keys —
+so neither the admin/auth routes rate limiting adds nor the notify listener's
+`POST /api/<segment>`, which registers only on a machine whose key file names a
+route, is counted. `test_http_status_contract.py` pins the number against the
+map; it says the total drifted, never which row, so a route added or removed
+changes its row in § 4 (or § 7) and this count together.
 
 ## 4. The route catalogue
 
 Every route, grouped by domain. Routes with a module-doc home link to it; the
 rest are documented in full in § 5.
 
-**Run reports** — the machine's notification channels and its listener; owned
-by [`run-reports.md`](?doc=execution/run-reports.md) § 3.1, and surfaced by
-[`this-machine.md`](?doc=web/this-machine.md). **Signed-in only**,
-and separate from the listener on purpose: that one is the public *receiving*
-end (§ 4 there), this is about *sending* from this machine.
+**Run reports** — owned by [`run-reports.md`](?doc=execution/run-reports.md):
+the machine's channels and its listener (§ 3.1 there, surfaced by
+[`this-machine.md`](?doc=web/this-machine.md)), and the report fields a
+calculation can carry (§ 4.1a there, offered by the Task-setup card).
+**Signed-in only** — all but the last row, the listener itself: the public
+*receiving* end (§ 4 there), a separate blueprint on purpose, and not counted
+in § 3.
 
-**Every one of the channel routes answers with the whole state** — `path`,
-`channels`, `problem`, `mode`, `execution_mode`, `can_write_here` — not just
-what it changed. The page repaints from whatever the response carries, so a
-mutation that replied with a narrower object left the painter reading fields
-that were not there: after a test the card read *"2 channels in undefined"*,
-because `path` was in the GET's answer and in no other (found in the browser,
-2026-08-31). A response is the state, or it is a trap for the next painter.
+**Every channel route answers with the whole state** — `path`, `channels`,
+`problem`, and `mode` (the file's permission bits) — not just what it changed:
+the page repaints from whatever the response carries, and a narrower reply
+leaves it reading fields that are not there. A response is the state, or it is
+a trap for the next painter.
 
 | Method · Path | Purpose |
 |---|---|
-| GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** — for Slack and Discord the address *is* the credential, and masking only that kind is a rule mislabelling can defeat. One of the two the Task-setup tab calls |
-| GET `/api/notify/report-fields` | The fields a report of this calculation can carry, in order, with the words the Task-setup card offers each by — `?engine=&calculation=` narrow it — from the one declaration (`report_fields`) a description is checked against at save. The other one the Task-setup tab calls ([`task-setup.md`](?doc=web/task-setup.md) § 9b) |
-| PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `<config dir>/secrets/notify` — the path taken from the monitor's own function so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*. The one thing it clears is the retired single-destination shape's top-level `url`/`key`/`headers` |
+| GET `/api/notify/channels` | The channels on this machine: name, kind, whether a key is stored, how the last test went. **Never a key, and every address masked** ([`this-machine.md`](?doc=web/this-machine.md) § 2). One of the two routes the Task-setup tab calls |
+| GET `/api/notify/report-fields` | `{"ok": true, "fields": [{"name", "offered_as"}]}` — the fields a report of this calculation can carry, in the declaration's order, with the words the card offers each by; `?engine=&calculation=` narrow it, and either absent narrows nothing. From the one declaration (`report_fields`) a description is checked against at save. The other route the Task-setup tab calls ([`task-setup.md`](?doc=web/task-setup.md) § 9b) |
+| PUT `/api/notify/channels/<name>` | Add or update one, `0600`, at `<config dir>/secrets/notify` — the path from the monitor's own function, so the two cannot disagree. **Merges** across channels and within one, so a blank key box means *unchanged*; it clears only the previous single-destination shape's top-level `url`/`key`/`headers` (run-reports § 3.1) |
 | DELETE `/api/notify/channels/<name>` | Remove one. **Absent is off**, and off is a state you can reach without a shell |
-| POST `/api/notify/channels/<name>/test` | Send one report to that channel and say what happened — the only check that exercises the file, the url, the segment, the signature, egress and TLS together |
-| GET `/api/notify/listener` | Whether **this server** receives reports: the route segment and who holds a key. Never a key |
-| POST `/api/notify/listener/keys/<user>` | Issue or rotate one. **Returns the key once**, which is the only time it is ever readable — the same deal `notify-token` gives a terminal |
+| POST `/api/notify/channels/<name>/test` | Send one report to that channel through the monitor's own request builder and say what happened — the only check that exercises the file, the URL, the segment, the signature, egress and TLS together |
+| GET `/api/notify/listener` | Whether **this server** receives reports: the route segment, who holds a key, and whether the route is `live` or only `configured` (a restart pending). Never a key |
+| POST `/api/notify/listener/keys/<user>` | Issue or rotate one, through the same door as `notify-token` — the route is read from the key file. **Returns the key once**, the only time it is ever readable |
+| POST `/api/<segment>` | **The listener** — public; registered only when `notify_keys` names a route and holds keys. A report signed by a user's key, within 15 minutes of this server's clock, is appended as one line and answered `{"ok": true}`; anything else is a plain `404` (run-reports § 4.1) |
 
 **Structure + edits** — return the canonical structure envelope (§ 1);
 owned by [`molview.md`](?doc=web/molview.md):
@@ -782,3 +749,5 @@ So a reader of older code or bookmarked URLs isn't lost, these routes are
 | `/api/selection/save-sidecar` | removed (no code remains) |
 | `/api/selection/refresh-hash` | removed (no code remains) |
 | `/api/files/result-list` | retired 2026-06-01 with its single consumer |
+| `POST /api/transport/render` | deleted 2026-09-17 — a browser renders no deck |
+| `POST /api/modify/calibrate` | retired 2026-09-25 with the calibrate step (`model/structure-periodicity.md` § 6.0) |

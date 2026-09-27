@@ -13,8 +13,8 @@ call; [`web-api.md`](?doc=web/web-api.md) — that route, plus `/api/watch/*` an
 You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
 becomes *whatever viewer fits the file you picked* — a 3D structure, a trajectory
-movie, a spectrum, or a bench sweep. The tab itself draws nothing; it delegates
-every file type to a viewer.
+movie, a spectrum, or a bench sweep. The tab draws no file itself — every file
+type is a viewer's — only the Run panel (§ 3a) and the server-load strip (§ 6).
 
 ## 1. What the page is
 
@@ -30,6 +30,7 @@ controller.
 ```mermaid
 flowchart TD
   U["you pick a file (the dropdown opens the one<br/>the server calls this directory's result)"] --> EV["a file-selected event"]
+  SC["the folder's scan"] -. "its run record" .-> RP["the Run panel (§ 3a)"]
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
@@ -249,28 +250,27 @@ Two rules keep this from hiding anything:
 > not a presenter's to fix**, and the reason they looked unfixable was that
 > the picker had nothing to ask. It does now.
 
-#### The door the picker asks *(shipped 2026-09-18)*
+#### The door the picker asks
 
-> `GET /api/results/dir` is the HTTP surface over `parse.dirs` — **one route,
-> one question, one answer per directory.** It reports what the directory IS
-> (`calcdirs.container_or_run`), which engine ran (`parse.contract.engine_of`),
-> which file a viewer should open (`openable_in`), the run's state when there
-> is a run to have one, and per file its `role`, `label`, `stage` and `parser`.
-> The picker is its browser consumer and decides nothing from a filename any
-> more; `presenters.md` § 2 is where that answer becomes each viewer's `meta`.
+> `GET /api/results/dir` is the HTTP surface over the directory door,
+> `parse_dir` → `JobDirParser` → `RunDirResult`
+> ([`model/parse.md`](?doc=model/parse.md) § 5) — **one route, one question,
+> one answer per directory.** It reports what the directory IS
+> (`calcdirs.container_or_run`, as `place`), which engine ran (`engine_of`),
+> which file a viewer should open (`openable_in`), and — for a run — its
+> `status` (`run_status` with its launch record,
+> [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) and its
+> `record` (§ 3a); per file, its `role`, `label`, `stage` and `parser`. What a
+> directory is decides what is asked of it, and that rule is `JobDirParser`'s,
+> not the route's: a container has no state and no record; a folder that does
+> not say what it is is read alone, with a state only where its product was
+> found. The picker is the route's browser consumer and decides nothing from a
+> filename; `presenters.md` § 2 is where that answer becomes each viewer's
+> `meta`.
 >
-> **Two things this route is NOT.** It is not a second ladder reader: for a
-> CALCULATION ROOT it answers `ladder` by CONSUMING
-> `jobset/runstatus.py::jobset_status`, the one ladder door (§ 2.4,
-> 2026-09-24), and copies none of it — *(until that day the blueprint imported
-> no `jobset` at all, and a root answered nothing about its rungs)*. And `parse_dir` / `JobDirParser` / `RunDirResult` are not
-> in its path either: the route composes `openable_in`, `run_status`,
-> `labels_in`, `read_back` and `engine_of` directly. *(This section claimed the
-> opposite of all of it — "there is no door to ask", "no route offers the
-> directory's own answer", "served by a ROUTE over `jobset_status`" — from
-> 2026-09-18, when the route shipped the same day, until 2026-09-19. A reader
-> following it would have rebuilt the answer in JavaScript from filenames, or
-> hung a second copy off the ladder door.)*
+> **It is not a second ladder reader**: for a calculation root it answers
+> `ladder` by consuming `jobset/runstatus.py::jobset_status`, the one ladder
+> door (§ 2.4), and copies none of it.
 >
 > **One question is genuinely still open:** `openable` is one answer per
 > DIRECTORY, and a ladder needs one answer across five. Neither `absorbs` nor
@@ -304,23 +304,26 @@ Two rules keep this from hiding anything:
   and it re-scans automatically when you return to the tab (so a file written
   while you were away shows up).
 
-### 2.4 A calculation root shows its LADDER *(2026-09-24; `plan.md` § 5c.3 c–d)*
+### 2.4 A calculation root shows its LADDER
 
-A calculation root — the directory holding `task.json` and `job-set.json` — is
-a container, so it has no run state (§ 1.4a); what it has is a **ladder**: N
-rungs, each a run directory below it, and one deliverable written at the root
-once `summarize` has run. `GET /api/results/dir` answers a root with
-`ladder: {complete, first_incomplete, stages: [{name, seq, state, detail, dir,
-attempt}]}`, read from `jobset_status`, the ladder door the CLI's `status`
-verb reads — consumed, never copied — and `null` for anything that is not a
-root (a rung's directory, a folder nothing prepped).
+A **hierarchical** calculation root — the directory holding `task.json` and
+`job-set.json` — is a container, so it has no run state and no record
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a); what it has
+is a **ladder**: N rungs, each a run directory below it, and one deliverable
+written at the root once `summarize` has run. `GET /api/results/dir` answers
+such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
+state, detail, dir, attempt}]}`, read from `jobset_status`, the ladder door the
+CLI's `status` verb reads — consumed, never copied — and `null` for anything
+else (a rung's directory, a folder nothing prepped). A **flat** calculation
+root is itself the run: it answers a state and a record like any run directory
+(§ 3a), and no ladder.
 
 The page's empty-state card draws it: one row per rung in ladder order, the
-state in the bench summary's own chip (`inspectors.stateChip` — the eight
-words of `_stage_state` and their seven tones, one vocabulary; § 5c.3 forbids
-a third copy), the detail beside it, and the rung to resume from named in the
-title. A person who opens a five-rung transport calculation therefore sees
-which of the five is outstanding — `engines/transport.md` § 2a.12's third
+state in the bench summary's own chip (`inspectors.stateChip`), in `jobset
+status`'s words ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2),
+the detail beside it, and the rung to resume from named in the title. A person
+who opens a five-rung transport calculation therefore sees which of the five is
+outstanding — `engines/transport.md` § 2a.12's third
 requirement — instead of *pick a file*. A rung's files are read by opening the
 rung's directory; the product, when present, is what `openable` picks at the
 root.
@@ -355,17 +358,19 @@ bench-summary, then transport. `presenters.md` § 1 carries the list that is
 machine-checked against the registrations; this prose is not, which is why it
 has now drifted twice. Read it as a tour, and that table as the count.)*
 
-## 3a. The Run panel — what ran, with what, and how it went *(W35 P2)*
+## 3a. The Run panel — what ran, with what, and how it went
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
-When the folder the picker is bound to is a run — a run directory, or an
-unmarked folder read alone that holds a run's output — `/api/results/dir`
-carries its `record` (`model/parse.md` § 5d), and the panel sits between the
-picker and the viewer: the same panel for an optimization, a vibration, each
-transport rung and a PySCF run, whichever of the run's files is open. It is
-not a presenter — no file picks it — and it is hidden where there is no
-record: a container, a calculation root (whose ladder is § 2.4's), a folder
-with no run in it.
+When the folder the picker is bound to is a run — a run directory, a flat
+calculation root, or an unmarked folder holding a run's output, read alone
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a) —
+`/api/results/dir` carries its `record` (`model/parse.md` § 5d), and
+the panel sits between the picker and the viewer: the same panel for an
+optimization, a vibration, each transport rung and a PySCF run, whichever of
+the run's files is open. It is not a presenter — no file picks it — and it is
+hidden where there is no record: a container (a stage directory, or a
+hierarchical calculation root, whose ladder is § 2.4's), and a folder with no
+run in it.
 
 **It is the ONE home on this page of a run's computation facts.** The
 trajectory viewer's runtime line (host · ranks · SIESTA version · solver) and
@@ -391,19 +396,20 @@ kinds. It walks the record's parts and renders each field through one table
 of labels and formatters keyed by the field's name — a duration as a
 duration, a byte count as memory, a time of day as a time of day — so a field
 the backend starts stating appears with one label added, and a field the
-record leaves out (§ 5d.1a: not stated, so not shown) leaves no row.
+record leaves out ([`model/parse.md`](?doc=model/parse.md) § 5d.1a: not stated,
+so not shown) leaves no row.
 
 **It is re-read with the directory**, not on a timer: the picker's scan is
 the one source (§ 2.1). The picker carries the record in the same selection
-event as `place` and `ladder`, and forgets it at the start of every scan, so
-a failed or superseded scan cannot leave one folder's record under another
-folder — the 2026-08-04 fault in a new place. A live run's panel shows the
+event as `place` and `ladder` (§§ 2.3–2.4), and forgets it at the start of
+every scan, so a failed or superseded scan cannot leave one folder's record
+under another folder — the fault § 2.1 records. A live run's panel shows the
 record as of the last scan; Reload refreshes it with the menu.
 
 *Module:* `lib/results/run-panel.js` renders into `#results-run-panel`,
 listens to the picker's selection event, and owns
-`lib/results/run-panel.css`. `results/viewer.js` is not edited: § 1 keeps it
-to pick, dispose and mount.
+`lib/results/run-panel.css`. `results/viewer.js` does not know it: § 1 keeps
+it to pick, dispose and mount.
 
 ## 4. What a mounted viewer remembers
 

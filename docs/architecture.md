@@ -57,7 +57,7 @@ Two habits make the reuse rule work:
 | Save the edited structure to a project file (choose a folder, then a name) | **`projects.molviewFiles.save("project", …)`** → `/api/structure/save` (server writes the `.xyz`+sidecar pair) | a bespoke second file stack | [`web/tabs.md` § 6](?doc=web/tabs.md) |
 | Change the unit cell · vacuum · axis kinds · cell origin | **`POST /api/structure/periodicity`** (web; the ONE door, `molview.data.commitPeriodicityOp` client-side) or **`periodicity_gate.apply_edit`** (Python) | write `cell` / `cell_origin` / `vacuum` / `axis_kind` directly, or compute a box in JS | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.1–6.2 |
 | Ask what box a structure actually has (to draw it, or to emit it) | `struct.resolve_cell()` / `resolve_cell_origin()` — computed **views** (`expected_cell_corner` / `cell_contains_atoms` beside them) | read raw `cell` / `cell_origin` and assume `(0,0,0)`, or re-derive a bbox yourself | [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 3, § 6.1 |
-| Parse an engine `.out` / sidecar into typed data | `parse.registry.parse` / `parse_text`; `parse.dirs.job.run_status` (how a run dir is doing). *(`parse_dir` exists but has no registered DirParser — it raises; `model/parse.md` § 5)* | write a bespoke parser | [`model/parse.md`](?doc=model/parse.md); decoded-run view → [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
+| Parse an engine `.out` / sidecar into typed data | `parse.parse` / `parse.detect`; `parse.parse_dir` (a run directory → `RunDirResult`, `model/parse.md` § 5); `parse.dirs.job.run_status` (how a run dir is doing); an engine's output lines through its grammar and reading pass (`model/parse.md` § 4a) | write a bespoke parser, or a second pattern for a line the grammar already reads | [`model/parse.md`](?doc=model/parse.md); decoded-run view → [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | Run a *set* of related jobs (stage ladder / sweep) | the `jobset/` framework + `molbuilder jobset {init,prep,plan,launch,summarize,status}` | reimplement dir isolation / sbatch chaining | [`execution/job-system.md`](?doc=execution/job-system.md) |
 | Know what a **stage** is, and what may vary between two of them | [`engines/stages.md`](?doc=engines/stages.md) — a stage is molbuilder's device, not the engine's; SIESTA has no idea a deck is the second of three | invent a per-tab notion of "stage" | [`engines/stages.md`](?doc=engines/stages.md) |
 | Lay out (or read) a whole **calculation directory** | [`execution/project-layout.md`](?doc=execution/project-layout.md) — the two shapes (flat / hierarchical), who writes each level, and what `prep` resolves on the target | assume one directory shape, or finish a deck on the laptop | [`execution/project-layout.md`](?doc=execution/project-layout.md) |
@@ -99,34 +99,29 @@ flowchart TB
   end
   subgraph L1["L1 · things, and how each is written"]
     GEO["geometry — structure · cell · selection · periodicity_gate<br/>chemistry · residues · engine_atom_index"]
-    RES["results — frame · trajectory_log · runtime_info · issues"]
-    JOB["the job as described — task · config · identity<br/>warmfiles · annotations_fdf"]
+    RES["results — frame · trajectory_log · runtime_info · issues<br/>report_fields"]
+    JOB["the job as described — task · calcdirs · config · identity<br/>runfiles · paths · warmfiles · annotations_fdf"]
     MACH["the machine — scheduler (records · queues · admission<br/>· the quantities a job asks for)"]
-    INF["infrastructure — persist · config_dir · pipeline_log<br/>references · reload_protocol · serve_daemon"]
+    INF["infrastructure — persist · config_dir · constants · units<br/>pipeline_log · references · reload_protocol · serve_daemon"]
   end
   L3 -->|calls the same verbs| L2
   L2 -->|reads/writes| L1
 ```
 
-**The L1 index, grouped by the object each module owns.** All 28 of them —
-this is the list `tests/test_layering.py` enforces, and
+**The L1 index, grouped by the object each module owns.** This is the set
+`tests/test_layering.py` enforces, and
 `tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
-fails if the two drift apart. *(It compares the two SETS and not this count,
-which is how the sentence read "26" while both sets held 27 — `ref`, deleted
-2026-09-17 with the paths standard, § 5l; the count was 27 again when
-`calcdirs` landed 2026-09-19, and is 28 with `report_fields`, 2026-09-26. A
-membership check is not a count
-check; `web-api.md` § 3's route index had the mirror of this the same day.)* *(The diagram above named `pseudos` and `checkpoint` as L1 until
-2026-08-24; both are L2. A picture that disagrees with the enforced rule is
-how "which layer does this go in?" becomes a guess.)*
+fails if the two drift apart — it compares the two SETS, so the index states no
+count. The diagram above draws the same set: a picture that disagrees with the
+enforced rule is how *"which layer does this go in?"* becomes a guess.
 
 | the object | modules | what they own |
 |---|---|---|
 | **geometry** | `structure` · `cell` · `selection` · `periodicity_gate` · `chemistry` · `residues` · `engine_atom_index` | atoms and positions, the cell, an atom selection, chemical facts, and how an atom is numbered for a given engine |
-| **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` · `report_fields` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding, **what a run's report may carry and which runs can state each field** (`engines/stages.md` § 6.9 — L1 and stdlib because it travels beside every job with the monitor, and `task` checks a description against it) |
+| **results** | `frame` · `trajectory_log` · `runtime_info` · `issues` · `report_fields` | a per-step physics record, the `.molwatch.log` format, the runtime facts a run reports, a validation finding, **what a run's report may carry and which runs can state each field** (`engines/stages.md` § 6.9 — L1 and stdlib because it travels inside `mb_monitor.pyz` with the monitor, and `task` checks a description against it) |
 | **the job as described** | `task` · `calcdirs` · `config` · `identity` · `runfiles` · `paths` · `warmfiles` · `annotations_fdf` | `task.json`, **a directory's own account of where it sits** (`calcdir.json` — `project-layout.md` § 1.4a, and L1 for `task`'s reason and on `task` itself: a calculation root needs no record because `task.json`'s `shape` already answers, so the reader of one must read the other), the engine-knob dataclasses, how a run id is written, **the run-file name grammar and the catalogue of what molbuilder writes**, **the two layouts and where every file sits in them, with the search for each name it composes** (`project-layout.md` § 4.5 — was `jobset/shape.py` on floor 4 until 2026-09-08), the warm-file rules, the fdf annotation strategies |
 | **the machine** | `scheduler` | what a machine offers and what a job may ask of it — records, queues, admission, placement, emission, and **the quantities a job asks for and every dialect each is written in** (`quantities.py`) |
-| **infrastructure** | `persist` · `config_dir` · `constants` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, **the physical constants**, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
+| **infrastructure** | `persist` · `config_dir` · `constants` · `units` · `pipeline_log` · `references` · `reload_protocol` · `serve_daemon` | versioned documents, the one per-user config directory, **the physical constants** and the words a unit may be written in, the prep pipeline's record, the bibliography, the two constants the supervisor and its child agree on — and the supervisor itself (daemon, pidfile, log roll), L1 because it must never import the application it restarts |
 
 > **`constants` sits lower than everything, because it imports nothing at
 > all** — which is the point of it. The Bohr radius was written out eight
@@ -210,7 +205,7 @@ concerns leak into each other — see
 | `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning) | `render_wrappers`, `write_run_wrapper`, `render_sbatch` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (scheduler / routing / script-gen) | `get_scheduler`, `get_routing`, `get_script_generation`, `require_activation`, `write_config_scope` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
-| `monitor` | L2 | stdlib-only progress/utilization sampler shipped next to jobs, in one file with the readers it reads through (`mb_monitor.pyz`) | copied verbatim to targets, inside the bundle | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
+| `monitor` | L2 | stdlib-only progress/utilization sampler for every engine, shipped next to each job in one file with the readers it reads through (`mb_monitor.pyz`, `runwrap.MONITOR_BUNDLE`) | `python mb_monitor.pyz …` (watch a run); `python mb_monitor.pyz ending OUTPUT [QUESTION]` (how it ended — the wrapper's `_mb_ending`); `molbuilder monitor` | [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2–2.3 (what it reads and says), [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.1 |
 
 **The start-here map for *running* a molbuilder-generated job** on any target
 (single-task everywhere · JobSet from the CLI · the browser job system as the
@@ -222,7 +217,7 @@ current → target status matrix.
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
 | `persist` | L1 | shared **versioned-doc** schema check + atomic JSON IO | `schema_major`, `check_schema_major`, `read_json`, `write_json` | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
-| `parse/` | L2 | unified **read stack** (File / Text parsers → typed `ParseResult`; the Dir tier is specified but unbuilt) | `parse.registry.{parse,parse_text}`; `parse.dirs.job.run_status` | [`model/parse.md`](?doc=model/parse.md) |
+| `parse/` | L2 | unified **read stack**: FileParsers and the one DirParser → typed `ParseResult`; under the engine parsers, stdlib grammar tables and reading passes that travel with the monitor | `parse.{detect,parse,parse_dir}`; `parse.dirs.job.run_status`; `parse.engines._run_ending.ending_of` | [`model/parse.md`](?doc=model/parse.md) |
 | `sidecars/`, `script_emit` | L2 | write-side JSON sidecars + the reserved-block emitter | `sidecars.{to_dict,save,load,apply_to_structure}`; `script_emit.emit_*` | sidecar → [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md); blocks → [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | `config/` | L1 | the engine-knob **dataclasses** (`SiestaConfig` / `PySCFConfig` / `SpectraConfig` / `TransportConfig`) — the lingua franca | `config.siesta.SiestaConfig`, `config.pyscf.PySCFConfig`, … | [`engines/`](?doc=engines/overview.md); the JS form built from them → [`web/form-schema.md`](?doc=web/form-schema.md) |
 
@@ -230,9 +225,9 @@ current → target status matrix.
 
 | Module | L | Role | Public API entry points | Doc |
 |---|---|---|---|---|
-| `checkpoint` | L1 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; CLI `molbuilder checkpoint …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
+| `checkpoint` | L2 | git-backed **snapshot/restore of a whole calculation folder**; files over a size limit are stored beside git in a content-named archive (safety-critical) | `Repo.{init,save,restore,status,states,standing_at,resolve,tag,tags,classification,calculation}`; CLI `molbuilder checkpoint …`. **No `branch`** — a fork is what happens when you save from a restored state | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6 |
 | `validation/` | L2 | scientific-correctness analyzers + the per-engine `validate()` pass | `validation.validate(struct, cfg, prior=…)` (one gate per engine) | [`science/validation.md`](?doc=science/validation.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
-| `pseudos` | L1 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
+| `pseudos` | L2 | PSML pseudopotential parse + coverage/version checks (C1–C6) | `pseudos.check_coverage` | [`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) |
 | `chemistry`, `residues` | L1 | structure analysis (open-shell, charge, residues) | `chemistry.analyze_structure` (→ `ChemistryAnalysis`) | [`model/chemistry.md`](?doc=model/chemistry.md), [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) |
 
 ### Environments, engines, builders

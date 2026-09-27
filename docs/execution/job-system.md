@@ -254,9 +254,11 @@ Walk through it with the *why* for each piece:
   (`<seq>_<name>` versus `bench/bench-<point>` inside the stage it measures,
   `job-contracts.md` § 6.3) and nothing about scheduling.
 - **`JobSet.shared`** lists files that every job needs but that never change
-  between jobs — the pseudopotentials, the geometry, the monitor helper. They
-  are stored **once** and symlinked into each job's folder, so a 20-point sweep
-  does not carry 20 copies of a large pseudopotential.
+  between jobs — the pseudopotentials and the geometry. (The monitor travels
+  beside each wrapper instead, `run-reports.md` § 2.3.) They
+  are **copied** into each job's folder as real files (user, 2026-08-24): a run
+  directory holds everything it needs, and a link holds nothing
+  ([`project-layout.md § 1.0`](?doc=execution/project-layout.md)).
 - **`Job.name`** does double duty: it keys the job's folder *and*
   its scheduler job name (`-J`), so a `squeue` listing reads the way the layout
   does. **`Job.script`** is the input file inside that folder.
@@ -315,8 +317,8 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // kind makes one job wait for another.
 
   "shared": ["C.psml", "H.psml", "S.psml", "Au.psml"],
-                                      // stored ONCE in the bundle root and
-                                      // symlinked into every job's folder
+                                      // copied into every job's folder,
+                                      // as real files
 
   "jobs": [
     {
@@ -391,9 +393,9 @@ the key order are the real ones, not a sketch.)*
 > file form: molbuilder does not quietly pick a node size for you.
 
 **What that file becomes on disk.** `molbuilder jobset prep` reads it and lays
-out the tree. Every arrow below is a **symlink**, which is the point: nothing is
-copied, so a 4 GB pseudopotential set exists once no matter how many jobs there
-are.
+out the tree — drawn, for both shapes, in
+[`project-layout.md § 1.1`](?doc=execution/project-layout.md), which owns it.
+Every job's folder holds **real copies** of its inputs, never links.
 
 > ⚠ **The root drawn below is the *calculation* directory**
 > (`projects/<project>/<topic>/<calculation>/`), not a folder of its own. This
@@ -405,36 +407,13 @@ are.
 > `-bundle` spelling is kept in the trees below only because it is what the code
 > writes today. *Corrected 2026-08-11.*
 
-```
-bdt_au-bundle/                       ← this is the CALCULATION directory
-├── job-set.json                     the description above
-├── bdt_au_01_coarse.fdf             the two decks, each carrying its token
-├── bdt_au_02_tight.fdf
-├── C.psml  H.psml  S.psml  Au.psml  the shared package
-├── bdt_au_01_coarse.run.sh .sbatch  wrappers, rendered once per distinct deck
-├── bdt_au_02_tight.run.sh  .sbatch
-├── STAGE-PLAN.md                    a human-readable review of the jobs
-│
-├── 01_coarse/                       ← <seq>_<name> for a LADDER's stages
-│   ├── bdt_au_01_coarse.fdf  → ../bdt_au_01_coarse.fdf
-│   ├── bdt_au_01_coarse.run.sh → ../…
-│   └── run-0/                   ← one directory per ATTEMPT, made by `prep run`
-│       ├── run.json                 written by submit: how, when, and what
-│       │                            this run continued from
-│       └── bdt_au.XV  bdt_au.DM     what the run produced
-│
-└── 02_tight/
-    ├── bdt_au_02_tight.fdf   → ../bdt_au_02_tight.fdf
-    └── run-0/               ← made only when you say `prep run tight --from …`
-        ├── bdt_au.XV            a real COPY of 01_coarse/run-0/bdt_au.XV
-        └── bdt_au.DM            a real COPY — not a link, not dangling
-```
 
 **Nothing in `02_tight/` exists until you ask for it.** `prep` with no stage
 lays out the stage folders and the wrappers; the `run-<n>` attempt inside one is
 made by `prep run <stage>`, and that is the command where you name what it
-continues from. So the tree above is what a ladder looks like **after** you have
-run coarse, looked at it, and set tight up.
+continues from. So tight's `run-0/` appears in a ladder's tree
+([`project-layout.md § 1.1`](?doc=execution/project-layout.md)) only **after**
+you have run coarse, looked at it, and set tight up.
 
 > **A SWEEP's tree differs in two ways**: its folders are named by their
 > **settings** rather than by a position (its points have no order, so no
@@ -442,11 +421,9 @@ run coarse, looked at it, and set tight up.
 > folder. Nothing is copied between points.
 >
 > ```text
-> bench-G1K2C4/                     ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
-> │                                   named by its SETTINGS, not a position
-> │   bdt_au.fdf  →  ../bdt_au.fdf
-> │   C.psml      →  ../C.psml      (and the other three)
-> └── bdt_au.run.sh → ../bdt_au.run.sh
+> bench-G1K2C4/        ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
+>                        named by its SETTINGS, not a position;
+>                        its deck, wrapper and pseudopotentials are its own
 > ```
 >
 > **The prefix is `bench-`, and since 2026-08-12 a described trial lives in
@@ -458,9 +435,8 @@ run coarse, looked at it, and set tight up.
 > back to its point through the job-set's own data, never by parsing the
 > directory name.)*
 
-**Nothing dangles, because nothing points at a file that has not been written.**
-Every path in that tree either belongs to the job or is a link to the shared
-package one level up. **No job's directory reaches into another's.**
+**Nothing dangles, because nothing points anywhere**: every file in a job's
+folder is its own. **No job's directory reaches into another's.**
 
 What a stage continues from is copied by `prep run tight --from
 01_coarse/run-0`, out of an attempt that has already finished and that you have
@@ -507,7 +483,7 @@ A complete 2-stage ladder `job-set.json`:
 ```
 
 Read it back in plain language: *a SIESTA ladder named `bdt`; four
-pseudopotentials and the monitor are shared by both stages; stage 1 runs on the
+pseudopotentials are shared by both stages; stage 1 runs on the
 `htc` domain for up to 4 hours; stage 2 runs on the `public` domain (the whole
 node), and **if you continue it from something**, it will take that run's `.XV`
 coordinates and `.DM` density matrix — plus its `.CG` optimizer history, but
@@ -754,35 +730,18 @@ safe and small:
   `script` gets its `.run.sh` / `.sbatch` built one time in the bundle root, by
   the *same* single-job wrapper builder — so a batch job's wrapper is
   byte-identical to a hand-run one.
-- **Shared files are linked, never copied.** Each job folder links back to the
-  pseudopotentials, the geometry and the monitor in the bundle root, so a
-  20-point sweep holds one copy of a 4 GB pseudopotential set, not twenty.
+- **Shared files are copied in, never linked** (user, 2026-08-24): a job's
+  folder holds everything it runs from, so a copied tree still runs; the
+  price is one copy of the pseudopotentials per folder.
 
-**A job folder holds its own inputs and links to the shared package. Nothing
+**A job folder holds its own inputs, the shared package among them. Nothing
 else.** In particular it holds no link into a sibling's folder:
 
-```
-bundle/
-├── job-set.json
-├── STAGE-PLAN.md                         ← human-readable plan, written at prep
-├── bdt_01_coarse.fdf   bdt_02_tight.fdf  ← the decks, each carrying its token
-├── bdt_01_coarse.run.sh   .sbatch        ← wrappers, written once
-├── bdt_02_tight.run.sh    .sbatch
-├── Au.psml  S.psml  …                   ← the shared package (stored once)
-│
-├── 01_coarse/
-│   ├── bdt_01_coarse.fdf → ../bdt_01_coarse.fdf
-│   ├── Au.psml → ../Au.psml   …          ← shared, linked in
-│   └── run-0/                            ← made by `prep run coarse`
-│       ├── run.json                          how and when it was started
-│       └── bdt.XV  bdt.DM                    what the run produced
-│
-└── 02_tight/
-    ├── bdt_02_tight.fdf → ../bdt_02_tight.fdf
-    └── run-0/                            ← made only when you ask for it
-        ├── bdt.XV                        ← a real COPY of 01_coarse/run-0/bdt.XV
-        └── bdt.DM                            made by `prep run tight --from …`
-```
+Each stage folder holds its own deck, wrapper, pseudopotentials and
+`mb_monitor.pyz`, each a real copy; a `run-<n>/` attempt inside it holds its
+`run.json` once launched and copies of what it continues from — the tree is
+[`project-layout.md § 1.1`](?doc=execution/project-layout.md)'s.
+
 
 **Why a copy and not a link.** Stage 2 writes to `bdt.XV` — that very filename.
 A link would carry the write back into stage 1's folder and destroy the result
@@ -853,7 +812,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
 > | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
-> | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Watch tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
+> | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Results tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |
@@ -1078,7 +1037,7 @@ nothing"* (`checkpointing.md` S3).
     it. This is the workstation path.
   - `--dry-run` prints the exact command it *would* run, without launching —
     the safe way to see what will happen.
-- **`status`** reads the run directory (reusing the run decoder from
+- **`status`** reads the run directory (asking `run_status`,
   [`running-a-job.md § 4.2`](?doc=execution/running-a-job.md)) and reports each
   stage's state, its restart files, and the first incomplete stage — then stops.
   It prints resume guidance but **never auto-resumes** (design decision #5); you
@@ -1110,16 +1069,17 @@ on?*
 ### 5.5 Watching a stage while it runs
 
 `status` is a roll-up you pull on demand. To watch a *single* stage live, point
-the run viewer (the web run view, or `molbuilder watch`) at the directory the
+the run viewer (the Results tab, or `molbuilder watch`) at the directory the
 engine is running in — `<NN>_<stage>/run-<n>/` in the hierarchy, the calculation
 directory itself when flat. It resolves and streams the trajectory exactly as for
 a stand-alone job ([`running-a-job.md § 4`](?doc=execution/running-a-job.md)).
-Every job also carries **`mb_monitor.pyz`** — the monitor with the framework
+Every job also carries **`mb_monitor.pyz`** — the monitor and the framework
 readers it reads the run through, one file, written beside the wrapper and
-brought into every attempt (`run-reports.md` § 2.3): its wrapper launches it in
-the background to report the run's state and sample CPU/GPU utilisation into a
-`.util.csv` while the stage runs, so how the stage uses what it holds is
-visible without waiting for it to finish.
+copied into every attempt ([`run-reports.md`](?doc=execution/run-reports.md)
+§ 2.3). Its wrapper launches it in the background: it samples CPU, GPU and
+memory into the run's `-runN.util.csv`, so how the stage uses what it holds is
+visible without waiting for it to finish, and it tells your channels when the
+run starts, as it goes, and when it ends (§ 2 there).
 
 > **What you cannot do is checkpoint one stage on its own**, and that is a
 > contract rather than a missing feature. **The history is rooted at the
@@ -1496,12 +1456,8 @@ Also out of scope for now: **multi-node MPI** (v1 fixes one node), and a
 `molbuilder config init --site` command (a site preset ships only as a JSON
 example file today).
 
-*(Wiring the notifier hook to a real messaging service was listed here as
-out of scope until 2026-08-26, and is no longer: the monitor POSTs to a
-destination the user configures in their own config directory, on a
-schedule the calculation states in `task.json`'s `notify` block. What
-remains unbuilt is the receiving end on molbuilder's own server —
-`archive/2026-09-01-bench-and-junction-plan.md` § 2.10.)*
+Run reports — the monitor telling Slack, Discord or molbuilder's own listener
+how a run is going — are [`run-reports.md`](?doc=execution/run-reports.md)'s.
 
 The through-line: the CLI framework on this page is the settled foundation, and
 the web work is *additive on top of it* — it reuses the same five-step
@@ -1520,7 +1476,7 @@ Where each responsibility lives, for someone extending the framework:
 | The description + this machine → `ParameterSet` (`prep` step 2; the config ↔ exchange translation boundary) | `molbuilder/resolve.py` |
 | SIESTA's stage knowledge — the shipped ladder, the warm-file declaration, the traits — consumed by the engine seam | `molbuilder/siesta/stages.py` |
 | The benchmark grid — the `(G × K × c)` enumeration `prep bench` consumes | `molbuilder/bench/grid.py` |
-| Lay out the materialized tree (job folders + symlinks, and `prepare_attempt`) | `molbuilder/jobset/materialize.py` |
+| Lay out the materialized tree (job folders with their copies, and `prepare_attempt`) | `molbuilder/jobset/materialize.py` |
 | The five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |

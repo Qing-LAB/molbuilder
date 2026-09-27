@@ -6,7 +6,7 @@
 **Companions:**
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how you
 actually run and watch **one** job today (the run wrapper, `molbuilder.json`,
-checkpoints, the decoded-run view);
+checkpoints, how a run directory is read back);
 [`execution/job-system.md`](?doc=execution/job-system.md) — the JobSet batch /
 staged / HPC framework;
 [`execution/overview.md`](?doc=execution/overview.md) — the map plus the
@@ -52,8 +52,8 @@ actually open, and who writes them:
 | `job-set.json` | floor 3 — the derived work list | `prep`, on the target | § 2 |
 | `<label>.run.sh` / `.sbatch` | the wrapper + submission script, with reserved `=== molbuilder ... ===` blocks | `prep` | § 3 |
 | `run.json` (`run-launch@1`) | where an attempt was SENT (domain/partition/qos, job id) | `launch` | § 6.1 registry |
-| `<basename>-runN.concluded` | the wrapper's last act: "this attempt is over", rc inside | the wrapper's main path | `project-layout.md` § 1.6 |
-| monitor log (`[MACHINE]` first) | what the job LANDED on + how it ran | the monitor | § 2 |
+| `<basename>-runN.concluded` | the wrapper's last act on its main line: *run N is over*, its rc inside — one per run index, none after a forced stop | the wrapper's main path | `project-layout.md` § 1.6 |
+| `<basename>-runN.monitor.log` · `-runN.util.csv` | what the job LANDED on (`[MACHINE]` first), how it went, and what it used | the monitor | § 2.2; `run-reports.md` § 2.5 |
 | `bench-result.json` | the measured sweep — the archival record (the report is PRINTED, not written: `job-system.md` § 7.1) | `summarize` | § 2 |
 
 Reserved script blocks (provenance, bench-marks, resume) are § 3; the
@@ -210,25 +210,24 @@ A wrapper activates and execs. An engine reads and writes. There is one more
 thing in that directory, and it has the narrowest job of all.
 
 **The monitor runs beside the engine and watches it** — every engine's, from one
-file, `mb_monitor.pyz`. It
-is backgrounded by the wrapper at low priority, follows the launcher's **PID** —
+file, `mb_monitor.pyz`, which holds the framework's own readers and travels
+with the job ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3). The
+wrapper backgrounds it at low priority, and it follows the wrapper's **PID** —
 so it knows authoritatively when the run ended, rather than guessing from
-output markers — reads the run's artifacts as they grow through the
-framework's own readers, which travel with it (`run-reports.md` § 2.3), and
-appends what it learns to a log beside them. The wrapper also stops it, and says why: at the job's end
-(SIGTERM), or before a warm retry re-runs the attempt in the same PID
-(SIGUSR1, not an ending) — and waits for its closing lines
-(`running-a-job.md` § 4.1). It carries a **notifier hook** — a destination the user configures in their own
-`<config dir>/secrets/notify`
-(mode 0600; `MB_NOTIFY_URL` overrides it for a one-off),
-fired on the schedule the calculation states in `task.json`'s `notify` block.
-That is the deliberate customization point: what should happen when something
-notable occurs is the user's to decide, not molbuilder's — and so is how often,
-which is why the policy is a field of the description and the destination is a
-file that never travels with it.
+output markers. It reads the run's files as they grow and appends what it
+learns to its own log beside them. The wrapper stops it and says why — SIGTERM
+at the job's end, SIGUSR1 before a warm retry, which is not an ending — and
+waits for its closing lines ([`run-reports.md`](?doc=execution/run-reports.md)
+§ 2.4).
 
-**That hook is why nobody has to be at the cluster.** A run that ends at 3am can
-say so.
+**It carries the notifier, and that is why nobody has to be at the cluster**: a
+run that ends at 3 am can say so. The calculation states *when* to speak and to
+*which channels, by name*, in `task.json`'s `notify` block
+([`stages.md`](?doc=engines/stages.md) § 6.9); what a name resolves to is the
+user's own file on the machine that runs the job, which never travels with the
+description ([`run-reports.md`](?doc=execution/run-reports.md) §§ 1, 3). What
+should happen when something notable occurs, and how often, is the user's to
+decide, not molbuilder's.
 
 > **And the boundary that makes it safe: the monitor observes and notifies. It
 > never decides, and never mutates the calculation.**
@@ -241,10 +240,6 @@ say so.
 > be able to. Something that both watches and acts would be deciding on your
 > behalf, on a machine you are not at, about a calculation whose worth only you
 > can judge.
->
-> Three parties, three verbs: **the wrapper activates and execs, the engine reads
-> and writes, the monitor watches and tells.** Everything that *decides* runs
-> where the user is (`checkpointing.md § 9`).
 
 ```mermaid
 flowchart TB
@@ -252,7 +247,7 @@ flowchart TB
       direction TB
       W["<b>the wrapper</b> .run.sh<br/><i>activates, then execs</i><br/>changes no directory · reads no config"]
       E["<b>the engine</b> siesta / python<br/><i>reads what is here, writes beside it</i><br/>knows nothing of stages or descriptions"]
-      M["<b>the monitor</b> mb_monitor.pyz<br/><i>watches the launcher's PID, appends to a log</i><br/>never decides · never edits the calculation"]
+      M["<b>the monitor</b> mb_monitor.pyz<br/><i>watches the wrapper's PID, appends to a log</i><br/>never decides · never edits the calculation"]
       W -->|"exec"| E
       W -.->|"backgrounds, low priority"| M
       M -.->|"observes"| E
@@ -263,7 +258,8 @@ flowchart TB
 
 **Three parties, three verbs: the wrapper activates and execs, the engine reads
 and writes, the monitor watches and tells.** Nothing in that directory decides
-anything — a compute node is where work happens, not where judgement happens.
+anything; everything that *decides* runs where the user is
+(`checkpointing.md § 9`).
 
 **Rule 1 — one job per directory.** Every job lives in its own directory. A
 directory may hold *several inputs* (one per stage of a staged relaxation,
@@ -347,6 +343,9 @@ the ones worth naming here:
 | `my-job.py` | **`prep`** (§ 2.6), from the template — the only writer since `molbuilder pyscf` was deleted 2026-09-17 | Python | input script (PySCF) |
 | `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
 | `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
+| `mb_monitor.pyz` | **`prep`**, beside the wrapper; `materialize` copies it into each attempt | the wrapper, which runs it | the monitor and the framework readers it reads a run through, one file (`run-reports.md` § 2.3). It carries no label, so it is named by `runwrap.MONITOR_BUNDLE` rather than declared in `WRITTEN` |
+| `my-job-runN.monitor.log` | the monitor, every engine's | a person; `parse/instruments/monitor.py` | the monitor's record: `[MACHINE]` first, each change of the run's state, what it sent, its closing utilisation lines (`run-reports.md` § 2.5) |
+| `my-job-runN.util.csv` | the monitor, every engine's | the bench summary; `utilisation` | CPU, memory and GPU samples, change-gated (`run-reports.md` § 2.1) |
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
 | `my-job-runN.out` | the SIESTA wrapper's stdout redirect | the run viewer (fallback) | SIESTA engine stdout, one file per run index |
 | `my-job-runN.pyscf.log` | the PySCF wrapper's stdout redirect | the run viewer (fallback) | PySCF process stdout, one file per run index |
@@ -624,7 +623,7 @@ was erased by the next stage's silence.)*
 
 ### 2.4 Resolving a directory — the discovery chain
 
-When a reader (the Watch/run viewer) is handed a **directory** instead of a
+When a reader (the Results tab's trajectory viewer, or `molbuilder watch`) is handed a **directory** instead of a
 specific file, it resolves the trajectory with this chain — first hit wins
 (`molbuilder/parse/dirs/rundir.py::openable_in`, which is `RunDirResult.openable`;
 `model/parse.md` § 5.2). *(It lived in `web/blueprints/watch.py` until
@@ -948,11 +947,11 @@ wrapper contains these and nothing else:
 | **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
 | **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
-| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records; the cap is asked of `_mb_ending` (the launch row), never grepped |
+| **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records; the cap is asked of `_mb_ending` (below), never grepped |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
-| **Background job monitor** | launches `mb_monitor.pyz` beside the run — one file, the monitor with the framework's readers it reads the run through (`run-reports.md` § 2.3; nice 19, self-exits with the wrapper; opt out `MB_MONITOR=0`) — real compute-node work, headered and listed since 2026-08-13 (it was structurally invisible to the guard) |
+| **Background job monitor** | launches `mb_monitor.pyz` beside the run at `nice 19`, watching the wrapper's own PID — the monitor and the framework readers it reads the run through, one file; the EXIT trap stops it and waits for its closing lines (`run-reports.md` §§ 2.4, 2.6). Opt out with `MB_MONITOR=0` |
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
-| **Launch SIESTA + capture exit** | the exec, and the exit code — and `_mb_ending`, the one door onto how the run ended: `_run_ending`, run as `mb_monitor.pyz ending …` beside the job, read over the output and SIESTA's stderr (the wrapper's log). A failure prints its answer; the `propor` hint and the warm retries are gated by its questions (`run-reports.md` § 2.3) |
+| **Launch SIESTA + capture exit** | the exec and the exit code; on a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then the conclusion marker, on the main line |
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
 only the blocks of a minimal CPU wrapper — the five conditional rows above
@@ -966,6 +965,31 @@ narrow on purpose. Anything that computes, decides or arranges files belongs to
 Python on the host instead. Pinned by
 `tests/test_jobset.py::test_a_wrapper_is_made_of_exactly_these_blocks`, which
 reads this table.
+
+#### `_mb_ending` — the wrapper asks how a run ended, it does not grep
+
+The wrapper decides its failure hint and its warm retries from **how the run
+ended**, and it asks the framework's reader of that — `_run_ending`, which
+travels in `mb_monitor.pyz` beside the job — with the job's own python:
+`mb_monitor.pyz ending OUTPUT --stderr LOG [QUESTION [ARG]]`. The markers keep
+their one home, the SIESTA family's table (`parse/engines/siesta_grammar.py`);
+the wrapper types none of them.
+
+| call | answers | used for |
+|---|---|---|
+| `_mb_ending` | the ending in words — *how it ended: …* | printed after a failure |
+| `_mb_ending stopped-by MARKER` | exit 0 when the run's cause is that marker | the `propor` hint; the warm retry after an SCF that SIESTA made fatal (`SCF_NOT_CONV … (required)`) |
+| `_mb_ending relaxation-capped` | exit 0 when a relaxation used its moves without converging | the geometry-cap warm retry |
+| any, with no python or no `mb_monitor.pyz` beside the job | exit 2 — cannot read | no hint and no warm retry, said once in the wrapper's log |
+
+**It reads the output and SIESTA's stderr**, which the wrapper's session log
+holds: SIESTA's `die` flushes stdout on node 0 alone
+(`Src/siesta_handlers_m.F90`), so a rank other than 0 may say why it died only
+there. **The cause is the first fatal line**; the `Stopping Program from Node`
+lines after it are `die`'s cascade. What the retries then do is
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 3.5's; the monitor
+reports the same ending through `run_status`
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.3).
 
 The wrapper is **plain, readable bash**. Two properties are load-bearing:
 
@@ -1010,9 +1034,10 @@ emit_sbatch=True)` → `render_sbatch`. **The JobSet framework reuses this exact
 function** (`jobset/prep.py`) rather than reimplementing wrappers — see
 `execution/job-system.md`.
 
-molbuilder does **not** manage the launched process. Monitoring is by pointing
-the run viewer at the directory (§ 2.4); the resource header's SLURM flags
-come from your `molbuilder.json` (§ 6.3).
+molbuilder does **not** manage the launched process: the monitor beside it
+watches and tells (§ 2.1), and the Results tab reads the directory back (§ 2.4;
+`running-a-job.md` § 4.2). The resource header's SLURM flags come from your
+`molbuilder.json` (§ 6.3).
 
 ### 2.7 What the layout does not govern
 
@@ -2097,11 +2122,11 @@ single shared helper `molbuilder/persist.py` (`schema_major`, `check_schema`,
 `read_json`, `write_json`), adopted by `scheduler/record.py`, `bench/result.py`,
 `jobset/model.py`, `task.py`, `template.py`, and `checkpoint.py` (it was
 hand-rolled three times with a subtle missing-`@` inconsistency before). New
-persisted artifacts must use it. The two bare-integer exceptions predate the
+persisted artifacts must use it. The one bare-integer exception predates the
 convention: `.molstruct.json`, whose number lives in
-`sidecars/molstruct.SCHEMA_VERSION` and is never typed in a doc (the "= 6"
-this sentence carried had already drifted from the code — exactly the drift
-the registry row above forbids), and the decoded run (= 1).
+`sidecars/molstruct.SCHEMA_VERSION` and is never typed in a doc — a number
+typed here drifts from the code, which is what the registry row above forbids.
+(`run_status`'s answer carries no version at all; see its row.)
 *(Amended 2026-08-12, U9: this said "the major only" and named the helper
 `check_schema_major` — and the check implemented "major only" literally, so
 any `@1` artifact parsed as any other `@1` artifact. § 6.3's own amendment
@@ -2194,54 +2219,30 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **fifteen** fields — `domain`,
-`time`, `exclusive`, `mem`, `gres`, `mpi_np`, `cpus_per_task`, plus the eight
-riders that become no scheduler flag: `program` (**added 2026-08-28**, the
-transport composite — WHICH binary the wrapper launches; unset means the
-engine's own, siesta. The transmission stage runs tbtrans over the SAME
-deck text as the device stage, so the deck cannot carry the answer and the
-job-to-wrapper road does; transport-design.md § 4.2), `continue_retries` (the warm-retry
-budget, this table's last row), `max_memory_mb` (the wrapper's
-`ulimit -v` cap — the runtime guard against a runaway allocation, applied
-in the wrapper itself, distinct from `mem` which asks the scheduler), and
-`use_gpu` (**added 2026-08-23**, `execution/gpu.md` G7 — *does this run use a
-GPU*, carried rather than re-derived. The wrapper depends on that answer
-(`read_by = ["wrapper"]`) and satisfied it by **grepping the rendered deck for
-`Diag.ELPA.GPU`** at four sites: a layer re-deriving what this object already
-held, and matching a SIESTA keyword to do it, so a PySCF GPU run could not
-route at all. It rides the allocation for the reason `continue_retries` does —
-*carried there, it cannot be forgotten by one of them.*), and
-`notify_on_scf` / `notify_every_hours` (**added 2026-08-26** — WHEN this
-calculation should say something, read from the description's notify block at
-prep and rendered as flags on the wrapper's `mb_monitor.pyz` line, never as a
-scheduler directive. They ride here for the same reason again, and the
-reason is now three-for-three: the alternative is a second hand-maintained
-road from a job to its wrapper, and this one has already lost a field to a
-copied argument list twice. **WHERE to send it does not ride here and must
-not**: a wrapper is a file on disk in the run directory, copied into handoff
-bundles and readable by anyone who can see the filesystem, so the URL and its
-credential stay in the user's own config directory, mode 0600, on the
-machine that runs the job), and `notify_channels` (**added 2026-08-31** —
-WHICH of that machine's channels, **by name**. It is the only part of *where*
-that may ride here, and it may because a name is a label the person chose on
-the machine that runs the job: it grants nothing, and on a machine with no
-channel by that name it resolves to nothing and says so in the monitor log.
-The address and the credential it resolves to stay in that machine's own
-file, exactly as above. `None` is unset and also *every channel that machine
-has*, so an unset field renders no flag; an **empty tuple is a real value**
-meaning none at all, and it renders one — `run-reports.md` § 3.0, and the one
-place in this codebase where absent and empty are two states rather than two
-spellings of one), and `notify_report` (**added 2026-09-02**,
-`stages.md` § 6.9 — WHAT each report carries beyond the calculation's own
-name, which is never optional. Same road and the same reason as the three
-above; same absent-vs-empty rule as `notify_channels`, because `None` is
-*every field the monitor could determine* and `()` is *the summary line
-alone*).
-*(This sentence said "exactly seven" while its own table already carried
-`continue_retries` — amended U19, 2026-08-12, and pinned by an equality
-test in both directions.)*  `partition` and `qos` are **not** `Resources`
-fields; they are config `directives.*` resolved from `domain` by the
-submit engine.
+The `jobset.Resources` dataclass holds exactly **fifteen** fields: seven the
+scheduler reads, and eight riders that become no scheduler flag. A rider rides
+here because the alternative is a second hand-kept road from a job to its
+wrapper, and a copied argument list has lost fields on that road before.
+
+| field | read by | what it carries |
+|---|---|---|
+| `domain` · `time` · `exclusive` · `mem` · `gres` · `mpi_np` · `cpus_per_task` | the submit engine | the ask the scheduler reads (the table above) |
+| `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage runs tbtrans over the device stage's deck text, so the deck cannot carry it (transport-design.md § 4.2) |
+| `continue_retries` | the wrapper | the warm-retry budget — the table's last row above; running-a-job.md § 3.5 |
+| `max_memory_mb` | the wrapper | its `ulimit -v` cap — a runtime guard against a runaway allocation, distinct from `mem`, which asks the scheduler |
+| `use_gpu` | the wrapper | *does this run use a GPU* — carried, never re-derived from the deck (`execution/gpu.md` G7), so a PySCF GPU run routes too |
+| `notify_on_scf` · `notify_every_hours` | the monitor's command line | WHEN the calculation speaks (run-reports.md § 2) |
+| `notify_channels` | the monitor's command line | WHICH of the running machine's channels, by name. Unset renders no flag and means every channel; an empty tuple renders one and means none (run-reports.md § 3.0) |
+| `notify_report` | the monitor's command line | WHICH report fields a chat card shows — the name is always sent. Unset is every field; an empty tuple is the summary line alone (stages.md § 6.9) |
+
+**Where to send a report never rides here**: a wrapper is a file in the run
+directory, readable by anyone who can see the filesystem, so an address and
+its credential stay in the user's own file on the machine that runs the job
+(run-reports.md § 1). A channel name may ride, because it grants nothing.
+*(This sentence said "exactly seven" once while its own list carried more; an
+equality test now holds it to the dataclass in both directions.)*  `partition`
+and `qos` are **not** `Resources` fields; they are config `directives.*`
+resolved from `domain` by the submit engine.
 
 **Everything else a `Job` carries is `resources`, `warm` and `traits`** — which files it
 would take from a run it is continued from, and the values a condition on one is

@@ -55,13 +55,13 @@ dashed line for *all atoms* (informational, includes the fixed ones) and a solid
 line for the *free atoms* (the real convergence signal, since fixed atoms carry
 forces that don't matter). With no frozen atoms it collapses to a single line.
 
-**A cycle carries its `phase`, and the SCF plots draw the phases apart**
-*(W35 P2)*. A TranSIESTA device's periodic initialization and its NEGF loop
-are two traces on their own iteration axes — its cycles run 1..7 and then
-1..1000, at −437,029 and −205,444 eV, and one line through both described
-neither. The last phase is shown by default and the status line names it. A
-run with one phase — every relaxation, every PySCF run — draws as before
-(`model/parse.md` § 5d.5).
+**A cycle carries its `phase`, and the SCF plots draw the phases apart.** A
+TranSIESTA device converges a periodic SCF for its starting density, then runs
+the NEGF loop with open boundaries; the two energies are not on one scale (a
+measured device: 7 cycles near −437,029 eV, then 1000 near −205,444 eV), so
+each phase is a trace on its own iteration axis. The last is shown by default
+and the SCF line (§ 4) names it; a run with one phase — every relaxation, every
+PySCF run — draws one trace (`model/parse.md` § 5d.5).
 
 ## 3. Convergence targets
 
@@ -78,23 +78,26 @@ A summary band above the plots names the targets and the current distance. When 
 value sits far above its target, the plot switches to a **log y-axis** so the
 early approach is readable; as it converges the curve heads toward the line.
 
-**The SCF residual is judged against its own criterion, per phase** *(W35
-P2)*: `runtime_info.scf_criteria` — `{phase: {residual: {tolerance, unit,
-required}}}`, one structure for every engine. The SIESTA parser fills it from
-the `redata:` echo (`Require H convergence for SCF`, `Hamiltonian tolerance
-for SCF`, `Require DM convergence for SCF`, `DM tolerance for SCF`) and
-TranSIESTA's `ts:` echo (the NEGF loop's DM, H and charge tolerances); the
-PySCF deck from what it read back (`scf_conv_tol_grad`). A line is drawn for a
-criterion the run requires, against the residual it bounds — dHmax against the
-H tolerance, dDmax against the DM tolerance, the NEGF dQ against the charge
-tolerance, PySCF's |g| against its gradient tolerance — and none where the run
-states none. *(Until 2026-09-26 dHmax was drawn against the dimensionless DM
-tolerance.)*
+**Each SCF residual is judged against its own criterion, per phase** —
+`runtime_info.scf_criteria`, `{phase: {residual: {tolerance, unit, required}}}`,
+one structure for every engine. A line is drawn only for a criterion the run
+requires (SIESTA's `Require H/DM convergence for SCF`):
+
+| residual | measures | bounded by | read from |
+|---|---|---|---|
+| dDmax | the largest density-matrix change per iteration (dimensionless) | the DM tolerance | `redata: DM tolerance for SCF`; TranSIESTA's `ts:` echo |
+| dHmax | the largest Hamiltonian change (eV) | the H tolerance | `redata: Hamiltonian tolerance for SCF`; the `ts:` echo |
+| dQ | a NEGF loop's charge error (electrons) | the charge tolerance | the `ts:` echo |
+| \|g\| | PySCF's orbital-gradient norm | its gradient tolerance | what the deck read back (`scf_conv_tol_grad`) |
 
 ## 4. Is it done, and how fast?
 
-The **run badge** reads *Running*, *Finished*, or *Stopped*, and carries a
-detail line beneath it with two different facts:
+The **run badge** reads the open file's own ending (`run_state`,
+[`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is *Finished*, `stopped`
+or `out_of_memory` is *Stopped*, anything else *Running*. It reads the file; the
+Run panel reads the run ([`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 4.2 maps the two). It carries a detail line beneath it with two different
+facts:
 
 | detail | reads | where it comes from |
 |---|---|---|
@@ -106,36 +109,29 @@ PySCF run writes a real timestamp into its `.molwatch.log`, so it can say when.
 A SIESTA `.out` states the time of day only at the run's two ends
 (`>> Start of run`, `>> End of run`) and carries no per-step clock — only a
 timer counting from the start — so for SIESTA the "when" of a step falls back
-to the file's mtime, deliberately. *(This said "no time of day anywhere" until
-2026-09-26; the two ends are read into the run record,
-[`model/parse.md`](?doc=model/parse.md) § 5d.2.)* The parser says *"this engine cannot tell you the time of
-day"* rather than handing over its elapsed seconds; when it did hand them over,
-a run six minutes old displayed **"last result Dec 31, 5:06 PM"** — six minutes
-after epoch zero, a duration printed as a date
+to the file's mtime, deliberately; the two ends are read into the run record
+([`model/parse.md`](?doc=model/parse.md) § 5d.2). The parser says *"this engine
+cannot tell you the time of day"* rather than handing over its elapsed seconds:
+a duration handed over as a time of day shows a run six minutes old as **"last
+result Dec 31, 5:06 PM"** — six minutes after epoch zero
 ([`model/parse.md § 2a`](?doc=model/parse.md)).
 
-And the SCF line gives a live per-iteration wall-time — "~16 s/iter" — with its
-source spelled out, because it comes from whichever estimate is most
-trustworthy at the moment:
+**The SCF line** says where the electronic loop is: the step, the SCF cycle and
+its iteration count, the residual and ΔE, and for a device its phase (§ 2).
+**Its rate is not its own.** Seconds per iteration have one source, the
+SCF-timing instrument, one phase at a time
+([`model/parse.md`](?doc=model/parse.md) § 5c), and one home on the page, the
+Run panel ([`results.md`](?doc=web/results.md) § 3a). A rate is never computed
+from a timestamp: a PySCF log carries epochs, and a date divided by a count is
+not a duration.
 
-1. best: the **server's own refresh-delta** (the wall-clock time between two file
-   flushes, divided by the iterations added), which survives a page reload;
-2. early on, before the server has two timestamps to compare, a **client-side
-   estimate** from the last couple of polls;
-3. as a fallback, **SIESTA's own once-per-run timer** snapshot — and it is
-   SIESTA's alone. That rung divides a cumulative time by a call count, which
-   is arithmetic on a duration; a PySCF log carries a timestamp instead, and
-   dividing one of those by a call count is arithmetic on a date. So a PySCF
-   run simply has no third rung, and the line stays quiet rather than
-   printing a number that means nothing.
-
-The line says which one it used, so a rough early number isn't mistaken for a
-precise one.
-
-A *crashed or non-converged* run settles like a finished one: the badge shows
-**Stopped** and the polling stops. It gets there in one step rather than the two
-a normal finish takes — a crash doesn't un-crash on the next poll, so there is
-nothing to confirm.
+A **stopped** run — a crash, or SIESTA stopping because its SCF had to converge
+and did not — settles like a finished one: the badge shows **Stopped**, with the
+reason beneath, and the polling stops, in one step rather than the two a normal
+finish takes, because a crash does not un-crash on the next poll
+([`results.md`](?doc=web/results.md) § 4.1). A run that reaches its end without
+converging, where its deck allows that, is **Finished**: convergence rides
+beside the badge, never inside it (`model/parse.md` § 2b, P-S2).
 
 ## 5. Live updating
 
@@ -262,4 +258,4 @@ header. The header's source-path line has the username redacted.
 
 - `test_trajectory_clocks_js.py` — the two clocks: that the badge's "when"
   reads the timestamp series and its "total" reads the duration series, and
-  that the per-iteration rung refuses a timestamp.
+  that no per-iteration rate is computed from a timestamp.

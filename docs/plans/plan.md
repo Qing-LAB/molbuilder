@@ -3825,7 +3825,8 @@ of work. The row is **W35** in § 2.*
 
 ### 5t.1 The design
 
-`model/parse.md` § 5d: one record per attempt, five parts, composed on read;
+`model/parse.md` § 5d: one record per attempt, four parts (computation,
+setup, deck, verdict), composed on read;
 three columns for every parameter; one grammar per engine family; the verdict
 and its symptoms. `engines/transport.md` § 2a.12: the transport report from
 the rung records, and the stated contour.
