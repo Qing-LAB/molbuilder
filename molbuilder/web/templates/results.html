@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/results/run-panel.css') }}">
 {# Trajectory inspector styles -- the inspector's DOM (rendered from
    _trajectory_inspector.html into #inspector-host at mount time)
    uses the classes defined here.  Linked unconditionally because
@@ -91,6 +92,14 @@
     <span id="results-file-picker-meta" class="result-list-meta"
           aria-live="polite"></span>
   </div>
+
+  {# THE RUN PANEL (results.md § 3a): the run this folder's files came from --
+     its record from `/api/results/dir`, carried by the picker's selection
+     event.  Filled by lib/results/run-panel.js; hidden where there is no
+     record (a container, a folder with no run).  Not a viewer: no file
+     picks it, and results/viewer.js does not know it. #}
+  <section id="results-run-panel" class="results-run-panel" hidden
+           aria-label="The run these files came from"></section>
 
   {# The inspector host is the single mount point.  The active
      inspector (picked by registry.pick() against the file the
@@ -232,6 +241,10 @@
    call ``makePartialInspector`` from it. #}
 <script src="{{ url_for('static', filename='lib/inspectors/_partial_inspector_factory.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
+{# The Run panel listens to the picker's events and nothing else; a module,
+   so it is deferred -- it registers before the picker's first scan, which
+   starts at DOMContentLoaded. #}
+<script type="module" src="{{ url_for('static', filename='lib/results/run-panel.js') }}"></script>
 {# Specific (compound-extension) inspectors register first...
 
    EVERY INSPECTOR BELOW CARRIES `defer` OR IS A MODULE, deliberately: that puts

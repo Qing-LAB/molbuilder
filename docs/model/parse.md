@@ -736,7 +736,7 @@ different questions (§ 5.1).
 | `engine` · `openable` | which engine ran; which file the viewer loads | `/api/results/dir` → the Results viewer |
 | `status` | how is it doing (`running-a-job.md` § 4.2) | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
-| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel, designed and not built yet (`web/results.md` § 3a, § 0.4) |
+| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
 
 **No field is added without naming its reader in this table.**
 
@@ -1274,7 +1274,7 @@ flowchart LR
   TP  --> SUM
   OP  --> SUM
   SUM --> TBL["the bench table + <code>bench-result@1</code>"]
-  RES --> REC["the run record (§ 5d)<br/>→ the Run panel, not built yet"]
+  RES --> REC["the run record (§ 5d)<br/>→ the Run panel"]
   TP  --> REC
   MP  --> REC
   MLP --> WATCH["<code>/api/watch</code> → the browser<br/>plot x-axis + Finished badge"]
@@ -1354,10 +1354,10 @@ not to one run.
 
 | part | the question | read by |
 |---|---|---|
-| **computation** | what ran, where, for how long, on how much | the Run panel (not built yet) |
-| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel (not built yet); the electronic-state read-back (`science/chemistry-correctness.md` ES10) |
-| **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel (not built yet); the transport record |
-| **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel (not built yet); the transport record |
+| **computation** | what ran, where, for how long, on how much | the Run panel |
+| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back (`science/chemistry-correctness.md` ES10) |
+| **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel; the transport record |
+| **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel; the transport record |
 
 The SCF iterations are not in the record: their one reader, the SCF plots,
 reads the trajectory the viewer loads (`web/trajectory.md`).
@@ -1435,7 +1435,7 @@ through the same readers (the instruments, `utilisation`, the ending) and is
 not composed from this table *(user, 2026-09-26: a benchmark's presentation is
 different by nature)*.
 
-**The panel is generic too** (`web/results.md` § 3a, not built yet): it
+**The panel is generic too** (`web/results.md` § 3a): it
 renders the record's parts from a table of labels and formatters keyed by
 field, so a new field is a label, not a panel change.
 
@@ -1643,9 +1643,10 @@ verdict are plan § 5t.3's P4, not yet built.*
 ### 5d.7 Where it is read
 
 * **The Results tab's Run panel** (`web/results.md` § 3a) — for every kind, and
-  the ONE home on the page of a run's computation facts. Designed, not built
-  yet (§ 0.4 there): `/api/results/dir` serves the record and no page code
-  reads it.
+  the ONE home on the page of a run's computation facts (the viewers' copies
+  are still to go: § 0.4 there). The picker carries the record from
+  `/api/results/dir` in its selection event; `lib/results/run-panel.js`
+  renders it.
 * **The SCF plots** stay the trajectory's (`web/trajectory.md`): a device's two
   phases are drawn apart, each residual against the criterion its phase states
   — dHmax against the H tolerance, dDmax against the DM tolerance, the NEGF dQ

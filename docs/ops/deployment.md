@@ -187,6 +187,10 @@ silent client in turn.
 long-lived `serve` keeps the modules it imported at start-up, so edits to
 `molbuilder/**.py` — routes, blueprints, validators — are invisible until it
 restarts, while edits to `web/static/**` (CSS, JS) take effect on reload.
+**Templates (`web/templates/**`) are Python's side of that line**: Jinja
+compiles each one once and keeps it, so a template edit also needs the restart
+— measured 2026-09-27, when `/results` went on serving its old HTML after an
+edit, until `serve restart`.
 
 That split is easy to miss precisely because the page *looks* updated. On
 2026-08-25 the dev server had been up since 19 August: the Results tab

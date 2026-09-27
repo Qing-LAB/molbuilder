@@ -14,7 +14,7 @@ You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
 becomes *whatever viewer fits the file you picked* — a 3D structure, a trajectory
 movie, a spectrum, or a bench sweep. The tab draws no file itself — every file
-type is a viewer's — only the Run panel (§ 3a, not built yet) and the server-load strip (§ 6).
+type is a viewer's — only the Run panel (§ 3a) and the server-load strip (§ 6).
 
 ## 0. The tab as a system — read this first
 
@@ -55,7 +55,8 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 | part | module | what it does |
 |---|---|---|
 | the folder's answer | `parse/dirs/rundir.py` — `JobDirParser` → `RunDirResult`, served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, and whether a parser reads it (`parser`); for a calculation root, the ladder |
-| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place` and `ladder` |
+| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder` and `record` |
+| the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
 | the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
 | their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport, markdown, text: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
@@ -77,14 +78,16 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 ### 0.4 Designed, not built yet
 
-- **The Run panel (§ 3a).** `/api/results/dir` already carries `record` — the
-  run's computation, setup, deck and verdict ([`model/parse.md`](?doc=model/parse.md)
-  § 5d) — and **no page code reads it yet**: `lib/results/run-panel.js` is W35
-  P2's to write ([`plans/plan.md`](?doc=plans/plan.md)). Until then a run's
-  computation facts are not on this page.
+- **The viewers' copies of a run's computation facts** (§ 3a). The Run panel is
+  the one home of those facts, and the trajectory viewer's runtime line and the
+  spectrum viewer's Host / CPU / GPU rows are still on the page beside it. They
+  go once a folder read alone has a record too: a `.out` or a `.spectra.json`
+  in a folder with no deck has none today (`record.run_files` needs the deck to
+  say whose run it is), and those rows are all such a folder shows of how it
+  ran.
 - **`status`**, on the same answer — how the run is doing — is served and not
-  yet shown for a run folder; the trajectory viewer's badge shows the open
-  file's own ending.
+  yet shown for a run folder beyond the Run panel's verdict; the trajectory
+  viewer's badge shows the open file's own ending.
 
 ## 1. What the page is
 
@@ -100,7 +103,7 @@ controller.
 ```mermaid
 flowchart TD
   U["you pick a file (the dropdown opens the one<br/>the server calls this directory's result)"] --> EV["a file-selected event"]
-  SC["the folder's scan"] -. "its run record" .-> RP["the Run panel (§ 3a) — not built yet"]
+  SC["the folder's scan"] -. "its run record" .-> RP["the Run panel (§ 3a)"]
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
@@ -431,9 +434,8 @@ has now drifted twice. Read it as a tour, and that table as the count.)*
 
 ## 3a. The Run panel — what ran, with what, and how it went
 
-**Designed, not built** (W35 P2, § 0.4): the record below is served on
-`/api/results/dir`, and `lib/results/run-panel.js` does not exist yet. This
-section is the design it is to be built to.
+**Built** (W35 P2, 2026-09-27): `lib/results/run-panel.js` and its sheet; the
+viewers' copies of the same facts are still to go (§ 0.4).
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
 When the folder the picker is bound to is a run — a run directory, a flat
@@ -449,10 +451,12 @@ run in it.
 
 **It is the ONE home on this page of a run's computation facts.** The
 trajectory viewer's runtime line (host · ranks · SIESTA version · solver) and
-the spectrum viewer's Host / CPU / GPU rows are gone: two places stating one
-fact is how they come to disagree, and the spectrum's rows read *—* for every
-SIESTA vibration, whose trajectory carries no runtime block. The viewers keep
-what is about their file — the convergence card beside the plots stays.
+the spectrum viewer's Host / CPU / GPU rows go: two places stating one fact is
+how they come to disagree, and the spectrum's rows read *—* for every SIESTA
+vibration, whose trajectory carries no runtime block. *Not yet* (§ 0.4): a
+folder read alone has no record today, and those rows are all it shows of how
+it ran. The viewers keep what is about their file — the convergence card
+beside the plots stays.
 
 **Closed, it is one line** — the engine and version, the ranks, the engine's
 wall time, how the latest run ended, whether each phase converged, and how
@@ -472,7 +476,9 @@ of labels and formatters keyed by the field's name — a duration as a
 duration, a byte count as memory, a time of day as a time of day — so a field
 the backend starts stating appears with one label added, and a field the
 record leaves out ([`model/parse.md`](?doc=model/parse.md) § 5d.1a: not stated,
-so not shown) leaves no row.
+so not shown) leaves no row. A field the table has no label for yet shows
+under its own name, so nothing the record states is hidden; the table's order
+is the rows' order.
 
 **It is re-read with the directory**, not on a timer: the picker's scan is
 the one source (§ 2.1). The picker carries the record in the same selection
@@ -482,7 +488,9 @@ under another folder — the fault § 2.1 records. A live run's panel shows the
 record as of the last scan; Reload refreshes it with the menu.
 
 *Module:* `lib/results/run-panel.js` renders into `#results-run-panel`,
-listens to the picker's selection event, and owns
+listens to the picker's selection event — and to its scope event, because a
+scan that fails announces nothing: from the moment the panel is bound to
+another folder it is hidden until that folder's scan lands — and owns
 `lib/results/run-panel.css`. `results/viewer.js` does not know it: § 1 keeps
 it to pick, dispose and mount.
 
@@ -815,6 +823,13 @@ file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
   order.
 - `test_results_folder_dispatch_e2e.py` — the pick → mount dispatch end to end.
 - `test_inspector_pageshow_refresh_e2e.py` — the re-scan on tab return.
+- `test_results_file_picker_e2e.py` — the picker: one scan per visit (§ 2.2),
+  the re-read on a restore and on tab return, Reload, and the folder it owns
+  (§ 2.1).
+- `test_siesta_stopped_run_e2e.py::test_the_run_panel_says_what_ran_and_why_it_stopped`
+  — the Run panel (§ 3a) on a SIESTA run the road makes and stops: the closed
+  line, the four sections, the deck's View, and hidden for a container and
+  under a rebind whose scan fails.
 - `test_results_state_contract_js.py` — § 4's buckets, its two guards and
   § 4.1's two-tick settle, on the trajectory side.
 - `test_results_state_contract_spectra_js.py` — the same rules on the spectra

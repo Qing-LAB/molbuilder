@@ -1,0 +1,142 @@
+/* The Run panel (`web/results.md` § 3a) -- owned by lib/results/run-panel.js,
+ * the only file that builds these classes.  Tokens only (lib/tokens.css). */
+
+.results-run-panel {
+    margin: 0 0 var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+}
+.results-run-panel[hidden] { display: none; }
+
+/* ---- the closed line: one line, so it never pushes the result down ---- */
+.rp-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    cursor: pointer;
+}
+.rp-toggle {
+    flex-shrink: 0;
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.rp-toggle::after { content: " \25B8"; color: var(--text-muted); }
+.rp-toggle[aria-expanded="true"]::after { content: " \25BE"; }
+.rp-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs) var(--space-sm);
+    min-width: 0;
+    color: var(--text-secondary);
+}
+.rp-part + .rp-part::before {
+    content: "\00B7";
+    margin-right: var(--space-sm);
+    color: var(--text-muted);
+}
+
+/* ---- open: the four sections ------------------------------------------ */
+.rp-body {
+    padding: 0 var(--space-md) var(--space-md);
+    border-top: 1px solid var(--border-soft);
+}
+.rp-section-title {
+    margin: var(--space-md) 0 var(--space-sm);
+    font-size: var(--text-base);
+    font-weight: 600;
+}
+.rp-group-title {
+    margin: var(--space-sm) 0 var(--space-xs);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.rp-rows {
+    display: grid;
+    grid-template-columns: minmax(10rem, max-content) 1fr;
+    gap: 2px var(--space-md);
+}
+.rp-row { display: contents; }
+.rp-group { grid-column: 1 / -1; }
+.rp-key { color: var(--text-muted); }
+.rp-val {
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+}
+.rp-mono { font-family: var(--font-mono); font-size: var(--text-xs); }
+.rp-small { font-size: var(--text-2xs); }
+.rp-verdict {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin: 0 0 var(--space-sm);
+}
+.rp-finding { color: var(--warning); }
+
+.rp-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: var(--space-sm);
+}
+.rp-table th,
+.rp-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: var(--space-xs) var(--space-sm);
+    border-top: 1px solid var(--border-soft);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+.rp-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    border-top: 0;
+}
+.rp-param .rp-keys {
+    display: block;
+    color: var(--text-muted);
+}
+/* ASKED IS NOT USED: listed first by the server, marked here. */
+.rp-setup tr.is-differs td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.rp-tag {
+    margin-left: var(--space-xs);
+    padding: 0 var(--space-xs);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--warning);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+}
+.rp-default { color: var(--text-muted); font-style: italic; }
+.rp-echo {
+    display: block;
+    color: var(--text-muted);
+    font-family: inherit;
+}
+.rp-fold { margin: var(--space-sm) 0; }
+.rp-fold > summary { cursor: pointer; color: var(--text-secondary); }
+
+.rp-view {
+    margin-top: var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
+    font-size: var(--text-sm);
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.rp-view:hover { border-color: var(--accent-strong); }

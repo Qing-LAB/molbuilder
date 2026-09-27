@@ -21,8 +21,8 @@ are other reports, built by their own modules (`model/parse.md`, "How results
 are organized"); none is composed from this one.
 
 **Cheap reads only** (§ 5d.1): this runs on every folder scan, so it never
-builds a trajectory.  *(No page shows it yet: the Run panel is designed and
-not built -- `web/results.md` § 0.4.)*
+builds a trajectory.  The Results tab's Run panel shows it
+(`web/results.md` § 3a).
 
 **Which run** (§ 5d.1): the one the directory's status speaks for --
 `run_status`'s ``active_source``, picked by stage then time (§ 5.1), so the

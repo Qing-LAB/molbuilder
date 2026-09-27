@@ -16,7 +16,8 @@ SCF's, not the cascade's; the viewer's stop reason is that cause in the
 table's words; the run's session log is found as the run's; and a rank other
 than 0 that dies says why only on stderr -- so the same run with its output
 cut before the stopping lines, as node 0's missing flush leaves it, still
-reads stopped, from the session log.
+reads stopped, from the session log.  The Results tab's Run panel
+(`web/results.md` § 3a) says the same, from the run's record, in a browser.
 
 They replace two checks that read frozen outputs of older runs -- the
 viewer's stop reason on a hemeC stage, and the setup's ``in_deck`` on a
@@ -258,3 +259,101 @@ def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
         assert len(rows[key]["readings"]) == 2, rows[key]
         assert rows[key]["in_deck"] is False, rows[key]
     assert rows["meshcutoff"]["in_deck"] is True, rows["meshcutoff"]
+
+
+@pytest.fixture(scope="module")
+def flask_server():
+    from support.live_server import serve
+    with serve() as base_url:
+        yield base_url
+
+
+def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
+                                                         flask_server,
+                                                         monkeypatch):
+    """The Results tab's Run panel (`web/results.md` § 3a) reads this run's
+    record: closed, one line -- the engine, the ranks, how the latest run
+    ended; open, the verdict, the setup's three columns, the computation and
+    the deck, which opens in the sidebar's viewer.  It is hidden for a
+    container, and from the moment the panel is bound to another folder --
+    a scan that fails announces nothing, so the old record must not stay.
+
+    MUTATION THIS MUST FAIL AGAINST: the picker not carrying ``record`` in
+    its selection event; the panel not hiding when it is re-bound.
+    """
+    from molbuilder import diagnostics
+
+    root = next(p for p in stopped.parents if p.name == "projects")
+    bundle = stopped.parent.parent
+    monkeypatch.setattr(type(diagnostics.get_capabilities()),
+                        "file_picker_roots",
+                        lambda self: ((root.resolve(), "road"),))
+    page.add_init_script(
+        "try { sessionStorage.setItem('molbuilder.current_dir', "
+        f"{json.dumps(str(stopped))}); }} catch (_) {{}}")
+    page.goto(f"{flask_server}/results")
+    panel = page.locator("#results-run-panel")
+    panel.locator(".rp-summary").wait_for(timeout=20000)
+    record = page.evaluate(
+        "(d) => fetch('/api/results/dir?path=' + encodeURIComponent(d))"
+        ".then(r => r.json()).then(b => b.record)", str(stopped))
+
+    line = panel.locator(".rp-summary").inner_text()
+    engine = record["computation"]["engine"]
+    assert f"{engine['program']} {engine['version']}" in line, line
+    assert "1 rank" in line and "run 1 stopped" in line, line
+    assert "FAILED" in line.upper(), line
+
+    panel.locator(".rp-toggle").click()
+    sections = {s.locator(".rp-section-title").inner_text(): s.inner_text()
+                for s in panel.locator(".rp-section").all()}
+    assert list(sections) == ["Verdict", "Setup", "Computation", "Deck"]
+    assert "stopped before its end: SCF_NOT_CONV" in sections["Verdict"]
+    assert "run 0: stopped" in sections["Verdict"]
+    assert record["computation"]["host"]["hostname"] in sections["Computation"]
+
+    # THE SETUP'S THREE COLUMNS, as the run recorded them: the catalogue
+    # default from the wrapper's block, what the deck asked, what SIESTA read.
+    rows = page.evaluate(
+        "() => [...document.querySelectorAll("
+        "  '#results-run-panel .rp-setup tbody tr')].map(tr => ["
+        "    tr.querySelector('.rp-item').textContent,"
+        "    ...[...tr.children].slice(1).map(td => td.textContent)])")
+    by_item = {r[0]: r[1:] for r in rows}
+    stated = {r["item"]: r for r in record["setup"]["rows"]}
+    default, asked, used = by_item["max_scf_iter"]
+    assert (default, asked, used) == (str(stated["max_scf_iter"]["default"]),
+                                      "10", "10"), by_item["max_scf_iter"]
+    for item, value in _CANNOT_CONVERGE.items():
+        _d, asked, used = by_item[item]
+        assert float(asked) == float(value) == float(used.split()[0]), (
+            item, by_item[item])
+    unset = [r["item"] for r in record["setup"]["rows"] if "asked" not in r]
+    assert unset and all(by_item[i][1] == "engine default" for i in unset)
+    assert (f"({len(record['setup']['engine_only'])})"
+            in panel.locator(".rp-fold > summary").inner_text())
+    assert "H.psml" in sections["Setup"]
+
+    panel.locator(".rp-view").click()
+    preview = page.locator("#ps-preview-modal")
+    preview.wait_for(state="visible", timeout=10000)
+    assert record["deck"]["path"] in preview.inner_text()
+    page.keyboard.press("Escape")
+
+    def rebind(folder):
+        page.evaluate("(d) => window.molbuilder.projects.setShared(d, '')",
+                      str(folder))
+        page.click("#results-file-picker-refresh")
+
+    # A folder whose scan fails: nothing is announced, and the panel must
+    # not keep the run above under it.  Two levels that do not exist: the
+    # door answers a path that is not a directory for its parent, so one
+    # missing level would be answered as the stage container.
+    rebind(stopped.parent / "no-such" / "attempt")
+    panel.wait_for(state="hidden", timeout=10000)
+    rebind(stopped)
+    panel.locator(".rp-summary").wait_for(timeout=20000)
+    # The calculation root is a container: it has a ladder, not a record.
+    rebind(bundle)
+    page.locator(".results-ladder").wait_for(state="visible", timeout=20000)
+    assert panel.is_hidden()
