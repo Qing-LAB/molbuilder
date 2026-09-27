@@ -43,17 +43,21 @@ Config worth knowing (`pyproject.toml`): `testpaths=["tests"]`,
 `tests/spectra/`, `tests/validation/`, `tests/watch/`); fixtures live in
 `tests/data/`. Naming is `test_*.py`.
 
-The one *structural* guarantee is **layering** — enforced, not just documented, by
-`tests/test_layering.py`. It AST-walks every `molbuilder/*.py`, classifies each
-module into a layer, and asserts imports only point down:
+The one *structural* rule is **layering**, and **review keeps it, not a test**
+*(user, 2026-09-27: "a static code review problem")* — imports only point down:
 
 - **L1** (core types — `structure.py`, `chemistry.py`, …) imports nothing higher;
 - **L2** (domain verbs — builders, engines, parse, …) may import L1, not L3;
 - **L3** (the two *surfaces*, `cli.py` and `web/`) may import anything.
 
-It also asserts *every* top-level name is classified, so a new module can't slip
-past the boundary silently. This is what lets `cli` and `web` share one API
-without circular imports — see the thin-shell note in
+`tests/test_layering.py` read every module's imports to check it until
+2026-09-27; a scan of the package's own source earns no place (*What does NOT
+earn a place*, below), and the two failures that matter at run time show up
+without it — an upward import at a module's top fails every import of that
+module, and a file that ships beside a job and reaches into molbuilder fails
+there, which `tests/test_monitor_bundle_runs_alone.py` runs. The question
+review asks is `process/code-audit.md` § 1c (e). This is what lets `cli` and
+`web` share one API without circular imports — see the thin-shell note in
 [`conventions.md § 3`](?doc=process/conventions.md).
 
 ### 2a. A test never touches the real projects tree
@@ -638,7 +642,8 @@ deliberately not installed there.
 
 ## 8. Test map (the meta-tests)
 
-- `test_layering.py` — the import-direction + full-classification invariant (§2).
+- `test_monitor_bundle_runs_alone.py` — the monitor's shipped files read a real
+  run with molbuilder absent (§ 2; the layer rule itself is review's).
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
 - `test_no_inline_scripts.py`, `test_negative_body_assert_lint.py` — the
   artifact lints (§ 6).

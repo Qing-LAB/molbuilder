@@ -2981,9 +2981,12 @@ written, the two directions are separated, and the conditional-route case is
 named. *(The count test stays until then — it is weak, but it is not nothing.)*
 
 *Model to copy:* `test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
-— it reads the documented set out of the table, reads the enforced set out of
-the code, and asserts **both directions** with a failure naming each side's
-extras. It caught `ref`'s deletion on the first run after it.
+— it read the documented set out of the table, read the enforced set out of
+the code, and asserted **both directions** with a failure naming each side's
+extras. It caught `ref`'s deletion on the first run after it. *(Retired
+2026-09-27 with the layer scan whose copy it compared against; the pattern
+stands for a set the RUNNING product states -- the routes the app serves, the
+commands the CLI accepts.)*
 
 *Done when:* deleting a route, a presenter or a command **fails a named test
 that quotes the document and the line**, and each test is mutation-tested by
@@ -4183,7 +4186,7 @@ survived its 2026-06-02 over-compression.)
 | index | one row per | the row answers | generated or written |
 |---|---|---|---|
 | **API** | route | what it answers · who calls it · which doc owns it | **generated** — the route list is derivable from the blueprints, and a generated index cannot drift. The 2026-09-07 W8 finding is the argument: `web-api.md` claimed the Documents tab read `/api/docs/list`, which it has not since the commit after the one that added it |
-| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from the layering the suite already classifies (`test_layering.py` walks every `molbuilder/*.py` and asserts every name is classified — the data exists) |
+| **Module** | module | its role · its layer (L1/L2/L3) · its doc | **generated** from `architecture.md` § 3's index, the one list of each module's layer (the scan that classified every module, `test_layering.py`, was retired 2026-09-27) |
 | **Data structure** | persisted file / schema | its shape · its version · its one reader and one writer | **written** — the doors are a design fact, not derivable |
 | **Reference** | constant · citation | its value · its source · **why this value** | **written** — see 7.3 |
 
@@ -4274,7 +4277,9 @@ written out eight times) · `test_one_naming_authority.py` · `test_config_dir_h
 
 *(2026-09-26: the source scans in `test_one_naming_authority.py` and
 `test_config_dir_has_one_home.py` were deleted on the user's rule — a test runs
-the code; what each file keeps does.)*
+the code; what each file keeps does. 2026-09-27: `test_layering.py`'s three
+scans likewise -- the layer rule is review's, `code-audit.md` § 1c (e) -- and
+its one test that runs the code moved to `test_monitor_bundle_runs_alone.py`.)*
 
 They cover imports, constants, a naming rule, a config path, CSS, two module
 seals, UI components and test names. **Not one covers a reading or writing

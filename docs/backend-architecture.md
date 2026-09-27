@@ -17,8 +17,9 @@ intro and cites this doc); [`README.md`](?doc=README.md) — the doc index.
 > other?*
 >
 > **The short answer:** yes — the separation is real and mostly clean. It rides
-> on the load-bearing L1/L2/L3 import-direction rule (enforced by
-> `tests/test_layering.py`) plus the four core types as a shared vocabulary.
+> on the load-bearing L1/L2/L3 import-direction rule (kept by review,
+> `process/code-audit.md` § 1c (e)) plus the four core types as a shared
+> vocabulary.
 > Data management and structure construction are well isolated. The one concern
 > that had genuine gaps was **scientific validation** — centralised for the
 > SIESTA/PySCF Build engines but scattered for Spectra/Transport; that gap was
@@ -31,12 +32,12 @@ intro and cites this doc); [`README.md`](?doc=README.md) — the doc index.
 
 The backend is organised on **two orthogonal axes**, and both matter:
 
-- **Layer** (enforced): *import direction.* L1 core types import nothing above
+- **Layer** (reviewed): *import direction.* L1 core types import nothing above
   them; L2 domain verbs may import L1; L3 surfaces (`cli` / `web`) may import
   both. This is the invariant that stops the registry/abstraction tangle from
-  growing back — `tests/test_layering.py` fails any violation, and classifies
-  *every* top-level name so nothing escapes a layer decision. This is the axis
-  [`architecture.md`](?doc=architecture.md) indexes.
+  growing back — review keeps it (`process/code-audit.md` § 1c (e)) against the
+  index [`architecture.md`](?doc=architecture.md) § 3 holds; this is the axis it
+  indexes.
 - **Concern** (this doc): *functional responsibility.* Every L2 verb belongs to
   exactly one of four concerns. The concern is **not** enforced by a test — it
   is a design intent this document records so new code lands in the right
@@ -306,6 +307,6 @@ When adding backend code, place it by concern **and** layer:
   (`to_dict` / `from_dict` / `to_wire`) and `persist.check_schema_major`; never
   hand-list metadata fields or hand-roll a schema check.
 
-The enforcement floor stays `tests/test_layering.py` (import direction). This
-document is the concern-level intent above that floor; keep it in sync when a
-concern boundary moves.
+The import direction is review's (`process/code-audit.md` § 1c (e)). This
+document is the concern-level intent above it; keep it in sync when a concern
+boundary moves.

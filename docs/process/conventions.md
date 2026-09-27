@@ -19,10 +19,12 @@ These are gated — a violation fails `pytest` (and therefore the pre-commit hoo
 
 - **Layering — imports only point *down*.** The code is layered, and the two
   **surfaces** (`cli.py` and `web/`) are the top layer: nothing lower may import
-  them, and no module may import from a layer above it.
-  `tests/test_layering.py` walks every `molbuilder/*.py` and asserts both the
-  import direction *and* that every top-level name is classified into a layer (so a
-  new module can't silently escape the check).
+  them, and no module may import from a layer above it. **Review keeps it, not a
+  test** (`process/code-audit.md` § 1c (e); user, 2026-09-27) — the scan of every
+  file's imports that did until then earns no place (`testing.md`), and what an
+  upward import breaks shows up by itself: a cycle that fails every import of the
+  module, or a shipped monitor file that fails beside the job
+  (`tests/test_monitor_bundle_runs_alone.py`).
 - **The parse layer stays pure.** The memory-only text parsers do **no I/O**
   (`tests/parse/test_scripts.py::test_text_parsers_do_no_io`), the file parsers do
   **no subprocess / network / threads**, and the parse core carries **no
@@ -56,9 +58,9 @@ implementations are `lib/workspace/dispatcher.js` and `snapshot-io.js`.
 **Be honest about its status: this one is *advisory / review-only*.** No test pins
 it, and adoption is partial (only a fraction of the front-end modules actually
 carry the header today). It's a good habit and the review standard, but it is not
-a build gate — don't mistake it for one. (Fixing that — either an AST/text guard
-like `test_layering.py`, or softening the "mandatory" wording — is a recorded
-follow-up.) Note this is *not* the same as the **docs** provenance header
+a build gate — don't mistake it for one. (Fixing that is softening the
+"mandatory" wording: a guard that reads the source text would be a scan of the
+package's own source, which earns no place — `testing.md`.) Note this is *not* the same as the **docs** provenance header
 (`**Role:**`/`**Domain:**`) — which is **also advisory now**. It was enforced by
 `test_docs_structure.py` until `082ba979` retired that file for asserting the
 shape of the repository rather than a result: when such a test went red the docs
@@ -94,9 +96,9 @@ copy. For example: the `peptide`/`dna`/`smiles`/`name` commands and the Build
 blueprint both dispatch to `build_peptide` / `build_dna` / `build_from_smiles` /
 `build_from_name`; `modify` and the Modify blueprint both call
 `molbuilder.modify`; `jobset prep` and the Build blueprint both reach
-`runwrap.write_run_wrapper` through the same seam. The layering test guarantees
-this — `cli` and `web` are the only two top-layer modules, both sitting above one
-shared API.
+`runwrap.write_run_wrapper` through the same seam. The layering keeps this —
+`cli` and `web` are the only two top-layer modules, both sitting above one
+shared API (review, `code-audit.md` § 1c (e)).
 
 ### The command catalogue (an index — behaviour lives in the domain docs)
 
@@ -231,7 +233,8 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 
 ## 4. Where the guards live (test map)
 
-- `test_layering.py` — the import-direction + full-classification gate.
+- `test_monitor_bundle_runs_alone.py` — the monitor's shipped files run beside a
+  real run with molbuilder absent (the layering itself is review's).
 - `parse/test_scripts.py`, `parse/test_audit_gaps.py` — the parse-layer purity gates.
 - `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
 - `test_cli.py` (+ `test_cli_runtime_info.py`, `test_cli_tls.py`) — every

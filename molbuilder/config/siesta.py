@@ -1542,8 +1542,8 @@ class SiestaConfig:
 #:
 #: This is `identity.OUR_FILE_PATTERNS`' arrangement and for the same reason:
 #: this module is **L1** and the catalogue reader is **L2**, so importing it
-#: here is the violation `tests/test_layering.py` catches (tried 2026-08-18 and
-#: reverted).  The fact still has ONE authority -- `[item.restart].expands` --
+#: here is the upward import review refuses (`process/code-audit.md` § 1c (e);
+#: tried 2026-08-18 and reverted).  The fact still has ONE authority -- `[item.restart].expands` --
 #: and every PRODUCTION reader goes there through `script_emit.parameter`; this
 #: tuple has no production reader left at all.
 #:

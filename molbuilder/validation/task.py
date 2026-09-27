@@ -19,7 +19,8 @@ codec, and four need the engine's field schema -- one of those four being the
 DECLARED-TYPE row (added 2026-08-25), which needs the schema for the same
 reason the bounds row does: only the field knows what it can hold. ``task.py`` is L1 — it imports
 ``persist`` and the standard library — and importing an engine into it is
-exactly what ``tests/test_layering.py`` prevents. Its docstring carries the same
+the upward import the layer rule forbids (`architecture.md` § 3, kept by
+review). Its docstring carries the same
 split, so the two halves cannot quietly diverge; **if you add a row here, add it
 there.**
 

@@ -2523,12 +2523,15 @@ fewer things to keep true per module. That is the part that needed no mechanism.
 
 **Two: assert the lists that must remain, by MEMBERSHIP.** Some enumerations
 genuinely are the contract and cannot be dissolved — the six presenters, the 97
-routes, the 19 commands. For those the repo already has the answer, proven:
+routes, the 19 commands. For those the repo had an answer:
 `tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
-compares `architecture.md`'s L1 index against `test_layering.py`'s enforced set
-in both directions, and on 2026-09-17 it failed **the moment** a module was
-deleted without the document being swept. That is the pattern; the work is to
-put the other three under it (`plans/plan.md` § 5p.3p.8).
+compared `architecture.md`'s L1 index against `test_layering.py`'s set in both
+directions, and on 2026-09-17 it failed **the moment** a module was deleted
+without the document being swept. *(Both retired 2026-09-27: the second list
+was a source scan's copy, and the layer rule is review's — `process/code-audit.md`
+§ 1c (e).)* The pattern stands for a list a running product states — the
+routes the app serves, the commands the CLI accepts (`plans/plan.md`
+§ 5p.3p.8).
 
 > **Membership, never a count — the count hides an even number of errors.**
 > `web-api.md` § 3's heading says *"all 97 routes"* and a test asserts that

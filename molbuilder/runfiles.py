@@ -761,8 +761,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
              when="prep"),
     # THE SUFFIX IS SPELLED, NOT IMPORTED, and that is the LAYERING rule
     # rather than a lapse: this module is L1 and `template` is L2, so
-    # importing it here is the violation `tests/test_layering.py` catches
-    # (tried 2026-08-17 in `identity`, and reverted).  The cost is real --
+    # importing it here is the upward import review refuses
+    # (`process/code-audit.md` § 1c (e); tried 2026-08-17 in `identity`, and
+    # reverted).  The cost is real --
     # the glob view answers *"did the engine leave this, or did we write
     # it"* by subtraction, so a suffix that silently stops matching hands a
     # person their own input back as engine state.  What guards it instead

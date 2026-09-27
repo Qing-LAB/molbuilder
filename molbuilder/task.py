@@ -26,7 +26,8 @@ once"* actually requires.
 THE SPLIT PREFLIGHT.  § 6.6 lists eight checks "in order, and all of it before
 anything is written".  Four of them are answerable from the file alone and are
 enforced here; the other four need the engine's field schema, and importing an
-engine into an L1 codec is exactly what ``tests/test_layering.py`` prevents.
+engine into an L1 codec is the upward import the layer rule forbids
+(`architecture.md` § 3, kept by review).
 Those belong to resolution (P2 of ``execution/staged-runs-implementation-plan.md``),
 which already has the schema in hand:
 
@@ -812,7 +813,7 @@ def _bench_from_obj(obj: Mapping[str, Any]) -> Dict[str, Tuple[Any, ...]]:
     declares SWEEPABLE -- `template.md` § 6.2's ``execution`` category, *"knobs
     that change speed and not the answer"* -- is a MEMBERSHIP question, and
     answering it means reading the catalogue, which is L2.  This module is L1
-    (`test_layering`), and the same split already applies to ``calculation``
+    (`architecture.md` § 3), and the same split already applies to ``calculation``
     just above: shape here, membership where the vocabulary is read.  The
     membership check lives in ``validation/task.py``.
     """

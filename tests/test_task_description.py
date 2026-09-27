@@ -28,8 +28,8 @@ do not all belong to the same layer:
       comparison is over the resolved pair, and resolving is P2's verb
 
 Splitting it this way is not a weakening: the rows P1 skips are the rows that
-would force ``molbuilder/task.py`` to import an engine, which is what
-``test_layering.py`` exists to prevent.
+would force ``molbuilder/task.py`` to import an engine -- an L1 module
+reaching up a layer, which review refuses (`process/code-audit.md` § 1c).
 """
 from __future__ import annotations
 

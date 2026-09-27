@@ -785,53 +785,6 @@ def test_the_allocation_example_in_its_OWNING_contract_is_what_the_reader_stores
                 f"file holds.")
 
 
-def test_the_documented_L1_index_is_the_enforced_one():
-    """`architecture.md` § 3's L1 table and `test_layering.py`'s `_L1_MODULES`
-    must be the same set, in both directions.
-
-    **Why this one matters more than most.** The layer a module belongs to is
-    supposed to be answerable from `design.md`'s three questions, and the
-    index is where you look up the answer.  If the index and the enforced
-    list disagree, "which layer does this go in?" silently becomes a guess --
-    and a guess is what put `parse_duration` in a workflow package, which is
-    what let a human-written time reach `sbatch` as `-t 4h`.
-
-    The diagram in that section named `pseudos` and `checkpoint` as L1 until
-    2026-08-24; both are L2, and it listed 9 of the 22.  Nothing had ever
-    compared the picture to the rule.
-    """
-    import ast
-    import re
-    root = Path(__file__).resolve().parents[1]
-
-    # the ENFORCED set, read from the gate itself
-    gate = ast.parse((root / "tests" / "test_layering.py").read_text())
-    enforced = None
-    for node in gate.body:
-        if (isinstance(node, ast.Assign)
-                and getattr(node.targets[0], "id", "") == "_L1_MODULES"):
-            enforced = set(ast.literal_eval(node.value))
-    assert enforced, "_L1_MODULES could not be read -- repoint this test"
-
-    # the DOCUMENTED set, read from the table that indexes it
-    doc = (root / "docs" / "architecture.md").read_text(encoding="utf-8")
-    start = doc.index("**The L1 index, grouped by the object each module owns.**")
-    table = doc[start:doc.index("Reading the table is how you answer", start)]
-    documented = set()
-    for line in table.splitlines():
-        if not line.startswith("|") or line.startswith("| the object"):
-            continue
-        cells = line.split("|")
-        if len(cells) < 3:
-            continue
-        documented |= set(re.findall(r"`([a-z_]+)`", cells[2]))
-
-    assert documented == enforced, (
-        "architecture.md § 3's L1 index and tests/test_layering.py disagree.\n"
-        f"  documented but not enforced: {sorted(documented - enforced)}\n"
-        f"  enforced but not documented: {sorted(enforced - documented)}")
-
-
 # --------------------------------------------------------------------- #
 #  Gate E -- MEMBERSHIP, never a count                                   #
 #                                                                        #

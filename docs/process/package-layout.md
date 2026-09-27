@@ -73,7 +73,7 @@ The shared "nouns" and the cross-engine chemistry:
 
 ## 3. Tests
 
-`tests/` is **flat at the top with a few topic subdirs** — ~275 `test_*.py` files, most in the root, plus `tests/parse/`, `tests/spectra/`, `tests/validation/`, `tests/watch/`. Fixtures live in `tests/data/`; there are two `conftest.py` (`tests/` and `tests/validation/`). The pyramid markers (`unit`/`module`/`interface`/`integration`/`smoke`/`e2e`/`slow`) are declared in `pyproject.toml`, and **import direction is enforced by `tests/test_layering.py`** — the one structural invariant that keeps the layering honest. How to test is [`testing.md`](?doc=process/testing.md).
+`tests/` is **flat at the top with a few topic subdirs** — ~275 `test_*.py` files, most in the root, plus `tests/parse/`, `tests/spectra/`, `tests/validation/`, `tests/watch/`. Fixtures live in `tests/data/`; there are two `conftest.py` (`tests/` and `tests/validation/`). The pyramid markers (`unit`/`module`/`interface`/`integration`/`smoke`/`e2e`/`slow`) are declared in `pyproject.toml`, and **import direction is kept by review** (`code-audit.md` § 1c (e)) — the one structural rule that keeps the layering honest; `tests/test_layering.py` scanned it until 2026-09-27. How to test is [`testing.md`](?doc=process/testing.md).
 
 ## 4. Packaging
 

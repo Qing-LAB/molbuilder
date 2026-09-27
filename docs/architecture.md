@@ -40,8 +40,8 @@ Two habits make the reuse rule work:
 - **The two surfaces are the only top layer.** `cli.py` and `web/` (L3) call
   the *same* lower-layer verbs — never a private copy. If you are about to
   hand-roll logic in a blueprint or a CLI command, the verb you want almost
-  certainly already exists one layer down. This is enforced
-  (`tests/test_layering.py`); § 3 is organised by that layer.
+  certainly already exists one layer down. Review keeps this
+  (`process/code-audit.md` § 1c (e)); § 3 is organised by that layer.
 
 ---
 
@@ -82,9 +82,12 @@ Two habits make the reuse rule work:
 **Layer key.** **L1** core types (import nothing above them) · **L2** domain
 verbs (may import L1) · **L3** surfaces (cli / web; may import both). This is
 the load-bearing invariant — it is what stops the registry/abstraction tangle
-from growing back — and it is enforced by `tests/test_layering.py`, which
-classifies *every* top-level name so a new module can't silently escape a
-layer decision.
+from growing back — and **review keeps it** (`process/code-audit.md` § 1c (e)),
+against the index below, *(user, 2026-09-27: "a static code review problem")*.
+What it prevents at run time shows up by itself: an upward import at a module's
+top fails every import of that module, and a file that ships beside a job and
+reaches into molbuilder fails there (`tests/test_monitor_bundle_runs_alone.py`
+runs it).
 
 ```mermaid
 flowchart TB
@@ -108,12 +111,12 @@ flowchart TB
   L2 -->|reads/writes| L1
 ```
 
-**The L1 index, grouped by the object each module owns.** This is the set
-`tests/test_layering.py` enforces, and
-`tests/test_doc_claims.py::test_the_documented_L1_index_is_the_enforced_one`
-fails if the two drift apart — it compares the two SETS, so the index states no
-count. The diagram above draws the same set: a picture that disagrees with the
-enforced rule is how *"which layer does this go in?"* becomes a guess.
+**The L1 index, grouped by the object each module owns.** This is the one list
+of L1 modules — the map an import is reviewed against — so it states no count.
+*(Until 2026-09-27 `tests/test_layering.py` held a second copy, and a test
+compared the two.)* The diagram above draws the same set: a picture that
+disagrees with the index is how *"which layer does this go in?"* becomes a
+guess.
 
 | the object | modules | what they own |
 |---|---|---|

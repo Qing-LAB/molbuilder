@@ -601,8 +601,8 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
 > which is the thing `web/molview.md` § 11.7 forbids.
 
 > **Why the file door is L2, not a method on L1 `Structure`.** The layering
-> invariant (`tests/test_layering.py`) forbids an L1 module importing an L2
-> one. Reading/writing the pair needs the **L2** sidecar codec
+> invariant (`architecture.md` § 3; kept by review) forbids an L1 module
+> importing an L2 one. Reading/writing the pair needs the **L2** sidecar codec
 > (`sidecars/molstruct.py` — path derivation, atomic JSON, the envelope).
 > Putting it on L1 would force a second L1 copy of the sidecar format — the
 > exact drift this contract kills. So the pure data codec

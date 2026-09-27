@@ -193,7 +193,7 @@ what you lift out of it: `_row_badge` and `_continue_tail` in
 inputs, and run it under node. A refactor that keeps the rule keeps them
 passing. Lifting to *read* is the pin; lifting to *run* is a test.
 
-### 1c.1 The four questions that replace them
+### 1c.1 The five questions that replace them
 
 Each is a class of failure that is **silent at runtime** — nothing throws,
 nothing logs, and the screen looks plausible. That silence is why someone
@@ -220,8 +220,11 @@ silently wins or loses; a taught command that is not a real verb fails only
 when a person types it.
 
 Look for: tokens used vs. defined, classes in markup vs. selectors in sheets,
-ids for uniqueness, and every command string the page prints against the CLI
-that must accept it.
+ids for uniqueness, every command string the page prints against the CLI
+that must accept it, and every name in a module's `__all__` against what the
+module binds — `from <module> import *` dies on a name it does not have
+(`molbuilder.envs` named `subprocess` and `shutil` there while importing
+neither).
 
 **This class is the one that stays a test**, and `testing.md` § 3a draws the
 line: a *property of the shipped artifact* is a legitimate thing to assert —
@@ -259,6 +262,26 @@ Look for: every module-level variable a surface keeps, and one question
 each — *what is this about, and what happens when that subject changes?* A
 per-folder cache with no reset is the shape; so is a per-engine cache keyed by
 nothing.
+
+**(e) Does an import point up a layer?**
+The layer rule is `architecture.md` § 3's: an L1 module imports nothing above
+it, L2 may import L1, and only the two surfaces, `cli` and `web` (L3), may
+import both. **It is kept by review, not by a test** *(user, 2026-09-27: "a
+static code review problem")*: a test that opens the package's source to read
+its imports earns no place (`testing.md`, *What does NOT earn a place*), and
+the two failures that matter at run time show up without one — an upward
+import at a module's top closes a cycle that fails every import of the module,
+and a file that ships beside a job and reaches into molbuilder fails there,
+where molbuilder is not installed, which
+`tests/test_monitor_bundle_runs_alone.py` runs. What stays silent is the
+erosion: an upward import inside a function, which runs only when the function
+does, and a floor boundary inside one package (`execution/architecture.md`
+A7).
+
+Look for: each import a diff adds — absolute or relative, at the top of a
+module or inside a function — against the importing module's layer and the
+imported one's in § 3's index; a module the index does not list has no layer
+yet, and the diff that adds it says which.
 
 ### 1c.2 How to report one
 

@@ -75,8 +75,9 @@ below carry the detail.
 lower layer; lower layers must never import a higher one. This is the single
 most important architectural rule — without it the package recreates the
 registry/abstraction tangle that was deleted in favour of dataclass-driven
-introspection. It is enforced by `tests/test_layering.py`, which classifies
-*every* top-level name.
+introspection. Review keeps it (`process/code-audit.md` § 1c (e); user,
+2026-09-27: "a static code review problem") — until then `tests/test_layering.py`
+scanned every module's imports.
 
 **Which layer a module belongs to is a question with an answer, not a
 judgement call.** Ask them in order and stop at the first yes:
