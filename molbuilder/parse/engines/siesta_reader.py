@@ -23,7 +23,6 @@ transport rung are each read as what they are, with nothing told.
 from __future__ import annotations
 
 import math
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
@@ -72,16 +71,6 @@ _SIESTA_DIAG_ALGORITHMS = frozenset({
     "NOEXPERT-2STAGE", "NOEXPERT-2", "QR-2STAGE", "QR-2", "V_2STAGE",
 })
 
-# SIESTA's IterSCF timer line (`timer: Routine,Calls,Time,% = IterSCF`).  Format:
-#   timer: Routine,Calls,Time,% = IterSCF        1      40.820  49.49
-# CUMULATIVE Calls and Time (since the start of the run); the per-iteration
-# time is the delta between successive cycles' cumulative values.  Only the
-# IterSCF row is read.  Field parsing is ``fortran_float`` so a Fortran column
-# overflow ("******") degrades gracefully (NaN -> field omitted).
-_TIMER_ITERSCF_RE = re.compile(
-    r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s+(.+)$",
-    re.IGNORECASE,
-)
 
 
 class SiestaReader:
@@ -545,7 +534,7 @@ class SiestaReader:
         ``Calls`` as ``cumulative_calls``, ``Time`` as ``elapsed_s``.  A timer
         with no cycle before it is dropped; an overflowed field is left off
         rather than costing the others."""
-        m = _TIMER_ITERSCF_RE.match(line)
+        m = _G.ITER_SCF_TIMER.match(line)
         if m is None or not self._current_scf:
             return
         tokens = m.group(1).split()
@@ -788,29 +777,26 @@ class SiestaReader:
                         aliases=["SCF did NOT converge"],
                         start=contains_ci(_G.SCF_NOT_CONVERGED_MARKER),
                         on_start=self._on_scf_not_converged),
-            SectionRule(name="cell", aliases=["outcell: Unit cell vectors"],
-                        start=starts_with_ci("outcell: Unit cell vectors"),
+            SectionRule(name="cell", aliases=[_G.CELL_BEGIN],
+                        start=starts_with_ci(_G.CELL_BEGIN),
                         on_start=self._on_cell_start,
                         consume=self._consume_cell),
             SectionRule(name="end_of_run", aliases=[">> End of run"],
                         start=matches_regex_ci(_G.RUN_END.pattern),
                         on_start=self._on_end_of_run),
-            SectionRule(name="coords", aliases=["outcoor:"],
-                        start=starts_with_ci("outcoor:"),
+            SectionRule(name="coords", aliases=[_G.COORDS_BEGIN],
+                        start=starts_with_ci(_G.COORDS_BEGIN),
                         on_start=self._on_coords_start,
                         consume=self._consume_coords),
-            SectionRule(name="e_ks", aliases=["siesta: E_KS(eV)"],
+            SectionRule(name="e_ks", aliases=[_G.E_KS_LINE],
                         # Substring (not prefix): the marker sits mid-line.
-                        start=contains_ci("siesta: e_ks(ev)"),
+                        start=contains_ci(_G.E_KS_LINE),
                         on_start=self._on_e_ks),
             SectionRule(name="initial_etot", aliases=["siesta: Etot ="],
-                        # Anchored to the bare ``Etot`` token and ``=``:
-                        # ``siesta: Etot/N`` and ``Etot(eV)`` are other rows.
-                        start=matches_regex_ci(
-                            r"^\s*siesta:\s+Etot\s*=\s*[-\d]"),
+                        start=matches_regex_ci(_G.ETOT_LINE.pattern),
                         on_start=self._on_initial_etot),
-            SectionRule(name="forces", aliases=["siesta: Atomic forces"],
-                        start=contains_ci("siesta: atomic forces"),
+            SectionRule(name="forces", aliases=[_G.FORCES_BEGIN],
+                        start=contains_ci(_G.FORCES_BEGIN),
                         on_start=self._on_forces_start,
                         consume=self._consume_forces),
             SectionRule(name="scf_header", aliases=["iscf <columns>"],
@@ -821,9 +807,7 @@ class SiestaReader:
                         on_start=self._on_scf_data),
             SectionRule(name="iter_scf_timer",
                         aliases=["timer: ... IterSCF"],
-                        start=matches_regex_ci(
-                            r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*"
-                            r"IterSCF\s"),
+                        start=matches_regex_ci(_G.ITER_SCF_TIMER.pattern),
                         on_start=self._on_iter_scf_timer),
             # TranSIESTA's lines -- each has its own prefix, so none can
             # collide with a rule above.

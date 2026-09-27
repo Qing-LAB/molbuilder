@@ -229,9 +229,10 @@ stage. Measured: 61 minutes reported for a job that spanned 41 and computed
 **P-T4 — a consumer asks for the quantity it means, and takes `None` for an
 answer.** Epoch is formatted as a date, elapsed as a duration, and neither as
 the other — but formatting is only the most visible half. *Arithmetic counts
-too*: the browser's per-iteration figure divides a cumulative time by
-`cumulative_calls`, which is meaningful for a duration and is nonsense for a
-date. So it reads `elapsed_s` alone and treats an epoch as absent.
+too*: dividing a cumulative time by a count is meaningful for a duration and
+nonsense for a date, so an epoch never enters a rate. The page's seconds per
+iteration are the timing instrument's, per phase (§ 5c), never a figure the
+browser computes.
 
 > An accessor that returned *"whichever clock this cycle carries"* was written
 > during the first pass at this rule and looked reasonable — a DIFFERENCE
@@ -428,11 +429,11 @@ print(r.schema, r.payload)                     # e.g. "molstruct/v6", {...}
 several parses (`running-a-job.md` § 4.2):
 
 ```python
-from molbuilder.parse.dirs.job import run_status
+from molbuilder.parse.dirs import run_status        # the package's door (R-RO2)
 
-run_status(Path("projects/BDT/optimization/run-0"))
-# {"state": "finished", "detail": "job_completed",
-#  "last_change_at": "...", "active_source": "BDT-run0.out"}
+st = run_status(Path("projects/BDT/optimization/run-0"))
+st.state, st.detail          # ("finished", "job_completed") -- a RunStatus
+st.active_source             # "BDT-run0.out"
 ```
 
 **Extract the reserved blocks from a `.fdf` / `.py` body** — **not this
@@ -939,7 +940,7 @@ the split that caused this.
 
 ```python
 READERS = {".out": …, ".pyscf.log": …, ".molwatch.log": …}
-def ending_of(path) -> RunEnding      # role from `runfiles.canonical_role`
+def ending_of(path, *, stderr=None) -> RunEnding   # role from `runfiles.role_of`
 ```
 
 **Dispatch is on the role. That is load-bearing:** a directory whose engine is
@@ -1373,7 +1374,7 @@ is rows, not a code path.
 | `siesta-out` | `<base>-runN.out`, head and tail | the grammar's line readers (§ 5d.5) | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local`; `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged`; `earlier` |
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `runwrap.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
-| `instruments` | `.scf-timing.log` · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter…` · `memory` · `host.machine` |
+| `instruments` | `.scf-timing.log` · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` | `jobset.materialize.read_run_launch` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on) |
 | `concluded` | `<base>-runN.concluded` | `jobset.materialize.attempt_concluded` | any | `computation.exit` |
@@ -1382,7 +1383,9 @@ is rows, not a code path.
 
 **One source per quantity is structural, not a habit**: no two rows answer the
 same field for the same engine — § 5c.1's rule made a property of the
-declaration. The benchmark's trial reader (`summarize.parse_point`) asks the
+declaration, which is the mechanism: a row contributes the fields it declares
+and no others, and `record.py` refuses to load a table in which two rows answer
+one field (or one inside another's) for an engine both serve. The benchmark's trial reader (`summarize.parse_point`) asks the
 same rows for its computation facts, so a benchmark and a Run panel cannot
 disagree about a run. **The panel is generic too** (`web/results.md` § 3a): it
 renders the record's parts from a table of labels and formatters keyed by

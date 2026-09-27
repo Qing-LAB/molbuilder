@@ -786,3 +786,27 @@ def test_the_results_door_shows_the_engines_frame_and_the_structures_kinds(
     assert again["periodicity"]["box_corner"] == [0.0, 0.0, 0.0], (
         "the viewer would draw a box the engine never had",
         again["periodicity"])
+
+
+def test_a_stopped_run_says_why_in_the_ending_readers_words(client, tmp_path):
+    """The viewer's "Reason:" line is the server's: the file's cause as the
+    one ending reader states it (`_run_ending`), worded by the SIESTA
+    family's table (`siesta_grammar.CAUSE_WORDS`) -- the browser keeps no
+    copy of the markers.  A real hemeC stage that SIESTA stopped because its
+    SCF had to converge: the cause is the SCF, not the ABNORMAL_TERMINATION
+    and `Stopping Program` lines of die's cascade after it.
+
+    MUTATION THIS MUST FAIL AGAINST: take the LAST fatal line as the cause.
+    """
+    import shutil
+    from molbuilder.parse.engines.siesta_grammar import (CAUSE_WORDS,
+                                                         SCF_NOT_CONV_MARKER)
+    src = (Path(__file__).parent / "fixtures" / "siesta_frozen"
+           / "hemeC-stage1-scf_not_conv-5fr.out")
+    run = tmp_path / "hemeC-run0.out"
+    shutil.copy(src, run)
+    body = client.post("/api/watch/load", json={"path": str(run)}).get_json()
+    assert body["ok"] is True, body
+    assert body["data"]["run_state"] == "stopped"
+    assert body["data"]["stop_reason"] == CAUSE_WORDS[SCF_NOT_CONV_MARKER]
+

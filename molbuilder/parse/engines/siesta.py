@@ -126,17 +126,7 @@ class SiestaParser:
     # ("WELCOME TO SIESTA") were enumerated separately pre-2026-05-29;
     # the case-insensitive lookup collapses them.  Listed lower-case
     # here because the matcher lower-cases its input.
-    _STRONG_MARKERS = (
-        "welcome to siesta",            # v4.x / v5.x banner (either case)
-        "siesta: system type",
-        "siesta: atomic forces",
-        "outcoor: atomic coordinates",
-        "outcell: unit cell vectors",
-        "begin cg opt",
-        "begin md opt",
-        "begin broyden opt",
-        "begin fire opt",
-    )
+    _STRONG_MARKERS = _G.SNIFF_MARKERS
     _PREFIX_MARKERS = ("siesta:", "redata:")
     _SCAN_LINES = 300
     _PREFIX_THRESHOLD = 3

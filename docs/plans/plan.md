@@ -4027,7 +4027,35 @@ And the same day, after P1 and its review:
   with no ending and no exit recorded `failed`, stopped before its end.
   `stale` came in on 2026-06-19 (`d620b1da`).
 * **Open**: a PySCF progress log states its SCF tolerance in Hartree beside
-  values in eV, so the monitor shows PySCF's ΔE with no tolerance.
+  values in eV, so the monitor shows PySCF's ΔE with no tolerance. (Its
+  orbital-gradient norm is now written in eV, as an energy — the 2026-09-26
+  review; the tolerances are the open half.)
+* **Built ahead of P2, found by the 2026-09-26 review**: the run record
+  (`parse/dirs/record.py`, `setup.py`), `JobDirParser` serving `status` and
+  `record`, `/api/results/dir` carrying it. **P2 still owes**: the Run panel
+  itself; the setup rows' `echo` column (§ 5d.3); comparing the launch rows
+  asked with those run (`bench.compare_asked_to_ran`); `summarize.parse_point`
+  composed from the record's rows, which retires its second file-head reader;
+  the SCF plots by phase; the viewer's own seconds per iteration removed (the
+  timing instrument is the one home); the parameters fence narrowed to the
+  calculation's items.
+* **Open, for the user (2026-09-26 review)**:
+  1. A killed run reads `running` on the Results tab — its files show no
+     ending — while the monitor's closing line says `failed — stopped before
+     its end`. Should `run_status` read the monitor's closing line?
+  2. A flat stage's launch writes no `run.json`, so a launched flat stage
+     reads `pending`, not `queued`.
+  3. A folder read alone that holds only a product (a spectrum) reads
+     `pending — prepped, not launched` though nothing prepped it.
+  4. How a SIESTA run ended is implemented twice — the reading pass and
+     `_run_ending.scan_ending` — kept in agreement by a test: one reader
+     behind both doors?
+  5. `run_status` reads endings without SIESTA's stderr, which the wrapper
+     passes: a rank other than 0 may state its fatal line only there.
+  6. Which memory peak the record shows — the process's or the kernel's.
+  7. Convert PySCF's stated tolerances to eV so its residuals show one.
+  8. With no `notify` block the start and the end still go to every channel
+     on the machine — intended?
 * The runaway symptom (§ 5d.6) cannot be "|ts-Vha| exceeds 1 eV": the
   converging device swung −1.39 → +1.95 eV in its first two NEGF iterations.
   P4 sets the rule on the two measured runs.

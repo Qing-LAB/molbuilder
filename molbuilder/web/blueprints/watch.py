@@ -617,6 +617,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         new_data = trajectory_to_legacy_dict(traj)
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
+    new_data["stop_reason"] = _stop_reason(path, new_data.get("run_state"))
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
@@ -632,6 +633,22 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             _state["data"]  = new_data
             _state["mtime"] = mtime
         return dict(_state), None
+
+
+def _stop_reason(path: str, run_state: Optional[str]) -> Optional[str]:
+    """Why a stopped run stopped, in words: its cause from the one ending
+    reader (`_run_ending.ending_of`, `model/parse.md` § 2b), worded by the
+    SIESTA family's table (`siesta_grammar.CAUSE_WORDS`).  ``None`` for a run
+    that did not stop, or a file the ending reader does not read."""
+    if run_state not in ("stopped", "out_of_memory"):
+        return None
+    from molbuilder.parse.engines import _run_ending
+    from molbuilder.parse.engines.siesta_grammar import CAUSE_WORDS
+    try:
+        cause = _run_ending.ending_of(path).cause
+    except Exception:                                  # noqa: BLE001
+        return None
+    return CAUSE_WORDS.get(cause) if cause else None
 
 
 # /watch page route removed 2026-05-19: the trajectory inspector is

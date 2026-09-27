@@ -449,6 +449,38 @@ def cycle_positional(
     return None
 
 
+# ---- The blocks a step is read from ------------------------------------------------
+#: ``outcoor: <title> (Ang):`` opens a coordinates block -- ``Atomic
+#: coordinates``, ``Relaxed atomic coordinates``, ``Final (unrelaxed) atomic
+#: coordinates`` (``Src/outcoor.f``).
+COORDS_BEGIN = "outcoor:"
+#: ``outcell: Unit cell vectors (Ang):`` opens the cell block.
+CELL_BEGIN = "outcell: Unit cell vectors"
+#: ``siesta: Atomic forces (eV/Ang):`` opens the forces block.
+FORCES_BEGIN = "siesta: Atomic forces"
+#: A step's Kohn-Sham energy, ``siesta: E_KS(eV) = ...`` -- it sits mid-line.
+E_KS_LINE = "siesta: E_KS(eV)"
+#: The bare ``siesta: Etot = ...`` of the energy decomposition, never
+#: ``Etot/N`` or ``Etot(eV)``, which are other rows.
+ETOT_LINE = re.compile(r"^\s*siesta:\s+Etot\s*=\s*[-\d]", re.IGNORECASE)
+#: SIESTA's IterSCF timer, CUMULATIVE since the start of the run: ``timer:
+#: Routine,Calls,Time,% = IterSCF  <calls>  <time>  <percent>``.
+ITER_SCF_TIMER = re.compile(
+    r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s+(.+)$",
+    re.IGNORECASE)
+#: Lines only a SIESTA-family output prints, in lower case, for the format
+#: sniffer (`engines/siesta.py`): the banner, the system type, the blocks
+#: above, and a relaxation's step openers.
+SNIFF_MARKERS = (
+    "welcome to siesta",
+    "siesta: system type",
+    FORCES_BEGIN.lower(),
+    "outcoor: atomic coordinates",
+    CELL_BEGIN.lower(),
+    "begin cg opt", "begin md opt", "begin broyden opt", "begin fire opt",
+)
+
+
 # ---- The deck, as SIESTA echoes it -----------------------------------------------
 #: SIESTA copies the deck it read into its output between two starred rules
 #: (``Src/reinit_m.F90``: ``*** Dump of input data file ***`` and ``*** End of
@@ -509,6 +541,20 @@ FATAL_MARKERS: Tuple[Tuple[str, str], ...] = (
 SCF_CONVERGED_MARKER = "scf convergence by"
 SCF_NOT_CONV_MARKER = "scf_not_conv"
 SCF_NOT_CONVERGED_MARKER = "scf did not converge"
+
+#: What each CAUSE means, in words a person reads -- a cause being the first
+#: fatal line's marker, or :data:`SCF_NOT_CONV_MARKER` when SIESTA made the
+#: SCF fatal (`_run_ending.RunEnding.cause`).  The viewer's "Reason:" line is
+#: this table's, never a copy of the markers in the browser.
+CAUSE_WORDS = {
+    **{m: "out of memory" for m, st in FATAL_MARKERS if st == "out_of_memory"},
+    "siesta: error": "an engine error",
+    PROPOR_MARKER: "MPI rank distribution error (propor)",
+    "stopping program from node": "a rank stopped the run",
+    "siesta died": "the engine died",
+    "abnormal_termination": "abnormal termination",
+    SCF_NOT_CONV_MARKER: "SCF non-convergence (required to converge)",
+}
 #: WHEN ``SCF_NOT_CONV:`` IS THE CAUSE OF DEATH, SIESTA says so on the line:
 #: under ``SCF.MustConverge`` it prints ``SCF_NOT_CONV: SCF did not converge
 #: in maximum number of steps (required).`` and dies

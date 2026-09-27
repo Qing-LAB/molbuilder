@@ -752,48 +752,15 @@ import { molviewFiles } from "../projects/molview-doors.js";
     /*  Status banner                                                      */
     /* ------------------------------------------------------------------ */
 
-    /**
-     * Translate a raw parser ``error_message`` string into a short
-     * human-readable reason tag.  Used by the run-state info-panel
-     * to show ``Reason: SCF non-convergence`` etc. instead of the
-     * cryptic raw marker.
-     *
-     * Returns ``null`` when the message is empty (caller should
-     * skip the "Reason: ..." line entirely).  Returns the raw
-     * message when no classifier matches (fallback: at least the
-     * user sees SOMETHING informative).
-     *
-     * Categories mirror the parser's fatal-marker rule set in
-     * ``parsers/siesta.py`` (2026-05-29) so the UI tag tracks the
-     * detection logic 1:1.  Adding a new fatal marker on the parser
-     * side should add a branch here too.
-     */
-    function _classifyStopReason(errMsg) {
+    /** WHY A STOPPED RUN STOPPED, in the server's words: the file's cause
+     * as the one ending reader states it, worded by the SIESTA family's
+     * table (`siesta_grammar.CAUSE_WORDS`, `model/parse.md` § 2b) -- the
+     * browser keeps no copy of the markers.  Without one, the parser's own
+     * message, trimmed so the badge stays a line.  ``null`` when there is
+     * neither. */
+    function _stopReason(data, errMsg) {
+        if (data && data.stop_reason) return data.stop_reason;
         if (!errMsg) return null;
-        const lower = String(errMsg).toLowerCase();
-        if (lower.indexOf("scf_not_conv") >= 0
-            || lower.indexOf("scf did not converge") >= 0) {
-            return "SCF non-convergence";
-        }
-        if (lower.indexOf("propor: error") >= 0
-            || lower.indexOf("imax = 0") >= 0) {
-            return "MPI rank distribution error (propor)";
-        }
-        if (lower.indexOf("abnormal_termination") >= 0) {
-            return "abnormal termination";
-        }
-        if (lower.indexOf("siesta died") >= 0) {
-            return "engine died";
-        }
-        if (lower.indexOf("siesta: error") >= 0) {
-            return "engine error";
-        }
-        if (lower.indexOf("stopping program from node") >= 0) {
-            return "node stop signal";
-        }
-        // No classifier matched -- fall back to raw text so the
-        // user still sees what the parser flagged.  Trim to a
-        // reasonable length so the badge doesn't blow up.
         const s = String(errMsg).trim();
         return s.length > 120 ? s.slice(0, 117) + "..." : s;
     }
@@ -2367,11 +2334,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 : mb + " MB");
         }
         if (rt.hostname) parts.push(rt.hostname);
-        // SIESTA-specific build + diagonalizer info (populated by the
-        // parse/engines/siesta.py header probes; absent on PySCF runs
-        // and on truncated SIESTA outputs that didn't reach the
-        // redata: echo).  See tests/test_siesta_runtime_info_build.py
-        // for the schema.
+        // SIESTA's build and solver, as its output states them -- the
+        // build header and the `diag:` lines, read through the SIESTA
+        // family's table (`siesta_grammar`).  Absent on PySCF runs and on
+        // an output cut before them.
         const sb = rt.siesta_build;
         if (sb && sb.version) {
             let s = "SIESTA " + sb.version;
@@ -2381,18 +2347,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             parts.push(s);
         }
         const sd = rt.siesta_diag;
-        if (sd && sd.algorithm) {
-            let s = sd.algorithm;
-            if (sd.elpa_gpu === true) s += " GPU";
-            parts.push(s);
-        }
-        if (sd && sd.gpu_device) {
-            let g = String(sd.gpu_device)
-                .replace(/^NVIDIA GeForce /, "")
-                .replace(/^NVIDIA /, "");
-            if (sd.gpu_compute_capability) g += " " + sd.gpu_compute_capability;
-            parts.push(g);
-        }
+        if (sd && sd.algorithm) parts.push(sd.algorithm);
         el.textContent = parts.join(" · ");
     }
 
@@ -2812,7 +2767,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // the visual hierarchy.
                 badge.classList.add("run-state-error");
                 badgeLab.textContent = "Stopped";
-                const reasonTag = _classifyStopReason(errMsg);
+                const reasonTag = _stopReason(state.data, errMsg);
                 badgeDet.textContent = joinParts(
                     reasonTag ? "Reason: " + reasonTag : "",
                     lastResultTs ? "stopped " + lastResultTs : "",

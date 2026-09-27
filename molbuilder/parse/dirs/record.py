@@ -60,6 +60,8 @@ class RunFiles:
     monitor_log: Optional[Path] = None
     util_csv: Optional[Path] = None
     earlier: Tuple[Tuple[int, Optional[Path]], ...] = ()
+    #: The ``.out``'s head, read once here for every row that reads it.
+    out_head: str = ""
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -157,9 +159,10 @@ def run_files(directory, *, status=None,
     # THE FDF LOG IS PAIRED BY ITS STAMP: SIESTA opens it in the second it
     # prints `>> Start of run` -- exact on 122 of 122 real outputs.
     fdf_log = None
+    out_head = _read(out, head=_HEAD)
     if out is not None:
         facts: Dict[str, Any] = {}
-        for line in _read(out, head=_HEAD).splitlines():
+        for line in out_head.splitlines():
             if _G.read_launch_line(line, facts) == "run_start_local":
                 break
         start = facts.get("run_start_local")
@@ -187,7 +190,7 @@ def run_files(directory, *, status=None,
     return RunFiles(
         directory=d, engine=engine, status=status,
         deck=deck, label=label,
-        stage=stage, run=n, out=out, pyscf_log=pyscf_log,
+        stage=stage, run=n, out=out, out_head=out_head, pyscf_log=pyscf_log,
         engine_log=one(".log", None), fdf_log=fdf_log,
         wrapper_section=section, wrapper_text=section_text,
         timing=one(".scf-timing.log", n) if n is not None else None,
@@ -228,7 +231,7 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
     """The ``.out``'s build, launch, solver and pseudopotential lines, through
     the SIESTA family's table (`siesta_grammar`)."""
     from ..engines import siesta_grammar as _G
-    head = _read(f.out, head=_HEAD)
+    head = f.out_head
     if not head:
         return {}
     build: Dict[str, Any] = {}
@@ -436,9 +439,26 @@ def _setup(f: RunFiles) -> Dict[str, Any]:
     return setup_rows(f)
 
 
-#: THE TABLE (§ 5d.1b).  ``fields`` are the record paths a row answers; a
-#: test asserts no two rows answer one field for one engine, which is § 5c.1's
-#: "one source per quantity" made a property of the declaration.
+from ..engines.siesta_grammar import (PHASE_NEGF as _PHASE_NEGF,  # noqa: E402
+                                      PHASE_PERIODIC as _PHASE_PERIODIC)
+
+#: The engines a run record is composed for; a row whose ``engines`` is
+#: ``()`` answers for each.
+_ENGINES = ("siesta", "pyscf")
+
+#: The timing instrument's figures (§ 5c): the headline phase's, and each
+#: phase's own under its name.
+_TIMING = tuple(f"computation.time.{k}" for k in ("s_per_iter",
+                                                  "iters_measured")) + tuple(
+    f"computation.time.{k}_{phase}"
+    for k in ("s_per_iter", "iters_measured", "rows")
+    for phase in (_PHASE_PERIODIC, _PHASE_NEGF))
+
+#: THE TABLE (§ 5d.1b).  ``fields`` are the record paths a row answers, and
+#: the declaration is the mechanism: a row contributes those fields and no
+#: others (:func:`_declared`), and this module refuses to load when two rows
+#: answer one field for one engine (:func:`_one_source`) -- § 5c.1's "one
+#: source per quantity".
 CONTRIBUTORS: Tuple[Contributor, ...] = (
     Contributor("siesta-out",
                 ("computation.engine.program", "computation.engine.version",
@@ -460,8 +480,7 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
                  "computation.time.engine_elapsed_s"),
                 (), _wrapper),
     Contributor("instruments",
-                ("computation.time.s_per_iter", "computation.memory",
-                 "computation.host.machine"),
+                _TIMING + ("computation.memory", "computation.host.machine"),
                 (), _instruments),
     Contributor("pyscf-log",
                 ("computation.engine.program", "computation.engine.version",
@@ -478,6 +497,44 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
     Contributor("setup", ("setup.rows", "setup.engine_only",
                           "verdict.findings"), (), _setup),
 )
+
+
+def _one_source(rows: Tuple[Contributor, ...]) -> None:
+    """Refuse a table in which two rows answer one field -- or one answers a
+    field inside another's -- for an engine both serve."""
+    owner: Dict[Tuple[str, str], str] = {}
+    for row in rows:
+        for engine in (row.engines or _ENGINES):
+            for field_ in row.fields:
+                for (other, eng), name in owner.items():
+                    if eng == engine and name != row.name and (
+                            other == field_ or other.startswith(field_ + ".")
+                            or field_.startswith(other + ".")):
+                        raise ValueError(
+                            f"run record: {field_!r} ({row.name}) and "
+                            f"{other!r} ({name}) answer one field for "
+                            f"{engine} -- one source per quantity (§ 5d.1b)")
+                owner[(field_, engine)] = row.name
+
+
+_one_source(CONTRIBUTORS)
+
+
+def _declared(part: Dict[str, Any], fields: Tuple[str, ...],
+              at: str = "") -> Dict[str, Any]:
+    """``part`` cut to the paths ``fields`` declare: a declared field whole,
+    and the dicts on the way to one."""
+    out: Dict[str, Any] = {}
+    for key, val in part.items():
+        path = f"{at}.{key}" if at else key
+        if any(path == f or path.startswith(f + ".") for f in fields):
+            out[key] = val
+        elif isinstance(val, dict) and any(f.startswith(path + ".")
+                                           for f in fields):
+            sub = _declared(val, fields, path)
+            if sub:
+                out[key] = sub
+    return out
 
 
 def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
@@ -505,7 +562,7 @@ def run_record(directory, *, status=None,
         if row.engines and f.engine not in row.engines:
             continue
         try:
-            part = row.read(f)
+            part = _declared(row.read(f), row.fields)
         except Exception:                                  # noqa: BLE001
             # A reporter degrades: one unreadable file costs its own fields,
             # never the record.
