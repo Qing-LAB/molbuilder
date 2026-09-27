@@ -258,15 +258,16 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         attempt = latest_attempt(d)     # None is the ANSWER here: prepared?
         observed = run_dir(d)           # ...and this is where to look
         # WHERE the launch record lives mirrors where submit WRITES it
-        # (submit.py `_resolve_launch`): the attempt when one exists, and
-        # and where flat keeps none the container IS the attempt, so
-        # its `run.json` sits at the trial's top.  Until 2026-08-20 this
-        # read the attempt only, so a grouped-submitted trial answered
-        # § 1.6's exact forbidden line ("prepped, not launched") while
-        # its record sat one level up from where anyone looked.
+        # (submit.py `_where_recorded`): the attempt when one exists; a
+        # sweep trial's at the trial's top -- until 2026-08-20 this read the
+        # attempt only, so a grouped-submitted trial answered § 1.6's exact
+        # forbidden line ("prepped, not launched") while its record sat one
+        # level up; and a flat stage's own record, named by its deck, in
+        # the directory every stage shares (2026-09-27).
         launch = read_run_launch(
-            attempt if attempt is not None
-            else (d if jobset.kind == "sweep" else None))
+            attempt if attempt is not None else d,
+            basename=(None if attempt is not None or jobset.kind == "sweep"
+                      else Path(job.script).stem))
         # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
         # In the hierarchy the directory already answered; in flat every stage
         # shares one, and the deck's token in each filename is the answer.

@@ -402,7 +402,8 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
     """``run.json`` -- how the attempt was launched (`materialize`)."""
     from ...jobset.materialize import read_run_launch
-    rec = read_run_launch(f.directory) or {}
+    rec = read_run_launch(f.directory,
+                          basename=f.deck.stem if f.deck else None) or {}
     launch = {k: rec[k] for k in ("mode", "command", "job_id", "launched_at",
                                   "placed_on") if rec.get(k) is not None}
     return {"computation": {"launch": launch}} if launch else {}

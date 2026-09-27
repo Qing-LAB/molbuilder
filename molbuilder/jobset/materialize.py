@@ -969,12 +969,25 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     return None
 
 
+def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
+    """Where a launch is recorded (`project-layout.md` § 1.6.3): an attempt's
+    ``run.json``; with ``basename`` -- a flat stage's deck stem,
+    ``<label>_<token>`` -- that stage's own ``<basename>.run.json``, beside
+    every other file of it in the calculation's one directory."""
+    from ..runfiles import tail
+    return Path(where) / (RUN_LAUNCH_FILE if basename is None
+                          else basename + tail(".run.json"))
+
+
 def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
                      job_id: Optional[str] = None,
                      continued_from: Optional[str] = None,
                      launched_at: Optional[str] = None,
-                     placed_on: Optional[dict] = None) -> Path:
-    """Record a launch into the attempt — ``molbuilder/run-launch@1``.
+                     placed_on: Optional[dict] = None,
+                     basename: Optional[str] = None) -> Path:
+    """Record a launch into the attempt — ``molbuilder/run-launch@1`` -- or,
+    given ``basename``, a flat stage's own record in its calculation's
+    directory (:func:`launch_record_path`).
 
     Written **after** the launch succeeds, so a failed launch leaves the
     attempt exactly as prepare left it and is still safe to prepare again
@@ -997,7 +1010,7 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     which a reader must not mistake for *yes*.
     """
     from datetime import datetime, timezone
-    p = Path(attempt_dir) / RUN_LAUNCH_FILE
+    p = launch_record_path(attempt_dir, basename)
     body = {
         "schema": RUN_LAUNCH_SCHEMA,
         "mode": mode,
@@ -1020,9 +1033,15 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     return p
 
 
-def read_run_launch(attempt_dir) -> Optional[dict]:
-    """``run.json`` from an attempt, or ``None`` when there is none -- the
-    reader beside :func:`write_run_launch`.
+def read_run_launch(attempt_dir, basename: Optional[str] = None
+                    ) -> Optional[dict]:
+    """The launch record, or ``None`` when there is none -- the reader
+    beside :func:`write_run_launch`.
+
+    An attempt's ``run.json`` answers for the attempt.  A flat stage has no
+    attempt: ``basename`` names its own record (:func:`launch_record_path`);
+    without one, the newest stage record in the directory answers for it --
+    a flat calculation was launched when any of its stages was.
 
     `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
     from the directory alone"*, so this file is the answer.  Present but
@@ -1032,7 +1051,15 @@ def read_run_launch(attempt_dir) -> Optional[dict]:
     """
     if attempt_dir is None:
         return None
-    p = Path(attempt_dir) / RUN_LAUNCH_FILE
+    p = launch_record_path(attempt_dir)
+    if not p.is_file():
+        if basename is not None:
+            p = launch_record_path(attempt_dir, basename)
+        else:
+            from ..runfiles import find_by_role
+            stages = sorted(find_by_role(attempt_dir, ".run.json"),
+                            key=lambda f: f.stat().st_mtime)
+            p = stages[-1] if stages else p
     if not p.is_file():
         return None
     try:
@@ -1080,6 +1107,7 @@ __all__ = ["Attempt", "trial_dir", "trial_work_dir",
            "attempts", "was_launched", "latest_attempt", "run_dir",
            "resolve_attempt",
            "prepare_attempt",
-           "write_run_launch", "read_run_launch", "RUN_LAUNCH_SCHEMA",
+           "write_run_launch", "read_run_launch", "launch_record_path",
+           "RUN_LAUNCH_SCHEMA",
            "RUN_LAUNCH_FILE",
            "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

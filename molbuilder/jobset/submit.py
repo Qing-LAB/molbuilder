@@ -338,11 +338,9 @@ def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
                 f"sbatch failed for job {job.name!r} (rc={cp.returncode}):\n"
                 f"{cp.stderr.strip()}")
         jid = _parse_sbatch_id(cp.stdout)
-        rec = attempt if attempt is not None else (
-            job_dir if jobset.kind == "sweep" else None)
-        if rec is not None:
-            _record_launch(rec, mode="submit", command=cmd, job_id=jid,
-                           placement=placement)
+        rec, basename = _where_recorded(jobset, job, job_dir, attempt)
+        _record_launch(rec, mode="submit", command=cmd, job_id=jid,
+                       placement=placement, basename=basename)
         results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
     return results
 
@@ -613,10 +611,8 @@ def _run_direct(jobset: JobSet, base_dir: Path, *,
         # never launched for its whole runtime.  A failed START still
         # records nothing -- Popen raising means no process exists, and the
         # attempt is exactly as prepare left it (§ 1.6).
-        rec = attempt if attempt is not None else (
-            job_dir if jobset.kind == "sweep" else None)
-        if rec is not None:
-            _record_launch(rec, mode="direct", command=cmd)
+        rec, basename = _where_recorded(jobset, job, job_dir, attempt)
+        _record_launch(rec, mode="direct", command=cmd, basename=basename)
         rc = proc.wait()
         if rc != 0:
             results.append(JobResult(job.name, cmd, "failed",
@@ -1714,9 +1710,25 @@ def _placed_on(placement) -> Optional[dict]:
             "qos": placement.qos}
 
 
+def _where_recorded(jobset: JobSet, job, job_dir: Path,
+                    attempt: Optional[Path]) -> "tuple":
+    """``(directory, basename)`` a launch is recorded in
+    (`project-layout.md` § 1.6.3): the attempt's ``run.json``; a sweep
+    trial's, at the trial's top; a flat stage's own ``<basename>.run.json``
+    in the calculation's directory, which every stage shares --
+    ``basename`` its deck's stem."""
+    if attempt is not None:
+        return attempt, None
+    if jobset.kind == "sweep":
+        return job_dir, None
+    return job_dir, Path(job.script).stem
+
+
 def _record_launch(attempt: Path, *, mode: str, command: List[str],
-                   job_id: Optional[str] = None, placement=None) -> None:
-    """Write ``run.json`` into the attempt, carrying its provenance.
+                   job_id: Optional[str] = None, placement=None,
+                   basename: Optional[str] = None) -> None:
+    """Write the launch record -- the attempt's ``run.json``, or with
+    ``basename`` a flat stage's own -- carrying its provenance.
 
     ``continued_from`` is read back from what ``prep`` copied in rather than
     passed down: prep is what knows, and re-deriving it here would be a second
@@ -1730,7 +1742,8 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     if marker.is_file():
         src = marker.read_text(encoding="utf-8").strip() or None
     write_run_launch(attempt, mode=mode, command=command, job_id=job_id,
-                     continued_from=src, placed_on=_placed_on(placement))
+                     continued_from=src, placed_on=_placed_on(placement),
+                     basename=basename)
 
 
 # --------------------------------------------------------------------- #

@@ -676,7 +676,8 @@ person before continuing a run with no marker
 written as the process starts). One killed before writing anything reads
 `failed` by its monitor's closing record, or `queued` when nothing outlived
 it; an engine that merely died still reaches the wrapper's marker and reads
-`failed`; a flat stage, whose launch writes no `run.json`, reads `pending`.
+`failed`; a flat stage reads `queued` the same way, from its own
+`<basename>.run.json`.
 
 ```mermaid
 stateDiagram-v2

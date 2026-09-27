@@ -263,13 +263,15 @@ au_bdt_relax/
 ├── <label>_01_coarse-run0.monitor.log   index too: the marker (§ 1.6.3), the
 │     (and .util.csv, .scf-timing.log)   monitor's pair, the timing log
 ├── <label>_01_coarse.runwrap-<stamp>.log   the wrapper's session log
+├── <label>_01_coarse.run.json      the stage's launch record (§ 1.6.3)
 │
 ├── <label>.XV  <label>.DM  <label>.CG  ⚠ ONE shared set, UNSUFFIXED
 ├── <label>.STRUCT_OUT              ⚠ one, overwritten by each stage
 └── <label>.ANI  <label>.EIG        ⚠ likewise
 ```
 
-*No `run.json` here: a flat stage's launch writes none (§ 1.6.3).*
+*A flat stage's launch record is its own `<basename>.run.json`, named like
+every other file of it: the directory is every stage's (§ 1.6.3).*
 
 *`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
 run id, which carries the formula as well and lives in `task.json`
@@ -818,7 +820,7 @@ Two small files answer the two questions *(the second decided by the user,
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) | `launch`, into the attempt | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
+| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns and before it stops the monitor | *the process ended on its own* — the exit code and the time | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` | `prep` | when it copies warm files in | which attempt they came from, for `launch` to write into `run.json` | the run starts from the structure |
 
@@ -832,8 +834,12 @@ Two small files answer the two questions *(the second decided by the user,
   benchmark **trial directory is its own attempt** and gets the same file,
   which is how `submit bench <stage>` picks the next *unlaunched* trial
   (`job-contracts.md` § 6.1).
-  **A flat stage's launch writes none**: there is no attempt directory to hold
-  it.
+  **A flat stage writes its own**, `<basename>.run.json` beside its deck
+  (`jobset.materialize.launch_record_path`): there is no attempt directory,
+  and every stage shares the calculation's one, so the record is named by
+  its stage like every other file of it *(user, 2026-09-26: "unify this
+  behavior")*. A flat calculation's directory, asked as a whole, reads the
+  newest of them.
 - **An error is a conclusion**: an engine returning nonzero still reaches the
   wrapper's main line, so the marker carries that code — *"because of error or
   whatever — but the process is done."* **A forced stop leaves no marker, by

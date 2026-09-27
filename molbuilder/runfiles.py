@@ -932,6 +932,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # only the FINAL process concludes.
     Artifact(".concluded", "the marker the wrapper writes when the job ends",
              attempt="always"),
+    # A FLAT STAGE'S LAUNCH RECORD (`project-layout.md` § 1.6.3) -- what an
+    # attempt's `run.json` is for a stage with no attempt of its own: every
+    # stage of a flat calculation shares one directory, so each names its
+    # record as it names every other file of it.  Written at launch.
+    Artifact(".run.json", "a flat stage's launch record: how, where and when "
+                          "it was sent"),
 )
 
 #: The attempt counter as a GLOB, per :attr:`Artifact.attempt`.  Empty string

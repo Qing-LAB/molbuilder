@@ -4038,8 +4038,9 @@ And the same day, after P1 and its review:
   1. A force-stopped run reads `failed · stopped before its end`: `run_status`
      reads the monitor's closing record after the output's ending and the
      marker (`ffe0e8c4`).
-  2. Flat stages record their launch too — **open**: the record's name and
-     its readers are to be designed in `project-layout.md` § 1.6.3.
+  2. Flat stages record their launch too: `<basename>.run.json` beside the
+     stage's deck, read by the ladder, the folder and the run record
+     (`project-layout.md` § 1.6.3, 2026-09-27).
   3. A folder read alone that holds only a product: obsolete; confirm in the
      browser that the file list lists and opens its files — **open**.
   4. One SIESTA ending reader, the reading pass; `ending_of(path)` the one
