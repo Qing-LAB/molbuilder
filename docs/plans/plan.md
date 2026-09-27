@@ -4044,8 +4044,9 @@ And the same day, after P1 and its review:
   2. Flat stages record their launch too: `<basename>.run.json` beside the
      stage's deck, read by the ladder, the folder and the run record
      (`project-layout.md` § 1.6.3, 2026-09-27).
-  3. A folder read alone that holds only a product: obsolete; confirm in the
-     browser that the file list lists and opens its files — **open**.
+  3. A folder read alone that holds only a product: obsolete — confirmed in
+     the browser, a folder holding only a spectrum lists it and opens it in
+     the spectra viewer (2026-09-27).
   4. One SIESTA ending reader, the reading pass; `ending_of(path)` the one
      door (`ffe0e8c4`).
   5. `run_status` reads SIESTA's stderr as the wrapper does: the session
