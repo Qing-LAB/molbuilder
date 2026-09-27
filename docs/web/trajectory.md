@@ -138,8 +138,9 @@ SCF-timing instrument, one phase at a time
 timing log with the output it belongs to, through the reader the run record
 reads it by (`parse.dirs.record.scf_timing_of`), and the line shows the
 figure for the phase its current row is in — the number the Run panel shows
-([`results.md`](?doc=web/results.md) § 3a). A run with no timing log — a
-PySCF run, an output read alone — shows none. A rate is never computed from a
+([`results.md`](?doc=web/results.md) § 3a). A PySCF run's rows are stamped by
+its deck, in its progress log, and timed by the same rule; an output read alone
+has no stamped rows and shows none. A rate is never computed from a
 timestamp: a PySCF log carries epochs, and a date divided by a count is not a
 duration. *(Until 2026-09-27 the viewer estimated its own three ways — SIESTA's
 first-iteration timer, the browser's poll times, the output's modification

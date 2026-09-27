@@ -66,7 +66,8 @@ class RunFiles:
     fdf_log: Optional[Path] = None         # SIESTA's, paired by stamp
     wrapper_section: Dict[str, Any] = field(default_factory=dict)
     wrapper_text: str = ""                 # run N's section, for the fence
-    timing: Optional[Path] = None
+    timing: Optional[Path] = None          # the SIESTA family's tee, run N
+    progress_log: Optional[Path] = None    # the stage's progress log
     monitor_log: Optional[Path] = None
     util_csv: Optional[Path] = None
     earlier: Tuple[Tuple[int, Optional[Path]], ...] = ()
@@ -202,6 +203,7 @@ def run_files(directory, *, status=None,
         engine_log=one(".log", None), fdf_log=fdf_log,
         wrapper_section=section, wrapper_text=section_text,
         timing=one(".scf-timing.log", n) if n is not None else None,
+        progress_log=one(".molwatch.log", None),
         monitor_log=one(".monitor.log", n) if n is not None else None,
         util_csv=one(".util.csv", n) if n is not None else None,
         earlier=earlier)
@@ -436,7 +438,10 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
     mon = metrics(f.monitor_log)
     util = utilisation(mon, metrics(f.util_csv)) if f.util_csv else {}
     comp: Dict[str, Any] = {}
-    time = _timing_figures(f.timing)
+    # THE RUN'S STAMPED SCF ROWS (§ 5c): the SIESTA family's tee, PySCF's
+    # progress log -- the one a run has, read by the one rule.
+    time = _timing_figures(f.timing if f.timing is not None
+                           else f.progress_log)
     if time:
         comp["time"] = time
     memory = {k: util[k] for k in ("mem_peak_gb", "mem_peak_from",
@@ -453,32 +458,30 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
 
 
 def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
-    """The SCF-timing instrument's figures (§ 5c) from one timing log, by
-    its one reader: seconds per iteration, the iterations timed and -- for a
-    run with both phases -- each phase's own and its row count.  The run
-    record's and the trajectory viewer's (:func:`scf_timing_of`), so the page
-    states one number."""
-    from ..registry import parse as _parse
-    if path is None:
-        return {}
-    try:
-        got = dict(_parse(Path(path)).metrics)
-    except Exception:                                      # noqa: BLE001
-        return {}
-    return {k: v for k, v in got.items()
+    """The SCF-timing figures (§ 5c) from one timing file -- the SIESTA
+    family's tee or a PySCF progress log -- by the one rule
+    (`scf_timing_rows.timing_of`): seconds per iteration, the iterations
+    timed and, for a run with both phases, each phase's own and its row
+    count.  The run record's and the trajectory viewer's
+    (:func:`scf_timing_of`), so the page states one number."""
+    from ..instruments.scf_timing_rows import timing_of
+    return {k: v for k, v in timing_of(path).items()
             if k.startswith(("s_per_iter", "iters_measured", "rows_"))
             and v is not None}
 
 
 def scf_timing_of(output) -> Dict[str, Any]:
-    """The SCF-timing figures of the run ``output`` is an output of --
-    ``<base>-runN.out`` -> ``<base>-runN.scf-timing.log``, found through the
-    run-file door by the output's own label, stage and run -- read as the
-    record reads them.  ``{}`` when that run has no timing log: a PySCF run
-    (the tee reads the SIESTA family's rows), an output read alone."""
-    from ...runfiles import find
+    """The SCF-timing figures of the run ``output`` is an output of: a PySCF
+    progress log stamps its own rows; a SIESTA-family ``<base>-runN.out``'s
+    are its run's tee, ``<base>-runN.scf-timing.log``, found through the
+    run-file door by the output's own label, stage and run.  Read as the
+    record reads them.  ``{}`` when the run has none -- an output read
+    alone, a log from before its rows were stamped."""
+    from ...runfiles import find, role_of
     from .rundir import labels_in, read_back
     p = Path(output)
+    if role_of(p.name) == ".molwatch.log":
+        return _timing_figures(p)
     rec = read_back(p.name, labels_in(str(p.parent)))
     if rec is None or rec.run is None:
         return {}

@@ -855,6 +855,8 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
                 f"{'offered' if name in offered else 'not offered'} by the "
                 f"card")
         offered_somewhere[(engine, calculation)] = set(offered)
-    assert "per_iter_s" not in offered_somewhere[("pyscf", "optimization")]
+    # Both engines' SCF rows are stamped -- the SIESTA tee, a PySCF deck's
+    # progress log -- and timed by one rule (2026-09-27).
+    assert "per_iter_s" in offered_somewhere[("pyscf", "optimization")]
     assert "geom_step" not in offered_somewhere[("siesta", "transport")]
     assert "max_force" in offered_somewhere[("siesta", "transport")]

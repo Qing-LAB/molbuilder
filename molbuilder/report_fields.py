@@ -64,10 +64,10 @@ FIELDS: Tuple[ReportField, ...] = (
     # relaxation converges on; a force-constant run's displaced geometries
     # and a transport rung's single points state one too.
     ReportField("max_force", "The largest force", "max force", " eV/Ang"),
-    # The timing instrument is the SIESTA wrapper's tee (`run-reports.md`
-    # § 2.3); a PySCF run has none.
-    ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s",
-                engines=("siesta",)),
+    # Each engine's stamped SCF rows, timed by one rule (`run-reports.md`
+    # § 2.3, `scf_timing_rows.timing_of`): the SIESTA wrapper's tee, a PySCF
+    # deck's progress log.  Offered to PySCF since 2026-09-27.
+    ReportField("per_iter_s", "Seconds per SCF iteration", "per iter", " s"),
 )
 
 #: Every field's name, in order -- the vocabulary a name is checked against.

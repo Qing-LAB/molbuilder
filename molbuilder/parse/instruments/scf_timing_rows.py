@@ -1,22 +1,36 @@
-"""``<base>-runN.scf-timing.log``'s rows -- seconds per SCF iteration, by phase.
+"""Seconds per SCF iteration, by phase -- ONE rule, and each engine's rows
+from the file that stamps them (`model/parse.md` § 5c).
 
-The reading half of the SCF-timing instrument (`scf_timing.py` registers the
-parser that wraps it).  **Stdlib only, and it travels beside every job**
-(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3): the monitor
-reports a run's iterations and rate with this, the same function the Results
-tab's record and the benchmark read the file with.  It stood inside the
-registered parser's module until 2026-09-26, where the parse types it needs
-would have come with it.
+A run's SCF rows are stamped as they are written: the SIESTA family's by the
+wrapper's tee, into ``<base>-runN.scf-timing.log``; PySCF's by its deck, as
+the last column of each ``scf_history`` row of its progress log,
+``<label>_<NN>_<stage>.molwatch.log``.  Each file has its row reader here,
+and :func:`timing_figures` times either the same way; :func:`timing_of` reads
+a file by what it IS.  The run record, the trajectory viewer, the benchmark
+and the monitor all ask :func:`timing_of`, so every surface states one number
+for one run.  *(Until 2026-09-27 only the tee was read, and a PySCF run had
+no rate anywhere but the viewer's own estimate from its poll times.)*
+
+**Stdlib only, and it travels beside every job**
+(`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3).  It stood
+inside the registered parser's module until 2026-09-26, where the parse
+types it needs would have come with it.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:                                        # inside molbuilder
+    from ..engines import molwatch_grammar as _MG
     from ..engines import siesta_grammar as _G
 except ImportError:                         # beside a job, as the monitor's
+    import molwatch_grammar as _MG
     import siesta_grammar as _G
+
+#: One stamped SCF row: ``(epoch, phase, begins an SCF)``.
+Row = Tuple[float, str, bool]
 
 
 def scf_timing_metrics(text: str) -> Dict[str, Any]:
@@ -50,7 +64,7 @@ def scf_timing_metrics(text: str) -> Dict[str, Any]:
     2026-09-25.  A line with no row text reads as periodic, which is what
     every tee before the NEGF phase was recorded wrote.
     """
-    rows: List[Tuple[float, str, bool]] = []
+    rows: List[Row] = []
     for line in text.splitlines():
         parts = line.split(None, 2)
         if not parts:
@@ -69,8 +83,67 @@ def scf_timing_metrics(text: str) -> Dict[str, Any]:
         except ValueError:
             first = bool(row and row.iscf == 1)
         rows.append((t, row.phase if row else _G.PHASE_PERIODIC, first))
-    phases = [ph for ph in (_G.PHASE_PERIODIC, _G.PHASE_NEGF)
-              if any(r[1] == ph for r in rows)]
+    return timing_figures(rows)
+
+
+def progress_log_timing_metrics(text: str) -> Dict[str, Any]:
+    """The same figures from a PySCF progress log: each ``scf_history``
+    row's stamp -- the deck's epoch when that cycle finished, read by the
+    grammar's one row reader (`molwatch_grammar.scf_history_row`) -- one
+    ``scf_history`` block per SCF, its first row the one that begins it, in
+    the run's one phase (`molwatch_grammar.SCF_PHASE`).  A row with no stamp
+    (a log from before 2026-06-20) is not timed."""
+    rows: List[Row] = []
+    first = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == _MG.SCF_HISTORY_BEGIN:
+            first = True
+            continue
+        if stripped == _MG.SCF_HISTORY_END:
+            first = False
+            continue
+        row = _MG.scf_history_row(line)
+        if row is None:
+            continue
+        t = row.get("wall_clock_s")
+        if t is not None and math.isfinite(t):
+            rows.append((t, _MG.SCF_PHASE, first))
+        first = False
+    return timing_figures(rows)
+
+
+#: WHICH ROW READER A FILE GETS is what the file IS -- the role the catalogue
+#: gives its name (`runfiles.WRITTEN`) -- as `_run_ending.READERS` dispatches.
+TIMING_READERS: Dict[str, Callable[[str], Dict[str, Any]]] = {
+    ".scf-timing.log": scf_timing_metrics,
+    ".molwatch.log":   progress_log_timing_metrics,
+}
+
+
+def timing_of(path) -> Dict[str, Any]:
+    """The figures from the timing file ``path``, by its role's row reader;
+    ``{}`` when it is no timing file or cannot be read."""
+    if path is None:
+        return {}
+    p = Path(path)
+    read = next((fn for suffix, fn in TIMING_READERS.items()
+                 if p.name.endswith(suffix)), None)
+    if read is None:
+        return {}
+    try:
+        return read(p.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return {}
+
+
+def timing_figures(rows: List[Row]) -> Dict[str, Any]:
+    """The rule, for any engine's rows (`model/parse.md` § 5c): each phase
+    timed from its own consecutive rows within one SCF; the headline is the
+    last phase's, and with several each states its own.  Phases in the order
+    the run entered them -- a device's periodic initialization, then its NEGF
+    loop."""
+    phases = list(dict.fromkeys(r[1] for r in rows))
     if not phases:
         return {"s_per_iter": None, "iters_measured": 0, "rows": 0}
     figures = {ph: _phase_figures(rows, ph) for ph in phases}
@@ -83,8 +156,7 @@ def scf_timing_metrics(text: str) -> Dict[str, Any]:
     return out
 
 
-def _phase_figures(rows: List[Tuple[float, str, bool]],
-                   phase: str) -> Dict[str, Any]:
+def _phase_figures(rows: List[Row], phase: str) -> Dict[str, Any]:
     """One phase's seconds per iteration, from its own consecutive rows
     within one SCF; only forward (positive) deltas are real iteration
     durations."""

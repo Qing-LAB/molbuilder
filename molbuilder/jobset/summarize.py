@@ -173,7 +173,18 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
         except Exception:                            # noqa: BLE001
             return {}
 
-    metrics.update(_metrics(_latest_run_file(d, basename, "scf-timing.log")))
+    # SECONDS PER ITERATION from the trial's stamped SCF rows, by the one
+    # rule every surface uses (`scf_timing_rows.timing_of`, `model/parse.md`
+    # § 5c): the SIESTA family's tee, else a PySCF trial's progress log,
+    # whose rows its deck stamps.  The tee's registered parser wraps the same
+    # function.
+    from molbuilder.parse.instruments.scf_timing_rows import timing_of
+    from ..runfiles import find as _rf_find
+    _timing = (_latest_run_file(d, basename, "scf-timing.log")
+               or next((q for q, _rf in _rf_find(d, basename,
+                                                 role=".molwatch.log")),
+                       None))
+    metrics.update(timing_of(_timing))
 
     _mon = _metrics(_latest_run_file(d, basename, "monitor.log"))
     bound = _mon.get("bound")

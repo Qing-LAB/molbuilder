@@ -1813,8 +1813,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
          * here computes one.  Until 2026-09-27 this estimated its own three
          * ways -- SIESTA's first-iteration timer, the browser's poll times,
          * the output's modification times -- beside the instrument's: one fact
-         * from three kinds of evidence.  No timing log (a PySCF run, an output
-         * read alone) is no rate: not stated, so not shown. */
+         * from three kinds of evidence.  Each engine's rows are stamped -- the
+         * SIESTA tee, a PySCF deck's progress log -- and timed by one rule; an
+         * output read alone has none, and no rate: not stated, so not shown. */
         const timing = (state.data && state.data.scf_timing) || null;
         if (timing) {
             const phase = current[current.length - 1].phase;

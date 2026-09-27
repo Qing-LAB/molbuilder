@@ -500,3 +500,31 @@ def test_the_run_this_suite_just_generated_declares_its_own_engine(
         "this set is empty the run resolved from its .chk and "
         "_geom_optim.xyz -- the fallback meant for directories molbuilder "
         "did not write -- and the declaration is not being written at all")
+
+
+def test_the_scf_line_states_the_runs_own_rate(page, flask_server,
+                                               co2_optimization):
+    """A PySCF run's seconds per SCF iteration come from its progress log's
+    own stamps -- each ``scf_history`` row carries the deck's epoch for the
+    cycle -- through the one timing rule every surface uses
+    (`model/parse.md` § 5c), so the viewer's SCF line and the run record
+    state one number.
+
+    MUTATION THIS MUST FAIL AGAINST: the progress log's rows not timed -- a
+    PySCF run had no rate before 2026-09-27 but the viewer's own estimate.
+    """
+    import re
+
+    from molbuilder.parse import parse_dir
+
+    d = co2_optimization.parent
+    time = parse_dir(d).record["computation"]["time"]
+    assert time["iters_measured"] >= 1, time
+    _open_in_results(page, flask_server, d, d / "co2opt.molwatch.log")
+    scf = page.wait_for_function(
+        "() => { const t = (document.getElementById('scf-status') || {})"
+        ".textContent || ''; return / s\\/iter/.test(t) ? t : null; }",
+        timeout=30000).json_value()
+    rate = re.search(r"([0-9.]+) s/iter", scf)
+    assert float(rate.group(1)) == pytest.approx(time["s_per_iter"],
+                                                 rel=5e-3), (scf, time)

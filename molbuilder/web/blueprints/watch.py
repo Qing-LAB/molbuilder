@@ -524,10 +524,10 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     except Exception as exc:  # pragma: no cover - defensive
         return None, f"Parse error: {exc}"
     new_data["stop_reason"] = _stop_reason(traj)
-    # THE RATE IS THE SCF-TIMING INSTRUMENT'S (`model/parse.md` § 2a P-T4,
-    # § 5c): the run's timing log, read by the one reader the run record
-    # reads it by, re-read with the output it belongs to.  ``None`` -- not
-    # stated -- for a run with no timing log.
+    # THE RATE IS THE RUN'S STAMPED SCF ROWS' (`model/parse.md` § 2a P-T4,
+    # § 5c): the SIESTA tee or a PySCF progress log, by the one rule the run
+    # record reads them by, re-read with the output.  ``None`` -- not stated
+    # -- for a run with none.
     from molbuilder.parse.dirs.record import scf_timing_of
     new_data["scf_timing"] = scf_timing_of(path) or None
 

@@ -73,8 +73,9 @@ Design notes:
   not consulted: they can appear before a run is actually over, which would
   end the sampling early (`job-contracts.md`, the monitor's section).
 - The seconds per iteration are the timing instrument's, one phase at a
-  time (`scf_timing_metrics`, `model/parse.md` § 5c) -- SIESTA's own
-  per-scf time is not trusted.
+  time (`scf_timing_rows.timing_of`, `model/parse.md` § 5c): the SIESTA
+  family's tee, a PySCF run's stamped progress log -- SIESTA's own per-scf
+  time is not trusted.
 - **It judges no stall** (`run-reports.md` § 2): a step can take hours, and
   nothing in the output tells a slow one from a stuck one.  The loop wakes
   often (default 10 s) but logs a ``[STATUS]`` line only when the SCF
@@ -119,7 +120,7 @@ try:                                        # inside molbuilder
     from .parse.dirs.job import MONITOR_ENDED, run_status
     from .parse.engines.molwatch_reader import MolwatchReader
     from .parse.engines.siesta_reader import SiestaReader
-    from .parse.instruments.scf_timing_rows import scf_timing_metrics
+    from .parse.instruments.scf_timing_rows import timing_of
 except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
@@ -127,7 +128,7 @@ except ImportError:                         # beside the job
     from job import MONITOR_ENDED, run_status
     from molwatch_reader import MolwatchReader
     from siesta_reader import SiestaReader
-    from scf_timing_rows import scf_timing_metrics
+    from scf_timing_rows import timing_of
 
 
 @dataclass
@@ -355,13 +356,12 @@ class WatchedRun:
                 heard.append((_mtime(path), state))
         if heard:
             self._apply(st, max(heard, key=lambda h: h[0])[1])
-        timing = files.get(".scf-timing.log")
+        # THE RUN'S STAMPED SCF ROWS, by the one rule (`model/parse.md`
+        # § 5c): the SIESTA family's tee, else a PySCF run's progress log --
+        # whose rows the deck stamps itself.
+        timing = files.get(".scf-timing.log") or files.get(".molwatch.log")
         if timing is not None:
-            try:
-                m = scf_timing_metrics(timing.read_text(encoding="utf-8",
-                                                        errors="replace"))
-            except OSError:
-                m = {}
+            m = timing_of(timing)
             st.n_iters = m.get("rows") or st.n_iters
             st.per_iter_s = m.get("s_per_iter")
         return st

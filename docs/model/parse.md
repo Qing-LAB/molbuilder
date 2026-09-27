@@ -256,7 +256,8 @@ stage. Measured: 61 minutes reported for a job that spanned 41 and computed
 answer.** Epoch is formatted as a date, elapsed as a duration, and neither as
 the other — but formatting is only the most visible half. *Arithmetic counts
 too*: dividing a cumulative time by a count is meaningful for a duration and
-nonsense for a date, so an epoch never enters a rate. The page's seconds per
+nonsense for a date, so an epoch never enters a rate except as the difference
+of two stamps of one clock within one SCF — the timing rule's (§ 5c). The page's seconds per
 iteration are the timing instrument's, per phase (§ 5c), never a figure the
 browser computes — the viewer is served the run record's own reading
 (`parse.dirs.record.scf_timing_of`).
@@ -1216,7 +1217,10 @@ one: the monitor's `<base>-runN.monitor.log` and `<base>-runN.util.csv` for
 every engine, and — for the SIESTA family, whose rows it reads — the SCF-timing
 tee's `<base>-runN.scf-timing.log` (`runfiles.WRITTEN` says so per row). Being
 the wrapper's output rather than the engine's is no reason to read them a
-different way, so they are read here.
+different way, so they are read here. A PySCF deck stamps its own SCF rows —
+each `scf_history` row of its progress log ends with the epoch the cycle
+finished — so the SCF timing of a PySCF run is read from that log, by the same
+rule (below).
 
 **`InstrumentResult` carries `metrics`, a one-level dict of what the instrument
 measured** (plus the `parse_warnings` every result has). One level, not one
@@ -1230,10 +1234,18 @@ sidecar what molbuilder serialised — not the shape of the payload.
 | file | parser · reader | `metrics` |
 |---|---|---|
 | `*.scf-timing.log` | `scf-timing` · `scf_timing_rows.scf_timing_metrics` | `s_per_iter`, `iters_measured`, `rows` — the last phase's; with both phases, also `s_per_iter_<phase>`, `iters_measured_<phase>`, `rows_<phase>` |
+| `*.molwatch.log` — a PySCF run's stamped `scf_history` rows | `scf_timing_rows.progress_log_timing_metrics` | the same figures, in the run's one phase, `scf` |
 | `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]` |
 | `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `mem_peak_sampled_gb` (the largest sample of the job's memory), `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
 
-**Seconds per iteration are timed within one phase.** Each tee line is
+**Seconds per iteration: one rule, each engine's stamped rows**
+(`scf_timing_rows.timing_figures`; `timing_of(path)` picks the row reader by
+the file's role, and the run record, the trajectory viewer, the benchmark and
+the monitor all ask it). A row is `(epoch, phase, begins an SCF)`: from the tee
+for the SIESTA family, from a PySCF progress log's `scf_history` blocks — one
+block per SCF, its first row the one that begins it. *(Until 2026-09-27 only
+the tee was read, and a PySCF run stated no rate.)* **They are timed within one
+phase.** Each tee line is
 `<epoch> <iscf> <the row as SIESTA printed it>`, and the row states its phase
 (§ 4b). A rate comes from consecutive rows of one phase within one SCF: the
 step into an iteration-1 row spans a step boundary, the step from the last
@@ -1429,7 +1441,7 @@ is rows, not a code path.
 | `siesta-out` | `<base>-runN.out`, head and tail | the grammar's line readers (§ 5d.5) | SIESTA family | `computation.engine` (program, version, build) · `solver` · `launch.ranks` · `time.run_start_local` · `time.run_end_local`; `setup.pseudopotentials` |
 | `ending` | every run output | the endings `run_status` scanned (§ 2b) | any | `verdict.state` · `detail` · `ended` · `converged`; `earlier` |
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
-| `instruments` | `.scf-timing.log` · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
+| `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` — a flat stage's `<basename>.run.json` | `jobset.materialize.read_run_launch` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on) |
 | `concluded` | `<base>-runN.concluded` | `jobset.materialize.attempt_concluded` | any | `computation.exit` |
@@ -1469,8 +1481,9 @@ reason:
 | engine elapsed | the wrapper's `benchmark:` line — the engine's own wall, launch to exit (§ 5c.1) |
 
 A PySCF run writes no SCF-timing log — the tee reads the SIESTA family's rows —
-so its record states no seconds per iteration; its memory and utilisation come
-from the monitor's files, as any run's do.
+but its deck stamps each SCF row of its progress log, so its record states
+seconds per iteration from those, by the same rule (§ 5c); its memory and
+utilisation come from the monitor's files, as any run's do.
 
 ### 5d.3 Setup — three columns from the run itself, and a difference is a finding
 

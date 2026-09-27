@@ -215,7 +215,7 @@ directory of decks.
 |---|---|---|
 | which files are this run's | `runfiles` — the stem, each file's role, the run index | `runfiles.py` · `identity.py` |
 | where the run is now: the SCF phase and iteration, the energy, each residual beside the criterion the run states, a NEGF loop's charge, the step the engine began in its own words and how many are done, the largest force beside its tolerance | the output's ONE parser's reading pass, fed the file as it grows and chosen by the file's role: a SIESTA-family `.out` by `SiestaReader`, a PySCF run's progress log by `MolwatchReader` ([`model/parse.md`](?doc=model/parse.md) § 5d.5); the Results tab builds its frames from the same pass | `siesta_reader.py` · `siesta_grammar.py` · `molwatch_reader.py` · `molwatch_grammar.py` · `_section_rules.py` |
-| SCF iterations so far, and seconds per iteration, in the current SCF phase | SIESTA: both from the timing instrument, `scf_timing_metrics`, over the `.scf-timing.log`; PySCF: the iterations only, counted by the reading pass above over its finished steps — no timing log, so no seconds per iteration (`report_fields` offers `per_iter_s` to SIESTA alone) | `scf_timing_rows.py` |
+| SCF iterations so far, and seconds per iteration, in the current SCF phase | the timing rule, `scf_timing_rows.timing_of`, over the run's stamped SCF rows: a SIESTA run's `.scf-timing.log`, a PySCF run's progress log, whose deck stamps each `scf_history` row ([`model/parse.md`](?doc=model/parse.md) § 5c) — the rule the Results tab states them by | `scf_timing_rows.py` · `molwatch_grammar.py` |
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` |
 | which fields a report may carry | the one declaration, `report_fields` (§ 4.1a) | `report_fields.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
@@ -639,7 +639,7 @@ card all read; each is read by § 2.3's readers:
 | `energy` | eV | the latest SCF energy: E_KS of SIESTA's last SCF row, or a PySCF step's energy | every run |
 | `geom_step` | — | the step the engine began, in its own numbering — a relaxation's move, a force-constant run's displacement | `optimization`, `vibration` |
 | `max_force` | eV/Å | the largest force on an atom; its tolerance is in `text` | every run |
-| `per_iter_s` | s | seconds per SCF iteration in the current phase, a step's boundary excluded | SIESTA — the timing instrument is its wrapper's tee |
+| `per_iter_s` | s | seconds per SCF iteration in the current phase, a step's boundary excluded | every run whose SCF rows are stamped: SIESTA's wrapper tee, a PySCF deck's progress log |
 
 **A field the run has not stated is never a value**: it is `null` on the wire,
 and absent from the stored line and from a chat card — so a reader can tell
