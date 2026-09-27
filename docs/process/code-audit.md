@@ -273,8 +273,16 @@ the two failures that matter at run time show up without one — an upward
 import at a module's top closes a cycle that fails every import of the module,
 and a file that ships beside a job and reaches into molbuilder fails there,
 where molbuilder is not installed, which
-`tests/test_monitor_bundle_runs_alone.py` runs. What stays silent is the
-erosion: an upward import inside a function, which runs only when the function
+`tests/test_monitor_bundle_runs_alone.py` runs. **The proof that the imports
+and the shipped files' dependencies comply is a workflow that finishes end to
+end** *(user, 2026-09-27)*: the road tests launch real runs through
+`jobset init → prep → launch` in each engine's own env and assert that the
+monitor beside the job closed with its report — `test_siesta_vibration_e2e.py`
+(SIESTA), `test_vibration_e2e.py` (PySCF). The monitor imports every shipped
+file when it starts, so a file that reached into molbuilder, or a package the
+job's env does not have, leaves no report; a finished run alone would not
+show it, because the engine does not wait for the monitor. What stays silent
+is the erosion: an upward import inside a function, which runs only when the function
 does, and a floor boundary inside one package (`execution/architecture.md`
 A7).
 

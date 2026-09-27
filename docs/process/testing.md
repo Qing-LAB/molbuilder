@@ -55,7 +55,10 @@ The one *structural* rule is **layering**, and **review keeps it, not a test**
 earn a place*, below), and the two failures that matter at run time show up
 without it — an upward import at a module's top fails every import of that
 module, and a file that ships beside a job and reaches into molbuilder fails
-there, which `tests/test_monitor_bundle_runs_alone.py` runs. The question
+there, which `tests/test_monitor_bundle_runs_alone.py` runs. **The proof is a
+workflow that finishes end to end** *(user, 2026-09-27)*: the road tests that
+launch real runs in each engine's own env and assert the monitor's closing
+report (`test_siesta_vibration_e2e.py`, `test_vibration_e2e.py`). The question
 review asks is `process/code-audit.md` § 1c (e). This is what lets `cli` and
 `web` share one API without circular imports — see the thin-shell note in
 [`conventions.md § 3`](?doc=process/conventions.md).
