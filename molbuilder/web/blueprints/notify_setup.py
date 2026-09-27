@@ -295,9 +295,9 @@ def _file_note(usable: Optional[Set[str]] = None) -> str:
 def channels():
     """What this machine can report to.  **Names, never secrets.**
 
-    The Task-setup tab calls this and nothing else: it needs the names to
-    offer as ticks and the evidence to show beside them, and it has no
-    business with anything else here.
+    One of the two routes the Task-setup tab calls (the other is
+    ``/api/notify/report-fields``): it needs the names to offer as ticks and
+    the evidence to show beside them, and has no business with the rest.
     """
     return jsonify({"ok": True, **_state()})
 
@@ -343,7 +343,7 @@ def save_channel(name: str):
 
     Removing something deliberately is `DELETE`.
     """
-    from ...monitor import is_channel_name
+    from ...config_dir import is_channel_name
     if not is_channel_name(name):
         return jsonify({"ok": False,
                         "error": "a channel name is letters, digits, '-' "

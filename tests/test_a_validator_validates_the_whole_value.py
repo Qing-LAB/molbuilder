@@ -36,7 +36,7 @@ def _doors():
     Each returns True/None for good input and raises or returns False for bad.
     Normalised to a predicate so one table drives them all.
     """
-    from molbuilder import projects, checkpoint, monitor, selection
+    from molbuilder import projects, checkpoint, config_dir, monitor, selection
     from molbuilder.web.blueprints import workspace_storage
 
     def _raises(fn):
@@ -59,7 +59,7 @@ def _doors():
     return [
         ("project name",     _raises(projects.validate_name),            "proj"),
         ("calculation name", _raises(checkpoint.check_calculation_name), "calc"),
-        ("channel name",     monitor.is_channel_name,                    "chan"),
+        ("channel name",     config_dir.is_channel_name,                 "chan"),
         ("workspace id",     workspace_storage._valid_ws_id,             "ws1"),
         ("upload filename",  _msg(_validate_upload_filename),            "a.txt"),
     ]

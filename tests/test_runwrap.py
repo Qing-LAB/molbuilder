@@ -1076,19 +1076,19 @@ def test_pyscf_wrapper_auto_continues_without_flag(tmp_path):
 
 
 def test_pyscf_wrapper_does_not_collide_with_siesta_out(tmp_path):
-    """A directory that has BOTH a SIESTA-style ``-run0.out`` AND
-    no PySCF ``-run0.pyscf.log`` must still start the PySCF wrapper
-    at -run0 — the resolver only scans for the engine-specific
-    suffix.  Pins the no-collision guarantee Phase C added (the
-    whole point of the rename)."""
+    """No run takes an index an earlier run's file holds, whichever engine
+    wrote it: the monitor log, `util.csv` and the conclusion marker are
+    named alike for both engines, so a PySCF run at -run0 beside a SIESTA
+    run's -run0 would overwrite that run's marker and truncate its
+    measurement.  It advances instead, and the earlier file is untouched
+    (`project-layout.md` § 1.6.1)."""
     w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    # A stale SIESTA-style .out file from a hypothetical earlier
-    # SIESTA run in the same dir — must NOT confuse the PySCF
-    # resolver.
-    (tmp_path / "myjob-run0.out").write_text("SIESTA-style prior")
+    prior = tmp_path / "myjob-run0.out"
+    prior.write_text("SIESTA-style prior")
     stdout, _stderr, code = _run_wrapper(w)
-    assert code == 0, "fresh PySCF run should start regardless of stale .out"
-    assert "_out_file=myjob-run0.pyscf.log" in stdout
+    assert code == 0, "a PySCF run starts beside an earlier SIESTA run"
+    assert "_out_file=myjob-run1.pyscf.log" in stdout
+    assert prior.read_text() == "SIESTA-style prior"
 
 
 def test_pyscf_wrapper_banner_mentions_pyscf_log_not_out(tmp_path):

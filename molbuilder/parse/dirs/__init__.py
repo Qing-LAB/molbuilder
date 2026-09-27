@@ -1,11 +1,10 @@
 """Directory-level readers — what a whole run directory says.
 
 **One DirParser ships, since 2026-09-18**: :class:`~.rundir.JobDirParser`,
-step 1 of `plans/plan.md` § 5c.  It answers the four questions
-`model/parse.md` § 5.0 names, each with a reader named before the field was
-written, and it COMPOSES the readers that already exist here rather than
-re-parsing: ``job.run_status``, ``job._enumerate_files``,
-``contract.engine_of``.  The one thing it absorbed bodily is the
+It answers the questions `model/parse.md` § 5.0 names, each with a reader
+named before the field was written, and it COMPOSES the readers that already
+exist here rather than re-parsing: ``job.run_status``,
+``contract.engine_of``, and the run record (``record.run_record``).  The one thing it absorbed bodily is the
 openable-discovery chain, which lived in ``web/blueprints/watch.py`` —
 the web layer, which nothing below it may import.
 

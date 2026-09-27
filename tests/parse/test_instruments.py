@@ -63,7 +63,8 @@ def test_a_relaxations_step_boundaries_are_not_iterations():
             / "h2mon_01_coarse-run0.scf-timing.log").read_text()
     m = scf_timing_metrics(text)
     # 29 deltas, 4 of them boundaries, the first dropped as warm-up
-    assert m == {"s_per_iter": 0.6, "iters_measured": 24, "rows": 30}, m
+    assert (m["iters_measured"], m["rows"]) == (24, 30), m
+    assert m["s_per_iter"] == pytest.approx(0.58, abs=0.005), m
 
 
 def test_the_monitor_states_the_machine_and_the_verdict(tmp_path):

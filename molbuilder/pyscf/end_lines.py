@@ -25,3 +25,11 @@ END_MARKER = "Job complete in"
 #: that reported `running` for months (`plans/plan.md` § 5c.2), because
 #: nothing read this line at all.
 SPECTRUM_END_MARKER = "Total wall time:"
+
+
+#: The progress log's FOOTER, which a PySCF deck's exit hook appends to its
+#: `.molwatch.log` (`pyscf/input.py`) and `molwatch_grammar` reads: the error
+#: line when the run raised, then the concluded line.  Declared here, beside
+#: the decks' end lines, so the writer and the reader share one spelling.
+FOOTER_ERROR = "# error:"
+FOOTER_CONCLUDED = "# concluded:"

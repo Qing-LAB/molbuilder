@@ -1,4 +1,6 @@
-"""`JobDirParser` — one run directory, the four questions asked about one.
+"""`JobDirParser` — one run directory, and the questions asked about one
+(`model/parse.md` § 5.0: its engine, what to open, what was tried, how it is
+doing, and its run record).
 
 Contract: `model/parse.md` § 5.  Plan: `plans/plan.md` § 5c, step 1.
 
@@ -10,24 +12,19 @@ returning.  The name was always right — it *is* the directory composer — but
 every field here is written against a caller that exists today, and § 5.0's
 table names each one.
 
-**Why a door at all.** Six functions across three modules answer questions
-about a run directory, and the seventh consumer is the Results file picker in
-the BROWSER — which asks nothing, because there is no door to ask, and so
-decides what to list from filenames in JavaScript.  That guess is why a
-finished transport run was invisible on the Results tab until a presenter was
-written for it, and why a ladder cannot be told from five unrelated runs.
+**Why a door at all.** Several functions across three modules answer
+questions about a run directory, and the Results tab asks them all through
+this one door (`/api/results/dir`) rather than guessing from filenames in the
+browser.
 
-**This module composes; it does not re-parse.** `run_status` and
-`_enumerate_files` stay in `job.py`, `engine_of` in `contract.py`; they are
-CALLED here.  The one thing absorbed bodily is the openable-discovery chain,
+**This module composes; it does not re-parse.** `run_status` stays in
+`job.py` and `engine_of` in `contract.py`; they are CALLED here.  The one thing absorbed bodily is the openable-discovery chain,
 which lived in `web/blueprints/watch.py` — the web layer, which nothing below
 it can import, which is the whole reason it had to move rather than be
 called.
 
-**Step 1 of the migration is this file plus a proof**, and no caller moves
-until the proof passes: the new door must answer identically to the six
-functions on the real tree, the way the `run_status` split was proved
-(113/113) before its deletion was allowed.
+**Proved before its callers moved**: the door answered identically to the
+functions it replaced on the real tree before any caller was repointed.
 """
 from __future__ import annotations
 

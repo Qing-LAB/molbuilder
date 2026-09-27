@@ -24,7 +24,8 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 #: SIESTA's periodic SCF and TranSIESTA's NEGF loop print one row per
 #: iteration with one format (``Src/write_subs.F``: ``(a8,i4,3f16.6,3f10.6)``,
 #: ``4f10.6`` under ``Spin.Fix``): the tag -- ``scf:`` or ``ts-scf:`` -- the
-#: iteration, then :data:`SCF_COLUMNS`.  Every pattern for the row is built
+#: iteration, then Eharris, E_KS, FreeEng, dDmax, Ef (two under ``Spin.Fix``)
+#: and dHmax, in ``write_subs.F``'s order.  Every pattern for the row is built
 #: from these two strings, so the tee, the monitor, the parser and the timing
 #: instrument cannot disagree about what a row is.
 _NEGF_MARK = "ts-"
@@ -54,11 +55,6 @@ SCF_ROW = re.compile(SCF_PREFIX_ERE + r"([0-9]+)[ \t]+(.+)$")
 PHASE_PERIODIC = "periodic"
 PHASE_NEGF = "negf"
 
-#: The values after the iteration, in ``write_subs.F``'s order.  Under
-#: ``Spin.Fix`` the Fermi column is two (``Ef_up``, ``Ef_dn``); the three
-#: energies lead either way.
-SCF_COLUMNS = ("Eharris", "E_KS", "FreeEng", "dDmax", "Ef", "dHmax")
-
 #: The line opening each step, in SIESTA's own words and with its own number
 #: (``Src/state_init.F``, ``write(6,'(t25,a,i6)')``): ``Begin <CG|Broyden|FIRE>
 #: opt. move = <N>`` for a relaxation, ``Begin FC step = <N>`` for a
@@ -66,11 +62,12 @@ SCF_COLUMNS = ("Eharris", "E_KS", "FreeEng", "dDmax", "Ef", "dHmax")
 #: Group 1 is what a step is, group 2 its number.  A single point prints
 #: ``Single-point calculation`` instead, and so states no step -- a transport
 #: rung is one.
-STEP_BEGIN = re.compile(r"^\s*Begin\s+(.*?\S)\s*=\s*([0-9]+)\s*$")
+STEP_BEGIN = re.compile(r"^\s*Begin\s+(.*?\S)\s*=\s*([0-9]+)\s*$",
+                        re.IGNORECASE)
 
 #: The names row SIESTA prints above a step's rows (``write_subs.F``:
 #: ``iscf  Eharris(eV)  E_KS(eV) ...``), which the parser maps columns by.
-SCF_HEADER = re.compile(r"^\s*iscf\s+\S")
+SCF_HEADER = re.compile(r"^\s*iscf\s+\S", re.IGNORECASE)
 
 
 class ScfRow(NamedTuple):
@@ -452,29 +449,6 @@ def cycle_positional(
     return None
 
 
-def scf_cycle(line: str, header: Optional[List[Optional[str]]] = None
-              ) -> Optional[Dict[str, Any]]:
-    """One SCF row as the cycle every reader keeps -- ``{cycle, energy,
-    dDmax, dHmax, ef, ..., phase}`` -- or ``None`` when the line is not a row
-    or its values cannot be read.  ``header`` is the latest :func:`scf_header`
-    the output printed, which maps the values by name; without one they are
-    mapped by position.  The parser calls the pieces itself, to say which of
-    them failed; a reader that only wants the answer calls this."""
-    row = scf_row(line)
-    if row is None:
-        return None
-    vals = scf_floats(line[row.columns_at:].lstrip(), line=line,
-                      data_start=row.columns_at)
-    if vals is None:
-        return None
-    cyc = (cycle_from_header(row.iscf, vals, header) if header
-           else cycle_positional(row.iscf, vals))
-    if cyc is None:
-        return None
-    cyc["phase"] = row.phase
-    return cyc
-
-
 # ---- The deck, as SIESTA echoes it -----------------------------------------------
 #: SIESTA copies the deck it read into its output between two starred rules
 #: (``Src/reinit_m.F90``: ``*** Dump of input data file ***`` and ``*** End of
@@ -697,7 +671,8 @@ def read_build_line(line: str, build: dict) -> Optional[str]:
 #: 2026-09-26) -- so no real run had a solver on record.  The diagonalizer's
 #: block size here is its own (``Diag.BlockSize``); the orbital distribution's
 #: is the launch line :data:`PROCESS_GRID`.
-DIAG_LINE = re.compile(r"^\s*diag:\s*([A-Za-z][^=]*?)\s*=\s*(.+?)\s*$")
+DIAG_LINE = re.compile(r"^\s*diag:\s*([A-Za-z][^=]*?)\s*=\s*(.+?)\s*$",
+                       re.IGNORECASE)
 #: The labels kept, under the names their readers use.
 DIAG_FACTS = {"Algorithm": "algorithm",
               "ELPA GPU string key": "elpa_gpu",
@@ -730,9 +705,11 @@ def read_diag_line(line: str, diag: dict) -> Optional[str]:
 #: species: <label>``); ``Src/ncps/src/m_ncps_reader.f`` names the file it read
 #: on the line after ``Reading pseudopotential information in PSML from:``, and
 #: then its ``PSML uuid``.  The file is the one the run opened, beside it.
-PSML_SPECIES = re.compile(r"^-+\s*Processing specs for species:\s*(\S+)")
-PSML_FROM = re.compile(r"^\s*Reading pseudopotential information in PSML from:")
-PSML_UUID = re.compile(r"^\s*PSML uuid:\s*(\S+)")
+PSML_SPECIES = re.compile(r"^-+\s*Processing specs for species:\s*(\S+)",
+                          re.IGNORECASE)
+PSML_FROM = re.compile(r"^\s*Reading pseudopotential information in PSML from:",
+                       re.IGNORECASE)
+PSML_UUID = re.compile(r"^\s*PSML uuid:\s*(\S+)", re.IGNORECASE)
 
 
 def read_psml_lines(lines) -> List[dict]:
@@ -884,7 +861,7 @@ MAX_FORCE = re.compile(r"^\s*Max\s+(\S+)(\s+constrained)?\s*$",
 #: ``C<i>``, then ``B`` when there is a buffer -- and a row of numbers, both
 #: behind the ``ts-q:`` prefix.  The last one or two columns are no region's
 #: charge: :data:`TS_Q_TOTALS`.
-TS_Q_ROW = re.compile(r"^\s*ts-q:\s+(.+?)\s*$")
+TS_Q_ROW = re.compile(r"^\s*ts-q:\s+(.+?)\s*$", re.IGNORECASE)
 #: ``dQ`` -- the charge off its target -- and, spin-polarized, ``Qup-Qdn``.
 TS_Q_TOTALS = ("dQ", "Qup-Qdn")
 
@@ -899,10 +876,11 @@ TS_VHA = re.compile(r"^\s*ts-Vha:\s*(\S+)\s*eV", re.IGNORECASE)
 #: contour part is ``Src/m_ts_contour_eq.f90``'s): a row of stars opens and
 #: closes it; ``ts: <label> = <value>`` inside, sectioned by
 #: ``>> Electrodes <<``, ``>> <electrode>`` and the contour banners.
-TS_ECHO = re.compile(r"^\s*ts:\s")
-TS_ECHO_FRAME = re.compile(r"^\s*ts:\s*\*{20,}\s*$")
-TS_ECHO_LINE = re.compile(r"^\s*ts:\s+(.*?)\s+=\s+(.*?)\s*$")
-TS_ECHO_SECTION = re.compile(r"^\s*ts:\s*>>\s*(.*?)\s*(?:<<)?\s*$")
+TS_ECHO = re.compile(r"^\s*ts:\s", re.IGNORECASE)
+TS_ECHO_FRAME = re.compile(r"^\s*ts:\s*\*{20,}\s*$", re.IGNORECASE)
+TS_ECHO_LINE = re.compile(r"^\s*ts:\s+(.*?)\s+=\s+(.*?)\s*$", re.IGNORECASE)
+TS_ECHO_SECTION = re.compile(r"^\s*ts:\s*>>\s*(.*?)\s*(?:<<)?\s*$",
+                             re.IGNORECASE)
 TS_ECHO_CONTOUR = re.compile(r"^\s*ts:\s*-{5,}\s*Contour\s*-{5,}\s*$",
                              re.IGNORECASE)
 #: A contour banner lists one SEGMENT per chemical potential or contour part,

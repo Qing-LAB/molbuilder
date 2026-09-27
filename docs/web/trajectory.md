@@ -88,7 +88,7 @@ requires (SIESTA's `Require H/DM convergence for SCF`):
 | dDmax | the largest density-matrix change per iteration (dimensionless) | the DM tolerance | `redata: DM tolerance for SCF`; TranSIESTA's `ts:` echo |
 | dHmax | the largest Hamiltonian change (eV) | the H tolerance | `redata: Hamiltonian tolerance for SCF`; the `ts:` echo |
 | dQ | a NEGF loop's charge error (electrons) | the charge tolerance | the `ts:` echo |
-| \|g\| | PySCF's orbital-gradient norm | its gradient tolerance | what the deck read back (`scf_conv_tol_grad`) |
+| \|g\| | PySCF's orbital-gradient norm — an energy (eV): dE over dimensionless orbital rotations | its gradient tolerance | what the deck read back (`scf_conv_tol_grad`) |
 
 ## 4. Is it done, and how fast?
 

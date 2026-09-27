@@ -188,6 +188,34 @@ def test_an_UNCONCLUDED_attempt_is_a_question_not_a_decision(tmp_path):
     assert "--yes" in msg, "the refusal owes the way to record a judgement"
 
 
+def test_at_a_terminal_the_unconcluded_attempt_is_asked(tmp_path, monkeypatch):
+    """Where a person can answer, the story is ASKED rather than refused
+    (`project-layout.md` § 1.6.4: "Interactive: a confirm that states both
+    possibilities"): no keeps the attempt as it is, yes continues it.
+    API-level: pytest holds no terminal, so the road cannot reach this arm.
+
+    MUTATION THIS MUST FAIL AGAINST: refuse without asking, whatever the
+    terminal -- the yes below then raises.
+    """
+    import click
+    from molbuilder.envs import hints
+    from molbuilder.jobset.materialize import attempts
+    js = _launched_attempt(tmp_path, concluded=False)
+    monkeypatch.setattr(hints, "stdin_can_answer", lambda: True)
+
+    monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
+    with pytest.raises(SubmitError, match="not continued"):
+        submit_jobset(js, tmp_path, mode="direct", only="coarse",
+                      dry_run=False)
+    assert attempts(tmp_path / "01_coarse") == [0]
+
+    monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
+    res = submit_jobset(js, tmp_path, mode="direct", only="coarse",
+                        dry_run=False)
+    assert "NOT concluded" in " | ".join(r.status for r in res)
+    assert attempts(tmp_path / "01_coarse") == [0, 1]
+
+
 def test_the_recorded_judgement_continues_anyway(tmp_path):
     """`--yes` is the user's judgement, honoured — the framework said its
     piece and steps aside."""

@@ -54,7 +54,7 @@ def render_plan(jobset: JobSet) -> str:
     js = jobset
     lines: List[str] = [
         f"JOB-SET PLAN -- {js.name} ({js.engine}, {js.kind})",
-        f"Shared package (symlinked into every job dir): "
+        f"Shared package (copied into every job dir): "
         f"{', '.join(js.shared) or '(none)'}",
         "",
     ]

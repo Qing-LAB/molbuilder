@@ -74,7 +74,7 @@ _ENGINE = '#!/bin/bash\nsleep 2\necho "Job completed"\n'
 _CONDA = "#!/bin/bash\nexit 0\n"
 
 
-def _a_prepared_calculation(tmp_path: Path) -> Path:
+def _a_prepared_calculation(tmp_path: Path, engine: str = _ENGINE) -> Path:
     """A real one-stage ladder, prepped by the real `prep_jobset`.
 
     Returns the stage directory -- deck, wrapper and the shipped
@@ -102,7 +102,7 @@ def _a_prepared_calculation(tmp_path: Path) -> Path:
         "measuring nothing, so it is a precondition rather than an assertion")
     binned = stage / "bin"
     binned.mkdir()
-    for name, body in (("siesta", _ENGINE), ("conda", _CONDA)):
+    for name, body in (("siesta", engine), ("conda", _CONDA)):
         stub = binned / name
         stub.write_text(body)
         stub.chmod(0o755)
@@ -160,6 +160,31 @@ def test_a_rerun_writes_new_monitor_files_and_never_touches_the_first(tmp_path):
         "whole defect project-layout.md 1.5a exists to close")
     assert first_log.read_text() == keep, (
         "the re-run appended to (or truncated) the first attempt's monitor log")
+
+
+def test_a_run_that_printed_nothing_keeps_its_index(tmp_path):
+    """An engine that dies before its first line leaves its `-run0.concluded`,
+    monitor log and `util.csv` and NO output: the SIESTA tee creates the
+    `.out` with the first line it writes.  The next run must still advance,
+    or it overwrites that marker and truncates that measurement.
+
+    MUTATION THIS MUST FAIL AGAINST: resolve the index from the outputs
+    alone (`"<basename>-run"*<ext>` in the wrapper's resolver).
+    """
+    stage = _a_prepared_calculation(tmp_path,
+                                    engine="#!/bin/bash\nsleep 2\nexit 3\n")
+    _run_the_wrapper(stage)
+    marker = stage / f"{LABEL}-run0.concluded"
+    assert marker.exists() and not (stage / f"{LABEL}-run0.out").exists(), (
+        "the first run must leave a marker and no output, or this test "
+        f"measures nothing: {sorted(p.name for p in stage.iterdir())}")
+    first = marker.read_text()
+
+    _run_the_wrapper(stage)
+    assert (stage / f"{LABEL}-run1.concluded").exists(), (
+        "the re-run did not advance past a run that printed nothing: "
+        f"{sorted(p.name for p in stage.iterdir())}")
+    assert marker.read_text() == first, "the re-run overwrote run 0's marker"
 
 
 def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path):

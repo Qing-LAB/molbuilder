@@ -3306,10 +3306,10 @@ function paintNotifyNote() {
     const parts = [];
     if (v.on_scf_converged) parts.push("each SCF convergence");
     if (v.every_hours) parts.push(`every ${v.every_hours} h`);
-    parts.push("and when it ends");
+    parts.push("and when it starts and ends");
     let line = parts.length > 1
         ? "Reports " + parts.slice(0, -1).join(", ") + " " + parts[parts.length - 1]
-        : "Reports only when it ends";
+        : "Reports only when it starts and ends";
     // WHERE, in the same sentence as WHEN, because "reports every 6 h" with
     // no channel ticked is a promise the run cannot keep.
     if (v.channels && !v.channels.length) {

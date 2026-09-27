@@ -1908,9 +1908,10 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 # copies torn warm files under a live engine, while
                 # continuing a WALLTIME-KILLED one is exactly what a
                 # person wants -- the saved state is valid.  So the
-                # user judges (project-layout.md 1.6, the other
-                # file); molbuilder never decides over them.
-                raise SubmitError(
+                # user judges (project-layout.md § 1.6.4): asked at a
+                # terminal, refused with the same story where nobody can
+                # answer; --yes is the judgement recorded in advance.
+                _story = (
                     f"{_j.name}: {_names[_j.name]}/"
                     f"{attempt_name(_ns[-1])} was "
                     f"launched and never CONCLUDED -- it may still be "
@@ -1919,9 +1920,16 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                     f"  Continuing copies its warm files AS THEY ARE: "
                     f"valid after a forced stop, torn if it is still "
                     f"running.  Check `molbuilder jobset status` and "
-                    f"the queue first.\n"
-                    f"  Then: re-run this launch with --yes to record "
-                    f"your judgement and continue.")
+                    f"the queue first.")
+                from ..envs.hints import stdin_can_answer
+                if not stdin_can_answer():
+                    raise SubmitError(
+                        _story + "\n  Then: re-run this launch with --yes "
+                        "to record your judgement and continue.")
+                from .ask import confirm
+                if not confirm(_story):
+                    raise SubmitError(f"{_j.name}: not continued -- your "
+                                      f"answer.")
             if dry_run or mode == "ask":
                 # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
                 # dry_run took this arm, so `--mode ask` over a

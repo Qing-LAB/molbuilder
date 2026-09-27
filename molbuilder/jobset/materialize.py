@@ -5,8 +5,9 @@ Filesystem ONLY: it knows nothing about schedulers or engines.  For each
 job it creates the directory :func:`job_dir_names` assigns (a stage's
 ``<NN>_<name>/``, a trial's ``<NN>_<name>/bench/bench-<point>/``, the
 bundle root for a stageless calculation, ``bench-<name>/`` for hand-built
-sets) and lays relative symlinks for the static ``shared`` package plus
-the job's own ``script``.
+sets) and copies in, as real files, the static ``shared`` package plus
+the job's own ``script`` (`project-layout.md` § 1.0: a run directory holds
+everything it runs from).
 
 *(R8, 2026-08-12: this header still described Carry symlinks laid into a
 producer's directory and "the submit engine's dependency ordering" — both
@@ -438,10 +439,10 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
 
 
 def materialize(jobset: JobSet, base_dir) -> List[Path]:
-    """Create each job's directory under ``base_dir`` with its symlinks.
+    """Create each job's directory under ``base_dir`` with its copies.
 
     Returns the list of created job directories (in JobSet order).  Idempotent:
-    re-running refreshes the symlinks without duplicating anything.  Raises
+    re-running refreshes the copies without duplicating anything.  Raises
     ``ValueError`` if the JobSet is structurally invalid (so a bad carry /
     duplicate name can't produce a broken tree).
     """
@@ -732,7 +733,7 @@ class Attempt:
     stage:          str
     dir:            Path
     fresh:          bool
-    linked:         List[str]
+    brought:        List[str]
     copied:         List[str]
     continued_from: Optional[str]
     cold:           bool
@@ -746,7 +747,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     """Set ONE stage up to run, and report what was done.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
-    it, **link** the deck / monitor / shared package in, **copy** whatever this
+    it, **copy** the deck / monitor / shared package in, **copy** whatever this
     run continues from, and **report** — the report being the point, since
     preparing is still design and the split from starting is what gives you
     somewhere to look before committing cluster time.
@@ -832,7 +833,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # for links once; a synced-back bundle whose links dangled on the
     # other machine is the argument that outranks it.
     import shutil as _sh
-    linked: List[str] = []
+    brought: List[str] = []
 
     def _bring(fname: str) -> None:
         bn = os.path.basename(fname)
@@ -848,15 +849,15 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 if dst.is_symlink() or dst.exists():
                     dst.unlink()
                 _sh.copy2(src, dst)
-                linked.append(bn)
+                brought.append(bn)
                 return
 
     for fname in [job.script] + list(jobset.shared):
         _bring(fname)
-    # The monitor and what it imports (`runwrap.MONITOR_COMPANIONS` --
-    # the ONE list; naming the files here a second time is how
-    # `config_dir.py` came to travel with bench trials and not with run
-    # attempts, killing every run's monitor at import, 2026-08-28).
+    # The monitor and what it imports, as ONE file (`runwrap.MONITOR_BUNDLE`,
+    # built from `MONITOR_COMPANIONS`): one file cannot be half-shipped, which
+    # is how `config_dir.py` once travelled with bench trials and not with run
+    # attempts, killing every run's monitor at import.
     # makov_payne_correction.py: the post-run script a CHARGED deck's own
     # header instructs the user to run "after SIESTA finishes" -- HERE,
     # beside the .out.
@@ -932,7 +933,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         stage=stage_name,
         dir=attempt,
         fresh=is_new,
-        linked=linked,
+        brought=brought,
         copied=copied,
         continued_from=(None if (cold or not continue_from)
                         else str(continue_from)),

@@ -81,11 +81,9 @@ from .siesta_reader import SiestaReader
 # and their one reader are `siesta_grammar`'s (``read_build_line``): TBtrans
 # prints the same header, and two copies of it would drift.
 
-# Diagonalizer echoes from the redata: block.  SIESTA echoes every
-# diagonalization-affecting input the binary actually consumed -- this
-# is the ground truth for which solver path the run took, NOT what the
-# user wrote in the .fdf (those can drift when SIESTA's parser
-# normalises or rejects).  Used to populate
+# The solver SIESTA ran: its `diag:` lines -- the ground truth for which
+# solver path the run took, NOT what the user wrote in the .fdf (those can
+# drift when SIESTA's parser normalises or rejects).  Used to populate
 # ``runtime_info['siesta_diag']``.
 # The solver lines are `siesta_grammar`'s (``read_diag_line``), which
 # `bench/result.py` reads too.  Until 2026-09-26 this read the ``redata:``

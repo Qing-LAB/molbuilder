@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
 
 from . import report_fields as _report_fields
+from .config_dir import is_channel_name
 from .identity import normalise_id, run_id
 from .persist import check_schema, read_json, write_json
 # The record's spelling for the two asks.  A TOP-LEVEL import because it is
@@ -133,16 +134,6 @@ LANE_ASKS = ("time", "domain")
 
 #: A channel NAME, as a description may carry one.
 #:
-#: **Written twice, and it has to be.**  `monitor.is_channel_name` holds the
-#: same rule, and that module is the one the file those names must match is
-#: read by -- but it ships to a compute node as a standalone stdlib-only
-#: script, so it sits at L2 and cannot be imported from here (L1) without
-#: inverting the layering.  This is the same shape as `sign_report`, which
-#: `monitor` and `web/blueprints/notify.py` also write twice for the same
-#: reason, and it is kept honest the same way: by a test that feeds one
-#: side's answer to the other rather than by a comment asking nicely.
-#: `tests/test_task_notify.py::test_the_name_rule_is_the_same_on_both_sides`.
-_CHANNEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _RUN_KEYS = ("name", "id", "created")
 _STRUCTURE_KEYS = ("source", "formula", "atoms")
 
@@ -246,8 +237,11 @@ class Notify:
 
     **Absent-is-a-state**, like :class:`Allocation`: an empty block writes no
     key, and every description written before 2026-08-26 says exactly what it
-    always said by omitting it.  Absent also means the feature is off — no
-    default cadence is invented on anyone's behalf.
+    always said by omitting it.  Absent asks for no extra message — no
+    default cadence is invented on anyone's behalf — while the start and the
+    end still go to every channel the running machine has
+    (`run-reports.md` § 2); ``"channels": []`` is how a calculation asks
+    for silence.
     """
     #: Fire when a step's SCF reaches its criterion -- a relaxation's move, a
     #: force-constant run's displacement (`run-reports.md` § 2.2).  A single
@@ -266,9 +260,9 @@ class Notify:
     #: different state and not a spelling of the same one: reports off for
     #: this calculation, on a machine where they are set up.  Both are
     #: writable, so the serializer below carries `()` explicitly instead of
-    #: dropping it the way it drops every other falsy field -- the one
-    #: exception to S1, and it is here because the alternative is an
-    #: unticked list quietly meaning *all of them*.
+    #: dropping it the way it drops every other falsy field -- one of S1's
+    #: two exceptions (``report`` is the other), and it is here because the
+    #: alternative is an unticked list quietly meaning *all of them*.
     channels: Optional[Tuple[str, ...]] = None
 
     #: WHAT each report carries, beyond the name (`stages.md` § 6.9).
@@ -904,7 +898,8 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
 
 def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
                      calculation: str) -> "Notify":
-    """``notify`` -> :class:`Notify`; absent is an empty one, which is off.
+    """``notify`` -> :class:`Notify`; absent is an empty one: no extra
+    message, the start and the end still sent (`run-reports.md` § 2).
 
     Both fields are refused by TYPE rather than coerced.  ``"true"`` is not
     a boolean and ``"6"`` is not a number, and silently accepting either
@@ -921,8 +916,9 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
         return Notify()
     if not isinstance(raw, Mapping) or not raw:
         _refuse("'notify' is present but not a non-empty object. Omit the "
-                "key entirely when nothing should be reported -- absent and "
-                "empty would be two spellings of one state")
+                "key to ask for nothing beyond the start and the end, or "
+                "give '\"channels\": []' to report nothing at all -- absent "
+                "and empty would be two spellings of one state")
     _check_keys(raw, _NOTIFY_KEYS, where="notify")
 
     scf = raw.get("on_scf_converged", False)
@@ -939,10 +935,10 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
         _refuse("notify.every_hours must be a finite number of hours")
     if hours < 0:
         _refuse(f"notify.every_hours cannot be negative (got {hours}) -- "
-                f"use 0, or omit the key, to report on nothing but the end")
+                f"use 0, or omit the key, to report nothing periodically")
 
-    # ABSENT AND EMPTY ARE TWO STATES here and nowhere else in this file
-    # (`run-reports.md` 3.0).  `None` is every channel the running machine
+    # ABSENT AND EMPTY ARE TWO STATES here and for `report` below
+    # (`run-reports.md` § 3.0, `stages.md` § 6.9).  `None` is every channel the running machine
     # has; `[]` is none of them.  Which is why the read is `"channels" in
     # raw` rather than a truthiness test -- the latter would collapse the
     # two and send a report to a channel the person had just unticked.
@@ -955,7 +951,7 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
                     f"the machine has, or write [] for none")
         names = []
         for item in got:
-            if not (isinstance(item, str) and _CHANNEL_RE.fullmatch(item)):
+            if not is_channel_name(item):
                 _refuse(f"notify.channels: {item!r} is not a channel name -- "
                         f"letters, digits, '-' and '_'. A name is all that "
                         f"travels; the address and key stay on the machine")
@@ -1188,7 +1184,7 @@ def _task_to_dict(task: Task) -> dict:
         out["notify"] = {
             k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),
                               ("every_hours", task.notify.every_hours)) if v}
-        # THE ONE FIELD THAT IS WRITTEN WHEN FALSY.  `[]` says "send this
+        # WRITTEN WHEN FALSY, as `report` is too.  `[]` says "send this
         # calculation nowhere" and absent says "everywhere this machine
         # has"; dropping the empty list would silently turn the first into
         # the second (`run-reports.md` 3.0).

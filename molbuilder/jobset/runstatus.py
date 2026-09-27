@@ -73,7 +73,7 @@ class StageStatus:
     """
     ref:        StageRef
     dir:        str
-    #: not-started/pending/queued/running/stale/failed/finished.  ``queued`` is
+    #: not-started/pending/queued/running/failed/finished/unknown.  ``queued`` is
     #: the contract's own word (project-layout.md § 1.6, *"queued as job
     #: 481923"*) for launched-but-no-output-yet, which is exactly the state an
     #: empty directory cannot be read for.
@@ -223,9 +223,9 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
         # question).
         from ..parse.dirs import run_status
-        # THE SAME GLOB THE EXISTENCE CHECK USED.  It stopped at the gate
-        # above until 2026-09-08, so a flat calculation's every stage row
-        # showed the newest stage's state.
+        # THE RUNG'S OWN GLOB: in the flat shape every stage shares the
+        # directory, and without it every row showed the newest stage's
+        # state.
         st = run_status(observed, out_glob, launch=launch)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")

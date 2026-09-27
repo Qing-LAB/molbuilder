@@ -2598,7 +2598,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     fresh = next((a.fresh for a in opened if a.dir == rep.dir), rep.fresh)
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                f"{'' if fresh else '  (reused -- not launched yet)'}")
-    click.echo(f"  linked: {', '.join(rep.linked)}")
+    click.echo(f"  brought in: {', '.join(rep.brought)}")
     if rep.copied:
         click.echo(f"  copied from {rep.continued_from}: "
                    f"{', '.join(rep.copied)}")

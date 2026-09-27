@@ -45,6 +45,7 @@ override hangs, and nothing here has to move first.
 from __future__ import annotations
 
 import os
+import re
 import stat
 from pathlib import Path
 from typing import List
@@ -519,3 +520,18 @@ def ensure_private_dir(d: Path, *, mode: int = PRIVATE_DIR_MODE,
         except OSError:
             pass
     return d
+
+
+#: A channel NAME: letters, digits, ``-`` or ``_``, up to 64.  It names an
+#: entry of the channel file this module locates (`run-reports.md` § 3), and
+#: it is written into a description and read back out without quoting -- so
+#: the rule lives here, where every layer and the monitor beside a job (this
+#: module travels in `mb_monitor.pyz`) can ask it.  Nothing generates a
+#: name; the person picks it.
+_CHANNEL_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def is_channel_name(name) -> bool:
+    """Is ``name`` a channel name a description may carry and the channel
+    file may hold?"""
+    return bool(isinstance(name, str) and _CHANNEL_NAME.fullmatch(name))

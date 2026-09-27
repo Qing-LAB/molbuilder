@@ -429,28 +429,6 @@ def test_a_named_channel_the_machine_lacks_comes_back_as_missing():
     assert missing == ["gone"]
 
 
-def test_the_two_halves_of_the_mirror_answer_alike():
-    """`NotifyPolicy` and `task.Notify` are the same policy on two machines
-    -- the class docstring says so, and says why they cannot be one class
-    (this module ships to a compute node with no molbuilder importable).
-
-    A mirror whose halves disagree is worse than two unrelated classes: the
-    reader trusts one and gets the other. `channels=()` is the case that
-    catches it, because it is the only value that is falsy and meaningful.
-    """
-    from molbuilder.task import Notify
-    cases = [
-        ({}, {}),
-        ({"on_scf": True}, {"on_scf_converged": True}),
-        ({"every_hours": 6}, {"every_hours": 6}),
-        ({"channels": ()}, {"channels": ()}),
-        ({"channels": ("a",)}, {"channels": ("a",)}),
-    ]
-    for here, there in cases:
-        assert bool(M.NotifyPolicy(**here)) == bool(Notify(**there)), \
-            f"{here} and {there} disagree"
-
-
 def test_the_notify_line_has_ONE_prefix_on_both_roads(tmp_path, capsys):
     """It was written twice -- a closure in `load_channels` and a copy in
     `_install_env_notifiers` that stamped the timestamp and then printed it

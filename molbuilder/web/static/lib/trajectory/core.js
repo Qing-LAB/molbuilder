@@ -831,7 +831,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
      *
      * Data block:
      *   step, energy_eV, max_force_eVperA, max_force_constrained_eVperA,
-     *   scf_cycle, scf_cycle_energy_eV, scf_cycle_gnorm_eVperA
+     *   scf_cycle, scf_cycle_energy_eV, scf_cycle_gnorm_eV
      *
      * The trailing SCF columns repeat the per-step value for the
      * cycle that's currently shown in the SCF plots (last cycle of
@@ -893,7 +893,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         lines.push("#                                   when constraints exist, otherwise empty.");
         lines.push("#   scf_cycle                     — last SCF iteration index for this step");
         lines.push("#   scf_cycle_energy_eV           — energy at that SCF cycle (eV)");
-        lines.push("#   scf_cycle_gnorm_eVperA        — SCF gradient norm at that cycle (eV/Å);");
+        lines.push("#   scf_cycle_gnorm_eV            — SCF orbital-gradient norm at that cycle (eV);");
         lines.push("#                                   PySCF only; SIESTA emits dHmax instead.");
         lines.push("#");
         lines.push("# Empty cells mean the engine didn't emit that value at that step.");
@@ -901,7 +901,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         lines.push([
             "step", "energy_eV",
             "max_force_eVperA", "max_force_constrained_eVperA",
-            "scf_cycle", "scf_cycle_energy_eV", "scf_cycle_gnorm_eVperA",
+            "scf_cycle", "scf_cycle_energy_eV", "scf_cycle_gnorm_eV",
         ].join(","));
 
         for (var i = 0; i < nFrames; i++) {
@@ -1784,7 +1784,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         if (current[0].gnorm !== undefined) {
             residual      = current.map(c => c.gnorm);
             residualName  = "|g|";
-            residualUnit  = "eV/Å";
+            residualUnit  = "eV";     // an energy: dE over orbital rotations
         } else if (current[0].dHmax !== undefined) {
             residual      = current.map(c => c.dHmax);
             residualName  = "dHmax";

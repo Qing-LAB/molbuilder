@@ -773,7 +773,7 @@ can spend a week computing from a geometry you would have rejected in a minute.
 |---|---|---|
 | is | one launch of a stage or a trial | one start of the wrapper inside the attempt |
 | named | `run-<n>/` in the hierarchy; in the flat shape, the `-run<N>` index | `-run<N>`, in every file the wrapper writes |
-| numbered by | `prep`: the next unused `n` (§ 4.3) | the wrapper: the highest `-run<N>` output beside it plus one, else 0 |
+| numbered by | `prep`: the next unused `n` (§ 4.3) | the wrapper: the highest `-run<N>` any file beside it carries — an output, a marker, a monitor file — plus one, else 0 |
 | a new one when | you prep and launch again (§ 1.5) | the wrapper warm-retries in place (`running-a-job.md` § 3.5) |
 
 In the flat shape the two coincide: the index is all that tells attempts apart.

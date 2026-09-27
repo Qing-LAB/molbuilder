@@ -95,15 +95,14 @@ class MolwatchReader:
 
     # ---- header / footer ----------------------------------------------------
 
-    def _on_error(self, line: str, line_no: int) -> None:
-        m = _MG.ERROR.match(line)
-        if m:
-            self.error_message = m.group(1).strip()
-            self.run_state = "stopped"
-
-    def _on_concluded(self, line: str, line_no: int) -> None:
-        if self.run_state != "stopped":
-            self.run_state = "ended"
+    def _on_footer(self, line: str, line_no: int) -> None:
+        # THROUGH THE ONE READER of the footer, which owns its precedence
+        # (error outranks concluded, the last error wins).
+        seen = {"run_state": self.run_state} if self.run_state else {}
+        if _MG.parse_conclusion_line(line, seen):
+            self.run_state = seen.get("run_state", self.run_state)
+            self.error_message = seen.get("error_message",
+                                          self.error_message)
 
     def _on_engine(self, line: str, line_no: int) -> None:
         m = _MG.ENGINE.match(line)
@@ -188,8 +187,16 @@ class MolwatchReader:
         stripped = line.strip()
         if stripped.startswith(_MG.SCF_HISTORY_END):
             return END_SECTION
+        if stripped.startswith("#") and _MG.OLD_GNORM_HEADER in stripped:
+            # A log written before the orbital-gradient norm was converted
+            # as an energy: its values are norm x Hartree/Bohr->eV/Ang.
+            self._block["_gnorm_scale"] = _MG.OLD_GNORM_TO_EV
+            return CONTINUE
         row = _MG.scf_history_row(stripped)
         if row is not None:
+            scale = self._block.get("_gnorm_scale")
+            if scale and isinstance(row.get("gnorm"), float):
+                row["gnorm"] *= scale
             self._block["scf_history"].append(row)
         return CONTINUE
 
@@ -206,13 +213,18 @@ class MolwatchReader:
                           aliases=["==== molwatch step N end ===="],
                           start=matches_regex_ci(_MG.BLOCK_END.pattern),
                           on_start=self._on_block_end)
-        out_rules = [
+        # THE FOOTER IS READ INSIDE A BLOCK TOO: a run that raises mid-block
+        # leaves the block torn, and its exit hook still appends the footer.
+        footer = [
             SectionRule(name="fatal_error", aliases=["# error: ..."],
                         start=matches_regex_ci(_MG.ERROR.pattern),
-                        on_start=self._on_error),
+                        on_start=self._on_footer),
             SectionRule(name="concluded", aliases=["# concluded: ..."],
                         start=matches_regex_ci(_MG.CONCLUDED.pattern),
-                        on_start=self._on_concluded),
+                        on_start=self._on_footer),
+        ]
+        out_rules = [
+            *footer,
             SectionRule(name="engine", aliases=["# engine: ..."],
                         start=matches_regex_ci(_MG.ENGINE.pattern),
                         on_start=self._on_engine),
@@ -229,6 +241,7 @@ class MolwatchReader:
         in_rules = [
             begin,
             end,
+            *footer,
             SectionRule(name="coords", aliases=["coordinates (Ang):"],
                         start=starts_with_ci("coordinates"),
                         consume=self._consume_coords),
@@ -298,7 +311,7 @@ class MolwatchReader:
                 residuals = {
                     name: (last[key], None, unit)
                     for name, key, unit in (("dE", "delta_E", "eV"),
-                                            ("|g|", "gnorm", "eV/Ang"),
+                                            ("|g|", "gnorm", "eV"),
                                             ("ddm", "ddm", ""))
                     if isinstance(last.get(key), (int, float))
                     and math.isfinite(last[key])}

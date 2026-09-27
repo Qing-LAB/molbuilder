@@ -164,8 +164,8 @@
      * door's own reading, and the empty-state card draws it: one row per
      * rung in ladder order, its state and detail, the rung to resume from
      * named in the title.  The state chip is the bench summary's
-     * (`inspectors.stateChip`) -- one vocabulary of eight words and seven
-     * tones; a third copy is what § 5c.3 forbids. */
+     * (`inspectors.stateChip`) -- one vocabulary of words and tones
+     * (`running-a-job.md` § 4.2); a third copy is what § 5c.3 forbids. */
     function _renderLadder(ladder) {
         const host = els.fallback
             && els.fallback.querySelector(".results-ladder");

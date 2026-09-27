@@ -72,7 +72,7 @@ _SIESTA_DIAG_ALGORITHMS = frozenset({
     "NOEXPERT-2STAGE", "NOEXPERT-2", "QR-2STAGE", "QR-2", "V_2STAGE",
 })
 
-# SIESTA timer lines emitted right after each SCF cycle.  Format:
+# SIESTA's IterSCF timer line (`timer: Routine,Calls,Time,% = IterSCF`).  Format:
 #   timer: Routine,Calls,Time,% = IterSCF        1      40.820  49.49
 # CUMULATIVE Calls and Time (since the start of the run); the per-iteration
 # time is the delta between successive cycles' cumulative values.  Only the
@@ -109,9 +109,9 @@ class SiestaReader:
         #   "stopped"       -- a fatal marker matched: it did not reach its
         #                      own end.
         #   "ended"         -- ">> End of run" emitted.
-        #   "running"       -- no ending marker and no fault.  Content cannot
-        #                      tell a slow step from a killed job;
-        #                      `parse/dirs/job.py` settles that by age.
+        #   "running"       -- no ending marker and no fault: not finished.
+        #                      Nothing tells a slow step from a killed job
+        #                      (`model/parse.md` § 2b).
         # Convergence is NOT consulted here.  It rides out separately as
         # `scf_converged` (P-S2), because a capped benchmark that never
         # converges still ended perfectly normally.

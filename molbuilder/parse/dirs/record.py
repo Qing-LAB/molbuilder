@@ -23,10 +23,7 @@ the ``.out`` by its stamp; the wrapper log whose FIRST section is run N.
 from __future__ import annotations
 
 import hashlib
-import math
-import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -53,7 +50,6 @@ class RunFiles:
     label: Optional[str] = None
     stage: Optional[str] = None
     run: Optional[int] = None
-    runs: Tuple[int, ...] = ()
     out: Optional[Path] = None             # SIESTA family's stdout, run N
     pyscf_log: Optional[Path] = None       # PySCF's stdout, run N
     engine_log: Optional[Path] = None      # PySCF's own logger's file
@@ -83,16 +79,6 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def _stamp_of_fdf_log(path: Path) -> Optional[str]:
-    """``fdf.20260925T194936.695.log`` -> ``2026-09-25T19:49:36``: SIESTA
-    names the log after the moment it opened it (``Src/reinit_m.F90``)."""
-    m = re.match(r"^fdf\.(\d{8}T\d{6})\.\d+\.log$", path.name)
-    if not m:
-        return None
-    try:
-        return datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").isoformat()
-    except ValueError:
-        return None
 
 
 def _deck_roles(engine: str) -> List[str]:
@@ -178,8 +164,9 @@ def run_files(directory, *, status=None,
                 break
         start = facts.get("run_start_local")
         if start:
+            from ..engines.siesta_fdflog import stamp_of as _fdf_stamp
             fdf_log = next((p for p in sorted(d.glob("fdf.*.log"))
-                            if _stamp_of_fdf_log(p) == start), None)
+                            if _fdf_stamp(p) == start), None)
 
     # THE WRAPPER LOG WHOSE FIRST SECTION IS RUN N: a retry appends its own
     # section to the first log and opens one of its own (`runwrap`'s reader).
@@ -200,7 +187,7 @@ def run_files(directory, *, status=None,
     return RunFiles(
         directory=d, engine=engine, status=status,
         deck=deck, label=label,
-        stage=stage, run=n, runs=tuple(runs), out=out, pyscf_log=pyscf_log,
+        stage=stage, run=n, out=out, pyscf_log=pyscf_log,
         engine_log=one(".log", None), fdf_log=fdf_log,
         wrapper_section=section, wrapper_text=section_text,
         timing=one(".scf-timing.log", n) if n is not None else None,
@@ -292,8 +279,8 @@ def _siesta_out(f: RunFiles) -> Dict[str, Any]:
 def _ending(f: RunFiles) -> Dict[str, Any]:
     """How the latest run is doing, whether each of its phases converged, and
     how each earlier run ended -- all from the ONE scan `run_status` made to
-    judge the state (``RunStatus.endings``), which also confirmed the markers
-    against the file's age (§ 2b P-S1).  Nothing is read a second time."""
+    judge the state (``RunStatus.endings``).  Nothing is read a second
+    time."""
     from ..engines._run_ending import CONCLUDED
     st = f.status
     if st is None:
@@ -408,21 +395,17 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
 
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:
-    """``<base>-runN.concluded`` -- what the run's process said on its way
-    out (`materialize.attempt_concluded`)."""
-    from ...jobset.materialize import attempt_concluded
-    if f.deck is None:
-        return {}
-    said = attempt_concluded(f.directory, f.deck.stem)
+    """What the run's process said on its way out: the marker `run_status`
+    already found at the latest run (``RunStatus.concluded``), read by its one
+    parser, `job.read_concluded` -- never the file a second time."""
+    from .job import read_concluded
+    said = getattr(f.status, "concluded", None)
     if not said:
         return {}
-    m = re.match(r"rc=(\d+)(?:\s+at\s+(.*))?", said.strip())
-    if not m:
+    got = read_concluded(said)
+    if got is None:
         return {"computation": {"exit": {"said": said.strip()}}}
-    exit_ = {"code": int(m.group(1))}
-    if m.group(2):
-        exit_["at"] = m.group(2).strip()
-    return {"computation": {"exit": exit_}}
+    return {"computation": {"exit": got}}
 
 
 def _deck(f: RunFiles) -> Dict[str, Any]:

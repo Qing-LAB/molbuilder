@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.fdf import _norm
@@ -37,7 +37,20 @@ from molbuilder.parse.types import EngineParamsResult, ParseResult, ParseWarning
 #: SIESTA 5 names the log after the moment it opened it
 #: (``fdf.20260925T194936.695.log``, ``Src/reinit_m.F90``); SIESTA 4 wrote
 #: ``fdf.log``.
-_NAME = re.compile(r"^fdf(\.\d{8}T\d{6}\.\d+)?\.log$")
+_NAME = re.compile(r"^fdf(?:\.(\d{8}T\d{6})\.\d+)?\.log$")
+
+
+def stamp_of(path) -> Optional[str]:
+    """``fdf.20260925T194936.695.log`` -> ``2026-09-25T19:49:36``, the moment
+    SIESTA opened the log; ``None`` for ``fdf.log`` or any other name."""
+    from datetime import datetime
+    m = _NAME.match(Path(path).name)
+    if not m or not m.group(1):
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").isoformat()
+    except ValueError:
+        return None
 _ORIGINAL = re.compile(r"^#\s*above item originally:\s*\S+\s+(.*?)\s*$",
                        re.IGNORECASE)
 
@@ -113,8 +126,12 @@ def read_fdf_log(text: str, source: str = "<text>"
     params: Dict[str, Dict[str, Any]] = {}
     for label, readings in read.items():
         distinct: List[Dict[str, Any]] = []
+        # ONE READING PER VALUE, case-blind: fdf matches an option's value
+        # the way it matches its label, so `CG` and `cg` are one setting read
+        # twice, not two.  The first spelling is kept.
         for r in readings:
-            if all(r["value"] != d["value"] for d in distinct):
+            if all(str(r["value"]).casefold() != str(d["value"]).casefold()
+                   for d in distinct):
                 distinct.append(r)
         params[label] = ({"key": spelled[label], **distinct[0]}
                          if len(distinct) == 1 else

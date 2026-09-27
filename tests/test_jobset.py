@@ -2157,9 +2157,9 @@ def test_prepare_links_resolve_from_two_levels_down(tmp_path):
     # bench trials (rendered in place) and not with run attempts (linked)
     # -- and every production run's monitor died at import, silently
     # (2026-08-28).  One file cannot be half-brought.
-    assert set(rep.linked) == {"JOB_03_tight.fdf", "C.psml", MONITOR_BUNDLE,
+    assert set(rep.brought) == {"JOB_03_tight.fdf", "C.psml", MONITOR_BUNDLE,
                                   "JOB_03_tight.run.sh"}
-    for name in rep.linked:
+    for name in rep.brought:
         link = attempt / name
         assert link.is_file() and not link.is_symlink(), (
             f"{name}: a run directory holds real files (L2, roadmap "

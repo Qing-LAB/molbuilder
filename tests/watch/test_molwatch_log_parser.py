@@ -542,3 +542,45 @@ def test_a_non_finite_clock_becomes_null_not_NaN(tmp_path):
     # one -- it is sieved BEFORE the derived series is built.
     assert result["elapsed_s"] == [None]
     assert "NaN" not in _json.dumps(result)
+
+
+def test_the_orbital_gradient_norm_is_read_as_an_energy_old_logs_too():
+    """PySCF's `norm_gorb` is dE over dimensionless orbital rotations -- an
+    energy in Hartree -- so the log carries it in eV.  A log written while
+    it was scaled as a force (Hartree/Bohr -> eV/Ang, its header saying
+    `gnorm(eV/Ang)`) is read back in eV as well: `SAMPLE`'s first cycle,
+    5e-2 in that old scale, is 5e-2 x 27.211 / 51.422 eV.  A log with the
+    `gnorm(eV)` header is taken as written.
+
+    MUTATION THIS MUST FAIL AGAINST: read the old header's values unscaled.
+    """
+    from molbuilder.parse.engines.molwatch_reader import MolwatchReader
+    old = MolwatchReader().feed_text(SAMPLE).finish()["blocks"][0]
+    assert old["scf_history"][0]["gnorm"] == pytest.approx(
+        5e-2 * 27.211386245988 / 51.42208619)
+    new = MolwatchReader().feed_text(
+        SAMPLE.replace("gnorm(eV/Ang)", "gnorm(eV)")).finish()["blocks"][0]
+    assert new["scf_history"][0]["gnorm"] == pytest.approx(5e-2)
+
+
+def test_a_footer_after_a_torn_block_is_still_the_ending():
+    """A deck that raises mid-block leaves that block open, and its exit hook
+    still appends the footer.  The reading pass reads the footer inside a
+    block as outside one, so it says `stopped` with the error -- what
+    `scan_conclusion`, the other door onto the same footer, says too.
+
+    MUTATION THIS MUST FAIL AGAINST: read the footer only outside a block.
+    """
+    import tempfile
+    from molbuilder.parse.engines import molwatch_grammar as MG
+    from molbuilder.parse.engines.molwatch_reader import MolwatchReader
+    torn = SAMPLE.split("==== molwatch step 1 end ====")[0]
+    text = torn + "# error: RuntimeError: SCF diverged\n# concluded: 2026\n"
+    got = MolwatchReader().feed_text(text).finish()
+    assert got["run_state"] == "stopped", got["run_state"]
+    assert got["error_message"] == "RuntimeError: SCF diverged"
+    with tempfile.NamedTemporaryFile("w", suffix=".molwatch.log",
+                                     delete=False) as fh:
+        fh.write(text)
+    assert MG.scan_conclusion(fh.name) == "stopped"
+

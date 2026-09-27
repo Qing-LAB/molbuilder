@@ -2,12 +2,11 @@
 
 ``{state, detail, last_change_at, active_source, concluded}``.
 
-**The status is the parsers' own answer.**  Every engine parser already
-reports how its file ended -- ``run_state``, ``model/parse.md`` § 2b --
-so this asks the registry for each result file (every ``.out``, and each
-``*.molwatch.log`` whose footer concludes the run: the engine-neutral
-end-of-run marker, and the only one a PySCF attempt has).  It never
-opens an engine output directly.
+**The status is the ending readers' own answer.**  How a file ended --
+``run_state``, ``model/parse.md`` § 2b -- is read for each result file
+(every ``.out``, and each ``*.molwatch.log`` whose footer concludes the
+run) by its role's reader, ``_run_ending.ending_of``: the same scan the
+parsers agree with.  This module greps no output itself.
 
 Two things a parser cannot know are settled here, because they are not
 in the file:
@@ -120,18 +119,11 @@ def _iso_z(ts: float) -> str:
 
 
 def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
-    """Bucket relevant files in the dir by kind.
-
-    Returns {"fdf": [...], "xv": [...], "struct_out": [...],
-             "molstruct_json": [...], "ani": [...]} plus one bucket per
-    RUN-OUTPUT ROLE, keyed by the role itself: {".out": [...],
-    ".pyscf.log": [...], ".molwatch.log": [...]}.  Paths sorted by name
-    within each bucket.
-
-    **The run-output buckets are keyed by role and not by a nickname**, and
-    that is the point rather than a detail: they used to be `"out"` and
-    `"molwatch"`, a private two-word vocabulary for a three-row catalogue
-    column, and the third row had no word so it was not looked for at all.
+    """The run-output files of the rung ``match`` names, keyed by ROLE --
+    ``{".out": [...], ".pyscf.log": [...], ".molwatch.log": [...]}`` -- and
+    sorted by name within each.  Which files are a run's output is the
+    catalogue's question (`runfiles.run_output_roles`, `model/parse.md`
+    § 5.5, R-RO1).
 
     ``match`` NARROWS THE DIRECTORY TO ONE RUNG, and in the flat shape that is
     the whole question: every stage of a flat calculation shares one directory
@@ -140,43 +132,10 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
     passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
     answer, where the directory has already selected the stage.
     """
-    by_kind: Dict[str, List[Path]] = {
-        "fdf": [], "xv": [], "struct_out": [],
-        "molstruct_json": [], "ani": [],
-    }
-    # THE NARROWING FIRST, because it is `match`'s whole job and no role
-    # search takes a glob: this is the set of files this rung owns.
     narrowed = {c for c in run_dir.glob(match) if c.is_file()}
-
-    # ROLES THE CATALOGUE DECLARES come from the catalogue.  These were
-    # spelled `name.endswith(".fdf")` here until 2026-09-18 -- the role
-    # vocabulary written outside the module that declares it, which is the
-    # exact case `runfiles.find_by_role` says it exists to end, and which
-    # every sibling in this package converted on 2026-09-08
-    # (`atom_metadata.py`, `contract.py`, `rundir.py`).
-    by_kind["fdf"] = sorted(p for p in _rf.find_by_role(run_dir, ".fdf")
-                            if p in narrowed)
-    # WHICH FILES ARE A RUN'S OUTPUT IS THE CATALOGUE'S QUESTION, and the
-    # buckets are keyed by the ROLE because the role is what they are.  The
-    # pair `("out", "molwatch")` stood here as a literal list until
-    # 2026-09-18 and did not name `.pyscf.log`, so a finished PySCF run that
-    # writes no molwatch log had no result file at all as far as this module
-    # was concerned (`model/parse.md` § 5.5, R-RO1).
-    for role in _rf.run_output_roles():
-        by_kind[role] = sorted(p for p in _rf.find_by_role(run_dir, role)
-                               if p in narrowed)
-
-    # ...AND THE ENGINE'S OWN OUTPUTS STAY LITERAL, because molbuilder
-    # declares no vocabulary for them: `.XV`, `.STRUCT_OUT` and `.ANI` are
-    # SIESTA's names for SIESTA's files and appear in no `runfiles.WRITTEN`
-    # row (`projects.py` states the boundary).  Asking `find_by_role` for
-    # one would be refused, rightly.
-    for suffix, bucket in ((".XV", "xv"), (".STRUCT_OUT", "struct_out"),
-                           (".molstruct.json", "molstruct_json"),
-                           (".ANI", "ani")):
-        by_kind[bucket] = sorted(p for p in narrowed
-                                 if p.name.endswith(suffix))
-    return by_kind
+    return {role: sorted(p for p in _rf.find_by_role(run_dir, role)
+                         if p in narrowed)
+            for role in _rf.run_output_roles()}
 
 
 #: SIESTA's own end-of-run marker: a FILE whose existence is the signal, and
@@ -245,6 +204,20 @@ def _label_of_marker(name: str) -> str:
     return name[:cut] if cut > 0 else name
 
 
+def read_concluded(text: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The conclusion marker's first line, ``rc=<N> at <when>`` as the wrapper
+    writes it (`runwrap.py`), as ``{"code": N, "at": when}`` -- ``at`` only
+    when stated -- or ``None`` when the text is not one (SIESTA's own
+    ``0_NORMAL_EXIT``, which carries no code).  THE one reader of that line.
+    """
+    head = text.splitlines()[0] if text else ""
+    m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?\s*$", head)
+    if m is None:
+        return None
+    return {"code": int(m.group(1)),
+            **({"at": m.group(2)} if m.group(2) else {})}
+
+
 def _rc_ok(concluded: str) -> bool:
     """Did the process end successfully, from the marker's own text?
 
@@ -256,9 +229,8 @@ def _rc_ok(concluded: str) -> bool:
     """
     if concluded == _ENGINE_EXIT_MARKER:
         return True
-    head = concluded.splitlines()[0] if concluded else ""
-    m = re.search(r"\brc=(-?\d+)", head)
-    return m is not None and int(m.group(1)) == 0
+    got = read_concluded(concluded)
+    return got is not None and got["code"] == 0
 
 
 # ---- how each result file ENDED ------------------------------------- #
@@ -368,10 +340,10 @@ def run_status(run_dir, match: str = "*", *,
     written yet* before any output exists (`project-layout.md` § 1.6) --
     ``pending`` and ``queued`` -- and a caller that holds it passes it.
 
-    **The status IS the parser's answer**, plus what no parser can know.
-    Every engine parser already reports how its file ended -- ``run_state``
-    on the result, ``model/parse.md`` § 2b -- so this asks them and then
-    settles what a single file cannot:
+    **The status IS the ending readers' answer**, plus what no single file
+    can know.  How each file ended -- ``run_state``, ``model/parse.md``
+    § 2b -- is read by its role's reader (``_run_ending.ending_of``), and
+    this settles what a single file cannot:
 
     * **which file speaks for the directory.**  A folder holds one
       ``.out`` per run index and one molwatch log per stage; a parser

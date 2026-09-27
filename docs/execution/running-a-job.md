@@ -495,7 +495,9 @@ retried**, because running again cannot fix it: a crash — `propor`'s
 `IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
 one; a **diverged** SCF, whose retry resumes from the diverged density and is
 the same run again — the monitor warns instead (`model/parse.md` § 5d.6); and
-anything, when no python is beside the job (the log says so).
+anything, when no python is beside the job (the log says so). *The divergence
+verdict that tells a diverged SCF from a slow one is built by plan § 5t.3's P4;
+until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
 
 ```mermaid
 flowchart LR
@@ -532,10 +534,10 @@ stopped with SIGUSR1, not an ending (§ 4.1).
 | instrument | file | engines | written | read by |
 |---|---|---|---|---|
 | **run banner** — host, cwd, env, engine binary and version, launch mode, threading, GPU resources | the session log | both | before the engine starts | a person; the run record |
-| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
+| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included, and the engine's wall time on its `benchmark:` line | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
 | **the engine's stdout**, teed | `<basename>-runN.out` · `-runN.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
 | **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
-| **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) and the engine's wall time | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
+| **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
 | **conclusion marker** — exit code and time | `-runN.concluded` | both | the wrapper's last act, main line only | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 

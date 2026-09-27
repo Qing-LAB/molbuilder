@@ -206,7 +206,7 @@ invariant 6a.
 
 #### The third party in the directory: the monitor observes, and only observes
 
-A wrapper activates and execs. An engine reads and writes. There is one more
+A wrapper activates and runs the engine as its child. An engine reads and writes. There is one more
 thing in that directory, and it has the narrowest job of all.
 
 **The monitor runs beside the engine and watches it** — every engine's, from one
@@ -245,10 +245,10 @@ decide, not molbuilder's.
 flowchart TB
     subgraph DIR["<b>one run directory</b> — the engine's whole world"]
       direction TB
-      W["<b>the wrapper</b> .run.sh<br/><i>activates, then execs</i><br/>changes no directory · reads no config"]
+      W["<b>the wrapper</b> .run.sh<br/><i>activates, then runs the engine</i><br/>changes no directory · reads no config"]
       E["<b>the engine</b> siesta / python<br/><i>reads what is here, writes beside it</i><br/>knows nothing of stages or descriptions"]
       M["<b>the monitor</b> mb_monitor.pyz<br/><i>watches the wrapper's PID, appends to a log</i><br/>never decides · never edits the calculation"]
-      W -->|"exec"| E
+      W -->|"runs, as its child"| E
       W -.->|"backgrounds, low priority"| M
       M -.->|"observes"| E
     end
@@ -256,7 +256,7 @@ flowchart TB
     M -.->|"notifies — a run ending at 3am can say so"| U
 ```
 
-**Three parties, three verbs: the wrapper activates and execs, the engine reads
+**Three parties, three verbs: the wrapper activates and runs, the engine reads
 and writes, the monitor watches and tells.** Nothing in that directory decides
 anything; everything that *decides* runs where the user is
 (`checkpointing.md § 9`).
@@ -922,7 +922,7 @@ extension:
 
 #### What a wrapper is made of
 
-**The wrapper activates and execs** (`running-a-job.md` § 2.2a) — these are the
+**The wrapper activates and runs the engine as its child** (`running-a-job.md` § 2.2a) — these are the
 blocks that serve those two jobs, and the list is exhaustive. A generated
 wrapper contains these and nothing else:
 
@@ -951,7 +951,7 @@ wrapper contains these and nothing else:
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
 | **Background job monitor** | launches `mb_monitor.pyz` beside the run at `nice 19`, watching the wrapper's own PID — the monitor and the framework readers it reads the run through, one file; the EXIT trap stops it and waits for its closing lines (`run-reports.md` §§ 2.4, 2.6). Opt out with `MB_MONITOR=0` |
 | **Dry-run preview** | the `--dry-run` inspection: resolved command, each value's SOURCE, the sbatch-header cross-check — then exit 0, nothing launched |
-| **Launch SIESTA + capture exit** | the exec and the exit code; on a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then the conclusion marker, on the main line |
+| **Launch SIESTA + capture exit** | the engine, run as a child, and its exit code; on a failure, how the run ended — asked of `_mb_ending` (below) and printed — and the `propor` hint and the warm retries its answers gate; then the conclusion marker, on the main line |
 
 *(Amended 2026-08-12, R9: the table claimed exhaustiveness while listing
 only the blocks of a minimal CPU wrapper — the five conditional rows above
@@ -1017,7 +1017,7 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
   > Python** — not at submit and not by the wrapper
   > (`project-layout.md § 1.6`). The wrapper is launched *inside* it and is
   > otherwise
-  > unchanged: it activates an environment and execs an engine in whatever
+  > unchanged: it activates an environment and runs an engine in whatever
   > directory it was handed, which is what
   > [`running-a-job.md`](?doc=execution/running-a-job.md) § 2.2a states in
   > general.
@@ -2175,7 +2175,7 @@ them; within a layer, one concept has exactly one name.
 | GPU request | `use_gpu` | `gres` → `--gres`, and `use_gpu` itself rides `Resources` | the GPU type comes from the record; the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
-| Warm-retry budget | `continue_retries` (1–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
+| Warm-retry budget | `continue_retries` (0–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
 
 > **One row in this table becomes no scheduler flag at all, and it is not an
 > oversight.** `continue_retries` rides `jobset.Resources` because that is the
@@ -2230,7 +2230,7 @@ wrapper, and a copied argument list has lost fields on that road before.
 | `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage runs tbtrans over the device stage's deck text, so the deck cannot carry it (transport-design.md § 4.2) |
 | `continue_retries` | the wrapper | the warm-retry budget — the table's last row above; running-a-job.md § 3.5 |
 | `max_memory_mb` | the wrapper | its `ulimit -v` cap — a runtime guard against a runaway allocation, distinct from `mem`, which asks the scheduler |
-| `use_gpu` | the wrapper | *does this run use a GPU* — carried, never re-derived from the deck (`execution/gpu.md` G7), so a PySCF GPU run routes too |
+| `use_gpu` | the wrapper | *does this run use a GPU* — carried, so a PySCF GPU run routes too; a SIESTA deck's own GPU keywords answer only where nothing is carried — a wrapper for a deck someone points at, which has no allocation (`execution/gpu.md` G7) |
 | `notify_on_scf` · `notify_every_hours` | the monitor's command line | WHEN the calculation speaks (run-reports.md § 2) |
 | `notify_channels` | the monitor's command line | WHICH of the running machine's channels, by name. Unset renders no flag and means every channel; an empty tuple renders one and means none (run-reports.md § 3.0) |
 | `notify_report` | the monitor's command line | WHICH report fields a chat card shows — the name is always sent. Unset is every field; an empty tuple is the summary line alone (stages.md § 6.9) |

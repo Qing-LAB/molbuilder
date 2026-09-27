@@ -108,10 +108,9 @@ def scan_ending(text: str, *more: str) -> RunEnding:
     apart (:func:`_siesta_ending`).  The deck's echo is the output's alone,
     so each text is read from outside it.
 
-    ``running`` is the honest answer for a file with no ending marker:
-    nothing IN it separates a slow DFT step from a job the scheduler
-    killed.  Only the filesystem can, and `parse/dirs/job.py` does
-    (§ 2b P-S1).
+    ``running`` is the honest answer for a file with no ending marker --
+    not finished: nothing in it separates a slow DFT step from a job the
+    scheduler killed (§ 2b P-S1).
 
     ``scf_converged`` is the LAST phase's, as the parser's is: a TranSIESTA
     device's periodic initialization converging does not speak for its NEGF
@@ -247,8 +246,9 @@ def scan_pyscf_ending(text: str) -> RunEnding:
     ended = False
     for raw in text.splitlines():
         line = raw.lower()
-        # ANCHORED AT COLUMN 0, exactly as `scan_ending` anchors SIESTA's
-        # (line 151).  A SUBSTRING TEST IS WRONG HERE and not subtly: PySCF's
+        # ANCHORED AT COLUMN 0.  A SUBSTRING TEST IS WRONG HERE -- unlike
+        # SIESTA's markers, which `scan_ending` finds as substrings outside
+        # the deck's echo -- and not subtly: PySCF's
         # `Mole.build()` calls `dump_input()`, which ECHOES THE DECK'S OWN
         # SOURCE into `mol.stdout` -- and when the deck writes no separate
         # `.log`, `mol.stdout` IS the stdout the wrapper captures.  So the

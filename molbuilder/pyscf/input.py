@@ -55,7 +55,8 @@ ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job
 #: (`model/parse.md` § 5.5).
-from .end_lines import END_MARKER   # noqa: E402
+from .end_lines import (END_MARKER, FOOTER_CONCLUDED,   # noqa: E402
+                        FOOTER_ERROR)
 
 #: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
 #: derives the same answer from the same catalogue row
@@ -1474,8 +1475,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # an atexit hook that always runs (clean exit OR exception OR Ctrl-C)
     # to write the conclusion line.  SIGKILL / power loss leaves the
     # file without markers, which correctly reads as "running" -- the
-    # process didn't have a chance to finalize, and only the file's AGE
-    # can say whether it is slow or dead (`model/parse.md` § 2b, P-S1).
+    # process didn't have a chance to finalize: not finished, whether slow
+    # or dead, which no file can tell (`model/parse.md` § 2b, P-S1).
     out.append("import atexit as _mw_atexit")
     out.append("import sys as _mw_sys")
     out.append("_molwatch_run = {'error': None}")
@@ -1489,8 +1490,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     out.append("            _ts = _mw_time.strftime('%Y-%m-%dT%H:%M:%S')")
     out.append("            if _molwatch_run['error']:")
     out.append("                _msg = _molwatch_run['error'].replace(chr(10), ' ')")
-    out.append("                _fh.write(f'# error: {_msg}\\n')")
-    out.append("            _fh.write(f'# concluded: {_ts}\\n')")
+    out.append("                _fh.write(f'" + FOOTER_ERROR + " {_msg}\\n')")
+    out.append("            _fh.write(f'" + FOOTER_CONCLUDED + " {_ts}\\n')")
     out.append("    except Exception:")
     out.append("        pass    # don't break the user's exit on a logging issue")
     out.append("_mw_atexit.register(_molwatch_finalize)")

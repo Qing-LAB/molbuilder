@@ -52,6 +52,25 @@ def test_the_engine_s_own_log_says_what_it_used_and_what_nobody_set():
     assert kgrid[2].split()[:3] == ["0", "0", "1"]
 
 
+def test_a_key_read_only_as_defaults_is_not_the_deck_s():
+    """`engine_only` names what the engine read and nobody wrote (§ 5d.3).
+    `MD.TypeOfRun` was read four times in the diverged device's log -- none,
+    CG, none, cg -- each `# default value`: not the deck's, and `CG`/`cg`
+    are one setting read twice.  `MeshCutoff`, which the deck set, is.
+
+    MUTATION THIS MUST FAIL AGAINST: `in_deck` from a top-level `default`
+    alone (a multi-reading key has none), or readings compared by case.
+    """
+    from molbuilder.parse.dirs.setup import _engine_only
+    path = _HERE / "fdf.20260925T194936.695.log"
+    res = detect(path).parse(path)
+    rows = {r["key"].lower(): r for r in _engine_only(res.params, set())}
+    run = rows["md.typeofrun"]
+    assert run["in_deck"] is False
+    assert [r["value"] for r in run["readings"]] == ["none", "CG"]
+    assert rows["meshcutoff"]["in_deck"] is True
+
+
 def test_each_phase_is_timed_on_its_own():
     """A device's periodic iterations and its NEGF iterations are timed
     separately, the step between them -- TranSIESTA's switch and the whole

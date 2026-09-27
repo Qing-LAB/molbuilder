@@ -1036,9 +1036,8 @@ The cost of doing otherwise is concrete rather than aesthetic. `tomllib` reads
 TOML and does not write it, so the only TOML emitter in this tree is
 `template.py`'s, hand-rolled and guarded by round-tripping its own output back
 through `tomllib` and comparing (*"the writer checks itself"*).
-`scheduler/record.py` is stdlib-only on purpose — it ships to the target and runs in
-a backend env with no molbuilder on it — so it could not import that emitter and
-would have to carry a second one.
+Writing this record as TOML would pull that emitter into the prober, or grow a
+second one, for a file no person edits.
 
 **The declared-override door is fed by flags, not a file** *(2026-08-19)*:
 `jobset probe --set gpus_per_node=4` answers *"how do I tell it this machine

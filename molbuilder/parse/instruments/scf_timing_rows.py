@@ -91,7 +91,9 @@ def _phase_figures(rows: List[Tuple[float, str, bool]],
     deltas = [b[0] - a[0] for a, b in zip(rows, rows[1:])
               if a[1] == b[1] == phase and not b[2] and b[0] - a[0] > 0]
     measured = deltas[1:] if len(deltas) >= 2 else deltas
-    return {"s_per_iter": (round(sum(measured) / len(measured), 1)
+    # KEPT TO 0.1 ms, rounded only where it is shown: a fast run's rate is
+    # under a tenth of a second, which one decimal would print as 0.0.
+    return {"s_per_iter": (round(sum(measured) / len(measured), 4)
                            if measured else None),
             "iters_measured": len(measured),
             "rows": sum(1 for r in rows if r[1] == phase)}

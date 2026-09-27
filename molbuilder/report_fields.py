@@ -54,7 +54,7 @@ class ReportField:
 FIELDS: Tuple[ReportField, ...] = (
     ReportField("elapsed_s", "How long it has been running", "elapsed", " s"),
     ReportField("n_iters", "SCF iterations", "SCF iters"),
-    ReportField("energy", "The last energy", "energy"),
+    ReportField("energy", "The last energy", "energy", " eV"),
     # The step the ENGINE began, in its own numbering: a relaxation's move, a
     # force-constant run's displacement.  A transport rung is a single point
     # and states none.

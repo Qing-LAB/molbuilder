@@ -39,7 +39,7 @@
         queued:        "busy",
         pending:       "busy",
         "not-started": "idle",
-        stale:         "warn",
+        unknown:       "warn",
         failed:        "bad",
     };
 

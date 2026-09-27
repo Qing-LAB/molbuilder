@@ -1505,7 +1505,7 @@ case-blind throughout (user, 2026-05-28).
 
 | lines, and SIESTA's writer | grammar | read by | yields |
 |---|---|---|---|
-| the SCF row of both phases — `scf:` / `ts-scf:` — and the `iscf` names row (`write_subs.F`) | `SCF_ROW`, `SCF_ROW_ERE`, `SCF_HEADER`, `SCF_COLUMNS`, `PHASE_PERIODIC`, `PHASE_NEGF` | `scf_row`, `scf_header`, `scf_cycle` | a cycle: `{cycle, energy, dDmax, dHmax, ef, phase}` — `energy` is E_KS |
+| the SCF row of both phases — `scf:` / `ts-scf:` — and the `iscf` names row (`write_subs.F`) | `SCF_ROW`, `SCF_ROW_ERE`, `SCF_HEADER`, `PHASE_PERIODIC`, `PHASE_NEGF` | `scf_row`, `scf_header`, `scf_floats`, then `cycle_from_header` (or `cycle_positional` before any names row) | a cycle: `{cycle, energy, dDmax, dHmax, ef, phase}` — `energy` is E_KS |
 | before each NEGF row: `ts-q:` names and values, `ts-Vha:` (`ts_charge.F90`, `m_ts_hartree.F90`) | `TS_Q_ROW`, `TS_Q_TOTALS`, `TS_VHA` | `ts_q_line`, `ts_q_row` | on the next row: `charges` {`D`, `E1`, `C1`, …}, `dq`, `qup_minus_qdn`, `vha_ev` |
 | convergence: `SCF Convergence by`, `SCF cycle continued`, `SCF_NOT_CONV:` (and its `(required)`), `SCF did NOT converge` | `SCF_CONVERGED_MARKER`, `SCF_CONTINUED_MARKER`, `SCF_NOT_CONV_MARKER`, `SCF_NOT_CONV_REQUIRED`, `SCF_NOT_CONVERGED_MARKER` | the reading pass; `_run_ending` | each phase's convergence (§ 2b) |
 | criteria: `redata: Require … convergence for SCF`, `redata: … tolerance for SCF`, TranSIESTA's echoed tolerances (`read_options.F90`, `m_ts_options.F90`) | `SCF_REQUIRE`, `SCF_TOLERANCE`, `SCF_CRITERION_OF`, `TS_CRITERIA` | `read_criterion_line`, `negf_criteria` | `{phase: {column: {tolerance, unit, required}}}` |
@@ -1555,10 +1555,10 @@ ts-scf:    1  -498887.159627  -501136.521108  -501136.521108 28.835878 -2.408334
 | line | reader | yields |
 |---|---|---|
 | `* Running on 10 nodes …` · `>> Start of run: …` | `read_launch_line` | `n_mpi_processes` 10 · `run_start_local` `2026-09-25T19:49:36` |
-| the `iscf` names row, then `scf:    7 …` | `scf_header`, then `scf_cycle` | `{cycle 7, energy −437029.337796, dDmax 7e-06, ef −2.408334, dHmax 0.000279, phase "periodic"}` |
+| the `iscf` names row, then `scf:    7 …` | `scf_header`, then `scf_row` → `cycle_from_header` | `{cycle 7, energy −437029.337796, dDmax 7e-06, ef −2.408334, dHmax 0.000279, phase "periodic"}` |
 | `SCF Convergence by DM+H criterion` | the reading pass · the ending scan | the periodic phase converged: `phase_converged["periodic"]` · `RunEnding.phases["periodic"]` = True |
 | the `ts-q:` pair · `ts-Vha:` | `ts_q_line` + `ts_q_row` · `TS_VHA` | held for the next row: `charges` {D 1091.437, E1 509.494, C1 −25.472, …}, `dq` −29.1 · `vha_ev` −18.66 |
-| `ts-scf:    1 …` | `scf_cycle` | `{cycle 1, energy −501136.521108, dDmax 28.84, dHmax 92.40, phase "negf"}` with the held values; `now()` gives `residuals` {dDmax, dHmax, dQ} beside the NEGF tolerances |
+| `ts-scf:    1 …` | `scf_row` → `cycle_from_header` | `{cycle 1, energy −501136.521108, dDmax 28.84, dHmax 92.40, phase "negf"}` with the held values; `now()` gives `residuals` {dDmax, dHmax, dQ} beside the NEGF tolerances |
 
 The first NEGF iteration is 29.1 electrons short of 2092 — 1.4 %, before any
 mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
@@ -1586,7 +1586,8 @@ mixing — and its couplings are negative: two symptoms of § 5d.6 at once.
 **The monitor reports the live state and warns on the live symptoms, and never
 stops a run** (`execution/run-reports.md` § 5). **The wrapper does not
 warm-retry a run whose verdict is divergence**: a retry that resumes from a
-diverged density is the same run again.
+diverged density is the same run again. *The symptoms and the divergence
+verdict are plan § 5t.3's P4, not yet built.*
 
 ### 5d.7 Where it is read
 

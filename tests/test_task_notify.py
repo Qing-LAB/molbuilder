@@ -196,32 +196,6 @@ def test_a_channel_list_that_could_not_travel_is_refused(bad, why):
         _task(notify={"channels": bad})
 
 
-def test_the_name_rule_is_the_same_on_both_sides():
-    """**Written twice, so it is checked against itself.**
-
-    `task.py` validates the names a description carries; `monitor.py` owns
-    the file those names have to match. The monitor ships to a compute node
-    as a standalone stdlib-only script, so it sits a layer above `task.py`
-    and cannot be imported from it — the same constraint that makes
-    `sign_report` exist twice, and answered the same way: not with a comment
-    asking the two to agree, but with a test that asks them.
-
-    *The first version imported across the layer and `test_layering` caught
-    it (2026-09-01).*
-    """
-    from molbuilder.monitor import is_channel_name
-    from molbuilder.task import _CHANNEL_RE
-
-    cases = ["slack", "my-listener", "A_1", "x" * 64, "x" * 65, "",
-             "has space", "a/b", "a.b", "café", "-", "_", "0"]
-    for c in cases:
-        mine = bool(_CHANNEL_RE.match(c))
-        theirs = is_channel_name(c)
-        assert mine == theirs, f"{c!r}: task says {mine}, monitor says {theirs}"
-    # and neither accepts a non-string
-    assert is_channel_name(3) is False
-
-
 def test_the_destination_is_not_a_field_here():
     """The credential must have no home in this record.  A URL or a token
     key would be accepted-and-ignored without the allowlist, which is the

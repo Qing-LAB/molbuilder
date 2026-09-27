@@ -9,7 +9,7 @@ share one execution core without either knowing about the other.
 
 Shared information is modeled in exactly two sanctioned channels:
   * ``JobSet.shared``  — static package files, identical for every job
-    (pseudopotentials, geometry, monitor); symlinked into each job dir.
+    (pseudopotentials, geometry); copied into each job dir as real files.
   * ``WarmFile``       — *what this job would take from a run it continues*,
     with the source left OPEN, because `--from` names it at prep
     (`project-layout.md` § 1.6).
@@ -397,7 +397,7 @@ class JobSet:
     SIESTA stage relaxation).  **Both are sets of independent jobs**; the kind
     says how the directories are named and whether a PERSON should take them in
     order, never whether one job waits for another -- neither does.  ``shared``
-    are package files symlinked into every job directory."""
+    are package files copied into every job directory."""
     name:   str
     engine: str
     kind:   str

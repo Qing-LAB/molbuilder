@@ -233,7 +233,11 @@ class MolwatchEmitter:
         e_eV    = float(e_tot)  * self.HARTREE_TO_EV
         dE_eV   = (float(e_tot) - float(last_e)) * self.HARTREE_TO_EV \
                   if last_e is not None else 0.0
-        g_eV_A  = (float(norm_gorb) * self.HARTREE_BOHR_TO_EV_ANG) \
+        # THE ORBITAL-GRADIENT NORM IS AN ENERGY: dE/d(kappa) over
+        # dimensionless orbital rotations, in Hartree -- what PySCF compares
+        # with `conv_tol_grad` -- so it converts as an energy, to eV.  It is
+        # not a force (it was once scaled by Hartree/Bohr -> eV/Ang).
+        g_eV    = (float(norm_gorb) * self.HARTREE_TO_EV) \
                   if norm_gorb is not None else None
         ddm     = float(norm_ddm) if norm_ddm is not None else None
         # Snapshot wall-clock at the moment this SCF cycle finished.
@@ -252,7 +256,7 @@ class MolwatchEmitter:
             'cycle':     int(cycle) + 1,      # 1-indexed in our log
             'energy':    e_eV,
             'delta_E':   dE_eV,
-            'gnorm':     g_eV_A,
+            'gnorm':     g_eV,
             'ddm':       ddm,
             'wall_time': wt,
         })
@@ -298,7 +302,7 @@ class MolwatchEmitter:
                 fh.write(f"   {el:<2s}  {fx:14.8f}  {fy:14.8f}  {fz:14.8f}\n")
             fh.write(f"max_force (eV/Ang): {max_f:.8f}\n")
             fh.write("scf_history begin\n")
-            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV/Ang)            ddm        wall_time(s)\n")
+            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV)                ddm        wall_time(s)\n")
             for c in _mw_scf:
                 g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
                          else 'None')

@@ -124,6 +124,20 @@ def _used_from_fdf_log(keys, params, blocks) -> Any:
     return None
 
 
+def _engine_only(params: Dict[str, Any], written: set) -> List[Dict[str, Any]]:
+    """The keys the engine read that no catalogue item writes (§ 5d.3), each
+    with what it read and ``in_deck``: false only when EVERY reading was the
+    engine's own default -- a key read several times is set by nobody when
+    each time says ``# default value``."""
+    return [
+        {"key": e["key"],
+         **({"readings": e["readings"]} if "readings" in e
+            else {"value": e.get("value")}),
+         "in_deck": not all(r.get("default", False)
+                            for r in e.get("readings", [e]))}
+        for label, e in params.items() if label not in written]
+
+
 def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     """``{"setup": {"rows", "engine_only"}, "verdict": {"findings"}}`` for the
     run ``f`` describes -- each part present only when a file states it."""
@@ -216,12 +230,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     setup: Dict[str, Any] = {}
     if rows:
         setup["rows"] = rows
-    engine_only = [
-        {"key": e["key"],
-         **({"readings": e["readings"]} if "readings" in e
-            else {"value": e.get("value")}),
-         "in_deck": not e.get("default", False)}
-        for label, e in params.items() if label not in written]
+    engine_only = _engine_only(params, written)
     if engine_only:
         setup["engine_only"] = engine_only
     if setup:

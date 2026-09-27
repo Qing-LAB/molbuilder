@@ -18,6 +18,11 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Optional
 
+try:                                        # inside molbuilder
+    from ...pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+except ImportError:                         # beside a job, in mb_monitor.pyz
+    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+
 # ---- The header ---------------------------------------------------------------
 HEADER = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
 ENGINE = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
@@ -52,8 +57,10 @@ SCF_HISTORY_END = "scf_history end"
 PREVIEW_KIND = "initial_preview"
 
 # ---- The footer -----------------------------------------------------------------
-ERROR = re.compile(r"^#\s*error:\s*(.+)$", re.IGNORECASE)
-CONCLUDED = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
+#: Rendered from the writer's own spelling (`pyscf/end_lines`).
+ERROR = re.compile("^" + re.escape(FOOTER_ERROR) + r"\s*(.+)$", re.IGNORECASE)
+CONCLUDED = re.compile("^" + re.escape(FOOTER_CONCLUDED) + r"\s*(.+)$",
+                       re.IGNORECASE)
 
 
 def maybe_float(token: str) -> Optional[float]:
@@ -182,6 +189,18 @@ def parse_conclusion_line(line: str, out: Dict[str, Any]) -> bool:
     return False
 
 
+def read_conclusion(path) -> Dict[str, Any]:
+    """What a molwatch log's FOOTER states -- ``run_state`` and, after an
+    error, ``error_message`` -- read over the whole file in order through
+    :func:`parse_conclusion_line`; ``{}`` when it carries no footer."""
+    out: Dict[str, Any] = {}
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line[:1] == "#":
+                parse_conclusion_line(line.rstrip("\n"), out)
+    return out
+
+
 def scan_conclusion(path) -> str:
     """The run-state a molwatch log's FOOTER states, without building a
     Trajectory -- ``"running"`` when it carries no footer.
@@ -198,12 +217,15 @@ def scan_conclusion(path) -> str:
     answer ``"ended"`` for a log whose earlier attempt failed.  Only lines
     opening with ``#`` are offered, which is all either pattern can match.
     """
-    out: Dict[str, Any] = {}
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            if line[:1] == "#":
-                parse_conclusion_line(line, out)
-    return out.get("run_state") or "running"
+    return read_conclusion(path).get("run_state") or "running"
+
+
+#: The ``scf_history`` header of a log whose orbital-gradient norm was
+#: written as norm x Hartree/Bohr->eV/Ang, and the factor that makes it eV:
+#: the norm is an energy (Hartree over dimensionless orbital rotations), so
+#: eV is norm x Hartree->eV = old x (27.211386245988 / 51.42208619).
+OLD_GNORM_HEADER = "gnorm(eV/Ang)"
+OLD_GNORM_TO_EV = 27.211386245988 / 51.42208619
 
 
 def scf_history_row(line: str) -> Optional[Dict[str, Any]]:

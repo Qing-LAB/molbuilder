@@ -37,7 +37,7 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # The channel-name rule, from the module that owns the file those names
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
-from .monitor import is_channel_name
+from .config_dir import is_channel_name
 
 if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # Under TYPE_CHECKING because the annotation is all this module needs:
@@ -206,11 +206,14 @@ def _run_index_resolver(basename: str, ext: str) -> str:
         f"# re-running never errors and never clobbers a prior result.\n"
         f"# --force restarts the sequence at -run0; --continue adds an\n"
         f"# engine warm-start on top of the (default) index advance.\n"
+        f"# EVERY per-run file counts, not the output alone: an engine that\n"
+        f"# dies before its first line leaves its -runN.concluded, monitor\n"
+        f"# log and util.csv and no output, and the next run must not reuse N.\n"
         f"_existing_max=-1\n"
         f'shopt -s nullglob 2>/dev/null || true\n'
-        f'for _f in "{basename}-run"*{ext}; do\n'
+        f'for _f in "{basename}-run"*; do\n'
         f'    _n=${{_f#{basename}-run}}\n'
-        f'    _n=${{_n%{ext}}}\n'
+        f'    _n=${{_n%%.*}}\n'
         f'    case "$_n" in\n'
         f"        ''|*[!0-9]*) continue ;;\n"
         f"    esac\n"
@@ -3955,7 +3958,10 @@ def render_run_wrapper(script_path: Path, *,
                              notify_report,
                              # OpenMP only: `-np` is accepted and ignored.
                              cores="$_omp_threads",
-                             gpu=_wants_gpu(script_path, resources),
+                             # The deck's GPU use IS `use_gpu` (its probe is
+                             # emitted from it); a `.py` holds no SIESTA
+                             # keyword for `_wants_gpu`'s fallback to find.
+                             gpu=bool(getattr(resources, "use_gpu", False)),
                              unwatchable=unwatchable)
             # NOT `exec`: the shell has to outlive the engine to conclude.
             + f"set +e\n"
@@ -4233,8 +4239,16 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 MONITOR_BUNDLE = "mb_monitor.pyz"
 
 #: The bundle's entry: the monitor, whose exit status is the process's --
-#: `_run_ending`'s questions answer by it.
-_BUNDLE_MAIN = "import mb_monitor\nraise SystemExit(mb_monitor.main())\n"
+#: `_run_ending`'s questions answer by it.  A bundle this python cannot
+#: import answers `ending` with 2, *cannot read* (`job-contracts.md` § 2.6),
+#: never 1, which would say *no*.
+_BUNDLE_MAIN = (
+    "import sys\n"
+    "try:\n"
+    "    import mb_monitor\n"
+    "except Exception:\n"
+    "    raise SystemExit(2 if sys.argv[1:2] == ['ending'] else 1)\n"
+    "raise SystemExit(mb_monitor.main())\n")
 
 
 def monitor_bundle() -> bytes:

@@ -112,8 +112,9 @@ def test_scf_cycle_hook_buffers_per_cycle_data(tmp_path, h2_mol):
     assert em._scf_buf[1]["delta_E"] == pytest.approx(
         (-1.15 - -1.10) * MolwatchEmitter.HARTREE_TO_EV
     )
-    # Hartree/Bohr -> eV/Ang conversion for gradient norm
-    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * MolwatchEmitter.HARTREE_BOHR_TO_EV_ANG)
+    # the orbital-gradient norm is an ENERGY (Hartree over dimensionless
+    # orbital rotations): it converts as one, never as a force
+    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * MolwatchEmitter.HARTREE_TO_EV)
 
     # New SCF run starts: cycle=0 should reset the buffer.
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.16, "last_hf_e": None,

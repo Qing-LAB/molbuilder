@@ -1227,24 +1227,6 @@ class NotifyPolicy:
     #: had just unticked.
     channels: Optional[Tuple[str, ...]] = None
 
-    def __bool__(self) -> bool:
-        # `channels is not None` COUNTS, exactly as it does on the twin this
-        # class mirrors (`task.Notify`).  An empty tuple is a policy -- send
-        # this calculation nowhere -- and a truthiness test that missed it
-        # would answer "nothing was asked for" about the one description that
-        # asked for silence most explicitly.  Nothing calls this today; the
-        # point is that the first caller gets the same answer from both
-        # halves of a pair the docstring above calls a mirror.
-        return bool(self.on_scf or self.every_hours > 0
-                    or self.channels is not None)
-
-
-#: A channel NAME: letters, digits, '-' or '_'.  It is written into a
-#: description and read back out of one, so it must survive that round trip
-#: without quoting -- and it must not look like anything else the file format
-#: could mean.  Nothing generates a name; the person picks it.
-_CHANNEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-
 
 def _notify_say(msg: str, log: Optional[Path] = None) -> None:
     """Say something about notification setup, where it can be READ.
@@ -1282,25 +1264,11 @@ def is_route_segment(route) -> bool:
     NO KEYS AT ALL -- every key already issued stops working, and silently,
     because a notifier swallows failures by design.
 
-    Beside :func:`is_channel_name` and for the same reason: this module ships
-    to a compute node as a standalone stdlib-only file, so it owns the rules
-    for the exchange it defines and nobody restates them.
+    This module ships to a compute node as a standalone stdlib-only file,
+    so it owns the rules for the exchange it defines and nobody restates
+    them.
     """
     return bool(isinstance(route, str) and _ROUTE_RE.fullmatch(route))
-
-
-def is_channel_name(name: str) -> bool:
-    """Is this a usable channel name?
-
-    **The door for everyone**, and it has to be here: this module ships to a
-    compute node as a standalone file, where the only molbuilder modules it
-    can reach are the ones that TRAVEL WITH IT (`runwrap.MONITOR_COMPANIONS`,
-    each through a two-way import like `_secrets_dir`'s).  `task.py` is not
-    among them, so this end is the only one that CAN own the rule.  `task.py` validates the names a description carries
-    by asking this, rather than restating a regex that would then be free to
-    drift from the file those names have to match.
-    """
-    return bool(isinstance(name, str) and _CHANNEL_RE.fullmatch(name))
 
 
 #: What molbuilder calls itself on the wire.  **Not decoration**: Discord's
@@ -1430,7 +1398,8 @@ def webhook_request(dest: Dict[str, Any],
                                for n, v in card["fields"][:25]]
         return json.dumps({"embeds": [embed]}).encode(), head
 
-    # A molbuilder listener: the § 6.4 record, whole, signed.
+    # A molbuilder listener: the `run-reports.md` § 4.1a record, whole,
+    # signed.
     body = json.dumps(report).encode()
     head.update(dest.get("headers") or {})
     if dest.get("key"):
@@ -1486,10 +1455,14 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         # `issue_notify_key`, and for the same reason: a second way to name a
         # file with one home is how a file gets written where nothing reads it.
         p = default_notify_path()
+        try:
+            from .config_dir import is_channel_name   # inside the package
+        except ImportError:                            # in the shipped bundle
+            from config_dir import is_channel_name
     except ImportError:
         # The shipped monitor could not find `config_dir.py` beside it, so
         # WHERE the channels live cannot be answered.  Absent is off
-        # (`run-reports.md` 1): a monitor that cannot report must still
+        # (`run-reports.md` § 3): a monitor that cannot report must still
         # MONITOR -- dying here cost every status line, the util series
         # and the [MACHINE] record, silently, when a staging defect
         # shipped the monitor without its companion (2026-08-28).
@@ -1525,7 +1498,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for name, spec in chans.items():
         name = str(name)
-        if not _CHANNEL_RE.fullmatch(name):
+        if not is_channel_name(name):
             _say(f"{p}: channel name {name!r} is not letters, digits, '-' "
                  f"or '_'; skipping it")
             continue
@@ -1876,8 +1849,6 @@ def run_monitor(watched: "WatchedRun", *,
     log = watched.path(".monitor.log")
     util_path: Optional[Path] = watched.path(".util.csv") if util else None
     start = clock() if start_epoch is None else start_epoch
-    _install_env_notifiers(log, run_identity(watched), notify.channels,
-                           notify.report)
 
     st0 = watched.read(start, clock())
     # FIRST line, before [MONITOR] start: the machine is known now, and a
@@ -1891,15 +1862,21 @@ def run_monitor(watched: "WatchedRun", *,
     _append(log, f"[{t0}] [MONITOR] start "
                  f"(interval={interval:.0f}s watch_pid={watch_pid}) "
                  f"{st0.as_text()}")
+    # The channels AFTER the first two lines: what they say about themselves
+    # (a channel not set up here, a malformed file) follows the machine.
+    _install_env_notifiers(log, run_identity(watched), notify.channels,
+                           notify.report)
     _fire(st0, "start")
-    # Policy state (§ 2.9).  ``last_notify`` starts at the job's start, so
+    # Policy state (`run-reports.md` § 2).  ``last_notify`` starts at the
+    # job's start, so
     # the first periodic message lands one full period in -- not immediately,
     # which would make "every 6 hours" mean "now, then every 6 hours".
     last_notify = start
     notify_period_s = max(0.0, notify.every_hours) * 3600.0
 
     # --- utilization sampling setup (same loop, separate change-gated
-    # output file; § 11.0e).  ``sampler`` is injectable for tests. ---
+    # output file; `run-reports.md` § 2.1).  ``sampler`` is injectable for
+    # tests. ---
     # WHAT THE JOB HOLDS, once (§ 2.1a): its cgroup and allocation under a
     # scheduler; started directly, the watched process tree and the cores
     # it was launched on.
@@ -1966,9 +1943,6 @@ def run_monitor(watched: "WatchedRun", *,
                              f"{util_accum.summary()}")
                 _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
                              f"{measurement_provenance(basis)}")
-            # The series' end, after the lines above: a GPU sample can take
-            # seconds, and the wrapper waits for this process only so long.
-            _util_tick(now, force=True, count=False)
             if _STOPPED_BY == _STOP_RETRY:
                 # NOT AN ENDING: the wrapper re-execs itself in this pid for
                 # the next run, which starts its own monitor
@@ -1977,20 +1951,24 @@ def run_monitor(watched: "WatchedRun", *,
                 _append(log, f"[{_iso(now)}] [MONITOR] stopped: the wrapper "
                              f"is retrying this attempt in place; the next "
                              f"run starts its own monitor")
-                return st
-            _append(log, f"[{_iso(now)}] [MONITOR] job ended "
-                         + (f"(stopped by {_STOPPED_BY}); "
-                            if _STOPPED_BY else
-                            f"(watched pid {watch_pid} gone); ")
-                         + "final notify + exit")
-            _fire(st, "finish")
+            else:
+                _append(log, f"[{_iso(now)}] [MONITOR] job ended "
+                             + (f"(stopped by {_STOPPED_BY}); "
+                                if _STOPPED_BY else
+                                f"(watched pid {watch_pid} gone); ")
+                             + "final notify + exit")
+                _fire(st, "finish")
+            # The series' end, LAST: a GPU sample can take seconds and the
+            # wrapper waits for this process only so long, so the closing
+            # lines and the `finish` message go out before it.
+            _util_tick(now, force=True, count=False)
             return st
 
         if (_progressed(st, prev) or st.energy != prev.energy
                 or st.state != prev.state):
             _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
 
-        # --- the two settable triggers (§ 2.9) ---------------------------
+        # --- the two settable triggers (`run-reports.md` § 2) ------------
         #
         # A STEP FINISHING means its SCF reached its criterion
         # (`run-reports.md` § 2.2): SIESTA begins step N once N are done
@@ -2091,9 +2069,11 @@ def _make_default_sampler(clock: Callable[[], float],
                 d_ns = cur[0] - state["ns"]
                 if cores > 0 and d_ns >= 0:
                     cpu_pct = round(100.0 * d_ns / (d_t * 1e9 * cores), 1)
+            # THE TWO BASES MOVE TOGETHER: a missed reading leaves both, so
+            # the next rate spans two intervals of CPU over two of wall time.
             if cur is not None:
                 state["ns"] = cur[0]
-            state["t"] = now
+                state["t"] = now
         mem = b.mem_gb()
         return UtilSample(epoch=now, cpu_pct=cpu_pct,
                           mem_gb=mem[0] if mem is not None else None,
@@ -2132,8 +2112,9 @@ def make_log_notifier(log: Path) -> Notifier:
 # CRITICAL: shipped, this module needs ONLY the stdlib (os/re/signal/time/
 # urllib/dataclasses/pathlib/typing) and the framework modules that travel
 # with it (`runwrap.MONITOR_COMPANIONS`) -- no molbuilder package, no numpy.
-# That is what lets the run-wrapper SHIP this file as ``mb_monitor.py`` next
-# to the job and run it with the JOB's own python (e.g. the minimal
+# That is what lets the run-wrapper SHIP this file -- as ``mb_monitor.py``
+# inside ``mb_monitor.pyz`` -- next to the job and run it with the JOB's own
+# python (e.g. the minimal
 # ``molbuilder-siesta-gpu`` env, which has no numpy/molbuilder), from the
 # working directory, with no install and no repo on PATH.
 
@@ -2174,9 +2155,10 @@ def main(argv=None) -> int:
     handed to `_run_ending`'s door, which travels in the same file -- the
     wrapper asks how a run ended with ``mb_monitor.pyz ending OUTPUT ...``.
 
-    Mirrors the ``molbuilder monitor`` click command but with zero
-    third-party deps so it runs in any python.  Self-lowers priority via
-    ``os.nice`` and installs the default PoC log notifier.
+    ONE command line: ``molbuilder monitor`` hands its arguments here, so
+    the monitor a person starts from the package is the one the job runs.
+    Zero third-party deps, so it runs in any python.  Self-lowers priority
+    via ``os.nice`` and installs the default log notifier.
     """
     import sys
     args = list(sys.argv[1:] if argv is None else argv)
@@ -2195,6 +2177,9 @@ def main(argv=None) -> int:
                    help="the run's label -- the stem every file begins with")
     p.add_argument("--stage", default=None,
                    help="the stage token (e.g. 01_coarse); omit for none")
+    p.add_argument("--dir", default=".", dest="directory",
+                   help="the directory the run is in (default: here, where "
+                        "the wrapper starts it)")
     p.add_argument("--run", type=int, default=None, dest="run_index",
                    help="the run index the wrapper resolved (-runN)")
     p.add_argument("--interval", type=float, default=10.0,
@@ -2224,7 +2209,8 @@ def main(argv=None) -> int:
                    help="self-lower OS priority by this much (default 19)")
     # WHEN to tell someone -- the calculation's own policy, carried here from
     # `task.json`'s `notify` block by the wrapper.  Neither flag says WHERE:
-    # the destination is the user's file on this machine (NOTIFY_FILE).
+    # the destination is the user's file on this machine (NOTIFY_FILENAME,
+    # `run-reports.md` § 3).
     p.add_argument("--notify-on-scf", action="store_true",
                    dest="notify_on_scf",
                    help="notify when a step finishes (its SCF reached its "
@@ -2252,7 +2238,7 @@ def main(argv=None) -> int:
                         + "); omit for all of them, pass '' for none")
     a = p.parse_args(args)
     watched = WatchedRun(label=a.label, stage=a.stage or None,
-                         run=a.run_index)
+                         run=a.run_index, directory=Path(a.directory))
     signal.signal(signal.SIGTERM, _on_stop_signal)
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, _on_stop_signal)
@@ -2285,7 +2271,6 @@ __all__ = [
     "make_log_notifier",
     "load_channels",
     "channels_for",
-    "is_channel_name",
     "NotifyPolicy",
     "webhook_request",
     "channel_kind",

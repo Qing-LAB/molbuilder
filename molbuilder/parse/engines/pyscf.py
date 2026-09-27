@@ -315,29 +315,13 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     if len(convergence) > 1:      # more than the "source" stamp alone
         out["convergence_targets"] = convergence
 
-    # Footer scan: tail the last ~32 KB and look for # concluded: or
-    # # error: markers.  The emitter writes them at the very end so
-    # tail is bounded; even pathological cases (large user-custom
-    # block at the bottom) stay within the tail window.
+    # THE FOOTER, through its one reader, over the whole file in order: a
+    # log is appended across attempts, and an earlier attempt's error
+    # outranks a later `# concluded:` -- a tail-only read missed it.
     try:
-        with open(log_path, "rb") as fh:
-            try:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                tail_size = min(32 * 1024, size)
-                fh.seek(size - tail_size)
-                tail_bytes = fh.read()
-            except OSError:
-                return out
-        tail = tail_bytes.decode("utf-8", errors="replace")
+        out.update(_MG.read_conclusion(log_path))
     except OSError:
-        return out
-    # ONE reader of the footer grammar, and it owns the precedence too:
-    # error outranks concluded, last error wins.  That rule used to be
-    # spelled out here as well as in `molwatch`, in two copies free to
-    # disagree about which marker beats which.
-    for raw in tail.splitlines():
-        _MG.parse_conclusion_line(raw, out)
+        pass
     return out
 
 

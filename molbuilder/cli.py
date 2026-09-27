@@ -1191,61 +1191,18 @@ def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
 
 
 @cli.command("monitor",
-             short_help="background job-monitor + notifier hooks")
-@click.option("--label", required=True,
-              help="the run's label -- the stem every file begins with")
-@click.option("--stage", default=None,
-              help="the stage token (e.g. 01_coarse); omit for none")
-@click.option("--run", "run_index", type=int, default=None,
-              help="the run index (-runN) to watch")
-@click.option("--dir", "directory", default=".",
-              type=click.Path(file_okay=False, path_type=Path),
-              show_default=True, help="the directory the run is in")
-@click.option("--interval", type=click.FloatRange(min=1.0), default=10.0,
-              show_default=True, help="seconds between wakes = the util "
-                                      "sample rate (status lines stay "
-                                      "change-gated, so it won't spam)")
-@click.option("--util/--no-util", default=False,
-              help="append change-gated cpu%/mem/GPU-sm%/VRAM samples to "
-                   "the run's .util.csv")
-@click.option("--cores", type=click.IntRange(min=1), default=None,
-              help="the cores the run was launched on (ranks x threads); "
-                   "the denominator of cpu% for a run started directly")
-@click.option("--gpu/--no-gpu", default=False,
-              help="the run uses a GPU: sample and judge it")
-@click.option("--watch-pid", type=int, default=0,
-              help="stop when this PID (the job wrapper) disappears")
-@click.option("--nice", "nice_level", type=int, default=19, show_default=True,
-              help="self-lower OS priority by this much so the monitor "
-                   "never competes with compute ranks on the same node")
-def cmd_monitor(label: str, stage: Optional[str], run_index: Optional[int],
-                directory: Path, interval: float, util: bool,
-                cores: Optional[int], gpu: bool,
-                watch_pid: int, nice_level: int) -> int:
-    """Watch a run the way the shipped ``mb_monitor.pyz`` does: read it
-    through the framework's own readers, append a status line to its
-    ``.monitor.log``, and fire notifier hooks (`execution/run-reports.md`
-    § 2.3).  The run is named, never pointed at: every file comes from
-    `runfiles`.
-
-    Lightweight by design: sleeps between wakes, does only tail-reads, and
-    self-lowers its OS priority (``--nice``) so it yields to the compute
-    task on a busy node.  Connect a real notifier via the ``MB_NOTIFY_URL``
-    env (stdlib webhook POST) or ``molbuilder.monitor.register_notifier``.
+             short_help="the job monitor, on a run you point it at",
+             context_settings={"ignore_unknown_options": True,
+                               "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_monitor(args) -> None:
+    """Run the monitor every job runs beside it, from the package: the same
+    command line as ``mb_monitor.pyz`` (`execution/run-reports.md` § 2.6),
+    handed to ``monitor.main`` whole -- ``--dir`` names the run's directory,
+    ``--help`` lists the rest.  One command line, so the two cannot drift.
     """
     from . import monitor as _mon
-    # Belt-and-suspenders to the launcher's ``nice``: lower our own
-    # priority so a busy node always favours the compute task.
-    try:
-        os.nice(max(0, nice_level))
-    except (OSError, AttributeError):
-        pass
-    watched = _mon.WatchedRun(label=label, stage=stage, run=run_index,
-                              directory=directory)
-    _mon.register_notifier(_mon.make_log_notifier(watched.path(".monitor.log")))
-    _mon.run_monitor(watched, interval=interval, watch_pid=watch_pid,
-                     util=util, cores=cores, gpu=gpu)
-    return 0
+    raise SystemExit(_mon.main(list(args)))
 
 
 # --------------------------------------------------------------------- #
@@ -1993,8 +1950,8 @@ def cmd_notify_token(user, host, route, channel, replace):
     """
     import json as _json
     from . import auth_setup as _as
-    from .monitor import (default_notify_path, is_channel_name,
-                          notify_keys_path)
+    from .config_dir import is_channel_name
+    from .monitor import default_notify_path, notify_keys_path
 
     if not is_channel_name(channel):
         raise click.UsageError(
