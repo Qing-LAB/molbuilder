@@ -586,22 +586,24 @@ def test_a_footer_after_a_torn_block_is_still_the_ending():
 
 
 
-def test_an_old_logs_unset_gradient_tolerance_reads_as_pyscfs_own(tmp_path):
+@pytest.mark.parametrize("stated", ["0.0", "None"])
+def test_an_old_logs_unset_gradient_tolerance_reads_as_pyscfs_own(tmp_path,
+                                                                  stated):
     """A log written before 2026-09-27 states PySCF's gradient tolerance as
-    0 -- the configuration's "unset", which the deck's parameters record wrote
-    over the value it had read back -- beside the source saying it was
-    derived.  No norm is below 0, and PySCF's unset tolerance is
-    sqrt(conv_tol) (``scf.hf.kernel``), so that is the criterion it reads,
-    in eV (`molwatch_grammar.scf_criteria`).
+    0 or None -- the deck's parameters record wrote over the value it had
+    read back -- beside its source line saying it was derived.  PySCF's
+    unset tolerance is sqrt(conv_tol) (``scf.hf.kernel``), so that is the
+    criterion it reads, in eV (`molwatch_grammar.scf_criteria`).
 
-    API-level on the old header's exact shape: the road writes the value
-    PySCF uses now (`test_trajectory_from_a_real_run_e2e.py`), so only a log
-    of this shape can ask."""
+    API-level on the old headers' exact shapes (``None`` is the header of a
+    real water relaxation in `projects/claude-e2e`): the road writes the
+    value PySCF uses now (`test_trajectory_from_a_real_run_e2e.py`), so only
+    a log of these shapes can ask."""
     log = tmp_path / "old.molwatch.log"
     log.write_text("# molwatch trajectory log v1\n"
                    "# engine: pyscf\n"
                    "# runtime.scf_conv_tol: 1e-09\n"
-                   "# runtime.scf_conv_tol_grad: 0.0\n"
+                   f"# runtime.scf_conv_tol_grad: {stated}\n"
                    "# runtime.scf_conv_tol_grad_source: derived: "
                    "sqrt(conv_tol)\n")
     crit = MolwatchLogParser.parse(str(log)).runtime_info["scf_criteria"]

@@ -101,21 +101,28 @@ def scf_criteria(runtime_info: Dict[str, Any]) -> Dict[str, Any]:
     and are stated here in eV, the unit of the ``dE`` and ``|g|`` the step
     blocks carry.
     """
-    out: Dict[str, Any] = {}
-    for residual, key in (("dE", "scf_conv_tol"),
-                          ("|g|", "scf_conv_tol_grad")):
+    def number(key: str) -> Optional[float]:
         try:
-            tolerance = float(runtime_info[key])
+            return float(runtime_info[key])
         except (KeyError, TypeError, ValueError):
-            continue
-        if residual == "|g|" and tolerance <= 0 and "dE" in out:
-            # A gradient tolerance of 0 is the configuration's "unset" -- no
-            # norm is below 0 -- and PySCF's unset one is sqrt(conv_tol).
-            # Logs written before 2026-09-27 state the 0: the deck's
-            # parameters record overwrote the value it had read back.
-            tolerance = (out["dE"]["tolerance"] / _HARTREE_EV) ** 0.5
-        out[residual] = {"tolerance": tolerance * _HARTREE_EV, "unit": "eV",
-                         "required": True}
+            return None
+
+    energy, gradient = number("scf_conv_tol"), number("scf_conv_tol_grad")
+    # AN UNSET GRADIENT TOLERANCE IS sqrt(conv_tol) -- PySCF's own rule --
+    # and the log says so on its source line.  Logs written before
+    # 2026-09-27 state the value beside that line as 0 or None: the deck's
+    # parameters record wrote over the value it had read back.  A 0 with no
+    # source line is the configuration's "unset" too -- no norm is below 0.
+    derived = str(runtime_info.get("scf_conv_tol_grad_source") or ""
+                  ).startswith("derived")
+    if energy is not None and (derived or (gradient is not None
+                                           and gradient <= 0)):
+        gradient = energy ** 0.5
+    out: Dict[str, Any] = {}
+    for residual, tolerance in (("dE", energy), ("|g|", gradient)):
+        if tolerance is not None:
+            out[residual] = {"tolerance": tolerance * _HARTREE_EV,
+                             "unit": "eV", "required": True}
     return {SCF_PHASE: out} if out else {}
 
 
