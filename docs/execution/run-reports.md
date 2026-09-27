@@ -346,8 +346,15 @@ The wrapper renders one line, the same for every engine
 nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" --run "$_run_n" \
     --util --cores "<cores>" [--gpu] --interval "${MB_MONITOR_INTERVAL:-10}" \
     [--notify-on-scf] [--notify-every-hours N] [--notify-channels "a,b"] \
-    [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>&1 &
+    [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>>"$_runwrap_log" &
 ```
+
+**Its own errors go to the run's session log** (`<base>.runwrap-<stamp>.log`),
+its stdout nowhere. The monitor opens its `.monitor.log` only once it has
+loaded, so one that dies starting — a shipped file reaching into molbuilder, a
+package the job's env lacks — would otherwise leave nothing, and the reason
+with it; until 2026-09-27 its stderr went to `/dev/null` too. It writes nothing
+to stderr in a healthy run.
 
 | flag | from | meaning |
 |---|---|---|
@@ -453,8 +460,9 @@ party that can be handed nothing but a URL keeps its secret in the URL; our own
 listener can be handed a key, so it takes one that never travels.
 
 **Absent is off; broken is said, in the monitor log** — the wrapper
-backgrounds the monitor as `>/dev/null 2>&1 &`, so anything printed goes
-nowhere:
+backgrounds the monitor with its stdout discarded and its stderr kept for a
+failure to start, so a notification problem is written where a person reads
+the run's own state:
 
 - **No file**: no notifier, and the run proceeds exactly as for everyone who
   has never set this up.

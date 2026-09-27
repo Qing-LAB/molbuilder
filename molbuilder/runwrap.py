@@ -328,7 +328,13 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
         # while it sat in the queue.
         + ("" if notify_report is None
            else f'--notify-report "{",".join(notify_report)}" ')
-        + f'--watch-pid $$ >/dev/null 2>&1 &\n'
+        # ITS OWN ERRORS GO TO THE RUN'S SESSION LOG, not /dev/null: the
+        # monitor opens its `.monitor.log` only once it has loaded, so one
+        # that dies starting -- a shipped file reaching into molbuilder, a
+        # package the job's env lacks -- left nothing at all, and the reason
+        # was thrown away (`run-reports.md` § 2.3).  It writes nothing to
+        # stderr otherwise; its stdout stays discarded.
+        + f'--watch-pid $$ >/dev/null 2>>"$_runwrap_log" &\n'
         f'    _monitor_pid=$!\n'
         f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
         f'${{MB_MONITOR_INTERVAL:-10}}s, util-sampling; '
