@@ -92,6 +92,8 @@ requires (SIESTA's `Require H/DM convergence for SCF`):
 | \|g\| | PySCF's orbital-gradient norm — an energy (eV): dE over dimensionless orbital rotations | its gradient tolerance | what the deck read back (`scf_conv_tol_grad`) |
 
 PySCF states both tolerances in Hartree and requires both (`scf.hf.kernel`);
+both PySCF decks read them back off their solver into the progress log's
+runtime header (`pyscf/input.emit_scf_criteria_readback`);
 the progress log's reader states them in eV, the unit of the residuals beside
 them, under the run's one phase, `scf` (`molwatch_grammar.scf_criteria`). A row
 that states no phase is judged in the run's one phase. The summary band lists

@@ -4065,8 +4065,9 @@ And the same day, after P1 and its review:
     its stop reason; now the load's own parse serves all three (2026-09-27);
   * the run record is composed on every folder scan and no page shows it
     (the Run panel, P2);
-  * the vibration deck states no SCF criteria: its `_RUNTIME_INFO` records
-    neither tolerance, so its residuals show none;
+  * ~~the vibration deck states no SCF criteria~~ — both PySCF decks read
+    them back off their solver through one emitter
+    (`pyscf/input.emit_scf_criteria_readback`, 2026-09-27);
   * ~~two tests read old frozen outputs~~ — replaced by a SIESTA run the road
     makes and stops (`tests/test_siesta_stopped_run_e2e.py`, 2026-09-27); the
     device's `fdf` log still answers what only a device run shows (a key read

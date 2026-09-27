@@ -704,7 +704,14 @@ def vibration_spec(struct: Structure, cfg, *,
             out.append("_save_structure(mol, _mb_outfile(JOB + '_initial.xyz'),")
             out.append("          'Input geometry (pre-relaxation)')")
         if getattr(cfg, "write_molwatch_log", False):
-            from .input import _emit_molwatch_emitter
+            # THE SCF'S CRITERIA, read off a solver this deck's own dresser
+            # configures -- every mf here is built through it -- so the
+            # progress log states them as the optimization deck's does.
+            from .input import (_emit_molwatch_emitter,
+                                emit_scf_criteria_readback)
+            out.append("_mb_scf_probe = _mb_configure_scf(scf.RHF(mol))")
+            out += emit_scf_criteria_readback("_mb_scf_probe")
+            out.append("del _mb_scf_probe")
             out += _emit_molwatch_emitter(
                 bool(getattr(cfg, "verbose_comments", True)), cfg,
                 stage_token=stage_token)

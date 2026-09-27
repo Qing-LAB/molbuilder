@@ -755,13 +755,7 @@ def spec_for(struct: Structure,
         # null.  Which of the two it is gets recorded alongside, because
         # "we chose 3.2e-5" and "PySCF derived 3.2e-5" are different facts.
         out.append("")
-        out.append("_RUNTIME_INFO['scf_conv_tol'] = float(mf.conv_tol)")
-        out.append("_RUNTIME_INFO['scf_conv_tol_grad'] = float("
-                   "mf.conv_tol_grad if mf.conv_tol_grad is not None "
-                   "else mf.conv_tol ** 0.5)")
-        out.append("_RUNTIME_INFO['scf_conv_tol_grad_source'] = ("
-                   "'explicit' if mf.conv_tol_grad is not None "
-                   "else 'derived: sqrt(conv_tol)')")
+        out += emit_scf_criteria_readback("mf")
         out.append(f"_RUNTIME_INFO['scf_soscf'] = {bool(cfg.scf_soscf)!r}")
         out.append("_RUNTIME_INFO['scf_solver_class'] = type(mf).__name__")
         out.append("print(f\"[molbuilder] SCF convergence: energy "
@@ -1092,6 +1086,24 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
                f"[_k, _d, _r, _e], default=repr))")
     out.append('print("' + _sc.end_marker(_sc.BLOCK_PARAMETERS) + '")')
     return out
+
+
+def emit_scf_criteria_readback(mf: str) -> List[str]:
+    """Lines recording what the SCF will ACTUALLY converge to, read off the
+    solver ``mf`` names rather than restated from the config -- a reported
+    value that cannot drift from what the run did.  ``conv_tol_grad`` stays
+    ``None`` until ``kernel()`` derives it, so PySCF's own rule is applied
+    here (``scf.hf.kernel``: sqrt(conv_tol)) and which of the two it is gets
+    recorded alongside: *we chose 3.2e-5* and *PySCF derived 3.2e-5* are
+    different facts.  Both decks call it, so the progress log states the
+    same criteria for either (`molwatch_grammar.scf_criteria`)."""
+    return [
+        f"_RUNTIME_INFO['scf_conv_tol'] = float({mf}.conv_tol)",
+        f"_RUNTIME_INFO['scf_conv_tol_grad'] = float({mf}.conv_tol_grad "
+        f"if {mf}.conv_tol_grad is not None else {mf}.conv_tol ** 0.5)",
+        f"_RUNTIME_INFO['scf_conv_tol_grad_source'] = ('explicit' "
+        f"if {mf}.conv_tol_grad is not None else 'derived: sqrt(conv_tol)')",
+    ]
 
 
 def _emit_runtime_from_parameters() -> List[str]:

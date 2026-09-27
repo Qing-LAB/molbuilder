@@ -155,6 +155,11 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     # PySCF's own SCF, as its progress log states it: the last cycle and
     # its residuals (`molwatch_reader.MolwatchReader.now`)
     assert "SCF iteration" in closing and "dE " in closing, closing
+    # ...each beside its criterion, which the deck read back off its own
+    # solver, in eV (`molwatch_grammar.scf_criteria`, web/trajectory.md § 3)
+    import re
+    assert re.search(r"dE \S+ eV \(tol \S+\)", closing), closing
+    assert re.search(r"\|g\| \S+ eV \(tol \S+\)", closing), closing
     # every finished step is a converged SCF -- the first one too: a PySCF
     # block is written when its step ENDS, and the rule once needed a step
     # before it, so a run whose steps all ended between two wakes sent none
