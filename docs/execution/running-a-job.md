@@ -616,11 +616,15 @@ flowchart TD
     E -->|"none"| M1{"a marker at the latest run index?"}
     M1 -->|"rc 0"| FIN
     M1 -->|"nonzero rc"| FAIL
-    M1 -->|"none"| RUN["running"]
+    M1 -->|"none"| G1{"its monitor's closing record?"}
+    G1 -->|"job ended"| FAIL
+    G1 -->|"none"| RUN["running"]
     S -->|"no"| M2{"a marker at the latest run index?"}
     M2 -->|"rc 0"| FIN
     M2 -->|"nonzero rc"| FAIL
-    M2 -->|"none"| L{"the launch record"}
+    M2 -->|"none"| G2{"its monitor's closing record?"}
+    G2 -->|"job ended"| FAIL
+    G2 -->|"none"| L{"the launch record"}
     L -->|"no run.json"| PEN["pending"]
     L -->|"run.json"| Q["queued"]
     L -->|"not asked"| RUN
@@ -634,6 +638,10 @@ and counts only at the highest run index the run's files reached
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): an earlier
 one, beside a newer silent output, is a previous run's goodbye. SIESTA's own
 `0_NORMAL_EXIT`, which names no run, counts only where no output exists.
+The monitor's closing record — `[MONITOR] job ended` in the latest run's
+`-runN.monitor.log` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5)
+— speaks where the marker is silent too: the process went, and nothing
+recorded an exit.
 
 **Convergence never decides the state** (P-S2): an unconverged SCF is a fact
 beside it, in `endings`. A run SIESTA *stopped* because its SCF had to converge
@@ -647,21 +655,24 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 | `queued` | queued as job N · launched (direct), no output yet |
 | `running` | running · no result file yet |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped before its end -- see the .out · out of memory · concluded (rc=1 at …) |
+| `failed` | stopped before its end -- see the .out · out of memory · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
 a file with no ending is `running` — not finished — however long it has been
 quiet *(user, 2026-09-26: "It shows what it is")*. A forced stop writes no
-marker and stays `running` here; the monitor, which saw its PID go, closes its
-own log with *failed — stopped before its end*
-([`run-reports.md`](?doc=execution/run-reports.md) § 2.3), and `launch run`
-asks the person before continuing
+marker; the monitor, which saw its PID go, writes its closing record first,
+and that record reads *failed — stopped before its end: no ending in its output
+and no exit recorded* here and in its own `finish`
+([`run-reports.md`](?doc=execution/run-reports.md) § 2.4). A lost node takes
+the monitor with it, and the run reads `running`. `launch run` still asks the
+person before continuing a run with no marker
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.4).
 
 **Before the first output**, a direct launch reads `queued` (its `run.json` is
-written as the process starts), and so does one killed before writing anything
-— an engine that merely died still reaches the wrapper's marker and reads
+written as the process starts). One killed before writing anything reads
+`failed` by its monitor's closing record, or `queued` when nothing outlived
+it; an engine that merely died still reaches the wrapper's marker and reads
 `failed`; a flat stage, whose launch writes no `run.json`, reads `pending`.
 
 ```mermaid
@@ -670,9 +681,9 @@ stateDiagram-v2
     [*] --> pending: prepped
     pending --> queued: run.json written
     queued --> running: first output
-    queued --> failed: nonzero marker, no output
+    queued --> failed: nonzero marker or the monitor's closing record, no output
     running --> finished: an end, else marker rc 0
-    running --> failed: a stop, else nonzero marker
+    running --> failed: a stop, else nonzero marker, else the monitor's closing record
     note right of running: no clock moves a run out of here
 ```
 
@@ -685,7 +696,7 @@ stateDiagram-v2
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s, plus `not-started` (no directory yet) and `unknown` (unreadable) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
-| the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, except that `running` after the PID has gone is `failed`, *stopped before its end* |
+| the monitor's closing line ([`run-reports.md`](?doc=execution/run-reports.md) § 2.3) | `finished` · `failed` | `run_status`'s, asked after it writes its closing record |
 
 The badge reads a **file** and the panel the **run**, so they can differ: a
 `-run0.out` that stopped reads Stopped while its warm retry keeps the attempt

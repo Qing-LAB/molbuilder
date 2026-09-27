@@ -216,10 +216,22 @@ propose — never grounds to delete.
 | kind | what it pins | why a review cannot replace it |
 |---|---|---|
 | **a measured regression** | a defect that ACTUALLY happened, with its numbers | a person forgets; the file does not |
-| **an artifact lint** | a property over *every* member of a class | it replaces the manual sweep entirely (§ 3a) |
+| **an artifact lint** | a property of *every* shipped artifact of a class — each served template, each stylesheet, each generated deck | it replaces the manual sweep entirely (§ 3a) |
 | **a contract a document states** | a rule someone wrote down and code must obey | the document and the code drift silently |
 
 ### What does NOT earn a place
+
+**A scan of molbuilder's own source** *(user, 2026-09-26)*. A test that opens a
+`.py` or `.js` file of the package — `ast.parse`, `inspect.getsource`,
+`read_text()` — to check a spelling, an import, or that a rule is written in
+only one module is not an artifact lint, whatever it quantifies over. The
+framework is data-driven: each rule is declared once and imported everywhere,
+so a second copy is a **review** finding
+([`process/code-audit.md`](?doc=process/code-audit.md) § 1c) — while it
+agrees with the first it gives the same answer, and nothing a run observes
+can tell them apart. Where the failure such a scan reached for matters, the
+test RUNS the code — the route, the CLI, `jobset init → prep → launch` — and
+asserts what came out.
 
 **An API-shape assertion.** *"`find_by_role` returns sorted paths"*, *"`compose`
 refuses an unknown field"* — that is the signature restated in a second
@@ -523,7 +535,9 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   (the CSP `script-src 'self'` rule would break at runtime otherwise), and
   `test_negative_body_assert_lint.py` AST-lints the *test suite* so a "body lacks X"
   assertion is always paired with a status check. Cheap, and they catch a class of
-  bug no unit test would.
+  bug no unit test would. The artifact is what SHIPS or what the code
+  GENERATES; a scan of the package's own `.py`/`.js` is not one (§ 3b, *What
+  does NOT earn a place*).
 
   **The boundary — and it is the whole pattern.** A lint quantifies over a class
   and names no line; the moment it names one file and one spelling it is a *source
@@ -630,13 +644,15 @@ deliberately not installed there.
   artifact lints (§ 6).
 - `test_no_tests_read_the_projects_tree.py` — no test builds a folder inside
   the developer's real `projects/` tree (§ 2a); carries its own truth table.
-- `test_one_door_reads_a_structure.py` — turning a PATH into a `Structure`
-  goes through `StructureCodec`, because the `.xyz` and its `.molstruct.json`
-  are one file. Written 2026-09-07 after four readers of that pair were found,
-  one of which (`molbuilder.load()`) dropped the sidecar entirely and cost
-  `jobset init` the author's regions and frozen atoms. It derives the callers
-  from the code rather than checking a list of names — a list would have had
-  `load()` on it, looking reasonable.
+- `test_one_door_reads_a_structure.py` — the author's frozen atoms, regions
+  and cell, saved as the `.xyz` + `.molstruct.json` pair, reach the deck
+  through `jobset init → prep`, because the pair is one file. Written
+  2026-09-07 after four readers of that pair were found, one of which
+  (`molbuilder.load()`) dropped the sidecar entirely and cost `jobset init`
+  the author's regions and frozen atoms. It scanned the package for direct
+  reader calls until 2026-09-26; it drives the road now, so a reader that
+  drops the sidecar anywhere on it shows up as the deck that relaxes every
+  atom.
 - `conftest.py` — the `web_client` fixture (rate-limit-off) + the shared fixtures
   (`isolated_projects_root` and its module-scoped sibling, `write_machine_record`);
   each e2e file carries its own `flask_server`.

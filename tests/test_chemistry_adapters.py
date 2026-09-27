@@ -12,8 +12,8 @@ Pins the contract:
   names match the engine's web-form / Config field names.
 * Adapters are PURE translators — they consume a
   ``ChemistryAnalysis`` and translate; they MUST NOT re-do
-  chemistry detection or parity work.  Pinned by checking that
-  ``analyze_structure`` is NOT imported by any adapter module.
+  chemistry detection or parity work.  Pinned by handing each one
+  conclusions that contradict the composition they came with.
 * The registry has a working on-ramp: adding an adapter via
   ``@register_adapter`` makes it appear in ``registered_adapters()``
   without endpoint code changes.
@@ -277,57 +277,53 @@ def test_registration_works_with_synthetic_adapter():
 # --------------------------------------------------------------------- #
 
 
-def test_adapter_modules_do_not_import_analyzer():
-    """Adapters are PURE translators (science/validation.md § 3).
-    They must not import ``analyze_structure`` or
-    ``detect_open_shell_metals`` — chemistry logic belongs in the
-    analyzer.  Pinned by AST-parsing each adapter module and
-    checking the actual import statements (substring matching
-    would trip on the "do not use these" warning in the adapter
-    docstring).
+def test_an_adapter_translates_the_analysis_and_never_re_derives_it():
+    """**An adapter is a PURE translator** (`science/validation.md` § 3): it
+    reads the analysis's conclusions and spells them for its engine.  One
+    that looked at the COMPOSITION again -- the metals, the electron count --
+    would be a second chemistry answer, and two answers about one structure
+    are how the auto-detect and the validator come to disagree.
 
-    Walks the **registry** rather than a hardcoded list so a
-    future engine's adapter (e.g. transiesta, pyscf-negf) is
-    automatically scanned without editing this test.
+    So each registered adapter is handed an analysis whose conclusions
+    CONTRADICT its composition -- methane's elements, told open shell, spin
+    2, charge +1 -- and a second analysis with the same conclusions over a
+    very different composition: copper, one metal, an odd electron count.
+    A translator returns the same thing for both.  One that re-derives
+    returns methane's answer for the first.
 
-    A failure here means an adapter started re-doing chemistry
-    detection inline.  Move the logic into ``chemistry.py`` and
-    have the adapter consume the existing ``ChemistryAnalysis``
-    fields instead.
+    Walks the registry, so an engine's adapter added later is held to it
+    without editing this test.  (This read each adapter module's imports
+    until 2026-09-26; the adapter's answer is what a reader acts on.)
+
+    API-level: ``/api/structure/analyze`` always hands an adapter the
+    analysis OF the structure it was sent, which never contradicts its own
+    composition -- so only a hand-made analysis can tell a translator from
+    an adapter that re-derives.
+
+    MUTATION THIS MUST FAIL AGAINST: an adapter reading
+    ``analysis.metals`` / ``n_electrons_neutral`` for the shell or the spin
+    instead of ``suggested_treatment`` / ``suggested_spin``.
     """
-    import ast
-    import importlib
-    import inspect
+    import dataclasses
 
-    FORBIDDEN = {
-        "analyze_structure",
-        "detect_open_shell_metals",
-        "check_spin_charge_parity",
-        "total_electrons",
-    }
+    told = dict(suggested_charge=1, suggested_spin=2,
+                suggested_treatment="open",
+                rationale="told by the analysis, not found by the adapter")
+    methane = analyze_structure(_mk(["C", "H", "H", "H", "H"]))
+    copper = analyze_structure(_mk(["Cu"]))
+    assert (methane.metals, methane.n_electrons_neutral % 2) == ([], 0)
+    assert (copper.metals, copper.n_electrons_neutral % 2) == (["Cu"], 1)
+    contradicted = dataclasses.replace(methane, **told)
+    same_verdict = dataclasses.replace(copper, **told)
 
     reg = registered_adapters()
-    assert reg, "registry is empty — at least siesta + pyscf must be registered"
-    for engine_name, adapter_cls in reg.items():
-        module_name = adapter_cls.__module__
-        mod = importlib.import_module(module_name)
-        try:
-            src = inspect.getsource(mod)
-        except OSError:
-            continue   # synthetic test adapters defined inline have no source file
-        tree = ast.parse(src)
-        imported_names: set = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    imported_names.add(alias.name)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    imported_names.add(alias.name)
-        bad = FORBIDDEN & imported_names
-        assert not bad, (
-            f"{module_name} (engine {engine_name!r}) imports forbidden "
-            f"chemistry primitives {sorted(bad)} — chemistry logic must "
-            f"live in the analyzer, not the adapter (see "
-            f"docs/science/validation.md)"
-        )
+    assert reg, "registry is empty -- at least siesta + pyscf must be registered"
+    for engine, adapter in reg.items():
+        got = asdict(adapter.to_params(contradicted))
+        assert got == asdict(adapter.to_params(same_verdict)), (
+            f"{engine}: the same conclusions over a different composition "
+            f"translated differently -- the adapter is reading the "
+            f"composition, not the analysis:\n  {got}")
+        assert got != asdict(adapter.to_params(methane)), (
+            f"{engine}: told open shell, spin 2 and charge +1, it answered "
+            f"what methane's composition says -- the analysis was ignored")

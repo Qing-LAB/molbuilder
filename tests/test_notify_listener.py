@@ -140,23 +140,6 @@ def test_a_half_written_key_file_opens_no_door(
                 if r.endpoint.startswith("notify.")], why
 
 
-def test_no_fixed_notify_path_exists_anywhere_in_the_source():
-    """**The segment is generated, never named.**
-
-    A cleverer word would be committed to a public repository and so be
-    exactly as public as `notify`, only less honest about what it does
-    (`access-control.md` § 8 rule 7). This is the same shape of guard as
-    `test_config_dir_has_one_home` — a comment saying *do not hard-code it*
-    is not a mechanism.
-    """
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/web/blueprints/notify.py").read_text()
-    body = src.split('"""', 2)[2]          # past the module docstring
-    assert '"/api/notify"' not in body
-    assert "'/api/notify'" not in body
-    assert '"/api/<route>"' in body, "the route must be a parameter"
-
-
 # --------------------------------------------------------------------- #
 #  gate 2 + 4: a wrong guess is indistinguishable from nothing           #
 # --------------------------------------------------------------------- #
@@ -307,6 +290,14 @@ def test_the_window_memory_is_bounded_by_the_CAP_not_the_traffic(store):
 
 
 def test_the_wrong_segment_is_a_plain_404(store):
+    """**The segment is generated, never named** -- so no fixed word opens it.
+
+    A cleverer word would be committed to a public repository and so be
+    exactly as public as `notify`, only less honest about what it does
+    (`access-control.md` § 8 rule 7). What a prober sweeps is the obvious
+    words (`run-reports.md` § 4.2), so the running app is asked them: a
+    configured server answers `404` at each and keeps nothing.
+    """
     client, log_root = store
     assert _post(client, path="/api/notify").status_code == 404
     assert _post(client, path="/api/webhook").status_code == 404

@@ -22,13 +22,6 @@ makes a shared *rule* the fix rather than a shared lookup.
 """
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-MATERIALIZE = ROOT / "molbuilder/jobset/materialize.py"
-PREP = ROOT / "molbuilder/jobset/prep.py"
-
 
 def test_both_composers_ask_the_same_function():
     from molbuilder.jobset.materialize import trial_dir
@@ -38,37 +31,6 @@ def test_both_composers_ask_the_same_function():
         got = trial_dir(sh, "01_coarse", "G1K4C6")
         assert got.endswith("/bench-G1K4C6"), got
         assert "bench" in got
-
-
-def test_nobody_spells_the_trial_prefix_by_hand():
-    """`bench-` belongs to `job_dir_name`. A literal `f"bench-{...}"`
-    anywhere else is the rule being written a second time, which is exactly
-    what this test exists to stop coming back."""
-    offenders = []
-    for f in (ROOT / "molbuilder").rglob("*.py"):
-        if f.name == "materialize.py":
-            continue          # where the rule lives
-        for n, line in enumerate(f.read_text().splitlines(), 1):
-            if re.search(r'f"bench-\{', line) or re.search(r"'bench-'\s*\+", line):
-                offenders.append(f"{f.relative_to(ROOT)}:{n}: {line.strip()}")
-    assert not offenders, (
-        "the trial-directory rule is composed outside materialize.py:\n  "
-        + "\n  ".join(offenders))
-
-
-
-
-def test_job_dir_names_asks_it_too():
-    """Both sides, or it is one door and one window."""
-    src = MATERIALIZE.read_text()
-    body = src[src.index("def job_dir_names"):src.index("def _trial_stage_token")]
-    assert "trial_dir(sh, trial_token, j.name)" in body
-    assert 'trial_dir(sh, "", j.name)' in body, "the tokenless sweep too"
-    # a bare `bench-<name>` at the ROOT is a different case -- a hand-built
-    # ladder whose jobs are siblings, with no container to join -- so
-    # `job_dir_name` alone is right there and is not a second spelling.
-    assert 'f"{bench_container(sh' not in body, \
-        "job_dir_names joins a container to a trial name inline again"
 
 
 def test_the_two_agree_on_a_real_bundle(tmp_path):

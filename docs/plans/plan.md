@@ -2939,7 +2939,7 @@ that matter).
 | # | the list | assert it against | today |
 |---|---|---|---|
 | 10a | `web-api.md` §§ 4–5's route catalogue | `app.url_map`, **set equality**, `static` excluded | ⛔ **BLOCKED — measured 2026-09-18, and the measurement is the finding.** See below |
-| 10b | `presenters.md` § 1's viewer table | the `register()` calls in `lib/inspectors/`, **set equality** on presenter name + `isResult` | ✅ **DONE 2026-09-18** — `test_the_documented_presenters_are_the_registered_ones`. The table gained a `Presenter` column, because it was keyed by file pattern and had no name to assert on. Mutation-tested four ways, including the `makePartialInspector` default-`true` case that produced the original wrong count |
+| 10b | `presenters.md` § 1's viewer table | the `register()` calls in `lib/inspectors/`, **set equality** on presenter name + `isResult` | ✅ **DONE 2026-09-18** — `test_inspector_registry_dispatch_js.py::test_the_documented_presenters_are_the_registered_ones`, which since 2026-09-26 runs the registry in node and compares its `list()` with the table (it read the `register()` calls by regex before). The table gained a `Presenter` column, because it was keyed by file pattern and had no name to assert on. Mutation-tested four ways, including the `makePartialInspector` default-`true` case that produced the original wrong count |
 | 10c | `conventions.md` § 3's command roster | `cli.commands`, **set equality** | ✅ **DONE 2026-09-18** — `test_the_documented_command_roster_is_the_shipped_one`. Mutation-tested both directions |
 
 **10a — why it is blocked, and what the measurement says.** The set equality is
@@ -4034,9 +4034,7 @@ And the same day, after P1 and its review:
   (`parse/dirs/record.py`, `setup.py`), `JobDirParser` serving `status` and
   `record`, `/api/results/dir` carrying it. **P2 still owes**: the Run panel
   itself; the setup rows' `echo` column (§ 5d.3); comparing the launch rows
-  asked with those run (`bench.compare_asked_to_ran`); `summarize.parse_point`
-  composed from the record's rows, which retires its second file-head reader;
-  the SCF plots by phase; the viewer's own seconds per iteration removed (the
+  asked with those run (`bench.compare_asked_to_ran`); the SCF plots by phase; the viewer's own seconds per iteration removed (the
   timing instrument is the one home); the parameters fence narrowed to the
   calculation's items.
 * **Open, for the user (2026-09-26 review)**:
@@ -4239,6 +4237,10 @@ written out eight times) · `test_one_naming_authority.py` · `test_config_dir_h
 · `test_css_no_duplicate_selectors.py` · `test_css_module_boundary.py` ·
 `test_vibrationview_module_boundary.py` · `test_no_duplicated_ui_components.py`
 · `test_no_test_is_shadowed.py`
+
+*(2026-09-26: the source scans in `test_one_naming_authority.py` and
+`test_config_dir_has_one_home.py` were deleted on the user's rule — a test runs
+the code; what each file keeps does.)*
 
 They cover imports, constants, a naming rule, a config path, CSS, two module
 seals, UI components and test names. **Not one covers a reading or writing

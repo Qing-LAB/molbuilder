@@ -73,6 +73,10 @@ _SIESTA_DIAG_ALGORITHMS = frozenset({
 
 
 
+#: The table's out-of-memory markers -- a cause that outranks the others.
+_OOM = frozenset(m for m, st in _G.FATAL_MARKERS if st == "out_of_memory")
+
+
 class SiestaReader:
     """The one SIESTA reading pass: :meth:`feed` it lines, ask :meth:`now`
     while the run grows, and :meth:`finish` at the end of the output.
@@ -132,6 +136,15 @@ class SiestaReader:
         self._pending_cycle: Dict[str, Any] = {}
         self._ts_q_names: Optional[List[str]] = None
         self.phase_converged: Dict[str, Optional[bool]] = {}
+        #: WHAT STOPPED IT: the first fatal line's marker -- the lines after
+        #: it are ``die``'s cascade, and an out-of-memory marker outranks the
+        #: rest wherever it falls -- or `siesta_grammar.SCF_NOT_CONV_MARKER`
+        #: when SIESTA stated the SCF's failure fatal (``(required)``).
+        self.cause: Optional[str] = None
+        #: A relaxation's last coordinates block says whether it converged:
+        #: ``Relaxed`` (True) or ``Final (unrelaxed)`` (False); ``None`` for
+        #: a run that relaxes nothing, or has not got there.
+        self.relaxed: Optional[bool] = None
         self._scf_criteria: Dict[str, Dict[str, Any]] = {}
         self.ts_info: Dict[str, Any] = {}
         self._ts_echo_open = False
@@ -225,6 +238,15 @@ class SiestaReader:
     def feed_text(self, text: str) -> "SiestaReader":
         for line in text.splitlines():
             self.feed(line)
+        return self
+
+    def new_channel(self) -> "SiestaReader":
+        """What follows is the run's OTHER channel -- SIESTA's stderr, which
+        its wrapper keeps apart -- read by the same rules after the output.
+        The deck's echo is the output's alone, and a section open at the
+        output's end does not continue into another file."""
+        self._in_input_echo = False
+        self._active = None
         return self
 
     # ---- a step ------------------------------------------------------------
@@ -328,10 +350,16 @@ class SiestaReader:
         if m:
             self.step_begun = (m.group(1), int(m.group(2)))
 
-    def _fatal(self, state: str):
-        """One handler per ending state, built from the shared table
+    def _fatal(self, marker: str, state: str):
+        """One handler per fatal marker, built from the shared table
         (`siesta_grammar.FATAL_MARKERS`, `model/parse.md` § 2b)."""
+        oom = state == "out_of_memory"
+
         def _handler(line: str, line_no: int) -> None:
+            # THE FIRST FATAL LINE IS THE CAUSE; what follows it is `die`'s
+            # cascade, and a memory marker, once seen, is the cause.
+            if self.cause is None or (oom and self.cause not in _OOM):
+                self.cause = marker
             # P-S1: it did not reach its own end.  An OOM outranks a generic
             # abort -- the aborts that follow are the cascade, the memory is
             # the cause.
@@ -376,6 +404,10 @@ class SiestaReader:
         fatal marker -- promotes it."""
         if self._scf_not_conv_line is None:
             self._scf_not_conv_line = line.strip()[:200]
+        # SIESTA STATING IT FATAL is the cause of the death that follows; the
+        # tolerated form is not, and a later crash keeps its own cause.
+        if _G.SCF_NOT_CONV_REQUIRED in line.lower() and self.cause is None:
+            self.cause = _G.SCF_NOT_CONV_MARKER
         self.scf_converged = False
         self.phase_converged[self.phase or _G.PHASE_PERIODIC] = False
 
@@ -387,6 +419,11 @@ class SiestaReader:
     # ---- coordinates, cell, forces, energies ---------------------------------
 
     def _on_coords_start(self, line: str, line_no: int) -> None:
+        low = line.lower()
+        if _G.RELAXED_MARKER in low:
+            self.relaxed = True
+        elif _G.UNRELAXED_MARKER in low:
+            self.relaxed = False
         self._commit()
         self._step_frame = []
 
@@ -513,6 +550,7 @@ class SiestaReader:
             if self.phase is not None:
                 self.scf_converged = None
             self.phase = phase
+            self.phase_converged.setdefault(phase, None)
             self._prev_E_KS = None
         # iscf==1 starts a new SCF run of THIS phase.
         if iscf == 1:
@@ -745,15 +783,13 @@ class SiestaReader:
         return [
             # FATAL MARKERS, FROM THE ONE TABLE (`siesta_grammar.FATAL_MARKERS`,
             # `model/parse.md` § 2b), substring matches because SIESTA
-            # prefixes them with "node 0: " under MPI.  Built from the shared
-            # table, so the cheap `scan_ending()` and this reader cannot
-            # disagree about what a fatal marker IS.
+            # prefixes them with "node 0: " under MPI.
             *[
                 SectionRule(
                     name=f"fatal_{marker.replace(' ', '_').replace(':', '')}",
                     aliases=[marker],
                     start=contains_ci(marker),
-                    on_start=self._fatal(state),
+                    on_start=self._fatal(marker, state),
                 )
                 for marker, state in _G.FATAL_MARKERS
             ],
@@ -1004,8 +1040,10 @@ class SiestaReader:
     def finish(self) -> Dict[str, Any]:
         """The end of the output: the torn step dropped, the step in flight
         committed and flagged, the run's facts summed.  Returns the reading
-        -- ``{steps, live_scf, lattice, run_state, scf_converged,
-        error_message, runtime_info, warnings}`` -- and the reader is done.
+        -- ``{steps, live_scf, lattice, run_state, scf_converged, phases,
+        relaxed, cause, error_message, runtime_info, warnings}`` -- and the
+        reader is done.  The ending among them is THE answer to how a SIESTA
+        run ended; `_run_ending.ending_of` asks for it alone.
 
         ``live_scf`` is the SCF of a run still going that has no coordinates
         to attach it to yet -- the Results tab draws it at once rather than
@@ -1083,6 +1121,8 @@ class SiestaReader:
         return {"steps": self.steps, "live_scf": live_scf,
                 "lattice": self.lattice, "run_state": self.run_state,
                 "scf_converged": self.scf_converged,
+                "phases": dict(self.phase_converged),
+                "relaxed": self.relaxed, "cause": self.cause,
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info,
                 "warnings": self.warnings}

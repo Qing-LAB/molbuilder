@@ -893,8 +893,9 @@ on the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)),
 because they are a fact about the box, not about this calculation.
 
 **What the card asks, and what travels** — the `notify` block,
-[`stages.md`](?doc=engines/stages.md) § 6.9; the start and the end of a run are
-always reported, so they are not offered
+[`stages.md`](?doc=engines/stages.md) § 6.9. Nothing ticked writes no block,
+and no block is no report at all; a calculation that reports anything also
+reports its start and its end, so they are not offered
 ([`run-reports.md`](?doc=execution/run-reports.md) § 2):
 
 | | writes | travels? |

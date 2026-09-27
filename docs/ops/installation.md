@@ -79,8 +79,8 @@ of truth; the `molbuilder envs` command reads it.
 3. `$MAMBA_EXE` / `$CONDA_EXE` (validated executable).
 
 The resolver lives in `molbuilder/diagnostics.py` and NOWHERE else —
-`tests/test_manager_one_door.py`'s architecture gate fails any module
-that probes for a manager by name.  Every consumer reads
+a module that probes for a manager by name is a second door, and review
+refuses it (`process/code-audit.md` § 1c).  Every consumer reads
 `caps.conda_binary`; `doctor` and `repair` print the resolved manager
 **and its provenance** as their first line, so "which manager did it
 use" is never a mystery to reconstruct from a stack trace.

@@ -1626,8 +1626,10 @@ does ([`run-reports.md`](?doc=execution/run-reports.md) § 1).
 
 What each occasion is and what every message carries are
 [`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
-channels a list selects is § 3.0 there. The start and the end of a run are
-always reported, so they are not keys. `notify` present but empty is refused:
+channels a list selects is § 3.0 there. **No `notify` block is no
+notification**, the start and the end included; a calculation with a block also
+reports its start and its end, so they are not keys. `notify` present but empty
+is refused:
 absent and empty would be two spellings of one state. **Absent and `[]` are two
 states for `channels` and for `report`**, so the serializer writes `[]` rather
 than dropping it: a person who unticked every box asked for something

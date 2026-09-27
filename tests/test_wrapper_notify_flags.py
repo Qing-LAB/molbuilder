@@ -187,10 +187,14 @@ def test_an_EMPTY_selection_still_emits_the_flag(tmp_path):
 
 def test_the_monitor_reads_back_what_the_wrapper_emitted(tmp_path):
     """Two files, one command line.  A wrapper that renders a value the
-    monitor parses differently fails backgrounded and silent."""
+    monitor parses differently fails backgrounded and silent.  No `notify`
+    block is nothing sent (`()`); a block naming no channels travels as the
+    every-channel marker and is every channel there (`None`)."""
     from molbuilder import monitor as M
-    for channels, expected in ((None, None), (("slack", "lab"),
-                                              ("slack", "lab")), ((), ())):
+    from molbuilder.config_dir import ALL_CHANNELS
+    for channels, expected in ((None, ()), ((ALL_CHANNELS,), None),
+                               (("slack", "lab"), ("slack", "lab")),
+                               ((), ())):
         line = _monitor_line(tmp_path, notify_on_scf=True,
                              notify_channels=channels)
         m = re.search(r'--notify-channels "([^"]*)"', line)

@@ -3303,6 +3303,12 @@ function paintNotifyNote() {
     const note = $("ts-notify-note");
     if (!note) return;
     const v = notifyValues();
+    // NOTHING TICKED WRITES NO BLOCK, and no block is no report at all
+    // (`run-reports.md` § 2): the start and the end included.
+    if (!Object.keys(v).length) {
+        note.textContent = "Sends no reports \u2014 nothing is set up";
+        return;
+    }
     const parts = [];
     if (v.on_scf_converged) parts.push("each SCF convergence");
     if (v.every_hours) parts.push(`every ${v.every_hours} h`);

@@ -116,7 +116,7 @@ try:                                        # inside molbuilder
     from .parse.engines import _run_ending as _ending
     from . import report_fields as _fields
     from . import runfiles as _rf
-    from .parse.dirs.job import run_status
+    from .parse.dirs.job import MONITOR_ENDED, run_status
     from .parse.engines.molwatch_reader import MolwatchReader
     from .parse.engines.siesta_reader import SiestaReader
     from .parse.instruments.scf_timing_rows import scf_timing_metrics
@@ -124,7 +124,7 @@ except ImportError:                         # beside the job
     import _run_ending as _ending
     import report_fields as _fields
     import runfiles as _rf
-    from job import run_status
+    from job import MONITOR_ENDED, run_status
     from molwatch_reader import MolwatchReader
     from siesta_reader import SiestaReader
     from scf_timing_rows import scf_timing_metrics
@@ -389,19 +389,14 @@ class WatchedRun:
         """How the run ended, as the Results tab reads it: `run_status` over
         this rung's own files (`run-reports.md` § 2.3) -- its state and
         detail, each phase's convergence from the ending of the file that
-        speaks, and the process's goodbye."""
+        speaks, and the process's goodbye.  Asked after the closing record
+        is written: a forced stop leaves no other word, and `run_status`
+        reads it there."""
         try:
             rs = run_status(self.directory, self.stem + "*")
         except Exception:                               # noqa: BLE001
             return st           # an unreadable directory says nothing
         st.state, st.detail = rs.state, rs.detail
-        if rs.state == "running":
-            # The PID is gone and nothing says how: no ending in the output,
-            # no `.concluded` -- stopped before its end, which `run_status`
-            # calls `failed` when the output records the stop itself (§ 2.3).
-            st.state = "failed"
-            st.detail = ("stopped before its end: no ending in its output "
-                         "and no exit recorded")
         ending = rs.endings.get(rs.active_source) if rs.active_source else None
         if ending is not None and ending.phases:
             st.converged = dict(ending.phases)
@@ -1086,9 +1081,10 @@ def _secrets_dir():
     machines.
 
     Restating the rule here -- joining ``config_dir() / "secrets"`` -- would
-    be another copy of it, which `tests/test_config_dir_has_one_home.py`
-    exists to prevent: three modules once computed it independently and two
-    of them said so in prose, *"a comment is not a mechanism"*.
+    be another copy of it, which review exists to refuse
+    (`process/code-audit.md` § 1c): three modules once computed it
+    independently and two of them said so in prose, *"a comment is not a
+    mechanism"*.
 
     THIS REPLACED `_config_dir()` on 2026-09-20, when the credentials moved
     into `secrets/` and both path functions below started asking for that
@@ -1553,14 +1549,16 @@ def _report_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
 def _channels_from_flag(value: Optional[str]) -> Optional[Tuple[str, ...]]:
     """``--notify-channels`` as :class:`NotifyPolicy` carries it.
 
-    ``None`` -- the flag absent -- stays ``None``, which means every channel
-    this machine has.  ``""`` becomes the empty tuple, which means none.
-    **Those two are the reason this is a function**: they are one character
-    apart on a command line and opposite in meaning, and the conversion was
-    an expression inside a constructor call where nothing could reach it to
-    check.
+    The flag ABSENT is nothing set up, so nothing is sent: ``()``
+    (user, 2026-09-26: *"when no set up for notification that means no
+    notification"*).  ``*`` (``config_dir.ALL_CHANNELS``) is every channel
+    this machine has -- ``None`` in the policy -- and ``""`` is none.  **The
+    reason this is a function**: those spellings are a character apart on a
+    command line and opposite in meaning.
     """
     if value is None:
+        return ()
+    if value.strip() == "*":
         return None
     return tuple(n for n in (part.strip() for part in value.split(",")) if n)
 
@@ -1931,19 +1929,14 @@ def run_monitor(watched: "WatchedRun", *,
         if alive:
             _util_tick(now)
         st = watched.read(start, now)
-        if not alive:
-            # HOW IT ENDED is the Results tab's reading, asked now that the
-            # PID has said it is over (`run-reports.md` § 2.2-2.3).
-            st = watched.conclude(st)
 
         if not alive:
-            _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
-            if util_path is not None:
-                _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
-                             f"{util_accum.summary()}")
-                _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
-                             f"{measurement_provenance(basis)}")
-            if _STOPPED_BY == _STOP_RETRY:
+            # WHY IT STOPPED comes first: the closing record is evidence
+            # `run_status` reads -- a forced stop leaves no other word
+            # (`run-reports.md` § 2.4) -- and HOW IT ENDED, asked next, is
+            # the Results tab's own reading of the run's files.
+            retry = _STOPPED_BY == _STOP_RETRY
+            if retry:
                 # NOT AN ENDING: the wrapper re-execs itself in this pid for
                 # the next run, which starts its own monitor
                 # (`run-reports.md` § 2 -- "it ended" is the watched pid
@@ -1952,11 +1945,19 @@ def run_monitor(watched: "WatchedRun", *,
                              f"is retrying this attempt in place; the next "
                              f"run starts its own monitor")
             else:
-                _append(log, f"[{_iso(now)}] [MONITOR] job ended "
+                _append(log, f"[{_iso(now)}] {MONITOR_ENDED} "
                              + (f"(stopped by {_STOPPED_BY}); "
                                 if _STOPPED_BY else
                                 f"(watched pid {watch_pid} gone); ")
                              + "final notify + exit")
+            st = watched.conclude(st)
+            _append(log, f"[{_iso(now)}] [STATUS] {st.as_text()}")
+            if util_path is not None:
+                _append(log, f"[{_iso(now)}] [UTIL-SUMMARY] "
+                             f"{util_accum.summary()}")
+                _append(log, f"[{_iso(now)}] [UTIL-BASIS] "
+                             f"{measurement_provenance(basis)}")
+            if not retry:
                 _fire(st, "finish")
             # The series' end, LAST: a GPU sample can take seconds and the
             # wrapper waits for this process only so long, so the closing

@@ -1695,10 +1695,10 @@ def api_task_setup_save():
     # later.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
-    from molbuilder.template import SUFFIX as _TPL_SUFFIX
+    from molbuilder.template import template_path as _template_path
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
-    _tpl_file = dest / f"{task.label}{_TPL_SUFFIX}"
+    _tpl_file = _template_path(dest, task.label)
     _pf = _task_preflight(
         task,
         template_text=(_tpl_file.read_text(encoding="utf-8")

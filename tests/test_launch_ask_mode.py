@@ -150,24 +150,6 @@ def test_no_scheduler_is_its_own_ANSWER_not_an_empty_table():
     assert "would start" not in out, "rendered the table header anyway"
 
 
-def test_no_scheduler_does_not_end_by_pointing_at_submit():
-    """**Caught by running it, not by a test.** The table said *there is no
-    scheduler here* and the closing line said *launch it with `--mode
-    submit` when the answer suits you* — a contradiction in consecutive
-    sentences, pointing at a mode this machine cannot run.
-
-    Guarded at the source, because the closing line lives in the CLI and
-    the table cannot see it.
-    """
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/_cli.py").read_text()
-    branch = src[src.index("would send: "):src.index("would send: ") + 900]
-    assert "if all(p.no_scheduler for p in preds):" in branch
-    assert "--mode direct" in branch, \
-        "the no-scheduler case must point at the mode that DOES work here"
-
-
 def test_the_fact_and_the_ACTION_are_not_said_twice():
     """The table states the fact; the CLI's closing line says what to do.
     Both saying `--mode direct` reads as a stutter, and it was."""
@@ -216,32 +198,6 @@ def test_an_empty_ask_says_so_rather_than_printing_a_header():
 #  the mode itself                                                       #
 # --------------------------------------------------------------------- #
 
-def test_ask_is_NOT_gated_by_the_one_at_a_time_rule():
-    """**I had this backwards, and the rule's own words say so** (caught by
-    the user on a 4-trial bench, 2026-08-27).
-
-    `_refuse_batch_submission` exists because jobs queued together start
-    together, contend, and make a sweep measure contention rather than
-    scaling. Its docstring is explicit: *"a rule about the SCHEDULER, not
-    about doing several things"* — which is why `--mode direct` is untouched.
-
-    `--test-only` enqueues nothing, so none of that harm is reachable. And
-    the sweep is exactly where asking pays: a grid's trials ask for
-    different shapes, G1 schedules sooner than G4, so seeing their waits
-    side by side is what tells you which to submit. Gating it made the
-    feature useless precisely where it was most useful.
-    """
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/submit.py").read_text()
-    fn = src[src.index("def _refuse_batch_submission"):
-             src.index("def submit_jobset")]
-    assert 'if mode == "submit" and len(jobset.jobs) > 1:' in fn, \
-        "ask was gated by the submission rule again"
-    assert '"ask"' not in fn.split("if mode ==")[1], \
-        "ask must not appear in the refusal condition"
-
-
 def test_the_number_of_QUERIES_is_bounded_and_says_what_it_skipped(tmp_path):
     """Politeness, not a rule about queues. And **no silent cap**: a partial
     answer that does not say it is partial reads as a complete one.
@@ -289,21 +245,6 @@ def test_the_number_of_QUERIES_is_bounded_and_says_what_it_skipped(tmp_path):
         f"{len(results)} results for {n} trials")
     assert skipped == [f"p{i:02d}" for i in range(ASK_MAX_QUERIES, n)], (
         "the skipped trials are not the ones past the cap, in order")
-
-
-def test_ask_walks_the_SAME_path_as_submit():
-    """The whole reason it is a mode and not a verb. If these ever became
-    two code paths, the line asked about could stop being the line sent."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/submit.py").read_text()
-    # Anchor the end AFTER the start: submit_transport_chain (P5b)
-    # carries its own earlier `if mode == "direct":`, and a naive
-    # first-occurrence slice inverted into an empty string.
-    _start = src.index("    if mode in (\"submit\", \"ask\"):")
-    disp = src[_start:src.index("    if mode == \"direct\":", _start)]
-    assert "_submit_slurm" in disp
-    assert disp.count("return") == 1, "ask branched away from submit"
 
 
 def test_ask_adds_test_only_and_changes_nothing_else(tmp_path):
@@ -358,17 +299,6 @@ def test_ask_adds_test_only_and_changes_nothing_else(tmp_path):
         "the script last, so appending it makes the question a different "
         "command from the one that would be sent")
 
-def test_ask_records_no_launch():
-    """A launch record says a job exists. After this one does not, so
-    writing one would make `status` report a job nobody submitted."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/submit.py").read_text()
-    body = src[src.index("        if ask:\n            # NOTHING WAS"):
-               src.index("        if cp.returncode != 0:")]
-    assert "_record_launch" not in body
-    assert "continue" in body
-
 
 def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     """`--mode ask` is a question, and a question must not write.  Until
@@ -404,16 +334,143 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     assert not (d / "run-1").exists()
 
 
-def test_no_scheduler_previews_no_sbatch_either():
-    """The same contradiction one line earlier (user, 2026-08-28): *"nothing
-    to wait for"* followed by ``would send: sbatch ...`` reads as two
-    answers.  On a machine with no scheduler nothing WOULD be sent, so
-    nothing is previewed.  Guarded at the source like its sibling above,
-    because the preview line lives in the CLI."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parents[1]
-           / "molbuilder/jobset/_cli.py").read_text()
-    i = src.index('click.echo("  would send: "')
-    guard = src[max(0, i - 400):i]
-    assert "not all(p.no_scheduler for p in preds)" in guard, (
-        "the sbatch preview must be gated off when no scheduler exists")
+# --------------------------------------------------------------------- #
+#  what `launch --mode ask` says, on the road a person takes             #
+# --------------------------------------------------------------------- #
+
+def _jobset(*args):
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, [str(a) for a in args])
+
+
+def _a_prepped_stage(tree, monkeypatch):
+    """One stage, described and prepped the way a person does it:
+    `jobset init` on a structure in the projects tree, then `prep run
+    --target this`.  NO engine runs -- asking needs a prepped attempt and
+    nothing more."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text(
+        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    monkeypatch.chdir(tree.parent)
+    r = _jobset("init", "--structure", "P/structure/h2.xyz",
+                "--bundle", "P/optimization/H2", "--engine", "pyscf",
+                "--shape", "hierarchical", "--name", "H2")
+    assert r.exit_code == 0, r.output
+    bundle = tree / "P" / "optimization" / "H2"
+    # How a shell enters the env on this machine -- no wrapper is written
+    # without it (`running-a-job.md` § 5.2).
+    (bundle / ".molbuilder.json").write_text(
+        '{"script_generation": {"activation": "conda activate", '
+        '"preamble": "true"}}')
+    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+                "--target", "this")
+    assert r.exit_code == 0, r.output
+    attempt = bundle / "01_coarse" / "run-0"
+    assert attempt.is_dir(), sorted(p.name for p in bundle.iterdir())
+    return bundle, attempt
+
+
+def _a_scheduler_that_answers(bin_dir, calls):
+    """An `sbatch` that answers `--test-only` the way Sol's did -- the
+    prediction on STDERR, exit 0 -- and writes down every call.  Called
+    WITHOUT the flag it would have queued a job, so it says so and the
+    call is on record."""
+    bin_dir.mkdir()
+    f = bin_dir / "sbatch"
+    f.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> "{calls}"\n'
+        'case " $* " in\n'
+        f'  *" --test-only "*) echo "{SOL_PREDICTION}" >&2; exit 0 ;;\n'
+        "esac\n"
+        'echo "Submitted batch job 4242"\n')
+    f.chmod(0o755)
+
+
+def _no_scheduler_on_path(monkeypatch):
+    """PATH without any `sbatch` -- a workstation.  The suite's own
+    refusing `sbatch` (conftest) is removed with the rest: it stands in
+    for a scheduler, which is exactly what this machine does not have."""
+    import os
+    keep = [d for d in os.environ["PATH"].split(os.pathsep)
+            if d and not os.path.exists(os.path.join(d, "sbatch"))]
+    monkeypatch.setenv("PATH", os.pathsep.join(keep))
+
+
+@pytest.mark.parametrize("machine", ["scheduler answers", "no scheduler"])
+def test_ask_answers_on_the_road_and_launches_nothing(tmp_path, monkeypatch,
+                                                      machine):
+    """**What `launch run --mode ask` says, and that it leaves no launch.**
+
+    The failures, each a contradiction a person acted on or could have:
+
+    * the attempt RECORDED A LAUNCH -- `run.json` says a job exists, so
+      `status` would report a job nobody submitted, and the next `launch`
+      would refuse the attempt as already run;
+    * on a machine with NO scheduler the closing line said *launch it with
+      `--mode submit` when the answer suits you* right under *there is no
+      scheduler here* -- a mode this machine cannot run (caught by running
+      it, 2026-08-27);
+    * and one line earlier it previewed ``would send: sbatch ...`` under
+      *nothing to wait for* -- two answers (user, 2026-08-28).
+
+    Contract: `execution/running-a-job.md` § 5.5 -- *"no job is created,
+    nothing is recorded, and `status` sees nothing"*, and the line asked
+    about is the line that would be sent.  Driven through `init` -> `prep`
+    -> `launch`; the scheduler is a stub on PATH that answers the way Sol's
+    `sbatch --test-only` did, and records every call.
+
+    MUTATION THIS MUST FAIL AGAINST: `_submit_slurm` recording the launch
+    (`_record_launch`) in its ask branch; the CLI's `would send:` preview
+    printed without its no-scheduler guard; the closing line always naming
+    `--mode submit`.
+    """
+    from molbuilder.jobset.materialize import read_run_launch, was_launched
+
+    calls = tmp_path / "sbatch-calls.log"
+    if machine == "scheduler answers":
+        # A machine that HAS a queue: the probed record names one, so prep
+        # writes the `.sbatch` the question is asked about.
+        from conftest import write_machine_record
+        from molbuilder.scheduler import Domain
+        write_machine_record(scheduler="slurm", domains=[
+            Domain(name="htc", partition="htc", qos="public",
+                   max_time="0-04:00:00")])
+        _a_scheduler_that_answers(tmp_path / "bin", calls)
+        import os
+        monkeypatch.setenv(
+            "PATH", f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    bundle, attempt = _a_prepped_stage(tmp_path / "projects", monkeypatch)
+    if machine == "no scheduler":
+        _no_scheduler_on_path(monkeypatch)
+
+    r = _jobset("launch", "run", "coarse", "--bundle", bundle,
+                "--mode", "ask")
+    assert r.exit_code == 0, r.output
+    out = r.output
+
+    assert read_run_launch(attempt) is None and not was_launched(attempt), (
+        f"asking recorded a launch in {attempt.name}: `status` would now "
+        f"report a job nobody submitted\n{out}")
+    if machine == "scheduler answers":
+        assert "2026-08-27T11:22:03" in out, (
+            f"the scheduler's predicted start is not shown:\n{out}")
+        assert "nothing was submitted" in out, out
+        sent = calls.read_text().splitlines()
+        assert len(sent) == 1 and "--test-only" in sent[0].split(), (
+            f"the scheduler was not asked exactly once, with --test-only: "
+            f"{sent}")
+        assert "would send: sbatch --test-only" in out, out
+        assert "--mode submit" in out, (
+            f"the answer does not say how to act on it:\n{out}")
+    else:
+        assert "no scheduler on this machine" in out, out
+        assert "--mode direct" in out, (
+            f"no pointer at the mode that DOES work here:\n{out}")
+        assert "would send" not in out, (
+            f"previewed an sbatch line on a machine with no scheduler:\n{out}")
+        assert "--mode submit" not in out, (
+            f"pointed at a mode this machine cannot run:\n{out}")

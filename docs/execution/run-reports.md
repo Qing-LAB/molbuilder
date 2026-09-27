@@ -77,15 +77,17 @@ never what a machine found — and adds one: never a secret.
 
 ## 2. When it speaks
 
-Four occasions. The two settable ones combine; the start and the end are
-always sent.
+**No `notify` block is no notification** (user, 2026-09-26: *"when no set up
+for notification that means no notification"*) — nothing is sent, the start
+and the end included. A calculation with a `notify` block speaks on four
+occasions: the two it ticks, which combine, and its start and its end.
 
 | occasion | `event` | set by | sent |
 |---|---|---|---|
-| **it started** | `start` | always | once, when the monitor starts watching a run |
+| **it started** | `start` | a `notify` block | once, when the monitor starts watching a run |
 | **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step finishes (§ 2.2) — one message per wake, however many finished since the last |
 | **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `0` or absent is never | N hours after the last message; the first, N hours after the start |
-| **it ended** | `finish` | always | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes |
+| **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
 — SCF phase and iteration, energy, each residual against its criterion, the
@@ -97,8 +99,9 @@ each SCF phase converged and how the process exited.
   the monitor log (§ 2.5); the channels hear what the policy asks for.
 - **A step's message restarts the N-hour clock**, and a step and a period due
   on the same wake are one message — the step's.
-- **The start and the end are not settable**: they bracket every report, and a
-  run that finishes at 3 am saying so is the reason the hook exists.
+- **The start and the end are not ticks**: a calculation that reports at all
+  reports them — they bracket every report, and a run that finishes at 3 am
+  saying so is the reason the hook exists.
 - **The monitor judges no stall** (user, 2026-09-26). A step can take hours,
   and nothing in the output tells a slow one from a stuck one; how the run uses
   what it holds is in the utilisation record (§ 2.1a), for the person to read.
@@ -228,11 +231,12 @@ through `runfiles`.
 
 **Its words are the framework's.** `state` is `running` while the watched PID
 lives; at the end it is `run_status`'s `finished` or `failed`, with its
-`detail`. One case needs the monitor's own fact: a job the scheduler or a
-signal killed leaves no ending in its output and no `.concluded`, which
-`run_status` reads as *running* — not finished. The monitor saw the PID go, so
-it reports `failed`, *stopped before its end: no ending in its output and no
-exit recorded*.
+`detail`. A job the scheduler or a signal killed leaves no ending in its output
+and no `.concluded`; what it does leave is the monitor's closing record,
+`[MONITOR] job ended`, written before the monitor asks — and `run_status` reads
+that record as `failed`, *stopped before its end: no ending in its output and
+no exit recorded*. So the monitor's `finish` and the Results tab say the same
+thing, from the same files.
 
 **The wrapper asks the same framework.** Its failure hint and its warm retries
 ask `_run_ending` through `mb_monitor.pyz ending`
@@ -258,20 +262,22 @@ sequenceDiagram
     E-->>W: exits with its return code
     alt a warm retry
         W->>M: SIGUSR1
-        M->>M: closing lines, then stopped for a retry - no finish
+        M->>M: log MONITOR stopped, ask run_status, then STATUS, UTIL-SUMMARY, UTIL-BASIS - no finish
         W->>W: exec itself with --continue as the next run index, which starts its own monitor
     else the job ends
         W->>W: write -runN.concluded with the return code, on its main line
         W->>M: SIGTERM from its EXIT trap, then wait up to 10 s
-        M->>M: ask run_status, then closing lines STATUS, UTIL-SUMMARY, UTIL-BASIS
+        M->>M: log MONITOR job ended, ask run_status, then STATUS, UTIL-SUMMARY, UTIL-BASIS
         M-->>C: finish
     end
 ```
 
-A **forced stop** — walltime, `scancel`, a lost node — never reaches the main
-line, so no `.concluded` is written. The monitor gets SIGTERM from the
-wrapper's signal trap or the scheduler, or sees the watched PID go, and its
-`finish` says *failed — stopped before its end*.
+A **forced stop** — walltime, `scancel`, a kill — never reaches the main line,
+so no `.concluded` is written. The monitor gets SIGTERM from the wrapper's
+signal trap or the scheduler, or sees the watched PID go; it logs
+`[MONITOR] job ended`, and `run_status`, reading that record, says *failed —
+stopped before its end*. A lost node takes the monitor with it: then no file
+says the run is over, and it reads `running`.
 
 The **report's `state`** is the monitor's view of one run:
 
@@ -280,7 +286,7 @@ stateDiagram-v2
     [*] --> running: the monitor starts
     running --> finished: stopped - run_status says finished
     running --> failed: stopped - run_status says failed
-    running --> failed: stopped - no ending and no .concluded
+    running --> failed: stopped - no ending, no .concluded, its own closing record
     running --> [*]: SIGUSR1 - a warm retry, no finish
     finished --> [*]
     failed --> [*]
@@ -295,7 +301,7 @@ runs.
 
 | file | written by | when | read by | absent means |
 |---|---|---|---|---|
-| `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1) | the monitor never started — the wrapper's log says why (*monitor: not started …*) |
+| `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) |
 | `<stem>-runN.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` (§ 5c.1 there) | nothing was sampled |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
@@ -312,9 +318,9 @@ gpu<i>_vram_gb` per GPU sampled.
 | `[MONITOR] start` | at start | the interval, the watched PID, and the first reading |
 | `[STATUS]` | when the run advanced (§ 2.1), and once at the end | the summary line (§ 4.1a) |
 | `[NOTIFY]` | on each event, and on any channel problem | `(stub) <event>: <summary>` — the record of every event; or why a channel is skipped or not set up |
+| `[MONITOR] job ended` · `[MONITOR] stopped` | the first closing line | why it stopped: SIGTERM or the watched PID gone — the closing record `run_status` reads, then the `finish` event; or a warm retry — not an ending, and no `finish` |
 | `[UTIL-SUMMARY]` | at the end | the CPU mean (min–max) and each GPU's SM mean; for a GPU run, a verdict from the busiest GPU's mean: ≥ 85 % *GPU-bound*, ≤ 60 % *host/CPU-bound*, otherwise *mixed* |
 | `[UTIL-BASIS]` | at the end | what every percentage is a fraction of (§ 2.1a) |
-| `[MONITOR] job ended` · `[MONITOR] stopped` | last | why: SIGTERM or the watched PID gone — then the `finish` event; or a warm retry — and no `finish` |
 
 A relaxation's log, shortened:
 
@@ -323,10 +329,10 @@ A relaxation's log, shortened:
 [2026-09-26T10:00:01-0700] [MONITOR] start (interval=10s watch_pid=41822) running | elapsed 0 s
 [2026-09-26T10:00:01-0700] [NOTIFY] (stub) start: running | elapsed 0 s
 [2026-09-26T10:25:41-0700] [STATUS] running | periodic SCF iteration 14 | 14 SCF rows | E -1740.201113 eV | dDmax 0.00231 (tol 0.0001) | dHmax 0.0412 eV (tol 0.001) | CG opt. move 0 | 12.80 s/iter | elapsed 1540 s
+[2026-09-26T16:02:17-0700] [MONITOR] job ended (stopped by SIGTERM); final notify + exit
 [2026-09-26T16:02:17-0700] [STATUS] finished (job_completed) | periodic SCF iteration 9 | 1203 SCF rows | E -1740.213457 eV | dDmax 7.9e-05 (tol 0.0001) | dHmax 0.00088 eV (tol 0.001) | max force 0.0381 eV/Ang (tol 0.04) | CG opt. move 41 | 12.60 s/iter | converged: periodic yes | geometry relaxed | exit rc=0 | elapsed 21736 s
 [2026-09-26T16:02:17-0700] [UTIL-SUMMARY] cpu mean=86% (12-99)
 [2026-09-26T16:02:17-0700] [UTIL-BASIS] cpu% of 48 core(s) [affinity]; cpu time [cgroup-v2]; mem [cgroup-v2]; limit 180 GB
-[2026-09-26T16:02:18-0700] [MONITOR] job ended (stopped by SIGTERM); final notify + exit
 [2026-09-26T16:02:18-0700] [NOTIFY] (stub) finish: finished (job_completed) | … | exit rc=0 | elapsed 21736 s
 ```
 
@@ -356,7 +362,7 @@ nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" --run "$
 | `--nice` | default 19 | the monitor lowers its own priority |
 | `--notify-on-scf` | `notify.on_scf_converged` | send `scf_converged` |
 | `--notify-every-hours N` | `notify.every_hours` | send `periodic`; `0` is never |
-| `--notify-channels` | `notify.channels` | absent: every channel; `""`: none (§ 3.0) |
+| `--notify-channels` | `notify.channels` | absent (no `notify` block): nothing is sent; `*`: every channel on this machine; `""`: none; `a,b`: those (§ 3.0) |
 | `--notify-report` | `notify.report` | the fields a chat card shows; absent: all; `""`: none ([`stages.md`](?doc=engines/stages.md) § 6.9). A name that is not a field is dropped, not fatal |
 
 The bundle's second verb, `mb_monitor.pyz ending OUTPUT [--stderr FILE]
@@ -474,7 +480,8 @@ things — the price of letting a checkbox list mean what it looks like:
 
 | `notify.channels` in `task.json` | the run reports to |
 |---|---|
-| **absent** | **every channel on this machine** — the reading of a description written by hand, or before channels had names |
+| no `notify` block | **nothing** — nothing is set up |
+| **absent**, in a `notify` block | **every channel on this machine** — the reading of a description written by hand, or before channels had names; it travels as `--notify-channels "*"`, resolved on the machine that runs the job |
 | `["slack", "my-listener"]` | those, and only those |
 | `[]` | **nothing.** Not an error: reports off for this calculation, on a machine where they are otherwise set up |
 
@@ -674,7 +681,7 @@ attacker's way.
 
 | what they try | what they get | why |
 |---|---|---|
-| sweeps `/api/notify`, `/webhook`, `/api/hooks`, a wordlist | `404`, every one | there is no route at any fixed path; the only one sits at a segment that was never committed anywhere. A repo guard holds that: `test_no_fixed_notify_path_exists_anywhere_in_the_source` |
+| sweeps `/api/notify`, `/webhook`, `/api/hooks`, a wordlist | `404`, every one | there is no route at any fixed path; the only one sits at a segment that was never committed anywhere. `test_notify_listener.py::test_the_wrong_segment_is_a_plain_404` asks the running app the obvious words |
 | guesses the segment | `404` | the space is far too large to walk, and every attempt is `4xx` and rate-limited |
 | **reads the real URL** — an access log, a leaked destination file, over your shoulder | `404` on every request | the URL is an address. Without the key nothing can be signed, and the `404` will not even confirm they found the right place |
 | captures a report in flight | one signature, useless | TLS is in front; and a signature covers **one body**. They cannot alter a field, cannot mint a new report, and a replay only adds a duplicate line to a capped, rotating log |

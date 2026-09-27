@@ -63,6 +63,9 @@ _INSPECTOR_MODULES = [
     STATIC / "lib/inspectors/trajectory.js",
     STATIC / "lib/inspectors/spectra.js",
     STATIC / "lib/inspectors/structure.js",
+    # Before source.js, as on the page: `.md` is claimed by the editor, and
+    # the catch-all text viewer gets whatever is left.
+    STATIC / "lib/inspectors/markdown.js",
     STATIC / "lib/inspectors/source.js",
 ]
 
@@ -381,6 +384,49 @@ def test_inspector_isResult_flag(
     """The ``isResult`` flag distinguishes inspectors that belong in
     the /results picker dropdown from catch-all viewers."""
     assert is_result_flags.get(inspector_name) is expected
+
+
+def test_the_documented_presenters_are_the_registered_ones(is_result_flags):
+    """`web/presenters.md` § 1's table and the registry the Results page
+    builds, set-equal on **(name, isResult)**.
+
+    **What a wrong table costs.** § 1 is where someone adding a viewer looks
+    up what already exists and whether it claims a Results-tab slot.  The
+    table said **five viewers / three results** for as long as
+    `bench-summary` had been registering -- so a reader would not have known
+    that a `job-set.json` already had an owner.
+
+    The registered side is the registry itself, RUN: every presenter module
+    the page loads, loaded in the page's order, and ``list()`` asked what
+    registered.  ``isResult`` is what the registry answers, not a literal
+    read out of a file -- `trajectory` and `spectra` never write one and
+    are defaulted to results by `makePartialInspector`, which is exactly how
+    the table got its "three".  (A regex over the modules' source asked it
+    until 2026-09-26.)
+
+    MUTATION THIS MUST FAIL AGAINST: a presenter flipping its ``isResult``,
+    or one registering that the table does not list.
+    """
+    doc = (ROOT / "docs" / "web" / "presenters.md").read_text(encoding="utf-8")
+    start = doc.index("| Presenter | The file you open |")
+    table = doc[start:doc.index("*The first column is the", start)]
+    documented = {}
+    for line in table.splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) < 6 or not cells[1].startswith("`"):
+            continue
+        documented[cells[1].strip("`")] = cells[4].startswith("yes")
+
+    registered = {name: bool(flag) for name, flag in is_result_flags.items()}
+    assert documented == registered, (
+        "presenters.md § 1's table and the registry the Results page builds "
+        "disagree -- and § 1 is where someone adding a viewer looks up what "
+        "already exists:\n"
+        f"  documented: {sorted(documented.items())}\n"
+        f"  registered: {sorted(registered.items())}\n"
+        f"  only in the doc:  {sorted(set(documented) - set(registered))}\n"
+        f"  only in the code: {sorted(set(registered) - set(documented))}\n"
+        "  (a name in both with a different isResult is a disagreement too)")
 
 
 # --------------------------------------------------------------------- #

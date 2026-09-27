@@ -1,150 +1,133 @@
-"""One door reads a structure from disk, and it is `StructureCodec`.
+"""The author's regions, frozen atoms and cell reach the deck -- on the road.
 
 WHAT THIS IS FOR, in one sentence: a `.xyz` and the `.molstruct.json` beside
-it are one file, and a second piece of code that reads them is a second answer
-that will drift.
+it are one file (`model/structure-molstruct.md` § 6), so what a person set in
+the viewer -- which atoms are held, what the regions are called, the cell --
+must arrive in the input the engine runs.
 
-**It did.** On 2026-09-07 four readers of that pair existed. The one a person
-was most likely to reach for -- `molbuilder.load()`, the obvious name, in
-`__all__`, docstring accurate for what it did -- read the geometry and not the
-sidecar. It predated the sidecar by two months and nothing swept it. Its one
-production caller was `jobset init`, the verb that turns a structure into a
+**It did not, once.** On 2026-09-07 four readers of that pair existed. The one
+a person was most likely to reach for -- `molbuilder.load()`, the obvious name,
+in `__all__`, docstring accurate for what it did -- read the geometry and not
+the sidecar. It predated the sidecar by two months and nothing swept it. Its
+one production caller was `jobset init`, the verb that turns a structure into a
 calculation (`job-system.md` § 5.1), so a description was born with the
-author's regions, frozen atoms and cell missing, and everything downstream
-was then faithfully correct about the wrong thing. It is the same failure
+author's regions, frozen atoms and cell missing, and everything downstream was
+then faithfully correct about the wrong thing. It is the same failure
 `siesta/input.py` records having fixed at its own door -- *"the script relaxed
 every atom of a structure whose author had frozen two."*
 
-**A hand-written list of doors would not have caught it**, which is why this
-guard reads the code. `load()` would have been ON such a list, looking
-entirely reasonable.
-
-THE RULE, and the two things it is not:
-
-  * Reading a PATH and getting a `Structure` goes through `StructureCodec`.
-  * Parsing TEXT is not this. OpenBabel returns a PDB string; there is no
-    file, so there is no sidecar to miss.
-  * A `FileParser` in the parse registry reading an ENGINE's output is not
-    this either. `siesta.XV`, `*_optimized.xyz` and friends are somebody
-    else's format, not a molbuilder pair.
-
-WHAT CHANGED 2026-09-07, and why this guard still earns its keep. The readers
-no longer accept a path at all -- `Structure.from_xyz`/`from_pdb` take text
-and raise `TypeError` on a `Path` -- so the original failure cannot be spelled
-any more. What can still be spelled is `read_text()` on one line and a reader
-on the next, which is the same bypass with two steps instead of one. This
-guard sees the second step, and the count is what makes the first one visible
-when somebody adds it.
-
-Shaped after `test_one_home_for_a_constant.py`, including its best idea: an
-allowance carries the reason it was granted, and the guard fails when an
-allowed site stops doing the thing it was allowed for -- so an exemption
-cannot outlive its argument.
+So the road is driven: the pair is saved through `StructureCodec` (the one
+door, `structure.md` § 2.4), `jobset init` describes it, `jobset prep` renders
+the deck -- no engine runs -- and the deck is read back.  A second reader
+anywhere on that road that takes the geometry and drops the sidecar shows up
+here as a deck that relaxes every atom in a box nobody chose.  *(This file read
+the package's source for direct calls to the low-level readers until
+2026-09-26, and wrote a probe file into the package to test itself.)*
 """
 from __future__ import annotations
 
-import ast
-from pathlib import Path
+import json
 
-PKG = Path(__file__).resolve().parents[1] / "molbuilder"
+import numpy as np
 
-#: The door. Only this may turn a path into a Structure.
-OWNER = "molbuilder/workingcopy_structure.py"
-
-#: The low-level readers. Calling one of these directly is what the door
-#: exists to be instead of.
-READERS = ("from_xyz", "from_pdb")
-
-#: file -> (how many calls, why they are allowed).  The COUNT is part of the
-#: allowance: a file that grows a second call has not inherited the first
-#: one's reason, and must come here and say its own.
-ALLOWED: dict[str, tuple[int, str]] = {
-    OWNER: (2, "the door itself -- .xyz and .pdb, one each"),
-
-    "molbuilder/chemistry.py": (
-        3, "TEXT from OpenBabel/RDKit, produced in this process. No file "
-           "exists, so there is no sidecar to miss"),
-    "molbuilder/web/blueprints/build.py": (
-        4, "TWO are TEXT the browser posted -- the load door's xyz and pdb "
-           "branches. The other TWO are `/api/structure/analyze`, which "
-           "reads its own file and so skips the sidecar: harmless today "
-           "because the analyzer reads only element names, and listed here "
-           "so it is a known exception rather than an undiscovered one. "
-           "(This said `five` and `four are TEXT` until 2026-09-07, when "
-           "`_xyz_to_structure` -- a wrapper with no caller -- was deleted "
-           "and the split was recounted: it was never 4+1, it was 3+2)"),
-    "molbuilder/parse/coords/pyscf_geom.py": (
-        1, "a FileParser reading an ENGINE's output (`*_optimized.xyz`). "
-           "Not a molbuilder pair; the parse registry is its own contract"),
-}
+from conftest import write_pseudos
 
 
-def _calls_in(path: Path) -> list[int]:
-    """Line numbers of every `X.from_xyz(...)` / `X.from_pdb(...)`."""
-    out = []
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if (isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in READERS):
-            out.append(node.lineno)
-    return out
+#: Two H2 molecules: the first carries a region, the second is held.  An
+#: explicit cell that no bounding box would produce -- 12.5 x 13.5 x 14.5 A --
+#: so a deck written from a structure that lost its sidecar says so in its
+#: lattice as well as in its constraints.
+POSITIONS = [[5.0, 5.0, 5.0], [5.0, 5.0, 5.74],
+             [8.0, 6.0, 5.0], [8.0, 6.0, 5.74]]
+CELL = np.diag([12.5, 13.5, 14.5])
+FROZEN = [2, 3]
+REGIONS = {"anchor": [0, 1]}
 
 
-def _survey() -> dict[str, list[int]]:
-    found: dict[str, list[int]] = {}
-    for py in sorted(PKG.rglob("*.py")):
-        lines = _calls_in(py)
-        if lines:
-            found[str(py.relative_to(PKG.parent))] = lines
-    return found
+def _jobset(*args):
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, [str(a) for a in args])
 
 
-def test_no_second_reader_of_a_structure_appears_without_saying_why():
-    """A new caller of the low-level readers is a finding, not a detail."""
-    found = _survey()
-    strangers = sorted(set(found) - set(ALLOWED))
-    assert not strangers, (
-        "these call `Structure.from_xyz` / `from_pdb` directly, which is a "
-        "second reader of a structure:\n  "
-        + "\n  ".join(f"{f} (lines {found[f]})" for f in strangers)
-        + "\n\nIf it reads a PATH, use `StructureCodec` -- it reads the "
-          "`.molstruct.json` beside the geometry, which is where the regions, "
-          "the frozen atoms and the cell live.  If it parses TEXT, or reads "
-          "an engine's own output format, add it to ALLOWED with the reason."
-    )
+def _block(deck: str, name: str) -> list:
+    """The lines between ``%block <name>`` and ``%endblock <name>`` -- none
+    when the deck has no such block, which is itself the answer."""
+    lines = deck.splitlines()
+    if f"%block {name}" not in lines:
+        return []
+    start = lines.index(f"%block {name}")
+    return lines[start + 1:lines.index(f"%endblock {name}", start)]
 
 
-def test_an_allowed_file_has_not_quietly_grown_another():
-    """The count is the allowance. A second call has its own reason to give.
+def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
+                                                               monkeypatch):
+    """**Held atoms held, the stated cell the lattice, the regions carried.**
 
-    Without this, one exemption shelters every later call in the same file --
-    which is how `/api/structure/analyze` would have slipped in beside the
-    load door's legitimate text parsing.
+    The failure: a reader on the road from a saved structure to a deck that
+    takes the `.xyz` and drops the `.molstruct.json`.  The deck then relaxes
+    every atom -- including the ones the author froze -- in a box derived from
+    the bounding box, and loses the region names the Results tab shows.
+    Nothing raises: every step is correct about the structure it was handed.
+
+    Contract: `model/structure-molstruct.md` § 6 (the pair is one unit) and
+    § 7 (SIESTA `frozen_atoms` -> `Geometry.Constraints`); `structure.md`
+    § 2.4 (`StructureCodec` is the paired-file door); `job-system.md` § 5.1.
+
+    MUTATION THIS MUST FAIL AGAINST: `jobset init` -- or `prep`'s
+    `_structure_for` -- reading the structure with
+    ``Structure.from_xyz(path.read_text())`` instead of
+    ``StructureCodec().load(path)``.
     """
-    found = _survey()
-    drift = []
-    for rel, (expected, why) in ALLOWED.items():
-        actual = len(found.get(rel, []))
-        if actual != expected:
-            drift.append(f"{rel}: allowed {expected} ({why[:48]}...), "
-                         f"found {actual} at {found.get(rel, [])}")
-    assert not drift, (
-        "an allowance no longer describes the file:\n  " + "\n  ".join(drift)
-        + "\n\nA new call needs its own reason here; a removed one means the "
-          "allowance can go."
-    )
+    from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.structure import Structure
+    from molbuilder.workingcopy_structure import StructureCodec
 
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "pseudopotential").mkdir()
+    write_pseudos(tree / "pseudopotential", ["H"])
+    s = Structure(elements=["H"] * 4, positions=np.asarray(POSITIONS),
+                  cell=CELL, axis_kind=("isolated",) * 3)
+    s.frozen_atoms = list(FROZEN)
+    s.regions = dict(s.regions or {}, **REGIONS)
+    StructureCodec().write(s, tree / "P" / "structure" / "h4.xyz")
+    sidecar = tree / "P" / "structure" / "h4.molstruct.json"
+    assert sidecar.is_file(), "the codec wrote no sidecar -- nothing to lose"
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    monkeypatch.chdir(tree.parent)
 
-def test_the_guard_can_actually_see_a_violation():
-    """A lint whose pattern never matches stays green over a regression."""
-    src = "s = Structure.from_xyz(p)\nt = Struct.from_pdb(q)\n"
-    tmp = PKG / "_guard_selftest.py"
-    tmp.write_text(src, encoding="utf-8")
-    try:
-        assert len(_calls_in(tmp)) == 2, (
-            "the walker no longer finds a direct reader call -- it would be "
-            "green over a file that reintroduced one")
-        assert "molbuilder/_guard_selftest.py" in _survey(), (
-            "the survey missed a file the walker can read")
-    finally:
-        tmp.unlink()
+    r = _jobset("init", "--structure", "P/structure/h4.xyz",
+                "--bundle", "P/optimization/H4", "--engine", "siesta",
+                "--shape", "hierarchical", "--name", "H4",
+                "--psml-lib", "pseudopotential")
+    assert r.exit_code == 0, r.output
+    bundle = tree / "P" / "optimization" / "H4"
+    (bundle / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate",
+                               "preamble": "true"}}))
+    r = _jobset("prep", "run", "coarse", "--bundle", bundle,
+                "--target", "this")
+    assert r.exit_code == 0, r.output
+
+    attempt = bundle / "01_coarse" / "run-0"
+    decks = sorted(attempt.glob("*.fdf"))
+    assert len(decks) == 1, [p.name for p in attempt.iterdir()]
+    deck = decks[0].read_text()
+
+    held = {int(t) for line in _block(deck, "Geometry.Constraints")
+            for t in line.split()[1:]}
+    assert held == {i + 1 for i in FROZEN}, (
+        f"the deck holds atoms {sorted(held)} (1-based); the author froze "
+        f"{[i + 1 for i in FROZEN]} -- the rest of the structure would relax "
+        f"with them")
+
+    lattice = np.array([[float(x) for x in line.split()]
+                        for line in _block(deck, "LatticeVectors")])
+    assert np.allclose(lattice, CELL, atol=1e-9), (
+        f"the deck's lattice is not the cell the author stated:\n{lattice}")
+
+    carried = json.loads(atom_metadata_json_for_run_dir(attempt, 4) or "{}")
+    assert carried.get("regions", {}).get("anchor") == REGIONS["anchor"], (
+        f"the region the author named did not reach the deck: {carried}")

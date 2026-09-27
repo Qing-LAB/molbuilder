@@ -237,11 +237,9 @@ class Notify:
 
     **Absent-is-a-state**, like :class:`Allocation`: an empty block writes no
     key, and every description written before 2026-08-26 says exactly what it
-    always said by omitting it.  Absent asks for no extra message — no
-    default cadence is invented on anyone's behalf — while the start and the
-    end still go to every channel the running machine has
-    (`run-reports.md` § 2); ``"channels": []`` is how a calculation asks
-    for silence.
+    always said by omitting it.  Absent is no notification at all -- not
+    even the start and the end (user, 2026-09-26): nothing set up, nothing
+    sent (`run-reports.md` § 2).
     """
     #: Fire when a step's SCF reaches its criterion -- a relaxation's move, a
     #: force-constant run's displacement (`run-reports.md` § 2.2).  A single
@@ -898,8 +896,8 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
 
 def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
                      calculation: str) -> "Notify":
-    """``notify`` -> :class:`Notify`; absent is an empty one: no extra
-    message, the start and the end still sent (`run-reports.md` § 2).
+    """``notify`` -> :class:`Notify`; absent is an empty one: no
+    notification at all (`run-reports.md` § 2).
 
     Both fields are refused by TYPE rather than coerced.  ``"true"`` is not
     a boolean and ``"6"`` is not a number, and silently accepting either
@@ -916,9 +914,8 @@ def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
         return Notify()
     if not isinstance(raw, Mapping) or not raw:
         _refuse("'notify' is present but not a non-empty object. Omit the "
-                "key to ask for nothing beyond the start and the end, or "
-                "give '\"channels\": []' to report nothing at all -- absent "
-                "and empty would be two spellings of one state")
+                "key when nothing should be reported -- absent and empty "
+                "would be two spellings of one state")
     _check_keys(raw, _NOTIFY_KEYS, where="notify")
 
     scf = raw.get("on_scf_converged", False)

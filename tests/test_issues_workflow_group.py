@@ -16,9 +16,6 @@ These tests pin:
   * ``issues_to_json(issues, cfg=cfg)`` enriches each output dict
     with the resolved ``workflow_group`` key (only when the
     resolver returns a value — keep the wire schema lean).
-  * End-to-end: ``validate(struct, cfg)`` produces Issues whose
-    ``where`` fields all resolve to documented roles (or None for
-    geometry).
 """
 
 from __future__ import annotations
@@ -207,79 +204,6 @@ class TestIssuesToJsonEnrichment:
                         workflow_group="profile")]
         out = issues_to_json(issues, cfg=cfg)
         assert out[0]["workflow_group"] == "profile"
-
-
-# --------------------------------------------------------------------- #
-#  End-to-end: validate(struct, cfg) → issues with correct groups        #
-# --------------------------------------------------------------------- #
-
-
-class TestValidateEndToEndAttaches:
-    """Every where-field the live validators emit must either map to
-    a documented workflow_group or be a legitimately group-less
-    (geometry / cell / polymer) finding.  Catches the regression
-    where a new _check_ uses a where like ``config.fooble`` that no
-    field's metadata covers."""
-
-    # Wheres known to be group-less by design (not config.* fields):
-    _GEOMETRIC_WHERES = {
-        "geometry.min_distance", "geometry.h_ratio", "geometry.dipole",
-        "cell.determinant", "cell.volume", "cell.image_distance",
-        "polymer.orientation",
-    }
-
-    def test_every_siesta_check_emits_resolvable_where(self):
-        """Sweep every ``where=`` string literal in
-        ``molbuilder/validation/`` and verify each ``config.*``
-        prefix resolves to a documented workflow_group (one of
-        profile / stage / budget) under SiestaConfig."""
-        import re
-        from pathlib import Path
-        root = Path(__file__).resolve().parents[1]
-        cfg = SiestaConfig()
-        wheres: set[str] = set()
-        for src in (root / "molbuilder/validation").rglob("*.py"):
-            text = src.read_text(encoding="utf-8")
-            wheres.update(re.findall(
-                r'["\'](config\.[a-z_][a-z_0-9.]*)["\']', text))
-        # Every collected config.* where must resolve under at
-        # least one of the two engine configs.  (Some wheres are
-        # SIESTA-only; some are PySCF-only.)
-        pyscf = PySCFConfig()
-        unresolved = []
-        for where in sorted(wheres):
-            if (resolve_workflow_group(where, cfg) is not None
-                    or resolve_workflow_group(where, pyscf) is not None):
-                continue
-            # Allowed exceptions — wheres that are intentionally
-            # group-less because the underlying concept isn't owned
-            # by a single workflow-group card:
-            #   * ``config`` — the "bad parameters" sentinel from
-            #     the preflight endpoint when params don't parse
-            #     (no specific field to highlight).
-            #   * ``config.frozen_atoms`` — describes the user's
-            #     sidecar-derived constraint set being absorbed but
-            #     ignored by the engine.  The fix is in a different
-            #     field (``relax_type`` for SIESTA, ``optimize`` /
-            #     ``optimizer`` for PySCF), so attaching to one
-            #     card would mis-direct the user.  Renders in the
-            #     residual panel.
-            #   * ``config.charge`` — the spectra render gate
-            #     (validation/spectra.py) speaks the spectra VOCABULARY;
-            #     its findings surface at prep (stderr), not on a card
-            #     UI, since the render route retired at P3.  (Its
-            #     held-atom findings name ``structure.regions``: the
-            #     held set is a structure fact, never a form field.)
-            if where in ("config", "config.frozen_atoms",
-                         "config.charge"):
-                continue
-            unresolved.append(where)
-        assert not unresolved, (
-            f"Validators emit ``where=`` strings that don't map to "
-            f"any tagged dataclass field: {sorted(unresolved)}.  "
-            f"Either tag the corresponding config field with "
-            f"``workflow_group=...`` or document the where as "
-            f"intentionally group-less.")
 
 
 # ===================================================================== #

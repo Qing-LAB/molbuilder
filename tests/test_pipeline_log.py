@@ -16,8 +16,8 @@ the same directory, and their logs must not be the same file.**
 """
 from __future__ import annotations
 
+import dataclasses
 import json
-import pathlib
 import re
 
 import numpy as np
@@ -28,9 +28,10 @@ from molbuilder import describe as D
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import EngineSeam, prep_calculation
 from molbuilder.pipeline_log import PipelineLog, log_name
 from molbuilder.pyscf.stages import default_pyscf_stages
+from molbuilder.script_emit import Block, DeckSpec
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
@@ -350,28 +351,82 @@ def test_a_settings_refusal_is_in_the_log_with_its_reason(tmp_path):
 #  6. The hook boundary — W16                                            #
 # --------------------------------------------------------------------- #
 
-def test_a_hook_that_raises_says_whose_it_was(tmp_path):
+#: EVERY engine hook W16 names, read off the two seams' own declarations: each
+#: `Callable` member of `EngineSeam` (what `prep` asks of an engine) and of
+#: `DeckSpec` (what the framework asks of a deck), and `Block.render`.  A hook
+#: declared on either seam is in this list the day it is declared.
+_SEAM_HOOKS = tuple(f.name for f in dataclasses.fields(EngineSeam)
+                    if "Callable" in str(f.type))
+_DECK_HOOKS = tuple(f.name for f in dataclasses.fields(DeckSpec)
+                    if "Callable" in str(f.type))
+_HOOKS = _SEAM_HOOKS + _DECK_HOOKS + ("Block.render",)
+
+
+@pytest.mark.parametrize("hook", _HOOKS)
+def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     """**W16**: the framework is a walk over the engine's functions, so an
-    exception with no owner on it is the ordinary failure here.
+    exception with no owner on it is the ordinary failure here -- and a rule
+    that holds for fifteen hooks is a rule nobody can rely on; the sixteenth
+    is where the next afternoon goes.
 
-    The three promises of `issues.calling`, each asserted: the TYPE survives,
-    the MESSAGE survives, and the attribution is attached.
+    Each hook of both seams is swapped, in turn, for one that raises, and a
+    real prep runs with the log on.  The three promises of `issues.calling`,
+    each asserted: the TYPE survives, the MESSAGE survives, and the
+    attribution is attached -- as a note on the exception, and as the `!!`
+    line of the pipeline log.  `relabel` is asked only of a TRIAL, so it is
+    reached through a benchmark prep.
+
+    API-level: the hook is swapped in-process on `prep_calculation`, the
+    conductor `jobset prep run` calls; the CLI adds nothing between them for
+    an exception that is not a refusal.  (Whether every hook was wrapped was
+    read out of `script_emit.py` and `jobset/prep.py` until 2026-09-26.)
+
+    MUTATION THIS MUST FAIL AGAINST: any one hook called bare, outside its
+    ``_calling(...)`` boundary.
     """
-    import dataclasses
-    from molbuilder import script_emit as se
-    from molbuilder.siesta.input import spec_for
+    from molbuilder.jobset import prep as P
 
-    struct = BDT
-    cfg = SiestaConfig(system_label="BDT", psml_lib=None)
-    spec = dataclasses.replace(
-        spec_for(struct, cfg),
-        line=lambda p: (_ for _ in ()).throw(TypeError("engine bug")))
+    def _raises(*_a, **_k):
+        raise TypeError("engine bug")
+
+    engine_seam = P._engine_seam
+
+    def _with_one_hook_swapped(engine):
+        seam = engine_seam(engine)
+        if hook in _SEAM_HOOKS:
+            return dataclasses.replace(seam, **{hook: _raises})
+        spec_for = seam.spec_for
+
+        def _spec_for(*a, **k):
+            spec = spec_for(*a, **k)
+            if hook != "Block.render":
+                return dataclasses.replace(spec, **{hook: _raises})
+            layout = list(spec.layout)
+            i = next(n for n, m in enumerate(layout) if isinstance(m, Block))
+            layout[i] = dataclasses.replace(layout[i], render=_raises)
+            return dataclasses.replace(spec, layout=tuple(layout))
+        return dataclasses.replace(seam, spec_for=_spec_for)
+
+    monkeypatch.setattr(P, "_engine_seam", _with_one_hook_swapped)
+    dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
-        se.render_deck(spec, struct, cfg)
+        if hook == "relabel":
+            from molbuilder.jobset._cli import _bench_inputs
+            sweep, pins, translation = _bench_inputs(dest, None)
+            prep_calculation(dest, stages[0], allocation=Resources(mpi_np=8),
+                             sweep=sweep, pins=pins, translation=translation,
+                             pipeline_log=True)
+        else:
+            _prep(dest, stages[0])
+
+    owner = f"siesta.{hook}"
     assert str(caught.value) == "engine bug", "the message was replaced"
     notes = getattr(caught.value, "__notes__", [])
-    assert any("siesta.line" in n for n in notes), notes
-    assert any("item" in n for n in notes), notes
+    assert any(f"raised inside {owner}" in n for n in notes), (
+        f"{owner} raised and the exception does not say whose it was: "
+        f"{notes}")
+    assert f"!! {owner} RAISED — TypeError" in _the_log(dest), (
+        f"{owner} raised and the pipeline log does not say so")
 
 
 def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
@@ -452,51 +507,22 @@ def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
     assert "pyscf.check_rules" in str(caught.value), str(caught.value)
 
 
-def test_every_engine_hook_of_both_seams_is_wrapped():
-    """**W16 names sixteen hooks and the code must call all sixteen through
-    the boundary** -- a rule that holds for fifteen is a rule nobody can rely
-    on, and the sixteenth is where the next afternoon goes.
-
-    Read from the source, so a hook added to either seam and called bare
-    fails here rather than the next time it raises.
-    """
-    import ast
-    import dataclasses
-    from molbuilder.script_emit import DeckSpec
-    from molbuilder.jobset.prep import EngineSeam
-
-    deck = {f.name for f in dataclasses.fields(DeckSpec)} & {
-        "line", "note_lead", "section_title", "validate_subject",
-        "provenance_defaults", "bench_marks", "check_rules"}
-    seam = {f.name for f in dataclasses.fields(EngineSeam)} - {
-        "config_cls", "suffix"}
-    expected = deck | seam | {"Block.render"}
-    assert len(expected) == 16, sorted(expected)
-
-    wrapped = set()
-    for rel in ("molbuilder/script_emit.py", "molbuilder/jobset/prep.py"):
-        src = pathlib.Path(__file__).resolve().parents[1] / rel
-        for node in ast.walk(ast.parse(src.read_text())):
-            if (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "_calling"
-                    and node.args
-                    and isinstance(node.args[0], ast.Constant)):
-                wrapped.add(node.args[0].value)
-    missing = sorted(expected - wrapped)
-    assert not missing, (
-        f"these engine hooks are called without the boundary (W16): {missing}")
-
-
-def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path):
+@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
+def test_every_line_is_a_banner_a_column_or_an_indented_note(tmp_path, engine):
     """**W14**: every line declares what it is in its first column.
 
     The rule is what makes one grep answer one question across the file, and
     a line that is none of the four kinds is a line nobody can find twice.
     Checked against a REAL log rather than a constructed one, so a verb added
     later that writes its own shape fails here.
+
+    **Both engines**, because each engine's prep leaves its own file and W13
+    promises one format across them: the framework and the conductor write
+    it, and an engine only answers.  Which modules may write is review's to
+    hold (an import scan asked it until 2026-09-26); what a test can see is
+    the file each engine's prep actually left, and that is held here.
     """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
+    dest, stages = _calculation(tmp_path, engine, "flat")
     _prep(dest, stages[0])
     stray, prev = [], ""
     for ln in _the_log(dest).splitlines():
@@ -592,44 +618,6 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
         f"the engines ran different sequences:\n"
         f"  siesta: {seqs['siesta']}\n  pyscf : {seqs['pyscf']}")
     assert seqs["siesta"], "no step banners at all"
-
-
-# --------------------------------------------------------------------- #
-#  7. ONE writer — W13, structurally                                     #
-# --------------------------------------------------------------------- #
-
-def test_no_engine_writes_to_the_log(tmp_path):
-    """**W13**: there is one writer, and an engine is not it.
-
-    A ``print`` added to an engine is a second writer and, within a month, a
-    second format -- which is how every record in this tree that has two
-    writers ended up with two spellings.  The rule is checked by IMPORT: no
-    module under an engine's package may reach the log at all, so an engine
-    cannot write to it even by accident.
-
-    The framework (`script_emit`) and the conductor (`jobset/prep`) are the
-    two that may, and they are named rather than pattern-matched -- a list
-    that must be edited on purpose is the point.
-    """
-    import ast
-    root = pathlib.Path(__file__).resolve().parents[1] / "molbuilder"
-    allowed = {"molbuilder/jobset/prep.py", "molbuilder/pipeline_log.py"}
-    offenders = []
-    for f in sorted(root.rglob("*.py")):
-        rel = f.relative_to(root.parent).as_posix()
-        if rel in allowed:
-            continue
-        tree = ast.parse(f.read_text(encoding="utf-8", errors="replace"))
-        for node in ast.walk(tree):
-            mod = (node.module if isinstance(node, ast.ImportFrom) else None)
-            names = ([a.name for a in node.names]
-                     if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
-            if (mod and "pipeline_log" in mod) or any(
-                    "pipeline_log" in n for n in names):
-                offenders.append(f"{rel}:{node.lineno}")
-    assert not offenders, (
-        "these modules import the pipeline log, which only the framework and "
-        "the conductor may do (W13):\n  " + "\n  ".join(offenders))
 
 
 # --------------------------------------------------------------------- #

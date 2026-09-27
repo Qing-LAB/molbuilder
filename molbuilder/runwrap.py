@@ -313,10 +313,10 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
         + (f'--notify-on-scf ' if notify_on_scf else "")
         + (f'--notify-every-hours {notify_every_hours:g} '
            if notify_every_hours > 0 else "")
-        # ABSENT is "every channel this machine has" and `""` is "none", so
-        # the flag is emitted whenever the description said anything at all
-        # -- including when what it said was nothing at all
-        # (`run-reports.md` 3.0).
+        # ABSENT is "nothing set up, nothing sent", `*` is every channel this
+        # machine has and `""` is none -- so the flag is emitted whenever the
+        # description has a `notify` block, including when what it names is
+        # nothing at all (`run-reports.md` § 3.0).
         + ("" if notify_channels is None
            else f'--notify-channels "{",".join(notify_channels)}" ')
         # ABSENT is "every field the monitor can determine" and "" is "the
@@ -2108,7 +2108,8 @@ def render_run_wrapper(script_path: Path, *,
     notify_on_scf = bool(r.notify_on_scf)
     notify_every_hours = float(r.notify_every_hours or 0.0)
     notify_channels = r.notify_channels
-    if notify_channels is not None:
+    from .config_dir import ALL_CHANNELS
+    if notify_channels is not None and tuple(notify_channels) != (ALL_CHANNELS,):
         # VALIDATED HERE because this is where a name becomes SHELL.  Every
         # name that arrives through `task.json` was checked at parse, but
         # `Resources` can be built directly, and a value that reaches a

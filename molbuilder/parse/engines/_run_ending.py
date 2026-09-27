@@ -1,33 +1,32 @@
-"""How a run ended -- one reader per ROLE, and a cheap way to ask.
+"""How a run ended -- one reader per ROLE, and one door to ask.
 
 Contract: `model/parse.md` § 2b and § 5.5.  The marker STRINGS each have one
 home, and it is not here: SIESTA's are lines of a FOREIGN format and live in
-the SIESTA family's one table, `siesta_grammar`, which the full parser builds
-its rules from too; PySCF's are strings our own emitters print, so each
-emitter declares its constant (§ 5.5).  This module imports both and owns the
-dispatch -- which is P-S4's "one reader per question" made structural rather
-than aspirational.  *(SIESTA's markers were declared here until 2026-09-26,
-and the parser retyped four of them as literals beside the import it did
-use.)*
+the SIESTA family's one table, `siesta_grammar`, which the family's one
+reading pass (`siesta_reader`) builds its rules from; PySCF's are strings our
+own emitters print, so each emitter declares its constant (§ 5.5).  This
+module owns the dispatch -- which is P-S4's "one reader per question" made
+structural rather than aspirational.  *(SIESTA's markers were declared here
+until 2026-09-26, and the parser retyped four of them as literals beside the
+import it did use.)*
 
 **DISPATCH IS ON THE ROLE, never on the engine** (:data:`READERS`,
 :func:`ending_of`).  A directory whose engine is unknown, or which holds two
 engines' outputs, needs no special case: each file is read by the reader its
 own role names, and `model/parse.md` § 5.1 picks which of them speaks.
 
-**No arrays, and deliberately.**  Answering *"did this run end, and
-how"* is a substring scan.  The full :mod:`~molbuilder.parse.engines.siesta`
-parser needs numpy because it builds Frames -- positions and forces as
-arrays -- but a caller that wants the ENDING does not, and until
-2026-08-25 it paid for them anyway: `jobset/summarize.py` measured **45 ms
-per trial** (272 ms for a six-trial sweep, on 152 KB files) building one
-Frame per file to read one string field, on a summary that polls every
-15 s.  A relaxation `.out` with hundreds of frames costs far more.
+**No arrays, and deliberately.**  A caller that wants the ENDING does not
+want Frames -- positions and forces as numpy arrays -- and until 2026-08-25
+it paid for them anyway: `jobset/summarize.py` measured **45 ms per trial**
+(272 ms for a six-trial sweep, on 152 KB files) building one Frame per file
+to read one string field, on a summary that polls every 15 s.
 
-So the scanner is a single pass over the same table the heavy parser
-builds its rules from -- there is no second list to drift.  (`jobset/summarize.py` grew a private `_DONE_MARKERS`
-tuple exactly that way, and it disagreed with the parser about a capped
-benchmark.)
+So a SIESTA output's ending is the reading pass's own answer, asked without
+Frames.  The registered :mod:`~molbuilder.parse.engines.siesta` parser builds
+its Frames from the same pass, so SIESTA's lines are read ONE way.
+*(`jobset/summarize.py` grew a private `_DONE_MARKERS` tuple that disagreed
+with the parser about a capped benchmark; a separate marker scan stood here
+until 2026-09-26, and a test had to keep it agreeing with the parser.)*
 
 **It travels beside every job** (`runwrap.MONITOR_COMPANIONS`,
 `execution/run-reports.md` § 2.3): the monitor reports how a run ended with
@@ -55,13 +54,13 @@ try:                                        # inside molbuilder
                                     as PYSCF_SPECTRUM_END_MARKER)
     from ... import runfiles as _rf
     from . import molwatch_grammar as _MG
-    from . import siesta_grammar as _G
+    from .siesta_reader import SiestaReader
 except ImportError:                         # beside a job, as the monitor's
     from end_lines import (END_MARKER as PYSCF_END_MARKER,
                            SPECTRUM_END_MARKER as PYSCF_SPECTRUM_END_MARKER)
     import runfiles as _rf
     import molwatch_grammar as _MG
-    import siesta_grammar as _G
+    from siesta_reader import SiestaReader
 
 #: The run is over and will produce nothing more -- § 2b P-S1's vocabulary
 #: split by the only question a watcher asks.  ``unknown`` is deliberately
@@ -75,9 +74,6 @@ except ImportError:                         # beside a job, as the monitor's
 #: not a style rule -- one door, or the copies drift silently.
 CONCLUDED: Tuple[str, ...] = ("ended", "stopped", "out_of_memory")
 
-#: The table's out-of-memory markers -- a cause that outranks the others.
-_OOM_MARKERS = frozenset(m for m, st in _G.FATAL_MARKERS
-                         if st == "out_of_memory")
 
 @dataclass(frozen=True)
 class RunEnding:
@@ -94,109 +90,48 @@ class RunEnding:
     #: unconverged; ``None`` -- a single point, or not there yet.
     relaxed:       Optional[bool] = None
     #: WHAT STOPPED IT: the first fatal line's marker from the table
-    #: (``_G.FATAL_MARKERS``) -- the lines after it are ``die``'s cascade, and
-    #: an out-of-memory line outranks the rest wherever it falls -- or
-    #: ``_G.SCF_NOT_CONV_MARKER`` when SIESTA stated the SCF's failure fatal.
+    #: (``siesta_grammar.FATAL_MARKERS``) -- the lines after it are ``die``'s
+    #: cascade, and an out-of-memory line outranks the rest wherever it falls
+    #: -- or ``siesta_grammar.SCF_NOT_CONV_MARKER`` when SIESTA stated the
+    #: SCF's failure fatal.
     cause:         Optional[str] = None
 
 
-def scan_ending(text: str, *more: str) -> RunEnding:
-    """How this run ended, from markers alone -- one pass, no arrays.
+def _read(path) -> str:
+    return Path(path).read_text(encoding="utf-8", errors="replace")
 
-    ``more`` is what the run said on its other channel, read after the
-    output by the same rules: SIESTA's stderr, when its wrapper keeps it
-    apart (:func:`_siesta_ending`).  The deck's echo is the output's alone,
-    so each text is read from outside it.
 
-    ``running`` is the honest answer for a file with no ending marker --
+# ---- SIESTA: the family's one reading pass ------------------------------- #
+
+
+def _siesta_ending(path, stderr=None) -> RunEnding:
+    """The ``.out``'s ending, as the SIESTA reading pass reads it
+    (`siesta_reader.SiestaReader`, `model/parse.md` § 4a) -- the one reader
+    of the family's lines, which the registered parser builds its Frames
+    from.  Asked for the ending alone, it builds none.
+
+    Given ``stderr`` -- the file SIESTA's stderr went to, its wrapper's
+    session log -- the same pass reads it after the output when the output
+    states no ending.  SIESTA's ``die`` writes its message to both channels
+    but flushes stdout on node 0 alone (``Src/siesta_handlers_m.F90``), so a
+    rank other than 0 that dies may say why on stderr only.
+
+    ``running`` is the honest answer for an output with no ending in it --
     not finished: nothing in it separates a slow DFT step from a job the
     scheduler killed (§ 2b P-S1).
-
-    ``scf_converged`` is the LAST phase's, as the parser's is: a TranSIESTA
-    device's periodic initialization converging does not speak for its NEGF
-    loop, so a new phase clears it, and so does SIESTA taking a convergence
-    back (``SCF cycle continued``).
     """
-    run_state = "running"
-    scf_converged: Optional[bool] = None
-    scf_not_conv_line: Optional[str] = None
-    error_message: Optional[str] = None
-    phase: Optional[str] = None
-    relaxed: Optional[bool] = None
-    cause: Optional[str] = None
-
-    phases: Dict[str, Optional[bool]] = {}
-    in_echo = False
-    for i, raw in ((i, raw) for i, t in enumerate((text, *more))
-                   for raw in t.splitlines()):
-        if i and in_echo:
-            in_echo = False           # another channel: not inside the echo
-        # THE DECK'S ECHO IS NOT THE RUN SPEAKING (`siesta_grammar`'s
-        # INPUT_ECHO): a marker inside it is the deck's own comment.
-        edge = _G.input_echo_edge(raw)
-        if edge is not None:
-            in_echo = edge
-            continue
-        if in_echo:
-            continue
-        row = _G.scf_row(raw)
-        if row is not None:
-            if row.phase != phase:
-                phase, scf_converged = row.phase, None
-                phases[phase] = None
-            continue
-        line = raw.lower()
-        if _G.SCF_CONTINUED_MARKER in line:
-            scf_converged = None
-        elif _G.SCF_CONVERGED_MARKER in line:
-            scf_converged = True
-        elif _G.SCF_NOT_CONV_MARKER in line:
-            scf_converged = False
-            if scf_not_conv_line is None:
-                scf_not_conv_line = raw.strip()[:200]
-            # SIESTA STATING IT FATAL is the cause of the death that follows
-            # (`siesta_grammar.SCF_NOT_CONV_REQUIRED`); the tolerated form
-            # is not, and a later crash keeps its own cause.
-            if _G.SCF_NOT_CONV_REQUIRED in line and cause is None:
-                cause = _G.SCF_NOT_CONV_MARKER
-        elif _G.SCF_NOT_CONVERGED_MARKER in line:
-            scf_converged = False
-        else:
-            if _G.RELAXED_MARKER in line:
-                relaxed = True
-            elif _G.UNRELAXED_MARKER in line:
-                relaxed = False
-            for marker, state in _G.FATAL_MARKERS:
-                if marker in line:
-                    # Any fatal line proves the stop -- and an OOM outranks
-                    # a generic abort wherever it falls.
-                    oom = state == "out_of_memory"
-                    if oom or run_state != "out_of_memory":
-                        run_state = state
-                    # THE FIRST FATAL LINE IS THE CAUSE and what follows it
-                    # the cascade -- SIESTA's `die` prints its message and
-                    # then ``Stopping Program from Node`` -- as the parser
-                    # keeps its first line; the memory, once seen, is the
-                    # cause.
-                    if cause is None or (oom and cause not in _OOM_MARKERS):
-                        cause = marker
-                    if error_message is None:
-                        error_message = raw.strip()[:200]
-                    break
-            else:
-                if _G.RUN_END.match(raw) and run_state == "running":
-                    run_state = "ended"
-            continue
-        # An SCF marker: it speaks for the phase of the row before it.
-        if phase is not None:
-            phases[phase] = scf_converged
-
-    # The held SCF line is the informative cause when the run is proven
-    # dead -- it outranks the cascade marker that recorded itself above.
-    if run_state in ("stopped", "out_of_memory") and scf_not_conv_line:
-        error_message = scf_not_conv_line
-    return RunEnding(run_state, scf_converged, error_message, phases,
-                     relaxed, cause)
+    reader = SiestaReader()
+    # AN OUTPUT SIESTA NEVER WROTE TO is not there at all -- the tee creates
+    # it on the first line -- and a run that died before its first line may
+    # still have said why on stderr.
+    if stderr is None or Path(path).exists():
+        reader.feed_text(_read(path))
+    if stderr is not None and reader.run_state == "running":
+        reader.new_channel().feed_text(_read(stderr))
+    got = reader.finish()
+    return RunEnding(got["run_state"], got["scf_converged"],
+                     got["error_message"], got["phases"],
+                     relaxed=got["relaxed"], cause=got["cause"])
 
 
 # ---- PySCF: our own decks' end lines, and Python's own failure shape ---- #
@@ -227,27 +162,28 @@ PYSCF_END_MARKERS: Tuple[str, ...] = (PYSCF_END_MARKER,
 PYSCF_TRACEBACK_MARKER = "traceback (most recent call last)"
 
 
-def scan_pyscf_ending(text: str) -> RunEnding:
-    """How a PySCF run ended, from markers alone -- one pass, no arrays.
+def _pyscf_ending(path) -> RunEnding:
+    """How a PySCF run ended, from its stdout's markers -- one pass, no arrays.
 
-    The PySCF sibling of :func:`scan_ending`, and deliberately a much shorter
-    table: SIESTA's ``siesta_grammar.FATAL_MARKERS`` are **not** shared.  Measured
-    2026-09-18 over 135 real output files, its five out-of-memory markers fire
-    0 times and the three that do fire are SIESTA's own sentences.  Borrowing
-    them would have this reader answer `out_of_memory` for a PySCF log that
-    merely quoted one.
+    The PySCF sibling of :func:`_siesta_ending`, and deliberately a much
+    shorter table: SIESTA's ``siesta_grammar.FATAL_MARKERS`` are **not**
+    shared.  Measured 2026-09-18 over 135 real output files, its five
+    out-of-memory markers fire 0 times and the three that do fire are
+    SIESTA's own sentences.  Borrowing them would have this reader answer
+    `out_of_memory` for a PySCF log that merely quoted one.
 
     ``scf_converged`` is left None: § 2b P-S2's fact is REPORTED, never a
     verdict, and nothing reads it for PySCF yet.  It is a row to add, not a
     shape to change.
     """
+    text = _read(path)
     run_state = "running"
     error_message: Optional[str] = None
     ended = False
     for raw in text.splitlines():
         line = raw.lower()
         # ANCHORED AT COLUMN 0.  A SUBSTRING TEST IS WRONG HERE -- unlike
-        # SIESTA's markers, which `scan_ending` finds as substrings outside
+        # SIESTA's markers, which its reading pass finds as substrings outside
         # the deck's echo -- and not subtly: PySCF's
         # `Mole.build()` calls `dump_input()`, which ECHOES THE DECK'S OWN
         # SOURCE into `mol.stdout` -- and when the deck writes no separate
@@ -286,33 +222,6 @@ def scan_pyscf_ending(text: str) -> RunEnding:
 # ---- one reader per ROLE ------------------------------------------------ #
 
 
-def _read(path) -> str:
-    return Path(path).read_text(encoding="utf-8", errors="replace")
-
-
-def _siesta_ending(path, stderr=None) -> RunEnding:
-    """The ``.out``'s ending -- and, given ``stderr``, the file SIESTA's
-    stderr went to (its wrapper's session log), read after it when the
-    ``.out`` states no ending.  SIESTA's ``die`` writes its message to both
-    channels but flushes stdout on node 0 alone
-    (``Src/siesta_handlers_m.F90``), so a rank other than 0 that dies may say
-    why on stderr only."""
-    if stderr is None:
-        return scan_ending(_read(path))
-    # AN OUTPUT SIESTA NEVER WROTE TO is not there at all -- the tee creates
-    # it on the first line -- and a run that died before its first line may
-    # still have said why on stderr.
-    text = _read(path) if Path(path).exists() else ""
-    end = scan_ending(text)
-    if end.run_state != "running":
-        return end
-    return scan_ending(text, _read(stderr))
-
-
-def _pyscf_ending(path) -> RunEnding:
-    return scan_pyscf_ending(_read(path))
-
-
 def _molwatch_ending(path) -> RunEnding:
     """The progress log's FOOTER, or `running` when it carries none.
 
@@ -329,17 +238,37 @@ def _molwatch_ending(path) -> RunEnding:
 #:
 #: Keyed on the role and never on the engine, which is load-bearing (§ 5.5): a
 #: directory whose engine is unknown, or one holding both engines' outputs,
-#: needs no special case here.  The keys must be exactly
+#: needs no special case here.  The keys are exactly
 #: `runfiles.run_output_roles()` -- the catalogue declares WHICH files are run
-#: output, this declares HOW each is read, and
-#: `tests/test_run_ending_one_table.py` asserts the two sets are equal.  That
-#: one assertion is what keeps "adding an engine is two edits" true across the
-#: layer split.
+#: output, this declares HOW each is read -- and this module refuses to load
+#: when the two differ (:func:`_one_reader_per_role`), which is what keeps
+#: "adding an engine is two edits" true across the layer split.
 READERS: "Dict[str, Callable[[Path], RunEnding]]" = {
     ".out":          _siesta_ending,
     ".pyscf.log":    _pyscf_ending,
     ".molwatch.log": _molwatch_ending,
 }
+
+
+def _one_reader_per_role(readers) -> None:
+    """Refuse a table that leaves a run-output role unread, or reads a file
+    the catalogue does not call run output.  At import, so the gap stops the
+    first thing that loads this module -- not a directory whose output
+    nothing can read, asked while its run is going."""
+    roles = set(_rf.run_output_roles())
+    unread, extra = sorted(roles - set(readers)), sorted(set(readers) - roles)
+    if unread or extra:
+        raise ValueError(
+            "_run_ending.READERS: "
+            + "; ".join(
+                ([f"no reader for the run output {unread}"] if unread else [])
+                + ([f"a reader for {extra}, which `runfiles.WRITTEN`'s "
+                    f"`output` column does not call run output"]
+                   if extra else []))
+            + ".")
+
+
+_one_reader_per_role(READERS)
 
 
 def ending_of(path, *, stderr=None) -> RunEnding:

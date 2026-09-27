@@ -206,12 +206,11 @@ def runtime_dir() -> Path:
 #:
 #: (Pulling `environment.json` and `notify` in here was tried and reverted the
 #: same day -- it took a name away from its format owner, which is the rule
-#: A11 exists to hold, and
-#: `test_config_dir_has_one_home.py::TestNoModuleNamesOneOfThoseFilesItself`
-#: said so -- it asserts each filename below appears in exactly the one
-#: module entitled to spell it, so a registry here fails on the spelling
-#: alone.  `configuration.md` § 2.3 records why a `retrieve_secret(name)`
-#: door is the same proposal and meets the same test.)
+#: A11 exists to hold: each filename below is spelled in exactly the one
+#: module entitled to spell it, and review refuses a registry here on the
+#: spelling alone.  `configuration.md` § 2.3 records why a
+#: `retrieve_secret(name)` door is the same proposal and meets the same
+#: refusal.)
 SESSION_KEY_FILENAME = "secret_key"
 GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
 
@@ -535,3 +534,11 @@ def is_channel_name(name) -> bool:
     """Is ``name`` a channel name a description may carry and the channel
     file may hold?"""
     return bool(isinstance(name, str) and _CHANNEL_NAME.fullmatch(name))
+
+
+#: ``--notify-channels *``: every channel of the machine that runs the job --
+#: what a `notify` block naming no channels asks for (`run-reports.md`
+#: § 3.0).  Not a channel name (it fails :func:`is_channel_name`), so it
+#: cannot collide with one.
+ALL_CHANNELS = "*"
+

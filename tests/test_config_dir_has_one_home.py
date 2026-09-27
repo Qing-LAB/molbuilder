@@ -11,16 +11,14 @@ sits in stayed spelled three times:
 They agreed, and two of them said so in prose -- *"Mirrors
 auth_setup.default_secret_dir's convention"* and *"mirrored rather than
 imported"*.  **A comment is not a mechanism.**  Fixed 2026-08-23 by
-``molbuilder/config_dir.py``; this pins it.
+``molbuilder/config_dir.py``.  The tests below move the variables and ask
+every door where its file went; a module that spells the rule a second time
+is review's to find (`process/code-audit.md` § 1c), because an agreeing copy
+gives the same answer as the door until the day the rule moves.
 """
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
 import pytest
-
-_SRC = Path(__file__).resolve().parents[1] / "molbuilder"
 
 
 @pytest.fixture
@@ -65,29 +63,6 @@ def test_the_directory_is_read_at_call_time_not_captured_at_import(
     first = config_dir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "b"))
     assert config_dir() != first
-
-
-def test_no_module_spells_the_rule_a_second_time():
-    """**The guard that would have caught the original drift.**
-
-    Any module joining ``XDG_CONFIG_HOME`` to a path itself is a fourth copy
-    growing.  ``config_dir.py`` is the one place allowed to read it.
-    """
-    offenders = []
-    for py in _SRC.rglob("*.py"):
-        if py.name == "config_dir.py":
-            continue
-        src = py.read_text(encoding="utf-8")
-        if "XDG_CONFIG_HOME" not in src:
-            continue
-        for node in ast.walk(ast.parse(src)):
-            # os.environ.get("XDG_CONFIG_HOME") / os.environ["XDG_CONFIG_HOME"]
-            if isinstance(node, ast.Constant) and node.value == "XDG_CONFIG_HOME":
-                offenders.append(str(py.relative_to(_SRC)))
-                break
-    assert not offenders, (
-        "these modules read XDG_CONFIG_HOME directly instead of calling "
-        f"config_dir(): {sorted(set(offenders))}")
 
 
 # ---------------------------------------------------------------------------
@@ -143,36 +118,6 @@ class TestTheRootCanBeNamedOutright:
             assert (tmp_path / "one") in path.parents \
                 or path == tmp_path / "one", f"{name} -> {path}"
 
-    def test_no_module_spells_the_override_a_second_time(self):
-        """Same guard as `XDG_CONFIG_HOME`'s, for the same reason.
-
-        Matched against the SYNTAX TREE, not the text.  A first version
-        matched the name anywhere and flagged `envs/_cli.py`, whose only
-        mention is a docstring explaining why its log directory moved -- the
-        same trap the second-root pin fell into, and the same answer: a test
-        that cannot tell a path from a sentence about one punishes the
-        documentation we want.
-        """
-        offenders = []
-        for py in _SRC.rglob("*.py"):
-            if py.name == "config_dir.py":
-                continue
-            src = py.read_text(encoding="utf-8")
-            if "MOLBUILDER_CONFIG_DIR" not in src:
-                continue
-            for node in ast.walk(ast.parse(src)):
-                # os.environ.get("MOLBUILDER_CONFIG_DIR") / os.environ[...]
-                if isinstance(node, (ast.Call, ast.Subscript)) \
-                        and "MOLBUILDER_CONFIG_DIR" in {
-                            n.value for n in ast.walk(node)
-                            if isinstance(n, ast.Constant)
-                            and isinstance(n.value, str)}:
-                    offenders.append(str(py.relative_to(_SRC)))
-                    break
-        assert not offenders, (
-            "these modules read MOLBUILDER_CONFIG_DIR directly instead of "
-            f"calling config_dir(): {sorted(set(offenders))}")
-
 
 # ---------------------------------------------------------------------------
 # The second root — RETIRED 2026-08-31
@@ -184,8 +129,9 @@ class TestTheRootCanBeNamedOutright:
 # there is nothing to shrink."  Step 2 emptied it, so it is deleted rather than
 # left standing as an empty allowance.
 #
-# What replaces it is not a smaller allow-list but a stricter question, below:
-# no module may compute a per-user root AT ALL.
+# What replaces it is not a smaller allow-list but a stricter rule: no module
+# may compute a per-user root AT ALL.  Review holds that one; the doors below
+# are asked where their files went.
 # ---------------------------------------------------------------------------
 # Operational state — archive/2026-09-01-config-access-plan.md § 3.2
 # ---------------------------------------------------------------------------
@@ -359,140 +305,6 @@ class TestEveryFileHasADoor:
         assert misplaced() == [], (
             "a credential store resolves outside secrets/:\n"
             + "\n".join(misplaced()))
-
-
-class TestNoModuleNamesOneOfThoseFilesItself:
-    """**The rule, asked the strict way round.**
-
-    Not *"is everything using the API"* — a module can pass that by doing
-    nothing — but *"does anything still spell one of these filenames"*.  Seven
-    modules each held one and joined it onto a directory; each join was correct
-    and together they were seven places that had to agree with nothing making
-    them.  `configuration.md` M-4 recorded exactly this for `environment.json`
-    ("a string literal in three modules"), fixed that one file, and did not
-    generalise — so the other six grew back.
-    """
-
-    #: The format owner of each, per A11.  Nobody else may join it.
-    _OWNERS = {
-        "config_dir.py": "the files with no format owner",
-        "runtime_config.py": "molbuilder.json's schema",
-        "scheduler/record.py": "environment.json's schema",
-        "monitor.py": "the notify exchange",
-    }
-
-    #: `"notify"` joined the list on 2026-09-20.  It was the one credential
-    #: filename the guard did not cover -- `notify_keys` was here and its
-    #: neighbour was not -- so a module could have built that path by hand and
-    #: nothing would have said.  Verified clean before adding: no module
-    #: outside `monitor.py` joins it.
-    @pytest.mark.parametrize("literal", [
-        '"molbuilder.json"', '"secret_key"', '"google_client_secret"',
-        '"environment.json"', '"notify"', '"notify_keys"',
-        # the DIRECTORY too, not just the files in it: `config_dir` owns
-        # SECRETS_DIRNAME, and a module joining `/ "secrets"` by hand would
-        # pin the layout in a second place.  Verified clean when added.
-        '"secrets"',
-    ])
-    def test_the_literal_appears_only_where_it_is_owned(self, literal):
-        """**Read as CODE, not as text** *(rewritten 2026-09-20)*.
-
-        It matched the literal and a `/`, `Path(` or `join` ON THE SAME LINE.
-        Four shapes walked through it, each measured by appending them to a
-        non-owner module and watching the suite stay green:
-
-            config_dir() / 'secrets' / 'secret_key'     # single quotes
-            base = config_dir(); base / _SEC / _NAME    # name on another line
-            Path(f"{config_dir()}/secrets/notify")      # f-string, no quote
-            os.path.join(str(config_dir()), _SEC, _KEYS)
-
-        All four built a real credential path in a module with no business
-        doing so.  The sibling test above already walks the AST for
-        `XDG_CONFIG_HOME`, with a docstring saying why text matching was
-        wrong; this one had not been given the same treatment.
-
-        The AST sees a string wherever it appears -- quote style, line
-        breaks and f-string pieces are all gone by then -- so what remains is
-        one question: does this module contain the filename as a string
-        constant at all, outside a docstring?  A module that legitimately
-        needs the file asks its owner and never names it.
-        """
-        name = literal.strip('"')
-
-        def joined_into_a_path(tree):
-            """Line numbers where `name` is BUILT INTO a path in this tree."""
-            # Module-level `_NAME = "secret_key"` then `base / _NAME` was one
-            # of the measured evasions, so a simple alias map comes first.
-            # Deliberately NOT dataflow analysis: one level of
-            # `Name = Constant`, which is the shape that actually appeared.
-            alias = {t.id for n in ast.walk(tree)
-                     if isinstance(n, ast.Assign)
-                     for t in n.targets
-                     if isinstance(t, ast.Name)
-                     and isinstance(n.value, ast.Constant)
-                     and n.value.value == name}
-
-            def is_it(node):
-                return ((isinstance(node, ast.Constant) and node.value == name)
-                        or (isinstance(node, ast.Name) and node.id in alias))
-
-            hits = []
-            for node in ast.walk(tree):
-                # `config_dir() / "secrets" / "secret_key"` -- quote style and
-                # line breaks are gone by the time the AST exists, which is
-                # the whole reason this is not a text match any more.
-                if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-                    if is_it(node.left) or is_it(node.right):
-                        hits.append(node.lineno)
-                # `os.path.join(...)` and `Path(...).joinpath(...)`.
-                # Spelled out rather than "any .join", because `", ".join(x)`
-                # is a string method and has nothing to do with paths.
-                elif isinstance(node, ast.Call):
-                    fn = node.func
-                    joins = isinstance(fn, ast.Attribute) and (
-                        fn.attr == "joinpath"
-                        or (fn.attr == "join"
-                            and isinstance(fn.value, ast.Attribute)
-                            and fn.value.attr == "path"))
-                    if joins and any(is_it(a) for a in node.args):
-                        hits.append(node.lineno)
-                # `f"{config_dir()}/secrets/notify"` -- no quote character
-                # precedes the name, so the old text match could not see it.
-                # The shape that makes it a PATH is a "/" directly after an
-                # interpolated base; merely containing the word is prose, and
-                # every error message in this package would trip on that.
-                elif isinstance(node, ast.JoinedStr):
-                    vals = node.values
-                    for i, v in enumerate(vals[:-1]):
-                        nxt = vals[i + 1]
-                        if not (isinstance(v, ast.FormattedValue)
-                                and isinstance(nxt, ast.Constant)
-                                and isinstance(nxt.value, str)
-                                and nxt.value.startswith("/")):
-                            continue
-                        tail = nxt.value.split()[0]     # stop at prose
-                        if name in tail.strip("/").split("/"):
-                            hits.append(node.lineno)
-                            break
-            return hits
-
-        offenders = {}
-        for py in _SRC.rglob("*.py"):
-            rel = str(py.relative_to(_SRC))
-            if rel in self._OWNERS:
-                continue
-            try:
-                tree = ast.parse(py.read_text(encoding="utf-8"))
-            except SyntaxError:                       # not ours to police
-                continue
-            hits = joined_into_a_path(tree)
-            if hits:
-                offenders[rel] = sorted(set(hits))
-        assert not offenders, (
-            f"{literal} is built into a path outside the module that owns "
-            f"it: {offenders}.  Ask the owner for the path instead "
-            f"(archive/2026-09-01-config-access-plan.md § 5)")
-
 
 
 class TestAFilesResolverIsNotAWayToReachTheRoot:

@@ -843,8 +843,11 @@ not.
 > (`jobset/prep`), for everything around it — written from what the steps
 > already return. That is the layering `jobset/ledger` states: *library layers
 > RETURN decision data, and the surface that acted on it appends the line.*
-> § 4.5.1 is the format they both write in, § 4.5.2 what an engine owes them,
-> and a test refuses any other module that imports the log at all.
+> § 4.5.1 is the format they both write in, § 4.5.2 what an engine owes them.
+> A third module reaching the log is review's to refuse
+> (`process/code-audit.md` § 1c); what a test holds is the file each engine's
+> prep leaves, every line of it in the one format described below
+> (`tests/test_pipeline_log.py`).
 
 **Where it lands.** Beside this prep's `STAGE-PLAN.md` — the bundle root for a
 run, the stage's `bench/` container for a sweep. Inside the bundle, because the

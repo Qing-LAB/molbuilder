@@ -217,8 +217,7 @@
      * U6 close, 2026-08-22.  Its Python producer
      * ``_stagespec_to_field_schemas`` died when stages.md § 1.1a made a
      * PySCF ladder N decks, so no schema could carry the kind; the
-     * renderer was recorded as reached-by-nothing in
-     * tests/test_stage_vocabulary.py until the user's cleanup ask.
+     * renderer, reached by nothing, stayed until the user's cleanup ask.
      * The live stage table is Task setup's own, hand-rolled in
      * task-setup/viewer.js over task.json.) */
 

@@ -295,7 +295,10 @@ equivalent switch.)
 parity (if you're importing `chemistry.py` inside an adapter, the logic belongs
 in the analyzer); returns a frozen dataclass, not a dict; `rationale` always
 present (may append one engine-specific sentence). Spectra reuses `PyscfAdapter`
-(it emits PySCF). Enforced by `test_chemistry_adapters.py::test_adapter_modules_do_not_import_analyzer`.
+(it emits PySCF). Enforced by `test_chemistry_adapters.py::test_an_adapter_translates_the_analysis_and_never_re_derives_it`,
+which hands every registered adapter conclusions that contradict the composition
+they came with: a translator follows the analysis, and one that re-derives
+answers what the composition says.
 
 ---
 
@@ -607,9 +610,10 @@ cross-engine consistency claim.
 - **New-engine on-ramp** — a freshly-registered synthetic adapter appears in the
   endpoint response (`…::test_freshly_registered_adapter_appears_in_endpoint_response`),
   catching a hardcoded engine list.
-- **Adapter purity** — an *AST check* (a static parse of the source — imports are
-  read without running the module) that no adapter imports the analyzer/primitives:
-  `test_chemistry_adapters.py::test_adapter_modules_do_not_import_analyzer`.
+- **Adapter purity** — each registered adapter, handed an analysis whose
+  conclusions (open shell, spin 2, charge +1) contradict its composition
+  (methane), must answer exactly as it does for the same conclusions over copper:
+  `test_chemistry_adapters.py::test_an_adapter_translates_the_analysis_and_never_re_derives_it`.
 
 ---
 

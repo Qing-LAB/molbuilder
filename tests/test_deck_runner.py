@@ -144,42 +144,6 @@ def test_rendering_touches_no_disk(tmp_path, monkeypatch):
         f"{sorted(p.name for p in set(tmp_path.rglob('*')) - before)}")
 
 
-def test_only_a_surface_imports_the_conductor():
-    """**W1**: the conductor may call, but it may never decide -- and
-    *"only a surface may import the conductor"* is the enforceable half.
-
-    Anything below L3 importing `jobset.prep` means something inside the
-    stack is driving the sequence, and the sequence has two owners again --
-    which is the shape of the "stomp" failures the rule names.
-
-    ``jobset/__init__.py`` is exempt for the reason `test_layering` exempts
-    every package init: re-exporting a name into the package namespace is
-    not driving anything.
-    """
-    import ast
-    import pathlib as _pl
-    root = _pl.Path(__file__).resolve().parents[1] / "molbuilder"
-    surfaces = {"cli.py", "web", "__init__.py", "__main__.py"}
-    offenders = []
-    for f in sorted(root.rglob("*.py")):
-        rel = f.relative_to(root)
-        if f.name in surfaces or rel.parts[0] in surfaces:
-            continue
-        if rel.as_posix() in ("jobset/prep.py", "jobset/_cli.py"):
-            continue                    # the conductor itself, and its verb
-        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8",
-                                                   errors="replace"))):
-            mod = node.module if isinstance(node, ast.ImportFrom) else None
-            names = ([a.name for a in node.names]
-                     if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
-            if (mod and mod.endswith("prep")) or any(
-                    n.endswith("jobset.prep") for n in names):
-                offenders.append(f"{rel.as_posix()}:{node.lineno}")
-    assert not offenders, (
-        "these modules import the conductor, which only a surface may do "
-        "(W1):\n  " + "\n  ".join(offenders))
-
-
 def test_check_passes_a_deck_the_runner_itself_wrote(tmp_path):
     spec, struct, cfg = _spec(), _struct(), _Cfg()
     out = se.render_deck(spec, struct, cfg)

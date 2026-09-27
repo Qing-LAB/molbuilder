@@ -373,10 +373,9 @@ def html_writes(src: str) -> List[Tuple[int, str]]:
 
 
 #: The doors through which HTML made at run time enters a page -- file ->
-#: (writes, why).  THE COUNT IS PART OF THE ALLOWANCE, as in
-#: `test_one_door_reads_a_structure.py`: a second write in one of these files
-#: has not inherited the first one's reason, and a file whose write is gone
-#: fails too, so an allowance cannot outlive its argument.  It counts WRITES,
+#: (writes, why).  THE COUNT IS PART OF THE ALLOWANCE: a second write in one
+#: of these files has not inherited the first one's reason, and a file whose
+#: write is gone fails too, so an allowance cannot outlive its argument.  It counts WRITES,
 #: not what they write -- ``renderEl.innerHTML = r.text`` in `documents/page.js`
 #: would keep the count at 1 -- which is what a count can say; a producer door
 #: that takes the INPUT rather than HTML is what would close that.

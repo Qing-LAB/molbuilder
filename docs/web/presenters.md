@@ -49,9 +49,10 @@ viewer for one kind of file. Today there are seven:
 
 *The first column is the `name` each presenter registers under, and it is
 there so this table can be **checked** rather than remembered:
-`test_doc_claims.py::test_the_documented_presenters_are_the_registered_ones`
-asserts this column and the yes/no one against the `register()` calls in
-`lib/inspectors/`, set-equal in both directions. Added 2026-09-18
+`test_inspector_registry_dispatch_js.py::test_the_documented_presenters_are_the_registered_ones`
+loads the presenter modules in the page's order under node, asks the registry
+what registered, and asserts this column and the yes/no one against its
+answer, set-equal in both directions. Added 2026-09-18
 (`plan.md` § 5p.3p step 10b) after the table spent an unknown stretch
 claiming five viewers and three results while six were registered.*
 
@@ -65,8 +66,8 @@ config files and READMEs.
 > been registering the whole time. Two of the four also never write
 > `isResult` at all: `trajectory` and `spectra` are built by
 > `makePartialInspector`, which **defaults it to `true`**, so reading the
-> registration alone under-counts them. The count here is now derived from the
-> six `register()` calls in `lib/inspectors/`, not from this table's memory.*
+> registration alone under-counts them. The count here is now checked against
+> what the registry itself answers, not this table's memory.*
 
 > **The composite row landed 2026-09-18** (§ 5p.3p step 5). Before it, a
 > finished junction's `<label>.transport.json` matched no `isResult` presenter,

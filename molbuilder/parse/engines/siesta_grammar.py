@@ -511,8 +511,8 @@ def input_echo_edge(line: str) -> Optional[bool]:
 #: Markers that prove the run did NOT reach its own end, in the order a reader
 #: should prefer them: ``(substring, run_state)``, matched case-insensitively
 #: anywhere in the line -- SIESTA prefixes them with ``node 0:`` under MPI.
-#: `_run_ending.scan_ending` reads them and the parser builds its fatal rules
-#: from them (`model/parse.md` § 2b).
+#: The reading pass (`siesta_reader`) builds its fatal rules from them -- the
+#: one reader of how a SIESTA run ended (`model/parse.md` § 2b).
 #: ``Src/propor.f``'s refusal of a distribution with an empty table
 #: (``propor: ERROR: IMAX = 0``) -- a defective pseudopotential, a rank count
 #: that leaves ranks empty, or no net spin on an open-shell metal.  Named, so

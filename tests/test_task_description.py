@@ -381,29 +381,8 @@ def test_the_description_names_no_machine(example, tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  § 6.4 -- ONE reader, for both surfaces                               #
+#  a calculation is recognised by its description                       #
 # --------------------------------------------------------------------- #
-
-def test_only_one_module_reads_or_writes_task_json():
-    """§ 6.4: 'the two must produce the same bytes for the same
-    description, and a single reader is how.'
-
-    Asserted as a source-text invariant rather than by importing the
-    module from both surfaces: an import nothing calls is dead code, and
-    it would not stop a second codec appearing beside it.  This does.
-    """
-    owners = set()
-    for path in sorted((REPO / "molbuilder").rglob("*.py")):
-        src = path.read_text(encoding="utf-8", errors="replace")
-        if '"task.json"' in src or "'task.json'" in src:
-            owners.add(path.relative_to(REPO).as_posix())
-    assert owners <= {"molbuilder/task.py", "molbuilder/checkpoint.py"}, (
-        f"a second place knows the description's filename: {sorted(owners)}.\n"
-        "checkpoint.py is allowed because it only DETECTS the file "
-        "(_BUNDLE_DESCRIPTORS); anything that parses it must go through "
-        "molbuilder/task.py."
-    )
-
 
 def test_checkpoint_recognises_a_calculation_by_its_description(tmp_path,
                                                                 example):

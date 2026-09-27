@@ -27,6 +27,30 @@ from here and queries the registry rather than knowing which parser to call.
 > or output type added another parallel path. This package collapses them into
 > **three ABCs, one frozen-dataclass result hierarchy, and one registry**.
 
+### How results are organized — read this first
+
+**A run's files are the calculation reporting itself**, one aspect per file,
+each at one stage of its life: the deck is what was asked; `run.json`, that it
+was sent; the engine's output (`.out`, `.pyscf.log`), its own account as it
+went; the progress log, its steps; the monitor's log and `util.csv`, the
+machine's account; the wrapper's log, the host and what reached stderr;
+`.concluded`, how the process exited. The catalogue (`runfiles.WRITTEN`) says
+which file is which. **They do not conflict**: two files stating related facts
+are two aspects of one run — the ranks asked and the ranks the engine ran on,
+say — never two answers to reconcile.
+
+| layer | what it is | where |
+|---|---|---|
+| one reader per file | each format's grammar and its one reading pass; the registry picks the reader for a path | § 4a, § 3 |
+| what a folder is | the directory parser: a run, a container or a folder not marked; which file is its result | § 5, `web/results.md` § 0 |
+| one run's report | from that run's own files: its trajectory (§ 3), how it is doing (`status`, § 2b), what ran with what and how it went (`record`, § 5d) | `parse/dirs/`, `/api/watch/*` |
+| a higher level's report | a ladder, a benchmark, a transport calculation — each built by its own module from its rungs' or trials' files, through the same readers, and shown by its own presenter | `jobset/runstatus.py`, `jobset/summarize.py`, `transport/record.py` |
+
+**Each report answers its own question and none is built from another**: a
+run's record is not a bench trial's row, and a transport report is not a
+ladder. What they share is the readers, so the same file says the same thing
+in every report that reads it.
+
 ---
 
 ## 1. The two ABCs
@@ -316,7 +340,7 @@ dispatch; its answer is one frozen record:
 | `phases` | each SCF phase's, keyed `periodic` / `negf`, `True` / `False` / `None`: `SCF Convergence by …` is `True`; `SCF_NOT_CONV:` or `SCF did NOT converge` is `False`; `SCF cycle continued` is `None` again |
 | `relaxed` | `True` on `outcoor: Relaxed …`, `False` on `outcoor: Final (unrelaxed) …`, `None` for a run that relaxes nothing |
 | `cause` | what stopped it: the FIRST fatal line's marker — the lines after it are SIESTA's `die` cascade, and an out-of-memory marker outranks the rest — or `scf_not_conv` when SIESTA states the SCF's failure fatal, `(required)` |
-| `error_message` | the sentence a person reads: the held `SCF_NOT_CONV:` line once the run is proven stopped, else the first fatal line; for PySCF, the exception line |
+| `error_message` | the sentence a person reads: the `SCF_NOT_CONV:` line when it came before the stop — it names the cause, the fatal lines after it are `die`'s cascade — else the first fatal line; for PySCF, the exception line |
 
 `_run_ending.CONCLUDED` — `ended`, `stopped`, `out_of_memory` — is *the run is
 over*.
@@ -325,15 +349,17 @@ over*.
 
 | door | answers | cost · asked by |
 |---|---|---|
-| `scan_ending(text, *more)` | a SIESTA-family output's ending; `more` is SIESTA's stderr, read after the output — `die` flushes stdout on node 0 alone | one pass, stdlib · `ending_of` |
-| `scan_pyscf_ending(text)` | a PySCF stdout's ending | one pass, stdlib · `ending_of` |
-| `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5) | `run_status`, the wrapper's door below |
+| `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, the wrapper's door below, the bench summary |
 | `python mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
 | `run_status(directory)` | a directory's state, from its outputs' endings, its `.concluded` and its `run.json` | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
-The cheap doors exist because the full parse builds every frame to reach one
-string; `tests/test_run_ending_one_table.py` fails if the two ways disagree.
+SIESTA's lines are read one way. The registered parser builds its Frames from
+the reading pass (§ 4a); `ending_of` asks the same pass for the ending alone,
+because a whole `Trajectory` is too much to reach one string. `READERS` and the
+catalogue's run-output roles (`runfiles.WRITTEN`'s `output` column) are checked
+against each other when `_run_ending` loads, so a role with no reader stops the
+first import, not a status poll of a running job.
 
 **One vocabulary per layer**, each mapped from the one below:
 
@@ -342,12 +368,13 @@ string; `tests/test_run_ending_one_table.py` fails if the two ways disagree.
 | `ended` | `finished` · job completed | `finished` |
 | `stopped` | `failed` · stopped before its end | `failed` |
 | `out_of_memory` | `failed` · out of memory | `failed` |
-| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; `running` without one | the directory's answer — and `failed` · stopped before its end, no exit recorded, where that is still `running` |
+| `running`, `unknown` | `finished` or `failed` by the `.concluded` code; without one, `failed` · stopped before its end, no exit recorded, when the monitor's closing record says its process went; else `running` | the directory's answer, asked after it writes that record |
 | — no output yet | `pending` (no `run.json`) · `queued` (launched, silent) | — |
 
 While the PID lives the monitor says `running` (`execution/run-reports.md` § 2.3).
 
-**Worked examples** — the lines, and what `scan_ending` answers:
+**Worked examples** — the lines, and what `ending_of` answers for an `.out`
+holding them:
 
 ```text
 MaxSCFIterations 3 · SCF.MustConverge .false.          a capped benchmark
@@ -534,12 +561,12 @@ flowchart LR
     EL["pyscf/end_lines<br/>the PySCF decks' end lines"]
     SR["SiestaReader"]
     MR["MolwatchReader"]
-    RE["_run_ending<br/>scan_ending · ending_of"]
+    RE["_run_ending<br/>ending_of"]
     TR["scf_timing_rows"]
     SG --> SR
     MG --> MR
-    SG --> RE
-    MG --> RE
+    SR -->|"finish(): the ending alone"| RE
+    MG -->|"the footer"| RE
     EL --> RE
     SG -->|"row pattern, rendered into awk"| TEE["the wrapper's SCF-timing tee"]
     TEE -->|"-runN.scf-timing.log"| TR
@@ -707,9 +734,9 @@ different questions (§ 5.1).
 | field | the question | who reads it |
 |---|---|---|
 | `engine` · `openable` | which engine ran; which file the viewer loads | `/api/results/dir` → the Results viewer |
-| `status` | how is it doing (`running-a-job.md` § 4.2) | `/api/results/dir` → the picker |
+| `status` | how is it doing (`running-a-job.md` § 4.2) | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
 | `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
-| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
+| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel, designed and not built yet (`web/results.md` § 3a, § 0.4) |
 
 **No field is added without naming its reader in this table.**
 
@@ -1239,7 +1266,7 @@ flowchart LR
   TP  --> SUM
   OP  --> SUM
   SUM --> TBL["the bench table + <code>bench-result@1</code>"]
-  RES --> REC["the run record (§ 5d)<br/>→ the Run panel"]
+  RES --> REC["the run record (§ 5d)<br/>→ the Run panel, not built yet"]
   TP  --> REC
   MP  --> REC
   MLP --> WATCH["<code>/api/watch</code> → the browser<br/>plot x-axis + Finished badge"]
@@ -1315,10 +1342,10 @@ not to one run.
 
 | part | the question | read by |
 |---|---|---|
-| **computation** | what ran, where, for how long, on how much | the Run panel; the benchmark's trial reader (`summarize.parse_point`) |
-| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back (`science/chemistry-correctness.md` ES10) |
-| **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel; the transport record |
-| **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel; the transport record |
+| **computation** | what ran, where, for how long, on how much | the Run panel (not built yet) |
+| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel (not built yet); the electronic-state read-back (`science/chemistry-correctness.md` ES10) |
+| **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel (not built yet); the transport record |
+| **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel (not built yet); the transport record |
 
 The SCF iterations are not in the record: their one reader, the SCF plots,
 reads the trajectory the viewer loads (`web/trajectory.md`).
@@ -1381,13 +1408,22 @@ is rows, not a code path.
 | `deck` | the deck · `.gathered-from` | `script_emit.same_calculation` · `jobset.materialize.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
-**One source per quantity is structural, not a habit**: no two rows answer the
-same field for the same engine — § 5c.1's rule made a property of the
-declaration, which is the mechanism: a row contributes the fields it declares
-and no others, and `record.py` refuses to load a table in which two rows answer
-one field (or one inside another's) for an engine both serve. The benchmark's trial reader (`summarize.parse_point`) asks the
-same rows for its computation facts, so a benchmark and a Run panel cannot
-disagree about a run. **The panel is generic too** (`web/results.md` § 3a): it
+**The table is configuration, not reconciliation.** Each row names the file
+that states a fact and the reader that reads it; the files are one run's
+aspects and do not disagree (the top of this document), so the table decides
+*where each fact is read*, never *which of two answers wins*. That is § 5c.1's
+"one source per quantity" made a property of the declaration: a row
+contributes the fields it declares and no others, and `record.py` refuses to
+load a table in which two rows are given one field (or one inside another's)
+for an engine both serve — a mistake in the table, caught where it is made.
+
+**The bench summary is a different report**, a comparison of trials
+(`web/bench-summary.md`): it builds each trial's row from that trial's files
+through the same readers (the instruments, `utilisation`, the ending) and is
+not composed from this table *(user, 2026-09-26: a benchmark's presentation is
+different by nature)*.
+
+**The panel is generic too** (`web/results.md` § 3a, not built yet): it
 renders the record's parts from a table of labels and formatters keyed by
 field, so a new field is a label, not a panel change.
 
@@ -1510,12 +1546,12 @@ case-blind throughout (user, 2026-05-28).
 |---|---|---|---|
 | the SCF row of both phases — `scf:` / `ts-scf:` — and the `iscf` names row (`write_subs.F`) | `SCF_ROW`, `SCF_ROW_ERE`, `SCF_HEADER`, `PHASE_PERIODIC`, `PHASE_NEGF` | `scf_row`, `scf_header`, `scf_floats`, then `cycle_from_header` (or `cycle_positional` before any names row) | a cycle: `{cycle, energy, dDmax, dHmax, ef, phase}` — `energy` is E_KS |
 | before each NEGF row: `ts-q:` names and values, `ts-Vha:` (`ts_charge.F90`, `m_ts_hartree.F90`) | `TS_Q_ROW`, `TS_Q_TOTALS`, `TS_VHA` | `ts_q_line`, `ts_q_row` | on the next row: `charges` {`D`, `E1`, `C1`, …}, `dq`, `qup_minus_qdn`, `vha_ev` |
-| convergence: `SCF Convergence by`, `SCF cycle continued`, `SCF_NOT_CONV:` (and its `(required)`), `SCF did NOT converge` | `SCF_CONVERGED_MARKER`, `SCF_CONTINUED_MARKER`, `SCF_NOT_CONV_MARKER`, `SCF_NOT_CONV_REQUIRED`, `SCF_NOT_CONVERGED_MARKER` | the reading pass; `_run_ending` | each phase's convergence (§ 2b) |
+| convergence: `SCF Convergence by`, `SCF cycle continued`, `SCF_NOT_CONV:` (and its `(required)`), `SCF did NOT converge` | `SCF_CONVERGED_MARKER`, `SCF_CONTINUED_MARKER`, `SCF_NOT_CONV_MARKER`, `SCF_NOT_CONV_REQUIRED`, `SCF_NOT_CONVERGED_MARKER` | the reading pass | each phase's convergence (§ 2b) |
 | criteria: `redata: Require … convergence for SCF`, `redata: … tolerance for SCF`, TranSIESTA's echoed tolerances (`read_options.F90`, `m_ts_options.F90`) | `SCF_REQUIRE`, `SCF_TOLERANCE`, `SCF_CRITERION_OF`, `TS_CRITERIA` | `read_criterion_line`, `negf_criteria` | `{phase: {column: {tolerance, unit, required}}}` |
 | limits: `redata: Force tolerance`, `Max. number of SCF Iter`, … | `TARGET_LINES` | `read_target_line` | `convergence_targets` |
 | a step: `Begin Broyden opt. move = N` (or CG, FIRE), `Begin FC step = N`, `Begin MD step = N` (`state_init.F`); a single point prints none | `STEP_BEGIN` | the reading pass | `step_kind`, `step` |
 | the forces' closing `Max` / `Max … constrained` (`write_subs.F`) | `MAX_FORCE` | the reading pass | `max_force` |
-| how a run ends: the fatal markers, `>> End of run`, the relaxation's `outcoor:` heading | `FATAL_MARKERS`, `PROPOR_MARKER`, `RUN_END`, `RELAXED_MARKER`, `UNRELAXED_MARKER` | `_run_ending.scan_ending`; the reading pass | § 2b |
+| how a run ends: the fatal markers, `>> End of run`, the relaxation's `outcoor:` heading | `FATAL_MARKERS`, `PROPOR_MARKER`, `RUN_END`, `RELAXED_MARKER`, `UNRELAXED_MARKER` | the reading pass, which `_run_ending.ending_of` asks | § 2b |
 | the deck's echo, `*** Dump of input data file ***` … `*** End of input data file ***` (`reinit_m.F90`) | `INPUT_ECHO_BEGIN`, `INPUT_ECHO_END` | `input_echo_edge` | lines skipped |
 | the build header, SIESTA's and TBtrans's (`version-info-template.inc`) | `EXECUTABLE`, `BUILD_*` | `read_build_line` | `{executable, version, architecture, compiler, parallelisations, <feature>: True}` |
 | launch lines: `* Running on N nodes` or serial, `ProcessorY, Blocksize`, `>> Start of run`, `>> End of run` (`runinfo_m.F90`, `timestamp.f90`) | `RUNNING_ON`, `RUNNING_SERIAL`, `PROCESS_GRID`, `RUN_START`, `RUN_END` | `read_launch_line`, `mpi_ranks`, `local_time` | `n_mpi_processes`, `processor_y`, `blocksize`, `run_start_local`, `run_end_local` — naive ISO |
@@ -1595,7 +1631,9 @@ verdict are plan § 5t.3's P4, not yet built.*
 ### 5d.7 Where it is read
 
 * **The Results tab's Run panel** (`web/results.md` § 3a) — for every kind, and
-  the ONE home on the page of a run's computation facts.
+  the ONE home on the page of a run's computation facts. Designed, not built
+  yet (§ 0.4 there): `/api/results/dir` serves the record and no page code
+  reads it.
 * **The SCF plots** stay the trajectory's (`web/trajectory.md`): a device's two
   phases are drawn apart, each residual against the criterion its phase states
   — dHmax against the H tolerance, dDmax against the DM tolerance, the NEGF dQ

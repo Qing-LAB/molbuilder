@@ -105,7 +105,8 @@ def _task_json_text(task: Task) -> str:
 
     Written via the codec rather than ``json.dumps`` here so that key order,
     which keys are omitted, and the schema string all stay in the one module
-    ``test_only_one_module_reads_or_writes_task_json`` guards.
+    that reads and writes ``task.json`` (``task.py``; `engines/stages.md`
+    § 6.4 -- *"a single reader is how"*).
     """
     import json
     return json.dumps(task.to_dict(), indent=2) + "\n"

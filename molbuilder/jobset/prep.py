@@ -456,10 +456,9 @@ class EngineSeam:
     #: ``(struct, config, base_dir) -> None`` — the DATA FILES this engine's
     #: deck cannot run without, put into the calculation.
     #:
-    #: *Named ``stage_data`` for about a minute, until `test_stage_vocabulary`
-    #: refused it: "stage" is this project's core noun and here it was being
-    #: borrowed as a verb, which is the collision that ledger exists to catch
-    #: — the same refusal `submit._staged_for_launch` earned.*  Distinct from
+    #: *Named ``stage_data`` for about a minute: "stage" is this project's
+    #: core noun and here it was being borrowed as a verb -- the collision
+    #: `submit._staged_for_launch` was renamed for.*  Distinct from
     #: ``sibling_artifacts``, which is about what a deck's own text promises;
     #: this is about what the ENGINE will open.  ``None`` for an engine that
     #: needs none (PySCF's basis sets ship inside PySCF).
@@ -2383,9 +2382,9 @@ def _with_notify(flags, declared) -> "Resources":
     with the trigger gone.  Nothing sets these from outside yet; the point
     is that the shape cannot start losing values the day something does.
 
-    An empty block leaves the fields ``None``, which the wrapper renders as
-    no flags at all -- the feature stays off for everyone who has not asked
-    for it.
+    No block leaves the fields ``None``, which the wrapper renders as no
+    flags at all -- and no flag is nothing sent, the start and the end
+    included: reports stay off for everyone who has not asked for them.
     """
     out = flags or Resources()
     if not declared:
@@ -2400,8 +2399,16 @@ def _with_notify(flags, declared) -> "Resources":
     # falsy and this one is not.  An empty tuple says "send this calculation
     # nowhere", and a truthiness guard here would drop it and hand the job
     # every channel on the machine instead (`run-reports.md` 3.0).
-    if declared.channels is not None and out.notify_channels is None:
-        patch["notify_channels"] = declared.channels
+    if out.notify_channels is None:
+        # A BLOCK THAT NAMES NO CHANNELS asks for every channel of the machine
+        # that runs the job, which only that machine knows -- so it travels as
+        # the marker, resolved there (`run-reports.md` § 3.0).  No block at
+        # all is not here: `not declared` returned above, and the wrapper
+        # renders no flag, which is nothing sent.
+        from ..config_dir import ALL_CHANNELS
+        patch["notify_channels"] = (declared.channels
+                                    if declared.channels is not None
+                                    else (ALL_CHANNELS,))
     # SAME RULE, SAME REASON: `()` here means "the summary line and no field
     # grid", which is a real answer and not an absent one (`stages.md` § 6.9).
     if declared.report is not None and out.notify_report is None:

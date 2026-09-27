@@ -34,23 +34,14 @@ from ..bench.result import (
 
 
 
-def _read(path: Path, *, tail: Optional[int] = None,
-          head: Optional[int] = None) -> str:
-    """Whole file, or its first ``head`` / last ``tail`` bytes.  The split
-    matters: a SIESTA ``.out`` announces its launch (the rank count) in
-    the first KB and its fate (the end-of-run markers) in the last —
-    reading one window for both answers one of them wrong."""
+def _read(path: Path, *, head: Optional[int] = None) -> str:
+    """Whole file, or its first ``head`` bytes -- where a SIESTA ``.out``
+    announces its launch (the rank count)."""
     try:
         if head is not None:
             with path.open("rb") as fh:
                 return fh.read(head).decode("utf-8", "replace")
-        if tail is None:
-            return path.read_text(encoding="utf-8", errors="replace")
-        size = path.stat().st_size
-        with path.open("rb") as fh:
-            if size > tail:
-                fh.seek(-tail, 2)
-            return fh.read().decode("utf-8", "replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
 
@@ -196,47 +187,33 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     if util is not None:
         metrics.update(_utilisation(_mon, _metrics(util)))
 
-    # The .out answers two questions and is read for each.
+    # The .out answers two questions.
     #
-    #   * HOW IT ENDED -- the WHOLE file.  `scan_ending` looks at every
-    #     line, because the SCF-convergence markers appear once per cycle
-    #     rather than at the end, and `scf_not_conv_line` reports the
-    #     FIRST of them.  A tail window would silently answer for the
-    #     last cycles only.
+    #   * HOW IT ENDED -- `ending_of`, the one door (`model/parse.md`
+    #     § 2b, P-S4), which reads the whole file: the SCF-convergence
+    #     markers appear once per cycle rather than at the end.  Frames are
+    #     not built for it -- this needs one string field, on a summary
+    #     that polls every 15 s.
     #   * THE RANK COUNT -- the "Running on N nodes" launch banner, in
     #     the first KB.  Until U11 (2026-08-12) this was searched in a
     #     16 KB TAIL window, so any run whose .out outgrew 16 KB -- i.e.
     #     any real run -- silently lost its rank count and the verdict's
     #     CPU half had no np.
     #
-    # A third read, `out_tail = _read(out, tail=16384)`, stood here until
-    # 2026-09-04: the leftover of the tail-window design, orphaned when
-    # the ending scan moved to the full file and never removed.  Nothing
-    # consumed it -- it read 16 KB per trial, per summary, to be
-    # discarded, on a view that polls every 15 s.
+    # *(This scanned for its own `_DONE_MARKERS` tuple until 2026-08-25 --
+    # a second answer to "did this run end", which knew a capped bench with
+    # `SCF.MustConverge .false.` exits cleanly while the parser did not, so
+    # the summary rendered six healthy trials as failures.)*
     out = _latest_run_file(d, basename, "out")
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
-    # ONE READER PER QUESTION (`model/parse.md` § 2b, P-S4).  This scanned
-    # for its own `_DONE_MARKERS` tuple until 2026-08-25 -- a SECOND answer
-    # to "did this run end", beside the engine parser that owns it.  They
-    # disagreed exactly where it mattered: the private tuple's own comment
-    # knew a capped bench with `SCF.MustConverge .false.` exits cleanly,
-    # and the parser did not, so the bench summary rendered six healthy
-    # trials as failures while the record beside them said completed.
-    if out is None:
-        state = "unknown"
-    else:
-        # The CHEAP door onto the one table (`parse/engines/_run_ending`,
-        # `model/parse.md` § 2b).  Not the full parser: that builds Frames
-        # -- positions and forces as numpy arrays -- and this needs one
-        # string field.  Measured on a six-trial sweep of 152 KB files:
-        # 272 ms through the full parse, 21 ms through the scan, on a
-        # summary that polls every 15 s.  Same markers either way, because
-        # both read `FATAL_MARKERS`.
-        from ..parse.engines._run_ending import scan_ending
-        state = ("completed"
-                 if scan_ending(_read(out)).run_state == "ended"
-                 else "incomplete")
+    state = "unknown"
+    if out is not None:
+        from ..parse.engines._run_ending import ending_of
+        try:
+            state = ("completed" if ending_of(out).run_state == "ended"
+                     else "incomplete")
+        except OSError:
+            pass
     if engine == "cpu" and "mpi_np" not in knobs:
         from ..parse.engines.siesta_grammar import mpi_ranks
         n = mpi_ranks(out_head)

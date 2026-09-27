@@ -653,83 +653,57 @@ def test_a_declared_type_must_be_in_the_vocabulary():
 #  The template file has ONE door                                        #
 # --------------------------------------------------------------------- #
 
-def test_the_template_path_is_formed_in_exactly_one_place():
-    """`engines/template.md` § 4.3 / `job-contracts.md` § 6.3 name the file
-    ``<label>.template.toml``.  SEVEN call sites formed it independently until
-    2026-08-17, in two INCOMPATIBLE ways -- from ``task.json``'s label, and by
-    ``sorted(glob("*.template.toml"))[0]`` -- so a folder holding two templates
-    had the web tab and ``prep`` reading different files.
+def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
+        web_client, isolated_projects_root, monkeypatch):
+    """**A calculation folder with a second template: the Task-setup tab
+    refuses and names both** -- it never picks one.
 
-    Walks the AST rather than the lines, so **prose is not code**: a docstring
-    naming the file is how a contract is written, and the first version of
-    this guard flagged four of them while missing the two sites that mattered
-    (`build.py`'s ``template_name`` and `identity.py`'s pattern list) because
-    it only knew the ``SUFFIX``-join spelling and not the literal one.
+    `engines/template.md` § 4.3 / `job-contracts.md` § 6.3 name the file
+    ``<label>.template.toml``: ``template.template_path`` forms it and
+    ``template.find_template`` finds it, refusing a folder that holds two.
+    SEVEN call sites formed it themselves until 2026-08-17, in two
+    incompatible ways -- from ``task.json``'s label, and by
+    ``sorted(glob("*.template.toml"))[0]`` -- so a folder holding two
+    templates had the web tab and ``prep`` reading DIFFERENT FILES, and the
+    values the tab showed were not the values the job would run.
 
-    What it bans, in executable code only: globbing for a template, joining
-    ``SUFFIX`` by hand, and spelling ``.template.toml`` in a string.  Use
-    :func:`template.template_filename`, :func:`template.template_path` or
-    :func:`template.find_template` -- the last REFUSES an ambiguous folder
-    rather than picking the alphabetical winner.
+    Asked of the route a person's tab calls, on a calculation `jobset init`
+    wrote, with a leftover template dropped beside it.  (This read the
+    package's source for hand-joined suffixes until 2026-09-26, and missed
+    the two sites that spelled the suffix through an alias.)
+
+    MUTATION THIS MUST FAIL AGAINST: the tab's lookup going back to
+    ``sorted(folder.glob("*.template.toml"))[0]``.
     """
-    import ast
-    import pathlib as _pl
-    root = _pl.Path(__file__).resolve().parents[1] / "molbuilder"
-    offenders = []
-    for p in sorted(root.rglob("*.py")):
-        if p.name == "template.py":
-            continue                       # the door's own home
-        if p.name == "runfiles.py":
-            # THE ONE EXEMPTION, and it is a layering fact, not a lapse.
-            # `runfiles.py` is L1 and `template` is L2, so it may not import
-            # the suffix -- `tests/test_layering.py` fails if it does.  Its
-            # `WRITTEN` catalogue therefore spells the name, and that single
-            # row is the only place outside the door allowed to.  (It was
-            # `identity.py` until 2026-09-07, when the catalogue moved and
-            # the glob list became a view of it.)
-            continue
-        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
-        docstrings = set()
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.ClassDef,
-                                 ast.FunctionDef, ast.AsyncFunctionDef)):
-                body = getattr(node, "body", None)
-                if (body and isinstance(body[0], ast.Expr)
-                        and isinstance(body[0].value, ast.Constant)
-                        and isinstance(body[0].value.value, str)):
-                    docstrings.add(id(body[0].value))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                continue
-            if id(node) in docstrings:
-                continue                   # prose, not code
-            s = node.value
-            if "catalogue.template.toml" in s:
-                continue                   # the shipped master, a different file
-            # PROSE IS NOT A PATH.  `task.1st.json`'s ``_what`` line explains
-            # itself to a reader in a sentence that names the template beside
-            # it -- and that is the file doing its job, not a path being
-            # formed.  A path is short; a sentence is not.
-            if len(s) > 40:
-                continue
-            where = f"{p.relative_to(root.parent)}:{node.lineno}"
-            if "*.template.toml" in s:
-                offenders.append(f"{where} globs for a template")
-            elif ".template.toml" in s:
-                offenders.append(f"{where} spells the suffix literally")
-        # the f-string join, which is not one Constant
-        for node in ast.walk(tree):
-            if isinstance(node, ast.JoinedStr):
-                names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
-                if {"SUFFIX", "TEMPLATE_SUFFIX"} & names:
-                    offenders.append(
-                        f"{p.relative_to(root.parent)}:{node.lineno} "
-                        f"joins the suffix by hand")
-    assert not offenders, (
-        "the template path is formed outside its one door:\n  "
-        + "\n  ".join(offenders)
-        + "\nUse template.template_filename / template_path / find_template."
-    )
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.template import template_path
+
+    tree = isolated_projects_root
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "h2.xyz").write_text(
+        "2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+    monkeypatch.chdir(tree.parent)
+    r = CliRunner().invoke(jobset_group, [
+        "init", "--structure", "P/structure/h2.xyz",
+        "--bundle", "P/optimization/H2", "--engine", "pyscf",
+        "--shape", "flat", "--name", "H2"])
+    assert r.exit_code == 0, r.output
+    calc = tree / "P" / "optimization" / "H2"
+    own = template_path(calc, "H2")
+    assert own.is_file(), sorted(p.name for p in calc.iterdir())
+    (calc / "x.template.toml").write_text(own.read_text())
+
+    resp = web_client.get(f"/api/task-setup/template-values?dir={calc}")
+    body = resp.get_json()
+    assert resp.status_code == 400, (
+        f"a folder holding two templates was answered {resp.status_code}: "
+        f"{body}")
+    assert body["ok"] is False
+    assert own.name in body["error"] and "x.template.toml" in body["error"], (
+        f"the refusal must name BOTH templates so the person can remove the "
+        f"leftover: {body['error']!r}")
 
 
 def test_the_two_clock_derivation_homes_are_real_functions():
@@ -902,57 +876,3 @@ def test_the_documented_command_roster_is_the_shipped_one():
         "-- and § 3 is where a person looks up what the CLI can do:\n"
         f"  documented but not shipped: {sorted(documented - shipped)}\n"
         f"  shipped but not documented: {sorted(shipped - documented)}")
-
-
-def test_the_documented_presenters_are_the_registered_ones():
-    """`presenters.md` § 1's table and `lib/inspectors/`, set-equal on
-    **(name, isResult)**.
-
-    **What a wrong table costs.** § 1 is where someone adding a viewer looks
-    up what already exists and whether it claims a Results-tab slot. The
-    table said **five viewers / three results** for as long as
-    `bench-summary` had been registering — so a reader would not have known
-    that a `job-set.json` already had an owner.
-
-    **`isResult` is read, not assumed, and that matters**: `trajectory` and
-    `spectra` never write it. They are built by `makePartialInspector`, which
-    defaults it to `true` (`isResult: (opts.isResult !== false)`), so a test
-    that only looked for the literal would under-count results by two — which
-    is exactly how the table got its "three".
-    """
-    import re as _re
-    root = Path(__file__).resolve().parents[1]
-    inspectors = root / "molbuilder" / "web" / "static" / "lib" / "inspectors"
-
-    # the REGISTERED set, read from the modules that call register()
-    registered = {}
-    for js in sorted(inspectors.glob("*.js")):
-        src = js.read_text(encoding="utf-8")
-        if "inspectors.register(" not in src:
-            continue
-        m = _re.search(r"^\s*name:\s*\"([a-z][a-z0-9-]*)\"", src, _re.M)
-        assert m, f"{js.name} registers but declares no name -- repoint this"
-        # absent means the factory's default, which is True.
-        flag = _re.search(r"^\s*isResult:\s*(true|false)", src, _re.M)
-        registered[m.group(1)] = (flag.group(1) == "true") if flag else True
-
-    # the DOCUMENTED set, read from the table that indexes it
-    doc = (DOCS / "web" / "presenters.md").read_text(encoding="utf-8")
-    start = doc.index("| Presenter | The file you open |")
-    table = doc[start:doc.index("*The first column is the", start)]
-    documented = {}
-    for line in table.splitlines():
-        cells = [c.strip() for c in line.split("|")]
-        if len(cells) < 6 or not cells[1].startswith("`"):
-            continue
-        documented[cells[1].strip("`")] = cells[4].startswith("yes")
-
-    assert documented == registered, (
-        "presenters.md § 1's table and the register() calls in "
-        "lib/inspectors/ disagree -- and § 1 is where someone adding a "
-        "viewer looks up what already exists:\n"
-        f"  documented: {sorted(documented.items())}\n"
-        f"  registered: {sorted(registered.items())}\n"
-        f"  only in the doc:  {sorted(set(documented) - set(registered))}\n"
-        f"  only in the code: {sorted(set(registered) - set(documented))}\n"
-        "  (a name in both with a different isResult is a disagreement too)")

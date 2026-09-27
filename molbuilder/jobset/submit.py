@@ -351,10 +351,10 @@ def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
     """The prologue both launch paths share: **where**, **which wrapper**, and
     **may this deck be launched like that**.
 
-    *Named ``_staged_for_launch`` for about a minute, until
-    `test_stage_vocabulary` refused it: it works for a sweep point as much as
-    a ladder stage, so borrowing the project's core noun for "set up" is the
-    collision that ledger exists to catch (§ 8c question 1).*
+    *Named ``_staged_for_launch`` for about a minute: it works for a sweep
+    point as much as a ladder stage, so borrowing the project's core noun for
+    "set up" was a collision (`archive/2026-08-11-staged-runs-architecture.md`
+    § 8c question 1).*
 
     § 9.4 names the defect this removes: *"`submit.py` grew `_launch_dir` and
     `_record_launch` **twice** — once in each of two near-identical loops"*.

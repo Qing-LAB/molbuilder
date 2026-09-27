@@ -131,20 +131,27 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(tmp_path):
 
 
 def test_a_killed_job_is_failed_stopped_before_its_end(tmp_path):
-    """The one case the monitor's own fact settles (§ 2.3): the PID is gone,
-    the output records no ending and the process no goodbye -- a kill.
-    `run_status` reads *running* -- not finished; the monitor, which saw the
-    PID go, says `failed`, stopped before its end, and why.  The run is the
-    H2 relaxation cut mid-step with its `.concluded` taken away, which is
-    what a walltime leaves."""
+    """A forced stop (§ 2.4): the PID is gone, the output records no ending
+    and the process no goodbye.  The monitor's closing record is then the
+    one word that the run is over, and `run_status` reads it -- so the
+    monitor's finish and the Results tab both say `failed`, stopped before
+    its end, and why.  The run is the H2 relaxation cut mid-step with its
+    `.concluded` taken away, which is what a walltime leaves.
+
+    Before the monitor has closed, the same files read *running*: nothing
+    in them tells a slow step from a stopped one."""
+    from molbuilder.parse.dirs import run_status
     run, watched, _grow = _replay(tmp_path, upto=476)
     (run / "H2_01_relax-run0.concluded").unlink()
+    assert run_status(run, "H2_01_relax*").state == "running"
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
     assert final.state == "failed", final.as_text()
     assert "stopped before its end" in final.detail, final.detail
     assert "no exit recorded" in final.detail
+    rs = run_status(run, "H2_01_relax*")
+    assert (rs.state, rs.detail) == (final.state, final.detail)
 
 
 # --------------------------------------------------------------------- #

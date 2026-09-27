@@ -171,24 +171,78 @@ def test_availability_answers_honestly(monkeypatch, supervised, admins,
 #  The protocol between the two processes                               #
 # --------------------------------------------------------------------- #
 
-def test_both_sides_read_the_exit_code_from_one_place():
-    """One copy of the sentinel, or a reload quietly stops respawning.
+def test_the_code_the_route_exits_with_is_the_one_the_supervisor_respawns_on(
+        monkeypatch):
+    """**Pressing Reload brings the server BACK.**
 
-    If the child asked with 3 and the supervisor waited for 4, the server would
-    exit and stay down -- looking, from the browser, exactly like a crash.
+    The route asks for a fresh server by exiting with a code, and the
+    supervisor respawns only on the code it waits for.  If the two ever
+    disagree -- the child asks with 3, the parent waits for 4 -- the server
+    exits and stays down, which from the browser looks exactly like a crash
+    (`ops/access-control.md`; the protocol is `reload_protocol.py`'s).
+
+    So the route is PRESSED, as an admin, and the code it actually exits with
+    is handed to both halves of the supervisor: the policy the daemon uses
+    (`serve_daemon.child_exit_action`) and the loop `molbuilder serve` runs
+    (`cli._supervise_forever`).  The exit, the half-second wait and the
+    thread are replaced so the test runner survives the press.  API-level for
+    the supervisor half: its child is a real `molbuilder serve`, so the child
+    is stood in for by the code the route exited with.
+
+    MUTATION THIS MUST FAIL AGAINST: the route exiting with any code but the
+    one the supervisor waits for (``os._exit(4)``), or either half of the
+    supervisor -- ``child_exit_action`` or ``_supervise_forever`` -- waiting
+    for another.
     """
-    import inspect
-    from molbuilder import cli, reload_protocol
+    import types
+
+    from molbuilder import cli, serve_daemon
     from molbuilder.web import app as web_app
 
-    assert reload_protocol.RELOAD_EXIT_CODE == 3
-    for mod in (cli, web_app):
-        src = inspect.getsource(mod)
-        assert "RELOAD_EXIT_CODE" in src, f"{mod.__name__} lost the import"
-        assert "reload_protocol import" in src, (
-            f"{mod.__name__} does not take the sentinel from the one place "
-            f"that defines it"
-        )
+    exits = []
+
+    class _Inline:
+        """A thread that runs its target on `start`, here and now."""
+        def __init__(self, target=None, **_kw):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr("os._exit", exits.append)
+    monkeypatch.setattr(web_app, "time", types.SimpleNamespace(
+        sleep=lambda _s: None))
+    monkeypatch.setattr(web_app, "threading", types.SimpleNamespace(
+        Thread=_Inline))
+
+    app = _app(monkeypatch, supervised=True, admins=["boss@example.org"])
+    r = _as_logged_in(app.test_client(), "boss@example.org").post(
+        "/api/admin/reload")
+    assert r.status_code == 202, r.get_data(as_text=True)
+    assert r.get_json()["ok"] is True
+    assert len(exits) == 1, f"the route exited {len(exits)} times: {exits}"
+    code = exits[0]
+
+    assert serve_daemon.child_exit_action(code) == "respawn", (
+        f"the route exits with {code}, and the daemon's policy would let the "
+        f"server stay down")
+
+    # The foreground supervisor: the child asks with the route's code, then
+    # stops for good with 7.  It must start the child again once, and hand
+    # the final code back.
+    codes = iter([code, 7])
+    spawned = []
+
+    def _child(args, env=None, **_kw):
+        spawned.append(args)
+        return next(codes)
+
+    monkeypatch.setattr("subprocess.call", _child)
+    monkeypatch.setattr("sys.argv", ["molbuilder", "serve", "--supervise"])
+    assert cli._supervise_forever() == 7
+    assert len(spawned) == 2, (
+        f"the supervisor did not start a fresh server after the route exited "
+        f"with {code}: {len(spawned)} child(ren)")
 
 
 def test_the_supervisor_respawns_only_on_the_sentinel(monkeypatch):

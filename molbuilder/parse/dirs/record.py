@@ -11,8 +11,18 @@ lives with that format (§ 1a) — the SIESTA family's table, `runwrap`'s reader
 of its own log, the instruments, `materialize` and `prep` for their files,
 `script_emit` for its block, the registry for SIESTA's `fdf` log.
 
+**The table is configuration, not reconciliation** (§ 5d.1b).  A run's files
+are one calculation reporting itself, one aspect per file -- the `.out` the
+ranks the engine ran on, the wrapper's log the ranks it asked for -- so a row
+says where a fact is READ; no two files are weighed against each other.
+
+**One run's record only.**  A ladder, a benchmark and a transport calculation
+are other reports, built by their own modules (`model/parse.md`, "How results
+are organized"); none is composed from this one.
+
 **Cheap reads only** (§ 5d.1): this runs on every folder scan, so it never
-builds a trajectory.
+builds a trajectory.  *(No page shows it yet: the Run panel is designed and
+not built -- `web/results.md` § 0.4.)*
 
 **Which run** (§ 5d.1): the one the directory's status speaks for --
 `run_status`'s ``active_source``, picked by stage then time (§ 5.1), so the

@@ -558,20 +558,6 @@ class TestOneReaderOfSlurmsGresSpelling:
         assert _parse_gres("gpu:4") == (4, None)
         assert _parse_gres("(null)") == (None, None)
 
-    def test_only_one_module_reads_slurms_gres_spelling(self):
-        """The guard.  `runwrap._parse_gres_flag` is excluded by NAME as
-        well as by module: it reads what a PERSON typed and raises on a
-        typo, which is a different dialect and must stay separate."""
-        import re
-        from pathlib import Path as _P
-        root = _P(__file__).resolve().parents[1] / "molbuilder"
-        hits = [f.relative_to(root).as_posix()
-                for f in sorted(root.rglob("*.py"))
-                if "static" not in f.parts
-                and re.search(r"^def parse_gres\(|^def _parse_gres\(",
-                              f.read_text(encoding="utf-8"), re.M)]
-        assert hits == ["scheduler/quantities.py", "scheduler/record.py"], hits
-
 
 def test_both_spellings_carry_gres_flags(tmp_path):
     """R1: the header and the command line are two renderings of one

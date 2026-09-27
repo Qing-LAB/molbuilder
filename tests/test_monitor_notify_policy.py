@@ -618,10 +618,10 @@ def test_the_monitors_path_and_molbuilders_own_are_one_function(
         monkeypatch, tmp_path):
     """Not "they agree" -- they are the SAME function.
 
-    `config_dir.py` is the one module allowed to spell this rule
-    (`test_config_dir_has_one_home.py`), because three once spelled it
-    independently and two of them said so in prose: *"a comment is not a
-    mechanism"*.  The monitor imports it rather than restating it.
+    `config_dir.py` is the one module allowed to spell this rule, because
+    three once spelled it independently and two of them said so in prose:
+    *"a comment is not a mechanism"*.  The monitor imports it rather than
+    restating it.
     """
     from molbuilder.config_dir import secrets_dir
 
@@ -635,12 +635,8 @@ def test_the_monitors_path_and_molbuilders_own_are_one_function(
         "XDG must move the token off $HOME -- that is the point of honouring it"
 
 
-# The property "no module spells the config-dir rule twice" is already
-# guarded, for EVERY module, by
-# `test_config_dir_has_one_home.py::test_no_module_spells_the_rule_a_second_time`
-# -- and by AST, so it matches the literal rather than the word appearing in
-# prose.  A copy of it here would be a second guard to keep in step, which is
-# the shape those files exist to prevent.
+# That no module spells the config-dir rule twice is review's to hold
+# (`process/code-audit.md` § 1c).
 
 
 def test_the_shipped_monitor_resolves_it_with_no_molbuilder_installed(

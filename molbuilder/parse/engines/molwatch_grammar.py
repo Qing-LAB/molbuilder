@@ -206,8 +206,8 @@ def scan_conclusion(path) -> str:
     Trajectory -- ``"running"`` when it carries no footer.
 
     The cheap door onto :func:`parse_conclusion_line`, for a caller that
-    wants only how the run ended (`model/parse.md` § 2b), and the sibling of
-    ``_run_ending.scan_ending`` on the ``.out`` side.  A status probe over a
+    wants only how the run ended (`model/parse.md` § 2b) -- what
+    ``_run_ending.ending_of`` asks of a progress log.  A status probe over a
     whole directory must not full-parse to reach one string: doing that is
     what made ``run_status`` create and grow a ``.parse.log`` beside every
     molwatch log it looked at, on every Watch poll.

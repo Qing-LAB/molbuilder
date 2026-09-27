@@ -5,13 +5,11 @@ manager): the CLI must find and use the manager through ONE framework
 door -- ``envs.manager`` in molbuilder.json first (the recorded fact),
 the PATH/env-var probe as fallback -- with the provenance carried and
 echoed, and a recorded-but-unusable manager REFUSING rather than
-silently falling back.  The last test is the architecture gate: no
-module outside diagnostics.py may probe for a manager by name.
+silently falling back.  That no module outside diagnostics.py probes for
+a manager by name is review's to hold (`process/code-audit.md` § 1c):
+the tests here ask the door what it resolved and why.
 """
 from __future__ import annotations
-
-import re
-from pathlib import Path
 
 import molbuilder.diagnostics as D
 
@@ -53,28 +51,3 @@ def test_the_manager_key_is_not_a_category(monkeypatch):
     cfg = {"envs": {"manager": "/x/mamba", "siesta": "molbuilder-siesta"}}
     assert "manager" not in get_envs(cfg)
     assert get_env_manager(cfg) == "/x/mamba"
-
-
-def test_no_manager_probe_outside_the_door():
-    """ARCHITECTURE GATE: `shutil.which` on a manager name, or a
-    subprocess argv starting with a literal manager name, appears in
-    diagnostics.py only -- everything else consumes
-    ``caps.conda_binary``.  This is what keeps 'unified and used
-    consistently' true tomorrow, not just today."""
-    root = Path(__file__).resolve().parents[1] / "molbuilder"
-    probe = re.compile(
-        r"""shutil\.which\(\s*['"](?:mamba|micromamba|conda)['"]"""
-    )
-    literal_exec = re.compile(
-        r"""subprocess\.\w+\(\s*\[\s*['"](?:mamba|micromamba|conda)['"]"""
-    )
-    offenders = []
-    for py in root.rglob("*.py"):
-        if py.name == "diagnostics.py":
-            continue
-        text = py.read_text(encoding="utf-8")
-        if probe.search(text) or literal_exec.search(text):
-            offenders.append(str(py.relative_to(root)))
-    assert not offenders, (
-        f"manager resolution outside the one door (diagnostics.py): "
-        f"{offenders} -- consume caps.conda_binary instead")

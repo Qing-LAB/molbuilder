@@ -14,7 +14,77 @@ You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
 becomes *whatever viewer fits the file you picked* — a 3D structure, a trajectory
 movie, a spectrum, or a bench sweep. The tab draws no file itself — every file
-type is a viewer's — only the Run panel (§ 3a) and the server-load strip (§ 6).
+type is a viewer's — only the Run panel (§ 3a, not built yet) and the server-load strip (§ 6).
+
+## 0. The tab as a system — read this first
+
+**What it is.** You open a folder; the tab shows the result that folder holds,
+in the way that kind of result is read. It is three parts in a row: the
+**server** says what the folder is and what each file in it is; the **picker**
+lists what can be opened and opens the folder's own result; a **presenter** —
+one per kind of result — shows it.
+
+```mermaid
+flowchart LR
+  F["the folder's files<br/>each one aspect of the calculation,<br/>at one stage of its life"] --> R["one reader per file<br/>parse/, the registry"]
+  R --> D["the folder's answer — parse_dir:<br/>what the folder IS, which file is<br/>its result, what each file is"]
+  D --> API["GET /api/results/dir"]
+  API --> P["the picker: lists the openable files,<br/>opens the folder's result"]
+  P --> C["the controller: picks the presenter<br/>for that file, mounts it"]
+  C --> V["the presenter: fetches its own data,<br/>read through the same registry"]
+```
+
+### 0.1 Each kind of folder, and what it is shown as
+
+| the folder is | the picker opens | shown by | its data |
+|---|---|---|---|
+| **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`, `-runN.pyscf.log`), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
+| **a calculation root** | a result file at the root if it holds one; otherwise nothing, and the card shows the **ladder** — each rung's state (§ 2.4) | the ladder card | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
+| **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
+| **a transport calculation** | its `<label>.transport.json` | the transport report: the I–V table and what is not drawn | the record file itself |
+| **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
+
+**A single run and a higher-level report are different by nature.** A run is
+reported from its own files. A ladder, a benchmark and a transport calculation
+are built from their rungs or trials, each by its own presenter, and each
+answers its own question — *which rung is next*, *which setting is fastest*,
+*what is the conductance*. They are never merged into one report.
+
+### 0.2 How it is built
+
+| part | module | what it does |
+|---|---|---|
+| the folder's answer | `parse/dirs/rundir.py` — `JobDirParser` → `RunDirResult`, served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, and whether a parser reads it (`parser`); for a calculation root, the ladder |
+| the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place` and `ladder` |
+| the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
+| the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
+| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport, markdown, text: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
+
+### 0.3 The rules that keep it right
+
+- **A run's files do not conflict.** Each is the same calculation reporting
+  one aspect at one stage of its life — the deck what was asked, `run.json`
+  that it was sent, the engine's output its own account, the monitor the
+  machine's, `.concluded` the exit — and the catalogue (`runfiles.WRITTEN`)
+  says which is which. Two files stating related facts are two aspects, not
+  two answers to reconcile.
+- **One reader per file, one presenter per kind of result** — not one
+  presenter for everything, and never a second reader beside a file's own.
+- **The folder's kind decides its report.** A run's report is not a ladder's,
+  a benchmark's or a transport calculation's, and none is built from another.
+- **The server says what a file is; the browser does not guess from its
+  name** (§ 2.3).
+
+### 0.4 Designed, not built yet
+
+- **The Run panel (§ 3a).** `/api/results/dir` already carries `record` — the
+  run's computation, setup, deck and verdict ([`model/parse.md`](?doc=model/parse.md)
+  § 5d) — and **no page code reads it yet**: `lib/results/run-panel.js` is W35
+  P2's to write ([`plans/plan.md`](?doc=plans/plan.md)). Until then a run's
+  computation facts are not on this page.
+- **`status`**, on the same answer — how the run is doing — is served and not
+  yet shown for a run folder; the trajectory viewer's badge shows the open
+  file's own ending.
 
 ## 1. What the page is
 
@@ -30,7 +100,7 @@ controller.
 ```mermaid
 flowchart TD
   U["you pick a file (the dropdown opens the one<br/>the server calls this directory's result)"] --> EV["a file-selected event"]
-  SC["the folder's scan"] -. "its run record" .-> RP["the Run panel (§ 3a)"]
+  SC["the folder's scan"] -. "its run record" .-> RP["the Run panel (§ 3a) — not built yet"]
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
@@ -359,6 +429,10 @@ machine-checked against the registrations; this prose is not, which is why it
 has now drifted twice. Read it as a tour, and that table as the count.)*
 
 ## 3a. The Run panel — what ran, with what, and how it went
+
+**Designed, not built** (W35 P2, § 0.4): the record below is served on
+`/api/results/dir`, and `lib/results/run-panel.js` does not exist yet. This
+section is the design it is to be built to.
 
 **A viewer shows a file; the Run panel shows the run the files came from.**
 When the folder the picker is bound to is a run — a run directory, a flat

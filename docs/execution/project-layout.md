@@ -854,12 +854,13 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` |
 | concluded | + `-run0.concluded` | `finished` or `failed` — the output's ending first |
-| force-stopped | as *running*; no marker comes | `running`: no file tells it from a live run |
+| force-stopped | as *running*; no marker comes — the monitor's closing record `[MONITOR] job ended`, when the monitor outlived the stop | `failed` by that record; `running` when nothing outlived the stop (a lost node): no file then tells it from a live run |
 
 #### 1.6.4 What reads them
 
 `prep` reads `run.json` to never reuse a launched attempt (§ 1.6.2);
-`run_status` reads both after the output's own ending
+`run_status` reads both after the output's own ending, and the monitor's
+closing record after the marker
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); the run record
 reads them as its launch and its exit
 ([`model/parse.md`](?doc=model/parse.md) § 5d.2). And **`launch run`, re-submitting

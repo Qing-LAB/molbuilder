@@ -2360,7 +2360,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # fingerprint row warns and proceeds (§ 6.6's one non-refusal), and
         # the note lands in the ledger.
         from ..task import read_task as _rt_preflight
-        from ..template import SUFFIX as _TPL_SUFFIX
+        from ..template import template_path as _template_path
         from ..validation.task import preflight as _preflight
         _pf_task = _rt_preflight(base / _TASK)
         # THE stage grammar, at the door (user-settled 2026-08-21): a
@@ -2380,7 +2380,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         # which adds § 6.4/§ 6.6a's SEQUENCE warnings (resolved stages) to
         # the preflight -- reachable on a production path since 2026-08-13
         # (A-8).  Absent or unreadable, prep's own refusal owns the story.
-        _tpl_file = base / f"{_pf_task.label}{_TPL_SUFFIX}"
+        _tpl_file = _template_path(base, _pf_task.label)
         _pf_issues = _preflight(
             _pf_task,
             template_text=(_tpl_file.read_text(encoding="utf-8")

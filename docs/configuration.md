@@ -242,8 +242,11 @@ An empty value is *not set* — `MOLBUILDER_CONFIG_DIR=` is how a shell clears a
 variable it cannot unset, and treating it as a root would put the config at the
 filesystem root.
 
-`tests/test_config_dir_has_one_home.py` pins all of it, including that no other
-module reads either variable itself.
+`tests/test_config_dir_has_one_home.py` pins all of it by setting the variables
+and asking every door where its file went. That no other module reads either
+variable itself is review's to hold (`process/code-audit.md` § 1c): a second
+reader that agrees with `config_dir()` answers exactly as it does, so no run can
+tell the two apart until the rule moves.
 
 **The other `MOLBUILDER_*` variable: `MOLBUILDER_HOST_ENV`** *(recorded here
 2026-09-13; it had no contract entry, which is D10)*. It names the HOST env for
@@ -310,8 +313,8 @@ and nothing else — see the note below.
 > still naming one is **refused**, with the variable that replaces it named.
 
 `~/.molbuilder/` — a second per-user root that moved with no variable at all —
-**no longer exists**. `tests/test_config_dir_has_one_home.py` asserts that no
-module builds a per-user path itself.
+**no longer exists**, and no module builds a per-user path itself — a rule
+review holds, for the reason above.
 
 ### 2.1e The session key has one home, and the config cannot name it
 
@@ -528,10 +531,8 @@ entry.
 **There is no `retrieve_secret("name")` door, and there must not be one.** A
 single name-keyed registry of secrets has to re-spell filenames their format
 owners own — which is the change that was tried and reverted inside one day on
-2026-08-31 (`config_dir.py` records it) and that
-`test_config_dir_has_one_home.py::TestNoModuleNamesOneOfThoseFilesItself`
-refuses: that test asserts each of these filenames appears in **exactly** the
-module entitled to spell it.
+2026-08-31 (`config_dir.py` records it) and that review refuses: each of these
+filenames is spelled in **exactly** the module entitled to spell it.
 
 **A CONSUMER OF A SECRET IS HANDED THE SECRET, NEVER A PATH TO IT** *(user,
 2026-09-20: "we should avoid user access the file directly, the api should
@@ -747,14 +748,13 @@ that is the same carve-out every other door has: a path function survives for
 MANAGEMENT, and it is the consumers that must be given the value instead.
 
 `tests/test_config_dir_has_one_home.py` fails if any door stops moving with
-`MOLBUILDER_CONFIG_DIR`, and an **AST** check there catches a filename built
-into a path outside its owner. It reads the parsed tree, not the text, so
-quote style, line breaks and `os.path.join` no longer matter; a constant
-assigned to a module-level name first is followed one level. Measured
-2026-09-20 against all four shapes that defeated the line-by-line version it
-replaced. Its limit is now the other direction: a fragment this module never
-joins — `"$cfg/notify"` handed to a *shell* — is invisible to it, which is
-what the paragraph below exists to close. Still a tripwire, not a proof.
+`MOLBUILDER_CONFIG_DIR`, or if `placement.misplaced()` — which reads the table
+`envs doctor` prints — finds a credential resolving outside `secrets/`. A
+filename built into a path outside its owner is review's to find: while the copy
+agrees with the door it gives the door's answer, so nothing a run can observe
+separates them.
+*(An AST check over the package's source stood here until 2026-09-26; it was
+retired with the other source scans, `process/testing.md` § 3a.)*
 
 **Human-facing text derives from the table too** *(2026-09-20)*.
 `config_dir.relative_home(resolver)` renders a location as `secrets/notify` —
@@ -763,8 +763,8 @@ resolves on a *cluster*. It was spelled by hand in three places and all three
 went stale in the move: the printed recipe, `this_machine.html`, and the
 issued-key panel in `this-machine/page.js`. Each told an operator to write a
 webhook where the monitor does not look, and a notifier swallows failures by
-design, so nothing would have said. The name-matching guard could not see them:
-the strings were `"$cfg/notify"` and HTML.
+design, so nothing would have said — and no scan of the Python source would
+have either: the strings were `"$cfg/notify"` and HTML.
 
 **`secrets/` is no longer empty on a working installation** — the session key
 alone appears there on first server run. An empty `environments/` still means you

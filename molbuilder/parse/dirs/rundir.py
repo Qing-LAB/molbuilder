@@ -17,6 +17,13 @@ questions about a run directory, and the Results tab asks them all through
 this one door (`/api/results/dir`) rather than guessing from filenames in the
 browser.
 
+**What a folder IS decides what is shown** (`web/results.md` § 0): one run is
+shown by the presenter for its result file; a calculation root by its ladder;
+a benchmark and a transport calculation by their own presenters.  This door
+answers what the folder is and what each file in it is; the higher-level
+reports are their own modules' (`jobset/runstatus.py`, `jobset/summarize.py`,
+`transport/record.py`), never composed here.
+
 **This module composes; it does not re-parse.** `run_status` stays in
 `job.py` and `engine_of` in `contract.py`; they are CALLED here.  The one thing absorbed bodily is the openable-discovery chain,
 which lived in `web/blueprints/watch.py` — the web layer, which nothing below
