@@ -88,15 +88,18 @@ def _time_weighted(series: List[Tuple[float, float]]) -> Optional[float]:
 
 
 def util_csv_metrics(csv_text: str) -> Dict[str, float]:
-    """One reader for the monitor's raw samples (``util.csv``): peak
-    RSS, sampled window (``monitored_elapsed_s``), mean CPU%, per-GPU
-    mean SM% (max across
+    """One reader for the monitor's raw samples (``util.csv``): the
+    largest sample of the job's memory, the sampled window
+    (``monitored_elapsed_s``), mean CPU%, per-GPU mean SM% (max across
     GPUs) and peak VRAM.
 
     Returns only the keys it could derive — an empty dict for an empty
     or headerless file — so a caller can fold the result straight into a
-    point's metrics.  Keys: ``peak_rss_gb``, ``monitored_elapsed_s``,
-    ``cpu_mean_pct``, ``gpu_sm_mean_pct``, ``gpu_vram_peak_gb``.
+    point's metrics.  Keys: ``mem_peak_sampled_gb``,
+    ``monitored_elapsed_s``, ``cpu_mean_pct``, ``gpu_sm_mean_pct``,
+    ``gpu_vram_peak_gb``.  The job's memory PEAK is `utilisation`'s to
+    state: the kernel's own counter where there is one outranks the
+    largest sample.
 
     **The name ends in ``elapsed_s`` because P-T1 says the suffix IS the
     contract** (`model/parse.md` § 2a): a time field ends in
@@ -180,10 +183,9 @@ def util_csv_metrics(csv_text: str) -> Dict[str, float]:
         # jobs as much as this one's.
         #
         # Still the max of a sampled series, so it is bounded below by the
-        # true peak.  `monitor._read_mem_peak_gb` reads the kernel's own
-        # counter and is exact; folding that in is `plan` § 2.6's job,
-        # because it needs somewhere in the record to put it.
-        out["peak_rss_gb"] = max(cols["mem_gb"])
+        # true peak; the kernel's own counter, where the monitor states one,
+        # is exact, and `utilisation` prefers it.
+        out["mem_peak_sampled_gb"] = max(cols["mem_gb"])
     if len(epochs) >= 2 and epochs[-1] > epochs[0]:
         out["monitored_elapsed_s"] = round(epochs[-1] - epochs[0], 1)
     cpu_mean = _time_weighted(_series("cpu_pct"))

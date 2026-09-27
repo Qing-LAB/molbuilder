@@ -54,7 +54,9 @@ def _usage_line(metrics: dict) -> str:
 
 
 def _real_metrics() -> dict:
-    """What the parser emits from what the MONITOR writes.
+    """What the bench's metrics are, from what the MONITOR writes -- the
+    samples through `util_csv_metrics` and then `utilisation`, the resolver
+    `summarize.parse_point` hands them to.
 
     Both halves come from the shipped code: `monitor._util_csv_header` and
     `monitor._util_csv_row` compose the file, `util_csv_metrics` reads it.
@@ -66,6 +68,7 @@ def _real_metrics() -> dict:
     time-weighted, so a row out of order contributes a negative interval.
     """
     from molbuilder.monitor import UtilSample, _util_csv_header, _util_csv_row
+    from molbuilder.parse.instruments import utilisation
     from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
     samples = [
@@ -75,7 +78,7 @@ def _real_metrics() -> dict:
     ]
     csv = "\n".join([_util_csv_header(1)]
                     + [_util_csv_row(s, 1) for s in samples]) + "\n"
-    return util_csv_metrics(csv)
+    return utilisation({}, util_csv_metrics(csv))
 
 
 def test_the_card_renders_every_metric_the_parser_produces():
@@ -87,7 +90,7 @@ def test_the_card_renders_every_metric_the_parser_produces():
 
     # The card's own vocabulary for each key it reads.
     expected_labels = {
-        "peak_rss_gb":         "peak",
+        "mem_peak_gb":         "peak",
         "cpu_mean_pct":        "cpu",
         "gpu_sm_mean_pct":     "gpu",
         "gpu_vram_peak_gb":    "vram",

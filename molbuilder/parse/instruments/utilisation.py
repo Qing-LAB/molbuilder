@@ -35,10 +35,11 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
 
     Keys are the csv's, plus ``util_basis`` naming where the MEANS came
     from (``"monitor-summary"`` | ``"util-csv"`` | ``"mixed"``) so a
-    reader can tell an exact figure from a reconstruction.  Peak RSS, the
-    sampled window (``monitored_elapsed_s``) and peak VRAM come from the
-    csv either way: the
-    summary does not carry them.
+    reader can tell an exact figure from a reconstruction, and the job's
+    memory peak, ``mem_peak_gb``, with ``mem_peak_from`` saying which it
+    is -- the kernel's counter, or the largest sample.  The sampled window
+    (``monitored_elapsed_s``) and peak VRAM come from the csv either way:
+    the summary does not carry them.
 
     **``"mixed"`` exists because ONE label cannot describe TWO means.**
     The monitor's ``summary()`` emits a ``cpu mean=`` bit and a ``gpuN sm
@@ -52,6 +53,16 @@ def utilisation(monitor: Dict[str, Any], csv: Dict[str, Any]) -> Dict[str, Any]:
     """
     out = dict(csv or {})
     mon = monitor or {}
+    # THE JOB'S MEMORY PEAK, one figure (`model/parse.md` § 5c.1): the
+    # kernel's own counter where the job has a cgroup of its own -- the
+    # monitor states it on `[UTIL-BASIS]` -- else the largest sample, which
+    # a run started directly, measured on its process tree, has alone.
+    sampled = out.pop("mem_peak_sampled_gb", None)
+    kernel = mon.get("mem_peak_kernel_gb")
+    if kernel is not None:
+        out["mem_peak_gb"], out["mem_peak_from"] = kernel, "kernel counter"
+    elif sampled is not None:
+        out["mem_peak_gb"], out["mem_peak_from"] = sampled, "largest sample"
     cpu = mon.get("stated_cpu_mean_pct")
     gpu = mon.get("stated_gpu_sm_mean_pct")
     if cpu is None and gpu is None:

@@ -1220,7 +1220,7 @@ sidecar what molbuilder serialised — not the shape of the payload.
 |---|---|---|
 | `*.scf-timing.log` | `scf-timing` · `scf_timing_rows.scf_timing_metrics` | `s_per_iter`, `iters_measured`, `rows` — the last phase's; with both phases, also `s_per_iter_<phase>`, `iters_measured_<phase>`, `rows_<phase>` |
 | `*.monitor.log` | `monitor-log` · `monitor_metrics` | `machine` {`node`, `cores`, `mem_gb`, `gpu`} from `[MACHINE]` (`scheduler.md` R12); `bound` (`gpu` / `host` / `mixed`), `stated_cpu_mean_pct` and `stated_gpu_sm_mean_pct` from `[UTIL-SUMMARY]`; `mem_basis`, `mem_peak_kernel_gb`, `mem_limit_gb` from `[UTIL-BASIS]` |
-| `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `peak_rss_gb`, `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
+| `*.util.csv` | `util-csv` · `util_csv_metrics` | the samples' `mem_peak_sampled_gb` (the largest sample of the job's memory), `monitored_elapsed_s`, `cpu_mean_pct`, `gpu_sm_mean_pct`, `gpu_vram_peak_gb` |
 
 **Seconds per iteration are timed within one phase.** Each tee line is
 `<epoch> <iscf> <the row as SIESTA printed it>`, and the row states its phase
@@ -1293,15 +1293,19 @@ has a second source to reconcile.
 *means* — `cpu_mean_pct`, `gpu_sm_mean_pct` — are in both the monitor's summary
 and the CSV. `utilisation(monitor, csv)` is the only place that chooses, and it
 stamps **`util_basis`** (`monitor-summary` | `util-csv` | `mixed`) so a
-reconstruction is never mistaken for an exact figure. Peak RSS, peak VRAM and
+reconstruction is never mistaken for an exact figure. Peak VRAM and
 `monitored_elapsed_s` come from the CSV either way — the summary does not carry
 them. Do not add a second chooser; call the door.
 
-**Memory has two peaks, each under its own name.** `peak_rss_gb` is the largest
-sampled resident set (`util.csv`); `mem_peak_kernel_gb` is the kernel's own
-counter where it keeps one, beside `mem_limit_gb` and `mem_basis`, which say
-what the figures are fractions of (the monitor's closing `[UTIL-BASIS]`). The
-run record carries both (§ 5d.1a).
+**Memory has one peak, the job's** *(user, 2026-09-26: the peak relevant to
+the calculation)*: `mem_peak_gb`, which `utilisation()` takes from the
+kernel's own counter where the job has a cgroup of its own — the monitor states
+it on its closing `[UTIL-BASIS]` (`mem_peak_kernel_gb`) — and otherwise from
+the largest sample (`mem_peak_sampled_gb`, `util.csv`): a run started directly
+is measured on its process tree, which has no kernel counter.
+`mem_peak_from` says which. `mem_limit_gb` and `mem_basis` say what the figures
+are fractions of. The run record and the bench summary carry this one peak
+(§ 5d.1a).
 
 **The rule this map is here to enforce.**
 
@@ -1369,8 +1373,8 @@ record
 │   │                    ranks_asked · threads · ranks · threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase>
-│   ├── memory           peak_rss_gb · util_basis · cpu_mean_pct · gpu_sm_mean_pct ·
-│   │                    mem_basis · mem_peak_kernel_gb · mem_limit_gb
+│   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
+│   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
 │   └── exit             code · at
 ├── setup
 │   ├── rows             [{item, items, keys, default, asked, used, echo, differs}]

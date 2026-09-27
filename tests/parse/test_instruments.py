@@ -164,8 +164,8 @@ def test_a_mean_with_no_time_base_is_absent_not_zero():
     got = util_csv_metrics(unusable)
     assert "cpu_mean_pct" not in got, (
         f"a CPU mean was reported for rows that carry no usable clock: {got}")
-    assert got.get("peak_rss_gb") == 3.4, (
-        "peak RSS needs no clock and must survive: " + repr(got))
+    assert got.get("mem_peak_sampled_gb") == 3.4, (
+        "the largest sample needs no clock and must survive: " + repr(got))
 
     # The same rows WITH a clock still measure, or the guard is just a mute.
     usable = "epoch,cpu_pct,mem_gb\n1000,40.0,3.4\n1300,80.0,3.4\n"

@@ -71,7 +71,7 @@
     function _usageLine(t) {
         const m = t.metrics || {};
         const bits = [];
-        const mem = _num(m.peak_rss_gb, " GB");
+        const mem = _num(m.mem_peak_gb, " GB");
         if (mem) bits.push("peak " + mem);
         const cpu = _num(m.cpu_mean_pct, "%", 0);
         if (cpu) bits.push("cpu " + cpu);
@@ -131,8 +131,8 @@
             { key: "s_per_iter", name: "s/iter", digits: 1,
               from: (t) => t.s_per_iter } ] },
         { title: "GB", series: [
-            { key: "peak_rss_gb", name: "peak RAM", digits: 1,
-              from: (t) => (t.metrics || {}).peak_rss_gb },
+            { key: "mem_peak_gb", name: "peak RAM", digits: 1,
+              from: (t) => (t.metrics || {}).mem_peak_gb },
             { key: "gpu_vram_peak_gb", name: "peak VRAM", digits: 1,
               from: (t) => (t.metrics || {}).gpu_vram_peak_gb } ] },
         { title: "% busy", series: [

@@ -370,11 +370,12 @@ def _instruments(f: RunFiles) -> Dict[str, Any]:
             and v is not None}
     if time:
         comp["time"] = time
-    memory = {k: util[k] for k in ("peak_rss_gb", "util_basis",
-                                   "cpu_mean_pct", "gpu_sm_mean_pct")
+    memory = {k: util[k] for k in ("mem_peak_gb", "mem_peak_from",
+                                   "util_basis", "cpu_mean_pct",
+                                   "gpu_sm_mean_pct")
               if util.get(k) is not None}
-    memory.update({k: mon[k] for k in ("mem_basis", "mem_peak_kernel_gb",
-                                       "mem_limit_gb") if k in mon})
+    memory.update({k: mon[k] for k in ("mem_basis", "mem_limit_gb")
+                   if k in mon})
     if memory:
         comp["memory"] = memory
     if mon.get("machine"):

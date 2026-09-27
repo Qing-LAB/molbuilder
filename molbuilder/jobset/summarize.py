@@ -677,7 +677,7 @@ def _point_table(points: List[BenchPoint]):
                     if isinstance(p.metrics.get("monitored_elapsed_s"), (int, float))
                     else "--")),
         ("peak-mem", "r",
-         lambda p: _num(p.metrics.get("peak_rss_gb"), "{:.1f}G")),
+         lambda p: _num(p.metrics.get("mem_peak_gb"), "{:.1f}G")),
         ("cpu%", "r",
          lambda p: _num(p.metrics.get("cpu_mean_pct"), "{:.0f}")),
         *([("gpu-sm%", "r",

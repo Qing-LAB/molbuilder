@@ -4046,7 +4046,11 @@ And the same day, after P1 and its review:
      door (`ffe0e8c4`).
   5. `run_status` reads SIESTA's stderr as the wrapper does — **open**.
   6. The memory peak shown is the job's own: the kernel's counter when the
-     job has its own cgroup, the largest sample otherwise — **open**.
+     job has its own cgroup, the largest sample otherwise — `utilisation()`
+     decides, the record and the bench summary carry it (2026-09-27).
+     *Unmeasured:* on Sol's cgroup v1 the counter and the samples are read
+     from the monitor's own cgroup and the limit from the job's; whether
+     ranks launched into another step are inside it is for a Sol run to say.
   7. Tolerances in the residuals' units: PySCF's SCF criteria stated in eV
      in `runtime_info.scf_criteria` beside SIESTA's; the viewer draws every
      residual's line from them (2026-09-27).

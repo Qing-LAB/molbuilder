@@ -94,11 +94,33 @@ def test_the_two_sources_actually_disagree():
 
 
 def test_what_the_summary_does_not_carry_still_comes_from_the_csv():
-    """Peak RSS, the sampled wall window and peak VRAM appear on no summary
-    line, so preferring it must not lose them."""
+    """The sampled wall window and peak VRAM appear on no summary line, so
+    preferring it must not lose them -- and with no kernel counter stated,
+    the job's memory peak is the largest sample, and says so."""
     got = _utilisation(_MONITOR_FINISHED, _CSV)
-    assert got["peak_rss_gb"] == 2.0
+    assert (got["mem_peak_gb"], got["mem_peak_from"]) == (2.0,
+                                                          "largest sample")
     assert got["monitored_elapsed_s"] == pytest.approx(200.0)
+
+
+def test_the_kernels_own_peak_is_the_jobs_peak_where_it_keeps_one():
+    """One memory peak, the job's (`model/parse.md` § 5c.1): where the job
+    has a cgroup of its own the monitor states the kernel's running peak on
+    `[UTIL-BASIS]`, and that exact figure outranks the largest sample a
+    10-second sampler caught.  The line is the monitor's own spelling
+    (`monitor.measurement_provenance`); the peak is set above every sample
+    here, as a kernel counter is.
+
+    API-level: the kernel counter exists only under a scheduler's cgroup,
+    which a run on this machine does not have."""
+    log = _MONITOR_FINISHED + (
+        "[t] [UTIL-BASIS] cpu% of 8 core(s) [cgroup-v2]; cpu time "
+        "[cgroup-v2]; mem [cgroup-v2]; peak 2.7 GB (kernel counter); "
+        "limit 8 GB\n")
+    got = _utilisation(log, _CSV)
+    assert (got["mem_peak_gb"], got["mem_peak_from"]) == (2.7,
+                                                          "kernel counter")
+    assert "mem_peak_sampled_gb" not in got, got
 
 
 def test_neither_source_says_nothing_rather_than_something_invented():

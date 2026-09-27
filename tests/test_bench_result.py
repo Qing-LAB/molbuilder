@@ -76,7 +76,7 @@ def test_parse_util_csv_reads_all_five_metrics():
            "105,b,50,260.9,70,10,12.5,92,11.0\n"
            "141,c,40,180.0,90,10,11.0,94,10.0\n")
     r = util_csv_metrics(csv)
-    assert r["peak_rss_gb"] == 260.9
+    assert r["mem_peak_sampled_gb"] == 260.9
     assert r["monitored_elapsed_s"] == 41.0                    # last epoch - first
     # MEANS ARE OVER TIME, NOT OVER ROWS (2026-08-25).  `util.csv` is
     # change-gated -- a row is written only when a metric moves past its
@@ -130,13 +130,13 @@ def test_parse_sacct_mem(text, expect):
 def _pts():
     return [
         BenchPoint("gpu-k8", "gpu", {"gpus": 1, "ranks_per_gpu": 8},
-                   {"s_per_iter": 1538.0, "peak_rss_gb": 25.2},
+                   {"s_per_iter": 1538.0, "mem_peak_gb": 25.2},
                    bound="gpu", state="completed"),
         BenchPoint("gpu-k4", "gpu", {"gpus": 1, "ranks_per_gpu": 4},
-                   {"s_per_iter": 1938.0, "peak_rss_gb": 22.3},
+                   {"s_per_iter": 1938.0, "mem_peak_gb": 22.3},
                    bound="gpu", state="completed"),
         BenchPoint("cpu-np64", "cpu", {"ranks": 64},
-                   {"s_per_iter": None, "peak_rss_gb": 433.2},
+                   {"s_per_iter": None, "mem_peak_gb": 433.2},
                    state="timeout"),
     ]
 
