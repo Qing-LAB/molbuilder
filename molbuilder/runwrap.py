@@ -1545,9 +1545,15 @@ def _ending_question_func() -> str:
 
     ``_mb_ending QUESTION [ARG]`` answers by exit status (0 yes, 1 no, 2 the
     ending cannot be read); ``_mb_ending`` alone prints the ending in words.
-    With no python beside the job it answers 2 -- no hint and no warm retry.
-    ``_mb_ending_able`` asks that in THIS shell, so the one place that asks
-    first can say so once: an ask inside ``$( )`` cannot set anything its
+    With no python beside the job, or a bundle that does not load on it, it
+    answers 2 -- no hint and no warm retry.
+
+    ``_mb_ending_able`` ASKS THE BUNDLE ONCE whether it loads here
+    (``mb_monitor.pyz loads``) and remembers the answer, so a bundle that
+    cannot load prints its error once and the one place that asks first says
+    the ending cannot be read -- where every question printed the error again
+    until 2026-09-28 (user: "ask the bundle once").  It is asked in THIS shell
+    before any question, because an ask inside ``$( )`` cannot set anything its
     caller sees.
     """
     return (
@@ -1557,7 +1563,15 @@ def _ending_question_func() -> str:
         "# table (run-reports.md 2.3).  _mb_ending QUESTION [ARG]: exit 0 yes,\n"
         "# 1 no, 2 cannot read; _mb_ending alone: the ending in words.\n"
         "_mb_ending_able() {\n"
-        f'    [ -n "$_mb_py" ] && [ -f {MONITOR_BUNDLE} ]\n'
+        '    if [ -z "${_mb_ending_state:-}" ]; then\n'
+        f'        if [ -n "$_mb_py" ] && [ -f {MONITOR_BUNDLE} ] \\\n'
+        f'           && "$_mb_py" {MONITOR_BUNDLE} loads; then\n'
+        "            _mb_ending_state=able\n"
+        "        else\n"
+        "            _mb_ending_state=unable\n"
+        "        fi\n"
+        "    fi\n"
+        '    [ "$_mb_ending_state" = able ]\n'
         "}\n"
         "_mb_ending() {\n"
         "    _mb_ending_able || return 2\n"
@@ -1567,10 +1581,6 @@ def _ending_question_func() -> str:
     )
 
 
-#: What the wrapper's log says when the ending cannot be asked.
-_ENDING_UNREADABLE = ("the ending cannot be read here (needs a python "
-                      "interpreter + mb_monitor.pyz beside the job): no "
-                      "failure hint, no warm retry")
 
 
 def _gpu_runtime_defaults_block() -> str:
@@ -4249,6 +4259,13 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 #: reader.
 MONITOR_BUNDLE = "mb_monitor.pyz"
 
+#: What the wrapper's log says when the ending cannot be asked: no python
+#: beside the job, no bundle, or a bundle that does not load on it -- whose
+#: error the one ask printed just above (`_mb_ending_able`).
+_ENDING_UNREADABLE = (f"the ending cannot be read here (it needs a python "
+                      f"beside the job that loads {MONITOR_BUNDLE}): no "
+                      f"failure hint, no warm retry")
+
 #: The bundle's entry: the monitor, whose exit status is the process's --
 #: `_run_ending`'s questions answer by it.  A bundle this python cannot
 #: import answers `ending` with 2, *cannot read* (`job-contracts.md` § 2.6),
@@ -4259,8 +4276,10 @@ MONITOR_BUNDLE = "mb_monitor.pyz"
 #: so a ``starting`` with no ``started`` is a monitor that died loading -- and
 #: the error follows it, one line and the traceback.  Until 2026-09-27 the
 #: error was caught and the process exited without a word, which undid the
-#: session log keeping the monitor's stderr.  The `ending` door prints no
-#: pair: the wrapper waits on its answer and reads its exit status.
+#: session log keeping the monitor's stderr.  The `ending` and `loads`
+#: verbs print no pair: the wrapper waits on their answers and reads their
+#: exit status -- `loads` answers whether the bundle loads on this python and
+#: nothing else, so the wrapper can ask it once (`_mb_ending_able`).
 #:
 #: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
 #: function -- because its whole job is to report a python that cannot load
@@ -4271,8 +4290,8 @@ _BUNDLE_MAIN = (
     f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
     f"(time.strftime({LOG_CLOCK!r}), level, message))\n"
     "    sys.stderr.flush()\n"
-    "_ending = sys.argv[1:2] == ['ending']\n"
-    "if not _ending:\n"
+    "_asked = sys.argv[1:2] in (['ending'], ['loads'])\n"
+    "if not _asked:\n"
     f"    _say('INFO', 'monitor: starting {MONITOR_BUNDLE} on python %s (%s)'"
     " % (sys.version.split()[0], sys.executable))\n"
     "try:\n"
@@ -4282,8 +4301,10 @@ _BUNDLE_MAIN = (
     f"    _say('ERROR', 'monitor: {MONITOR_BUNDLE} did not load -- %s: %s'"
     " % (type(_e).__name__, _e))\n"
     "    traceback.print_exc()\n"
-    "    raise SystemExit(2 if _ending else 1)\n"
-    "if not _ending:\n"
+    "    raise SystemExit(2 if _asked else 1)\n"
+    "if sys.argv[1:2] == ['loads']:\n"
+    "    raise SystemExit(0)\n"
+    "if not _asked:\n"
     f"    _say('INFO', 'monitor: {MONITOR_BUNDLE} started')\n"
     "raise SystemExit(mb_monitor.main())\n")
 

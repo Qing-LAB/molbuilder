@@ -380,10 +380,12 @@ exited without a word (and before that its stderr went to `/dev/null`), so the
 session log said `monitor: pid=N` and then nothing. The entry is written in the
 Python every interpreter can parse, so it can say this on any python that
 runs it. The ending door (`mb_monitor.pyz ending …`,
-[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6) prints the same
-error when it cannot load — once for each question the wrapper asks it — and
-answers 2, *cannot read*; it prints no start pair, because the wrapper waits
-on its answer and reads its exit status.
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6) answers 2,
+*cannot read*, for a bundle that does not load. The wrapper asks the bundle
+once, before its first question (`mb_monitor.pyz loads`), so that error prints
+once and the wrapper says the ending cannot be read. Neither verb prints a
+start pair, because the wrapper waits on their answers and reads their exit
+status.
 Nothing else reaches stderr in a healthy run.
 
 | flag | from | meaning |
