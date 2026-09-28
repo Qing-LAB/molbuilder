@@ -328,12 +328,11 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
         # while it sat in the queue.
         + ("" if notify_report is None
            else f'--notify-report "{",".join(notify_report)}" ')
-        # ITS OWN ERRORS GO TO THE RUN'S SESSION LOG, not /dev/null: the
-        # monitor opens its `.monitor.log` only once it has loaded, so one
-        # that dies starting -- a shipped file reaching into molbuilder, a
-        # package the job's env lacks -- left nothing at all, and the reason
-        # was thrown away (`run-reports.md` § 2.3).  It writes nothing to
-        # stderr otherwise; its stdout stays discarded.
+        # ITS STDERR GOES TO THE RUN'S SESSION LOG, its stdout nowhere: the
+        # monitor opens its `.monitor.log` only once it has loaded, so its
+        # START is said there -- *starting*, then *started* or the error
+        # that stopped it -- where one that died loading once left nothing
+        # at all (`run-reports.md` § 2.6).
         + f'--watch-pid $$ >/dev/null 2>>"$_runwrap_log" &\n'
         f'    _monitor_pid=$!\n'
         f'    _log INFO "monitor: pid=$_monitor_pid (nice 19, interval '
@@ -4255,7 +4254,7 @@ MONITOR_BUNDLE = "mb_monitor.pyz"
 #: import answers `ending` with 2, *cannot read* (`job-contracts.md` § 2.6),
 #: never 1, which would say *no*.
 #:
-#: IT SAYS ITS LOAD, in the session log's own line (`run-reports.md` § 2.3):
+#: IT SAYS ITS LOAD, in the session log's own line (`run-reports.md` § 2.6):
 #: ``monitor: starting ...`` before the import and ``... started`` after it,
 #: so a ``starting`` with no ``started`` is a monitor that died loading -- and
 #: the error follows it, one line and the traceback.  Until 2026-09-27 the

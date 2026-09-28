@@ -534,7 +534,7 @@ stopped with SIGUSR1, not an ending (§ 4.1).
 | instrument | file | engines | written | read by |
 |---|---|---|---|---|
 | **run banner** — host, cwd, env, engine binary and version, launch mode, threading, GPU resources | the session log | both | before the engine starts | a person; the run record |
-| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included, and the engine's wall time on its `benchmark:` line | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
+| **session log** — the wrapper's stdout and stderr, SIESTA's stderr included, the engine's wall time on its `benchmark:` line, and the monitor's start — *starting*, then *started* or the error that stopped it ([`run-reports.md`](?doc=execution/run-reports.md) § 2.6) | `<basename>.runwrap-<stamp>.log`, one per start | both | from its first line | the run record; `_mb_ending` (§ 3.5) |
 | **the engine's stdout**, teed | `<basename>-runN.out` · `-runN.pyscf.log` | SIESTA · PySCF | as it prints | `run_status` (§ 4.2); the viewers |
 | **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
 | **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |

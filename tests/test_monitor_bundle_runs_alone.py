@@ -41,7 +41,9 @@ def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path)
 
     No layer rule can see this.  A travelling module importing `persist` is
     L1 importing L1 -- perfectly legal, and fatal here, because only these
-    files travel.  And the failure is SILENT: `runwrap` records the last
+    files travel.  And the failure was SILENT until 2026-09-27, when the
+    session log began saying why (`run-reports.md` § 2.6): `runwrap` records
+    the last
     time it happened (`config_dir.py` added to one stager and not the other),
     and what it cost was *every production run's monitor dying at import with
     stderr to /dev/null* -- no [MACHINE], no status, no util.csv, no reports.

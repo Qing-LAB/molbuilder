@@ -1,8 +1,8 @@
 """A monitor says, in the run's session log, that it loaded -- or why it did
-not (`execution/run-reports.md` § 2.3): ``monitor: starting ...`` before it
-imports anything and ``monitor: mb_monitor.pyz started`` once it has, so a
-``starting`` with no ``started`` is a monitor that died loading, and its
-error follows.
+not (`execution/run-reports.md` § 2.6): ``monitor: starting ...`` before it
+imports the monitor and ``monitor: mb_monitor.pyz started`` once it has, in
+the session log's own line; a monitor that died loading says ``starting``, one
+``ERROR`` line naming the exception, its traceback, and no ``started``.
 
 The monitor opens its `.monitor.log` only once it has loaded, so the session
 log is the one place a failed load can be seen at all.  Until 2026-09-27 the
@@ -98,8 +98,8 @@ def test_a_monitor_that_loads_says_so(tmp_path, monkeypatch):
     """
     from molbuilder.runwrap import MONITOR_BUNDLE
     bundle, said = _launched(tmp_path, monkeypatch)
-    starting = said.find(f"monitor: starting {MONITOR_BUNDLE} on python ")
-    started = said.find(f"monitor: {MONITOR_BUNDLE} started")
+    starting = said.find(f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python ")
+    started = said.find(f"[INFO ] monitor: {MONITOR_BUNDLE} started")
     assert starting != -1 and started != -1, said[-3000:]
     assert starting < started, "started was said before starting"
     assert list(bundle.glob("*.monitor.log")), (
@@ -107,21 +107,28 @@ def test_a_monitor_that_loads_says_so(tmp_path, monkeypatch):
 
 
 def test_a_monitor_that_dies_loading_says_why(tmp_path, monkeypatch):
-    """``starting``, the error with its reason, and no ``started`` -- a
-    member of the bundle failing at import, the real entry catching it.
+    """``starting``, the ``ERROR`` line naming the exception, the traceback
+    naming the member that failed, and no ``started`` -- a member of the
+    bundle failing at import, the real entry catching it.
 
-    MUTATION THIS MUST FAIL AGAINST: the entry catching the import error and
-    exiting without a word (`runwrap._BUNDLE_MAIN` before 2026-09-27).
+    MUTATIONS THIS MUST FAIL AGAINST: the entry catching the import error and
+    exiting without a word (`runwrap._BUNDLE_MAIN` before 2026-09-27); the
+    entry saying ``started`` before the import; the ``ERROR`` line or the
+    traceback left out.
     """
     from molbuilder.runwrap import MONITOR_BUNDLE
     bundle, said = _launched(tmp_path, monkeypatch,
                              broken_member="report_fields.py")
-    assert f"monitor: starting {MONITOR_BUNDLE} on python " in said, (
+    assert f"[INFO ] monitor: starting {MONITOR_BUNDLE} on python " in said, (
         said[-3000:])
-    assert f"monitor: {MONITOR_BUNDLE} did not load" in said, said[-3000:]
-    assert _DYING_WORDS in said, (
+    error = said.find(f"[ERROR] monitor: {MONITOR_BUNDLE} did not load -- "
+                      f"ImportError: {_DYING_WORDS}")
+    assert error != -1, (
         "the monitor died loading and its reason is not in the session "
         "log:\n" + said[-3000:])
+    assert said.find(broken := "report_fields.py", error) != -1, (
+        f"no traceback naming {broken} follows the error:\n"
+        + said[error:error + 3000])
     assert f"monitor: {MONITOR_BUNDLE} started" not in said, (
         "a monitor that failed to load said it started")
     assert not list(bundle.glob("*.monitor.log")), (

@@ -156,7 +156,7 @@ def test_a_monitor_missing_its_companion_still_monitors(tmp_path, monkeypatch):
     is *reports off* (`run-reports.md`: absent is off), never startup
     death.  Death cost every [STATUS], the util series and the [MACHINE]
     record of every production run for two days, silently
-    (stderr goes to /dev/null under the wrapper)."""
+    (its stderr went to /dev/null under the wrapper until 2026-09-27)."""
     def _no_companion():
         raise ModuleNotFoundError("config_dir")
     # PATCH THE LIVE DOOR.  This patched `_config_dir` until 2026-09-20; when

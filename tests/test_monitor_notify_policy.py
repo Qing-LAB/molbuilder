@@ -550,7 +550,7 @@ def test_a_relaxation_with_the_trigger_OFF_reports_no_steps(tmp_path):
 # --------------------------------------------------------------------- #
 
 def test_a_misconfigured_destination_says_so_where_it_can_be_READ(tmp_path, monkeypatch):
-    """The wrapper backgrounds this process as ``>/dev/null 2>&1 &``.
+    """The wrapper backgrounds this process with its stdout at ``/dev/null``.
 
     So anything printed goes nowhere.  A user whose notify file has a typo
     would get no notifications AND no explanation -- the diagnostic existed

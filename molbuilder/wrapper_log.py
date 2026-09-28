@@ -3,7 +3,8 @@ and ONE reader of them.
 
 `runwrap` writes the log: its own lines -- the section banner, the host and
 environment, the run index, the launch -- and, tee'd in, everything the
-engine said on stdout and stderr.  This module is the one spelling of the
+engine said on stdout and stderr; the monitor adds its start, *starting* and
+then *started* or the error that stopped it (`run-reports.md` § 2.6).  This module is the one spelling of the
 wrapper's lines, which the writer renders and every reader reads with: the
 run record (`parse/dirs/record.py`), the bench's trial reader
 (`bench/result.py`), and `run_status` (`parse/dirs/job.py`), which reads a

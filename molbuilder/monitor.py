@@ -1228,8 +1228,8 @@ def _notify_say(msg: str, log: Optional[Path] = None) -> None:
     """Say something about notification setup, where it can be READ.
 
     The wrapper backgrounds this process with its stdout at ``/dev/null``
-    (its stderr goes to the session log, for a start that fails --
-    `run-reports.md` § 2.3), so anything printed goes nowhere: a misconfigured channel would produce no
+    (its stderr goes to the session log, which carries its start --
+    `run-reports.md` § 2.6), so anything printed goes nowhere: a misconfigured channel would produce no
     notifications and no explanation, which is the worst of both.  ``log`` is
     the monitor log the user actually opens; printing is the fallback for a
     caller that has no log yet -- an interactive `molbuilder monitor`, or a
@@ -1435,7 +1435,7 @@ def load_channels(log: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
 
     **It says so in the LOG**, not on stdout.  The wrapper backgrounds this
     process with its stdout at ``/dev/null`` (its stderr goes to the session
-    log, for a start that fails), so anything printed goes nowhere:
+    log, which carries its start), so anything printed goes nowhere:
     a misconfigured channel would produce no notifications and no
     explanation, which is the worst of both.  ``log`` is the monitor log the
     user actually reads.  Printing is the fallback for a caller that has no

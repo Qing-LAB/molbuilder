@@ -301,7 +301,7 @@ runs.
 
 | file | written by | when | read by | absent means |
 |---|---|---|---|---|
-| `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) |
+| `<stem>-runN.monitor.log` | the monitor | appended from its start to its closing lines | a person; `parse/instruments/monitor.py` ([`model/parse.md`](?doc=model/parse.md) § 5c.1); `run_status`, its closing record ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) | the monitor never started — the wrapper's log says why (*monitor: not started …*) — or it died loading: its `starting` line and the error, no `started` (§ 2.6) |
 | `<stem>-runN.util.csv` | the monitor | a header and a first row at start, then change-gated rows (§ 2.1) | the bench summary; `utilisation` (§ 5c.1 there) | nothing was sampled |
 | `<state dir>/reports/<user>.jsonl` | the listener, on the server | one line per accepted report | `jq`, pandas (§ 4.1a) | no report reached the listener |
 
@@ -359,17 +359,31 @@ itself, in the session log's own line format (`wrapper_log.LOG_LINE`):
 [23:41:35-0700] [INFO ] monitor: mb_monitor.pyz started
 ```
 
-— the first before it imports anything, the second once it has. **A
-`starting` with no `started` is a monitor that died loading** — a shipped
-file reaching into molbuilder, a package the job's env lacks, a python too old
-for its files — and the error follows it: one `ERROR` line naming the
-exception, then its traceback. Until 2026-09-27 the entry caught that error and
+— the first before it imports the monitor, the second once it has. **A
+monitor that died loading says so**: `starting`, then one `ERROR` line naming
+the exception and its traceback, which names the file that failed, and no
+`started` — a shipped file reaching into molbuilder, a package the job's env
+lacks, a python too old for its files:
+
+```
+[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.6.8 (/usr/bin/python3)
+[23:41:35-0700] [ERROR] monitor: mb_monitor.pyz did not load -- SyntaxError: invalid syntax (runfiles.py, line 12)
+Traceback (most recent call last):
+  …
+```
+
+A `starting` with neither a `started` nor an `ERROR` is a monitor stopped
+while it was still loading — a run that ended within the monitor's first
+fraction of a second (its load takes about 0.2 s), stopped by the wrapper's
+exit trap. Until 2026-09-27 the entry caught that error and
 exited without a word (and before that its stderr went to `/dev/null`), so the
 session log said `monitor: pid=N` and then nothing. The entry is written in the
 Python every interpreter can parse, so it can say this on any python that
-runs it. The ending door (`mb_monitor.pyz ending …`, § 2.6) prints the same
-error when it cannot load, and answers 2, *cannot read*; it prints no start
-pair, because the wrapper waits on its answer and reads its exit status.
+runs it. The ending door (`mb_monitor.pyz ending …`,
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 2.6) prints the same
+error when it cannot load — once for each question the wrapper asks it — and
+answers 2, *cannot read*; it prints no start pair, because the wrapper waits
+on its answer and reads its exit status.
 Nothing else reaches stderr in a healthy run.
 
 | flag | from | meaning |
