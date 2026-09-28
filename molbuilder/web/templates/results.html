@@ -32,6 +32,7 @@
 {# The bench-sweep inspector's own sheet (docs/web/bench-summary.md). #}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/bench-summary.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/transport.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/inspectors/fc-sweep.css') }}">
 {# 3Dmol: structure + trajectory inspectors both mount a viewer.
    Plotly: trajectory inspector charts energy / force / SCF traces. #}
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
@@ -260,6 +261,9 @@
    ahead of the `.json` catch-all in source.js, or a finished conductance
    run is shown as a text pane. #}
 <script defer src="{{ url_for('static', filename='lib/inspectors/transport.js') }}"></script>
+{# A SIESTA vibration's displacement sweep (`.fc-sweep.json`) -- compound, so
+   ahead of the `.json` catch-all too (engines/vibration.md 5.9). #}
+<script defer src="{{ url_for('static', filename='lib/inspectors/fc-sweep.js') }}"></script>
 <script defer src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 {# A MODULE: it imports VibrationView and hands `mount` to the spectra core,
    which is a classic script and cannot import one itself.  See the file. #}

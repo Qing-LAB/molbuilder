@@ -145,3 +145,15 @@ def vibration_render_kind(stage_name: str) -> str:
     invented for it -- and every other rung is the kind's own."""
     return ("optimization" if stage_name == VIBRATION_RELAX_STAGE
             else "vibration")
+
+
+def force_constant_stages(task) -> List[str]:
+    """The enabled stages of a vibration description that render the kind's
+    own deck, in ladder order -- every stage after ``relax``
+    (:func:`vibration_render_kind`), WHATEVER ITS NAME.  On SIESTA each is a
+    force-constant run, and two or more are a displacement sweep
+    (`engines/vibration.md` § 5.9); each measures at the relax stage's
+    geometry (§ 5.2a).  Asked here, so nothing asks a stage's name."""
+    return [s.name for s in task.stages
+            if getattr(s, "enabled", True)
+            and vibration_render_kind(s.name) == "vibration"]

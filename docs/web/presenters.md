@@ -44,6 +44,7 @@ viewer for one kind of file. Today there are seven:
 | `spectra` | `.spectra.json` | a spectrum **chart** + a modes table | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
+| `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage and what it varied, each mode's frequency per stage (matched by shape), the force-constant changes, and where each stage's own files are (`engines/vibration.md` § 5.9) | yes — *Spectrum* |
 | `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |
 | `source` | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
 

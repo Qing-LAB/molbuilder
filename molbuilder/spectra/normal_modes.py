@@ -25,6 +25,10 @@ may read a module-level name: a constant referenced from module scope is
 a ``NameError`` in the deck.  Each function imports numpy under its own
 roof and takes everything else as an argument.  ``vibrational_modes``
 calls ``rigid_motions`` by name, so a deck splices the two in this order.
+
+TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
+(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5), so it
+imports nothing of molbuilder at module level.
 """
 from __future__ import annotations
 

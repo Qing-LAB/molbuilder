@@ -93,33 +93,16 @@ def test_every_atom_held_is_refused_by_the_gate():
                for i in issues)
 
 
-def _analysed(struct, sort, perm, fc_name, **kw):
-    """The analysis over a measured ``.FC`` fixture, handed what the finish
-    hands it (`spectra.siesta_vibration.result_of`): the block over the
-    nudged atoms -- the free tail of the held-first copy --, the masses, the
-    copy's geometry and held set, and the recorded permutation."""
+def test_the_modes_come_back_in_the_input_order(tmp_path):
+    """The analysis's return leg, at its own API (`spectra.vibrational_analysis`,
+    `engines/vibration.md` § 5.5), on the measured unrelaxed `.FC`: held atom
+    LAST in the input, so the sort really reorders; the block, masses and
+    geometry are the sorted copy's, and every row comes back in the input's
+    numbering through the recorded permutation.  A measured fixture, not the
+    road -- the road's own run is the e2e test."""
     from molbuilder.chemistry import atomic_mass
     from molbuilder.parse.engines.siesta_fc import hessian_from_fc, read_fc
-    from molbuilder.spectra.methods import siesta_methods_text
     from molbuilder.spectra.vibrational_analysis import vibrational_analysis
-    copy = sort.structure
-    held = sorted(copy.frozen_atoms)
-    free = [i for i in range(copy.n_atoms) if i not in held]
-    fc = read_fc(FIXTURES / "siesta_fc" / fc_name)
-    return vibrational_analysis(
-        hessian_from_fc(fc, free), [atomic_mass(e) for e in copy.elements],
-        copy.positions, copy.elements, held, axis_kind=copy.axis_kind,
-        cell=copy.cell, permutation=perm, label="h2", engine="siesta",
-        methods_text=siesta_methods_text(displacement_bohr=0.04,
-                                         n_free=len(free), n_held=len(held),
-                                         n_rigid=2, siesta_version=""),
-        **kw)
-
-
-def test_the_modes_come_back_in_the_input_order(tmp_path):
-    """The whole return leg on the measured fixture: held atom LAST in the
-    input, so the sort really reorders; the derivation reads the record and
-    speaks the input's numbering."""
     s = Structure(elements=["H", "H"],
                   positions=np.array([[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]]),
                   regions={"frozen_atoms": [1]},
@@ -130,7 +113,12 @@ def test_the_modes_come_back_in_the_input_order(tmp_path):
     write_permutation(tmp_path, sort)
     perm = read_permutation(tmp_path)
     assert perm.key == "held-first"
-    r = _analysed(s, sort, perm, "h2.FC")
+    copy = sort.structure
+    r = vibrational_analysis(
+        hessian_from_fc(read_fc(FIXTURES / "siesta_fc" / "h2.FC"), [1]),
+        [atomic_mass(e) for e in copy.elements], copy.positions,
+        copy.elements, [0], axis_kind=copy.axis_kind, cell=copy.cell,
+        permutation=perm, label="h2", engine="siesta")
     assert r.engine == "siesta"
     assert r.free_atom_idxs == [0] and r.frozen_atom_idxs == [1]
     assert [round(m.frequency_cm1, 1) for m in r.modes] == [3354.6]
@@ -140,7 +128,9 @@ def test_the_modes_come_back_in_the_input_order(tmp_path):
     assert all(m.raman_activity_a4_amu is None and m.ir_intensity_km_mol is None
                for m in r.modes)
     assert r.thermo["regime"] == "vibrational-only"
-    assert "Head1997" in r.bibliography_keys
+    # no forces handed in: nothing judged, nothing invented
+    assert r.relaxation["converged"] is None
+    assert r.relaxation["max_force_eh_bohr"] is None
 
 
 def _relaxed_h2():
@@ -153,51 +143,69 @@ def _relaxed_h2():
                      axis_kind=("isolated",) * 3)
 
 
-def test_the_reference_forces_are_read_from_the_run_and_stationarity_is_judged(tmp_path):
-    """R5 on this route (`engines/vibration.md` § 5.5): the forces SIESTA
-    evaluated at its FC step 0 are read from the run's output, the largest
-    component over the FREE atoms is judged against the criterion given, and
-    the verdict is written with the number -- on the measured relaxed fixture
-    (a measured fixture, not the road: the road's own run is the e2e test),
-    then with a criterion the same forces cannot meet."""
+def _fc_attempt(root, *, criterion=0.02):
+    """A finished force-constant attempt built from the measured relaxed H2
+    fixtures -- what a job's finish finds beside itself
+    (`engines/vibration.md` § 5.5): the measured deck (`h2.fdf`, the held
+    atom first) with the two blocks the finish reads written by their own
+    writers, the run's output and force constants, and the permutation of a
+    held-last input written by the sort.  Returns ``(deck, output)``."""
+    import shutil
+    from types import SimpleNamespace
+
+    from molbuilder.script_emit import emit_engine_offset, emit_vibration_record
+    from molbuilder.spectra.siesta_vibration import vibration_record
+    root.mkdir(parents=True, exist_ok=True)
+    fx = FIXTURES / "siesta_fc"
+    frame = SimpleNamespace(applied_offset=[0.0, 0.0, 0.0],
+                            cell=[[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
+                                  [0.0, 0.0, 10.0]], stated=True)
+    rec = vibration_record(stage="freq", force_criterion_ev_ang=criterion,
+                           already_relaxed=True, relaxation=None,
+                           molbuilder_version="fixture")
+    (root / "h2.fdf").write_text(
+        (fx / "h2.fdf").read_text() + "\n"
+        + emit_engine_offset(frame, ["isolated"] * 3) + "\n"
+        + emit_vibration_record(rec) + "\n")
+    shutil.copy2(fx / "h2_fc.out", root / "h2-run0.out")
+    shutil.copy2(fx / "h2_relaxed.FC", root / "h2.FC")
+    write_permutation(root, sort_by(_relaxed_h2(), "held-first"))
+    return root / "h2.fdf", root / "h2-run0.out"
+
+
+def test_the_finish_judges_the_reference_forces_by_the_decks_criterion(tmp_path):
+    """R5 on this route (`engines/vibration.md` § 5.5): the finish reads the
+    forces SIESTA evaluated at its FC step 0 from the run's output, judges the
+    largest component over the FREE atoms against the criterion the deck's
+    `vibration` block carries, and writes the verdict with the number -- on
+    the measured relaxed fixture, then with a criterion the same forces cannot
+    meet.  The whole finish, `siesta_vibration.finish`, on a fixture attempt."""
+    import json
+
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    from molbuilder.parse.engines.siesta_fc import (fc_block_asymmetry,
-                                                    read_fc,
-                                                    reference_frame_of)
-    from molbuilder.parse.engines.siesta_reader import SiestaReader
-    # the reference step through SIESTA's reading pass -- what the finish
-    # reads beside the job
-    f = np.asarray(reference_frame_of(SiestaReader().feed_text(
-        (FIXTURES / "siesta_fc" / "h2_fc.out").read_text()).finish())[
-            "forces"], dtype=float)
-    # the deck's order: the held atom first, the free one second
-    assert abs(f[0, 2] - (-0.003787)) < 1e-9 and abs(f[1, 2] - (-0.000057)) < 1e-9
-    fc = read_fc(FIXTURES / "siesta_fc" / "h2_relaxed.FC")
+    from molbuilder.parse.engines.siesta_fc import fc_block_asymmetry, read_fc
+    from molbuilder.spectra.siesta_vibration import finish
     # an axial block: the off-diagonals vanish by symmetry, so it shows nothing
-    assert fc_block_asymmetry(fc, [1]) < 1e-9
-    s = _relaxed_h2()
-    sort = sort_by(s, "held-first")
-    write_permutation(tmp_path, sort)
-    perm = read_permutation(tmp_path)
-    r = _analysed(s, sort, perm, "h2_relaxed.FC",
-                  reference_forces_ev_ang=f, force_criterion_ev_ang=0.02,
-                  already_relaxed=True,
-                  engine_metadata={"reference_force_criterion_ev_ang": 0.02})
-    assert [round(m.frequency_cm1, 1) for m in r.modes] == [3022.3]
-    rx = r.relaxation
+    assert fc_block_asymmetry(
+        read_fc(FIXTURES / "siesta_fc" / "h2_relaxed.FC"), [1]) < 1e-9
+    d = json.loads(finish(*_fc_attempt(tmp_path / "a", criterion=0.02))
+                   .read_text())
+    assert [round(m["frequency_cm1"], 1) for m in d["modes"]] == [3022.3]
+    assert d["free_atom_idxs"] == [0] and d["frozen_atom_idxs"] == [1]
+    rx = d["relaxation"]
     assert rx["converged"] is True and rx["already_relaxed"] is True
-    assert abs(rx["max_force_eh_bohr"] - 0.000057 / HARTREE_BOHR_EV_ANGSTROM_ASE) < 1e-12
+    # the free atom's force, not the held one's (the deck's order: held first)
+    assert abs(rx["max_force_eh_bohr"]
+               - 0.000057 / HARTREE_BOHR_EV_ANGSTROM_ASE) < 1e-12
     assert abs(rx["max_force_all_atoms_eh_bohr"]
                - 0.003787 / HARTREE_BOHR_EV_ANGSTROM_ASE) < 1e-12
-    assert r.engine_metadata["reference_force_criterion_ev_ang"] == 0.02
+    assert d["engine_metadata"]["reference_force_criterion_ev_ang"] == 0.02
+    assert d["engine_metadata"]["fc_range_1based"] == [2, 2]
+    assert "Head1997" in d["bibliography_keys"]
     # the same forces against a criterion they cannot meet: the verdict flips
-    # and the warning names the number and the two ways out
-    r2 = _analysed(s, sort, perm, "h2_relaxed.FC",
-                   reference_forces_ev_ang=f, force_criterion_ev_ang=1e-5)
-    assert r2.relaxation["converged"] is False
-    # no forces given: nothing judged, nothing invented
-    r3 = _analysed(s, sort, perm, "h2_relaxed.FC")
-    assert r3.relaxation["converged"] is None and r3.relaxation["max_force_eh_bohr"] is None
+    d2 = json.loads(finish(*_fc_attempt(tmp_path / "b", criterion=1e-5))
+                    .read_text())
+    assert d2["relaxation"]["converged"] is False
 
 
 def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
@@ -206,11 +214,11 @@ def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
     the canonical vector -- the number a vibration-coupled transport step
     displaces along -- and are absent for an imaginary mode."""
     import math
+
     from molbuilder.constants import ZERO_POINT_Q2_AMU_ANG2_CM1
-    s = _relaxed_h2()
-    sort = sort_by(s, "held-first")
-    write_permutation(tmp_path, sort)
-    r = _analysed(s, sort, read_permutation(tmp_path), "h2_relaxed.FC")
+    from molbuilder.spectra.siesta_vibration import (read_force_constant_run,
+                                                     result_of)
+    r = result_of(read_force_constant_run(*_fc_attempt(tmp_path)))
     row = r.to_dict()["modes"][0]
     nu = row["frequency_cm1"]
     q = row["zero_point_amplitude_amu12_ang"]
@@ -233,6 +241,46 @@ def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
     row = r.to_dict()["modes"][0]
     assert row["zero_point_amplitude_amu12_ang"] is None
     assert row["zero_point_displacement_ang"] is None
+
+
+def test_the_finish_runs_where_molbuilder_is_not(tmp_path):
+    """I23 (`engines/vibration.md` § 7): the finish's bundle, `mb_vibration.pyz`,
+    run by the SIESTA job env's own python in a fixture attempt, with the
+    environment emptied so molbuilder cannot be imported -- it loads, answers
+    `loads`, and writes the same spectrum the package's finish writes.
+
+    MUTATION THIS MUST FAIL AGAINST: a member dropped from
+    `runwrap.VIBRATION_COMPANIONS`, or one importing a non-member at load.
+    Skipped where the SIESTA env is not installed.
+    """
+    import json
+    import subprocess
+
+    from _road import env_available, env_bin
+    from molbuilder.runwrap import VIBRATION_BUNDLE, vibration_bundle
+    from molbuilder.spectra.siesta_vibration import finish
+    if not env_available("molbuilder-siesta"):
+        pytest.skip("needs the molbuilder-siesta env")
+    py = env_bin("molbuilder-siesta") / "python"
+    deck, output = _fc_attempt(tmp_path / "job")
+    (deck.parent / VIBRATION_BUNDLE).write_bytes(vibration_bundle())
+    bare = {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    probe = subprocess.run([str(py), "-c", "import molbuilder"],
+                           cwd=deck.parent, env=bare, capture_output=True)
+    assert probe.returncode != 0, "molbuilder is importable: not a bare job"
+    loads = subprocess.run([str(py), VIBRATION_BUNDLE, "loads"],
+                           cwd=deck.parent, env=bare, capture_output=True,
+                           text=True)
+    assert loads.returncode == 0, loads.stderr
+    ran = subprocess.run([str(py), VIBRATION_BUNDLE, deck.name, output.name],
+                         cwd=deck.parent, env=bare, capture_output=True,
+                         text=True)
+    assert ran.returncode == 0, ran.stderr
+    beside = json.loads((deck.parent / "h2.spectra.json").read_text())
+    host = json.loads(finish(*_fc_attempt(tmp_path / "host")).read_text())
+    for d in (beside, host):
+        d.pop("timestamp")
+    assert beside == host
 
 
 # --------------------------------------------------------------------- #

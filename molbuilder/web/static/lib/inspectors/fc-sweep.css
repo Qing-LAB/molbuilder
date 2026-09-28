@@ -1,0 +1,45 @@
+/* Displacement-sweep presenter — a vibration's force-constant stages compared.
+ *
+ * Spec: docs/web/presenters.md § 1 (the row) and engines/vibration.md § 5.9.
+ * Arrangement only: page-shell owns the surfaces, tokens.css owns every
+ * colour (ui-contract.md § 1–2).  No raw hex here, on purpose.
+ */
+
+.fcsweep-record {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    padding: var(--space-md);
+}
+
+.fcsweep-title { margin: 0; }
+
+.fcsweep-sub,
+.fcsweep-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+/* Numbers in columns, so each mode's frequencies compare by eye across the
+ * stages. */
+.fcsweep-table {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+}
+
+.fcsweep-table th,
+.fcsweep-table td {
+    padding: var(--space-xs) var(--space-sm);
+    text-align: right;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.fcsweep-table th { color: var(--text-muted); font-weight: 600; }
+
+/* A stage that has not finished is not a failure — the record is written by a
+ * reader. */
+.fcsweep-pending td { color: var(--text-muted); font-style: italic; }
+
+/* A mode whose spread exceeds the person's tolerance. */
+.fcsweep-flagged td { font-weight: 600; }

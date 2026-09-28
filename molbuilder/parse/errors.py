@@ -1,6 +1,10 @@
 """Exceptions raised by the parse module.
 
 Per ``docs/model/parse.md`` § 3.
+
+TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
+(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5), so it
+imports nothing of molbuilder at module level.
 """
 
 from __future__ import annotations

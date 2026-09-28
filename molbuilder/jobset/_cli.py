@@ -23,7 +23,7 @@ one stage**, so every verb that acts on a stage is given the stage's name.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import click
 from ..issues import Issue
@@ -2688,11 +2688,19 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
 
 @jobset_group.command("summarize",
                       short_help="summarize results that exist: a sweep's "
-                                 "trials, a transport's bias points")
+                                 "trials, a transport's bias points, a "
+                                 "vibration's displacement sweep")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
-def summarize_cmd(kind: str, stage, bundle: str) -> None:
+@click.option("--tolerance-cm1", "tolerance_cm1", type=float, default=None,
+              help="a SIESTA vibration's displacement sweep: flag every mode "
+                   "whose frequency spreads by more than this across the "
+                   "force-constant stages (cm^-1).  Without it nothing is "
+                   "flagged -- the numbers are stated and the judgement is "
+                   "yours (engines/vibration.md 5.9).")
+def summarize_cmd(kind: str, stage, bundle: str,
+                  tolerance_cm1: Optional[float]) -> None:
     """Read the trials' artifacts and write ``bench-result.json`` — a
     recommendation, not a decision (`project-layout.md` § 2.3.2): you read
     it, you decide.
@@ -2720,6 +2728,12 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
             _tt = _rt_sum(_P(bundle) / _TASKF)
         except Exception:
             _tt = None
+        _is_vibration = _tt is not None and _tt.calculation == "vibration"
+        if tolerance_cm1 is not None and not _is_vibration:
+            raise click.ClickException(
+                "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
+                "vibration's force-constant stages compared "
+                "(engines/vibration.md 5.9)")
         if _tt is not None and _tt.calculation == "transport":
             from ..transport.record import (RecordError, collect_record,
                                             iv_table_text, write_record)
@@ -2734,14 +2748,48 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                     out=str(out), points=len(rec["points"]),
                     pending=len(rec.get("pending", ())))
             return
+        if _is_vibration:
+            # A DISPLACEMENT SWEEP'S SUMMARY (engines/vibration.md § 5.9): the
+            # force-constant stages' results, which their jobs wrote, read
+            # where they are and compared -- nothing derived that a run did
+            # not already write, nothing moved.  Every stage is compared, so
+            # a stage name is not asked for.
+            if stage is not None:
+                raise click.ClickException(
+                    f"a displacement sweep compares every force-constant "
+                    f"stage; name none (it was given {stage!r}).")
+            from ..spectra.displacement_sweep import (SweepError,
+                                                      collect_sweep,
+                                                      sweep_table_text,
+                                                      write_sweep)
+            try:
+                rec = collect_sweep(_P(bundle), _tt,
+                                    tolerance_cm1=tolerance_cm1)
+            except SweepError as e:
+                raise click.ClickException(str(e))
+            out = write_sweep(_P(bundle), rec)
+            click.echo(sweep_table_text(rec))
+            click.echo(f"-> {out}")
+            _ledger(_P(bundle), "summarize", "displacement-sweep",
+                    out=str(out), stages=[x["name"] for x in rec["stages"]],
+                    pending=len(rec.get("pending", ())),
+                    tolerance_cm1=tolerance_cm1)
+            return
         raise click.ClickException(
             "summarize summarizes results that exist: a BENCH sweep's "
-            "measurements, and a transport calculation's bias points "
-            "(`summarize run`, into <label>.transport.json).  A run's own "
-            "outputs are the calculation's results -- `jobset status` and "
-            "the Results tab are their readers (job-system.md § 5.3) -- and "
-            "a vibration's run writes its <label>.spectra.json itself, on "
-            "both engines (engines/vibration.md § 5.5).")
+            "measurements, a transport calculation's bias points (`summarize "
+            "run`, into <label>.transport.json), and a SIESTA vibration's "
+            "force-constant stages (`summarize run`, into "
+            "<label>.fc-sweep.json).  A run's own outputs are the "
+            "calculation's results -- `jobset status` and the Results tab "
+            "are their readers (job-system.md § 5.3) -- and a vibration's "
+            "run writes its <label>.spectra.json itself, on both engines "
+            "(engines/vibration.md § 5.5).")
+    if tolerance_cm1 is not None:
+        raise click.ClickException(
+            "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
+            "vibration's force-constant stages compared "
+            "(engines/vibration.md 5.9)")
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,

@@ -1843,8 +1843,9 @@ def _log_spec(spec: "DeckSpec", log) -> None:
 #  read-side parsers stay in lock-step with the write-side emitters"* --
 #  and this module imported the extractors back through a
 #  `_LAZY_EXTRACTORS` table, because *"an eager top-level import would
-#  deadlock."*  Both are gone: the constants were always here, and the
-#  readers now sit beside them.
+#  deadlock."*  Both are gone: the readers sit beside the writers, and the
+#  block names, the fences and the one JSON reader moved below both on
+#  2026-09-28, into `deck_record`, so a job can read a block beside itself.
 #
 #  These functions take a STRING and do no I/O.  Reading the file is the
 #  caller's job -- the rule that used to be `parse.md` § 7 forbidden #2,

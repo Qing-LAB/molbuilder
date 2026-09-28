@@ -44,11 +44,15 @@ from __future__ import annotations
 
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+# ASE AT LOAD, not where the masses are read: the wrapper asks whether the
+# finish loads before the engine starts (`mb_vibration.pyz loads`), and a job
+# env without ASE must fail that question, not the expensive run's end.
+from ase.data import atomic_masses
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
@@ -61,9 +65,10 @@ try:                                        # inside molbuilder
     from ..parse.engines.siesta_reader import SiestaReader
     from ..parse.fdf import _norm, _parse_fdf, parse_fdf_params, system_label
     from ..deck_record import extract_engine_offset, extract_vibration_record
+    from ..engine_atom_index import from_engine_index, siesta_atom_index
     from ..sidecars.spectra import dump_spectra_json
     from ..wrapper_log import LOG_CLOCK, LOG_LINE
-    from .methods import siesta_methods_text
+    from .methods import extract_citation_keys, siesta_methods_text
     from .results import SpectraResults
     from .vibrational_analysis import vibrational_analysis
 except ImportError:                         # beside a job, in mb_vibration.pyz
@@ -74,9 +79,10 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from siesta_reader import SiestaReader
     from fdf import _norm, _parse_fdf, parse_fdf_params, system_label
     from deck_record import extract_engine_offset, extract_vibration_record
+    from engine_atom_index import from_engine_index, siesta_atom_index
     from spectra_sidecar import dump_spectra_json
     from wrapper_log import LOG_CLOCK, LOG_LINE
-    from methods import siesta_methods_text
+    from methods import extract_citation_keys, siesta_methods_text
     from results import SpectraResults
     from vibrational_analysis import vibrational_analysis
 
@@ -182,15 +188,20 @@ def read_force_constant_run(deck, output) -> ForceConstantRun:
     except (KeyError, IndexError, ValueError):
         raise FinishError(f"{deck.name} states no FC.First / FC.Last: it is "
                           f"not a force-constant deck") from None
-    if not 1 <= first <= last <= n:
+    # SIESTA's atom numbers to the deck's 0-based positions, through the one
+    # door for engine numbering (`model/overview.md` § 2); every check below
+    # is on positions.
+    lo, hi = from_engine_index(first, "siesta"), from_engine_index(last, "siesta")
+    if not 0 <= lo <= hi < n:
         raise FinishError(f"{deck.name}: FC.First {first} .. FC.Last {last} "
                           f"is not a range over its {n} atoms")
-    if last != n:
+    displaced = tuple(range(lo, hi + 1))
+    if displaced[-1] != n - 1:
         raise FinishError(
-            f"{deck.name}: the nudged atoms {first}..{last} are not the "
-            f"trailing run of its {n} atoms, so the deck was not written "
-            f"from the held-first copy (engines/vibration.md 5.2)")
-    displaced = tuple(range(first - 1, last))
+            f"{deck.name}: the nudged atoms FC.First {first} .. FC.Last "
+            f"{last} are not the trailing run of its {n} atoms, so the deck "
+            f"was not written from the held-first copy "
+            f"(engines/vibration.md 5.2)")
 
     offset = extract_engine_offset(text)
     if not offset or len(offset.get("axis_kind") or ()) != 3:
@@ -239,7 +250,6 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
     """The run's result: its block, masses and geometry through the one
     analysis (`spectra.vibrational_analysis`), with what this route says of
     itself -- the Methods paragraph, the force-constant facts, the stage."""
-    from ase.data import atomic_masses
     n = len(run.elements)
     if run.fc.n_atoms != n:
         raise FinishError(f"{Path(run.fc.path).name} describes "
@@ -253,10 +263,6 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         axis_kind=run.axis_kind, cell=run.cell, permutation=run.permutation,
         label=run.label, engine="siesta", engine_version=run.siesta_version,
         molbuilder_version=str(rec.get("molbuilder_version") or ""),
-        methods_text=siesta_methods_text(
-            displacement_bohr=run.fc.displacement_ang / BOHR_ANGSTROM,
-            n_free=len(run.displaced), n_held=len(run.held),
-            n_rigid=_n_rigid(run), siesta_version=run.siesta_version),
         geometry_note=GEOMETRY_NOTE,
         reference_forces_ev_ang=run.reference_forces_ev_ang,
         force_criterion_ev_ang=criterion,
@@ -267,25 +273,23 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         engine_metadata={
             "fc_file": Path(run.fc.path).name,
             "fc_displacement_ang": run.fc.displacement_ang,
-            "fc_range_1based": [run.displaced[0] + 1, run.displaced[-1] + 1],
+            "fc_range_1based": [siesta_atom_index(run.displaced[0]),
+                                siesta_atom_index(run.displaced[-1])],
             # The block's own numerics, before the symmetrisation hides them
             # (`engines/vibration.md` § 5.5).
             "fc_asymmetry_max_ev_ang2": fc_block_asymmetry(run.fc,
                                                            run.displaced),
             "reference_force_criterion_ev_ang": (
                 None if criterion is None else float(criterion))})
-    return res
-
-
-def _n_rigid(run: ForceConstantRun) -> int:
-    """How many whole-body motions the held geometry permits -- asked of the
-    one rule (`normal_modes.rigid_motions`, R1), for the Methods sentence."""
-    try:
-        from .normal_modes import rigid_motions
-    except ImportError:
-        from normal_modes import rigid_motions
-    return int(rigid_motions(run.positions_ang, run.held, run.axis_kind,
-                             run.cell).shape[0])
+    # THE METHODS PARAGRAPH, once the analysis has said how many motions it
+    # removed -- its own count, not a second derivation of it (R1).
+    methods = siesta_methods_text(
+        displacement_bohr=run.fc.displacement_ang / BOHR_ANGSTROM,
+        n_free=len(run.displaced), n_held=len(run.held),
+        n_rigid=int(res.removed_motions["count"]),
+        siesta_version=run.siesta_version)
+    return replace(res, methods_text=methods,
+                   bibliography_keys=extract_citation_keys(methods))
 
 
 def finish(deck, output) -> Path:

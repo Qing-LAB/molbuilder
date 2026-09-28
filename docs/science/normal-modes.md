@@ -582,7 +582,7 @@ the anchor's electrons answer every free-atom displacement.)*
 Built 2026-09-23 and described with the PySCF route, side by side, in § 4b.4
 and step by step in § 4b.6:
 force constants by central differences of SIESTA's forces over the free atoms
-only, read back on the host and put through the same harmonic path.
+only, derived by the job itself right after the run (`vibration.md` § 5.5) through the same harmonic path.
 Intensities are not computed on it (§ 4a.6).
 
 ### 4a.6 SIESTA: not offered, and why that is a statement about this tool
@@ -998,7 +998,7 @@ displaced, so 300 atoms with 30 active cost 90 displaced coordinates rather
 than 900, while every SCF stays a 300-atom SCF. *Tool:* exactly that —
 `MD.TypeOfRun FC`, `FC.First..FC.Last` over the free range of the sorted
 copy, `FC.Displacement` (0.04 Bohr by default, range 0.005–0.2), the `.FC`
-file in eV/Å² read back on the host, the two sides of each nudge averaged
+file in eV/Å² read by the job's finish, the two sides of each nudge averaged
 (a central difference) and the free block symmetrised
 (`parse/engines/siesta_fc.py::hessian_from_fc`).
 
@@ -1009,8 +1009,11 @@ internal diagnostic; and, the strongest test, `ω_ν(δ) ≈ ω_ν(δ/2)` for th
 modes that matter. Too small drowns in noise, too large picks up
 anharmonicity. *Tool:* `fc_displacement` carries the range and the help text
 ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
-two stages at δ and δ/2 is describable and each stage's job derives its own
-modes (`vibration.md` § 5.5) — the comparison is by hand. The symmetry diagnostic is recorded since 2026-09-24 —
+two stages at δ and δ/2 is describable, every force-constant stage measures
+at the relaxed geometry, each stage's job derives its own modes, and
+`jobset summarize run` compares them into `<label>.fc-sweep.json` — each
+mode's frequency per stage, matched by shape, and the force constants
+themselves from the raw `.FC` (`vibration.md` § 5.9). The symmetry diagnostic is recorded since 2026-09-24 —
 `engine_metadata.fc_asymmetry_max_ev_ang2`, `max |H_ij − H_ji|` over the free
 block before the finish symmetrises it — and on a block whose off-diagonals
 vanish by symmetry it says nothing (10⁻¹² eV/Å² on H₂ along its axis); an atom
@@ -1033,8 +1036,8 @@ drift is numerical, and the real-space grid (0.09 Å spacing against 0.01–0.04
 nudges) is the usual suspect, not isolated here — which is the sharper lesson:
 a δ-only ladder cannot separate the harmonic region's edge from the grid, so
 the plateau `ω(δ) ≈ ω(δ/2)` is not reached at the default and the ladder alone
-cannot say why. V1.23's design pairs a mesh rung with the δ rung. The
-comparison across the stages is by hand today.
+cannot say why. V1.23's design pairs a mesh rung with the δ rung, and the
+sweep's summary compares whatever the stages vary (`vibration.md` § 5.9).
 
 **D — the active Hessian.** *Discussion:* `H_AA` with all its cross terms;
 the frozen atoms still shape it through the potential. *Tool:* § 4b.4 — the
@@ -1173,7 +1176,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
 | on SIESTA, relax with `ΔR_F = 0` first; `F_A ≈ 0`, `F_F` need not vanish | **the same, as two stages of one calculation** when the box is unticked (§ 4b.6 A), and since 2026-09-24 the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one `±δ` pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
-| converge δ: `ΔF ≫ σ_F`, `H(δ) ≈ H(δ/2)`, `H_ij ≈ H_ji`, `ω(δ) ≈ ω(δ/2)` | **in part**: the range and the noise-floor note are on the item; the ladder is describable and was run (§ 4b.6 C); the asymmetry is recorded; the comparison across stages is by hand (V1.23) |
+| converge δ: `ΔF ≫ σ_F`, `H(δ) ≈ H(δ/2)`, `H_ij ≈ H_ji`, `ω(δ) ≈ ω(δ/2)` | **built, but for `ΔF ≫ σ_F`**: the range and the noise-floor note are on the item; the ladder is describable, every force-constant stage measures at the relaxed geometry, and `summarize run` compares the stages — `ω` per mode matched by shape and `H(δ)` from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
 | mode-displaced structures on SIESTA for `PDOS(E, Q)`, `ε_r(Q)`, `Γ(Q)`, `Δρ(r, Q)`, `T(E, Q)` | **not built**; the displacement arithmetic and the pair writer exist, and the amplitude rule is stated (`vibration.md` § 5.6, level one) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; `Δρ_ν(r)` as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |
@@ -1200,7 +1203,7 @@ designed as one each and need a decision.
 | ~~V1.30~~ | **built 2026-09-24** — one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own tolerance (`geom_gmax` on PySCF, `relax_force_tol` on SIESTA), a plain warning above it | the two routes answer the same assertion by different rules (§ 4b.5 A, § 4b.6 A) | R5 |
 | ~~V1.28~~ | **built 2026-09-24** — `info.relaxation` beside `info.calculation` on a pair exported from the Results tab (`model/parse.md` § 5b.1): engine, the run's tolerance, the largest remaining force component, the held atoms, the geometry's fingerprint; both kinds' gates read it against the calculation about to run (`vibration.md` § 2.2, the record table). The PySCF deck's own pair recording it is V1.31 | the assertion was the person's memory of a run the tree already held | § 4b.6 A |
 | ~~V1.29~~ | **built 2026-09-24** — the mass-calibrated displacement per mode: `zero_point_amplitude_amu12_ang` and `zero_point_displacement_ang`, derived at every serialisation (`vibration.md` § 6.3) | the transport step displaces along this, not along the display form | § 4b.5 F |
-| V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | the ladder is describable today; the comparison is by hand | § 4b.6 C |
+| V1.23 | **a δ-convergence report**: two stages at δ and δ/2, and a comparison of `ω_ν` and `e_ν` between them printed by a verb | **built 2026-09-28**: `jobset summarize run` → `<label>.fc-sweep.json` and the printed table (`engines/vibration.md` § 5.9); the mesh pairing is a stage the person describes | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
 | V1.25 | **mode-displaced structure pairs on SIESTA** at the zero-point and thermal amplitudes, paired with the canonical eigenvector, the held atoms unmoved — the input to PDOS, density-difference and transport runs | level one of `vibration.md` § 5.6; the third link of the chain on the engine that shares the transport's model | § 4b.6 G |
 | V1.26 | **`Δρ_ν(r)` maps**: SIESTA's density grid at `±Q_ν`, differenced | the discussion's intermediate quantity; two SCFs per mode on the displaced pair | § 4b.7 |

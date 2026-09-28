@@ -358,6 +358,9 @@ def _finish_block(finish: Optional[str], script_name: str,
     Empty when the job has no finish."""
     if finish is None:
         return ""
+    # The marker's words for a failed finish are its READER's
+    # (`parse/dirs/job.py`, which travels and reads them beside the job).
+    from .parse.dirs.job import FINISH_FAILED
     return (
         f"\n"
         f"# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
@@ -380,7 +383,12 @@ def _finish_block(finish: Optional[str], script_name: str,
         f'if [ "$_mb_finish_rc" -ne 0 ]; then\n'
         f'    echo "===== the finish ({finish}) exited with code '
         f'$_mb_finish_rc: no result -- see $_runwrap_log =====" >&2\n'
-        f'    printf "rc=%s at %s\\n" "$_mb_finish_rc" "$(date)" '
+        # THE MARKER NAMES THE FAILED FINISH, so `run_status` reads the job
+        # as failed although the engine's own output ended cleanly -- an
+        # engine that errs after its end line (an MPI teardown) carries no
+        # such words and keeps the output's verdict (`parse/dirs/job.py`).
+        f'    printf "rc=%s at %s; {FINISH_FAILED} ({finish})\\n" '
+        f'"$_mb_finish_rc" "$(date)" '
         f'> "{basename}-run${{_run_n}}.concluded"\n'
         f'    exit "$_mb_finish_rc"\n'
         f"fi\n"
@@ -3807,6 +3815,20 @@ def render_run_wrapper(script_path: Path, *,
            f"    exit 1\n"
            f"  fi\n"
            if category == "pyscf" else "")
+        # CAN THE JOB FINISH ITSELF?  Asked before the engine starts, so a job
+        # env without what the finish imports (numpy, ASE) stops HERE, before
+        # the expensive run it would otherwise throw away
+        # (`engines/vibration.md` § 5.5): the bundle's `loads` verb imports the
+        # finish and answers.  Its words are the load error itself.
+        + (f'  if ! _mb_fin_said=$(python {finish} loads 2>&1); then\n'
+           f'    echo "ERROR: this job cannot finish itself: {finish} does not '
+           f'load on the python of \'{target_env}\' -- nothing was started, '
+           f'so no run is lost.  It needs numpy and ASE in the job env '
+           f'(envs/recipes.py)." >&2\n'
+           f'    echo "$_mb_fin_said" >&2\n'
+           f"    exit 1\n"
+           f"  fi\n"
+           if finish is not None else "")
         + f"fi\n"
         f"\n"
     )
@@ -4423,9 +4445,9 @@ def companion_source(name: str,
 #: reader and the unit words it reads with, the deck's block reader
 #: (`deck_record`), the ``.FC`` reader and its
 #: error, SIESTA's reading pass with its grammar and rule engine, the
-#: permutation record, the session log's line with the run-file names it is
-#: built on (`runfiles`, `identity`) -- and the constants all of them
-#: convert with.
+#: permutation record, the one door for engine atom numbering, the session
+#: log's line with the run-file grammar it is built on (`runfiles`) -- and
+#: the constants all of them convert with.
 #:
 #: **Each module's own file, imported two ways** (package, or beside the
 #: job), like the monitor's; unlike the monitor's, the set needs **numpy and
@@ -4452,9 +4474,9 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
     "end_lines.py":            "molbuilder.pyscf.end_lines",
     "atom_permutation.py":     "molbuilder.atom_permutation",
+    "engine_atom_index.py":    "molbuilder.engine_atom_index",
     "wrapper_log.py":          "molbuilder.wrapper_log",
     "runfiles.py":             "molbuilder.runfiles",
-    "identity.py":             "molbuilder.identity",
     "constants.py":            "molbuilder.constants",
 }
 
@@ -4484,6 +4506,10 @@ _VIBRATION_MAIN = (
     "% (type(_e).__name__, _e)))\n"
     "    traceback.print_exc()\n"
     "    raise SystemExit(1)\n"
+    # `loads`: the wrapper's question before the engine starts -- does the
+    # finish load on this python?  Answered by the import above.
+    "if sys.argv[1:2] == ['loads']:\n"
+    "    raise SystemExit(0)\n"
     "raise SystemExit(siesta_vibration.main())\n")
 
 

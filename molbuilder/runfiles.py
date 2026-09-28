@@ -930,6 +930,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # once at the calculation root -- which is what `staged=False` says.
     Artifact(".transport.json", "the transport results, summarised",
              staged=False, calculation="transport"),
+    # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
+    # vibration.md` § 5.9): written at the calculation root by `summarize run`
+    # when the ladder holds two or more force-constant stages -- a record of
+    # results that exist, each stage's own files staying in its attempt.
+    Artifact(".fc-sweep.json", "the force-constant stages compared: each "
+                               "stage and what it varied, every mode's "
+                               "frequency per stage, the force-constant "
+                               "changes, and where each stage's files are",
+             staged=False, engine="siesta", calculation="vibration"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and

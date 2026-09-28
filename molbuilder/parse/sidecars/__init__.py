@@ -6,6 +6,7 @@ two steps: new module here, import + ``register`` below.
 """
 
 from molbuilder.parse.registry import register
+from .fc_sweep import FcSweepRecordFileParser
 from .job_set import JobSetSweepFileParser
 from .molstruct import MolstructSidecarFileParser
 from .spectra import SpectraSidecarFileParser
@@ -16,6 +17,9 @@ register(JobSetSweepFileParser)
 register(MolstructSidecarFileParser)
 register(SpectraSidecarFileParser)
 register(TransportRecordFileParser)
+# A SIESTA vibration's displacement sweep (`engines/vibration.md` § 5.9) --
+# the transport record's twin, offered at the calculation root.
+register(FcSweepRecordFileParser)
 
 # `TransportSidecarFileParser` was DELETED 2026-09-17 and `TransportRecord-
 # FileParser` above is NOT its return.  The deleted one claimed a
@@ -33,6 +37,7 @@ register(TransportRecordFileParser)
 # result kind whose format was understood only in JavaScript.
 
 __all__ = [
+    "FcSweepRecordFileParser",
     "JobSetSweepFileParser",
     "MolstructSidecarFileParser",
     "SpectraSidecarFileParser",

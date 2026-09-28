@@ -733,8 +733,12 @@ def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
 
 
 def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
-    """``(structure, cell, relaxation)`` the `freq` stage of a SIESTA
-    vibration is written with (`engines/vibration.md` § 5.2a): the sorted
+    """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
+    vibration is written with -- `freq`, or any stage after `relax` in a
+    displacement sweep, asked of `vibration_render_kind` and never of a name
+    (`engines/vibration.md` § 5.2a, § 5.9; until 2026-09-28 only a stage
+    named `freq` came here, so a sweep's second stage measured the unrelaxed
+    input): the sorted
     copy as given, and no cell or record of its own, when the ladder holds no
     `relax` stage; the coordinates that stage relaxed to, in the cell it ran
     in, when it does -- read from its newest attempt, which must have
@@ -747,16 +751,16 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     against the real-space grid is not stationary on that grid any more.
     Every other rung comes back unchanged.
 
-    Two refusals, each naming what to do first.  `freq` before `relax` has
-    concluded: the job set's own order, not a guess at which geometry the
-    force constants belong to.  And `freq` with no `relax` stage while the
-    structure is not stated relaxed: the box says *relax first* and the
-    ladder holds nothing that would, so the description contradicts itself
-    and is refused with the two ways out rather than measured at a geometry
-    nobody chose (§ 2.2).
+    Two refusals, each naming what to do first.  A force-constant stage
+    before `relax` has concluded: the job set's own order, not a guess at
+    which geometry the force constants belong to.  And one with no `relax`
+    stage while the structure is not stated relaxed: the box says *relax
+    first* and the ladder holds nothing that would, so the description
+    contradicts itself and is refused with the two ways out rather than
+    measured at a geometry nobody chose (§ 2.2).
     """
-    from ..pyscf.stages import VIBRATION_FREQ_STAGE, VIBRATION_RELAX_STAGE
-    if pset.stage != VIBRATION_FREQ_STAGE:
+    from ..pyscf.stages import VIBRATION_RELAX_STAGE, vibration_render_kind
+    if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
     relax = next((s for s in task.stages
                   if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
@@ -769,7 +773,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"analysis off a stationary point reports the wrong "
                 f"frequencies (engines/vibration.md 2.2).  Either add the "
                 f"`{VIBRATION_RELAX_STAGE}` stage before "
-                f"`{VIBRATION_FREQ_STAGE}` (Task setup, or task.json) and run "
+                f"`{pset.stage}` (Task setup, or task.json) and run "
                 f"it first, or state already_relaxed = true in the template; "
                 f"the finish then measures the forces at this geometry "
                 f"and says whether the statement held.")
@@ -787,7 +791,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     attempt = run_dir(container)
     if attempt_concluded(attempt, stem) is None:
         raise PrepError(
-            f"the `{VIBRATION_FREQ_STAGE}` stage takes its geometry from the "
+            f"the `{pset.stage}` stage takes its geometry from the "
             f"`{relax.name}` stage, whose newest attempt has not concluded -- "
             f"it was never launched, is still running, or was force-stopped "
             f"(the last two look identical on disk; project-layout.md 1.6).  "
@@ -821,7 +825,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
             f"it --\n    {run_first}")
     cell = last.lattice if last.lattice is not None else traj.lattice
     if log is not None:
-        log.step(f"the geometry the `{VIBRATION_FREQ_STAGE}` stage measures at")
+        log.step(f"the geometry the `{pset.stage}` stage measures at")
         log.received(str(out.relative_to(base)),
                      f"{len(frames)} geometry step(s); the last is written as "
                      f"the deck's coordinates, in that run's cell")
@@ -1074,6 +1078,24 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # per element from its resolved config and the relax run read here.
     _finishes, _relaxed_by = False, None
     if task.calculation == "vibration" and str(task.engine) == "siesta":
+        # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (`engines/
+        # vibration.md` § 5.9): SIESTA names its force constants and the
+        # finish its spectrum by the label alone, so two force-constant
+        # stages sharing the flat layout's one directory would overwrite the
+        # first one's result.  Refused before anything is written, at
+        # whichever stage the person preps first.
+        from ..spectra.displacement_sweep import stages_share_a_directory
+        if stages_share_a_directory(task):
+            from ..pyscf.stages import force_constant_stages
+            raise PrepError(
+                f"this flat calculation describes "
+                f"{len(force_constant_stages(task))} force-constant stages "
+                f"({', '.join(force_constant_stages(task))}), and in the flat "
+                f"layout every stage writes the same <label>.FC and "
+                f"<label>.spectra.json -- each would overwrite the last one's "
+                f"result.  A displacement sweep needs the hierarchical layout "
+                f"(engines/vibration.md 5.9): describe it with --shape "
+                f"hierarchical, or keep one force-constant stage here.")
         from ..transport.sort import sort_by, write_permutation
         _sorted = sort_by(struct, "held-first")
         _perm_path = write_permutation(base, _sorted)
@@ -1218,7 +1240,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                             if _render_cell is not None else {}),
                                          **({"vibration": _vibration_block(
                                                 pset.stage, cfg, _relaxed_by)}
-                                            if _finishes else {}))
+                                            if _finishes and not element.is_trial
+                                            else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
                                  dest_dir=base)
             if seam.sibling_artifacts is not None:
@@ -1239,8 +1262,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                 log.produced("trajectory log",
                              "seeded" if getattr(cfg, "write_molwatch_log", False)
                              else "not asked for")
+            # A BENCHMARK TRIAL IS NOT FINISHED: it measures how long a
+            # setting takes under capped SCFs, and modes derived from those
+            # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
             jobs.append(_job_for(element, script, task, pset.stage, seam,
-                                 base, log=log, finish=spec.finish))
+                                 base, log=log,
+                                 finish=(None if element.is_trial
+                                         else spec.finish)))
     finally:
         _sys.stderr = _real_stderr
     if _once.dropped:
@@ -1672,6 +1700,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     from ..transport.compose import (ComposeError, compose_junction,
                                      load_compose_record,
                                      write_compose_record)
+    from ..atom_permutation import PermutationError
     from ..transport.sort import SortError
     from ..transport.stages import (TRANSPORT_STAGES, bias_points,
                                     bias_token, warm_declaration)
@@ -1784,7 +1813,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 raise PrepError(
                     f"the composed junction was written and could not be "
                     f"read back: {why[-1] if why else 'no reason given'}")
-    except (ComposeError, SortError) as exc:
+    except (ComposeError, SortError, PermutationError) as exc:
         raise PrepError(str(exc)) from exc
 
     # ---- 3b. render this rung's deck(s) -------------------------------- #
@@ -2271,10 +2300,10 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # zero rows and no threshold line, while the `.out` sitting beside it
     # parsed the same two numbers correctly: the same directory answering the
     # same question two ways depending on which file was opened.
-    # ONLY A DECK THAT RELAXES HAS TARGETS: a force-constant run or a
-    # transport rung relaxes nothing, and a threshold line drawn over its
-    # steps would call 115 nudges a relaxation that never settles
-    # (`engines/vibration.md` § 5.4) -- ``relaxes`` is the rung's render kind.
+    # ONLY A DECK THAT RELAXES HAS TARGETS -- the viewer draws "the targets
+    # the run was chasing" (`web/trajectory.md` § 3), and a force-constant run
+    # chases none: a threshold line over its steps called 115 nudges a
+    # relaxation that never settles.  ``relaxes`` is the rung's render kind.
     targets = {}
     for key, attr in (() if not relaxes else
                       (("max_force_tol_eV_per_A", "relax_force_tol"),

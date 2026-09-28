@@ -821,7 +821,7 @@ Two small files answer the two questions *(the second decided by the user,
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
 | `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
-| `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns and before it stops the monitor | *the process ended on its own* — the exit code and the time | still running, or force-stopped: the files cannot tell which |
+| `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` | `prep` | when it copies warm files in | which attempt they came from, for `launch` to write into `run.json` | the run starts from the structure |
 
 - **`run.json` is written at launch, never at completion** — written when the
@@ -856,10 +856,10 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 | moment | the attempt holds | `run_status` |
 |---|---|---|
-| prepped | `calcdir.json`; copies of the deck, the wrapper, `mb_monitor.pyz`, the pseudopotentials; the molwatch seed; the warm files and `.continued-from` if it continues | `pending` |
+| prepped | `calcdir.json`; copies of the deck, the wrapper, `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); the molwatch seed; the warm files and `.continued-from` if it continues | `pending` |
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` |
-| concluded | + `-run0.concluded` | `finished` or `failed` — the output's ending first |
+| concluded | + `-run0.concluded` | `finished` or `failed` — the output's ending first, except a marker naming a failed finish: the engine ended and the job did not, so `failed` |
 | force-stopped | as *running*; no marker comes — the monitor's closing record `[MONITOR] job ended`, when the monitor outlived the stop | `failed` by that record; `running` when nothing outlived the stop (a lost node): no file then tells it from a live run |
 
 #### 1.6.4 What reads them

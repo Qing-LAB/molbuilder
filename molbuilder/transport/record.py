@@ -27,6 +27,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..atom_permutation import PERMUTATION_FILE
+
 TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@1"
 
 #: TBtrans prints the Landauer current as its own integral -- one line
@@ -347,7 +349,7 @@ def collect_record(base_dir, task) -> Dict:
         },
         "provenance": {
             "slot": provenance,
-            "atom_permutation": "atom-permutation.json",
+            "atom_permutation": PERMUTATION_FILE,
         },
     }
     if pending:

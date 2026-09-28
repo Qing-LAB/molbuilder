@@ -24,8 +24,8 @@ to a backend env whenever a job needs it.
 ```mermaid
 flowchart TD
   HOST["molbuilder (host env)<br/>the web UI + CLI + build-time chemistry<br/>python · ase · rdkit · openbabel · flask · sisl"]
-  HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)"]
-  HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · (gpu4pyscf)"]
+  HOST -->|"conda run -n molbuilder-siesta"| SI["molbuilder-siesta<br/>SIESTA 5.4.2 (MPI, precompiled)<br/>+ numpy · ase (a vibration job's finish)"]
+  HOST -->|"conda run -n molbuilder-pySCF"| PY["molbuilder-pySCF<br/>PySCF · geomeTRIC · ase · (gpu4pyscf)"]
   HOST -->|"conda run -n molbuilder-MDtools"| MD["molbuilder-MDtools<br/>AmberTools (tleap, antechamber)"]
   HOST -->|"conda run -n molbuilder-siesta-gpu"| GPU["molbuilder-siesta-gpu<br/>SIESTA+TranSiesta+TBtrans, CUDA-ELPA<br/>(built from source, optional)"]
   HOST -.->|"molbuilder jupyter start"| NB["molbuilder-jupyternb<br/>JupyterLab · ipykernel · numpy/scipy/pandas/matplotlib · ase/sisl<br/>(optional)"]
@@ -324,6 +324,7 @@ Reference:
 | **gpu4pyscf / cupy** | `molbuilder-pySCF` | pip `cupy-cuda<N>x[ctk]` + `gpu4pyscf-cuda<N>x` — the `<N>` wheel suffix is **derived from the host's CUDA version** (`cuda13x` by default, `cuda12x` on a CUDA-12 host), not hardcoded — optional, GPU only |
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, biopython** | host `molbuilder` | conda |
+| **numpy, ASE** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy + ASE); `molbuilder-pySCF` (ASE) | conda — a SIESTA vibration's job derives its modes with them after the force-constant run (`engines/vibration.md` § 5.5), and its wrapper refuses to start without them; in every job env so the engine or the GPU switch never changes what a job can import (plan W36 ⑤). **An existing env gains them with** `conda install -n <env> -c conda-forge numpy ase` (added packages only, measured 2026-09-28) |
 | **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and, since 2026-09-24, the file-level science libraries `ase` and `sisl` — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce and writes what they consume — a frame set in extended-XYZ, a SIESTA output — and is not a second place to run one (`web/jupyter.md` § 7). **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **pyberny** | `molbuilder-pySCF` | **manual / optional** — unmaintained; the conda recipe omits it |

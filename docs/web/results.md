@@ -42,6 +42,7 @@ flowchart LR
 | **a calculation root** | a result file at the root if it holds one; otherwise nothing, and the card shows the **ladder** — each rung's state (§ 2.4) | the ladder card | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
 | **a transport calculation** | its `<label>.transport.json` | the transport report: the I–V table and what is not drawn | the record file itself |
+| **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize run` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
 | **a folder not marked as part of a calculation** | whatever result it holds, read alone | as above | as above |
 
 **A single run and a higher-level report are different by nature.** A run is
@@ -380,7 +381,9 @@ is a **ladder**: N rungs, each a run directory below it. Each rung's run writes
 its own result in its directory — a vibration's spectrum in its `freq` attempt
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5); only a
 calculation that GATHERS its rungs into one result has one at the root — a
-transport calculation's I–V record, once `summarize` has read its bias points.
+transport calculation's I–V record, once `summarize` has read its bias points,
+and a SIESTA vibration's displacement sweep, once `summarize` has compared its
+force-constant stages (§ 5.9 there).
 `GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
 state, detail, dir, attempt}]}`, read from `jobset_status`, the ladder door the

@@ -48,7 +48,7 @@ pytestmark = pytest.mark.skipif(
     reason="needs the molbuilder-siesta env + a detectable conda hook")
 
 
-def _describe(tree, monkeypatch, positions):
+def _describe(tree, monkeypatch, positions, shape="hierarchical"):
     """The calculation the way a person makes it: the structure in the
     projects tree, the free atom FIRST and the held atom second (so the
     held-first sort really reorders), `init` on the SIESTA vibration kind."""
@@ -82,7 +82,7 @@ def _describe(tree, monkeypatch, positions):
     r = CliRunner().invoke(jobset_group, [
         "init", "--structure", "P/structure/h2.xyz",
         "--bundle", "P/frequency/F", "--engine", "siesta",
-        "--shape", "hierarchical", "--calculation", "vibration",
+        "--shape", shape, "--calculation", "vibration",
         "--name", "H2", "--psml-lib", "pseudopotential"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "F"
@@ -239,6 +239,11 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     _the_monitor_closed(attempt, "02_freq", "FC step")
     # THE LAUNCH ENDS WITH THE RESULT: the job's finish wrote it (§ 5.5).
     d = _the_result(attempt, "02_freq")
+    # ...and summarize derives nothing: with one force-constant stage there
+    # is no sweep to summarize (§ 5.9, I22).
+    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    assert r.exit_code != 0 and "a sweep compares two or more" in r.output, \
+        r.output
     _common_assertions(d)
     # the ladder relaxed first, and the artifact says so from the relax
     # stage's own record (vibration.md § 4.9)
@@ -289,3 +294,180 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     assert len(freqs) == 1 and 2950.0 < freqs[0] < 3100.0, freqs
     from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     assert d["relaxation"]["max_force_eh_bohr"] < 0.01 / HARTREE_BOHR_EV_ANGSTROM_ASE
+
+
+def _deck_coordinates(deck_text):
+    """The deck's own coordinate block, as SIESTA reads it."""
+    from molbuilder.parse.fdf import _norm, _parse_fdf
+    rows = _parse_fdf(deck_text)[1][_norm("AtomicCoordinatesAndAtomicSpecies")]
+    return np.array([[float(x) for x in r[:3]] for r in rows])
+
+
+def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
+        tmp_path, monkeypatch):
+    """A displacement sweep (`engines/vibration.md` § 5.9): after `relax`,
+    two force-constant stages -- `freq` at the template's 0.04 Bohr and
+    `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
+    their names (I24); each stage's job writes its own spectrum; and
+    `summarize run` compares them into `<label>.fc-sweep.json` at the root,
+    naming each stage's files rather than copying them (I25).
+
+    MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
+    relaxed geometry -- `freq_half` then measures the unrelaxed input bond,
+    which is how it ran until 2026-09-28.
+    """
+    tree = tmp_path / "projects"
+    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
+    task = json.loads((bundle / "task.json").read_text())
+    # a stage overrides only what the description varies (stages.md § 6.2)
+    task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
+    task["stages"].append({"name": "freq_half", "enabled": True,
+                           "overrides": {"fc_displacement": 0.02}})
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+
+    for stage in ("relax", "freq", "freq_half"):
+        r = _jobset("prep", "run", stage, "--bundle", str(bundle),
+                    "--target", "this")
+        assert r.exit_code == 0, r.output
+        r = _jobset("launch", "run", stage, "--bundle", str(bundle),
+                    "--mode", "direct", "--yes")
+        assert r.exit_code == 0, r.output
+
+    decks = {tok: next((bundle / tok).glob("*.fdf")).read_text()
+             for tok in ("02_freq", "03_freq_half")}
+    # I24: one geometry for every force-constant stage -- the relaxed one.
+    assert np.allclose(_deck_coordinates(decks["02_freq"]),
+                       _deck_coordinates(decks["03_freq_half"]), atol=1e-8), \
+        "the second force-constant stage was not written at the relaxed bond"
+    assert _kw(decks["03_freq_half"], "FC.Displacement")[:1] == ["0.02"]
+    a1, a2 = (_the_result(bundle / "02_freq" / "run-0", "02_freq"),
+              _the_result(bundle / "03_freq_half" / "run-0", "03_freq_half"))
+    for d in (a1, a2):
+        assert d["phase_relaxation"] == "complete" and \
+            d["relaxation"]["converged"] is True
+
+    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    assert r.exit_code == 0, r.output
+    rec = json.loads((bundle / "H2.fc-sweep.json").read_text())
+    assert rec["schema"] == "molbuilder/fc-displacement-sweep@1"
+    assert rec["pending"] == []                 # every stage has its result
+    # the Results tab offers only what the parse registry reads
+    # (`model/parse.md` § 5.5): the record has its own reader
+    from molbuilder.parse import detect
+    kind = detect(str(bundle / "H2.fc-sweep.json"))
+    assert kind.name == "fc-sweep-json", kind
+    assert kind.parse(bundle / "H2.fc-sweep.json").schema == "fc-sweep/v1"
+    assert [s["name"] for s in rec["stages"]] == ["freq", "freq_half"]
+    # I25: each stage's files are NAMED where its run wrote them, and are its
+    # own -- the record carries paths, not copies.
+    for s in rec["stages"]:
+        for key in ("spectrum", "fc_file"):
+            assert (bundle / s[key]).is_file(), (key, s)
+    assert rec["stages"][0]["spectrum"].startswith("02_freq/run-0/")
+    assert rec["stages"][1]["spectrum"].startswith("03_freq_half/run-0/")
+    # the displacement each stage USED, from its own spectrum
+    d1, d2 = (s["fc_displacement_ang"] for s in rec["stages"])
+    assert abs(d2 / d1 - 0.5) < 1e-6, (d1, d2)
+    assert rec["stages"][1]["varies"] == {"fc_displacement": 0.02}
+    # the one mode, matched by shape, at both displacements
+    (m,) = rec["modes"]
+    assert set(m["frequency_cm1"]) == {"freq", "freq_half"}
+    assert min(m["overlap"].values()) > 0.999, m
+    assert m["spread_cm1"] == pytest.approx(
+        abs(m["frequency_cm1"]["freq"] - m["frequency_cm1"]["freq_half"]))
+    assert m["flagged"] is None and rec["tolerance_cm1"] is None
+    (fc,) = rec["force_constants"]
+    assert fc["against"] == "freq" and fc["max_abs_change_ev_ang2"] > 0.0
+
+    # a tolerance the person gives flags; the numbers are unchanged
+    r = _jobset("summarize", "run", "--bundle", str(bundle),
+                "--tolerance-cm1", "1e-6")
+    assert r.exit_code == 0, r.output
+    rec2 = json.loads((bundle / "H2.fc-sweep.json").read_text())
+    assert rec2["modes"][0]["flagged"] is True and rec2["tolerance_cm1"] == 1e-6
+
+
+def test_a_flat_calculation_refuses_a_second_force_constant_stage(
+        tmp_path, monkeypatch):
+    """In the flat layout every stage writes the same `<label>.FC` and
+    `<label>.spectra.json`, so two force-constant stages would overwrite each
+    other's result: `prep` refuses the description before writing anything,
+    at whichever stage is prepped first (`engines/vibration.md` § 5.9)."""
+    tree = tmp_path / "projects"
+    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]],
+                       shape="flat")
+    task = json.loads((bundle / "task.json").read_text())
+    # a stage overrides only what the description varies (stages.md § 6.2)
+    task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
+    task["stages"].append({"name": "freq_half", "enabled": True,
+                           "overrides": {"fc_displacement": 0.02}})
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    r = _jobset("prep", "run", "relax", "--bundle", str(bundle),
+                "--target", "this")
+    assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
+    assert not list(bundle.glob("*.fdf")), "a deck was written before refusing"
+
+
+
+def test_a_finish_that_fails_fails_the_job(tmp_path, monkeypatch):
+    """I22's other half (`engines/vibration.md` § 5.5): when the finish cannot
+    derive the result, the JOB failed -- the conclusion marker names the
+    failed finish and `run_status` reads failed although SIESTA's output
+    ended.  The finish fails the way a real attempt can: its copy of the
+    permutation record is gone.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the wrapper concluding rc=0 after a
+    failed finish; `run_status` taking the output's ending over the marker's
+    words -- every surface read such a job "finished" until 2026-09-28
+    (M2b′'s review).
+    """
+    from molbuilder.parse.dirs import run_status
+    from molbuilder.parse.dirs.job import FINISH_FAILED
+    from molbuilder.runfiles import compose
+    tree = tmp_path / "projects"
+    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
+    task = json.loads((bundle / "task.json").read_text())
+    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    _tick_already_relaxed(bundle)
+    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    assert r.exit_code == 0, r.output
+    attempt = bundle / "01_freq" / "run-0"
+    (attempt / "atom-permutation.json").unlink()
+    _jobset("launch", "run", "freq", "--bundle", str(bundle),
+            "--mode", "direct", "--yes")
+    assert (attempt / "H2.FC").is_file(), "SIESTA's own run did finish"
+    assert not (attempt / "H2.spectra.json").exists()
+    concluded = (attempt / compose("H2", ".concluded", "01_freq", run=0)).read_text()
+    assert FINISH_FAILED in concluded and not concluded.startswith("rc=0"), concluded
+    st = run_status(attempt)
+    assert st.state == "failed" and "finish" in st.detail, (st.state, st.detail)
+
+
+def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
+        tmp_path, monkeypatch):
+    """The finish is asked before the run is paid for (`engines/vibration.md`
+    § 5.5): right after activation the wrapper asks the bundle whether it
+    loads, and a bundle that does not stops the job there -- SIESTA never
+    starts, so no force-constant run is thrown away.
+
+    MUTATION THIS MUST FAIL AGAINST: the check removed -- SIESTA then runs
+    to its end and only the finish fails.
+    """
+    from molbuilder.runwrap import VIBRATION_BUNDLE
+    tree = tmp_path / "projects"
+    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
+    task = json.loads((bundle / "task.json").read_text())
+    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    _tick_already_relaxed(bundle)
+    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
+    assert r.exit_code == 0, r.output
+    attempt = bundle / "01_freq" / "run-0"
+    (attempt / VIBRATION_BUNDLE).write_bytes(b"not a zip application")
+    _jobset("launch", "run", "freq", "--bundle", str(bundle),
+            "--mode", "direct", "--yes")
+    assert not list(attempt.glob("*.out")), "SIESTA started anyway"
+    assert not (attempt / "H2.FC").exists()
+    said = "".join(p.read_text() for p in attempt.glob("*.runwrap-*.log"))
+    assert "cannot finish itself" in said, said[-2000:]

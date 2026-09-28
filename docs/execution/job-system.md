@@ -27,7 +27,9 @@ jobset plan        show what would run, warm files, resources
 jobset launch      ONE job per invocation -- run or submit
 jobset summarize   summarize results that exist: a sweep's trials -> the
                    record + the report, PRINTED; a transport calculation's
-                   bias points -> its I-V record.  It never makes a run's
+                   bias points -> its I-V record; a SIESTA vibration's
+                   force-constant stages -> its displacement sweep
+                   (engines/vibration.md 5.9).  It never makes a run's
                    result: every run writes its own (a SIESTA vibration's
                    job derives its modes itself, engines/vibration.md 5.5)
 jobset status      per-stage status + the resume point
@@ -226,6 +228,8 @@ classDiagram
       Resources resources
       list warm
       dict traits
+      dict point
+      str finish
     }
     class Resources {
       int mpi_np
@@ -258,11 +262,18 @@ Walk through it with the *why* for each piece:
   (`<seq>_<name>` versus `bench/bench-<point>` inside the stage it measures,
   `job-contracts.md` § 6.3) and nothing about scheduling.
 - **`JobSet.shared`** lists files that every job needs but that never change
-  between jobs — the pseudopotentials and the geometry. (The monitor travels
-  beside each wrapper instead, `run-reports.md` § 2.3.) They
+  between jobs — the pseudopotentials and the geometry, and the
+  atom-permutation record when the decks come from a sorted copy
+  (`engines/vibration.md` § 5.2). (The monitor travels beside each wrapper
+  instead, `run-reports.md` § 2.3, and so does a job's finish.) They
   are **copied** into each job's folder as real files (user, 2026-08-24): a run
   directory holds everything it needs, and a link holds nothing
   ([`project-layout.md § 1.0`](?doc=execution/project-layout.md)).
+- **`Job.finish`** names the bundle the wrapper runs after the engine when the
+  engine alone leaves no result — a SIESTA force-constant stage's
+  `mb_vibration.pyz` (`engines/vibration.md` § 5.5) — copied from the deck's
+  spec and born beside the job's deck; absent for every other job and for a
+  benchmark trial.
 - **`Job.name`** does double duty: it keys the job's folder *and*
   its scheduler job name (`-J`), so a `squeue` listing reads the way the layout
   does. **`Job.script`** is the input file inside that folder.
@@ -653,7 +664,7 @@ nothing else, and scheduler contact happens only at `launch`.
 | target | `prep` | resolve this machine, render the deck and wrapper, build the run directory |
 | target | `plan` | print the jobs and their resources; change nothing |
 | target | `launch` | start **one** job — `--mode direct` or `--mode submit` |
-| target | `summarize` | summarize results that exist: a benchmark's trials into a verdict; a transport calculation's bias points into its I–V record. Never a run's own result — every run writes that itself (`engines/vibration.md` § 5.5) |
+| target | `summarize` | summarize results that exist: a benchmark's trials into a verdict; a transport calculation's bias points into its I–V record; a SIESTA vibration's force-constant stages into its displacement sweep (`engines/vibration.md` § 5.9). Never a run's own result — every run writes that itself (§ 5.5 there) |
 | target | `status` | roll up where the calculation has got to |
 
 > **This section's title and its count were both stale** *(corrected

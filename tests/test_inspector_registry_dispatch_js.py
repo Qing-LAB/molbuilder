@@ -59,6 +59,7 @@ _INSPECTOR_MODULES = [
     # A compound suffix (`.transport.json`), so it must precede source.js --
     # which claims every `.json` -- exactly as spectra.js does.
     STATIC / "lib/inspectors/transport.js",
+    STATIC / "lib/inspectors/fc-sweep.js",
     STATIC / "lib/inspectors/_partial_inspector_factory.js",
     STATIC / "lib/inspectors/trajectory.js",
     STATIC / "lib/inspectors/spectra.js",
@@ -229,6 +230,11 @@ _PICK_RESULT_CASES = [
     # exactly that, and the dispatch case above cannot see the difference.
     ("/projects/BDT/transport/bdt.transport.json", "transport",
      "transport_json→transport"),
+    # The third compound `.json`: a SIESTA vibration's displacement sweep
+    # (`engines/vibration.md` § 5.9).  It must be claimed by a RESULT
+    # presenter registered ahead of source.js, or the picker never offers it.
+    ("/projects/foo/spectrum/h2o/H2O.fc-sweep.json", "fc-sweep",
+     "fc_sweep_json→fc_sweep"),
     ("/projects/foo/optimized.xyz", "structure", "xyz→structure"),
     ("/projects/foo/protein.pdb", "structure", "pdb→structure"),
     # .fdf is an INPUT file (source matches but isResult:false) — must

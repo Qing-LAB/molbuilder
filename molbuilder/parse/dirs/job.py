@@ -147,6 +147,15 @@ def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
 #: `runfiles.WRITTEN` row, so `find_by_role` refuses it, the same as `.XV`.
 _ENGINE_EXIT_MARKER = "0_NORMAL_EXIT"
 
+#: What a conclusion marker says when the job's FINISH failed -- the step the
+#: wrapper runs after the engine when the engine alone leaves no result (a
+#: SIESTA force-constant run's modes, `engines/vibration.md` § 5.5).  The
+#: wrapper writes ``rc=<N> at <date>; finish failed (<bundle>)`` and this
+#: reader reads the job as failed although the engine's output ended: the
+#: engine ended, the job did not.  Declared here, where it is read; the
+#: wrapper imports it (`runwrap._finish_block`).
+FINISH_FAILED = "finish failed"
+
 
 def _rung_files(run_dir: Path, role: str, match: str = "*") -> List[Path]:
     """The ``role`` files of the rung ``match`` names (`_enumerate_files`'s
@@ -539,7 +548,16 @@ def _build_status(out_paths: List[Path],
     # Note what is NOT consulted: whether the SCF converged.  That is
     # P-S2's reported fact, carried beside this state for the reader to
     # show, never folded into it.
-    if active_state == "ended":
+    if active_state == "ended" and concluded is not None \
+            and FINISH_FAILED in concluded:
+        # THE ENGINE ENDED, THE JOB DID NOT: its finish -- the step that
+        # derives the result from what the engine left -- failed, and the
+        # marker says so in words no engine teardown writes
+        # (`project-layout.md` § 1.6.3).
+        state = "failed"
+        detail = (f"the engine ended, but the job's finish did not derive "
+                  f"the result ({concluded}); the session log says why")
+    elif active_state == "ended":
         state, detail = "finished", "job_completed"
     elif active_state in ("out_of_memory", "stopped"):
         # WHAT STOPPED IT, in the run's own words: the line its ending
