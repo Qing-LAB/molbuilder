@@ -1307,7 +1307,9 @@ before any oscillator strength, which says whether a mode polarises the
 molecule, moves charge across the Au–S bond or drives the metal's screening
 (V1.26); and the projected density of states, resonance energies and widths
 along the mode, each a run of its own kind on that pair, with `T(E, Q)` the
-transport kind on it. Each is a feature to design as one.
+transport kind on it. Each is a feature to design as one — and how they
+combine into a ranking of modes for the transport step is proposed in § 5.10
+(2026-09-28, not agreed).
 
 ### 5.7 What it costs, by construction
 
@@ -1406,6 +1408,210 @@ displacement's would be a wrong answer that looks right. **Two modes a few
 wavenumbers apart can mix between stages**: a low overlap there is the pair
 turning within its own plane, not a changed motion, and the presenter says
 so beside the table.
+
+### 5.10 From a mode to the current — the response screen *(PROPOSED 2026-09-28, not agreed)*
+
+> **A draft for the next programme, not a rule.** Nothing in this section is
+> built, and nothing in it is decided until the user's word on the decisions at
+> its end (plan **W42**). It is written into the contract so that the pieces it
+> adds can be checked against the ones that exist; when it is agreed, each
+> decision moves into the section it changes and this banner goes. The science
+> — why the ranking is by the conductance and not by the HOMO–LUMO gap — is
+> [`science/normal-modes.md`](?doc=science/normal-modes.md) § 4c.
+
+**The question** *(user, 2026-09-28: "we fix most of the metal atoms, and
+leave the molecule and the anchoring Au for vibrational mode calculation with
+siesta, but need a way to find the best vibration mode for next step of
+transport calculation")*. A junction's force-constant run gives 30–50 modes,
+and transport along a mode costs a TranSIESTA device SCF per displaced
+geometry, so a few modes are chosen. Science § 4c says what to choose them by —
+the change of the conductance a mode's motion causes, `⟨ΔG⟩_ν/G = ½ T″_ν σ_ν²/T₀`
+at a stated temperature — and that cheaper electronic numbers can screen for
+it. This section says how the tool computes each number. Every piece reuses one
+that exists:
+
+| exists | reused for |
+|---|---|
+| both eigenvector forms and the zero-point amplitude of every mode (§ 6.3) | the frames and the modes' character |
+| the frame set — one multi-frame pair, its rule in the sidecar's `info` (`engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
+| the axis rule — a stage carries a sub-level for each axis it varies over (`engines/transport.md` § 2a.11, W32) | one run per frame, the shared runs once |
+| the job's own finish, a bundle that travels (§ 5.5, I22, I23) | each frame's electronic result, written by its own job |
+| `summarize` over results that exist — nothing lost, nothing copied, matching by shape (§ 5.9, I25) | the response of each mode across its frames |
+| the PySCF probe (§ 4.8) | the free molecule's answer (V1.27) |
+
+**The pieces, cheapest first.** Each is one addition with its own decision.
+
+**① The character of each mode — derived when the result is read** (no
+calculation, and no new label). **The anchor is the held atoms** *(user,
+2026-09-28: "the anchor is the fixed atoms. we don't specify the anchor, the
+atoms is labeled already with fixing or unfixed")*: the free atoms are what
+the person let vibrate — the molecule and the gold left free with it — and
+the result file already carries which atoms are free, their elements and the
+geometry (§ 6.2). Served by `/api/spectra/load` beside
+`motion_share_by_element` and never stored (I16):
+
+- the element shares among the free atoms — `motion_share_by_element`, as
+  the viewer shows it today (`web/spectra.md` § 4.2);
+- `rigid_share` — the part of the free atoms' mass-weighted motion that is
+  whole-body: its projection onto the free part's three slides and three
+  turns about its centre of mass — the extended molecule sliding or rocking
+  as a unit against the held anchor, the molecule's tilt among it;
+- `bond_stretches` — for each bond from a free atom to a held one, and each
+  bond between two elements inside the free part (Au–S), by the viewer's
+  yardstick of a bond (`web/spectra.md` § 4.2): its length, its change per
+  unit `Q`, `(L_a − L_b)·ê_ab` (a held atom's `L` is zero), and its r.m.s.
+  stretch at the thermal amplitude, in Å.
+
+It says what kind of motion each mode is — internal, at the contact, the
+free part rocking against the anchor, the gold moving — a filter and not a
+ranking (science § 4c.3, the antisymmetric stretch).
+
+**② The charge each mode moves — from the force-constant run itself** (an
+output switch, D3). The force-constant deck asks for the population analysis at
+every step — `Charge.Hirshfeld` and `Charge.Voronoi`, the 5.4.2 spellings of
+the deprecation table; **whether SIESTA prints them at every FC step is
+measured before anything relies on it**. The finish reads the free atoms'
+charge — and each element's among them — at each displaced step through the
+SIESTA reader (its grammar gains the population blocks): the charge that
+moves between the held anchor and the free part. It forms
+`(q(R_k + δ) − q(R_k − δ)) / 2δ` for every free coordinate exactly as it forms
+the force constants, and projects onto every mode. The result gains, for the
+free atoms and per element, the per-coordinate derivative
+`dq_dR_e_per_ang` (`(n_free, 3)`: the ingredient, so a later analysis projects
+it onto any modes without the output) and, per mode, `dq_dQ_e_per_amu12_ang`;
+the charge moved at the thermal amplitude is derived at serialisation. It is
+the periodic analogue of PySCF's `∂μ/∂R` (§ 6.4): a molecular dipole is
+undefined in a periodic metal (science § 4b.7), the charge on a set of
+atoms, by a stated partition, is not. *(Found while drafting: the SIESTA deck's commented hint for the
+population analysis still spells the retired `WriteMullikenPop`,
+`siesta/input.py`.)*
+
+**③ The frame set — the built-in mode rule, refined** (V1.25; D6, D7). One
+generator writes **one** multi-frame pair for a **list** of modes: frame 0 the
+base, then for each mode the Gauss–Hermite nodes of its thermal distribution at
+the stated temperature (three by default, five on request, science § 4c.5):
+
+```text
+    R_A(Q_j) = R_A⁰ + Q_j · L_canonical ,   Q_j = √2 σ x_j ,   σ = Q_zp · √coth(ħω / 2k_BT)
+    R_F       unmoved
+```
+
+`Q_zp` and `L_canonical` are read from the result (§ 6.3) — the canonical form
+only, by § 6.3's pairing rule. The pair's `info.frame_rule` records the
+vibration run it read (its path and structure hash), the temperature, the
+order, and per frame `{mode, frequency_cm1, sigma_amu12_ang, node_sigma,
+q_amu12_ang, weight}`; the base's weight in each mode's average is
+`1 − Σ_j w_j`. Each frame also states its largest atomic displacement against
+that atom's nearest-neighbour distance (science § 4c.5, soft modes) — a warning
+above a stated fraction, never a refusal. The pair keeps the transport frame
+set's promises by construction — count, order, species and labels unchanged,
+and no electrode atom moves when every electrode atom is held, which the
+generator checks and says when it is not so. **One set for many modes**,
+because the base, the leads and the seed are then computed once for all of
+them ("electrodes once, seed once, device and transmission per frame",
+`engines/transport.md` § 2a.9). Two doors, one generator: the spectrum viewer
+(select modes, write the set) and one CLI verb.
+
+**④ The electronic response on a frame set — a run of its own kind** (D4, D5).
+§ 5.6 already says so: "each a run of its own kind on that pair". Proposed: a
+calculation kind `electronic` on SIESTA — one SCF per frame, in the cell and at
+the settings of the vibration the frames came from, so the modes and the screen
+share one model (taken the way transport takes its shared values from the
+relaxation it cites, `engines/transport.md` § 2a.7), the frames on the axis
+rule's sub-level (`01_scf/f000/run-0`, `f001/…`). Each frame's job writes its
+own result through a finish — § 5.5's pattern, its bundle under I23 — as
+`<label>.electronic.json`:
+
+| key | holds |
+|---|---|
+| `fermi_energy_ev` | `E_F` |
+| `charges` | the free atoms', and each element's among them: the Hirshfeld, Voronoi and Mulliken charge (e) |
+| `pdos` | the DOS projected on the free atoms, and per element, on its energy grid relative to `E_F`, per spin — the raw curves — with the broadening they were computed at |
+| `resonances` | the peaks of `pdos` in a window around `E_F`: position − `E_F`, width, weight, and each element's share of the peak; the nearest below and above `E_F` named |
+| `levels` | the free atoms' own states (the extended molecule's MPSH, science § 4c.2) in a window around `E_F`: energy − `E_F`, each state's weight per element, and its coefficient vector, so a level can be followed across frames — *only with sisl in the job env, D5* |
+| `frame` | the frame's token and its row of the frame rule (③), copied from the pair's `info`, so the file says where it stands |
+
+Optionally the density grid for `Δρ_ν(r)` (V1.26), which then rides on the same
+frames. The Fermi level and the charges are text in the output, read by the
+SIESTA reader the finish already carries, and `.PDOS` is XML the standard
+library reads; only the levels need the Hamiltonian and overlap, SIESTA's
+binary `.HSX`, whose reader is sisl (D5) — without it the record carries
+the PDOS peaks and the charges, and no levels. Every new
+keyword — `%block ProjectedDensityOfStates`, `PDOS.kgrid.MonkhorstPack`,
+`SaveHS`, `Charge.*` — is checked against the manual-derived table before it
+is written (I21).
+
+**⑤ The response across the frames — `summarize`** (§ 5.9's pattern).
+`jobset summarize run` on an `electronic` or a `transport` calculation whose
+structure is a frame set writes `<label>.mode-response.json` at the calculation
+root — a summary of results that exist, each frame's file named by its path and
+none copied (I25's rule). It reads each frame's `Q` and weight from the frame
+rule, so the same writer serves both kinds and neither needs to know what a
+mode is:
+
+- per mode and per scalar `X` — `E_F`; the free atoms' charge and each
+  element's; `PDOS_free(E_F)`; each followed level's `ε − E_F`; on transport
+  `T(E_F)` and `G` — the value at every node, the slope `X′ = (X₊ − X₋)/2h`, the curvature
+  `X″ = (X₊ + X₋ − 2X₀)/h²` with `h` the node's `Q`, the thermal average
+  `⟨X⟩ = Σ_j w_j X_j` and `⟨X⟩ − X₀`, and the three-node against the five-node
+  average where both exist;
+- the levels followed across frames one-to-one by the overlap of their
+  coefficient vectors in the overlap-matrix metric — § 5.9's assignment, on
+  orbitals instead of modes — so `ε_HOMO-like(Q)` follows one state even where
+  two cross;
+- on transport, the thermally averaged `T(E)` of each mode, and per frame,
+  where one resonance fits, its Breit–Wigner `ε_r` and `Γ`: whether the mode
+  moved the level or the coupling (science § 4c.3);
+- the rigid-shift estimate `T″ ≈ g_ε² ∂²T₀/∂E²|_{E_F}` (science § 4c.6)
+  wherever a transmission at the base exists, beside the explicit value where
+  that exists too;
+- frames without a result as `pending`, never a failure; flags only against a
+  tolerance the person gives.
+
+**⑥ One table, joined by the mode.** The response record's presenter is the
+ranking table: per mode the frequency and the character (① — read from the
+vibration run the frame rule cites) beside the level shift at `σ` (meV), `g_ν`
+(meV) and `⟨ΔG⟩/G` at the stated temperature, marked *explicit* or
+*estimated*; sorted by any column, with no priority label unless the person
+gives a threshold (§ 5.9's tolerance rule). A SIESTA mode then gets what a
+PySCF mode has on its *Electronic structure* tab — the levels at `−Q`, `0`,
+`+Q`, joined state by state — drawn from the response record instead of the
+probe. The spectrum viewer itself shows ① and ②.
+
+**The PySCF arm** (V1.27, D8). The probe moves to the same nodes — physical
+amplitudes at the stated temperature, three points — so its SCFs give each
+orbital's slope and curvature, and `g_ν` is written. V1.24's matching maps the
+free molecule's modes onto the junction's by the overlap of their shapes over
+the molecule's atoms, so the isolated-molecule screen (the discussion's first
+stage) points at junction modes.
+
+**What it costs** (R8). ① and ② nothing beyond a read and an output switch.
+④ for every mode at three nodes: `2·(3·n_free − n_rigid) + 1` whole-junction
+SCFs, the order of the force-constant run's own `1 + 6·n_free` (§ 5.7) — so
+screening every mode is affordable wherever the modes were. The transport
+frames: one device SCF each, for the modes chosen.
+
+**Validation, before anything is claimed.** H₂ first, where the answer is known
+independently: SIESTA's molecular levels of H₂ in a box against PySCF's
+orbitals along its one stretch. Then the carbon-chain junction of the transport
+walk; then Au–BDT–Au. Every record carries three built-in checks: the
+three-node average against the five-node one; a symmetric junction's
+antisymmetric modes, which must give `X₊ = X₋` — their `X′` is the record's
+noise floor, as the asymmetry is the force constants' (§ 5.9); and the
+rigid-shift estimate against the explicit curvature.
+
+**Decisions — the user's** (plan W42 carries them):
+
+| # | the question | recommended | why |
+|---|---|---|---|
+| ~~D1~~ | which atoms every projection is over | **decided 2026-09-28**: the free atoms — the anchor is the held atoms, and nothing new is labelled *(user: "the anchor is the fixed atoms. we don't specify the anchor")*; per element within them | the structure already says which atoms are held, and the result already carries it |
+| ~~D2~~ | how the result knows the regions | **not needed**: with the projection over the free atoms, the result already carries everything ① reads — the free and held atoms, the elements, the geometry | |
+| D3 | the charge each mode moves (②) | on for every force-constant run once SIESTA is measured to print the populations at every step | one switch and no extra SCF |
+| D4 | where the electronic frames run | a calculation kind of their own, `electronic` | what § 5.6 already says; it serves `Δρ_ν` (V1.26) too, and needs no leads |
+| D5 | sisl in the SIESTA job envs — for the levels only | the user's call *(asked 2026-09-28: "what's the reason for needing sisl? for data reading/writing?" — reading only: `.HSX`, SIESTA's binary Hamiltonian and overlap; sisl 0.16.4 is 21 MB and brings pyparsing and xarray, with pandas, beside the numpy and scipy the envs have)* | the levels are the junction's HOMO and LUMO, and sisl is SIESTA's own reader of the file they come from; without it the screen still has the PDOS peaks and the charges |
+| D6 | one frame set for many modes | yes — V1.25's "for a named mode" becomes "for named modes" | the base, the leads and the seed once |
+| D7 | the amplitude rule | the Gauss–Hermite nodes of the thermal distribution at a stated temperature, three by default | the same frames give the curvature and the average (science § 4c.5); V1.25's "zero-point amplitude and its thermal growth" are the two ends of it |
+| D8 | the PySCF probe | the same nodes; `electronic_structure.amplitude_ang` gives way to the node record | one amplitude rule on both engines, and a curvature needs frames above the noise |
 
 ---
 
@@ -1868,6 +2074,7 @@ nothing is in that state as of 2026-09-24.
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
 | the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |
+| the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | **proposed 2026-09-28, not agreed** — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
 
 ---
 

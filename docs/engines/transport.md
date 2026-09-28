@@ -798,6 +798,12 @@ them, plus whatever is derived across the family (an average, a variance, a set
 of couplings). § 6's statement of what the Results surface reads will have to
 grow a frame dimension — which is another reason to fix the axis rule now.
 
+*(Proposed 2026-09-28, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.10: the built-in mode rule records each frame's normal coordinate and
+its weight in the thermal average, so what is derived across the family —
+each mode's slope, curvature and averaged conductance — is computed from the
+pair's own record, and transport still knows nothing about modes.)*
+
 
 ### 2a.10 The bias treatment — an explicit choice, and what the result may be called
 

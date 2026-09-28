@@ -763,6 +763,9 @@ by the field **and** felt by the electrons:
     |∂μ/∂Q_ν|  large     and     |∂ε_frontier/∂Q_ν|  (or  |∂T/∂Q_ν|)  large
 ```
 
+*(For a DC readout the first derivative averages away and the second is
+the one that survives — § 4c.4, proposed 2026-09-28.)*
+
 The two engines serve different links, and the discussion's division of
 labour is reproduced here with a third column — what this tool does today.
 
@@ -1211,6 +1214,255 @@ designed as one each and need a decision.
 
 Born-effective-charge infrared on SIESTA stays where it was recorded
 (`vibration.md` § 5.6, V1.15): a feature of its own.
+
+§ 4c (proposed 2026-09-28) folds V1.24–V1.27 into one design for ranking
+modes by what they do to the current — `engines/vibration.md` § 5.10, plan
+W42.
+
+---
+
+## 4c. Which mode moves the current — from the electrons' response to the conductance *(proposed 2026-09-28)*
+
+*Written from the discussion of 2026-09-28 — "we fix most of the metal atoms,
+and leave the molecule and the anchoring Au for vibrational mode calculation
+with siesta, but need a way to find the best vibration mode for next step of
+transport calculation" — and checked against it point by point. **Proposed, not
+agreed:** the design it motivates is [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.10, whose decisions are the user's (plan **W42**). § 4b.3's chain is the
+frame; this section makes its third link specific enough to rank modes by.
+No reference is added here yet: the two results it leans on that § 11 does not
+list — the Breit–Wigner line shape and Gauss–Hermite quadrature — are textbook,
+and each gets an entry in `references.bib`, checked the way § 11's were, when
+the section is agreed.*
+
+### 4c.1 The question, and why the HOMO–LUMO gap does not answer it at a metal
+
+A junction — gold, a molecule, gold — with the deep gold held and the molecule
+and its anchoring gold free gives 30–50 modes (§ 4b.6). The next step computes
+transport along a few of them, one TranSIESTA device calculation per displaced
+geometry, so the few have to be chosen. The natural first guess is the mode
+that moves the molecule's HOMO and LUMO the most — what the PySCF probe
+measures on a free molecule (§ 4b.5 G).
+
+At the metal that guess loses its object. The molecule's orbitals mix with the
+gold's continuum of states: each becomes a **resonance**, a peak of finite
+width `Γ` at an energy `ε_r`, and the junction as a whole has no gap, only a
+Fermi level `E_F` (§ 4b.3's table: "use projected densities of states and
+resonances instead"). What the current sees is not the orbitals but the
+transmission near `E_F`:
+
+```text
+    G     =  G₀ · T(E_F)                          G₀ = 2e²/h         (zero bias)
+    I(V)  =  (2e/h) ∫ T(E) [ f_L(E) − f_R(E) ] dE                     (a bias window)
+```
+
+So the question becomes **which mode changes `T(E)` near `E_F` the most**.
+A mode that moves a state 3 eV below `E_F` by 1 eV/Å can matter less than one
+that moves a resonance 0.1 eV from `E_F` by 0.2 eV/Å: the first is a strong
+electron–vibration coupling in a state no current passes through.
+
+### 4c.2 What stands in for HOMO and LUMO at the metal
+
+SIESTA gives two well-defined objects in their place. Both are taken over
+**the free atoms** — the part the person already chose to let vibrate: the
+molecule and whatever gold was left free with it, the *extended molecule* —
+and broken down by element within it (S, C, H, Au). The held atoms are the
+anchor. Nothing new is labelled: the structure already carries which atoms
+are held *(user, 2026-09-28: "the anchor is the fixed atoms. we don't specify
+the anchor, the atoms is labeled already with fixing or unfixed")*.
+
+| object | what it is | what it gives | its limit |
+|---|---|---|---|
+| the **projected density of states of the free atoms** `PDOS_free(E)`, and per element | the density of states summed over the free atoms' orbitals — all of them, or one element's | its peaks — the resonances, their positions `ε_r − E_F` and widths — and its value at `E_F` | in a periodic calculation a peak's width also carries the broadening the output asks for and the k-sampling; the true width `Γ` belongs to the open system, TBtrans's device DOS (`engines/transport.md` § 2a.13, `TBT.DOS.*`) |
+| the **free atoms' own states in the junction** — the projected self-consistent Hamiltonian of the extended molecule (MPSH) | the converged junction Hamiltonian restricted to the free atoms' orbitals and diagonalised, `H_ff c = ε S_ff c`, at Γ in a cell wide enough that the free atoms do not touch their images; each state's weight per element says whether it is the molecule's or the gold's | discrete levels with energies against `E_F`: the highest below it is the junction's *HOMO-like* level, the lowest above it the *LUMO-like* one — frontier orbitals that carry the metal's potential and the charge it transferred | no widths: the coupling that broadens them is what the restriction cut off |
+
+The MPSH is the answer to *is there a HOMO and a LUMO on SIESTA*: yes, of the
+extended molecule in the junction — the states whose weight sits on the
+molecule's elements are its frontier orbitals — and a level-shift rate
+`∂ε/∂Q` is measured on them.
+The PDOS says where they sit as resonances and — from the open system — how
+broad each is.
+
+### 4c.3 Two ways a vibration changes the transmission
+
+Near one resonance the transmission has the Breit–Wigner shape,
+
+```text
+    T(E)  ≈  Γ_L Γ_R / ( (E − ε_r)² + (Γ/2)² ) ,          Γ = Γ_L + Γ_R
+```
+
+and a mode can act on either factor.
+
+- **The level, `ε_r(Q)`** — the molecule's internal modes, and modes that move
+  charge onto it or change its potential. Off resonance (`Δ = E_F − ε_r`,
+  `|Δ| ≫ Γ`) `T ≈ Γ_LΓ_R/Δ²`, `|∂T/∂ε_r| ≈ 2T/|Δ|` and
+  `∂²T/∂ε_r² ≈ 6T/Δ²`: the sensitivity grows as the resonance nears `E_F`,
+  which is § 4c.1's example in numbers.
+- **The coupling, `Γ_L(Q)` and `Γ_R(Q)`** — the contact modes, where the
+  molecule meets the gold: Au–S stretches and bends, the molecule's tilt. A tunnelling coupling falls exponentially with
+  the bond, `Γ ∝ e^{−2κd}`, so off resonance `T ∝ e^{−2κ(d_L + d_R)}`, and its
+  curvature is large and always positive: a contact mode can change the current
+  strongly while the molecule's levels barely move.
+
+The coupling case shows why a mode's **character** is a filter and not a
+ranking. In a symmetric junction the *antisymmetric* contact stretch lengthens
+one Au–S bond as it shortens the other; `d_L + d_R` stays constant, and off
+resonance the transmission does not change at all — though both bonds stretch
+as far as in the symmetric stretch, which changes it most.
+
+**The sign of the curvature carries meaning too.** In a resonance's tail
+(`|Δ| > Γ/(2√3)`) `∂²T/∂ε_r² > 0`, and a vibrating level raises the averaged
+transmission; on the peak it is negative (`−8T/Γ²` at `Δ = 0`), and vibration
+lowers it.
+
+### 4c.4 Why the second derivative — the averages a measurement sees
+
+Expand the transmission along one mode's normal coordinate `Q` (amu^½·Å,
+§ 4b.5 F):
+
+```text
+    T(Q)  =  T₀  +  T′ Q  +  ½ T″ Q²  +  …
+```
+
+A measurement averages over the motion, and in both cases that matter the
+first-order term averages away:
+
+```text
+    thermal   Q is Gaussian, ⟨Q⟩ = 0,  σ² = ⟨Q²⟩ = (ħ/2ω) coth(ħω / 2k_BT)     (web/spectra.md § 4.1)
+              ⟨T⟩  =  T₀  +  ½ T″ σ²  +  O(σ⁴)
+
+    driven    the mode pumped by light at its own frequency,  Q(t) = Q_d cos ωt
+              time average  =  T₀  +  ¼ T″ Q_d²
+```
+
+So a **DC** measurement — the averaged conductance, or its change when light
+drives a mode — sees only `T″`. The first derivative is an AC signal at the
+vibration's frequency; it is also the linear coupling the inelastic-tunnelling
+literature quotes, `g_ν = (∂ε/∂Q_ν)·Q_zp` [Frederiksen2007] (§ 4b.5 F). For a
+DC readout § 4b.3's detector criterion therefore reads: `|∂μ/∂Q_ν|` large (the
+light drives the mode) **and** `|∂²T/∂Q_ν²|` large (the driven motion changes
+the DC current).
+
+At second order independent harmonic modes add: `⟨T⟩ − T₀ ≈ Σ_ν ½ T″_ν σ_ν²`,
+the cross terms averaging to zero because `⟨Q_ν Q_μ⟩ = 0` for `ν ≠ μ`. So each
+mode's share is a piece of the whole thermal change of the conductance, and the
+pieces compare.
+
+The discussion's two scores, kept side by side and never merged:
+
+| score | what it measures | unit |
+|---|---|---|
+| **electronic** — `\|∂(ε − E_F)/∂Q_ν\| · σ_ν` | how far the mode moves the frontier level at its thermal amplitude | meV |
+| **transport** — `½ T″_ν σ_ν² / T₀ = ⟨ΔG⟩_ν / G` | the change of the conductance the mode's thermal motion causes | % |
+
+They need not rank the modes alike, and when they disagree that is a result:
+it separates a mode that modulates the molecule's orbitals from one that
+modulates the interface [Galperin2007].
+
+For a mode that stretches one contact bond with the exponential coupling of
+§ 4c.3 the average is exact, not an expansion: with the bond's thermal spread
+`⟨Δd²⟩ = σ² (∂d/∂Q)²`, `⟨T⟩/T₀ = exp(2κ²⟨Δd²⟩)` — the log-normal average,
+larger than `T₀` whatever the sign of the stretch.
+
+### 4c.5 Three frames give the curvature and the average at once — the Gauss–Hermite nodes
+
+The frames along a mode belong where they answer § 4c.4's question. For a
+Gaussian distribution the `n`-point **Gauss–Hermite** rule places the frames at
+`Q_j = √2 σ x_j`, with weights `w_j`, and averages exactly any `T(Q)` that is a
+polynomial of degree up to `2n − 1`:
+
+| n | the frames, in units of σ | the weights |
+|---|---|---|
+| 3 | `0`, `±√3 = ±1.7321` | `2/3`, `1/6`, `1/6` |
+| 5 | `0`, `±1.3556`, `±2.8570` | `0.53333`, `0.22208`, `0.01126` |
+
+With three frames `⟨T⟩ ≈ ⅔ T₀ + ⅙ (T₊ + T₋)`, which is exactly
+`T₀ + ½ T″ σ²` with `T″` the three-point difference at the step `h = √3 σ`.
+**The same three frames give the curvature and the thermal average**, and there
+is no step to choose: the step is the thermal amplitude, where the molecule
+actually is. Five frames check the three. When the two averages agree the
+expansion holds across the thermal range; when they do not, `T(Q)` is not a
+polynomial there — a resonance crossing `E_F` — and the five-frame average is
+the better answer, with that said.
+
+This replaces a fixed probe step for the purpose. The PySCF probe's
+`A = 0.02 Å` and the force constants' `δ` measure a derivative at a point and
+are chosen small, and a curvature from so small a step drowns in the SCF's
+noise — the large-minus-large problem of § 4b.7 point 2, in `T` and `ε` instead
+of the density. The thermal nodes are as large as the physics makes them.
+
+Two cautions, each **stated per frame rather than enforced**. *Soft modes:*
+`σ` grows as `1/√ω` and `coth` adds more (× 2.9 at 50 cm⁻¹ and 298 K,
+`web/spectra.md` § 4.1), so the outer frames of a torsion can stretch bonds far
+past the harmonic region, where neither the mode nor the average means what it
+says; each frame states its largest atomic displacement against that atom's
+nearest-neighbour distance, the yardstick of `web/spectra.md` § 4.2.
+*Temperature* enters only through `σ`, and a zero-temperature set is the
+zero-point amplitude `Q_zp` every mode in the result already carries
+(`vibration.md` § 6.3).
+
+### 4c.6 A screen for every mode at the cost of one transmission — the rigid-shift estimate
+
+TranSIESTA per displaced frame is the expensive step, and the screen should
+say which modes deserve it. If a mode moves the molecule-derived states
+together — a rigid shift `δ(ε − E_F) = g_ε Q`, the usual case for a mode that
+changes the molecule's charge or its potential — then
+`T(E; Q) ≈ T₀(E − g_ε Q)`, and
+
+```text
+    T″_ν  ≈  g_ε,ν² · ∂²T₀/∂E² |_{E_F}
+```
+
+One transmission curve at the base geometry (the transport calculation's
+`f000`) and each mode's level-shift rate estimate every mode's curvature. The
+rate comes from the electronic frames — or, if the force-constant run can write
+`∂H/∂R` (`vibration.md` § 5.6, level two), from first-order perturbation theory
+for every mode with no extra SCF. What the estimate cannot see is exactly what
+§ 4c.3 names second: a change of the coupling. So the contact modes go to
+explicit frames whatever the estimate says, and every mode with both an
+estimate and explicit frames reports the two side by side — the screen checked
+where the check is cheapest.
+
+The estimate also prices the DFT caveat. Semi-local DFT places the molecule's
+levels too close to `E_F` (`engines/transport.md` § 2: for Au–BDT the computed
+conductance is one to two orders of magnitude above experiment), and
+`∂²T₀/∂E²` near `E_F` depends on exactly that distance. Evaluated at `E_F`
+shifted by a stated correction, it says how far the ranking depends on the
+level alignment — a sentence the ranking should carry.
+
+### 4c.7 What is computed, cheapest first
+
+| what | from | cost |
+|---|---|---|
+| **the mode's character** — each element's share of the mode's motion among the free atoms, `Σ_{k∈X} m_k\|L_k\|²` (the viewer's composition, `web/spectra.md` § 4.2); how much of the free atoms' motion is whole-body — the free part sliding or rocking as a unit against the held anchor, the molecule's tilt among it; how far each bond from a free atom to a held one, and each bond between elements inside the free part (Au–S), stretches at `σ` | the result file alone: it already carries the free and held atoms, the elements and the geometry | nothing — derived when the result is read |
+| **the charge each mode moves between the anchor and the free part**, `∂q_free/∂Q_ν` (and per element), for every mode | the force-constant run's own displaced SCFs, if SIESTA prints the populations at each step: per free coordinate `(q(R_k + δ) − q(R_k − δ)) / 2δ`, projected onto every mode — the organisation the PySCF infrared route uses for `∂μ/∂R` (§ 4b.5 D). A molecular dipole is undefined in a periodic metal (§ 4b.7); the charge on a set of atoms, by a stated partition, is not | an output switch on the force-constant run — whether SIESTA prints the populations at every step is to be measured |
+| **`E_F`, `PDOS_free(E)` and per element, the free atoms' own levels and the charges at each frame** | one periodic SCF per frame, in the force-constant run's own cell and at its settings, so the modes and the screen share one model | two SCFs per mode at three nodes, four at five, plus one base: screening **every** mode at three nodes costs `2·(3·n_free − n_rigid) + 1` SCFs, the order of the force-constant run's own `1 + 6·n_free` |
+| **`T(E)` and the open system's DOS on the free atoms** — the true widths, and whether a mode moved the level or the coupling (a Breit–Wigner fit per frame, where one resonance fits) | the transport ladder on the frame set: the device and the transmission per frame, the leads and the seed once (`engines/transport.md` § 2a.9) | one TranSIESTA device SCF per frame, for the modes the screen chose |
+
+The discussion's staged workflow — the isolated molecule, the junction's PDOS,
+TranSIESTA, the average — is this table with the isolated molecule in front:
+the PySCF probe (§ 4b.5 G) on the free molecule, mapped onto the junction's
+modes by the overlap of their shapes over the molecule's atoms (§ 4b.9, V1.24).
+
+### 4c.8 What the static-frame picture assumes
+
+Each is stated beside the numbers it limits, never dropped:
+
+1. **Harmonic, independent modes** — and the partial Hessian's clamped gold
+   stiffens the lowest contact modes; the active-region check of § 4b.6 F bounds
+   that.
+2. **Static frames** — the electron crosses the junction fast against the
+   vibration: `ħω` small against the resonance's distance from `E_F`, or its
+   width when that is larger. What a static average cannot give — the inelastic
+   steps at `eV = ħω`, the polaron shift of a strongly coupled level — needs the
+   electron–vibration coupling itself (`vibration.md` § 5.6, level two;
+   [Frederiksen2007]).
+3. **Zero bias** — a frame group runs at one bias (`engines/transport.md`
+   § 2a.9's ruling).
+4. **The level alignment is DFT's** — § 4c.6's last paragraph.
+5. **The projection is the free atoms** — the extended molecule the person
+   let vibrate; how much of a state or a motion is the molecule's own is its
+   weight on the molecule's elements, read, never assumed.
 
 ---
 
