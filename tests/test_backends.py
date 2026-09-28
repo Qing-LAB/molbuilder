@@ -22,10 +22,10 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.builders.backends import (
-    BackendUnavailable,
     available_backends,
     dispatch,
 )
+from molbuilder.chemistry import BackendUnavailable
 
 
 def test_available_backends_returns_dict_of_bools():

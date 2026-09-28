@@ -62,7 +62,7 @@ import pathlib
 from datetime import datetime
 from typing import Any, Dict
 
-from ...builders.backends import BackendUnavailable as _BackendUnavailable
+from ...chemistry import BackendUnavailable as _BackendUnavailable
 from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
@@ -373,7 +373,10 @@ def api_build_molecule():
         # preconditions checked, the download URL, the licence terms and
         # the fallbacks, and it does.
         return jsonify({"ok": False, "reason": "backend_unavailable",
-                        "backend": requested or "auto",
+                        # WHAT IS MISSING, when one engine is the answer -- a
+                        # backend, or the hydrogen engines -- else the
+                        # request (`chemistry.BackendUnavailable.missing`).
+                        "backend": exc.missing or requested or "auto",
                         "error": str(exc)}), 200
     except ImportError as exc:
         return jsonify({"ok": False,

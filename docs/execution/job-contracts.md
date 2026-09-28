@@ -190,8 +190,10 @@ engine ever navigates:
 
 So one rule covers both: **the caller's working directory is the contract.** The
 wrapper inherits it and changes it for nothing; outputs land where the wrapper
-was invoked. A wrapper that navigated would break the property the engine depends
-on — that *here* is where everything is — and it would break it differently under
+was invoked -- the wrapper's own files because it writes them there, the
+engine's because SIESTA writes where it runs and the wrapper runs a PySCF deck
+by its bare name from there, and a PySCF deck writes beside itself (§ 4.2).
+A wrapper that navigated would break the property the engine depends on — that *here* is where everything is — and it would break it differently under
 the two launchers, which is worse than breaking it consistently.
 
 This is not a rule the design is asking for. It is how the shipped submit path

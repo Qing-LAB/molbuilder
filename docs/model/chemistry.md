@@ -89,7 +89,12 @@ Two related counters:
   structure (correct sp3/sp2/sp geometry). **OpenBabel first**
   (`OBMol.AddHydrogens()`, no ghost-coordinate failure mode), **RDKit fallback**
   (`Chem.AddHs(mol, addCoords=True)`). This is what nucleic/3DNA builds route
-  through (see `engines/builders.md`).
+  through (see `engines/builders.md`). **With neither installed it refuses**:
+  `BackendUnavailable` (defined in `chemistry`, `missing="hydrogens"`), naming
+  both installs -- a structure without its hydrogens gives DFT the wrong
+  electron count, so no heavy-atom structure is returned in its place. The
+  Build page answers it as advice (`web/web-api.md`, `POST /api/build`), the
+  CLI as `Error: ...`.
 
 ---
 

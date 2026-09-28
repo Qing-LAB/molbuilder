@@ -36,6 +36,7 @@ from typing import Iterator, Optional, Sequence
 import click
 
 from .diagnostics import initialize as _initialize_diagnostics
+from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
@@ -3604,6 +3605,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         click.echo(f"Error: {e.format_message()}", err=True)
         sys.exit(e.exit_code)
     except click.Abort:
+        sys.exit(1)
+    except _BackendUnavailable as e:
+        # A TOOL THIS INSTALL LACKS -- a builder backend or the hydrogen
+        # engines -- said as the one line the web page says it in, not
+        # a traceback (`chemistry.BackendUnavailable`).
+        click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     rc = rc or 0
     if asked_for_help:

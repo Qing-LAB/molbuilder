@@ -215,8 +215,12 @@ flowchart TD
   which backend `auto` *would* pick without running anything (used to surface the
   choice in the CLI and web UI).
 - **`available_backends()`** (`__init__.py:65`) maps each backend → runnable-here.
-- **`BackendUnavailable`** is raised when no installed backend can satisfy the
-  request, with install hints for all three.
+- **`BackendUnavailable`** (defined in `chemistry`, the lowest layer that raises
+  it) is raised when no installed backend can satisfy the request, with install
+  hints for all three -- and by `chemistry.add_hydrogens` when neither hydrogen
+  engine (OpenBabel, RDKit) is installed. Its `missing` names what is absent
+  (`"threedna"`, `"amber"`, `"rdkit"`, `"hydrogens"`), which the Build route
+  reports as `backend`.
 - **Adding a backend** is two steps: drop a `_<name>.py` defining `build()` +
   `is_available()`, and register it in `_load_backends()` + `available_backends()`.
 

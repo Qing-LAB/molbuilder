@@ -26,9 +26,12 @@ def no_threedna():
         yield
 
 
+# `backend` NAMES WHAT IS MISSING (`web-api.md`, the route's row): a duplex
+# asked of "auto" needs X3DNA, so X3DNA is what the page can disable.  It
+# echoed the request until 2026-09-28.
 @pytest.mark.parametrize("body,backend", [
     ({"kind": "dna", "input": "ATGC", "backend": "threedna"}, "threedna"),
-    ({"kind": "dna", "input": "ds,ATGCATGC"},                 "auto"),
+    ({"kind": "dna", "input": "ds,ATGCATGC"},                 "threedna"),
 ])
 def test_a_missing_backend_answers_advisory_not_server_fault(
         web_client, no_threedna, body, backend):
@@ -80,4 +83,27 @@ def test_hydrogens_nothing_here_can_add_are_refused_as_advice(
     assert r.status_code == 200, r.get_json()
     j = r.get_json()
     assert j["ok"] is False and j["reason"] == "backend_unavailable", j
+    assert j["backend"] == "hydrogens", j
     assert "OpenBabel" in j["error"] and "RDKit" in j["error"], j["error"]
+
+
+def test_the_cli_says_the_same_refusal_in_one_line(monkeypatch, capsys):
+    """The same refusal on the CLI: one ``Error: ...`` line and exit 1, as a
+    ``ClickException`` is said -- not a traceback (`model/chemistry.md`,
+    ``add_hydrogens``).  The engines are made to fail as above.
+
+    MUTATION THIS MUST FAIL AGAINST: `cli.main` without its
+    `BackendUnavailable` door, which ended in a Python traceback until
+    2026-09-28 (M2b's review).
+    """
+    import sys
+
+    from molbuilder.cli import main
+    for missing in ("openbabel", "rdkit"):
+        monkeypatch.setitem(sys.modules, missing, None)
+    with pytest.raises(SystemExit) as ended:
+        main(["peptide", "GG"])
+    assert ended.value.code == 1
+    said = capsys.readouterr().err
+    assert said.startswith("Error: Cannot add hydrogens"), said
+    assert "Traceback" not in said, said

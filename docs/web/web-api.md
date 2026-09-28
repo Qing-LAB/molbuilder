@@ -352,10 +352,11 @@ writes it.
 carrying a literal status are `400`×153, `500`×44, `404`×25, `409`×16,
 `403`×8, `200`×4, and one each of `413`, `422`, `501`; another 32 pass the
 status as a value — `err(msg, code)`'s default of 400, or a path error's own
-`status`. The advisory bucket is **three sites**: the notify channel probe,
+`status`. The advisory bucket is **four sites**: the notify channel probe,
 twice — *"could not reach it"* is news about somewhere else, and a 5xx there
-would claim this server broke — and transport's preflight, whose issue list
-IS the answer.
+would claim this server broke — transport's preflight, whose issue list
+IS the answer, and the Build route's missing tool (`POST /api/build/molecule`),
+which is the person's install, not this server's fault.
 
 > *(The four buckets were settled by an audit on 2026-06-17 that found five
 > misclassifications, including a catch-all `except Exception` returning 400
@@ -546,7 +547,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | Method · Path | Purpose |
 |---|---|
 | POST `/api/build/load` | Load a structure (path / upload / raw text) |
-| POST `/api/build/molecule` | Build a molecule from a backend |
+| POST `/api/build/molecule` | Build a molecule from a backend. A tool this install lacks — a builder backend, or the hydrogen engines — is **advice, not a fault**: `200` with `{ok: false, reason: "backend_unavailable", backend, error}`, `backend` naming what is missing (`threedna`, `amber`, `rdkit`, `hydrogens`), else the backend asked for (`chemistry.BackendUnavailable.missing`) |
 | GET `/api/modify/meta` | Element/tool metadata for the Modify UI |
 | POST `/api/modify/{delete,add_atom,orient,rotate,translate,slab}` | The six structure edits |
 | POST `/api/modify/append` | `{structure, addition}` → the two structures as one, with `addition` **centred on the world origin** and appended. **This is what a load and a generate do**: they add to what is open rather than replacing it (user, 2026-09-07), so a session is assembled piece by piece; replacing is a separate gesture — Start empty, then load. TWO envelopes in one body, read by the same reader (§ 1). A label the open structure already carries is **numbered** on the way in (`benzene#` → `benzene#2`) so two fragments stay separately selectable; the reserved `frozen_atoms` keeps its spelling, because something downstream acts on that exact name. The **open structure's cell is kept**, and a dropped one is said in `notices` |

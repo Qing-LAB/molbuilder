@@ -7,9 +7,11 @@ registered parser builds Frames from and the monitor reads a running job
 with), the PySCF parser's sibling-log enrichment, and the cheap ending scan
 (`_run_ending`).
 
-**Stdlib only, and nothing of ours**: it travels beside every job
-(`runwrap.MONITOR_COMPANIONS`), so the monitor reads a PySCF run's progress
-with the lines the Results tab reads it with.  It is `molwatch.py`'s grammar
+**Stdlib only, and travels** (`configuration.md`'s rule for the monitor's
+modules): it goes beside every job (`runwrap.MONITOR_COMPANIONS`), so the
+monitor reads a PySCF run's progress with the lines the Results tab reads it
+with, and what it imports of ours -- the physical constants, the PySCF end
+lines -- travels with it and is imported two ways.  It is `molwatch.py`'s grammar
 half, split out on 2026-09-26 for that reason -- the SIESTA family's table
 (`siesta_grammar`) was split from its parser the same way.
 """

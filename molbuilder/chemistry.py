@@ -59,6 +59,25 @@ import numpy as np
 from .structure import Structure
 
 
+class BackendUnavailable(RuntimeError):
+    """An external engine molbuilder dispatches to is not installed here:
+    a structure builder's backend (X3DNA, AmberTools' ``tleap``, RDKit) or
+    the hydrogen engines (OpenBabel, RDKit).  ``missing`` names it, when one
+    engine is the answer, for a surface that acts on it -- the Build page
+    answers this as advice, not as a server fault (`web-api.md` § 1).
+
+    DEFINED HERE, the lowest layer that raises it (`chemistry` is L1,
+    `architecture.md` § 3): `builders/` (L2) raises it for its backends and
+    reaches it downward, and :func:`add_hydrogens` raises it for its engines.
+    It lived in `builders.backends` until 2026-09-28, which made the hydrogen
+    refusal an upward import (M2b's review).
+    """
+
+    def __init__(self, message: str, *, missing: Optional[str] = None):
+        super().__init__(message)
+        self.missing = missing
+
+
 # --------------------------------------------------------------------- #
 #  The periodic table, Z-indexed                                        #
 # --------------------------------------------------------------------- #
@@ -1713,7 +1732,6 @@ def add_hydrogens(struct: Structure) -> Structure:
     if Chem is not None:
         return _protonate_rdkit(struct, Chem)
 
-    from .builders.backends import BackendUnavailable
     raise BackendUnavailable(
         "Cannot add hydrogens: neither OpenBabel (`conda install -c "
         "conda-forge openbabel`) nor RDKit (`conda install -c conda-forge "
@@ -1721,8 +1739,7 @@ def add_hydrogens(struct: Structure) -> Structure:
         "the wrong electron count.  Install OpenBabel for canonical "
         "biomolecule protonation; RDKit also works for SMILES-constructed "
         "inputs but has a known ambiguous-valence ghost-coord artifact for "
-        "PDB-parsed nucleic-acid bases.  To build without hydrogens on "
-        "purpose, turn adding them off.")
+        "PDB-parsed nucleic-acid bases.", missing="hydrogens")
 
 
 def _protonate_openbabel(struct: Structure, ob) -> Structure:

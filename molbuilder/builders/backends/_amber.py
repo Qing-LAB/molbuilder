@@ -64,12 +64,13 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             "double-strand DNA is not supported by the amber backend; it "
             "requires X3DNA (canonical or arbitrary duplex geometry).")
     if not is_available():
-        from . import BackendUnavailable
+        from ...chemistry import BackendUnavailable
         raise BackendUnavailable(
             "AmberTools `tleap` not found.  Either:\n"
             "  - install `tleap` on the host env's PATH, or\n"
             "  - create the molbuilder-MDtools conda env (see "
-            "docs/ops/installation.md § molbuilder-MDtools)."
+            "docs/ops/installation.md § molbuilder-MDtools).",
+            missing="amber"
         )
     if kind not in ("dna", "rna"):
         raise ValueError(f"AmberTools backend supports kind in 'dna'|'rna'; got {kind!r}")

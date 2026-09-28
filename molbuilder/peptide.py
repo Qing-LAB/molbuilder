@@ -70,8 +70,8 @@ def build_peptide(
         If True (default), add explicit hydrogens via OpenBabel or RDKit
         (whichever is installed first).  Required for any quantum-
         chemistry calculation.  If neither is installed and this is True,
-        a warning is printed and the heavy-atom-only structure is
-        returned -- you will have to protonate it yourself.
+        :class:`~molbuilder.chemistry.BackendUnavailable` is raised,
+        naming both installs.
 
     Returns
     -------

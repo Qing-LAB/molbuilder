@@ -262,8 +262,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
                 f"{kind!r}).")
         found = _resolve()
         if found is None:
-            from . import BackendUnavailable
-            raise BackendUnavailable(_unavailable_message())
+            from ...chemistry import BackendUnavailable
+            raise BackendUnavailable(_unavailable_message(), missing="threedna")
         seq = "".join(c for c in sequence.upper() if c.isalpha())
         if not seq:
             raise ValueError("Empty sequence")
@@ -289,8 +289,8 @@ def build(kind: str, sequence: str, form: str, terminal: str,
 
     found = _resolve()
     if found is None:
-        from . import BackendUnavailable
-        raise BackendUnavailable(_unavailable_message())
+        from ...chemistry import BackendUnavailable
+        raise BackendUnavailable(_unavailable_message(), missing="threedna")
 
     seq = "".join(c for c in sequence.upper() if c.isalpha())
     if not seq:

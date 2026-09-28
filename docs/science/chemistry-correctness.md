@@ -544,8 +544,9 @@ lacks parameters for nucleic acids (`builders/backends/_rdkit.py:86-106`).
 (`nucleic.py:312`) skips it when the structure is already protonated
 (`tests/test_nucleic.py::test_maybe_add_hydrogens_auto_skips_already_protonated`)
 and forces it when it isn't. (`add_hydrogens` normalises protonation via
-OpenBabel→RDKit, rebuilding the structure through a PDB round-trip; only the
-no-engine fallback returns the input unchanged, with a `RuntimeWarning` — see
+OpenBabel→RDKit, rebuilding the structure through a PDB round-trip; with
+neither engine installed it refuses with `BackendUnavailable` rather than
+return the input unprotonated — see
 [`model/chemistry.md`](?doc=model/chemistry.md).)
 `formal_charge_from_phosphates` matches the user-stated charge for canonical
 DNA/RNA inputs.

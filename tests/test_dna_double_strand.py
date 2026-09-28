@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.builders.backends import BackendUnavailable
+from molbuilder.chemistry import BackendUnavailable
 
 from molbuilder.nucleic import build_dna, _parse_dna_notation
 

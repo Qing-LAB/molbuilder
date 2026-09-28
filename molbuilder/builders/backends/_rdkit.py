@@ -55,10 +55,10 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             "double-strand DNA is not supported by the rdkit backend; it "
             "requires X3DNA (canonical or arbitrary duplex geometry).")
     if not is_available():
-        from . import BackendUnavailable
+        from ...chemistry import BackendUnavailable
         raise BackendUnavailable(
             "rdkit not installed; run `pip install rdkit` "
-            "or `conda install -c conda-forge rdkit`"
+            "or `conda install -c conda-forge rdkit`", missing="rdkit"
         )
 
     if form != "B":

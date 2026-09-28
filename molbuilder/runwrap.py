@@ -4103,22 +4103,24 @@ def render_run_wrapper(script_path: Path, *,
         )
         + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"
-        f"# docs/execution/running-a-job.md § 5).  Output artefacts (the runwrap log,\n"
-        f"# -runN.out, .chk, trajectory XYZ, .molwatch.log,\n"
-        f"# .spectra.json, ...) land in the CALLER'S current working\n"
+        f"# docs/execution/running-a-job.md § 5).  Its own files (the\n"
+        f"# runwrap log, -runN.out) land in the CALLER'S current working\n"
         f"# directory.  Under sbatch this is ``SLURM_SUBMIT_DIR`` (the\n"
         f"# dir you ran sbatch from); under direct invocation it's\n"
-        f"# wherever you ``cd``'d before running the wrapper.\n"
+        f"# wherever you ``cd``'d before running the wrapper.  The\n"
+        f"# engine's files (.chk, trajectory XYZ, .molwatch.log,\n"
+        f"# .spectra.json, .DM, ...) land in the same directory:\n"
+        f"# SIESTA writes where it runs, and a PySCF deck writes beside\n"
+        f"# itself, which this wrapper runs by its bare name from here\n"
+        f"# (docs/execution/job-contracts.md § 4.2).\n"
         f"#\n"
         f"# Convention: invoke from the project directory (the dir\n"
         f"# holding the .fdf / .py and where you want outputs to\n"
         f"# accumulate).  Do NOT add ``cd`` lines or modify the cwd\n"
-        f"# from inside the generated .py / .fdf -- the Python side\n"
-        f"# resolves every output path through ``_mb_outfile()``\n"
-        f"# against the SCRIPT directory, but other code (PySCF's\n"
-        f"# mol.log open(), geomeTRIC's optimize prefix) you might\n"
-        f"# layer on top would write into the wrong place if you\n"
-        f"# chdir to elsewhere.\n"
+        f"# from inside the generated .py / .fdf -- code you might\n"
+        f"# layer on top (PySCF's mol.log open(), geomeTRIC's optimize\n"
+        f"# prefix) would write into the wrong place if you chdir to\n"
+        f"# elsewhere.\n"
         f"#\n"
         f"set -euo pipefail\n"
         f"\n"
@@ -4212,8 +4214,9 @@ def render_run_wrapper(script_path: Path, *,
 #: ``{name beside the job: the module whose source it is}``: the monitor, the
 #: one module it reads its channels through, and every framework module it
 #: reads the RUN through -- the names (`runfiles`, `identity`), the output's
-#: one parser (each engine family's reading pass, its grammar, and the rule
-#: engine they run on), the timing instrument's rows, how a run ended (the
+#: one parser (each engine family's reading pass, its grammar, the rule
+#: engine they run on, and the physical constants a grammar converts a
+#: residual with, `constants`), the timing instrument's rows, how a run ended (the
 #: PySCF end lines, `_run_ending`), `run_status` itself, and what a report may
 #: carry (`report_fields`) -- `execution/run-reports.md` § 2.3.
 #:

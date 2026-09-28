@@ -33,16 +33,18 @@ wrong and cannot enforce the tetrahedral phosphate-bridge geometry.
 ``BackendUnavailable`` is raised when the user picks a backend whose
 external dependency isn't installed (e.g. ``amber`` without ``tleap``,
 or ``threedna`` without an x3dna install reachable via the detection
-chain).
+chain).  It is `molbuilder.chemistry`'s type -- the lowest layer that
+raises it, since ``add_hydrogens`` refuses with it too -- and each
+backend names itself in its ``missing``.
 """
 
 from __future__ import annotations
 
 from typing import Callable, Dict
 
+from ...chemistry import BackendUnavailable
 
-class BackendUnavailable(RuntimeError):
-    """The requested backend's external dependency isn't installed."""
+
 
 
 # ---------------------------------------------------------------- #
@@ -142,6 +144,6 @@ def dispatch(kind: str, sequence: str, *,
 
 
 __all__ = [
-    "BackendUnavailable", "auto_backend_name",
+    "auto_backend_name",
     "available_backends", "dispatch",
 ]

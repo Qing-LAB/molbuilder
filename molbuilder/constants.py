@@ -4,6 +4,10 @@ MODULE  constants (floor 0; imports nothing at all)
 ROLE    the ONE place a physical constant is spelled
 USED-BY the parsers, the emitters, the transport composer — anywhere a
         conversion between atomic units and the units a file speaks happens
+TRAVELS in the monitor bundle beside every job (`runwrap.MONITOR_COMPANIONS`),
+        because the molwatch grammar converts a residual with it — so it
+        stays stdlib-only (`configuration.md`'s rule, *stdlib-only AND
+        travels*)
 
 WHY THIS EXISTS.  A constant spelled at each call site drifts.  Left to
 itself the Bohr radius separates into **three values across eight sites**,
