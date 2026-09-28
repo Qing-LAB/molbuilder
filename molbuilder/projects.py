@@ -210,18 +210,15 @@ def projects_root_with_source(base: Optional[Path] = None) -> ProjectsRoot:
     # Lazy: runtime_config is not needed to answer 1 or 2, and importing it
     # at module scope would tie the tree API to the config reader.
     from . import repo_root
-    # ImportError only.  A blanket `except Exception` stood here for one
-    # revision and swallowed RuntimeConfigError -- so a typo in `paths`
-    # silently fell back to the default instead of being refused with the
-    # known keys named, which is the discipline every other section in
-    # molbuilder.json follows (architecture.md § 8.2a).  A config the user
-    # wrote and molbuilder ignored is the worst of both.
-    try:
-        from .runtime_config import get_paths
-    except ImportError:                     # pragma: no cover - cycle guard
-        configured = None
-    else:
-        configured = (get_paths() or {}).get("projects")
+    # NOTHING IS CAUGHT.  `runtime_config` imports only `config_dir`, so there
+    # is no cycle to guard, and a RuntimeConfigError -- a typo in `paths` --
+    # reaches the caller as the refusal it is, with the known keys named
+    # (architecture.md § 8.2a).  A `except ImportError` "cycle guard" stood
+    # here until 2026-09-28 that could not fire -- and that, had it fired,
+    # would have ignored `paths.projects` and reported it unset (plan W36
+    # ⑨); a blanket `except Exception` before it swallowed the refusal too.
+    from .runtime_config import get_paths
+    configured = (get_paths() or {}).get("projects")
     if configured:
         p = Path(configured).expanduser()
         return ProjectsRoot(p if p.is_absolute() else repo_root() / p,

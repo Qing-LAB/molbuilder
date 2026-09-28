@@ -295,6 +295,13 @@ def api_build_molecule():
         return jsonify({"ok": False, "error": "empty input"}), 400
     backend_used: str | None = None
     h_mode_used: str | None = None
+    # THE BACKEND ASKED FOR, when a kind lets a person choose one.
+    # Bound here, before any builder runs, because the missing-backend
+    # answer below names it -- and a builder that is not DNA/RNA can
+    # reach that answer too (a peptide whose hydrogens nothing here can
+    # add), which crashed the handler on an unbound name until
+    # 2026-09-28.
+    requested: str | None = None
     build_warnings: list[str] = []
     try:
         # DNA / RNA accept extra knobs (backend / form / terminal).

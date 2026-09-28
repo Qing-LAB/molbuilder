@@ -54,7 +54,7 @@ from ..constants import HARTREE_CM1 as _HARTREE_CM1
 from .. import script_emit as _sc
 from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
-from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS,
+from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS, emit_outfile_helper,
                     ROLE_GEOM_TRAJ)
 
 # The lifted emitters — the old generator's proven blocks, composed anew.
@@ -172,17 +172,9 @@ def _vib_constants(cfg) -> List[str]:
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
            f"THERMO_T_GRID  = {_THERMO_GRID_K}",
-           "# The framework runs a deck from its ATTEMPT directory and",
-           "# links the deck text from the bundle root --",
-           "# resolve(__file__) follows the link, so a script-dir rule",
-           "# would write the artifact one level up (found by the first",
-           "# live E2E).  Outputs belong where the run ran: the cwd.",
-           "# THE one definition (the lifted script-dir form it once",
-           "# shadowed is gone).",
-           "def _mb_outfile(name):",
-           "    from pathlib import Path as _P",
-           "    _p = _P(name)",
-           "    return str(_p if _p.is_absolute() else _P.cwd() / _p)",
+           # Where every output lands: beside the script -- the one
+           # definition every PySCF deck carries (`input.emit_outfile_helper`).
+           *emit_outfile_helper(),
            "JSON_PATH = _mb_outfile(JOB + '.spectra.json')",
            ]
     return out

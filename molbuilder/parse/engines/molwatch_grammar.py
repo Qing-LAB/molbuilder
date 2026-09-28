@@ -19,8 +19,10 @@ import re
 from typing import Any, Dict, Optional
 
 try:                                        # inside molbuilder
+    from ...constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
     from ...pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
 except ImportError:                         # beside a job, in mb_monitor.pyz
+    from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
     from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
 
 # ---- The header ---------------------------------------------------------------
@@ -80,9 +82,6 @@ def field_value(line: str) -> Optional[float]:
     return maybe_float(rest.strip()) if sep else None
 
 
-#: Hartree in eV (CODATA 2018): PySCF states its SCF tolerances in Hartree,
-#: and the step blocks carry the SCF's residuals in eV.
-_HARTREE_EV = 27.211386245988
 #: The one SCF phase of a run this log records -- the key its
 #: :func:`scf_criteria` are stated under, beside SIESTA's ``periodic`` and
 #: ``negf`` (`web/trajectory.md` § 3).
@@ -121,7 +120,9 @@ def scf_criteria(runtime_info: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for residual, tolerance in (("dE", energy), ("|g|", gradient)):
         if tolerance is not None:
-            out[residual] = {"tolerance": tolerance * _HARTREE_EV,
+            # PySCF states its SCF tolerances in Hartree, and the step blocks
+            # carry the SCF's residuals in eV.
+            out[residual] = {"tolerance": tolerance * HARTREE_EV,
                              "unit": "eV", "required": True}
     return {SCF_PHASE: out} if out else {}
 
@@ -269,9 +270,10 @@ def scan_conclusion(path) -> str:
 #: The ``scf_history`` header of a log whose orbital-gradient norm was
 #: written as norm x Hartree/Bohr->eV/Ang, and the factor that makes it eV:
 #: the norm is an energy (Hartree over dimensionless orbital rotations), so
-#: eV is norm x Hartree->eV = old x (27.211386245988 / 51.42208619).
+#: eV is norm x Hartree->eV = old x (HARTREE_EV / HARTREE_BOHR_EV_ANGSTROM_ASE),
+#: both from `constants`, which travels in the bundle beside this module.
 OLD_GNORM_HEADER = "gnorm(eV/Ang)"
-OLD_GNORM_TO_EV = _HARTREE_EV / 51.42208619
+OLD_GNORM_TO_EV = HARTREE_EV / HARTREE_BOHR_EV_ANGSTROM_ASE
 
 
 def scf_history_row(line: str) -> Optional[Dict[str, Any]]:

@@ -56,3 +56,28 @@ def test_a_build_that_can_succeed_still_does(web_client, no_threedna):
                         json={"kind": "dna", "input": "ATGCATGC"})
     assert r.status_code == 200
     assert r.get_json()["ok"] is True
+
+
+def test_hydrogens_nothing_here_can_add_are_refused_as_advice(
+        web_client, monkeypatch):
+    """A peptide asks for its hydrogens and neither OpenBabel nor RDKit is
+    installed: refused through the same missing-backend door, as advice.
+
+    It returned the chain WITHOUT hydrogens and a Python warning that no page
+    showed until 2026-09-28 -- and DFT then ran on the wrong electron count
+    (plan W36 ⑨; `science/validation.md` § 4.1 R5: a finding never travels as
+    a warning).  The road cannot reach this -- both engines are in the host
+    env's recipe -- so the two imports are made to fail.
+
+    MUTATION THIS MUST FAIL AGAINST: `chemistry.add_hydrogens` warning and
+    returning the heavy-atom structure.
+    """
+    import sys
+    for missing in ("openbabel", "rdkit"):
+        monkeypatch.setitem(sys.modules, missing, None)
+    r = web_client.post("/api/build/molecule",
+                        json={"kind": "peptide", "input": "GG"})
+    assert r.status_code == 200, r.get_json()
+    j = r.get_json()
+    assert j["ok"] is False and j["reason"] == "backend_unavailable", j
+    assert "OpenBabel" in j["error"] and "RDKit" in j["error"], j["error"]

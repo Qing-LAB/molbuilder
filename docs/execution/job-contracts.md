@@ -1767,6 +1767,12 @@ if _os.path.exists(_chk) and _os.path.getsize(_chk) > 0:
 #   <JOB>_optimized.xyz overrides the literal _atom_block before gto.M(...)
 ```
 
+Every path above is `_mb_outfile`'s: a PySCF deck writes and reads its files
+**beside itself** — the attempt directory the wrapper runs it in — whatever
+the working directory, through the one definition every PySCF deck carries
+(`pyscf/input.emit_outfile_helper`; the vibration deck resolved against the
+working directory until 2026-09-28, plan W36 ⑩).
+
 > **Lesson pinned in code:** any new warm-restart hook must land its `--cold`
 > glob entry **in the same commit** as its read-side. A parity test
 > (`_PYSCF_WARM_RESTART_INVENTORY` in `tests/test_runwrap.py`) fails if a hook

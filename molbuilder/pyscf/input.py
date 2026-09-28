@@ -424,35 +424,9 @@ def spec_for(struct: Structure,
         out.append("t0 = time.time()")
         out.append(f'JOB = "{label}"')
         out.append("")
-        # ---- _mb_outfile helper: ALL output paths resolve relative to
-        # the script directory, NOT the process cwd ---------------------
-        # Why: PySCF / geomeTRIC may chdir() during optimisation
-        # (geomeTRIC's optimize() builds scratch in a temp dir; PySCF's
-        # mol.build() writes the .log relative to cwd at gto.M() time).
-        # If a user invokes ``python myjob.py`` from a different
-        # directory than where the script lives -- OR if a downstream
-        # tool chdir's the process during the run -- output artefacts
-        # would scatter across the filesystem.  The .run.sh wrapper
-        # chdir's to the script directory before launching, but the
-        # script must be robust when invoked directly too.  Resolving
-        # everything via ``_mb_outfile(name)`` makes the script land
-        # ALL its outputs next to itself, regardless of cwd.
-        #
-        # ``absolute()``, never ``resolve()``: a hierarchical attempt
-        # addresses this deck through a link (``run-0/<job>.py ->
-        # ../../<job>.py``), and the attempt owns everything the run
-        # produces (project-layout.md "attempt" row).  ``absolute()``
-        # anchors beside the path that was INVOKED, so outputs stay in
-        # the attempt directory; ``resolve()`` is wrong exactly when
-        # the deck is a link, because it walks out of the attempt into
-        # the stage root, where the next attempt overwrites them
-        # (found by the 2026-08-19 E2E run).
-        out.append("from pathlib import Path as _MB_Path")
-        out.append("_MB_SCRIPT_DIR = _MB_Path(__file__).absolute().parent")
-        out.append("def _mb_outfile(name):")
-        out.append("    p = _MB_Path(name)")
-        out.append("    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)")
-        out.append("")
+        # Where every output lands: beside the script (one definition,
+        # shared with the vibration deck -- `emit_outfile_helper`).
+        out += emit_outfile_helper()
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -1542,6 +1516,37 @@ def _sidecar_for(struct: Structure) -> dict:
     from ..workingcopy_structure import StructureCodec
     return StructureCodec().pair(
         struct.replace(engine_offset=np.zeros(3))).sidecar
+
+
+def emit_outfile_helper() -> List[str]:
+    """``_mb_outfile(name)`` -- where a PySCF deck writes each output: BESIDE
+    THE SCRIPT, whatever the process's working directory.  The one
+    definition, emitted into every PySCF deck; the vibration deck carried its
+    own, resolving against the cwd, until 2026-09-28 (plan W36 ⑩), so the same
+    deck run by hand from another folder wrote there.
+
+    Why beside the script: PySCF and geomeTRIC may change directory during an
+    optimisation (geomeTRIC's optimize() builds scratch in a temp dir; PySCF's
+    ``mol.build()`` writes the ``.log`` relative to the cwd at ``gto.M()``
+    time), and a person may run ``python myjob.py`` from another folder.  The
+    wrapper runs a deck from its attempt directory, but the deck must be
+    robust when invoked directly too, so it lands all of its outputs next to
+    itself.
+
+    ``absolute()``, never ``resolve()``: a hierarchical attempt may address
+    the deck through a link (``run-0/<job>.py -> ../../<job>.py``), and the
+    attempt owns everything the run produces (project-layout.md "attempt"
+    row).  ``absolute()`` anchors beside the path that was INVOKED, so the
+    outputs stay in the attempt; ``resolve()`` walks out of it into the stage
+    root, where the next attempt overwrites them (found by the 2026-08-19
+    E2E run).
+    """
+    return ["from pathlib import Path as _MB_Path",
+            "_MB_SCRIPT_DIR = _MB_Path(__file__).absolute().parent",
+            "def _mb_outfile(name):",
+            "    p = _MB_Path(name)",
+            "    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)",
+            ""]
 
 
 def emit_save_helper(v: bool, sidecar: dict) -> List[str]:

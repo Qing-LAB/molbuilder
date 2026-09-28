@@ -1554,15 +1554,17 @@ class Structure:
                 # the previous bug where "FE", "ZN", "MG", "NA", ...
                 # silently degraded to "F", "Z", "M", "N", which are
                 # the wrong elements (or invalid symbols).
-                try:
-                    from ase.data import atomic_numbers as _ase_atomic_numbers
-                    _known = _ase_atomic_numbers
-                except Exception:
-                    _known = None
+                #
+                # NO FALLBACK: without the table "FE" reads as "F" again,
+                # silently -- the bug above -- so a missing ASE (a declared
+                # dependency) raises here.  It is the table
+                # `chemistry.atomic_number` reads too; this module sits
+                # below `chemistry` and asks the table itself.
+                from ase.data import atomic_numbers as _known
                 raw = (line[12:14] if len(line) >= 14 else "").strip()
                 cand2 = raw[:2].capitalize() if len(raw) >= 2 else ""
                 cand1 = raw[:1].upper() if raw else ""
-                if cand2 and _known and cand2 in _known:
+                if cand2 and cand2 in _known:
                     element = cand2
                 elif cand1:
                     element = cand1

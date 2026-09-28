@@ -258,11 +258,10 @@ def _emit_constants(struct: Structure,
     out.append("# ============================================================")
     out.append(f"SCHEMA_VERSION = {int(SCHEMA_VERSION)}")
     out.append(f"JOB            = {cfg.job_name!r}")
-    # _mb_outfile is emitted ONCE, by the deck's own block (the cwd
-    # rule -- see vibration_deck.py): the lifted resolve(__file__) form
-    # that stood here wrote artifacts one level up through the
-    # bundle-root symlink, and for a while the deck carried BOTH
-    # definitions, the dead first shadowed by the correct second.
+    # _mb_outfile is emitted ONCE, by the deck's own block from the one
+    # definition every PySCF deck carries (`input.emit_outfile_helper`,
+    # beside the script): the lifted resolve(__file__) form that stood
+    # here wrote artifacts one level up through the bundle-root link.
     out.append("")
     out.append("# Phase status vocabulary -- matches molbuilder.spectra.results")
     out.append("# so the on-disk JSON round-trips into the typed SpectraResults.")

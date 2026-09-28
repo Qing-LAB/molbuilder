@@ -1682,9 +1682,14 @@ def add_hydrogens(struct: Structure) -> Structure:
          well for SMILES-constructed molecules; for PDB-parsed inputs
          (heavy-atom only) it can leave exocyclic -NH2 H at parent
          coordinates.  See module-header comment for the full caveat.
-      3. Neither: emit a RuntimeWarning and return the heavy-atom-only
-         structure.  Callers should surface the warning since DFT will
-         compute the wrong electron count.
+      3. Neither: REFUSED, with ``BackendUnavailable`` -- the door every
+         builder already uses for a dependency this install lacks, which the
+         Build page answers as advice rather than a server fault.  It
+         returned the heavy-atom-only structure with a Python warning until
+         2026-09-28 (plan W36 ⑨), and a warning reaches no web user
+         (`science/validation.md` § 4.1 R5): the peptide path of the Build
+         page showed a structure with no hydrogens, and nothing else, and
+         DFT then ran with the wrong electron count.
 
     Both engines emit a final pass through ``_drop_overlapping_hydrogens``
     to strip any H that ended up sitting on another atom (the addCoords
@@ -1708,18 +1713,16 @@ def add_hydrogens(struct: Structure) -> Structure:
     if Chem is not None:
         return _protonate_rdkit(struct, Chem)
 
-    import warnings
-    warnings.warn(
+    from .builders.backends import BackendUnavailable
+    raise BackendUnavailable(
         "Cannot add hydrogens: neither OpenBabel (`conda install -c "
         "conda-forge openbabel`) nor RDKit (`conda install -c conda-forge "
-        "rdkit`) is installed.  Returning a HEAVY-ATOM-ONLY structure -- "
-        "DFT will compute the wrong electron count.  Install OpenBabel "
-        "for canonical biomolecule protonation; RDKit also works for "
-        "SMILES-constructed inputs but has a known ambiguous-valence "
-        "ghost-coord artifact for PDB-parsed nucleic-acid bases.",
-        RuntimeWarning, stacklevel=3,
-    )
-    return struct
+        "rdkit`) is installed, and a structure without them would give DFT "
+        "the wrong electron count.  Install OpenBabel for canonical "
+        "biomolecule protonation; RDKit also works for SMILES-constructed "
+        "inputs but has a known ambiguous-valence ghost-coord artifact for "
+        "PDB-parsed nucleic-acid bases.  To build without hydrogens on "
+        "purpose, turn adding them off.")
 
 
 def _protonate_openbabel(struct: Structure, ob) -> Structure:

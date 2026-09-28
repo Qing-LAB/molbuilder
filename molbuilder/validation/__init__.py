@@ -632,8 +632,11 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
 
 def _register_default_engines() -> None:
     """Register each engine's validator and each kind's -- AT IMPORT, called
-    just below.  The engine config classes are imported in here only to keep
-    the registrations together: nothing in `siesta/`, `pyscf/` or `config/`
+    just below.  The engine config classes come from `config/`, where they
+    are defined -- not through the engine packages, whose deck writers
+    loaded ASE's readers and SciPy for every import of validation until
+    2026-09-28 (plan W36 ④) -- and are imported in here only to keep the
+    registrations together: nothing in `siesta/`, `pyscf/` or `config/`
     imports `validation`, so there is no cycle to avoid.  *(This said the
     late import avoided one, and that it ran from `validate()`; neither was
     true -- the layer review, 2026-09-27.)*
@@ -645,8 +648,8 @@ def _register_default_engines() -> None:
     Only the config CLASS is imported eagerly (as a registry key); the
     validator BODY for spectra/transport imports its engine lazily at call
     time (see the wrappers above)."""
-    from ..siesta import SiestaConfig
-    from ..pyscf import PySCFConfig
+    from ..config.siesta import SiestaConfig
+    from ..config.pyscf import PySCFConfig
     _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
     _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
     # NO SPECTRA ROW.  A vibration's science is the KIND's, keyed by

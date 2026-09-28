@@ -24,21 +24,6 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-try:
-    from ase.data import atomic_numbers   # noqa: F401 -- probe, see below
-    from ase.io import read as _ase_read   # noqa: F401 -- probe, see below
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "molbuilder.siesta needs ASE; install with `pip install ase`"
-    ) from exc
-# NEITHER is called: the pair is a PROBE.  ``ase.data`` is a plain table and
-# imports even from a half-installed ASE, while ``ase.io`` pulls the reader
-# machinery -- so asking for both is what turns a broken install into this
-# message instead of an AttributeError several hundred lines into a render.
-# (``atomic_numbers`` was also this module's Z lookup until 2026-09-09, when
-# that moved to the one door, ``chemistry.atomic_number``.  It stays here as
-# half the probe.)
-
 from ..runfiles import compose as _rf
 from ..structure import Structure
 # SiestaConfig is the L1 dataclass; this module imports it for use by

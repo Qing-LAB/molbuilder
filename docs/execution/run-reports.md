@@ -219,6 +219,7 @@ directory of decks.
 | how it ended: `state`, `detail`, each SCF phase's convergence, whether a relaxation relaxed, the exit code | `run_status` over this run's files (`parse/dirs/job.py`) — the Results tab's own answer, with its own order of evidence ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); a SIESTA run's stderr from the session log whose first section is the run (`wrapper_log`) | `job.py` · `_run_ending.py` · `end_lines.py` · `wrapper_log.py` |
 | which fields a report may carry | the one declaration, `report_fields` (§ 4.1a) | `report_fields.py` |
 | where the channels are | `config_dir` (§ 1) | `config_dir.py` |
+| the constants a residual is converted with — Hartree in eV, and the force factor | `constants`, a physical constant's one home ([`architecture.md`](?doc=architecture.md) § 3), imported both ways like the rest | `constants.py` |
 
 **What stays the monitor's is what no file states**: the watched PID — *when*
 the run ended — the machine and its utilisation, when to tell someone, and the

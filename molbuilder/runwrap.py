@@ -4231,6 +4231,7 @@ def render_run_wrapper(script_path: Path, *,
 MONITOR_COMPANIONS: Dict[str, str] = {
     "mb_monitor.py":       "molbuilder.monitor",
     "config_dir.py":       "molbuilder.config_dir",
+    "constants.py":        "molbuilder.constants",
     "runfiles.py":         "molbuilder.runfiles",
     "identity.py":         "molbuilder.identity",
     "siesta_reader.py":    "molbuilder.parse.engines.siesta_reader",
