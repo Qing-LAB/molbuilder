@@ -113,8 +113,10 @@ VIBRATION_ENGINES = ("pyscf", "siesta")
 #: The vibration ladder's two stage names (`engines/vibration.md` § 2.2,
 #: § 5.2a): the measurement, and the relaxation SIESTA runs before it when
 #: the person has not stated the structure is relaxed.  Spelled here and
-#: read everywhere else -- `prep` decides which deck a stage renders by
-#: them, and the Task setup tab proposes them by the same words.
+#: read everywhere else -- which deck a stage renders is asked of ``relax``
+#: alone (:func:`vibration_render_kind`), ``freq`` is the name the proposed
+#: ladder gives its force-constant stage, and the Task setup tab proposes
+#: both by the same words.
 VIBRATION_FREQ_STAGE = "freq"
 VIBRATION_RELAX_STAGE = "relax"
 
@@ -147,13 +149,19 @@ def vibration_render_kind(stage_name: str) -> str:
             else "vibration")
 
 
-def force_constant_stages(task) -> List[str]:
-    """The enabled stages of a vibration description that render the kind's
-    own deck, in ladder order -- every stage after ``relax``
-    (:func:`vibration_render_kind`), WHATEVER ITS NAME.  On SIESTA each is a
-    force-constant run, and two or more are a displacement sweep
-    (`engines/vibration.md` § 5.9); each measures at the relax stage's
-    geometry (§ 5.2a).  Asked here, so nothing asks a stage's name."""
+def force_constant_stages(task, *, include_disabled: bool = False
+                          ) -> List[str]:
+    """The stages of a vibration description that render the kind's own
+    deck, in ladder order -- every stage but ``relax``
+    (:func:`vibration_render_kind`), WHATEVER ITS NAME; the enabled ones
+    unless ``include_disabled``.  On SIESTA each is a force-constant run,
+    and two or more are a displacement sweep (`engines/vibration.md` § 5.9);
+    each measures at the relax stage's geometry (§ 5.2a).
+
+    ``include_disabled`` is the layout's question: `prep` preps a stage
+    named on its command line whether or not it is enabled (plan W38 F5), so
+    whether two force-constant stages would share a directory is asked of
+    every one described."""
     return [s.name for s in task.stages
-            if getattr(s, "enabled", True)
+            if (include_disabled or getattr(s, "enabled", True))
             and vibration_render_kind(s.name) == "vibration"]

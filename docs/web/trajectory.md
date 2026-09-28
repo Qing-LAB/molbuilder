@@ -75,8 +75,9 @@ to it. A small label under the plot even says which of these it read them from
 ("from SIESTA input echo", "from molwatch log header", "from geomeTRIC log").
 A run that relaxes nothing chases no force target, so none is drawn: a SIESTA
 force-constant run's seeded log carries no targets, because `prep` writes them
-only for a deck that relaxes ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 5.4).
+only for a deck that relaxes (`jobset/prep._seed_trajectory_log`) — and a
+force-constant run nudges atoms, it relaxes nothing
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.1).
 
 A summary band above the plots names the targets and the current distance. When a
 value sits far above its target, the plot switches to a **log y-axis** so the

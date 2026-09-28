@@ -2267,8 +2267,10 @@ def api_task_setup_prep_plan():
     # (`.template.toml` and the source pair) are asked for by moment rather
     # than subtracted here -- the card above already lists them, with the one
     # thing this cannot say: whether they are there yet.
-    once = manifest(task.label, None, task.engine, ("prep", "run"),
-                    task.calculation)
+    # And what `summarize run` writes there from results that exist -- the
+    # transport record, a sweep's comparison -- whose own line says so.
+    once = manifest(task.label, None, task.engine,
+                    ("prep", "run", "summarize"), task.calculation)
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
                     "bench": bench, "bundle": bundle, "once": once})
 

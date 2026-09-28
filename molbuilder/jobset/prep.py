@@ -1069,9 +1069,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # WHICH DECK THIS RUNG RENDERS, and IN WHICH FRAME.  Both are the
     # calculation's unless the kind says otherwise: the SIESTA vibration's
     # `relax` stage is the relaxation deck (`engines/vibration.md` § 5.2a),
-    # and its `freq` stage, after one, is written at the coordinates that
-    # stage relaxed to, in that run's own cell -- so the force constants
-    # are taken on the grid the geometry was relaxed on.
+    # and every force-constant stage -- every other stage, whatever its
+    # name (`pyscf/stages.vibration_render_kind`) -- is written at the
+    # coordinates the relax stage relaxed to, in that run's own cell, so the
+    # force constants are taken on the grid the geometry was relaxed on.
     _render_kind = task.calculation
     _render_cell = None
     # A SIESTA force-constant deck carries a `vibration` block (below), built
@@ -1082,15 +1083,18 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # vibration.md` § 5.9): SIESTA names its force constants and the
         # finish its spectrum by the label alone, so two force-constant
         # stages sharing the flat layout's one directory would overwrite the
-        # first one's result.  Refused before anything is written, at
-        # whichever stage the person preps first.
+        # first one's result.  Refused before any sort, permutation record or
+        # deck is written, at whichever stage the person preps first -- and
+        # counted over EVERY described stage, enabled or not, since a stage
+        # named here is prepped either way (plan W38 F5).
         from ..spectra.displacement_sweep import stages_share_a_directory
-        if stages_share_a_directory(task):
+        if stages_share_a_directory(task, include_disabled=True):
             from ..pyscf.stages import force_constant_stages
+            _fc = force_constant_stages(task, include_disabled=True)
             raise PrepError(
                 f"this flat calculation describes "
-                f"{len(force_constant_stages(task))} force-constant stages "
-                f"({', '.join(force_constant_stages(task))}), and in the flat "
+                f"{len(_fc)} force-constant stages "
+                f"({', '.join(_fc)}), and in the flat "
                 f"layout every stage writes the same <label>.FC and "
                 f"<label>.spectra.json -- each would overwrite the last one's "
                 f"result.  A displacement sweep needs the hierarchical layout "

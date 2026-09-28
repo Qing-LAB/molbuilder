@@ -2701,16 +2701,27 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
                    "yours (engines/vibration.md 5.9).")
 def summarize_cmd(kind: str, stage, bundle: str,
                   tolerance_cm1: Optional[float]) -> None:
-    """Read the trials' artifacts and write ``bench-result.json`` — a
-    recommendation, not a decision (`project-layout.md` § 2.3.2): you read
-    it, you decide.
+    """Summarize results that exist -- never derive a run's own
+    (`job-system.md` § 5, the verb table).  Three summaries, by what was
+    described:
 
-    **Asynchronous by design** (user, 2026-08-12): trials are ordinary jobs
-    whose results land in the same logs as any run — the ``.out`` timer, the
-    monitor's samples.  Run this after the queue drains; a trial that has
-    produced nothing yet reports ``state=unknown`` and one started but
-    unfinished ``incomplete`` — never a failure of the set.
-    Discovery is keyed by ``job-set.json``'s own data, never by parsing
+    * ``summarize bench`` reads a benchmark's trials and writes
+      ``bench-result.json`` -- a recommendation, not a decision
+      (`project-layout.md` § 2.3.2): you read it, you decide;
+    * ``summarize run`` on a transport calculation reads its transmission
+      points into ``<label>.transport.json`` (`engines/transport.md`
+      § 2a.12);
+    * ``summarize run`` on a SIESTA vibration with two or more
+      force-constant stages compares them into ``<label>.fc-sweep.json``
+      (`engines/vibration.md` § 5.9), ``--tolerance-cm1`` flagging a mode
+      whose spread exceeds it.
+
+    **Asynchronous by design** (user, 2026-08-12): each reads what has
+    landed.  A trial that has produced nothing yet reports ``state=unknown``
+    and one started but unfinished ``incomplete`` -- never a failure of the
+    set; a transmission point or a force-constant stage without its result
+    reads as pending, and one whose run failed says so.  Discovery is keyed
+    by the description and ``job-set.json``'s own data, never by parsing
     directory names back (`job-contracts.md` § 6.3).
     """
     if kind != "bench":
@@ -2772,7 +2783,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
             click.echo(f"-> {out}")
             _ledger(_P(bundle), "summarize", "displacement-sweep",
                     out=str(out), stages=[x["name"] for x in rec["stages"]],
-                    pending=len(rec.get("pending", ())),
+                    pending=len(rec["pending"]), failed=len(rec["failed"]),
                     tolerance_cm1=tolerance_cm1)
             return
         raise click.ClickException(

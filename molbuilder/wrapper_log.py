@@ -8,7 +8,8 @@ then *started* or the error that stopped it (`run-reports.md` § 2.6).  This mod
 wrapper's lines, which the writer renders and every reader reads with: the
 run record (`parse/dirs/record.py`), the bench's trial reader
 (`bench/result.py`), and `run_status` (`parse/dirs/job.py`), which reads a
-SIESTA run's stderr here (`model/parse.md` § 2b).
+SIESTA run's stderr here (`model/parse.md` § 2b) and whether the job's
+finish began (`running-a-job.md` § 4.2).
 
 **Stdlib only, and it travels beside every job** (`runwrap.
 MONITOR_COMPANIONS`), so the monitor pairs a run with its log exactly as the
@@ -42,6 +43,12 @@ LOG_CLOCK = "%H:%M:%S%z"
 
 #: The line every section opens with (``_log STAGE`` in ``env_activation``).
 WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
+#: The message the wrapper logs as the job's FINISH begins -- the step it runs
+#: after the engine when the engine alone leaves no result (`runwrap.
+#: _finish_block`, `engines/vibration.md` § 5.5).  `run_status` reads it: an
+#: output that ended, beside this line and no conclusion yet, is a job still
+#: deriving its result, not a finished one (`running-a-job.md` § 4.2).
+FINISH_STARTED = "finish started:"
 #: ``(key, pattern)`` for the header lines -- the ``_log INFO`` lines of
 #: ``env_activation``, the run-index line, the banner's program lines.
 _WRAPPER_LOG_LINES = (
@@ -114,6 +121,18 @@ def read_wrapper_log(text: str) -> List[Dict[str, Any]]:
     # writes ahead of the first banner -- is no run.
     return [sec for sec in sections if sec]
 
+
+
+def finish_started(path) -> bool:
+    """Whether the session log at ``path`` records the job's finish
+    beginning (:data:`FINISH_STARTED`, the message after ``_log``'s level
+    bracket) -- ``False`` for an unreadable log."""
+    anchor = "] " + FINISH_STARTED
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return any(anchor in line for line in fh)
+    except OSError:
+        return False
 
 
 def first_run_index(path) -> Optional[int]:

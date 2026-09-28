@@ -43,3 +43,7 @@
 
 /* A mode whose spread exceeds the person's tolerance. */
 .fcsweep-flagged td { font-weight: 600; }
+
+/* A stage whose run failed, or ended without its result -- stated, and apart
+ * from the pending ones, which are not failures. */
+.fcsweep-failed td { font-weight: 600; }

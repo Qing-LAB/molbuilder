@@ -39,13 +39,28 @@
         return tr;
     }
 
+    /* One stage's own overrides, each value in its unit (the record carries
+     * the catalogue's), so `0.02` is never read as the Å beside it. */
+    function _varies(s) {
+        const units = s.varies_units || {};
+        return Object.entries(s.varies || {})
+            .map(([k, v]) => k + " = " + v + (units[k] ? " " + units[k] : ""))
+            .join(", ") || "(the template’s values)";
+    }
+
+    function _base(path) {
+        return String(path || "").split("/").pop();
+    }
+
     function render(host, rec) {
         host.innerHTML = "";
         const wrap = _el("div", "fcsweep-record");
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         const modes = Array.isArray(rec.modes) ? rec.modes : [];
         const pending = Array.isArray(rec.pending) ? rec.pending : [];
+        const failed = Array.isArray(rec.failed) ? rec.failed : [];
         const names = stages.map((s) => s.name);
+        const ref = rec.reference_stage || "";
         const tol = rec.tolerance_cm1;
 
         wrap.appendChild(_el("h3", "fcsweep-title",
@@ -54,8 +69,8 @@
             stages.length + " force-constant stage"
             + (stages.length === 1 ? "" : "s") + " with a result"
             + (pending.length ? ", " + pending.length + " pending" : "")
-            + "; modes matched by shape to “"
-            + (rec.reference_stage || "") + "”"
+            + (failed.length ? ", " + failed.length + " failed" : "")
+            + "; modes matched by shape to “" + ref + "”"
             + (tol === null || tol === undefined
                 ? "; no tolerance was given, so nothing is flagged"
                 : "; flagged when the spread exceeds " + tol + " cm⁻¹")));
@@ -63,41 +78,57 @@
         /* THE STAGES: what each varied, the displacement SIESTA used, its own
          * numerics, and where its files are -- the raw data stays there. */
         const st = _el("table", "fcsweep-table");
-        st.appendChild(_row(["Stage", "δ (Å)", "Varies",
-            "Asymmetry (eV/Å²)", "Stationary", "Modes",
-            "Spectrum"].map((h) => _el("th", null, h))));
+        st.appendChild(_row(["Stage", "δ used (Å)", "Varies",
+            "Stationary (largest free-atom force / criterion, eV/Å)",
+            "Asymmetry (eV/Å²)", "Modes (motions removed)", "SIESTA",
+            "Files"].map((h) => _el("th", null, h))));
         stages.forEach((s) => {
-            const varies = Object.entries(s.varies || {})
-                .map(([k, v]) => k + " = " + v).join(", ");
+            const f = s.max_force_free_ev_ang, c = s.force_criterion_ev_ang;
             st.appendChild(_row([
-                s.name, _num(s.fc_displacement_ang, 5),
-                varies || "(the template’s values)",
+                s.name, _num(s.fc_displacement_ang, 5), _varies(s),
+                (s.stationary === true ? "yes"
+                    : s.stationary === false ? "NO" : "—")
+                    + " (" + _num(f, 4) + " / " + _num(c, 3) + ")",
                 _num(s.fc_asymmetry_max_ev_ang2, 4),
-                s.stationary === true ? "yes"
-                    : s.stationary === false ? "NO" : "—",
-                String(s.n_modes === undefined ? "—" : s.n_modes),
-                s.spectrum || "—",
+                String(s.n_modes === undefined ? "—" : s.n_modes) + " ("
+                    + String(s.removed_motions === undefined
+                        || s.removed_motions === null ? "—"
+                        : s.removed_motions) + ")",
+                s.engine_version || "—",
+                (s.attempt || "—") + ": " + _base(s.spectrum)
+                    + (s.fc_file ? ", " + _base(s.fc_file)
+                                 : ", no force-constant file"),
             ]));
-        });
-        pending.forEach((p) => {
-            st.appendChild(_row([p.stage, "pending", p.why || "",
-                "", "", "", ""], "fcsweep-pending"));
         });
         wrap.appendChild(st);
 
-        /* THE MODES: one row each, one column per stage. */
+        /* THE MODES: one row each, one column per stage -- beside the
+         * reference, the change, the shapes' overlap, and the mode it
+         * matched when that is not the same rank. */
         const mt = _el("table", "fcsweep-table");
         mt.appendChild(_row(["Mode"].concat(names.map((n) => n + " (cm⁻¹)"))
-            .concat(["Spread", "Min. overlap"])
+            .concat(["Spread (cm⁻¹)"])
             .concat(tol === null || tol === undefined ? [] : ["Flag"])
             .map((h) => _el("th", null, h))));
         modes.forEach((m) => {
-            const ovl = Object.values(m.overlap || {})
-                .filter((o) => o !== null && o !== undefined);
-            const cells = [String(m.index_1based)]
-                .concat(names.map((n) => _num((m.frequency_cm1 || {})[n], 1)))
-                .concat([_num(m.spread_cm1, 2),
-                         ovl.length ? Math.min(...ovl).toFixed(4) : "—"]);
+            const cells = [String(m.index_1based)].concat(names.map((n) => {
+                const f = (m.frequency_cm1 || {})[n];
+                if (f === null || f === undefined) return "—";
+                if (n === ref) return _num(f, 1);
+                const d = (m.change_from_reference_cm1 || {})[n];
+                const o = (m.overlap || {})[n];
+                const j = (m.matched_index_1based || {})[n];
+                const bits = [];
+                if (d !== null && d !== undefined) {
+                    bits.push((d >= 0 ? "+" : "") + _num(d, 2));
+                }
+                if (o !== null && o !== undefined) bits.push("overlap " + _num(o, 4));
+                if (j !== null && j !== undefined && j !== m.index_1based) {
+                    bits.push("as mode " + j);
+                }
+                return _num(f, 1) + (bits.length ? " (" + bits.join("; ") + ")"
+                                                 : "");
+            })).concat([_num(m.spread_cm1, 2)]);
             if (!(tol === null || tol === undefined)) {
                 cells.push(m.flagged === true ? "over"
                     : m.flagged === false ? "ok" : "—");
@@ -121,11 +152,29 @@
                              : " (" + (100 * c.relative_change).toPrecision(3)
                                + "% of the largest constant)"))));
             });
+
+        /* THE STAGES WITHOUT A RESULT, in their attempt's own words: still
+         * to come is pending, never a failure; a run that failed says so. */
+        if (pending.length || failed.length) {
+            const wt = _el("table", "fcsweep-table");
+            wt.appendChild(_row(["Stage", "", "State", "Why"]
+                .map((h) => _el("th", null, h))));
+            pending.forEach((p) => wt.appendChild(_row(
+                [p.stage, "pending", p.state || "", p.detail || ""],
+                "fcsweep-pending")));
+            failed.forEach((p) => wt.appendChild(_row(
+                [p.stage, "failed", p.state || "", p.detail || ""],
+                "fcsweep-failed")));
+            wrap.appendChild(wt);
+        }
+
         wrap.appendChild(_el("p", "fcsweep-note",
-            "Each stage’s full result — every mode, both eigenvector "
-            + "forms, the thermochemistry — and its raw force constants stay "
-            + "in its own attempt (the paths above); open a spectrum there to "
-            + "see it."));
+            "Two modes a few wavenumbers apart can mix between stages: a low "
+            + "overlap there is the pair turning within its own plane, not a "
+            + "changed motion.  Each stage’s full result — every mode, both "
+            + "eigenvector forms, the thermochemistry — and its raw force "
+            + "constants stay in its own attempt (the Files column); open a "
+            + "spectrum there to see it."));
         host.appendChild(wrap);
     }
 

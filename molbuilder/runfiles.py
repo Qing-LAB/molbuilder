@@ -718,9 +718,11 @@ class Artifact:
     #: Which engine writes it, or None for both.
     engine: Optional[str] = None
     #: WHEN it appears -- "setup" (the description hand-over), "prep" (the
-    #: deck and its wrapper) or "run" (everything the launch produces).  A
-    #: card that lists a run's files has to say which of them exist yet, and
-    #: the alternative was for the page to subtract one list from another.
+    #: deck and its wrapper), "run" (everything the launch produces) or
+    #: "summarize" (what `jobset summarize run` writes from results that
+    #: exist, never the launch).  A card that lists a run's files has to say
+    #: which of them exist yet, and the alternative was for the page to
+    #: subtract one list from another.
     when: str = "run"
     #: Which CALCULATION writes it, or None for any.  A relaxation has no
     #: spectrum, and a list that promised one would be describing a file the
@@ -928,17 +930,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # (`engines/transport.md` § 2a.12: "the transmission stage's output ...
     # everything else in the tree exists to make it trustworthy"), written
     # once at the calculation root -- which is what `staged=False` says.
-    Artifact(".transport.json", "the transport results, summarised",
-             staged=False, calculation="transport"),
+    Artifact(".transport.json", "the transport results, summarised by "
+                                "`summarize run` from the transmission "
+                                "points that ran",
+             staged=False, calculation="transport", when="summarize"),
     # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
     # vibration.md` § 5.9): written at the calculation root by `summarize run`
     # when the ladder holds two or more force-constant stages -- a record of
     # results that exist, each stage's own files staying in its attempt.
-    Artifact(".fc-sweep.json", "the force-constant stages compared: each "
-                               "stage and what it varied, every mode's "
-                               "frequency per stage, the force-constant "
-                               "changes, and where each stage's files are",
-             staged=False, engine="siesta", calculation="vibration"),
+    Artifact(".fc-sweep.json", "the force-constant stages compared, when "
+                               "the ladder has two or more (a displacement "
+                               "sweep), by `summarize run`: each stage and "
+                               "what it varied, every mode's frequency per "
+                               "stage, the force-constant changes, and "
+                               "where each stage's files are",
+             staged=False, engine="siesta", calculation="vibration",
+             when="summarize"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and

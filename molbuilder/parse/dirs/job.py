@@ -8,7 +8,7 @@
 run) by its role's reader, ``_run_ending.ending_of``: the reading the
 parsers build from.  This module greps no output itself.
 
-Three things a parser cannot know are settled here, because they are not
+Four things a parser cannot know are settled here, because they are not
 in the file:
 
 * **which file speaks for the directory** -- a folder holds one ``.out``
@@ -16,7 +16,10 @@ in the file:
 * **whether it was launched**, before anything is written -- the
   attempt's launch record answers (``launch``);
 * **whether its process went without a word** -- a forced stop, which the
-  monitor's closing record tells (:func:`_monitor_ended`).
+  monitor's closing record tells (:func:`_monitor_ended`);
+* **whether the job is still deriving its result after its engine ended**
+  -- a job with a finish (`engines/vibration.md` § 5.5), whose run's
+  session log says the finish began (:func:`_finish_started`).
 
 A run whose files state no ending, no exit and no such record is
 ``running`` -- not finished -- however long it has been quiet: nothing in
@@ -155,6 +158,14 @@ _ENGINE_EXIT_MARKER = "0_NORMAL_EXIT"
 #: engine ended, the job did not.  Declared here, where it is read; the
 #: wrapper imports it (`runwrap._finish_block`).
 FINISH_FAILED = "finish failed"
+#: What a conclusion marker says when the job STOPPED BEFORE ITS ENGINE because
+#: its finish cannot run on the job's python -- the check the wrapper makes
+#: once the run index is known, before the engine starts
+#: (`runwrap._finish_check_block`, `engines/vibration.md` § 5.5).  Written as
+#: ``rc=1 at <date>; finish cannot load (<bundle>)`` with no output beside
+#: it, which the marker's own rule already reads as failed; the words say
+#: why.  Declared here beside its sibling; the wrapper imports it.
+FINISH_CANNOT_LOAD = "finish cannot load"
 
 
 def _rung_files(run_dir: Path, role: str, match: str = "*") -> List[Path]:
@@ -262,17 +273,28 @@ def _label_of_run_file(name: str) -> str:
 
 
 def read_concluded(text: Optional[str]) -> Optional[Dict[str, Any]]:
-    """The conclusion marker's first line, ``rc=<N> at <when>`` as the wrapper
-    writes it (`runwrap.py`), as ``{"code": N, "at": when}`` -- ``at`` only
-    when stated -- or ``None`` when the text is not one (SIESTA's own
-    ``0_NORMAL_EXIT``, which carries no code).  THE one reader of that line.
+    """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
+    the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
+    "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
+    when the text is not one (SIESTA's own ``0_NORMAL_EXIT``, which carries
+    no code).  The note is what the wrapper adds when the job's finish
+    failed (:data:`FINISH_FAILED`) or cannot run (:data:`FINISH_CANNOT_LOAD`).
+    THE one reader of that line.
     """
     head = text.splitlines()[0] if text else ""
-    m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?\s*$", head)
+    m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?(?:;\s*(.*?))?\s*$", head)
     if m is None:
         return None
     return {"code": int(m.group(1)),
-            **({"at": m.group(2)} if m.group(2) else {})}
+            **({"at": m.group(2)} if m.group(2) else {}),
+            **({"note": m.group(3)} if m.group(3) else {})}
+
+
+def _finish_failed(concluded: Optional[str]) -> bool:
+    """Does the marker say the job's finish failed?  Read through the one
+    reader of the line (:func:`read_concluded`), never by a second match."""
+    got = read_concluded(concluded) if concluded else None
+    return bool(got) and str(got.get("note", "")).startswith(FINISH_FAILED)
 
 
 def _rc_ok(concluded: str) -> bool:
@@ -332,6 +354,15 @@ def _output_endings(paths: List[Path],
         except OSError:
             continue
     return endings
+
+
+def _finish_started(run_dir: Path, path: Path) -> bool:
+    """Did the run that wrote ``path`` begin its job's finish -- does its
+    session log (the one :func:`_stderr_of` finds) record it
+    (`wrapper_log.FINISH_STARTED`)?  Asked only of an output that ended with
+    no conclusion yet, so the log is read in that one case."""
+    log = _stderr_of(run_dir, path, {})
+    return log is not None and _wl.finish_started(log)
 
 
 def _stderr_of(run_dir: Path, path: Path,
@@ -468,7 +499,8 @@ def run_status(run_dir, match: str = "*", *,
         _process_conclusion(run_dir, match),
         launch=launch,
         monitor_ended=lambda: _monitor_ended(run_dir, match),
-        out_messages=messages),
+        out_messages=messages,
+        finish_started=lambda p: _finish_started(run_dir, p)),
         endings=endings)
 
 
@@ -486,6 +518,7 @@ def _build_status(out_paths: List[Path],
                   launch: Any = _UNASKED,
                   monitor_ended: Callable[[], bool] = lambda: False,
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
+                  finish_started: Callable[[Path], bool] = lambda _p: False,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
@@ -499,6 +532,13 @@ def _build_status(out_paths: List[Path],
     a forced stop.  Where nothing says anything the run is ``running`` --
     not finished -- however long it has been quiet (`running-a-job.md`
     § 4.2).
+
+    **A job with a finish is not done when its engine is**
+    (`engines/vibration.md` § 5.5): after an ended output, a marker naming a
+    failed finish reads failed, and with no wrapper marker yet -- SIESTA's
+    own ``0_NORMAL_EXIT`` names no finish -- a run whose session log says
+    its finish began (``finish_started``, asked only then) is still
+    running, or failed once its monitor saw the process go.
 
     ``out_paths`` are the files that may SPEAK; ``last_change_at`` is the
     speaker's mtime, paired with ``active_source`` beside it.
@@ -548,8 +588,7 @@ def _build_status(out_paths: List[Path],
     # Note what is NOT consulted: whether the SCF converged.  That is
     # P-S2's reported fact, carried beside this state for the reader to
     # show, never folded into it.
-    if active_state == "ended" and concluded is not None \
-            and FINISH_FAILED in concluded:
+    if active_state == "ended" and _finish_failed(concluded):
         # THE ENGINE ENDED, THE JOB DID NOT: its finish -- the step that
         # derives the result from what the engine left -- failed, and the
         # marker says so in words no engine teardown writes
@@ -557,6 +596,23 @@ def _build_status(out_paths: List[Path],
         state = "failed"
         detail = (f"the engine ended, but the job's finish did not derive "
                   f"the result ({concluded}); the session log says why")
+    elif (active_state == "ended"
+          and concluded in (None, _ENGINE_EXIT_MARKER)
+          and finish_started(active)):
+        # THE ENGINE ENDED AND THE JOB'S FINISH BEGAN, and the wrapper has
+        # not concluded: the finish is deriving the result now -- or the job
+        # was stopped inside it (a walltime, a kill), which leaves no marker
+        # and whose monitor saw the process go.  Neither is finished: a
+        # force-constant run without its spectrum has not finished.
+        if monitor_ended():
+            state = "failed"
+            detail = ("the engine ended and the job's finish began, but the "
+                      "job stopped before it concluded -- no result was "
+                      "derived; the session log says how far it got")
+        else:
+            state = "running"
+            detail = ("the engine ended; the job's finish is deriving the "
+                      "result")
     elif active_state == "ended":
         state, detail = "finished", "job_completed"
     elif active_state in ("out_of_memory", "stopped"):

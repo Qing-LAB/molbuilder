@@ -206,7 +206,9 @@ The launch ends with `<label>.spectra.json` in the attempt on both engines
 `init` refuses `--stage-strategy` for this kind (a *ladder* is a
 description's list of stages, each a *rung* with its own parameter set; a
 *tier* ladder — coarse, medium, tight — grades an optimisation's convergence,
-and a vibration has one stage) and any engine but the two named.
+and a vibration's ladder is its measurement, with the relaxation before it on
+SIESTA when the box is unticked and, for a displacement sweep, more
+force-constant stages, § 5.9) and any engine but the two named.
 
 ### 2.2 The description: the relaxation is the person's explicit choice
 
@@ -1059,8 +1061,9 @@ states:
 # === molbuilder vibration END ===
 ```
 
-`relaxation` is `parse/contract.relaxation_of`'s record of the `relax`
-stage's attempt the coordinates were read from — the one read `prep` makes of
+`relaxation` is the relaxation record (`parse/contract.relaxation_of_output`,
+in `relaxation_of`'s shape) of the `relax` stage's output the coordinates
+were read from — the one read `prep` makes of
 that run (§ 5.2a), so the finish never re-picks an attempt — and `null` when
 the ladder holds no `relax` stage. The block is written by `script_emit.emit_vibration_record`, assembled by
 the framework from `DeckSpec.vibration` — the engine places the values `prep`
@@ -1130,13 +1133,19 @@ the PySCF deck carries (§ 4.5), and writes `<label>.spectra.json` beside the
 status in `-runN.concluded`, naming the failed finish, and exits with it; the
 session log holds its error; and `run_status` reads the job as **failed**
 although SIESTA's output ended (`execution/project-layout.md` § 1.6.3) — a
-force-constant run without its spectrum has not finished. **And it is asked
-before the run is paid for**: right after activating the env the wrapper asks
-the bundle whether it loads (`mb_vibration.pyz loads`, which imports the
-finish with numpy and ASE), and a job env that cannot run it stops there,
-before SIESTA starts. `jobset
-summarize` derives nothing for a vibration: it summarizes results that exist,
-a benchmark's trials and a transport calculation's bias points.
+force-constant run without its spectrum has not finished. While the finish
+works, and if the job is stopped inside it, the attempt says so too: an ended
+output with no marker yet, beside the session log's `finish started:` line,
+reads **running**, and **failed** once the monitor saw the process go
+(`execution/running-a-job.md` § 4.2). **And it is asked before the run is
+paid for**: once the run index is known and before SIESTA starts, the wrapper
+asks the bundle whether it loads on the job's python (`$_mb_py mb_vibration.pyz
+loads`, which imports the finish with numpy and ASE); a job env that cannot
+run it stops there, with a marker saying so (`rc=1 at …; finish cannot load
+(mb_vibration.pyz)`), and the attempt reads failed with no run lost. A dry run
+has exited before the question. `jobset summarize` derives no run's result
+for a vibration: it only summarizes results that exist — here, the
+force-constant stages of a displacement sweep (§ 5.9).
 
 **Every input is a record the attempt already holds, read by the reader that
 owns it** — nothing is re-derived, and nothing molbuilder resolves on the host
@@ -1341,17 +1350,22 @@ stages: there, most of the drift was the grid.
 
 **Describing it.** A sweep is a ladder with more than one force-constant
 stage, each with its own `fc_displacement` (or `mesh_cutoff`) as a stage
-override. **Every stage after `relax` renders the force-constant deck and
-takes the relax stage's geometry** (§ 5.2a) — whichever its name; what a
-stage renders is asked of one rule, `pyscf/stages.vibration_render_kind`,
-and never of the name *(until 2026-09-28 only a stage named `freq` took the
-relaxed geometry, so a second force-constant stage measured the unrelaxed
-input; plan W41)*. Each stage's job writes its own result in its own attempt
+override. **Every stage but `relax` renders the force-constant deck and
+takes the relax stage's geometry** (§ 5.2a) — whatever its name; what a
+stage renders is asked of one rule, `pyscf/stages.vibration_render_kind` —
+`relax` is the relaxation, every other stage the force constants — and
+never of the name `freq` *(until 2026-09-28 only a stage named `freq` took
+the relaxed geometry, so a second force-constant stage measured the
+unrelaxed input; plan W41)*. Each takes the relax stage's **newest** attempt
+when it is prepped, so a relaxation re-run between two force-constant stages
+puts them at different geometries — which the summary refuses, below. Each stage's job writes its own result in its own attempt
 (§ 5.5) — its `<label>.FC`, its output, its `<label>.spectra.json` — the raw
 data at that displacement, never merged or moved. **The hierarchical layout
 only**: in the flat one every stage writes the same `<label>.FC` and
 `<label>.spectra.json`, so `prep` refuses a second force-constant stage there
-rather than let it overwrite the first's result.
+— counting every described one, enabled or not, since a stage named on the
+command line is prepped either way — before any sort, permutation record or
+deck is written, rather than let it overwrite the first's result.
 
 **The summary: `jobset summarize run`** — `summarize` summarizes results that
 exist (§ 5.5). On a SIESTA vibration with two or more force-constant stages it
@@ -1359,10 +1373,15 @@ reads each stage's newest attempt through the layout's doors, and each
 spectrum through the one typed reader. It writes
 **`<label>.fc-sweep.json`** at the calculation root (schema
 `molbuilder/fc-displacement-sweep@1`, `spectra/displacement_sweep.py`) and
-prints the same table; the Results tab opens the record at the calculation
-root (the `fc-sweep` presenter). A stage with no result yet reads as pending,
-never as a failure; a PySCF vibration is refused by name — its second
-derivatives are analytic, so there is no displacement to sweep.
+prints the same record as text; the Results tab opens the record at the
+calculation root (the `fc-sweep` presenter), which draws every key below. A
+stage without a result says why in the words `run_status` gives its attempt
+(`execution/running-a-job.md` § 4.2): not launched, queued or running is
+**pending**, never a failure; a run that failed, one that finished without
+its spectrum (an attempt prepped before its job finished itself), or a
+spectrum the reader refuses is **failed**, with the reason. A PySCF vibration
+is refused by name — its second derivatives are analytic, so there is no
+displacement to sweep.
 
 **Nothing is lost and nothing is copied.** Each stage's files stay where its
 run wrote them, and the record names each by its path from the calculation
@@ -1374,10 +1393,19 @@ root; it adds only what the comparison derives:
 | `modes[]` | per mode of the reference stage (the first with a result): its frequency at every stage, the matched mode's index there, the shapes' overlap, the change from the reference, the spread across stages, and a flag when a tolerance was given | modes matched **by shape**: the overlap of the mass-weighted eigenvectors over the free atoms, assigned one-to-one so the total overlap is largest (`scipy.optimize.linear_sum_assignment`) — ranks swap between displacements when two modes are near-degenerate, and matching by rank would compare different motions |
 | `force_constants[]` | per stage against the reference: the largest change of any force constant over the block both nudged, in eV/Å², and that change relative to the largest constant | `H(δ)` from each stage's raw `.FC`, through the one reader (`parse/engines/siesta_fc.py`) |
 | `tolerance_cm1` | the threshold a person gave (`summarize run --tolerance-cm1 X`), or `null` | a mode is flagged when its spread exceeds it; without one nothing is flagged — the numbers are stated and the judgement is the person's |
-| `pending[]` | stages without a result, and why | |
+| `pending[]` | stages whose result is still to come: the stage, its attempt, its state (`not-started`, `pending`, `queued`, `running`) and `run_status`'s detail | |
+| `failed[]` | stages whose run ended without a readable result: the stage, its attempt, its state (`failed`, `finished` without the spectrum, `unreadable`) and why | |
 
-A sweep across stages that describe different atoms, or share a directory, is
-refused by name.
+`stages[]` also carries `varies_units` — the catalogue's unit for each value
+a stage varies (`fc_displacement` is in Bohr, the Å beside it is the
+displacement SIESTA used). A sweep across stages that describe different
+atoms, share a directory, or **were measured at different geometries** — their
+results' structure hashes (§ 6.2) differ — is refused by name, the last with
+how far an atom moved between them: a relaxation's change reported as the
+displacement's would be a wrong answer that looks right. **Two modes a few
+wavenumbers apart can mix between stages**: a low overlap there is the pair
+turning within its own plane, not a changed motion, and the presenter says
+so beside the table.
 
 ---
 
@@ -1578,14 +1606,16 @@ returns the typed `SpectraResults`, through the gates of § 6.7.
 ### 6.9 What each file of a vibration holds
 
 Where the data of a vibration calculation is, file by file — what a person
-opens, and what a program reads. Every name comes from the run-file catalogue
-(`runfiles.WRITTEN`), which Task setup's *what this calculation writes* card
-lists.
+opens, and what a program reads. Every name molbuilder composes comes from
+the run-file catalogue (`runfiles.WRITTEN`), which Task setup's *what this
+calculation writes* card lists; SIESTA's own `.FC` / `.FCC` are named by
+SIESTA from the label (§ 5.4), and the permutation record by its one constant,
+`atom_permutation.PERMUTATION_FILE` (§ 5.2).
 
 | file | where | holds | written by |
 |---|---|---|---|
 | `<label>.spectra.json` | each force-constant attempt (SIESTA's `freq` stages); the attempt on PySCF | **the result**: every mode's frequency and both eigenvector forms, the strengths the engine computes (`null` where not computed), the removed motions, the thermochemistry, the stationarity verdict, the steps of every finite difference (§ 6.2–6.4); read it as § 6.8 says | the run itself (§ 5.5) |
-| `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied, every mode's frequency per stage matched by shape, how far the force constants moved, and the paths of every stage's own files (§ 5.9) | `jobset summarize run` |
+| `<label>.fc-sweep.json` | the calculation root | a SIESTA displacement sweep's comparison: each stage and what it varied (with units), every mode's frequency per stage matched by shape, how far the force constants moved, the paths of every stage's own files, and the stages without a result with their state (§ 5.9) | `jobset summarize run` |
 | `<label>.FC` · `<label>.FCC` | each SIESTA force-constant attempt | **the raw force constants**: one header (atoms, the displacement in Å), then one row of three numbers in eV/Å² per displaced atom, direction, side and atom (§ 5.4); `.FCC` the same with the held atoms' rows zeroed | SIESTA |
 | `<label>_<stage>-run<N>.out` | each attempt | the engine's own account — every displacement's SCF and forces; FC step 0 is the reference geometry and its forces (§ 5.5) | SIESTA's stdout |
 | `<label>_<stage>-run<N>.pyscf.log` · `<label>.log` | the PySCF attempt | the engine's own account; geomeTRIC's optimizer log | PySCF |
@@ -1623,7 +1653,7 @@ Each names where it holds and what pins it.
 | I19 | **The topics `frequency/` and `spectrum/` are a storage vocabulary** the person picks; nothing derives a folder from an engine or a kind | `projects.py` | review |
 | I20 | **Every spliced function is self-contained**: it reads no module-level name, so a rendered deck parses and every free name in every spliced helper resolves (measured 2026-09-22: both decks `ast.parse` clean and run to exit 0; the left-behind constant of 2026-09-21 is the failure this guards) | `spectra/normal_modes.py`, `sidecars.spectra.structure_hash_text`, `dipole_derivatives`, `homo_index` | the render gate and the end-to-end runs |
 | I21 | **The SIESTA keyword set is re-verified on any SIESTA upgrade** against the manual-derived table, never `strings` | § 5.1 | review, on every upgrade |
-| I22 | **The job writes the result, on both engines**: a vibration's `launch` ends with `<label>.spectra.json` in the attempt — the PySCF deck writes it, and on SIESTA the finish the wrapper runs after the force-constant run (§ 5.5), whose failure is the job's. Nothing after `launch` derives a result: `summarize` derives nothing for this kind | `runwrap` (the finish step), `DeckSpec.finish` → `Job.finish` | `tests/test_siesta_vibration_e2e.py` (the launch alone leaves the spectrum) |
+| I22 | **The job writes the result, on both engines**: a vibration's `launch` ends with `<label>.spectra.json` in the attempt — the PySCF deck writes it, and on SIESTA the finish the wrapper runs after the force-constant run (§ 5.5), whose failure is the job's. Nothing after `launch` derives a run's result: `summarize` only compares the results of a displacement sweep's stages (§ 5.9) | `runwrap` (the finish step), `DeckSpec.finish` → `Job.finish` | `tests/test_siesta_vibration_e2e.py` (the launch alone leaves the spectrum) |
 | I23 | **What travels is one declared set that imports only what the job env carries**: the finish's modules are `runwrap.VIBRATION_COMPANIONS`, each its own file imported two ways; at load, and in every function the finish calls, they import only the standard library, numpy, ASE — the SIESTA job envs' own packages (`envs/recipes.py`) — and each other. A member's functions the finish never calls (the host's element shares, the host's typed reader) may import what the host has | `runwrap.VIBRATION_COMPANIONS`, `envs/recipes.py` | the SIESTA end-to-end run, whose job python cannot import molbuilder |
 | I24 | **Every force-constant stage measures at the relaxed geometry**: whichever its name, a stage that renders the force-constant deck takes the `relax` stage's geometry, in that run's cell, and its `vibration` block carries that run's record (§ 5.2a, § 5.9) — what a stage renders is asked of `vibration_render_kind` alone | `jobset/prep.py::_vibration_stage_geometry` | `tests/test_siesta_vibration_e2e.py` (the sweep: two force-constant stages, one deck geometry) |
 | I25 | **A sweep's summary loses nothing and copies nothing**: every stage's files stay in its attempt and the record names them; it adds only the comparison — modes matched by shape, the frequency changes, the force-constant changes read from the raw `.FC` — and flags only against a tolerance the person gave (§ 5.9) | `spectra/displacement_sweep.py` | `tests/test_siesta_vibration_e2e.py` (the sweep's record) |
@@ -1643,7 +1673,7 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/methods.py` | `render_methods_md`, `with_ir_route`, `extract_citation_keys`, `_mode_count` (§ 4.10); `siesta_methods_text`, the force-constant route's paragraph (§ 5.5) |
 | `molbuilder/spectra/vibrational_analysis.py` | the analysis, engine-neutral: `vibrational_analysis` — a free-atom block, masses, geometry, held set and frame → `SpectraResults` (§ 5.5) |
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA route's finish: `read_force_constant_run`, `finish`, and `main`, the entry of `mb_vibration.pyz` (§ 5.5) |
-| `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `force_constant_stages`, `match_modes` (by shape), `collect_sweep`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9) |
+| `molbuilder/spectra/displacement_sweep.py` | a SIESTA displacement sweep's summary: `match_modes` (by shape), `stages_share_a_directory` (the layout rule `prep` refuses by), `collect_sweep`, `sweep_path`, `write_sweep`, `sweep_table_text` — `<label>.fc-sweep.json` (§ 5.9); which stages take part is `pyscf/stages.force_constant_stages` |
 | `molbuilder/parse/engines/siesta_fc.py` | `read_fc`, `hessian_from_fc` — the `.FC` reader (§ 5.4) |
 | `molbuilder/sidecars/spectra.py` | `dump_spectra_json`, `parse_spectra_json`, `structure_hash_text` |
 | `molbuilder/pyscf/vibration_deck.py` | the PySCF deck composer, the `VibrationConfigView`, the relaxation / gradient / thermo / IR-only blocks, `vibration_stages` in `pyscf/stages.py` |
@@ -1768,14 +1798,15 @@ mode matching across runs (V1.24).
 | `tests/spectra/test_normal_modes.py` | every row of the science acceptance table — the rank rule alone, no engine |
 | `tests/test_vibration_e2e.py` | the rank gate against PySCF; the water loop (relaxation, three modes, thermo, the viewer loads it); IR alone in water's windows with the route recorded; the solvated chain; frequencies unmoved by asking for IR; water with O held; the free-atom block check |
 | `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
-| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on the measured relaxation fixture (`tests/fixtures/siesta_relax`: a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint); the analysis on the measured fixtures (`vibrational_analysis` over the `.FC` block, the reference step through the reading pass) — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed) — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused |
+| `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on the measured relaxation fixture (`tests/fixtures/siesta_relax`: a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint); the analysis on the measured fixtures (`vibrational_analysis` over the `.FC` block, the reference step through the reading pass) — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed) — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused; the displacement sweep — every force-constant stage at the relaxed bond, a stage still to come pending in its attempt's words, the record naming each stage's files and copying none, and the sweep refused after a relaxation re-run between the stages; a flat calculation refusing a second force-constant stage, a disabled one included; the finish that fails — the marker naming it, the job read failed, and the same attempt stopped inside its finish (failed) and still in it (running); a finish that cannot load, stopping the job before SIESTA with a marker that reads failed; the finish run where molbuilder is not (the bundle alone, on a measured attempt) |
+| `tests/test_displacement_sweep.py` | matching by shape on a measured fixture (`tests/fixtures/siesta_h2o_modes`, free water — atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize run` on the road |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
 | `tests/spectra/test_types.py` · `test_parsers_json.py` · `test_atom_index_contract.py` | the artifact's gates and round trip; the free-atom invariant |
 | `tests/spectra/test_activity.py` · `test_motion_share.py` · `test_selection.py` · `test_methods.py` · `test_config.py` · `test_blueprint.py` | the derived classes; the element shares; the reference selector and its parity with the deck's inlined copy; the prose, its citations and the provenance rows of § 6.4; the defaults; the page and the load door (the old generator's `test_engine.py` / `test_script.py` died at P3) |
 | `tests/spectra/test_spectrumchart_*.py` · `tests/test_vibrationview_*_js.py` · `test_results_state_contract_spectra_js.py` · `test_spectra_phase_indicator_js.py` · `test_task_setup_tab.py` | the chart's maths, seal and box; the animation's maths and mount; the viewer's state; the phase indicator; the send flow |
 | `tests/test_warmfiles.py` · `tests/validation/test_siesta.py` | the vibration warm-file section; the keyword table the deck is checked against |
-| fixtures: `tests/fixtures/siesta_fc/` (the measured H₂ `.FC`, `.FCC`, `.fdf`), `tests/fixtures/psml/` | |
+| fixtures: `tests/fixtures/siesta_fc/` (the measured H₂ `.FC`, `.FCC`, `.fdf`), `tests/fixtures/siesta_h2o_modes/` (a measured free-water spectrum, 2026-09-28), `tests/fixtures/psml/` | |
 
 ---
 

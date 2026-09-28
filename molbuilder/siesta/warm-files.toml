@@ -121,8 +121,9 @@ carry  = "when-continuing"
 
 [[vibration.file]]
 suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT
-                                # of the run, read on the host by
-                                # parse/engines/siesta_fc.py
+                                # of the run, read beside it by the job's
+                                # finish through parse/engines/siesta_fc.py
+                                # (engines/vibration.md 5.5)
 
 [[vibration.file]]
 suffix = ".FCC"                 # the same with the held atoms' rows zeroed

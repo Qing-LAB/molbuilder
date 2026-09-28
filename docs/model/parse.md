@@ -1415,7 +1415,7 @@ record
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase>
 │   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
 │   │                    gpu_sm_mean_pct · mem_basis · mem_limit_gb
-│   └── exit             code · at
+│   └── exit             code · at · note (what the wrapper added: a failed finish, a finish that cannot load)
 ├── setup
 │   ├── rows             [{item, items, keys, default, asked, used, echo, differs}]
 │   ├── engine_only      [{key, value | readings, in_deck}]

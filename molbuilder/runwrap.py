@@ -358,9 +358,11 @@ def _finish_block(finish: Optional[str], script_name: str,
     Empty when the job has no finish."""
     if finish is None:
         return ""
-    # The marker's words for a failed finish are its READER's
-    # (`parse/dirs/job.py`, which travels and reads them beside the job).
+    # The marker's words for a failed finish, and the log line that says the
+    # finish began, are their READERS' (`parse/dirs/job.py`,
+    # `wrapper_log`, which travel and read them beside the job).
     from .parse.dirs.job import FINISH_FAILED
+    from .wrapper_log import FINISH_STARTED
     return (
         f"\n"
         f"# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
@@ -369,7 +371,7 @@ def _finish_block(finish: Optional[str], script_name: str,
         f"# python and writes it beside the run.  ITS FAILURE IS THE JOB'S --\n"
         f"# the conclusion records its exit status and this wrapper exits\n"
         f"# with it; its lines and any traceback are in this session log.\n"
-        f'_log INFO "finish: {finish} {script_name} $_out_file"\n'
+        f'_log INFO "{FINISH_STARTED} {finish} {script_name} $_out_file"\n'
         f"set +e\n"
         f'if [ -n "$_mb_py" ] && [ -f {finish} ]; then\n'
         f'    "$_mb_py" {finish} {script_name} "$_out_file"\n'
@@ -391,6 +393,40 @@ def _finish_block(finish: Optional[str], script_name: str,
         f'"$_mb_finish_rc" "$(date)" '
         f'> "{basename}-run${{_run_n}}.concluded"\n'
         f'    exit "$_mb_finish_rc"\n'
+        f"fi\n"
+    )
+
+
+def _finish_check_block(finish: Optional[str], basename: str) -> str:
+    """Before the engine starts: can the job's finish run here?  Asked with
+    the python that will run it (``$_mb_py``, probed by the monitor block
+    whether or not a monitor starts), once the run index is known, so a job
+    env without what the finish imports stops before the expensive run it
+    would otherwise throw away -- and SAYS SO in the conclusion, which reads
+    failed (`engines/vibration.md` § 5.5, `running-a-job.md` § 4.2).  A dry
+    run has already exited.  Empty when the job has no finish."""
+    if finish is None:
+        return ""
+    from .parse.dirs.job import FINISH_CANNOT_LOAD
+    return (
+        f"# --- Can the job finish itself? (engines/vibration.md 5.5) -------\n"
+        f"# The bundle's `loads` verb imports the finish on the job's own\n"
+        f"# python and answers; its words are the load error itself.\n"
+        f'_mb_fin_said=""\n'
+        f'if [ -z "$_mb_py" ] || [ ! -f {finish} ] '
+        f'|| ! _mb_fin_said=$("$_mb_py" {finish} loads 2>&1); then\n'
+        f'    _log ERROR "finish: {finish} cannot run here -- '
+        f'${{_mb_fin_said:-no python in the job env, or {finish} is not '
+        f'beside the deck}}"\n'
+        f'    echo "ERROR: this job cannot finish itself: {finish} does not '
+        f'load on the job\'s python (${{_mb_py:-none found}}) -- the engine '
+        f'was not started, so no run is lost.  Its imports are the standard '
+        f'library, numpy and ASE, which the job env carries '
+        f'(envs/recipes.py)." >&2\n'
+        f'    [ -n "$_mb_fin_said" ] && echo "$_mb_fin_said" >&2\n'
+        f'    printf "rc=1 at %s; {FINISH_CANNOT_LOAD} ({finish})\\n" '
+        f'"$(date)" > "{basename}-run${{_run_n}}.concluded"\n'
+        f"    exit 1\n"
         f"fi\n"
     )
 
@@ -3815,20 +3851,6 @@ def render_run_wrapper(script_path: Path, *,
            f"    exit 1\n"
            f"  fi\n"
            if category == "pyscf" else "")
-        # CAN THE JOB FINISH ITSELF?  Asked before the engine starts, so a job
-        # env without what the finish imports (numpy, ASE) stops HERE, before
-        # the expensive run it would otherwise throw away
-        # (`engines/vibration.md` § 5.5): the bundle's `loads` verb imports the
-        # finish and answers.  Its words are the load error itself.
-        + (f'  if ! _mb_fin_said=$(python {finish} loads 2>&1); then\n'
-           f'    echo "ERROR: this job cannot finish itself: {finish} does not '
-           f'load on the python of \'{target_env}\' -- nothing was started, '
-           f'so no run is lost.  It needs numpy and ASE in the job env '
-           f'(envs/recipes.py)." >&2\n'
-           f'    echo "$_mb_fin_said" >&2\n'
-           f"    exit 1\n"
-           f"  fi\n"
-           if finish is not None else "")
         + f"fi\n"
         f"\n"
     )
@@ -3877,6 +3899,7 @@ def render_run_wrapper(script_path: Path, *,
                              notify_report,
                              cores="$_mb_cores", gpu=gpu_mode,
                              unwatchable=unwatchable)
+            + _finish_check_block(finish, basename)
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={continue_retries}\n'
                f'# Warm-retry: re-exec this wrapper with --continue (advance\n'

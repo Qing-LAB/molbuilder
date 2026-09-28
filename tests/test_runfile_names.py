@@ -427,11 +427,16 @@ def test_a_relaxation_is_not_promised_a_spectrum():
 
 def test_each_file_says_which_moment_it_appears_in():
     """A card listing a run's files has to say which of them exist yet, and
-    the three moments are what it says: the description hand-over, the prep,
-    and the launch.  Declared per file, so no page subtracts one list from
-    another to find out."""
+    the four moments are what it says: the description hand-over, the prep,
+    the launch, and `summarize run` -- which writes a summary of results
+    that exist and is never the launch (a sweep's comparison was promised as
+    the launch's to every SIESTA vibration until 2026-09-28).  Declared per
+    file, so no page subtracts one list from another to find out."""
     moments = {a.when for a in WRITTEN}
-    assert moments == {"setup", "prep", "run"}
+    assert moments == {"setup", "prep", "run", "summarize"}
+    launched = {r["name"] for r in manifest(LABEL, None, when=("run",))}
+    assert compose(LABEL, ".fc-sweep.json") not in launched
+    assert compose(LABEL, ".transport.json") not in launched
     setup = {r["name"] for r in manifest(LABEL, None, when=("setup",))}
     assert setup == {compose(LABEL, r) for r in (".template.toml",
                                                  ".source.xyz",

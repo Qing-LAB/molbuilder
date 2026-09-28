@@ -32,10 +32,10 @@ mounts it.
 > This doc uses the target name **presenter**; where it points at code it uses
 > today's `inspectors` names.
 
-## 1. The pieces — a switchboard and seven viewers
+## 1. The pieces — a switchboard and eight viewers
 
 The **registry** is the switchboard. Each **presenter** is a small self-contained
-viewer for one kind of file. Today there are seven:
+viewer for one kind of file. Today there are eight:
 
 | Presenter | The file you open | The viewer you get | Shows in the Results dropdown? |
 |---|---|---|---|
@@ -44,7 +44,7 @@ viewer for one kind of file. Today there are seven:
 | `spectra` | `.spectra.json` | a spectrum **chart** + a modes table | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
-| `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage and what it varied, each mode's frequency per stage (matched by shape), the force-constant changes, and where each stage's own files are (`engines/vibration.md` § 5.9) | yes — *Spectrum* |
+| `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage — what it varied (with units), the displacement used, its stationarity, modes and SIESTA, and its own files — each mode's frequency per stage with the change, the shapes' overlap and the mode it matched, the force-constant changes, and the stages without a result with their state (`engines/vibration.md` § 5.9) | yes — *Spectrum* |
 | `markdown` | `.md` | a markdown **editor** with a live preview + Save | no |
 | `source` | `.fdf`, `.py`, `.log`, `.json`, `.txt` | a plain **paginated text** pane | no |
 
@@ -57,7 +57,7 @@ answer, set-equal in both directions. Added 2026-09-18
 (`plan.md` § 5p.3p step 10b) after the table spent an unknown stretch
 claiming five viewers and three results while six were registered.*
 
-The five that say "yes" mark themselves as *results*, so they show up in the
+The six that say "yes" mark themselves as *results*, so they show up in the
 Results tab's file dropdown. The two that say "no" (markdown, plain text) are
 catch-alls — if they claimed a spot in the dropdown they would flood it with
 config files and READMEs.

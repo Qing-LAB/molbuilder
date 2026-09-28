@@ -1341,11 +1341,19 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "0.0 0.0 0.0 1\n0.0 0.0 0.74 1\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n")
     estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf", resources=Resources(mpi_np=2), env="e").read_text())
+    # A JOB WITH A FINISH (a SIESTA force-constant stage, `engines/
+    # vibration.md` § 5.5): the check before the engine and the finish after
+    # it render only with one -- which no fixture above carried, so both
+    # blocks were emitted and unguarded (the review of 51590fa6).
+    (tmp_path / "FIN.fdf").write_text((tmp_path / "EST.fdf").read_text()
+                                      .replace("SystemLabel EST",
+                                               "SystemLabel FIN"))
+    finishing = _blocks(write_run_wrapper(tmp_path / "FIN.fdf", resources=Resources(mpi_np=2), env="e", finish="mb_vibration.pyz").read_text())
     # PySCF (D9: the guard never rendered one, so its parsing header
     # matched no row and its anatomy was unguarded entirely)
     (tmp_path / "PY.py").write_text('JOB = "PY"\nimport pyscf\n')
     pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py", resources=Resources(), env="e").read_text())
-    union = minimal | maximal | estimable | pyscf
+    union = minimal | maximal | estimable | pyscf | finishing
     assert union <= documented, (
         "the wrapper emits blocks job-contracts.md § 2.6 does not list:\n"
         f"  {sorted(union - documented)}")

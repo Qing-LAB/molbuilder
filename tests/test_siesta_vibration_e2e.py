@@ -15,15 +15,18 @@ MUTATIONS THIS MUST FAIL AGAINST: a wrapper that does not run the finish
 (the launch then ends with no spectrum); a finish bundle missing a member
 (the job's python cannot import it, and the job fails).
 
-Two roads, one per state of the person's one box (`engines/vibration.md`
-§ 2.2): unticked, the ladder `init` writes relaxes first -- a `relax` stage
-whose geometry the `freq` stage is written at (§ 5.2a) -- and the read-back
+The roads: one per state of the person's one box (`engines/vibration.md`
+§ 2.2) -- unticked, the ladder `init` writes relaxes first, a `relax` stage
+whose geometry the `freq` stage is written at (§ 5.2a), and the finish
 judges the reference-step forces by the template's own tolerance; ticked,
-`freq` alone measures at the geometry as given.
+`freq` alone measures at the geometry as given -- then a displacement sweep
+(§ 5.9) and its refusals, and the finish's own failures: a finish that
+fails, and one that cannot load, which stops the job before SIESTA.
 
 Needs the ``molbuilder-siesta`` env + conda hook on this machine; skipped
-cleanly anywhere else.  Wall cost ~40 s (a short Broyden relaxation plus
-seven single points of H2, then seven more).
+cleanly anywhere else.  Each launch is a short Broyden relaxation or seven
+single points of H2 -- about 15-30 s here -- and the module launches a dozen
+(about five minutes in all).
 """
 from __future__ import annotations
 
@@ -310,11 +313,15 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     `freq_half` at 0.02 -- BOTH measure at the relaxed geometry, whatever
     their names (I24); each stage's job writes its own spectrum; and
     `summarize run` compares them into `<label>.fc-sweep.json` at the root,
-    naming each stage's files rather than copying them (I25).
+    naming each stage's files rather than copying them (I25).  Before
+    `freq_half` is launched the record lists it as pending, in its attempt's
+    own words; after a relaxation re-run between the two stages the sweep is
+    refused -- the geometry's change would be reported as the displacement's.
 
-    MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
+    MUTATIONS THIS MUST FAIL AGAINST: only the stage named `freq` taking the
     relaxed geometry -- `freq_half` then measures the unrelaxed input bond,
-    which is how it ran until 2026-09-28.
+    which is how it ran until 2026-09-28; a sweep across two geometries
+    summarized as one (the review of 51590fa6).
     """
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
@@ -325,13 +332,32 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
-    for stage in ("relax", "freq", "freq_half"):
+    def _prep_and_launch(stage):
         r = _jobset("prep", "run", stage, "--bundle", str(bundle),
                     "--target", "this")
         assert r.exit_code == 0, r.output
         r = _jobset("launch", "run", stage, "--bundle", str(bundle),
                     "--mode", "direct", "--yes")
         assert r.exit_code == 0, r.output
+
+    _prep_and_launch("relax")
+    _prep_and_launch("freq")
+    r = _jobset("prep", "run", "freq_half", "--bundle", str(bundle),
+                "--target", "this")
+    assert r.exit_code == 0, r.output
+    # A STAGE STILL TO COME is pending, never a failure, in the words its
+    # attempt's `run_status` gives (prepped, not launched).
+    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    assert r.exit_code == 0, r.output
+    early = json.loads((bundle / "H2.fc-sweep.json").read_text())
+    assert [s["name"] for s in early["stages"]] == ["freq"], early["stages"]
+    (waiting,) = early["pending"]
+    assert (waiting["stage"], waiting["state"]) == ("freq_half", "pending"), \
+        waiting
+    assert early["failed"] == []
+    r = _jobset("launch", "run", "freq_half", "--bundle", str(bundle),
+                "--mode", "direct", "--yes")
+    assert r.exit_code == 0, r.output
 
     decks = {tok: next((bundle / tok).glob("*.fdf")).read_text()
              for tok in ("02_freq", "03_freq_half")}
@@ -350,7 +376,7 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     assert r.exit_code == 0, r.output
     rec = json.loads((bundle / "H2.fc-sweep.json").read_text())
     assert rec["schema"] == "molbuilder/fc-displacement-sweep@1"
-    assert rec["pending"] == []                 # every stage has its result
+    assert rec["pending"] == [] and rec["failed"] == []  # every stage has one
     # the Results tab offers only what the parse registry reads
     # (`model/parse.md` § 5.5): the record has its own reader
     from molbuilder.parse import detect
@@ -365,10 +391,13 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
             assert (bundle / s[key]).is_file(), (key, s)
     assert rec["stages"][0]["spectrum"].startswith("02_freq/run-0/")
     assert rec["stages"][1]["spectrum"].startswith("03_freq_half/run-0/")
+    assert not list(bundle.glob("*.FC")) and not list(
+        bundle.glob("*.spectra.json")), "the summary copied a stage's files"
     # the displacement each stage USED, from its own spectrum
     d1, d2 = (s["fc_displacement_ang"] for s in rec["stages"])
     assert abs(d2 / d1 - 0.5) < 1e-6, (d1, d2)
     assert rec["stages"][1]["varies"] == {"fc_displacement": 0.02}
+    assert rec["stages"][1]["varies_units"] == {"fc_displacement": "Bohr"}
     # the one mode, matched by shape, at both displacements
     (m,) = rec["modes"]
     assert set(m["frequency_cm1"]) == {"freq", "freq_half"}
@@ -386,26 +415,48 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     rec2 = json.loads((bundle / "H2.fc-sweep.json").read_text())
     assert rec2["modes"][0]["flagged"] is True and rec2["tolerance_cm1"] == 1e-6
 
+    # A RELAXATION RE-RUN BETWEEN THE STAGES: relax again, tighter, and
+    # re-launch only `freq_half` -- which takes the relax stage's NEWEST
+    # attempt (§ 5.2a), so the two stages now measure two geometries.
+    task = json.loads((bundle / "task.json").read_text())
+    task["varies"] = sorted(set(task["varies"]) | {"relax_force_tol"})
+    for st in task["stages"]:
+        if st["name"] == "relax":
+            st["overrides"] = {"relax_force_tol": 0.001}
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    _prep_and_launch("relax")
+    _prep_and_launch("freq_half")
+    r = _jobset("summarize", "run", "--bundle", str(bundle))
+    assert r.exit_code != 0 and "different geometries" in r.output, r.output
+
 
 def test_a_flat_calculation_refuses_a_second_force_constant_stage(
         tmp_path, monkeypatch):
     """In the flat layout every stage writes the same `<label>.FC` and
     `<label>.spectra.json`, so two force-constant stages would overwrite each
-    other's result: `prep` refuses the description before writing anything,
-    at whichever stage is prepped first (`engines/vibration.md` § 5.9)."""
+    other's result: `prep` refuses the description before any sort,
+    permutation record or deck is written, at whichever stage is prepped
+    first (`engines/vibration.md` § 5.9) -- counting a stage that is not
+    enabled, because a stage named on the command line is prepped either way.
+
+    MUTATION THIS MUST FAIL AGAINST: counting only the enabled stages -- the
+    disabled second stage then escapes, and prepping it would overwrite the
+    first one's result (the review of 51590fa6).
+    """
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]],
                        shape="flat")
     task = json.loads((bundle / "task.json").read_text())
     # a stage overrides only what the description varies (stages.md § 6.2)
     task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    task["stages"].append({"name": "freq_half", "enabled": True,
+    task["stages"].append({"name": "freq_half", "enabled": False,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     r = _jobset("prep", "run", "relax", "--bundle", str(bundle),
                 "--target", "this")
     assert r.exit_code != 0 and "hierarchical layout" in r.output, r.output
-    assert not list(bundle.glob("*.fdf")), "a deck was written before refusing"
+    for written in ("*.fdf", "atom-permutation.json", "job-set.json"):
+        assert not list(bundle.glob(written)), f"{written} before refusing"
 
 
 
@@ -416,13 +467,21 @@ def test_a_finish_that_fails_fails_the_job(tmp_path, monkeypatch):
     ended.  The finish fails the way a real attempt can: its copy of the
     permutation record is gone.
 
+    The same attempt then stands for the two states no launch can be made to
+    leave on demand (`execution/running-a-job.md` § 4.2): its marker taken
+    away is a job stopped INSIDE its finish -- a walltime, a kill: the output
+    ended, the session log says the finish began, the monitor saw the process
+    go, and no marker came -- which reads failed; and the monitor's closing
+    record taken away too is a finish still at work, which reads running.
+
     MUTATIONS THIS MUST FAIL AGAINST: the wrapper concluding rc=0 after a
     failed finish; `run_status` taking the output's ending over the marker's
     words -- every surface read such a job "finished" until 2026-09-28
-    (M2b′'s review).
+    (M2b′'s review); an ended output with no marker read as finished while
+    the finish works, or after a kill inside it (the review of 51590fa6).
     """
     from molbuilder.parse.dirs import run_status
-    from molbuilder.parse.dirs.job import FINISH_FAILED
+    from molbuilder.parse.dirs.job import FINISH_FAILED, MONITOR_ENDED
     from molbuilder.runfiles import compose
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
@@ -443,17 +502,35 @@ def test_a_finish_that_fails_fails_the_job(tmp_path, monkeypatch):
     st = run_status(attempt)
     assert st.state == "failed" and "finish" in st.detail, (st.state, st.detail)
 
+    (attempt / compose("H2", ".concluded", "01_freq", run=0)).unlink()
+    st = run_status(attempt)
+    assert st.state == "failed" and "stopped before it concluded" in st.detail, \
+        (st.state, st.detail)
+    mon = attempt / compose("H2", ".monitor.log", "01_freq", run=0)
+    mon.write_text("".join(ln for ln in mon.read_text().splitlines(True)
+                           if MONITOR_ENDED not in ln))
+    st = run_status(attempt)
+    assert st.state == "running" and "finish is deriving" in st.detail, \
+        (st.state, st.detail)
+
 
 def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
         tmp_path, monkeypatch):
     """The finish is asked before the run is paid for (`engines/vibration.md`
-    § 5.5): right after activation the wrapper asks the bundle whether it
-    loads, and a bundle that does not stops the job there -- SIESTA never
-    starts, so no force-constant run is thrown away.
+    § 5.5): once the run index is known the wrapper asks the bundle whether
+    it loads on the job's python, and a bundle that does not stops the job
+    there -- SIESTA never starts, so no force-constant run is thrown away --
+    with a conclusion that says so, which reads failed.
 
-    MUTATION THIS MUST FAIL AGAINST: the check removed -- SIESTA then runs
-    to its end and only the finish fails.
+    MUTATIONS THIS MUST FAIL AGAINST: the check removed -- SIESTA then runs
+    to its end and only the finish fails; the check asked before the run
+    index is resolved -- it can name no marker, and the attempt reads queued
+    for ever (the review of 51590fa6).
     """
+    from molbuilder.jobset.materialize import read_run_launch
+    from molbuilder.parse.dirs import run_status
+    from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD, read_concluded
+    from molbuilder.runfiles import compose
     from molbuilder.runwrap import VIBRATION_BUNDLE
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
@@ -471,3 +548,9 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     assert not (attempt / "H2.FC").exists()
     said = "".join(p.read_text() for p in attempt.glob("*.runwrap-*.log"))
     assert "cannot finish itself" in said, said[-2000:]
+    marker = attempt / compose("H2", ".concluded", "01_freq", run=0)
+    assert marker.is_file(), "the stop left no conclusion: it reads queued"
+    got = read_concluded(marker.read_text())
+    assert got["code"] != 0 and got["note"].startswith(FINISH_CANNOT_LOAD), got
+    st = run_status(attempt, launch=read_run_launch(attempt))
+    assert st.state == "failed", (st.state, st.detail)

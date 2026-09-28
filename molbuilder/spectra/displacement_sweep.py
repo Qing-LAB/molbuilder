@@ -27,8 +27,10 @@ each by its path from the calculation root and adds only what a comparison
 derives: which mode of each stage is which mode of the reference, how
 similar their shapes are, how far each frequency moved, how far the force
 constants moved.  Nothing is recomputed from a stage's data except those
-differences, and a stage with no result yet reads as pending, never as a
-failure.
+differences.  A stage with no result says why in the words `run_status`
+gives its attempt: not launched, queued or running is ``pending`` -- never a
+failure -- and a run that failed, or ended without its result, is
+``failed``.
 """
 from __future__ import annotations
 
@@ -64,7 +66,10 @@ def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
 
     Ranks are not identities: two near-degenerate modes swap order between
     two displacements, and comparing by rank would compare different motions.
-    ``masses_amu`` are the free atoms' masses, in the rows' order."""
+    ``masses_amu`` are the free atoms' masses, in the rows' order.  Both
+    results carry the same free atoms in the same order -- the caller's
+    check (:func:`collect_sweep` refuses anything else), since a row of one
+    is compared with the row of the other at the same position."""
     from scipy.optimize import linear_sum_assignment
     sqm = np.sqrt(np.asarray(masses_amu, dtype=float))[:, None]
 
@@ -90,17 +95,20 @@ def match_modes(reference, other, masses_amu) -> "tuple[list, list]":
     return index, overlap
 
 
-def stages_share_a_directory(task) -> bool:
+def stages_share_a_directory(task, *, include_disabled: bool = False
+                             ) -> bool:
     """Whether two force-constant stages of ``task`` would run in one
     directory -- the flat layout, where every stage writes the same
     ``<label>.FC`` and ``<label>.spectra.json`` and the second overwrites the
     first's result.  Asked of the layout (`paths.Shape.stage_dir`), the rule
-    `prep` refuses a sweep by and `summarize` reads it by."""
+    `prep` refuses a sweep by (over every described stage,
+    ``include_disabled``, since it preps any stage named) and `summarize`
+    reads it by."""
     from ..jobset.prep import token_for
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     shape = Shape.named(task.shape)
-    names = force_constant_stages(task)
+    names = force_constant_stages(task, include_disabled=include_disabled)
     dirs = {shape.stage_dir(token_for(task, n)) for n in names}
     return len(dirs) < len(names)
 
@@ -111,19 +119,24 @@ def collect_sweep(base_dir, task, *,
     description): every force-constant stage's newest attempt, read where its
     run wrote it, and the comparison.  Raises :class:`SweepError` when there
     is nothing a sweep can be: a PySCF vibration (its Hessian is analytic),
-    fewer than two force-constant stages, stages sharing a directory, stages
-    describing different atoms, or no stage with a result yet."""
+    fewer than two force-constant stages, stages sharing a directory, no
+    stage with a result yet, or stages that describe different atoms or were
+    measured at different geometries."""
     from .. import __version__ as _mb_version
     from ..chemistry import atomic_mass
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    from ..jobset.materialize import latest_attempt
+    from ..engine_atom_index import from_engine_index
+    from ..jobset.materialize import latest_attempt, read_run_launch
     from ..jobset.prep import token_for
+    from ..parse.dirs import run_status
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
+    from ..parse.errors import ParseError
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     from ..runfiles import compose
-    from ..sidecars.spectra import parse_spectra_json
+    from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
+    from ..template import catalogue, one
 
     base = Path(base_dir)
     if str(task.engine) != "siesta":
@@ -150,35 +163,70 @@ def collect_sweep(base_dir, task, *,
     def rel(p: Path) -> str:
         return str(Path(p).resolve().relative_to(base.resolve()))
 
+    # WHAT A STAGE VARIES, with the unit the catalogue gives it -- the
+    # value alone (`fc_displacement = 0.02`) reads as the Å beside it.
+    _items = catalogue()
+
+    def _unit(item: str) -> Optional[str]:
+        it = one(_items, item, engine="siesta")
+        return getattr(it, "unit", None) or None
+
+    spectrum_name = compose(task.label, ".spectra.json")
     stages: List[Dict[str, Any]] = []
+    # A STAGE WITHOUT A RESULT, in the words its attempt's `run_status`
+    # gives: still to come is pending, never a failure; a run that failed,
+    # or ended without the result, is failed -- and says which.
     pending: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
     loaded = []
     for name in names:
         token = token_for(task, name)
         attempt = latest_attempt(base / shape.stage_dir(token))
-        spectrum = (attempt / compose(task.label, ".spectra.json")
-                    if attempt is not None else None)
-        if spectrum is None or not spectrum.is_file():
-            pending.append({"stage": name, "why": (
-                "no attempt opened" if attempt is None else
-                f"no {compose(task.label, '.spectra.json')} in {rel(attempt)} "
-                f"-- the run has not finished, or its finish failed (its "
-                f"session log says which)")})
+        if attempt is None:
+            pending.append({"stage": name, "state": "not-started",
+                            "detail": "no attempt opened yet -- prep and "
+                                      "launch it"})
             continue
-        res = parse_spectra_json(spectrum)
+        spectrum = attempt / spectrum_name
+        if not spectrum.is_file():
+            st = run_status(attempt, launch=read_run_launch(attempt))
+            entry = {"stage": name, "attempt": rel(attempt),
+                     "state": st.state, "detail": st.detail}
+            if st.state in ("pending", "queued", "running"):
+                pending.append(entry)
+            else:
+                if st.state == "finished":
+                    entry["detail"] = (
+                        f"the run finished without writing {spectrum_name} "
+                        f"({st.detail}) -- an attempt prepped before its job "
+                        f"finished itself, which engines/vibration.md 5.5 "
+                        f"finishes by hand")
+                failed.append(entry)
+            continue
+        try:
+            res = parse_spectra_json(spectrum)
+        except SpectraJsonError as exc:
+            failed.append({"stage": name, "attempt": rel(attempt),
+                           "state": "unreadable",
+                           "detail": f"{spectrum_name} could not be read: "
+                                     f"{exc}"})
+            continue
         meta = dict(res.engine_metadata or {})
         fc_file = attempt / str(meta.get("fc_file")
                                 or compose(task.label, ".FC"))
         rx = dict(res.relaxation or {})
         f_eh = rx.get("max_force_eh_bohr")
+        overrides = dict(getattr(by_name[name], "overrides", None) or {})
         stages.append({
             "name": name,
             "attempt": rel(attempt),
             "spectrum": rel(spectrum),
             "fc_file": rel(fc_file) if fc_file.is_file() else None,
             # WHAT THIS STAGE VARIES, as the description states it -- the
-            # stage's own overrides of the calculation's template.
-            "varies": dict(getattr(by_name[name], "overrides", None) or {}),
+            # stage's own overrides of the calculation's template -- and the
+            # unit each value is in, the catalogue's.
+            "varies": overrides,
+            "varies_units": {k: _unit(k) for k in overrides},
             "fc_displacement_ang": meta.get("fc_displacement_ang"),
             "fc_range_1based": meta.get("fc_range_1based"),
             "fc_asymmetry_max_ev_ang2": meta.get("fc_asymmetry_max_ev_ang2"),
@@ -195,7 +243,8 @@ def collect_sweep(base_dir, task, *,
     if not loaded:
         raise SweepError(
             "no force-constant stage has a result yet: "
-            + "; ".join(f"{p['stage']}: {p['why']}" for p in pending))
+            + "; ".join(f"{p['stage']}: {p['state']} -- {p['detail']}"
+                        for p in pending + failed))
 
     ref_name, ref, ref_fc_file, ref_meta = loaded[0]
     for name, res, _f, _m in loaded[1:]:
@@ -206,6 +255,30 @@ def collect_sweep(base_dir, task, *,
                 f"stages {ref_name!r} and {name!r} describe different atoms "
                 f"(free atoms {list(ref.free_atom_idxs)} against "
                 f"{list(res.free_atom_idxs)}): not one calculation's sweep")
+        # ONE GEOMETRY, or the comparison is not a displacement's: each
+        # result's structure hash pins the geometry its force constants were
+        # taken at (`engines/vibration.md` § 6.2), and each stage took the
+        # relax stage's NEWEST attempt when it was prepped (§ 5.2a) -- so a
+        # relaxation re-run between two stages would be reported as the
+        # displacement's effect.
+        if res.structure_hash != ref.structure_hash:
+            moved = ""
+            if (res.equilibrium_positions_ang is not None
+                    and ref.equilibrium_positions_ang is not None):
+                d = np.linalg.norm(
+                    np.asarray(res.equilibrium_positions_ang, float)
+                    - np.asarray(ref.equilibrium_positions_ang, float),
+                    axis=1)
+                moved = f"; an atom moved {float(d.max()):.2e} Å between them"
+            raise SweepError(
+                f"stages {ref_name!r} and {name!r} were measured at different "
+                f"geometries (their results' structure hashes differ{moved}): "
+                f"a displacement sweep compares one geometry's force "
+                f"constants, and this would report the geometry's change as "
+                f"the displacement's.  Each force-constant stage takes the "
+                f"relax stage's newest attempt when it is prepped "
+                f"(engines/vibration.md 5.2a) -- prep and launch them again "
+                f"after the relaxation they should share (5.9)")
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [atomic_mass(ref.equilibrium_elements[i])
@@ -239,23 +312,35 @@ def collect_sweep(base_dir, task, *,
     # block both runs nudged -- read from the raw files, in eV/Å².
     constants: List[Dict[str, Any]] = []
     rng = ref_meta.get("fc_range_1based") or []
-    displaced = (list(range(int(rng[0]) - 1, int(rng[1])))
+    # SIESTA's atom numbers through the one door (`engine_atom_index`).
+    displaced = (list(range(from_engine_index(int(rng[0]), "siesta"),
+                            from_engine_index(int(rng[1]), "siesta") + 1))
                  if len(rng) == 2 else [])
-    H_ref = None
+    H_ref, ref_why = None, "a force-constant file is missing"
     if ref_fc_file.is_file() and displaced:
-        fc0 = read_fc(ref_fc_file)
-        H_ref = hessian_from_fc(fc0, displaced) / EV_PER_ANG2_TO_HARTREE_PER_BOHR2
+        try:
+            H_ref = (hessian_from_fc(read_fc(ref_fc_file), displaced)
+                     / EV_PER_ANG2_TO_HARTREE_PER_BOHR2)
+        except (ParseError, OSError) as exc:
+            ref_why = f"{rel(ref_fc_file)} could not be read: {exc}"
     for name, res, fc_file, meta in loaded[1:]:
         entry: Dict[str, Any] = {"stage": name, "against": ref_name,
                                  "max_abs_change_ev_ang2": None,
                                  "relative_change": None}
-        if H_ref is None or not fc_file.is_file():
+        if H_ref is None:
+            entry["why"] = ref_why
+        elif not fc_file.is_file():
             entry["why"] = "a force-constant file is missing"
         elif (meta.get("fc_range_1based") or []) != rng:
             entry["why"] = "the two runs nudged different atoms"
         else:
-            H = hessian_from_fc(read_fc(fc_file), displaced) \
-                / EV_PER_ANG2_TO_HARTREE_PER_BOHR2
+            try:
+                H = (hessian_from_fc(read_fc(fc_file), displaced)
+                     / EV_PER_ANG2_TO_HARTREE_PER_BOHR2)
+            except (ParseError, OSError) as exc:
+                entry["why"] = f"{rel(fc_file)} could not be read: {exc}"
+                constants.append(entry)
+                continue
             ix = np.ix_(displaced, displaced)
             d = np.abs(H[ix] - H_ref[ix])
             scale = float(np.max(np.abs(H_ref[ix]))) if d.size else 0.0
@@ -277,6 +362,7 @@ def collect_sweep(base_dir, task, *,
         "modes": modes,
         "force_constants": constants,
         "pending": pending,
+        "failed": failed,
     }
     return record
 
@@ -289,46 +375,91 @@ def write_sweep(base_dir, record: Dict[str, Any]) -> Path:
     return out
 
 
+def _varies_text(stage: Dict[str, Any]) -> str:
+    """What a stage varied, each value with its unit -- or the template's."""
+    units = stage.get("varies_units") or {}
+    return ", ".join(
+        f"{k} = {v}" + (f" {units[k]}" if units.get(k) else "")
+        for k, v in (stage.get("varies") or {}).items()
+    ) or "(the template's own values)"
+
+
+def _cell(m: Dict[str, Any], name: str, reference: str) -> str:
+    """One mode at one stage: its frequency and -- beside the reference --
+    the change, the shapes' overlap, and the mode it matched when that is
+    not the same rank."""
+    f = m["frequency_cm1"].get(name)
+    if f is None:
+        return "--"
+    if name == reference:
+        return f"{f:.1f}"
+    j = m["matched_index_1based"].get(name)
+    o = m["overlap"].get(name)
+    d = m["change_from_reference_cm1"].get(name)
+    parts = ([f"{d:+.2f}"] if d is not None else []) \
+        + ([f"ovl {o:.4f}"] if o is not None else []) \
+        + ([f"as #{j}"] if j is not None and j != m["index_1based"] else [])
+    return f"{f:.1f} ({'; '.join(parts)})" if parts else f"{f:.1f}"
+
+
 def sweep_table_text(record: Dict[str, Any]) -> str:
-    """The printed summary: each stage and what it varied, each mode's
-    frequency at every stage, and how far the force constants moved."""
-    names = [s["name"] for s in record["stages"]]
+    """The record, printed: each stage -- what it varied and in what unit,
+    the displacement SIESTA used, its files, its stationarity with the
+    largest force and the criterion, its modes and removed motions, its
+    SIESTA -- then every mode's frequency at every stage with the change, the
+    overlap and the matched mode, the force-constant changes, and the stages
+    without a result, each with its state (`engines/vibration.md` § 5.9)."""
+    stages = record["stages"]
+    names = [s["name"] for s in stages]
+    ref = record["reference_stage"]
+    others = record["pending"] + record.get("failed", [])
+    w = max([len(n) for n in names] + [len(p["stage"]) for p in others]
+            + [len("stage")])
+    pad = " " * (w + 4)
     lines = [f"displacement sweep -- {record['label']}: "
              f"{len(names)} stage(s) with a result"
              + (f", {len(record['pending'])} pending"
                 if record["pending"] else "")
-             + f"; modes matched by shape to {record['reference_stage']!r}"]
-    lines.append(f"  {'stage':<14} {'delta (A)':>10}  {'asym (eV/A2)':>12}  "
-                 f"{'stationary':>10}  varies")
-    for s in record["stages"]:
+             + (f", {len(record['failed'])} failed"
+                if record.get("failed") else "")
+             + f"; modes matched by shape to {ref!r}"]
+    for s in stages:
         d = s.get("fc_displacement_ang")
         a = s.get("fc_asymmetry_max_ev_ang2")
         st = s.get("stationary")
-        varies = ", ".join(f"{k}={v}" for k, v in (s.get("varies") or {}).items())
+        f, c = s.get("max_force_free_ev_ang"), s.get("force_criterion_ev_ang")
         lines.append(
-            f"  {s['name']:<14} "
-            + (f"{d:>10.5f}" if isinstance(d, (int, float)) else f"{'--':>10}")
-            + "  "
-            + (f"{a:>12.4g}" if isinstance(a, (int, float)) else f"{'--':>12}")
-            + f"  {('yes' if st else 'NO' if st is False else '--'):>10}  "
-            + (varies or "(the template's own values)"))
-    head = f"  {'mode':>4}  " + "  ".join(f"{n[:10]:>10}" for n in names) \
-        + f"  {'spread':>8}  {'min overlap':>11}" \
-        + ("  flag" if record.get("tolerance_cm1") is not None else "")
-    lines.append(head)
-    for m in record["modes"]:
-        cells = []
-        for n in names:
-            f = m["frequency_cm1"].get(n)
-            cells.append(f"{f:>10.1f}" if f is not None else f"{'--':>10}")
-        ovl = [o for o in m["overlap"].values() if o is not None]
-        sp = m.get("spread_cm1")
+            f"  {s['name']:<{w}}  delta "
+            + (f"{d:.5f} A" if isinstance(d, (int, float)) else "--")
+            + f"   varies: {_varies_text(s)}")
         lines.append(
-            f"  {m['index_1based']:>4}  " + "  ".join(cells)
-            + (f"  {sp:>8.2f}" if sp is not None else f"  {'--':>8}")
-            + (f"  {min(ovl):>11.4f}" if ovl else f"  {'--':>11}")
-            + ({True: "  over", False: "  ok", None: "  --"}[m["flagged"]]
-               if record.get("tolerance_cm1") is not None else ""))
+            f"{pad}{s['attempt']}: {Path(s['spectrum']).name}"
+            + (f", {Path(s['fc_file']).name}" if s.get("fc_file") else
+               ", no force-constant file"))
+        lines.append(
+            f"{pad}stationary: "
+            + ("yes" if st else "NO" if st is False else "--")
+            + (f" (largest free-atom force {f:.4g} eV/A" if f is not None
+               else " (largest free-atom force --")
+            + (f", criterion {c:g})" if c is not None else ")")
+            + f"; {s.get('n_modes', '--')} modes, "
+            + f"{s.get('removed_motions', '--')} motions removed; "
+            + "asymmetry "
+            + (f"{a:.4g} eV/A2" if isinstance(a, (int, float)) else "--")
+            + f"; SIESTA {s.get('engine_version') or '--'}")
+    cells = [[str(m["index_1based"])]
+             + [_cell(m, n, ref) for n in names]
+             + [f"{m['spread_cm1']:.2f}" if m.get("spread_cm1") is not None
+                else "--"]
+             + ([{True: "over", False: "ok", None: "--"}[m["flagged"]]]
+                if record.get("tolerance_cm1") is not None else [])
+             for m in record["modes"]]
+    head = ["mode"] + [f"{n} (cm-1)" for n in names] + ["spread"] \
+        + (["flag"] if record.get("tolerance_cm1") is not None else [])
+    widths = [max(len(r[i]) for r in cells + [head]) for i in range(len(head))]
+    lines.append("  " + "  ".join(h.rjust(wd) for h, wd in zip(head, widths)))
+    for r in cells:
+        lines.append("  " + "  ".join(c.rjust(wd) for c, wd in zip(r, widths)))
     for c in record.get("force_constants", ()):
         if c.get("max_abs_change_ev_ang2") is None:
             lines.append(f"  force constants {c['stage']} vs {c['against']}: "
@@ -341,7 +472,11 @@ def sweep_table_text(record: Dict[str, Any]) -> str:
                 + (f" ({100.0 * rel:.3g}% of the largest)" if rel is not None
                    else ""))
     for p in record["pending"]:
-        lines.append(f"  {p['stage']}: pending ({p['why']})")
+        lines.append(f"  {p['stage']:<{w}}  pending -- {p['state']}: "
+                     f"{p['detail']}")
+    for p in record.get("failed", []):
+        lines.append(f"  {p['stage']:<{w}}  FAILED -- {p['state']}: "
+                     f"{p['detail']}")
     return "\n".join(lines)
 
 

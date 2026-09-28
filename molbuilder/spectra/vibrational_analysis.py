@@ -108,7 +108,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     Cartesian component over the free atoms (R5, `engines/vibration.md`
     § 5.5).  ``already_relaxed`` is the person's statement, carried as made.
     ``ladder_relaxation`` is the relaxation record of the stage that relaxed
-    first (`parse.contract.relaxation_of`): the result then says the
+    first (`parse.contract.relaxation_of_output`): the result then says the
     relaxation ran, how many steps it took, and ``phase_relaxation`` is
     complete; without it the phase is `not requested`.
 

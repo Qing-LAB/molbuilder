@@ -195,9 +195,14 @@ needs the activated environment. It is Python's.
 
 **The test, when adding to a wrapper:** *does this need the activated shell, or
 this run's own ending?* If it computes, decides or arranges anything else, it
-belongs upstream. The one decision made on the node is the warm retry, because
-only this run's ending can make it — and the wrapper asks the framework's
-reader for that ending rather than grepping for it (§ 3.5).
+belongs upstream. Two decisions are made on the node, each because only the
+node can answer it: the warm retry, which only this run's ending can make —
+and the wrapper asks the framework's reader for that ending rather than
+grepping for it (§ 3.5) — and, for a job with a finish, whether the finish
+can run on the job's python, which only the activated environment can say
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5). The finish
+itself passes the same test: it needs the activated environment and this
+run's own output.
 
 > **Nothing arrives at a run directory needing to be resolved.** What a stage
 > continues from is a **real file, copied in at `prep`** from the run you name
@@ -545,7 +550,7 @@ stopped with SIGUSR1, not an ending (§ 4.1).
 | **monitor** — utilisation every 10 s, progress, notifications | `-runN.monitor.log` · `-runN.util.csv` | both | start to end | a person; the run record |
 | **SCF-timing tee** — every SCF row of both phases (`scf:`, `ts-scf:`) | `-runN.scf-timing.log` | SIESTA | as rows print | the timing instrument ([`model/parse.md`](?doc=model/parse.md) § 5c) |
 | **failure hint** — how the run ended, where its output and log are; for `propor`, the causes (§ 3.1a) | the session log | SIESTA | on a nonzero exit | a person |
-| **conclusion marker** — exit code and time | `-runN.concluded` | both | the wrapper's last act, main line only | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
+| **conclusion marker** — exit code and time, and for a job with a finish the words that say it failed or could not run (`…; finish failed (<bundle>)`, `…; finish cannot load (<bundle>)`) | `-runN.concluded` | both | the wrapper's last act, main line only — after the job's finish, when it has one | `run_status`, the launch gate, the run record ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3) |
 
 **The monitor** is `mb_monitor.pyz`, one file beside every deck, reading the
 run with the framework's own readers. What it reads, when it speaks (never
@@ -617,8 +622,14 @@ ruling, 2026-09-04: a re-run of an earlier rung must not take over the state)*
 ```mermaid
 flowchart TD
     S{"does a file speak?"} -->|"yes"| E{"what ending does it state?"}
-    E -->|"its end"| FIN["finished"]
-    E -->|"a stop, or out of memory"| FAIL["failed"]
+    E -->|"its end"| J{"a job with a finish?"}
+    J -->|"no"| FIN["finished"]
+    J -->|"the marker names a failed finish"| FAIL["failed"]
+    J -->|"no marker yet, and its session log says the finish began"| G0{"its monitor's closing record?"}
+    G0 -->|"job ended"| FAIL
+    G0 -->|"none"| RUN["running"]
+    J -->|"its marker rc 0"| FIN
+    E -->|"a stop, or out of memory"| FAIL
     E -->|"none"| M1{"a marker at the latest run index?"}
     M1 -->|"rc 0"| FIN
     M1 -->|"nonzero rc"| FAIL
@@ -652,6 +663,17 @@ The monitor's closing record — `[MONITOR] job ended` in the latest run's
 — speaks where the marker is silent too: the process went, and nothing
 recorded an exit.
 
+**A job with a finish is not done when its engine is**
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5): a SIESTA
+force-constant stage's wrapper runs the finish after SIESTA ends, and only
+then concludes. So an output that states its end speaks for the ENGINE, and
+the job's own evidence decides: a marker naming a failed finish reads
+`failed`; with no marker yet — SIESTA's own `0_NORMAL_EXIT` names no
+finish — the run's session log saying the finish began (`finish started:`,
+`wrapper_log.FINISH_STARTED`) reads `running`, and `failed` once the
+monitor's closing record says the process went: a walltime or a kill inside
+the finish, which leaves no marker. A marker `rc=0` is a finished job.
+
 **Convergence never decides the state** (P-S2): an unconverged SCF is a fact
 beside it, in `endings`. A run SIESTA *stopped* because its SCF had to converge
 is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
@@ -662,9 +684,9 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 |---|---|
 | `pending` | prepped, not launched (no run.json) |
 | `queued` | queued as job N · launched (direct), no output yet |
-| `running` | running · no result file yet |
+| `running` | running · no result file yet · the engine ended; the job's finish is deriving the result |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded |
+| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so
@@ -682,8 +704,9 @@ person before continuing a run with no marker
 written as the process starts). One killed before writing anything reads
 `failed` by its monitor's closing record, or `queued` when nothing outlived
 it; an engine that merely died still reaches the wrapper's marker and reads
-`failed`; a flat stage reads `queued` the same way, from its own
-`<basename>.run.json`.
+`failed`; a job that cannot run its finish stops before its engine and says
+so in its marker (`finish cannot load`), which reads `failed`; a flat stage
+reads `queued` the same way, from its own `<basename>.run.json`.
 
 ```mermaid
 stateDiagram-v2
@@ -692,8 +715,8 @@ stateDiagram-v2
     pending --> queued: run.json written
     queued --> running: first output
     queued --> failed: nonzero marker or the monitor's closing record, no output
-    running --> finished: an end, else marker rc 0
-    running --> failed: a stop, else nonzero marker, else the monitor's closing record
+    running --> finished: an end (with a finish, its marker rc 0), else marker rc 0
+    running --> failed: a stop, a failed finish, else nonzero marker, else the monitor's closing record
     note right of running: no clock moves a run out of here
 ```
 
@@ -702,7 +725,7 @@ stateDiagram-v2
 | surface | its words | read from |
 |---|---|---|
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
-| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` | `ended` → `finished`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
+| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s, plus `not-started` (no directory yet) and `unknown` (unreadable) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |
