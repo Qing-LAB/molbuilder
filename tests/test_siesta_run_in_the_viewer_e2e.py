@@ -11,6 +11,10 @@ is the copy's.  Until 2026-09-27 the viewer estimated its own rate three ways
 (SIESTA's first-iteration timer, the browser's poll times, the output's file
 times), and dated an ended run by the output's file time, so a copy made
 three days later read "ended" at the copy's time.
+
+And what a structure SAVED from the viewer carries: the engine's
+coordinates with the engine's origin, a stated offset of 0 (plan § 5q.4,
+T3; `model/structure-periodicity.md` § 6.0).
 """
 from __future__ import annotations
 
@@ -184,3 +188,64 @@ def test_copied_alone_the_output_still_says_when_its_run_ended(
     detail = page.locator("#run-state-detail").inner_text()
     assert at_end in detail and at_copy not in detail, (detail, at_end)
     assert "s/iter" not in page.locator("#scf-status").inner_text()
+
+
+def test_a_structure_saved_from_the_run_reloads_where_the_engine_had_it(
+        finished, page, flask_server, monkeypatch):
+    """T3 (plan § 5q.4): a structure saved from an engine's output carries
+    the engine's coordinates WITH the engine's origin -- a stated offset of
+    0 -- "so its next treatment applies nothing and the box stays where the
+    engine had it" (`model/structure-periodicity.md` § 6.0).
+
+    Saved as a person saves it -- Export, Data, Save to project, the last
+    frame, a folder and a name -- and read back through the codec every load
+    of a pair goes through.
+
+    MUTATION THIS MUST FAIL AGAINST: the Results door not stating the
+    engine's origin beside the run's cell (`watch.py`, `engine_offset =
+    [0, 0, 0]`), which saves the pair with no offset, to be re-derived.
+    """
+    from molbuilder.parse.engines.siesta import SiestaParser
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    traj = SiestaParser.parse(str(finished / "H2_01_coarse-run0.out"))
+    frames = [fr for fr in traj.frames if fr.structure is not None]
+    last = frames[-1]
+    cell = last.lattice if last.lattice is not None else traj.lattice
+    assert cell is not None, "the run states no cell -- nothing to pin"
+
+    _open(page, flask_server, finished, monkeypatch)
+    page.locator(".molviewer-menu > summary", has_text="Export").click()
+    page.locator(".molviewer-export-section", has_text="Data").locator(
+        "button", has_text="Save to project").click()
+    if len(frames) > 1:
+        # WHICH FRAMES: the last one, by asking past the end -- the dialog
+        # clamps to the frames the viewer holds.
+        ask = page.locator(".molviewer-export-dialog")
+        ask.wait_for(state="visible", timeout=15000)
+        for box in ask.locator("input[type=number]").all():
+            box.fill("9999")
+        ask.locator(".is-confirm").click()
+    where = page.locator("dialog .tp-row:not(.tp-row--inert)").first
+    where.wait_for(state="visible", timeout=15000)
+    where.click()
+    page.locator("dialog [data-action='confirm']").first.click()
+    name = page.locator("dialog input[data-role='name']")
+    name.wait_for(state="visible", timeout=15000)
+    name.fill("h2-saved")
+    page.locator("dialog [data-action='confirm']").last.click()
+    page.wait_for_function(
+        "() => /^saved /.test((document.querySelector("
+        "'.molviewer-export-status') || {}).textContent || '')",
+        timeout=15000)
+
+    root = next(p for p in finished.parents if p.name == "projects")
+    back = StructureCodec().read(root / "h2-saved.xyz")
+    assert back.engine_offset is not None, (
+        "the saved pair states no origin, so its next treatment re-derives "
+        "one and moves the box off where the engine had it")
+    assert np.allclose(back.engine_offset, 0.0), back.engine_offset
+    assert back.cell is not None and np.allclose(back.cell, cell, atol=1e-5), (
+        back.cell, cell)
+    assert np.allclose(back.positions, last.structure.positions,
+                       atol=1e-5), "not the engine's own coordinates"
