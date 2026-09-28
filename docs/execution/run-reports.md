@@ -349,12 +349,28 @@ nice -n 19 "$_mb_py" mb_monitor.pyz --label "<label>" --stage "<stage>" --run "$
     [--notify-report "f1,f2"] --watch-pid $$ >/dev/null 2>>"$_runwrap_log" &
 ```
 
-**Its own errors go to the run's session log** (`<base>.runwrap-<stamp>.log`),
-its stdout nowhere. The monitor opens its `.monitor.log` only once it has
-loaded, so one that dies starting — a shipped file reaching into molbuilder, a
-package the job's env lacks — would otherwise leave nothing, and the reason
-with it; until 2026-09-27 its stderr went to `/dev/null` too. It writes nothing
-to stderr in a healthy run.
+**Its start and its own errors go to the run's session log**
+(`<base>.runwrap-<stamp>.log`), its stdout nowhere. The monitor opens its
+`.monitor.log` only once it has loaded, so the bundle's entry says the load
+itself, in the session log's own line format (`wrapper_log.LOG_LINE`):
+
+```
+[23:41:35-0700] [INFO ] monitor: starting mb_monitor.pyz on python 3.12.14 (/…/bin/python)
+[23:41:35-0700] [INFO ] monitor: mb_monitor.pyz started
+```
+
+— the first before it imports anything, the second once it has. **A
+`starting` with no `started` is a monitor that died loading** — a shipped
+file reaching into molbuilder, a package the job's env lacks, a python too old
+for its files — and the error follows it: one `ERROR` line naming the
+exception, then its traceback. Until 2026-09-27 the entry caught that error and
+exited without a word (and before that its stderr went to `/dev/null`), so the
+session log said `monitor: pid=N` and then nothing. The entry is written in the
+Python every interpreter can parse, so it can say this on any python that
+runs it. The ending door (`mb_monitor.pyz ending …`, § 2.6) prints the same
+error when it cannot load, and answers 2, *cannot read*; it prints no start
+pair, because the wrapper waits on its answer and reads its exit status.
+Nothing else reaches stderr in a healthy run.
 
 | flag | from | meaning |
 |---|---|---|

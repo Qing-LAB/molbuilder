@@ -31,6 +31,14 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
 
+#: THE WRAPPER'S OWN LINE -- ``[clock] [LEVEL] message`` -- as `runwrap`'s ``_log``
+#: writes it in bash (``printf`` and ``date``) and the monitor bundle's entry
+#: writes it in Python (``%`` and ``time.strftime``): the two read the same
+#: format and the same clock, so one spelling renders both, and the readers
+#: below anchor on the ``] `` it leaves before the message.
+LOG_LINE = "[%s] [%-5s] %s"
+LOG_CLOCK = "%H:%M:%S%z"
+
 #: The line every section opens with (``_log STAGE`` in ``env_activation``).
 WRAPPER_LOG_START = "===== molbuilder wrapper start ====="
 #: ``(key, pattern)`` for the header lines -- the ``_log INFO`` lines of

@@ -40,7 +40,7 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 from .config_dir import is_channel_name
 # THE SESSION LOG'S LINES are its one module's, which travels beside the
 # job: the wrapper renders them, every reader reads with them.
-from .wrapper_log import RUN_INDEX_LINE, WRAPPER_LOG_START
+from .wrapper_log import LOG_CLOCK, LOG_LINE, RUN_INDEX_LINE, WRAPPER_LOG_START
 
 if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # Under TYPE_CHECKING because the annotation is all this module needs:
@@ -3600,7 +3600,7 @@ def render_run_wrapper(script_path: Path, *,
     env_activation = (
         f"# Structured log helper.\n"
         f"_log() {{\n"
-        f"    printf '[%s] [%-5s] %s\\n' \"$(date '+%H:%M:%S%z')\" \"$1\" \"$2\" >&2\n"
+        f"    printf '{LOG_LINE}\\n' \"$(date '+{LOG_CLOCK}')\" \"$1\" \"$2\" >&2\n"
         f"}}\n"
         f"\n"
         f"# Single unified EXIT cleanup (one trap -- a second ``trap ...\n"
@@ -4254,12 +4254,38 @@ MONITOR_BUNDLE = "mb_monitor.pyz"
 #: `_run_ending`'s questions answer by it.  A bundle this python cannot
 #: import answers `ending` with 2, *cannot read* (`job-contracts.md` § 2.6),
 #: never 1, which would say *no*.
+#:
+#: IT SAYS ITS LOAD, in the session log's own line (`run-reports.md` § 2.3):
+#: ``monitor: starting ...`` before the import and ``... started`` after it,
+#: so a ``starting`` with no ``started`` is a monitor that died loading -- and
+#: the error follows it, one line and the traceback.  Until 2026-09-27 the
+#: error was caught and the process exited without a word, which undid the
+#: session log keeping the monitor's stderr.  The `ending` door prints no
+#: pair: the wrapper waits on its answer and reads its exit status.
+#:
+#: WRITTEN IN THE PYTHON EVERY INTERPRETER PARSES -- no f-strings, no print
+#: function -- because its whole job is to report a python that cannot load
+#: the members, and it has to parse on that python to say so.
 _BUNDLE_MAIN = (
-    "import sys\n"
+    "import sys, time\n"
+    "def _say(level, message):\n"
+    f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
+    f"(time.strftime({LOG_CLOCK!r}), level, message))\n"
+    "    sys.stderr.flush()\n"
+    "_ending = sys.argv[1:2] == ['ending']\n"
+    "if not _ending:\n"
+    f"    _say('INFO', 'monitor: starting {MONITOR_BUNDLE} on python %s (%s)'"
+    " % (sys.version.split()[0], sys.executable))\n"
     "try:\n"
     "    import mb_monitor\n"
-    "except Exception:\n"
-    "    raise SystemExit(2 if sys.argv[1:2] == ['ending'] else 1)\n"
+    "except Exception as _e:\n"
+    "    import traceback\n"
+    f"    _say('ERROR', 'monitor: {MONITOR_BUNDLE} did not load -- %s: %s'"
+    " % (type(_e).__name__, _e))\n"
+    "    traceback.print_exc()\n"
+    "    raise SystemExit(2 if _ending else 1)\n"
+    "if not _ending:\n"
+    f"    _say('INFO', 'monitor: {MONITOR_BUNDLE} started')\n"
     "raise SystemExit(mb_monitor.main())\n")
 
 

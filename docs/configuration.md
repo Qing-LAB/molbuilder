@@ -488,9 +488,9 @@ backend env where molbuilder is not installed (`runwrap.MONITOR_BUNDLE`,
 `execution/running-a-job.md` § 2.0a). So its two files — the
 `-runN.util.csv` it writes and the `-runN.monitor.log` it appends to
 (`execution/run-reports.md` § 2.5) — use `pathlib`: importing `persist` here
-would make the monitor die at import on every node, with stderr going to
-`/dev/null`, which costs the run's status, its utilisation trace and its
-reports and says nothing.
+would make the monitor die at import on every node, which costs the run's
+status, its utilisation trace and its reports -- the session log says why
+(`execution/run-reports.md` § 2.3), and nothing else does.
 
 **And the reason is SHIPPING, not stdlib-ness.** `persist.py` is itself pure
 stdlib — so is `config_dir.py`; the property is *depends only on stdlib*, never
@@ -507,7 +507,7 @@ ways — from the package, or from the bundle.
 | missing | what happens |
 |---|---|
 | `config_dir` | imported only when the channels are read; `load_channels` catches the `ModuleNotFoundError`, logs *reports off*, and the monitor keeps monitoring |
-| any reader the monitor imports at start | the monitor cannot start, and with its output at `/dev/null` it leaves no log at all |
+| any reader the monitor imports at start | the monitor cannot start: the session log holds its `monitor: starting` line and the error, and no `started` (`execution/run-reports.md` § 2.3) |
 | the whole bundle | the wrapper logs *monitor: not started*, and `_mb_ending` answers that the ending cannot be read — no failure hint and no warm retry (`execution/job-contracts.md` § 2.6) |
 
 **Do not route these through the one writer.** They are the one place in this
