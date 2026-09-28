@@ -301,8 +301,8 @@ stated offset (`Structure.engine_offset`, sidecar v10), the retirement of
 `cell_origin`, the readers of engine output, the wire and MolView, and the Cell
 page's origin (plan § 5q.6, P1–P3). Not yet built: the transport face-gap
 warning (check 2), one offset for a frame set (below, with W32's frame sets),
-and the rows plan § 5q.5 still marks open (the design-frame exports, the
-citation viewer). The scope and the order of work are
+the design-frame exports plan § 5q.5 still marks open, and the transport
+citation viewer (§ 5q.3). The scope and the order of work are
 [`plans/plan.md`](?doc=plans/plan.md) § 5q (row W33). The clauses this section
 supersedes say so at their own site; they no longer describe the running code,
 and the phase-4 doc sweep deletes them.*
@@ -427,7 +427,11 @@ two things state one:
   engine's, `(0,0,0)`, set together with them — the table above. Every door
   that makes a structure from an engine's output states it: the next rung of
   a ladder (the vibration `freq` stage from `relax`'s output, a transport
-  rung from the cited relaxation's `.XV`), and every save of a run's output.
+  rung from the cited relaxation's `.XV`), every save of a run's output, and
+  every read of an engine's own structure file — SIESTA's `<label>.xyz`,
+  written with no sidecar, takes its run's frame in the codec
+  (`StructureCodec.read`), from the composer the Results tab's trajectory
+  door also asks (`parse/dirs/atom_metadata.engine_frame_for_run_dir`).
   The transport citation states it only when the cited deck recorded its
   placement — its `engine-offset` record *(user, 2026-09-25, plan § 5q D7)*:
   a relaxation run before the record left its atoms flush against a face, so

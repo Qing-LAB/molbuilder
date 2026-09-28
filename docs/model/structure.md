@@ -525,7 +525,16 @@ copy of any of them:
    to its geometry, and the one serialisation (`molstruct.dumps`);
 4. **the invariants** — `no .json == empty metadata` in both directions,
    both-or-neither atomicity on write, and `no .json == empty metadata`
-   on read. **Not** a periodicity gate: reading does not judge
+   on read **for every file molbuilder wrote**, which is every pair it
+   writes. **An engine's own structure file** — SIESTA's `<label>.xyz`,
+   written with no sidecar, read where its run is recorded — **takes that
+   run's frame**: the cell and axis kinds its deck recorded and the
+   engine's origin, a stated 0, through the one composer
+   (`parse/dirs/atom_metadata.engine_frame_for_run_dir`), because
+   `structure-periodicity.md` § 6.0 asks it of every door that makes a
+   structure from an engine's output *(2026-09-27, plan § 0a M1)*. A file
+   `runfiles` declares, or one in a folder no run is recorded in, reads as
+   before. **Not** a periodicity gate: reading does not judge
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
 **How it is shaped: one generator, and an adapter per destination.**
@@ -554,7 +563,8 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
     def read(self, source_path, *, frames_out=None) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
         paired sidecar, applying metadata via molstruct.apply_to_structure.
-        Missing sidecar = empty metadata (NOT an error). READING DOES NOT
+        Missing sidecar = empty metadata (NOT an error), except an engine's
+        own file where its run is recorded: that run's frame. READING DOES NOT
         JUDGE: a box nothing can be done with LOADS, and is refused at the
         doors that ACT on it (`structure-periodicity.md` § 8.2, decided
         2026-08-03 -- raising here made such a file unopenable and therefore

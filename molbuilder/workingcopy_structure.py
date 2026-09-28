@@ -179,6 +179,29 @@ class StructureCodec:
         if sidecar_path.exists():
             molstruct.apply_to_structure(
                 struct, molstruct.load(sidecar_path, retired_out=retired_out))
+        else:
+            # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
+            # folder -- has no sidecar, because molbuilder writes every
+            # structure as a pair and the engine writes none.  Its frame is the
+            # run's: the cell and axis kinds that run's deck recorded, and the
+            # engine's origin, a stated 0 (`model/structure-periodicity.md`
+            # § 6.0: *"Every door that makes a structure from an engine's
+            # output states it"*).  A file molbuilder declares (`.source.xyz`
+            # and the rest, `runfiles.role_of`) is never one, and a folder no
+            # run is recorded in answers nothing, so every other read is as it
+            # was.
+            from .runfiles import role_of
+            if role_of(src.name) is None:
+                from .parse.dirs.atom_metadata import engine_frame_for_run_dir
+                frame = engine_frame_for_run_dir(src.parent)
+                if frame and frame.get("cell") is not None:
+                    changes = {"cell": frame["cell"],
+                               "engine_offset": frame["engine_offset"]}
+                    if frame.get("axis_kind"):
+                        changes["axis_kind"] = tuple(frame["axis_kind"])
+                    if frame.get("vacuum") is not None:
+                        changes["vacuum"] = frame["vacuum"]
+                    struct = struct.replace(**changes)
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a
         # left-handed cell, or one too small for any origin -- OPENS, and what
@@ -382,7 +405,8 @@ class StructureCodec:
              retired_out: "dict | None" = None) -> Structure:
         """Symmetric read-side name for :meth:`load` -- parse the geometry +
         apply its paired sidecar into a Structure (missing sidecar => empty
-        metadata, not an error).  ``frames_out`` collects every frame of a
+        metadata, not an error -- except an engine's own file where its
+        run is recorded, which reads with that run's frame; see `load`).  ``frames_out`` collects every frame of a
         multi-frame document; ``retired_out`` the retired keys it carried."""
         return self.load(source_path, frames_out=frames_out,
                          retired_out=retired_out)

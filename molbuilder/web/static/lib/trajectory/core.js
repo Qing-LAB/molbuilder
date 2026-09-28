@@ -1085,7 +1085,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
         try {
             await _mvdata().installMolecule({
                 structure:    frame0,
-                filename:     (state.label || "trajectory") + ".xyz",
+                // THE FILE IT CAME FROM names it (`web/molview.md`: an export
+                // "writes mine.xyz" for mine.xyz).  It was the parser's label
+                // until 2026-09-27 -- "SIESTA .out / .log" -- so an export was
+                // offered " .log_frame6" and saved a hidden `.log_frame6.xyz`.
+                filename:     state.path || "",
                 frames:       coordFrames,
                 forces:       buildForcesPerFrame(),
             });
