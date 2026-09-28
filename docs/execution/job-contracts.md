@@ -346,6 +346,7 @@ the ones worth naming here:
 | `my-job.run.sh` | **`prep`** (§ 2.6) | shell / SLURM | wrapper: activates the env and runs the engine |
 | `my-job.sbatch` | **`prep`**, on a cluster (§ 2.6) | `sbatch` | outer resource header that inner-execs the `.run.sh` |
 | `mb_monitor.pyz` | **`prep`**, beside the wrapper; `materialize` copies it into each attempt | the wrapper, which runs it | the monitor and the framework readers it reads a run through, one file (`run-reports.md` § 2.3). It carries no label, so it is named by `runwrap.MONITOR_BUNDLE` rather than declared in `WRITTEN` |
+| `mb_vibration.pyz` | **`prep`**, beside a SIESTA force-constant deck (its job's `finish`); `materialize` copies it into each attempt | the wrapper, which runs it after SIESTA exits cleanly | the job's FINISH: derives the modes from `<label>.FC` and writes `<label>.spectra.json` (`engines/vibration.md` § 5.5). Named by `runwrap.VIBRATION_BUNDLE`, built from `VIBRATION_COMPANIONS`; needs numpy and ASE in the job env |
 | `my-job-runN.monitor.log` | the monitor, every engine's | a person; `parse/instruments/monitor.py` | the monitor's record: `[MACHINE]` first, each change of the run's state, what it sent, its closing utilisation lines (`run-reports.md` § 2.5) |
 | `my-job-runN.util.csv` | the monitor, every engine's | the bench summary; `utilisation` | CPU, memory and GPU samples, change-gated (`run-reports.md` § 2.1) |
 | `my-job.molwatch.log` | both generators (initial preview) + live frames (PySCF's inlined emitter; SIESTA via the parser-on-stdout path) | the run viewer, `molbuilder watch parse` / `tail` | **canonical trajectory source** — preferred by every reader |
@@ -354,7 +355,7 @@ the ones worth naming here:
 | `my-job.log` / `my-job_<stage>_geom.log` | the generated PySCF script | geomeTRIC parser fallback | geomeTRIC's own optimizer log |
 | `my-job_<stage>_geom_optim.xyz` | the generated PySCF script | trajectory parser fallback | PySCF trajectory frames (§ 2.2a: the token sits after the label) |
 | `my-job_initial.xyz` | the generated PySCF script | a person, before the run has done anything | the input geometry, echoed back |
-| `my-job.spectra.json` | the generated PySCF **vibration** script | the Results tab | frequencies, intensities, thermochemistry |
+| `my-job.spectra.json` | **the run itself**: the generated PySCF vibration script, or a SIESTA force-constant job's finish (`mb_vibration.pyz`, `engines/vibration.md` § 5.5) | the Results tab | frequencies, the strengths the engine computes, thermochemistry — the vibration's result, § 6.1 |
 | `my-job.STRUCT_OUT` | SIESTA | next stage / end user | final relaxed coordinates |
 | `my-job.ANI` | SIESTA | external trajectory tools | per-step trajectory (SIESTA's own `.ANI` format) |
 | `my-job.XV` / `.DM` / `.CG` | SIESTA | next stage (warm restart) | coords+velocities / density matrix / CG state |
@@ -1098,12 +1099,18 @@ flowchart TD
     P["PROVENANCE  — who/when/what-defaults"]
     B["BENCH-MARKS  — which fields a tool may override"]
     A["ATOM-METADATA  — regions / frozen / annotations JSON"]
-    E --> U --> M --> P --> B --> A
+    O["ENGINE-OFFSET  — where the atoms were placed: cell, offset, axis kinds"]
+    V["VIBRATION  — what a SIESTA force-constant job's finish reads"]
+    E --> U --> M --> P --> B --> A --> O --> V
 ```
 *(HEADER remains reserved-but-unemitted.)*
 
-Every reserved block is delimited by literal marker lines
-(`molbuilder/script_emit.py`); parsers find blocks by scanning for them:
+Every reserved block is delimited by literal marker lines; parsers find
+blocks by scanning for them.  **The grammar has one home, `molbuilder/deck_record.py`**
+— the block names, the markers and the one reader of a block's JSON payload —
+below `script_emit`, which writes the blocks: a job reads two of them beside
+itself (`engines/vibration.md` § 5.5), where `script_emit` cannot be imported
+*(split out 2026-09-28)*:
 
 ```
 # === molbuilder <block-name> BEGIN ===
@@ -1120,9 +1127,15 @@ block is emitted by every engine):
 | PROVENANCE | ✅ | ✅ | — | ✅ |
 | BENCH-MARKS | ✅ | — | — | — |
 | ATOM-METADATA | ✅¹ | ✅¹ | ✅¹ | — |
+| ENGINE-OFFSET | ✅ | ✅ | ✅ | — |
+| VIBRATION | ✅² | — | — | — |
 | USER-CUSTOM | ✅ | ✅ | — | ✅ |
 
 ¹ Conditional — emitted only when the structure carries labels (§ 3.4).
+² A force-constant deck only (`engines/vibration.md` § 5.3): the stationarity
+criterion, the person's statement and the relax stage's relaxation record,
+which the job's finish reads — written by `script_emit.emit_vibration_record`,
+read by `deck_record.extract_vibration_record`.
 
 > **HEADER is reserved but not currently emitted.** The grammar reserves a
 > HEADER block and `script_emit.emit_header` exists, but no generator calls it
@@ -2052,7 +2065,8 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, the run's declared condition), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Pipeline log | `<label>_<token>.<engine>.<flat\|hierarchical>.pipeline.log` — beside this prep's `STAGE-PLAN.md` (bundle root for a run, the stage's `bench/` container for a sweep). **Written only when `prep --pipeline-log` asks**, and with it on every generated artifact is byte-identical. What each step RECEIVED, DECIDED and PRODUCED, so *where did this value come from* is answered by reading one file rather than re-running ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) | *(text; `in` / `⊕` / `out` in the first column, banner per step — W14)* | `pipeline_log.py` | `⊕ <name> <value> <- <source>` is the row that carries it |
 | Slot provenance | `slot-provenance.json` at the transport calculation's root — which attempt the composed junction came from, with content hashes; part of the § 4.1 travelling copy (`transport-design.md`). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — on a form-A citation those may live in a `.molstruct.json` beside the deck, which is in none of the other slots and is the file the label rename rewrites | `molbuilder/slot-provenance@1` | `transport/compose.py` | `slot`, `citation`, `form`, `files` (name → sha256), `evidence` |
-| Atom permutation | `atom-permutation.json` beside it — the sort the deck was rendered from, recorded, so every downstream index (forces, Mulliken, a mode's rows, the 1-based numbers in the files) maps back to the input's identities (`model/overview.md` § 2.2). Two kinds write it: a transport composite (the categorical order, `transport-design.md` § 4.1a) and a SIESTA vibration (the `held-first` order, so the free atoms are one FC range); `key` names which. One writer and one reader — `write_permutation` / `read_permutation` — and the vibration's `summarize run` is the first reader that inverts it | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`, `write_permutation`) | `original_to_sorted`, `sorted_to_original`, `key` |
+| Vibration result | `<label>.spectra.json` in the attempt that computed it — frequencies, both eigenvector forms, the removed motions, the strengths the engine computes, thermochemistry, the stationarity verdict; written by the run itself on both engines (`engines/vibration.md` § 5.5, § 6, where § 6.8 says how to read it) | `schema_version` 6 | `spectra/results.py` (`SpectraResults`), `sidecars/spectra.py` (`dump_spectra_json`, `parse_spectra_json`) | § 6.2 of `engines/vibration.md` |
+| Atom permutation | `atom-permutation.json` beside it — the sort the deck was rendered from, recorded, so every downstream index (forces, Mulliken, a mode's rows, the 1-based numbers in the files) maps back to the input's identities (`model/overview.md` § 2.2). Two kinds write it: a transport composite (the categorical order, `transport-design.md` § 4.1a) and a SIESTA vibration (the `held-first` order, so the free atoms are one FC range); `key` names which. One writer and one reader — `write_permutation` / `read_permutation` — and a SIESTA vibration job's finish is the first reader that inverts it, from the copy every attempt of the calculation holds (the shared package) | `molbuilder/atom-permutation@1` | `transport/sort.py` (`SortResult.sidecar`, `write_permutation`); `atom_permutation.py` (`Permutation`, `read_permutation`) | `original_to_sorted`, `sorted_to_original`, `key` |
 | Transport result | `<label>.transport.json` at the calculation root — T(E) per bias point, the I–V table (the CURRENT is TBtrans's own printed integral, parsed, never recomputed), and the provenance naming the citation + the permutation record; `summarize run` writes it, asynchronously like the bench reader (a point not yet run reads as `pending`) | `molbuilder/transport-result@1` | `transport/record.py` | `label`, `points[]` (`bias_v`, `energy_ev`, `transmission`, `conductance_g0`, `current_a`, `attempt`), `iv`, `provenance`, `pending` |
 | Run status | *(served, not written to disk)* | **none — the answer carries no version** | `parse/dirs/job.py` | `state`, `detail`, `last_change_at`, `active_source`. *Listed as “Decoded run” with a bare-int `schema_version` until 2026-09-05: `run_status` returns four keys and none of them is a version, so a consumer writing a version check against this row finds nothing to check* |
 

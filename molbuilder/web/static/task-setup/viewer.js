@@ -2144,24 +2144,6 @@ function renderNext(task) {
         return " --target " + _machine;
     }
 
-    /* THE STEP AFTER THE RUN, when the run leaves a file the host must
-     * derive the result from.  Read from the description -- its engine,
-     * its kind and the rung's name -- never from a list here: a SIESTA
-     * vibration's `freq` stage leaves <label>.FC and `summarize run`
-     * writes <label>.spectra.json beside it (engines/vibration.md § 5.5);
-     * its `relax` stage leaves a relaxation, which needs nothing derived.
-     * A PySCF vibration writes its own file and needs nothing after
-     * launch. */
-    function _afterRunLines(task, name) {
-        const engine = ((task && task.engine && task.engine.name) || "siesta").toLowerCase();
-        const kind = (task && task.calculation) || "optimization";
-        if (engine === "siesta" && kind === "vibration" && name === "freq") {
-            return "\nmolbuilder jobset summarize run " + name + _bundleArg()
-                 + "   # derives the modes from the .FC file into <label>.spectra.json";
-        }
-        return "";
-    }
-
     function _bundleArg() {
         const mb = window.molbuilder || {};
         const proj = mb.projects, pathUtil = mb.path;
@@ -2287,8 +2269,10 @@ function renderNext(task) {
             // works from wherever the user is standing
             // (job-contracts.md 2.5b).
             "molbuilder jobset prep run " + name + from + _bundleArg() + _targetArg() + "\n"
-            + "molbuilder jobset launch run " + name + _bundleArg()
-            + _afterRunLines(task, name)));
+            // The launch is the LAST line for every kind: a run writes its
+            // own result -- a SIESTA vibration's job derives its modes after
+            // the force-constant run (engines/vibration.md 5.5).
+            + "molbuilder jobset launch run " + name + _bundleArg()));
         // `--from` is deliberately NOT offered by the button: which run you
         // continue from is a scientific choice the CLI makes you say out
         // loud (`project-layout.md` § 1.6), and a button would have to pick

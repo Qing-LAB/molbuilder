@@ -43,11 +43,14 @@ import re
 from typing import List, Optional
 
 from typing import TYPE_CHECKING
-if TYPE_CHECKING:            # annotation only -- importing
-    # vibration_deck at run time would cycle (it imports this).
+if TYPE_CHECKING:            # annotations only -- importing
+    # vibration_deck at run time would cycle (it imports this), and the
+    # other two are named in annotations and never called: this module
+    # travels beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`),
+    # where neither is importable.
     from .vibration_deck import VibrationConfigView
-from ..structure import Structure
-from .results import SpectraResults
+    from ..structure import Structure
+    from .results import SpectraResults
 
 
 # Citation marker regex.  Matches:
@@ -209,6 +212,33 @@ def with_ir_route(methods_md: str, ir_route: str,
         head, _, tail = methods_md.partition(marker)
         return f"{head.rstrip()} {sentence}\n{marker}{tail}"
     return f"{methods_md.rstrip()} {sentence}\n"
+
+
+def siesta_methods_text(*, displacement_bohr: float, n_free: int,
+                        n_held: int, n_rigid: int, siesta_version: str) -> str:
+    """The Methods paragraph for SIESTA's force-constant route
+    (`engines/vibration.md` § 5.5), with the citation keys the science
+    contract carries -- composed by the job's finish once the run has said
+    its version and the analysis how many motions it removed."""
+    held = (f" {n_held} atom(s) were held fixed and no force constant was "
+            f"taken with respect to them -- partial Hessian vibrational "
+            f"analysis [Head1997, LiJensen2002], the block taken from the "
+            f"forces of the full system [Besley2008]." if n_held else "")
+    removed = (f" The {n_rigid} whole-body motion(s) "
+               f"{'the held geometry permits' if n_held else 'of the free system'}"
+               f" were projected out before diagonalisation [Ghysels2008]."
+               if n_rigid else "")
+    ver = f" (SIESTA {siesta_version})" if siesta_version else ""
+    return (
+        "## Methods\n\n"
+        f"Harmonic force constants were obtained by central finite "
+        f"differences of the analytic forces{ver}: each of the {n_free} "
+        f"free atoms was displaced by ±{displacement_bohr:g} Bohr along "
+        f"x, y and z (`MD.TypeOfRun FC`).{held} The resulting "
+        f"{'partial ' if n_held else ''}Hessian was mass-weighted with isotope-averaged masses and "
+        f"diagonalised.{removed} Infrared and Raman intensities are not "
+        f"computed on this route."
+    )
 
 
 def extract_citation_keys(text: str) -> List[str]:

@@ -686,7 +686,7 @@ class SiestaConfig:
     })
     # THE PERSON'S EXPLICIT CHOICE (`engines/vibration.md` § 2.2): unticked,
     # the ladder relaxes first (a `relax` stage before `freq`); ticked, the
-    # force constants are taken at the geometry as given and the read-back
+    # force constants are taken at the geometry as given and the job's finish
     # answers the statement with the reference-step forces.  Never a
     # refusal.
     already_relaxed: bool = field(default=False, metadata={
@@ -697,7 +697,7 @@ class SiestaConfig:
         "tier": "basic",
         # `produce`, not `deck`: on this engine the item puts no keyword in
         # the deck (template.md § 6 -- the `restart` precedent); the gate
-        # and the read-back are what consume it.
+        # and the job's finish are what consume it.
         "item_kind": "produce",
         "engine_key": "(molbuilder: no engine keyword -- the ladder or the deck decides)",
     })

@@ -652,11 +652,25 @@ def _relaxation_facts(cfg) -> Optional[dict]:
 
 
 
+def _vibration_bundle() -> str:
+    """The name of the bundle that finishes a force-constant job -- the
+    launcher's (`runwrap.VIBRATION_BUNDLE`), which builds and ships it."""
+    from ..runwrap import VIBRATION_BUNDLE
+    return VIBRATION_BUNDLE
+
+
 def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None,
                stage_token: Optional[str] = None,
-               calculation: str = "optimization") -> "_sc.RenderedDeck":
+               calculation: str = "optimization",
+               vibration: Optional[dict] = None) -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
+
+    ``vibration`` is a force-constant deck's `vibration` block, built by
+    `prep` (`spectra.siesta_vibration.vibration_record`): placed in the
+    record as given and never read here, because only `prep` holds its facts
+    (`engines/vibration.md` § 5.3).  A force-constant deck also names the
+    bundle that finishes its run (`DeckSpec.finish`, § 5.5).
 
     The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
     structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
@@ -1037,6 +1051,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # expresses it, not as it arrived.
         validate_subject=lambda s, c: (validation_struct,
                                        {"cell": cell, "design": struct}),
+        # A FORCE-CONSTANT RUN LEAVES FORCE CONSTANTS, NOT THE RESULT: its
+        # job is finished by the bundle that derives the modes, and the deck
+        # carries what that finish reads (`engines/vibration.md` § 5.3, 5.5).
+        vibration=(vibration if _vibration else None),
+        finish=(_vibration_bundle() if _vibration else None),
     )
     def _science(struct, cfg) -> str:
         """The deck, built in the order SIESTA reads it.

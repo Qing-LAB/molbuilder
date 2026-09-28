@@ -27,6 +27,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..atom_permutation import PERMUTATION_FILE, read_permutation
 from ..config.transport import (REGION_LEFT_ELECTRODE,
                                 REGION_RIGHT_ELECTRODE)
 from ..structure import Structure
@@ -47,7 +48,7 @@ class ComposeError(Exception):
 JUNCTION_GEOMETRY = "junction.xyz"          # the SORTED junction (codec pair)
 JUNCTION_DECK = "junction.cited.fdf"        # the attempt's own deck, verbatim
 PROVENANCE_FILE = "slot-provenance.json"
-PERMUTATION_FILE = "atom-permutation.json"
+# (`PERMUTATION_FILE`, the record beside them, is `atom_permutation`'s.)
 
 #: How far two statements of the SAME cell may differ before the citation
 #: is refused.  The cell travels deck -> SIESTA -> ``.XV``: this project
@@ -537,7 +538,7 @@ def labeled_citation_structure(cited: CitedDir):
     # with no `engine-offset` record was prepped before the rule and left its
     # atoms flush against a face, so its junction states none and the rule
     # centres it -- a rigid shift, and the relaxation stays citable.
-    from ..script_emit import extract_engine_offset
+    from ..deck_record import extract_engine_offset
     stated = (np.zeros(3) if extract_engine_offset(deck_text) is not None
               else None)
     try:
@@ -674,8 +675,8 @@ def swap_electrode_labels(cited: CitedDir) -> str:
     and offers, this performs.  The only condition is that both labels
     exist, because otherwise there is no pair to rename.
     """
-    from ..script_emit import (BLOCK_ATOM_METADATA, begin_marker,
-                               emit_atom_metadata, end_marker)
+    from ..deck_record import BLOCK_ATOM_METADATA, begin_marker, end_marker
+    from ..script_emit import emit_atom_metadata
 
     _struct, source = labeled_citation_structure(cited)
 
@@ -1172,13 +1173,13 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
                    f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} "
                    f"missing")
     deck_path = base_dir / JUNCTION_DECK
-    perm = json.loads((base_dir / PERMUTATION_FILE).read_text())
+    perm = read_permutation(base_dir)
     from ..workingcopy_structure import StructureCodec
     dev = StructureCodec().load(base_dir / JUNCTION_GEOMETRY)
     sorted_res = SortResult(
         structure=dev,
-        original_to_sorted=tuple(perm["original_to_sorted"]),
-        sorted_to_original=tuple(perm["sorted_to_original"]))
+        original_to_sorted=perm.original_to_sorted,
+        sorted_to_original=perm.sorted_to_original)
     ion_dir = None
     if tree_root is not None:
         try:

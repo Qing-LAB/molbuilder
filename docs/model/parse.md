@@ -827,9 +827,10 @@ complete one. The three that remain are directory-local questions and were
 always answerable without help.
 
 **There is no preference order to tune.** A vibration run is *for* its
-`.spectra.json`; an optimization for its trajectory; a transport calculation
-for its `.transport.json`. The same file is the live view during the run and
-the result after it, so nothing switches at conclusion — the old rung 1,
+`.spectra.json` (on SIESTA written by the job's finish, `engines/vibration.md`
+§ 5.5); an optimization for its trajectory; a transport calculation for its
+`.transport.json`. The same file is the live view during the run and the
+result after it, so nothing switches at conclusion — the old rung 1,
 *"any `.molwatch.log`, newest wins"*, was an optimization-shaped rule applied
 to every kind, and it sent every spectrum run's viewer to a progress log
 holding one `initial_preview` block.
@@ -1020,9 +1021,12 @@ delegation, not by a ladder.
 | can anything open it? | the **registry** | `detect()` |
 
 **There is no preference order to tune.** A vibration run is *for* its
-`.spectra.json` — the deck rewrites it atomically at each phase boundary and
-it carries its own `phase_*` flags, so it is the live view during the run and
-the result after it. An optimization is for its trajectory. Neither switches
+`.spectra.json` — a PySCF deck rewrites it atomically at each phase boundary
+and it carries its own `phase_*` flags, so it is the live view during the run
+and the result after it; a SIESTA force-constant job writes it once, when its
+finish has derived the modes (`engines/vibration.md` § 5.5), so until then
+the run's own output is what opens, and after it the spectrum. An
+optimization is for its trajectory. Neither switches
 at conclusion: *"an unconcluded progress log first"* was an
 **optimization-shaped rule generalised to every kind**, and it sent every
 spectrum run's viewer to a molwatch log holding one `initial_preview` block

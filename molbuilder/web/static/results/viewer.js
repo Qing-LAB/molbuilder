@@ -209,10 +209,15 @@
         host.appendChild(table);
         const note = document.createElement("p");
         note.className = "inspector-card-note";
+        // EACH RUNG'S RUN WRITES ITS OWN RESULT in its directory (a
+        // vibration's spectrum in its `freq` attempt, engines/vibration.md
+        // 5.5); only a calculation that gathers its rungs -- transport's I-V
+        // record -- has one here (web/results.md 2.4).
         note.textContent = "Each rung runs in its own directory below this one; "
-            + "open a rung in the sidebar to read its files.  The calculation's "
-            + "own result, once summarize has written it here, is what this "
-            + "panel opens.";
+            + "open a rung in the sidebar to read its files and its result.  "
+            + "A calculation that gathers its rungs into one result -- a "
+            + "transport calculation's I\u2013V record -- has it here, and "
+            + "this panel opens it.";
         host.appendChild(note);
         host.hidden = false;
     }

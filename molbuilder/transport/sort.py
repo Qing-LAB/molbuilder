@@ -36,6 +36,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from ..atom_permutation import PERMUTATION_FILE, PERMUTATION_SCHEMA
 from ..config.transport import (REGION_BRIDGE, REGION_BUFFER,
                                 REGION_LEFT_ELECTRODE,
                                 REGION_RIGHT_ELECTRODE)
@@ -51,11 +52,6 @@ PARTITION_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
 #: the emitter already uses (electrode regions sorted by z-centroid,
 #: ``semi-inf-direction ±A3``).
 TRANSPORT_AXIS = 2
-
-#: The permutation sidecar's schema name (registered: job-contracts.md
-#: § 6.1's Atom-permutation row, with P6's record work).
-PERMUTATION_SCHEMA = "molbuilder/atom-permutation@1"
-
 
 #: How the two electrode blocks sit along transport, as one word.
 #: ONE door for the fact, because four places need it and they must not
@@ -155,81 +151,17 @@ class SortResult:
         return out
 
 
-#: The record's file name beside a calculation (`job-contracts.md` § 6.1).
-PERMUTATION_FILE = "atom-permutation.json"
-
-
-@dataclass(frozen=True)
-class Permutation:
-    """A recorded permutation, read back -- the return leg of § 2.2.
-
-    ``sorted_to_original[j]`` is the input index of the atom at sorted
-    position ``j``; ``original_to_sorted[i]`` where input atom ``i`` went.
-    Everything a reader of a sorted run needs goes through these two
-    methods, so no reader inverts by hand.
-    """
-    original_to_sorted: Tuple[int, ...]
-    sorted_to_original: Tuple[int, ...]
-    #: the key the record names (``""`` on a record written before keys
-    #: were recorded)
-    key: str = ""
-
-    @property
-    def n_atoms(self) -> int:
-        return len(self.sorted_to_original)
-
-    def original_of(self, sorted_indices) -> List[int]:
-        """The input indices of atoms named by sorted position, in the
-        order given."""
-        return [int(self.sorted_to_original[int(j)]) for j in sorted_indices]
-
-    def rows_to_input_order(self, rows, sorted_indices):
-        """Per-atom rows that stand in ``sorted_indices`` order (a subset
-        of the sorted copy), reordered so they follow the INPUT order of
-        those same atoms.  Returns ``(rows_in_input_order,
-        input_indices_ascending)``."""
-        orig = self.original_of(sorted_indices)
-        order = np.argsort(orig)
-        arr = np.asarray(rows)
-        return arr[..., order, :] if arr.ndim >= 2 else arr[order], \
-            [orig[k] for k in order]
-
-
 def write_permutation(directory, result: SortResult) -> "Path":
     """Record the permutation beside the calculation -- both directions,
-    the schema, one file (`model/overview.md` § 2.2: recorded once)."""
+    the schema, one file (`model/overview.md` § 2.2: recorded once).  The
+    record, its class and its reader are `atom_permutation`'s, which travels
+    beside a job where this module cannot."""
     import json
     from pathlib import Path
     out = Path(directory) / PERMUTATION_FILE
     out.write_text(json.dumps(result.sidecar(), indent=2) + "\n",
                    encoding="utf-8")
     return out
-
-
-def read_permutation(directory) -> Permutation:
-    """The recorded permutation, or a refusal naming the file: a sorted
-    run with no record is a run whose numbers cannot be returned."""
-    import json
-    from pathlib import Path
-    p = Path(directory) / PERMUTATION_FILE
-    if not p.is_file():
-        raise SortError(
-            f"no {PERMUTATION_FILE} beside {Path(directory)}: the run was "
-            f"written from a sorted copy and its per-atom results cannot "
-            f"be put back in the input order without the record")
-    d = json.loads(p.read_text(encoding="utf-8"))
-    if d.get("schema") != PERMUTATION_SCHEMA:
-        raise SortError(f"{p}: schema {d.get('schema')!r} is not "
-                        f"{PERMUTATION_SCHEMA!r}")
-    o2s = tuple(int(i) for i in d["original_to_sorted"])
-    s2o = tuple(int(i) for i in d["sorted_to_original"])
-    n = len(s2o)
-    if sorted(s2o) != list(range(n)) or len(o2s) != n or any(
-            s2o[o2s[i]] != i for i in range(n)):
-        raise SortError(f"{p}: the two directions are not inverse "
-                        f"bijections over {n} atoms")
-    return Permutation(original_to_sorted=o2s, sorted_to_original=s2o,
-                       key=str(d.get("key", "") or ""))
 
 
 def _atom_word(struct: Structure, i: int) -> str:

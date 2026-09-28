@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import click
-import numpy as np
 from ..issues import Issue
 
 from .ledger import record as _ledger
@@ -2688,7 +2687,8 @@ def _echo_resolved(js, base, stage_name: str, attempt) -> None:
 
 
 @jobset_group.command("summarize",
-                      short_help="read a sweep's results -> bench-result.json")
+                      short_help="summarize results that exist: a sweep's "
+                                 "trials, a transport's bias points")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
@@ -2734,190 +2734,14 @@ def summarize_cmd(kind: str, stage, bundle: str) -> None:
                     out=str(out), points=len(rec["points"]),
                     pending=len(rec.get("pending", ())))
             return
-        if (_tt is not None and _tt.calculation == "vibration"
-                and str(_tt.engine) == "siesta"):
-            # THE FORCE-CONSTANT RUN'S DELIVERABLE (science/normal-modes.md
-            # 4a.6): SIESTA left <label>.FC in the attempt; the modes are
-            # derived HERE, on the host, through the same path the PySCF
-            # deck runs, and written beside it as <label>.spectra.json -- the
-            # one artifact both engines share.  The atoms went to the engine
-            # in the sorted order prep recorded; the record is read back and
-            # every per-atom number is put in the input order before it is
-            # written (model/overview.md 2.2).
-            from .. import __version__ as _mb_version
-            from ..sidecars.spectra import dump_spectra_json
-            from ..spectra.from_siesta import spectra_results_from_fc
-            from ..transport.sort import apply_order, read_permutation
-            from .materialize import run_dir
-            from .prep import _structure_for, token_for
-            base = _P(bundle)
-            if stage is None:
-                raise click.ClickException(
-                    "which stage's force constants? name it: "
-                    f"{', '.join(s.name for s in _tt.stages)}.")
-            if stage not in [s.name for s in _tt.stages]:
-                raise click.ClickException(
-                    f"no stage named {stage!r}; the ladder is "
-                    f"{', '.join(s.name for s in _tt.stages)}.")
-            token = token_for(_tt, stage)
-            container = base / token if token and (base / token).is_dir() else base
-            where = run_dir(container)
-            fc = where / f"{_tt.label}.FC"
-            if not fc.is_file():
-                raise click.ClickException(
-                    f"no {fc.name} in {where}: the force-constant run has "
-                    f"not finished there (`jobset status`).")
-            try:
-                struct = _structure_for(_tt, base)
-                perm = read_permutation(base)
-                sorted_struct = apply_order(
-                    struct, list(perm.sorted_to_original)).structure
-            except Exception as e:                       # noqa: BLE001
-                # A CLI boundary: the record's refusals (SortError) and a
-                # structure that cannot be read both end as the message.
-                raise click.ClickException(str(e))
-            # THE STATEMENT AND THE YARDSTICK, resolved the way prep resolves
-            # this stage's config: the template's values plus the stage's
-            # own overrides (`effective_config`, stages.md § 4), so an
-            # override prep honoured is not invisible here -- and a
-            # description that cannot be resolved is a refusal, never a
-            # silent "nobody asserted".  The criterion is this description's
-            # own `relax_force_tol` (vibration.md § 5.5): the tolerance the
-            # person set or left at the kind's recommendation.
-            from ..config.siesta import SiestaConfig
-            from ..resolve import effective_config
-            from ..template import config_from_template, find_template
-            try:
-                tmpl = find_template(base)
-                if tmpl is None:
-                    raise click.ClickException(
-                        f"no template beside {base}: the description cannot "
-                        f"be resolved for its assertion")
-                stage_obj = next(s for s in _tt.stages if s.name == stage)
-                cfg_eff = effective_config(
-                    config_from_template(tmpl.read_text(encoding="utf-8"),
-                                         SiestaConfig),
-                    stage_obj.overrides, where=stage)
-                asserted = bool(cfg_eff.already_relaxed)
-                crit = (float(cfg_eff.relax_force_tol)
-                        if cfg_eff.relax_force_tol is not None else None)
-            except click.ClickException:
-                raise
-            except Exception as e:                       # noqa: BLE001
-                raise click.ClickException(
-                    f"the description could not be resolved for stage "
-                    f"{stage!r}: {e}")
-            # THE RUN'S OWN REFERENCE STEP, through the one SIESTA output
-            # parser (vibration.md § 5.2a, § 5.5): its FC step 0 is the
-            # geometry the force constants belong to -- the relaxed one
-            # after a `relax` stage, the input one when the structure was
-            # stated relaxed -- and the forces there are what stationarity
-            # is judged by (R5 on this route).  The coordinates replace the
-            # structure file's in BOTH orders: the sorted copy the
-            # projection runs on, and the input order the artifact speaks.
-            from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE as _EV_ANG_PER_EH_BOHR
-            from ..parse.engines.siesta import SiestaParser as _SiestaParser
-            from ..parse.engines.siesta_fc import reference_frame_of
-            ver = ""
-            f_ref = None
-            from .materialize import stage_stdout
-            _out = stage_stdout(where, _tt.label, token, "siesta")
-            outs = [_out] if _out is not None else []
-            if outs:
-                # ONE parse of the run's output: the engine's build from the
-                # parser's header probes (not a regex over the file's head)
-                # and the reference step from its frames.
-                _traj = None
-                try:
-                    _traj = _SiestaParser.parse(str(outs[-1]))
-                    _build = _traj.runtime_info.get("siesta_build") or {}
-                    ver = str(_build.get("version") or "")
-                except Exception as e:                   # noqa: BLE001
-                    click.echo(f"  {outs[-1].name} not parsed: {e}")
-                try:
-                    if _traj is None:
-                        raise ValueError("the output did not parse")
-                    _ref = reference_frame_of(_traj, name=outs[-1].name)
-                except Exception as e:                   # noqa: BLE001
-                    click.echo(f"  reference step not read from "
-                               f"{outs[-1].name}: {e}")
-                else:
-                    f_ref = np.asarray(_ref.forces, dtype=float)
-                    _pos_s = np.asarray(_ref.structure.positions, dtype=float)
-                    if (list(_ref.structure.elements)
-                            != list(sorted_struct.elements)):
-                        raise click.ClickException(
-                            f"{outs[-1].name} describes "
-                            f"{_ref.structure.formula} in an order that is "
-                            f"not this calculation's sorted copy "
-                            f"({sorted_struct.formula}); the run and the "
-                            f"description disagree about the atoms.")
-                    _pos_in = np.empty_like(_pos_s)
-                    _pos_in[list(perm.sorted_to_original)] = _pos_s
-                    sorted_struct = sorted_struct.replace(positions=_pos_s)
-                    struct = struct.replace(positions=_pos_in)
-            # THE LADDER'S OWN RELAXATION, when the description asked for one
-            # (vibration.md § 2.2 unticked, § 5.2a): the `relax` stage's
-            # record, read the way the Results tab reads it, so the artifact
-            # says the relaxation ran and how many steps it took rather than
-            # "not requested".
-            _ladder_rec = None
-            from ..pyscf.stages import VIBRATION_RELAX_STAGE
-            _relax = next((s for s in _tt.stages
-                           if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
-            if _relax is not None:
-                from ..parse.contract import relaxation_of
-                from ..paths import Shape as _Shape
-                _rtok = token_for(_tt, _relax.name)
-                _ladder_rec = relaxation_of(
-                    run_dir(base / _Shape.named(_tt.shape).stage_dir(_rtok)))
-            try:
-                res = spectra_results_from_fc(
-                    struct, sorted_struct, perm, fc, label=_tt.label,
-                    engine_version=ver, molbuilder_version=str(_mb_version),
-                    config={"engine": "siesta", "calculation": "vibration",
-                            "stage": stage},
-                    reference_forces_ev_ang=f_ref,
-                    force_criterion_ev_ang=crit,
-                    already_relaxed=asserted,
-                    ladder_relaxation=_ladder_rec)
-            except ValueError as e:
-                raise click.ClickException(str(e))
-            out = where / f"{_tt.label}.spectra.json"
-            dump_spectra_json(res, out)
-            n_rm = res.removed_motions["count"]
-            click.echo(f"{len(res.modes)} mode(s) from {fc.name}; "
-                       f"{n_rm} whole-body motion(s) removed before "
-                       f"diagonalising; scope {res.hessian_scope} "
-                       f"({res.n_atoms_in_hessian} of {res.n_atoms_total} "
-                       f"atoms)")
-            rx = res.relaxation
-            if rx.get("max_force_eh_bohr") is not None:
-                _f_ev = rx["max_force_eh_bohr"] * _EV_ANG_PER_EH_BOHR
-                verdict = ("stationary" if rx.get("converged")
-                           else "NOT stationary" if rx.get("converged") is False
-                           else "no criterion")
-                click.echo(f"reference geometry: max |F| on the free atoms "
-                           f"{_f_ev:.4f} eV/Å"
-                           + (f" against {crit:g} eV/Å" if crit is not None else "")
-                           + f" -> {verdict}")
-                if rx.get("converged") is False:
-                    click.echo(f"warn: {rx['warning']}")
-            click.echo(f"-> {out}")
-            _ledger(base, "summarize", "vibration-modes",
-                    out=str(out), modes=len(res.modes), removed=n_rm,
-                    permutation_key=perm.key,
-                    max_force_eh_bohr=rx.get("max_force_eh_bohr"),
-                    stationary=rx.get("converged"))
-            return
         raise click.ClickException(
-            "summarize reads a BENCH sweep's measurements.  A run's own "
+            "summarize summarizes results that exist: a BENCH sweep's "
+            "measurements, and a transport calculation's bias points "
+            "(`summarize run`, into <label>.transport.json).  A run's own "
             "outputs are the calculation's results -- `jobset status` and "
-            "the Watch tab are their readers (job-system.md § 5.3).  "
-            "(The exceptions are the transport composite, whose "
-            "`summarize run` writes <label>.transport.json, and a SIESTA "
-            "vibration, whose `summarize run <stage>` derives the modes "
-            "from the force-constant file into <label>.spectra.json.)")
+            "the Results tab are their readers (job-system.md § 5.3) -- and "
+            "a vibration's run writes its <label>.spectra.json itself, on "
+            "both engines (engines/vibration.md § 5.5).")
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,

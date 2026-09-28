@@ -231,7 +231,7 @@ class TestHappyPath:
         checked against the `.XV`'s and kept. The origin does not: the
         `.XV`'s frame states 0 (`model/structure-periodicity.md` § 6.0).
         """
-        from molbuilder.script_emit import (BLOCK_ATOM_METADATA, begin_marker,
+        from molbuilder.deck_record import (BLOCK_ATOM_METADATA, begin_marker,
                                             end_marker)
         from molbuilder.workingcopy_structure import StructureCodec
         root, src, relaxed_pos = tree

@@ -894,7 +894,10 @@ class SpectraResults:
         serialisation so a sidecar written before the classification
         existed gains it on read -- no re-run required.
         """
-        from .activity import classify_modes
+        try:                                # inside molbuilder
+            from .activity import classify_modes
+        except ImportError:                 # beside a job, in mb_vibration.pyz
+            from activity import classify_modes
         rows = [m.to_dict() for m in self.modes]
         if not rows:
             return rows
@@ -912,7 +915,10 @@ class SpectraResults:
         # written before the keys existed gains them on read, and no writer
         # can put a second convention beside the canonical vector.  An
         # imaginary mode has no amplitude.
-        from ..constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
+        try:                                # inside molbuilder
+            from ..constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
+        except ImportError:                 # beside a job, in mb_vibration.pyz
+            from constants import ZERO_POINT_Q2_AMU_ANG2_CM1 as _Q2
         for row, m in zip(rows, self.modes):
             nu = float(m.frequency_cm1)
             if m.has_imag or not nu > 0.0:

@@ -23,8 +23,8 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.runwrap import _effective_parameters_block
-from molbuilder.script_emit import (BLOCK_PARAMETERS, begin_marker,
-                                    end_marker, parameter)
+from molbuilder.deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
+from molbuilder.script_emit import parameter
 from molbuilder.structure import Structure
 
 
@@ -206,7 +206,7 @@ def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
     """
     from molbuilder.jobset.model import Resources
     from molbuilder.runwrap import write_run_wrapper
-    from molbuilder.script_emit import BLOCK_USER_CUSTOM, end_marker
+    from molbuilder.deck_record import BLOCK_USER_CUSTOM, end_marker
 
     deck = tmp_path / "t.fdf"
     deck.write_text("SystemLabel t\nNumberOfAtoms 1\n", encoding="utf-8")

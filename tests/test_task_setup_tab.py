@@ -645,7 +645,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         # means one translation for every atom, and the one the deck says.
         import numpy as _np
         from molbuilder import cell as _cell
-        from molbuilder.script_emit import extract_engine_offset
+        from molbuilder.deck_record import extract_engine_offset
         from molbuilder.workingcopy_structure import StructureCodec
         blk = re.search(r"%block AtomicCoordinatesAndAtomicSpecies(.*?)%endblock",
                         deck, re.S)

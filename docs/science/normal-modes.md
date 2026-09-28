@@ -634,7 +634,7 @@ here is a row of its § 10 and of the plan.
 *(§ 4b.1 and § 4b.2 are as written on 2026-09-23. § 4b.3 onward was written on
 2026-09-24 against the discussion's update, with every code claim read from
 the code text that day — `spectra/normal_modes.py`, `parse/engines/siesta_fc.py`,
-`spectra/from_siesta.py`, `pyscf/vibration_emitters.py` — and one gap measured
+`spectra/from_siesta.py` (since 2026-09-28 `spectra/vibrational_analysis.py` and `spectra/siesta_vibration.py`, run by the job itself), `pyscf/vibration_emitters.py` — and one gap measured
 on a run.)*
 
 ### 4b.1 The theory, in five lines
@@ -861,7 +861,7 @@ geomeTRIC's final one over the free atoms. Under `already_relaxed` the
 optimiser is skipped and the deck checks the gradient instead, warning above
 `geom_gmax` itself on the largest force component over the free atoms
 (`vibration.md` § 4.3) — the statement answered with a number rather than
-believed, by the same rule the SIESTA read-back applies to `relax_force_tol`
+believed, by the same rule the SIESTA finish applies to `relax_force_tol`
 (one rule for both routes, V1.30, closed 2026-09-24; it was ten times the
 criterion before). geomeTRIC's own `gmax` is a per-atom norm, so the deck's
 component test is the looser reading of the same number (a component never
@@ -977,8 +977,8 @@ person's explicit choice (`vibration.md` § 2.2): with the box unticked the
 description's ladder is `relax` then `freq` — an ordinary SIESTA relaxation
 holding the set, then the force constants at the geometry it left, in the
 cell it ran in (§ 5.2a) — and with it ticked `freq` alone measures at the
-geometry as given. **What the tool measured, 2026-09-24:** the read-back
-reads the forces SIESTA evaluated at its FC step 0 into the artifact and
+geometry as given. **What the tool measured, 2026-09-24:** the finish
+(then the host read-back) reads the forces SIESTA evaluated at its FC step 0 into the artifact and
 judges the largest component on the free atoms against the description's
 own `relax_force_tol` — 0.01 eV/Å at the kind's recommendation — (R5 on both
 routes; `vibration.md` § 5.5); a structure exported from a finished
@@ -1009,10 +1009,10 @@ internal diagnostic; and, the strongest test, `ω_ν(δ) ≈ ω_ν(δ/2)` for th
 modes that matter. Too small drowns in noise, too large picks up
 anharmonicity. *Tool:* `fc_displacement` carries the range and the help text
 ties the noise floor to `DM.Tolerance`; it is a stage item, so a ladder of
-two stages at δ and δ/2 is describable and `summarize run <stage>` derives
-each — the comparison is by hand. The symmetry diagnostic is recorded since 2026-09-24 —
+two stages at δ and δ/2 is describable and each stage's job derives its own
+modes (`vibration.md` § 5.5) — the comparison is by hand. The symmetry diagnostic is recorded since 2026-09-24 —
 `engine_metadata.fc_asymmetry_max_ev_ang2`, `max |H_ij − H_ji|` over the free
-block before the read-back symmetrises it — and on a block whose off-diagonals
+block before the finish symmetrises it — and on a block whose off-diagonals
 vanish by symmetry it says nothing (10⁻¹² eV/Å² on H₂ along its axis); an atom
 at a low-symmetry site shows it from one free atom on. The ladder itself was measured on
 the tightly relaxed H₂ (three stages of one description, δ = 0.02, 0.04 and

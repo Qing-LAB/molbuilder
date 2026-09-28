@@ -21,6 +21,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from molbuilder import deck_record as dr
 from molbuilder import script_emit as se
 from molbuilder.cell import to_engine
 from molbuilder.issues import ValidationError
@@ -114,7 +115,7 @@ def test_the_record_sits_below_the_banner_and_the_science_above_it():
     out = se.render_deck(_spec(), _struct(), _Cfg())
     banner = out.text.index("MOLBUILDER RECORD")
     assert out.text.index("MeshCutoff 250.0") < banner
-    assert banner < out.text.index(se.begin_marker(se.BLOCK_PROVENANCE))
+    assert banner < out.text.index(dr.begin_marker(dr.BLOCK_PROVENANCE))
 
 
 def test_verbose_false_drops_the_notes_and_keeps_the_values():
@@ -201,7 +202,7 @@ def test_a_parameter_that_writes_a_PAIR_still_closes_the_loop(tmp_path):
 def test_check_catches_a_missing_reader_section(tmp_path):
     spec, struct, cfg = _spec(), _struct(), _Cfg()
     out = se.render_deck(spec, struct, cfg)
-    broken = out.text.replace(se.begin_marker(se.BLOCK_USER_CUSTOM), "")
+    broken = out.text.replace(dr.begin_marker(dr.BLOCK_USER_CUSTOM), "")
     p = tmp_path / "nouser.fdf"
     p.write_text(broken, encoding="utf-8")
     issues = se.check_deck(p, spec, out, struct, cfg)
@@ -265,8 +266,8 @@ def test_prepare_deck_keeps_what_a_reader_put_in_their_own_section(tmp_path):
     path = tmp_path / "keep.fdf"
     se.prepare_deck(_spec(), _struct(), _Cfg(), path)
     edited = path.read_text(encoding="utf-8").replace(
-        se.end_marker(se.BLOCK_USER_CUSTOM),
-        "MyOwnKeyword 7\n" + se.end_marker(se.BLOCK_USER_CUSTOM))
+        dr.end_marker(dr.BLOCK_USER_CUSTOM),
+        "MyOwnKeyword 7\n" + dr.end_marker(dr.BLOCK_USER_CUSTOM))
     path.write_text(edited, encoding="utf-8")
     se.prepare_deck(_spec(), _struct(), _Cfg(), path)
     assert "MyOwnKeyword 7" in path.read_text(encoding="utf-8")

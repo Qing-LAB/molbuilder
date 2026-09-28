@@ -40,8 +40,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANG
-from molbuilder.units import energy_ry, length_ang, temperature_k
+# TWO WAYS, because this reader travels: the SIESTA vibration's finish reads
+# the deck with it beside the job (`runwrap.VIBRATION_COMPANIONS`), where the
+# package is not installed.  Stdlib and its two siblings only.
+try:                                        # inside molbuilder
+    from ..constants import BOHR_ANGSTROM as _BOHR_ANG
+    from ..units import energy_ry, length_ang, temperature_k
+except ImportError:                         # beside a job, in mb_vibration.pyz
+    from constants import BOHR_ANGSTROM as _BOHR_ANG
+    from units import energy_ry, length_ang, temperature_k
 
 
 def _norm(key: str) -> str:

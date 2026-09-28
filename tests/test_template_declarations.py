@@ -41,8 +41,8 @@ import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.script_emit import (MARKER_RE,
-                                    benchmark_declarable_types)
+from molbuilder.deck_record import MARKER_RE
+from molbuilder.script_emit import benchmark_declarable_types
 from molbuilder.template import declarations_for
 
 

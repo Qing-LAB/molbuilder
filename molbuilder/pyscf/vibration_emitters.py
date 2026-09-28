@@ -1864,10 +1864,17 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
         # choice, and what it means must be explicit.  This paragraph is
         # what a reader of the results sees first, so the regime statement
         # lives here.
+        # WHAT HELD THEM is the relaxation only when one ran: under
+        # `already_relaxed` the deck relaxes nothing (`engines/vibration.md`
+        # § 2.2), and the sentence must not claim a step that never happened.
+        _held_by = ("the geometry relaxation constrained them (geomeTRIC "
+                    "`$freeze`) and"
+                    if not bool(getattr(cfg, "already_relaxed", False))
+                    else "no relaxation ran (the structure was stated relaxed) "
+                         "and")
         parts.append(
             f"{len(frozen)} atom(s) (0-based indices {sorted(frozen)}) "
-            f"were held fixed throughout: the geometry relaxation "
-            f"constrained them (geomeTRIC `$freeze`) and no second "
+            f"were held fixed throughout: {_held_by} no second "
             f"derivative was taken with respect to them, so the reported "
             f"frequencies are those of the free atoms moving in the "
             f"static field of the fixed ones.  Thermochemistry is "

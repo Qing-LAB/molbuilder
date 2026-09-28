@@ -896,7 +896,7 @@ class TestTheLadderPreps:
         stated offset*: a transport rung from the cited `.XV`, D7; check 3).
         """
         from molbuilder.parse.coords.siesta_xv import read_xv_with_cell
-        from molbuilder.script_emit import extract_engine_offset
+        from molbuilder.deck_record import extract_engine_offset
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct(), record=recorded)
         calc = _describe_transport(root)

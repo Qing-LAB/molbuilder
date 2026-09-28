@@ -182,9 +182,12 @@ stating because it is easy to break by accretion.
   inherit the activated environment and sit in the process tree where signals
   and scheduler accounting expect them.
 - **The shell must outlive the engine.** The engine is run, not `exec`'d
-  (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5)
-  and write the conclusion marker as its last act
-  ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
+  (§ 2.0a), so the wrapper can read its exit code, decide a warm retry (§ 3.5),
+  **finish the calculation when the engine alone leaves no result** — a SIESTA
+  force-constant run's job derives its modes with `mb_vibration.pyz`, the job's
+  own python, beside the run ([`engines/vibration.md`](?doc=engines/vibration.md)
+  § 5.5); its failure is the job's — and write the conclusion marker as its
+  last act ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.3).
 
 Everything else — resolving which directory to run in, creating it, arranging
 files, recording the launch — is **decision and arrangement**, and none of it
@@ -504,7 +507,10 @@ flowchart LR
     X["SIESTA exits"] --> Q{"how did it end?"}
     Q -->|"stopped on SCF_NOT_CONV, not diverged"| B{"budget left?"}
     Q -->|"a relaxation out of moves"| B
-    Q -->|"anything else"| C["conclude: write -runN.concluded"]
+    Q -->|"a failure"| C["conclude: write -runN.concluded"]
+    Q -->|"a clean exit"| F{"a finish to run?<br/>(Job.finish)"}
+    F -->|"no"| C
+    F -->|"yes: its exit status is the job's"| C
     B -->|"yes"| R["re-exec with --continue"]
     B -->|"no: say so"| C
 ```

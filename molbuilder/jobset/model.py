@@ -291,6 +291,13 @@ class Job:
     #: it to table value coordinates and to carry the winner's value pins
     #: into the benchmark's report (`generator.md` § 4.3a).
     point:      Dict[str, Any]  = field(default_factory=dict)
+    #: THE BUNDLE THAT FINISHES THIS JOB, run by its wrapper after the engine
+    #: exits cleanly, when the engine alone leaves no result: a SIESTA
+    #: force-constant run leaves force constants, and ``mb_vibration.pyz``
+    #: derives the modes from them in the same job (`engines/vibration.md`
+    #: § 5.5).  The deck's own statement, copied by `prep` from its spec
+    #: (`DeckSpec.finish`); ``None`` for a job whose engine writes its result.
+    finish:     Optional[str]   = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = {
@@ -304,6 +311,9 @@ class Job:
         # WarmFile.requires_same above.
         if self.point:
             d["point"] = dict(self.point)
+        # ABSENT when the engine finishes its own job -- the same reading.
+        if self.finish:
+            d["finish"] = self.finish
         return d
 
     @classmethod
@@ -321,6 +331,7 @@ class Job:
             warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
             traits=dict(d.get("traits") or {}),
             point=dict(d.get("point") or {}),
+            finish=(str(d["finish"]) if d.get("finish") else None),
         )
 
 

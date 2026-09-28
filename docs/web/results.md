@@ -376,8 +376,12 @@ Two rules keep this from hiding anything:
 A **hierarchical** calculation root — the directory holding `task.json` and
 `job-set.json` — is a container, so it has no run state and no record
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a); what it has
-is a **ladder**: N rungs, each a run directory below it, and one deliverable
-written at the root once `summarize` has run. `GET /api/results/dir` answers
+is a **ladder**: N rungs, each a run directory below it. Each rung's run writes
+its own result in its directory — a vibration's spectrum in its `freq` attempt
+([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5); only a
+calculation that GATHERS its rungs into one result has one at the root — a
+transport calculation's I–V record, once `summarize` has read its bias points.
+`GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
 state, detail, dir, attempt}]}`, read from `jobset_status`, the ladder door the
 CLI's `status` verb reads — consumed, never copied — and `null` for anything

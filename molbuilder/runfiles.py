@@ -815,9 +815,12 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".constraints.txt", "which atoms are held still, in geomeTRIC's "
                                  "own format — written only when some are",
              staged=False, engine="pyscf"),
+    # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
+    # finish after the force-constant run (`engines/vibration.md` § 5.5).
     Artifact(".spectra.json", "the spectrum this run computed: frequencies, "
-                              "intensities, thermochemistry", staged=False,
-             engine="pyscf", calculation="vibration"),
+                              "the strengths the engine computes, "
+                              "thermochemistry -- written by the run itself",
+             staged=False, calculation="vibration"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "
                         "the output, catches a kill",

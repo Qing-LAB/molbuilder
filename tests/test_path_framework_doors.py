@@ -358,14 +358,15 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
     registry knows -- an unregistered spelling is dropped on purpose, which is
     what this test first tripped over.
     """
+    from molbuilder import deck_record as dr
     from molbuilder import script_emit as se
     from molbuilder.parse.contract import _declared_in_provenance
     # THE BLOCK IS WRITTEN THROUGH THE EMITTER'S OWN MARKERS, so this fixture
     # cannot drift from what a real wrapper carries.
     (tmp_path / "j.run.sh").write_text(
-        se.begin_marker(se.BLOCK_PROVENANCE) + "\n"
+        dr.begin_marker(dr.BLOCK_PROVENANCE) + "\n"
         "#  engine  siesta\n"
-        + se.end_marker(se.BLOCK_PROVENANCE) + "\n", encoding="utf-8")
+        + dr.end_marker(dr.BLOCK_PROVENANCE) + "\n", encoding="utf-8")
     assert _declared_in_provenance(tmp_path) == {"siesta"}
     # ...and the deck-less case is the point: nothing but the wrapper is here.
     assert not list(tmp_path.glob("*.fdf"))

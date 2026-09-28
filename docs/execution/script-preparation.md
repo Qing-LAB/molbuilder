@@ -307,7 +307,8 @@ a gap visible:
 | **3.5** structure | the structure block | `spec.layout` — a `Block` | no |
 | **3.6** parameters | which items, in what order, and how each is spelled | `spec.layout` + `spec.line` | no |
 | **3.7** engine body | what no parameter models | `spec.layout` — a `Block` | **yes** |
-| **3.9** record | the values only this engine can supply for two blocks | `spec.provenance_defaults` · `spec.bench_marks` | **yes** |
+| **3.9** record | the values only this engine can supply for three blocks — the third a SIESTA force-constant deck's VIBRATION block, whose values `prep` builds and the engine places (`engines/vibration.md` § 5.3) | `spec.provenance_defaults` · `spec.bench_marks` · `spec.vibration` | **yes** |
+| **3.9** record | the bundle that finishes this deck's run, when the engine alone leaves no result — `prep` copies it onto the job (`Job.finish`) and the wrapper runs it after the engine (`engines/vibration.md` § 5.5) | `spec.finish` | **yes** |
 | **3.11** check | what a finished deck of this engine must satisfy | `spec.check_rules` | **yes** |
 | **3.12** promises | files its own text instructs | `sibling_artifacts` | **yes** |
 | **3.13** declare | what may be reused from an earlier run | `warm_for` | no |

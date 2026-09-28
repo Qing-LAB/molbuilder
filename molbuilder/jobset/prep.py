@@ -314,6 +314,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # already resolved, handed over whole, cannot be forgotten
                 # or answered a second way further down.
                 machine_record=machine_record,
+                # THE JOB'S LAST STEP, when its engine leaves no result
+                # (`Job.finish`, `engines/vibration.md` § 5.5): the wrapper
+                # runs it, and its bundle is written beside the deck.
+                finish=job.finish,
             )
         rendered[job.script] = _jd
         if log is not None:
@@ -712,13 +716,32 @@ def _environment_for(base: Path, target: Optional[str] = None):
     return machine_for(base, target=target)
 
 
+def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
+    """A SIESTA force-constant deck's `vibration` block: the facts its job's
+    finish reads and no SIESTA keyword states (`engines/vibration.md`
+    § 5.3), built here because only `prep` holds all of them -- the stage,
+    its resolved config, the relax run it read the coordinates from
+    (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck."""
+    from .. import __version__ as _mb_version
+    from ..spectra.siesta_vibration import vibration_record
+    return vibration_record(
+        stage=stage,
+        force_criterion_ev_ang=getattr(cfg, "relax_force_tol", None),
+        already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
+        relaxation=relaxed_by,
+        molbuilder_version=str(_mb_version))
+
+
 def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
-    """``(structure, cell)`` the `freq` stage of a SIESTA vibration is written
-    with (`engines/vibration.md` § 5.2a): the sorted copy as given, and no
-    cell of its own, when the ladder holds no `relax` stage; the coordinates
-    that stage relaxed to, in the cell it ran in, when it does -- read from
-    its newest attempt, which must have concluded, through the one SIESTA
-    output parser.  The
+    """``(structure, cell, relaxation)`` the `freq` stage of a SIESTA
+    vibration is written with (`engines/vibration.md` § 5.2a): the sorted
+    copy as given, and no cell or record of its own, when the ladder holds no
+    `relax` stage; the coordinates that stage relaxed to, in the cell it ran
+    in, when it does -- read from its newest attempt, which must have
+    concluded, through the one SIESTA output parser -- with that run's
+    relaxation record (`parse.contract.relaxation_of_output`), of the same
+    output and the same parse, which the deck's `vibration` block carries to
+    the finish (§ 5.3) so nothing re-picks the attempt later.  The
     cell travels because the deck otherwise re-derives one around the new
     bounding box and shifts the atoms into it, and a relaxed geometry moved
     against the real-space grid is not stationary on that grid any more.
@@ -734,7 +757,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     """
     from ..pyscf.stages import VIBRATION_FREQ_STAGE, VIBRATION_RELAX_STAGE
     if pset.stage != VIBRATION_FREQ_STAGE:
-        return struct, None
+        return struct, None, None
     relax = next((s for s in task.stages
                   if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
     if relax is None:
@@ -748,9 +771,9 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"`{VIBRATION_RELAX_STAGE}` stage before "
                 f"`{VIBRATION_FREQ_STAGE}` (Task setup, or task.json) and run "
                 f"it first, or state already_relaxed = true in the template; "
-                f"the read-back then measures the forces at this geometry "
+                f"the finish then measures the forces at this geometry "
                 f"and says whether the statement held.")
-        return struct, None
+        return struct, None, None
     from ..paths import Shape
     from .materialize import attempt_concluded, run_dir, stage_stdout
     token = token_for(task, relax.name)
@@ -806,10 +829,12 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
     # applies nothing: the rule would re-centre them, moving the relaxed
     # geometry by the change in its span (-0.0168 Å on the H2 e2e).
+    from ..parse.contract import relaxation_of_output
     return (struct.replace(positions=np.asarray(last.structure.positions,
                                                 dtype=float),
                            engine_offset=np.zeros(3)),
-            (np.asarray(cell, dtype=float) if cell is not None else None))
+            (np.asarray(cell, dtype=float) if cell is not None else None),
+            relaxation_of_output(out, traj, engine=str(task.engine)))
 
 
 def _structure_for(task, base: Path):
@@ -1034,7 +1059,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # from the copy (`model/overview.md` § 2.2).  The vibration kind on SIESTA
     # is one: the force-constant run nudges one contiguous range, so the free
     # atoms go last under the 'held-first' key.  The record is what the
-    # return leg (`jobset summarize run`) inverts; the input order never
+    # return leg -- the job's finish (`engines/vibration.md` § 5.5) --
+    # inverts, from its copy in the attempt; the input order never
     # reaches the engine and the sorted order never reaches a person.
     # WHICH DECK THIS RUNG RENDERS, and IN WHICH FRAME.  Both are the
     # calculation's unless the kind says otherwise: the SIESTA vibration's
@@ -1044,6 +1070,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # are taken on the grid the geometry was relaxed on.
     _render_kind = task.calculation
     _render_cell = None
+    # A SIESTA force-constant deck carries a `vibration` block (below), built
+    # per element from its resolved config and the relax run read here.
+    _finishes, _relaxed_by = False, None
     if task.calculation == "vibration" and str(task.engine) == "siesta":
         from ..transport.sort import sort_by, write_permutation
         _sorted = sort_by(struct, "held-first")
@@ -1055,8 +1084,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                          f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
         from ..pyscf.stages import vibration_render_kind
         _render_kind = vibration_render_kind(pset.stage)
-        struct, _render_cell = _vibration_stage_geometry(base, task, pset,
-                                                          struct, log=log)
+        struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
+            base, task, pset, struct, log=log)
+        _finishes = _render_kind == "vibration"
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1185,7 +1215,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                          stage_token=(token or None),
                                          calculation=_render_kind,
                                          **({"cell": _render_cell}
-                                            if _render_cell is not None else {}))
+                                            if _render_cell is not None else {}),
+                                         **({"vibration": _vibration_block(
+                                                pset.stage, cfg, _relaxed_by)}
+                                            if _finishes else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
                                  dest_dir=base)
             if seam.sibling_artifacts is not None:
@@ -1196,7 +1229,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                 _label = seam.label_of(cfg)
             _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
                                  label=_label, token=(token or None),
-                                 frame=spec.engine_frame)
+                                 frame=spec.engine_frame,
+                                 relaxes=(_render_kind == "optimization"))
             if log is not None:
                 log.step("what this deck's text PROMISES, kept")
                 log.produced("sibling_artifacts",
@@ -1206,7 +1240,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                              "seeded" if getattr(cfg, "write_molwatch_log", False)
                              else "not asked for")
             jobs.append(_job_for(element, script, task, pset.stage, seam,
-                                 base, log=log))
+                                 base, log=log, finish=spec.finish))
     finally:
         _sys.stderr = _real_stderr
     if _once.dropped:
@@ -2201,7 +2235,8 @@ def _environment_rows(environment) -> "List[tuple]":
 
 
 def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
-                         label: str, token=None, frame=None) -> None:
+                         label: str, token=None, frame=None,
+                         relaxes: bool = True) -> None:
     """Write the one-block preview the Watch tab discovers before a run starts.
 
     The deck NAMES its trajectory log; something has to CREATE it, or the tab
@@ -2236,9 +2271,14 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
     # zero rows and no threshold line, while the `.out` sitting beside it
     # parsed the same two numbers correctly: the same directory answering the
     # same question two ways depending on which file was opened.
+    # ONLY A DECK THAT RELAXES HAS TARGETS: a force-constant run or a
+    # transport rung relaxes nothing, and a threshold line drawn over its
+    # steps would call 115 nudges a relaxation that never settles
+    # (`engines/vibration.md` § 5.4) -- ``relaxes`` is the rung's render kind.
     targets = {}
-    for key, attr in (("max_force_tol_eV_per_A", "relax_force_tol"),
-                      ("max_geom_iter", "relax_steps")):
+    for key, attr in (() if not relaxes else
+                      (("max_force_tol_eV_per_A", "relax_force_tol"),
+                       ("max_geom_iter", "relax_steps"))):
         value = getattr(cfg, attr, None)
         if value is not None:
             targets[key] = value
@@ -2278,7 +2318,8 @@ def token_for(task, stage_name: Optional[str]) -> str:
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],
-             seam: EngineSeam, base_dir=None, log=None) -> Job:
+             seam: EngineSeam, base_dir=None, log=None,
+             finish: Optional[str] = None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -2304,22 +2345,37 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
                              task.calculation, base_dir)
     with _calling("traits_for", engine=task.engine, where=name, log=log):
         traits = seam.traits_for(element.values)
+    # ``finish`` is the deck's own statement (`DeckSpec.finish`): the bundle
+    # its run is finished by, when the engine alone leaves no result
+    # (`engines/vibration.md` § 5.5).
     return Job(name=name, script=script, resources=element.resources,
-               warm=warm, traits=traits, point=dict(element.point))
+               warm=warm, traits=traits, point=dict(element.point),
+               finish=finish)
 
 
 def _siesta_shared_package(base: Path) -> List[str]:
-    """SIESTA's shared package: the pseudopotentials it put in the folder.
+    """SIESTA's shared package: the pseudopotentials it put in the folder,
+    and the atom-permutation record when its decks are written from a sorted
+    copy.
 
     The same files ``_siesta_provide_pseudos`` stages, named by the engine
     that staged them (`script-preparation.md` § 4, the data-files step).
     Under ``pseudos/`` since the layout repair (roadmap 7.10 M6); the bare
     root glob stays as the fallback for a bundle prepped before it, so a
     travelled calculation still names its package.
+
+    THE PERMUTATION TRAVELS WITH THE RUNS, because a run of a sorted copy
+    speaks the sorted order in every file it writes and the record is the
+    one way back (`atom_permutation`, I7): every attempt holds its copy, so
+    a SIESTA force-constant job's finish reads it beside the run it finishes
+    (`engines/vibration.md` § 5.5).
     """
+    from ..atom_permutation import PERMUTATION_FILE
     grouped = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
                      for p in (base / PSEUDO_DIRNAME).glob("*.psml"))
-    return grouped or sorted(p.name for p in base.glob("*.psml"))
+    pseudos = grouped or sorted(p.name for p in base.glob("*.psml"))
+    return pseudos + ([PERMUTATION_FILE]
+                      if (base / PERMUTATION_FILE).is_file() else [])
 
 
 def _under_description(flags, declared, chosen=None) -> "Resources":

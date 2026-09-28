@@ -23,8 +23,8 @@ from molbuilder.config.transport import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import AtomChannel, Structure
-from molbuilder.transport.sort import (PERMUTATION_SCHEMA, SortError,
-                                       categorical_sort)
+from molbuilder.atom_permutation import PERMUTATION_SCHEMA
+from molbuilder.transport.sort import SortError, categorical_sort
 
 
 def _junction(shuffle=True, extra=()):

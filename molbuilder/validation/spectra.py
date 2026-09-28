@@ -618,7 +618,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     is this route's own: at least one free atom to nudge, and the two
     states of the person's box -- unticked the ladder's `relax` stage runs
     first, ticked the force constants are taken at the geometry as given
-    and the read-back measures it (`engines/vibration.md` § 2.2, § 5.8).
+    and the job's finish measures it (`engines/vibration.md` § 2.2, § 5.8).
     """
     issues: List[Issue] = []
     n = int(struct.n_atoms)
@@ -675,7 +675,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     # -- a `relax` stage before the force constants, to this template's own
     # tolerance -- and the finding says so.  Ticked, nothing relaxes, and the
     # finding is a WARNING in plain words: off a stationary point the
-    # frequencies will be off; the read-back measures the reference-step
+    # frequencies will be off; the job's finish measures the reference-step
     # forces against the same tolerance and says whether the statement held.
     # Never a refusal: the statement is the person's to make.
     _tol = getattr(cfg, "relax_force_tol", None)
@@ -701,7 +701,7 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
                 f"are taken at the geometry as given.  If it is not relaxed "
                 f"at this level of theory -- another code, another basis, a "
                 f"looser tolerance -- the frequencies will be off, the low "
-                f"ones most.  The read-back measures the forces SIESTA "
+                f"ones most.  The job measures the forces SIESTA "
                 f"evaluates at that geometry (its FC step 0) against this "
                 f"calculation's force tolerance ({_tol_text}) and reports "
                 f"the verdict with the modes."),

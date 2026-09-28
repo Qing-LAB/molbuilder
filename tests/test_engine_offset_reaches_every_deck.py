@@ -29,7 +29,7 @@ from molbuilder import cell as cellmod
 from molbuilder import describe as D
 from molbuilder.jobset._cli import jobset_group
 from molbuilder.scheduler import Environment, Topology
-from molbuilder.script_emit import extract_engine_offset
+from molbuilder.deck_record import extract_engine_offset
 from molbuilder.structure import Structure
 
 #: A skewed cell, as the 2026-09-25 junction's was.

@@ -172,7 +172,7 @@ def _as_the_door_reads(output):
 def _the_decks_cell(run_dir):
     """The cell the deck in ``run_dir`` recorded placing the atoms in."""
     from molbuilder.runfiles import find_by_role
-    from molbuilder.script_emit import extract_engine_offset
+    from molbuilder.deck_record import extract_engine_offset
     decks = find_by_role(Path(run_dir), ".py") + find_by_role(Path(run_dir),
                                                               ".fdf")
     records = [extract_engine_offset(d.read_text()) for d in decks]

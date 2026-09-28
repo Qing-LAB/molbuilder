@@ -502,6 +502,15 @@ exactly the modules `runwrap.MONITOR_COMPANIONS` names, in one file
 **stdlib-only AND travels**, and each of those modules imports the next two
 ways — from the package, or from the bundle.
 
+**A second bundle, a second rule of the same shape.** A SIESTA force-constant
+job also carries its FINISH, `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`,
+`engines/vibration.md` § 5.5): the analysis that turns the run's force
+constants into its spectrum.  It needs arrays, so its rule is **the standard
+library, numpy and ASE — which the SIESTA job envs carry for it — AND
+travels**; its members import each other the same two ways.  The monitor's
+set stays stdlib-only: the two bundles are built by one builder from two
+tables, and nothing of the finish's reaches the monitor.
+
 **What a missing module costs** — which only an incomplete bundle can cause:
 
 | missing | what happens |

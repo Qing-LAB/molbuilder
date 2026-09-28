@@ -255,7 +255,7 @@ def test_a_parameter_the_engine_has_no_setting_for_is_marked_not_asked():
 
 
 def test_the_record_is_fenced_so_one_reader_serves_either_engine():
-    from molbuilder.script_emit import BLOCK_PARAMETERS, begin_marker, end_marker
+    from molbuilder.deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
 
     _, out = _run_record(_render())
     assert begin_marker(BLOCK_PARAMETERS) in out

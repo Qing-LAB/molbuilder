@@ -141,28 +141,34 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_declares_exactly_these_six_things():
+def test_a_job_declares_exactly_these_seven_things():
     """A `Job` is a name, a script, resources, what it would warm-start from,
     the traits a warm-start condition is compared against -- and, for a
     TRIAL, its sweep coordinate as data (``point``, 2026-08-21,
-    `generator.md` § 4.3a).
+    `generator.md` § 4.3a); for a job whose engine leaves no result, the
+    bundle that finishes it (``finish``, 2026-09-28, `engines/vibration.md`
+    § 5.5: a SIESTA force-constant run's modes).
 
     Asserted as an EQUALITY on the field set, in both the dataclass and the
     wire form.  An equality is the whole rule in one line: any field added
     without a decision fails, including one that would let a job name another
     job -- and the test never has to spell out what such a field would be
     called, so a retired vocabulary stays out of the suite.  On the wire a
-    RUNG carries no ``point`` at all: absent, never empty (the same
-    absent-vs-null reading as ``requires_same``).
+    RUNG carries no ``point`` and a job its engine finishes no ``finish``:
+    absent, never empty (the same absent-vs-null reading as
+    ``requires_same``).
     """
     import dataclasses
     assert {f.name for f in dataclasses.fields(Job)} == {
-        "name", "script", "resources", "warm", "traits", "point"}
+        "name", "script", "resources", "warm", "traits", "point", "finish"}
     assert set(_ladder().to_dict()["jobs"][1]) == {
         "name", "script", "resources", "warm", "traits"}
     trial = Job("G1K4C6", "t.fdf", point={"G": 1, "K": 4, "C": 6})
     assert trial.to_dict()["point"] == {"G": 1, "K": 4, "C": 6}
     assert Job.from_dict(trial.to_dict()).point == {"G": 1, "K": 4, "C": 6}
+    finished = Job("freq", "x.fdf", finish="mb_vibration.pyz")
+    assert finished.to_dict()["finish"] == "mb_vibration.pyz"
+    assert Job.from_dict(finished.to_dict()).finish == "mb_vibration.pyz"
 
 
 

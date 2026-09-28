@@ -1360,6 +1360,11 @@ _PYSCF = Recipe(
         # git: uniform across every env -- see _HOST for why, and for
         # what may not use it.
         "git",
+        # ASE: in every job env, for the file IO later work may need, so
+        # which engine or switch a job runs under never changes what it
+        # can import (plan W36 ⑤; the SIESTA envs carry it for their
+        # vibration's finish, `engines/vibration.md` § 5.5).
+        "ase",
     ),
     # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
     # current versions).  Wheel suffix derived from _CUDA_VERSION via
@@ -1525,7 +1530,16 @@ _SIESTA = Recipe(
     # here.  It costs 9 packages and leaves the siesta build untouched.
     conda_packages=(_PYTHON_SPEC, "siesta=5.4.2=mpi_openmpi_*", "numactl",
                     # git: uniform across every env -- see _HOST.
-                    "git"),
+                    "git",
+                    # numpy + ASE: what a SIESTA job's own python imports
+                    # to FINISH a vibration -- the harmonic analysis and
+                    # the standard atomic weights, run beside the job
+                    # after the force-constant run (`engines/vibration.md`
+                    # § 5.5, `runwrap.VIBRATION_COMPANIONS`); ASE also for
+                    # the file IO later work may need (plan W36 ⑤).  Both
+                    # are in the GPU recipe too, so the GPU switch never
+                    # changes what a job can import.
+                    "numpy", "ase"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
 )
@@ -2498,6 +2512,12 @@ _SIESTA_GPU = Recipe(
         # SIESTA BuildComponent) brings them along.  This is what
         # SIESTA 5.4 INSTALL.md § "Required domain-specific
         # libraries" recommends.
+        #
+        # numpy + ASE: what the job's own python imports to finish a
+        # vibration (`engines/vibration.md` § 5.5) -- the same pair the
+        # packaged recipe carries, so the GPU switch never changes what a
+        # job can import (plan W36 ⑤).
+        "numpy", "ase",
     ),
     build_spec=_SIESTA_GPU_BUILD,
     # ---- bare-name toolchain shims (runs after conda create, BEFORE

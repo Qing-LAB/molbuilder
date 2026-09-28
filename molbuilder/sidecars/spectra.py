@@ -20,7 +20,13 @@ import os
 import tempfile
 from typing import Any, Union
 
-from molbuilder.spectra.results import SpectraResults
+# TWO WAYS: the SIESTA vibration's finish writes the file beside the job
+# (`runwrap.VIBRATION_COMPANIONS`) through this writer -- the one every
+# engine's result goes through -- where the package is not installed.
+try:                                        # inside molbuilder
+    from ..spectra.results import SpectraResults
+except ImportError:                         # beside a job, in mb_vibration.pyz
+    from results import SpectraResults
 
 
 # --------------------------------------------------------------------- #

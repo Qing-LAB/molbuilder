@@ -1054,11 +1054,12 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
                    f"{param.value!r}, {third})")
     out.append("")
     out.append("import json as _mb_json")
-    out.append('print("' + _sc.begin_marker(_sc.BLOCK_PARAMETERS) + '")')
+    from ..deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
+    out.append('print("' + begin_marker(BLOCK_PARAMETERS) + '")')
     out.append("for _k, (_d, _r, _e) in _MB_PARAMS.items():")
     out.append(f"    print({_sc.PARAMETER_ROW_PREFIX!r} + _mb_json.dumps("
                f"[_k, _d, _r, _e], default=repr))")
-    out.append('print("' + _sc.end_marker(_sc.BLOCK_PARAMETERS) + '")')
+    out.append('print("' + end_marker(BLOCK_PARAMETERS) + '")')
     return out
 
 

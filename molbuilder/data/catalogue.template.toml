@@ -521,7 +521,7 @@ tier = "advanced"
 help = """
 How far each free atom is nudged, in Bohr, along x, y and z both ways, to measure the force constants by central differences -- SIESTA's own default is 0.04 Bohr (about 0.02 Å).
 Smaller nudges follow the harmonic curvature more closely but push the force difference toward the SCF's noise floor (tighten DM.Tolerance if you go below 0.02 Bohr); larger ones pick up anharmonic terms.  The run nudges the FREE atoms only: the held atoms are written into Geometry.Constraints and sit outside the FC.First..FC.Last range, so holding atoms reduces the run in proportion (6 force evaluations per free atom, each a whole-system SCF).
-The force constants land in <SystemLabel>.FC in eV/Å²; molbuilder turns them into modes on the host (`jobset summarize run <stage>`), through the same projection and diagonalisation the PySCF route runs.  Infrared and Raman intensities are not computed on this route (science/normal-modes.md 4a.6).
+The force constants land in <SystemLabel>.FC in eV/Å²; the job itself then turns them into modes (mb_vibration.pyz, run by the wrapper after SIESTA) through the same projection and diagonalisation the PySCF route runs, and writes <SystemLabel>.spectra.json beside the run (engines/vibration.md 5.5).  Infrared and Raman intensities are not computed on this route (science/normal-modes.md 4a.6).
 """
 
 [item.continue_retries]

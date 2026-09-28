@@ -228,7 +228,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                     "metadata has no `relaxation` entry -- a pair exported "
                     "from a finished relaxation on the Results tab carries "
                     "one), so the statement stands on its own; the "
-                    "read-back measures the forces at the starting geometry."),
+                    "run measures the forces at the starting geometry."),
                 where=where))
         return issues
     disagree = "warn" if already_relaxed else "info"
@@ -252,7 +252,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                 f"different geometry -- another frame of that run, or edited "
                 f"since -- so it does not vouch for these coordinates."
                 + ("  The statement that the structure is relaxed stands on "
-                   "its own; the read-back measures it." if already_relaxed
+                   "its own; the run measures it." if already_relaxed
                    else "")),
             where=where))
         return issues

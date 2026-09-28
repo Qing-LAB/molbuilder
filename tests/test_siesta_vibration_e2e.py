@@ -1,12 +1,19 @@
 """The vibration kind on SIESTA, through the whole described road.
 
 ``jobset init --engine siesta --calculation vibration`` → ``prep run`` →
-``launch run --mode direct`` → ``summarize run`` on this workstation: a
+``launch run --mode direct`` on this workstation, and nothing after it: a
 two-atom molecule with one atom held, the force-constant run nudging the
-free atom only, and the modes derived on the host from ``<label>.FC``
-through the one path both engines share.  The held atom is LAST in the
-input, so the held-first sort really reorders the copy the deck is written
-from and the answer has to come back through the recorded permutation.
+free atom only, and the modes derived BY THE JOB -- its finish,
+``mb_vibration.pyz``, run by the wrapper after SIESTA with the job's own
+python, which cannot import molbuilder -- through the one path both engines
+share (`engines/vibration.md` § 5.5, I22, I23).  The held atom is LAST in
+the input, so the held-first sort really reorders the copy the deck is
+written from and the answer has to come back through the recorded
+permutation.
+
+MUTATIONS THIS MUST FAIL AGAINST: a wrapper that does not run the finish
+(the launch then ends with no spectrum); a finish bundle missing a member
+(the job's python cannot import it, and the job fails).
 
 Two roads, one per state of the person's one box (`engines/vibration.md`
 § 2.2): unticked, the ladder `init` writes relaxes first -- a `relax` stage
@@ -140,6 +147,20 @@ def _the_monitor_closed(attempt, stage, step_words):
     assert 20.0 <= mean <= 120.0, summary
 
 
+def _the_result(attempt, stage):
+    """The spectrum the launch left in ``attempt`` -- written by the job
+    itself, so the attempt concluded 0 only with it (`engines/vibration.md`
+    § 5.5: the finish's failure is the job's)."""
+    from molbuilder.runfiles import compose
+    out = attempt / "H2.spectra.json"
+    concluded = (attempt / compose("H2", ".concluded", stage, run=0)).read_text()
+    assert out.is_file(), (
+        "the launch ended without the spectrum: the job did not finish its "
+        f"own calculation ({concluded.strip()})")
+    assert concluded.startswith("rc=0"), concluded
+    return json.loads(out.read_text())
+
+
 def _common_assertions(d):
     assert d["engine"] == "siesta" and d["schema_version"] >= 6
     # The input order: the free atom is atom 0, the held one atom 1.
@@ -172,7 +193,7 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     `freq` is written at the relaxed geometry and the modes come out at
     the relaxed bond's frequency with the reference forces within the
     template's own tolerance (vibration.md § 2.2, § 5.2a, § 5.5)."""
-    from molbuilder.transport.sort import read_permutation
+    from molbuilder.atom_permutation import read_permutation
 
     tree = tmp_path / "projects"
     # The experimental bond, 0.741 A -- NOT the stationary point at this
@@ -216,10 +237,8 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     attempt = bundle / "02_freq" / "run-0"
     assert (attempt / "H2.FC").is_file(), "the force-constant run must leave H2.FC"
     _the_monitor_closed(attempt, "02_freq", "FC step")
-
-    r = _jobset("summarize", "run", "freq", "--bundle", str(bundle))
-    assert r.exit_code == 0, r.output
-    d = json.loads((attempt / "H2.spectra.json").read_text())
+    # THE LAUNCH ENDS WITH THE RESULT: the job's finish wrote it (§ 5.5).
+    d = _the_result(attempt, "02_freq")
     _common_assertions(d)
     # the ladder relaxed first, and the artifact says so from the relax
     # stage's own record (vibration.md § 4.9)
@@ -260,9 +279,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
                 "--mode", "direct", "--yes")
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_freq" / "run-0"
-    r = _jobset("summarize", "run", "freq", "--bundle", str(bundle))
-    assert r.exit_code == 0, r.output
-    d = json.loads((attempt / "H2.spectra.json").read_text())
+    d = _the_result(attempt, "01_freq")
     _common_assertions(d)
     assert d["relaxation"]["already_relaxed"] is True
     # nothing relaxed: the force-constant run itself never does

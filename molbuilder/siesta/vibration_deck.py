@@ -1,7 +1,7 @@
 """The vibration calculation's deck on SIESTA — the force-constant run.
 
 Contract: `engines/vibration.md` § 5 (the deck, the sorted copy, the
-read-back) and `science/normal-modes.md` § 3; the seam this
+job's own finish) and `science/normal-modes.md` § 3; the seam this
 serves is `script-preparation.md` § 4, and the shape is the one
 `transport/deck.py` and `pyscf/vibration_deck.py` share: the KIND is a
 render argument, the seam stays ONE per engine, and the kind's own module
@@ -84,9 +84,11 @@ def fc_block(struct: Structure, cfg, derived: dict) -> str:
             "# MD.TypeOfRun FC nudges atoms FC.First..FC.Last by FC.Displacement",
             "# along x, y, z, both ways, and writes the force constants to",
             f"# {cfg.system_label}.FC (engines/vibration.md § 5.4).  No atom is",
-            "# relaxed here: the input geometry is taken as the stationary point",
-            "# -- stated relaxed by the person (already_relaxed), and answered by",
-            "# the read-back with the forces of FC step 0 (engines/vibration.md 5.5).",
+            "# relaxed here: the coordinates below are taken as the stationary",
+            "# point -- the ones the ladder's relax stage reached, or the input's",
+            "# when the person stated them relaxed (already_relaxed) -- and the",
+            "# job's finish judges them with the forces of FC step 0, then writes",
+            f"# {cfg.system_label}.spectra.json (engines/vibration.md 5.5).",
             f"# The range is the {f['n_free']} FREE atom(s); the {f['n_held']} held",
             "# atom(s) come first in this deck's numbering because the structure",
             "# was sorted with the 'held-first' key -- the permutation back to the",

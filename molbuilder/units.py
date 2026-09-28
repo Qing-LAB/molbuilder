@@ -45,12 +45,22 @@ from __future__ import annotations
 
 from typing import Mapping, Optional
 
-from molbuilder.constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
-                                  BOLTZMANN_EV_K, HARTREE_EV,
-                                  JOULE_EV as _J_EV,
-                                  KCAL_MOL_EV as _KCAL_MOL_EV,
-                                  HZ_EV as _HZ_EV, CM1_EV as _CM1_EV,
-                                  RYDBERG_EV)
+# TWO WAYS, because the fdf reader that reads unit words through this module
+# travels beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`).
+try:                                        # inside molbuilder
+    from .constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
+                            BOLTZMANN_EV_K, HARTREE_EV,
+                            JOULE_EV as _J_EV,
+                            KCAL_MOL_EV as _KCAL_MOL_EV,
+                            HZ_EV as _HZ_EV, CM1_EV as _CM1_EV,
+                            RYDBERG_EV)
+except ImportError:                         # beside a job, in mb_vibration.pyz
+    from constants import (AVOGADRO as _AVOGADRO, BOHR_ANGSTROM,
+                           BOLTZMANN_EV_K, HARTREE_EV,
+                           JOULE_EV as _J_EV,
+                           KCAL_MOL_EV as _KCAL_MOL_EV,
+                           HZ_EV as _HZ_EV, CM1_EV as _CM1_EV,
+                           RYDBERG_EV)
 
 __all__ = [
     "ENERGY_EV", "ENERGY_RY", "LENGTH_ANGSTROM", "TEMPERATURE_K",

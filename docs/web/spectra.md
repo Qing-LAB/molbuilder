@@ -441,9 +441,10 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
 When the job runs it writes a `.spectra.json`; loading that (here, or on the
-Results tab) is what fills the chart. On SIESTA the run leaves `<label>.FC`
-and `molbuilder jobset summarize run <stage>` — the last line Task setup's
-rung tab prints for a SIESTA vibration — derives the same file beside the run
+Results tab) is what fills the chart. On SIESTA the force-constant run leaves
+`<label>.FC` and the same job then derives the modes from it — its finish,
+`mb_vibration.pyz`, run by the wrapper — and writes the same file beside the
+run, so the launch is the last step on both engines
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5).
 
 ## 6. The API door

@@ -23,10 +23,10 @@ instead.)*
 Public surface
 --------------
 
-* Constants — :data:`BLOCK_HEADER`, :data:`BLOCK_PROVENANCE`,
-  :data:`BLOCK_BENCH_MARKS`, :data:`BLOCK_ATOM_METADATA`,
-  :data:`BLOCK_USER_CUSTOM`, :data:`MARKER_RE`.
-* Marker helpers — :func:`begin_marker`, :func:`end_marker`.
+* The block grammar — the names, the fences, the one JSON-block reader
+  and the ENGINE-OFFSET / VIBRATION readers — is :mod:`molbuilder.deck_record`'s,
+  which this module imports; it sits below this one so a job can read a
+  block beside itself (2026-09-28).
 * Bench declarations — :class:`BenchField`,
   :data:`SIESTA_BENCH_FIELDS`.
 * Block emitters — :func:`emit_header`, :func:`emit_provenance`,
@@ -62,6 +62,16 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Mapping,
 # called, not annotated.  `issues` is L1 and imports nothing, so there is no
 # cycle to worry about.
 from .issues import calling as _calling
+# THE BLOCK GRAMMAR IS `deck_record`'s -- the names, the fences, the one JSON
+# reader -- which this module writes with and reads through.  It lives below
+# this one because a job reads two blocks beside itself, where this module
+# (whose bench declarations are built against the template at import) cannot
+# be imported.
+from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
+                          BLOCK_ENGINE_OFFSET, BLOCK_HEADER, BLOCK_PARAMETERS,
+                          BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
+                          MARKER_RE, begin_marker, end_marker,
+                          read_json_block)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
@@ -70,34 +80,6 @@ if TYPE_CHECKING:                       # annotations only -- `issues`
 # --------------------------------------------------------------------- #
 #  Block markers + names                                                #
 # --------------------------------------------------------------------- #
-
-# Block names used in the markers.  Centralised so a typo doesn't
-# silently produce a file the parser refuses.
-BLOCK_HEADER        = "header"
-BLOCK_PROVENANCE    = "provenance"
-BLOCK_BENCH_MARKS   = "bench-marks"
-BLOCK_ATOM_METADATA = "atom-metadata"
-#: Where a deck's atoms were placed (`model/structure-periodicity.md` § 6.0).
-BLOCK_ENGINE_OFFSET = "engine-offset"
-BLOCK_USER_CUSTOM   = "user-custom"
-#: The parameters the ENGINE actually holds, recorded into the run log at
-#: startup.  Shared between engines on purpose: the deck says what was asked
-#: for, this says what was heard, and one reader should be able to compare
-#: them without knowing which engine wrote it.
-BLOCK_PARAMETERS    = "effective-parameters"
-#: § 3.7 item blocks: the marker is ``item <field>``, so the NAME reaches
-#: the marker and prep can rebuild a config by scanning.
-
-
-def begin_marker(name: str) -> str:
-    """Return the literal BEGIN marker line for a reserved block."""
-    return f"# === molbuilder {name} BEGIN ==="
-
-
-def end_marker(name: str) -> str:
-    """Return the literal END marker line for a reserved block."""
-    return f"# === molbuilder {name} END ==="
-
 
 # ---- The effective-parameters block's rows (`model/parse.md` § 5d.3a) --------
 #
@@ -149,23 +131,6 @@ def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
                 and isinstance(arr[0], str)):
             rows.append(dict(zip(_ROW_FIELDS, arr)))
     return rows
-
-
-# Regex matching either marker for any block.  Group 1: block name;
-# group 2: BEGIN | END.
-#
-# The name is one lowercase word (``header``, ``bench-marks``) OR two words
-# (``item mesh_cutoff``) -- the second form is job-contracts.md § 3.7's item
-# block, whose marker carries the FIELD's name.  That is what lets prep walk
-# a template and rebuild a config without an .fdf parser, so the name has to
-# reach the marker; underscores are allowed there because field names have
-# them.  Every consumer already filters on ``group(1) != BLOCK_<x>``, so
-# widening the name pattern cannot make an item block look like a reserved
-# one (checked across all six consumers, 2026-08-07).
-MARKER_RE = re.compile(
-    r"^#\s*===\s+molbuilder\s+([a-z-]+(?:\s+[A-Za-z0-9_]+)?)"
-    r"\s+(BEGIN|END)\s+===\s*$"
-)
 
 
 #: The record fields that change WITHOUT the calculation changing: the
@@ -614,6 +579,22 @@ def emit_engine_offset(frame: Any, axis_kind: Any) -> str:
     return "\n".join(out)
 
 
+def emit_vibration_record(payload: Mapping[str, Any]) -> str:
+    """The VIBRATION block: the facts a SIESTA force-constant run's finish
+    reads that no SIESTA keyword states (`engines/vibration.md` § 5.3,
+    § 5.5) -- ``force_criterion_ev_ang`` (this stage's resolved
+    ``relax_force_tol``), ``already_relaxed`` (the person's statement, as
+    made) and ``relaxation`` (the `relax` stage's relaxation record,
+    `parse.contract.relaxation_of`, or ``None``).  Written by the framework
+    from :attr:`DeckSpec.vibration`; read back by
+    `deck_record.extract_vibration_record`, beside the job as on the host."""
+    out: List[str] = [begin_marker(BLOCK_VIBRATION),
+                      "# format: molbuilder-vibration/v1"]
+    out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
+    out.append(end_marker(BLOCK_VIBRATION))
+    return "\n".join(out)
+
+
 def _compact_json_lines(payload: Dict[str, Any]) -> List[str]:
     """The payload as JSON, ONE LINE PER TOP-LEVEL KEY.
 
@@ -743,10 +724,6 @@ def generated_at_now() -> str:
 #  with `ScriptSource` and `_gate_atom_metadata`; callers use the extractors.
 
 __all__ = [
-    # Block names + markers
-    "BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
-    "BLOCK_ATOM_METADATA", "BLOCK_USER_CUSTOM",
-    "MARKER_RE", "begin_marker", "end_marker",
     "benchmark_declarable_types", "decl_line", "deck_note",
     # Bench declarations
     "BenchField", "SIESTA_BENCH_FIELDS",
@@ -1245,6 +1222,17 @@ class DeckSpec:
     #: builder and read by both its coordinate block and the ENGINE-OFFSET
     #: record, so the record states exactly what was written.
     engine_frame: Optional[Any] = None
+    #: The VIBRATION block's payload (:func:`emit_vibration_record`): a VALUE
+    #: for a block the framework assembles, like the bench marks'.  ``None``
+    #: for every deck but a SIESTA force-constant one.
+    vibration: Optional[Mapping[str, Any]] = None
+    #: The bundle the job runs after its engine to FINISH the calculation --
+    #: `runwrap.VIBRATION_BUNDLE` for a SIESTA force-constant deck, whose run
+    #: leaves force constants and whose result the finish derives
+    #: (`engines/vibration.md` § 5.5).  ``None`` when the engine's own run
+    #: leaves the result.  A fact about this deck's run, read by `prep` onto
+    #: the stage's job (`Job.finish`) and by nothing else.
+    finish: Optional[str] = None
 
 
 class RenderedDeck(str):
@@ -1556,6 +1544,9 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     # a box is judged: once, not here again.
     record.append(emit_engine_offset(spec.engine_frame, _kinds))
     in_record.append("ENGINE-OFFSET")
+    if spec.vibration is not None:
+        record.append(emit_vibration_record(spec.vibration))
+        in_record.append("VIBRATION")
 
     text = (science + "\n\n" + emit_user_custom_placeholder()
             + "\n\n" + machine_record_banner()
@@ -2013,114 +2004,9 @@ def _extract_user_custom_inner(text: str) -> Optional[List[str]]:
 
 # ---- from parse/scripts/atom_metadata.py ----
 
-def _brace_delta(line: str) -> int:
-    """``{`` minus ``}`` on one line, counting only braces OUTSIDE strings.
-
-    A plain ``line.count("{") - line.count("}")`` stood here until
-    2026-09-05, and a brace inside a JSON *string* closed the walk early.
-    Measured: a region named ``a}b`` -- valid JSON on the wire, written
-    correctly by :func:`emit_atom_metadata` -- made the whole
-    ATOM-METADATA block unreadable, so every reader of that deck got
-    ``None`` and the labels AND the frozen set vanished with no message.
-    ``{``, ``"`` and ``\\`` in a label were all fine; only ``}`` was fatal,
-    which is exactly the shape of bug that survives casual testing.
-
-    JSON strings cannot contain a literal newline, so the in-string state
-    never has to carry across lines.
-    """
-    depth = 0
-    in_str = False
-    escaped = False
-    for ch in line:
-        if escaped:
-            escaped = False
-        elif ch == "\\":
-            escaped = True
-        elif ch == '"':
-            in_str = not in_str
-        elif not in_str:
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-    return depth
-
-
-def _extract_json_block(text: str, name: str) -> Optional[Dict[str, Any]]:
-    """Find the molbuilder block ``name`` in ``text`` and return its JSON
-    payload as a dict -- the ONE reader for every JSON-payload block
-    (ATOM-METADATA, ENGINE-OFFSET), so their parsing cannot drift.
-
-    Returns ``None`` when:
-      * No such block is present.
-      * The block markers are unbalanced.
-      * The JSON between markers fails to parse.
-
-    Comment-prefix-per-line is stripped before JSON parsing.
-    """
-    lines = text.splitlines()
-    begin_idx: Optional[int] = None
-    end_idx: Optional[int] = None
-    for i, line in enumerate(lines):
-        m = MARKER_RE.match(line)
-        if not m:
-            continue
-        if m.group(1) != name:
-            continue
-        if m.group(2) == "BEGIN":
-            begin_idx = i
-            end_idx = None
-        elif m.group(2) == "END" and begin_idx is not None:
-            end_idx = i
-            break
-    if begin_idx is None or end_idx is None:
-        return None
-    # Inner lines: strip leading "# " (or "#") to recover JSON.
-    inner: List[str] = []
-    for raw in lines[begin_idx + 1: end_idx]:
-        if raw.startswith("# "):
-            inner.append(raw[2:])
-        elif raw.startswith("#"):
-            inner.append(raw[1:])
-        else:
-            inner.append(raw)
-    # Brace-balance walk so the extractor accepts BOTH pretty-printed
-    # JSON (molbuilder's emit_atom_metadata via json.dumps indent=2)
-    # AND compact / single-line JSON.  The contract on the wire is
-    # "valid JSON inside the block"; how the writer formatted it isn't
-    # load-bearing.
-    json_lines: List[str] = []
-    saw_open = False
-    brace_depth = 0
-    for line in inner:
-        stripped = line.strip()
-        if not saw_open:
-            if not stripped or not stripped.startswith("{"):
-                continue
-            saw_open = True
-        json_lines.append(line)
-        brace_depth += _brace_delta(stripped)
-        if brace_depth <= 0:
-            break
-    if not json_lines:
-        return None
-    try:
-        return json.loads("\n".join(json_lines))
-    except json.JSONDecodeError:
-        return None
-
-
 def _extract_atom_metadata_dict(text: str) -> Optional[Dict[str, Any]]:
     """The ATOM-METADATA block's payload; ``None`` when absent or broken."""
-    return _extract_json_block(text, BLOCK_ATOM_METADATA)
-
-
-def extract_engine_offset(text: str) -> Optional[Dict[str, Any]]:
-    """The ENGINE-OFFSET block's payload -- ``{applied_offset, cell,
-    axis_kind, stated}`` -- or ``None`` for a deck written before § 6.0.  The deck's
-    own coordinates carry no offset; ``applied_offset`` is the correction that
-    was added to the design's to produce them."""
-    return _extract_json_block(text, BLOCK_ENGINE_OFFSET)
+    return read_json_block(text, BLOCK_ATOM_METADATA)
 
 
 # ---- from parse/scripts/bench_marks.py ----

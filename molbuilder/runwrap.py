@@ -347,6 +347,46 @@ def _monitor_block(label: str, stage: Optional[str], notify_on_scf: bool,
     )
 
 
+def _finish_block(finish: Optional[str], script_name: str,
+                  basename: str) -> str:
+    """The job's last step when its engine leaves no result: run the finish
+    bundle beside the deck with the job's own python (``$_mb_py``, probed by
+    the monitor block whether or not a monitor starts), after the engine
+    exited cleanly and before the conclusion is written
+    (`engines/vibration.md` § 5.5).  Its failure is the job's: the
+    conclusion records its exit status and the wrapper exits with it.
+    Empty when the job has no finish."""
+    if finish is None:
+        return ""
+    return (
+        f"\n"
+        f"# --- The calculation's own result (engines/vibration.md 5.5) ---\n"
+        f"# The engine left what the result is derived from, not the result:\n"
+        f"# {finish}, beside this deck, derives it here with the job's own\n"
+        f"# python and writes it beside the run.  ITS FAILURE IS THE JOB'S --\n"
+        f"# the conclusion records its exit status and this wrapper exits\n"
+        f"# with it; its lines and any traceback are in this session log.\n"
+        f'_log INFO "finish: {finish} {script_name} $_out_file"\n'
+        f"set +e\n"
+        f'if [ -n "$_mb_py" ] && [ -f {finish} ]; then\n'
+        f'    "$_mb_py" {finish} {script_name} "$_out_file"\n'
+        f"    _mb_finish_rc=$?\n"
+        f"else\n"
+        f'    _log ERROR "finish: needs a python beside the job and {finish} '
+        f'beside the deck -- the result was not derived"\n'
+        f"    _mb_finish_rc=1\n"
+        f"fi\n"
+        f"set -e\n"
+        f'if [ "$_mb_finish_rc" -ne 0 ]; then\n'
+        f'    echo "===== the finish ({finish}) exited with code '
+        f'$_mb_finish_rc: no result -- see $_runwrap_log =====" >&2\n'
+        f'    printf "rc=%s at %s\\n" "$_mb_finish_rc" "$(date)" '
+        f'> "{basename}-run${{_run_n}}.concluded"\n'
+        f'    exit "$_mb_finish_rc"\n'
+        f"fi\n"
+    )
+
+
 def _continue_force_args_parser(name_for_usage: str) -> str:
     """Bash snippet declaring + parsing ``--continue`` / ``-c`` /
     ``--force`` / ``-f`` / ``--cold`` / ``--from-scratch``.
@@ -1986,12 +2026,13 @@ def _effective_parameters_block(script_path: "Path") -> str:
     """
     import shlex as _shlex
     from . import script_emit as _sc
+    from .deck_record import BLOCK_PARAMETERS, begin_marker, end_marker
 
     script_name = script_path.name
     lines = [
         "",
         "# --- What the engine will read ------------------------------",
-        f'echo "{_sc.begin_marker(_sc.BLOCK_PARAMETERS)}"',
+        f'echo "{begin_marker(BLOCK_PARAMETERS)}"',
     ]
     for item in _sc.declarations(engine="siesta"):
         param = _sc.parameter(item.name, "siesta")
@@ -2001,7 +2042,7 @@ def _effective_parameters_block(script_path: "Path") -> str:
     lines += [
         f'grep -v "^[[:space:]]*#" "{script_name}" | grep -v "^[[:space:]]*$"'
         ' | sed "s/^/#   /"',
-        f'echo "{_sc.end_marker(_sc.BLOCK_PARAMETERS)}"',
+        f'echo "{end_marker(BLOCK_PARAMETERS)}"',
         "",
     ]
     return "\n".join(lines) + "\n"
@@ -2062,7 +2103,8 @@ def render_run_wrapper(script_path: Path, *,
                         env: Optional[str] = None,
                         n_atoms: Optional[int] = None,
                         project_dir: Optional[Path] = None,
-                        machine_record=None) -> str:
+                        machine_record=None,
+                        finish: Optional[str] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -2160,6 +2202,16 @@ def render_run_wrapper(script_path: Path, *,
             f"`{suffix}`.  Supported: "
             f"{', '.join(sorted(EXTENSION_TO_CATEGORY))}."
         )
+    # A FINISH THE LAUNCHER CANNOT HONOUR IS REFUSED, never dropped: a job
+    # told to finish that ran without finishing would conclude rc=0 with no
+    # result (`engines/vibration.md` § 5.5).  Only a SIESTA job has one today
+    # -- a PySCF deck writes its own result.
+    if finish is not None and (category != "siesta"
+                               or finish not in _FINISH_BUNDLES):
+        raise WrapperError(
+            f"`{script_path.name}`: this launcher finishes a SIESTA job with "
+            f"{', '.join(sorted(_FINISH_BUNDLES))}; it cannot finish a "
+            f"{category} job with {finish!r}")
 
     # SIESTA env routing: the .fdf is the ground truth for which env
     # to run in, and the ONE thing that decides it is whether the deck
@@ -3956,7 +4008,8 @@ def render_run_wrapper(script_path: Path, *,
                if continue_retries and continue_retries > 0 else "")
             + f'echo "{_prog_label} completed: $_launch_cmd {script_name} -> '
             + f'$_out_file"\n'
-            f'printf "rc=0 at %s\\n" "$(date)" '
+            + _finish_block(finish, script_name, basename)
+            + f'printf "rc=0 at %s\\n" "$(date)" '
             f'> "{basename}-run${{_run_n}}.concluded"\n'
         )
     else:
@@ -4318,12 +4371,19 @@ def monitor_bundle() -> bytes:
     (:func:`companion_source`), zipped beside the entry.  The same sources
     give the same bytes (fixed member times), so a re-prep writes the file it
     found."""
+    return _zip_bundle(_BUNDLE_MAIN, MONITOR_COMPANIONS)
+
+
+def _zip_bundle(main: str, companions: Dict[str, str]) -> bytes:
+    """ONE builder for every bundle that travels beside a job: ``main`` as
+    the zip application's ``__main__.py``, then each of ``companions`` as its
+    module's own file, read (:func:`companion_source`)."""
     import io
     import zipfile
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        members = [("__main__.py", _BUNDLE_MAIN)] + [
-            (name, companion_source(name)) for name in MONITOR_COMPANIONS]
+        members = [("__main__.py", main)] + [
+            (name, companion_source(name, companions)) for name in companions]
         for name, text in members:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -4332,8 +4392,10 @@ def monitor_bundle() -> bytes:
     return buf.getvalue()
 
 
-def companion_source(name: str) -> str:
-    """The text that travels as ``name`` -- its module's own file, read.
+def companion_source(name: str,
+                     companions: Optional[Dict[str, str]] = None) -> str:
+    """The text that travels as ``name`` -- its module's own file, read --
+    from ``companions`` (the monitor's by default).
 
     Read rather than restated: three modules once spelled the config-dir rule
     independently and two said so in prose, *"a comment is not a mechanism"*.
@@ -4343,12 +4405,96 @@ def companion_source(name: str) -> str:
     W7).
     """
     import importlib
+    table = MONITOR_COMPANIONS if companions is None else companions
     try:
-        module = importlib.import_module(MONITOR_COMPANIONS[name])
+        module = importlib.import_module(table[name])
         return Path(module.__file__).read_text(encoding="utf-8")
     except (KeyError, ImportError, OSError) as exc:
         raise WrapperError(
             f"could not read {name!r} to ship beside the job: {exc}") from None
+
+
+#: Every file that travels beside a SIESTA force-constant job for its FINISH
+#: (`engines/vibration.md` § 5.5), as ``{name beside the job: the module
+#: whose source it is}``: the SIESTA route (`spectra.siesta_vibration`, whose
+#: ``main`` the bundle runs), the engine-neutral analysis and its math, the
+#: result's class, its activity classes and its one writer, the Methods
+#: prose, and every reader the finish reads the attempt through -- the fdf
+#: reader and the unit words it reads with, the deck's block reader
+#: (`deck_record`), the ``.FC`` reader and its
+#: error, SIESTA's reading pass with its grammar and rule engine, the
+#: permutation record, the session log's line with the run-file names it is
+#: built on (`runfiles`, `identity`) -- and the constants all of them
+#: convert with.
+#:
+#: **Each module's own file, imported two ways** (package, or beside the
+#: job), like the monitor's; unlike the monitor's, the set needs **numpy and
+#: ASE**, which the SIESTA job envs carry for it (`envs/recipes.py`): the
+#: rule for joining is *imports only the standard library, numpy, ASE and
+#: the other members*.  The SIESTA end-to-end run proves the set whole: its
+#: job's python cannot import molbuilder (`tests/test_siesta_vibration_e2e.py`).
+VIBRATION_COMPANIONS: Dict[str, str] = {
+    "siesta_vibration.py":     "molbuilder.spectra.siesta_vibration",
+    "vibrational_analysis.py": "molbuilder.spectra.vibrational_analysis",
+    "normal_modes.py":         "molbuilder.spectra.normal_modes",
+    "results.py":              "molbuilder.spectra.results",
+    "activity.py":             "molbuilder.spectra.activity",
+    "methods.py":              "molbuilder.spectra.methods",
+    "spectra_sidecar.py":      "molbuilder.sidecars.spectra",
+    "fdf.py":                  "molbuilder.parse.fdf",
+    "units.py":                "molbuilder.units",
+    "deck_record.py":          "molbuilder.deck_record",
+    "siesta_fc.py":            "molbuilder.parse.engines.siesta_fc",
+    "errors.py":               "molbuilder.parse.errors",
+    "siesta_reader.py":        "molbuilder.parse.engines.siesta_reader",
+    "siesta_grammar.py":       "molbuilder.parse.engines.siesta_grammar",
+    "_section_rules.py":       "molbuilder.parse.engines._section_rules",
+    "molwatch_grammar.py":     "molbuilder.parse.engines.molwatch_grammar",
+    "end_lines.py":            "molbuilder.pyscf.end_lines",
+    "atom_permutation.py":     "molbuilder.atom_permutation",
+    "wrapper_log.py":          "molbuilder.wrapper_log",
+    "runfiles.py":             "molbuilder.runfiles",
+    "identity.py":             "molbuilder.identity",
+    "constants.py":            "molbuilder.constants",
+}
+
+#: THE ONE FILE that finishes a SIESTA force-constant job: a Python zip
+#: application of :data:`VIBRATION_COMPANIONS` whose ``__main__`` runs
+#: `spectra.siesta_vibration.main` -- ``python mb_vibration.pyz <deck>
+#: <output>`` writes ``<label>.spectra.json`` beside the run.  A deck names it
+#: (`DeckSpec.finish`), `prep` copies that onto the job (`Job.finish`), the
+#: wrapper runs it after SIESTA exits cleanly, and `materialize` brings it
+#: into every attempt.
+VIBRATION_BUNDLE = "mb_vibration.pyz"
+
+#: The finish bundle's entry.  A set that cannot load on the job's python --
+#: most often an env without numpy or ASE -- says so in the session log's own
+#: line, with the traceback, and exits 1: the job then fails, because the
+#: spectrum IS this stage's result (`engines/vibration.md` § 5.5).
+_VIBRATION_MAIN = (
+    "import sys, time\n"
+    "try:\n"
+    "    import siesta_vibration\n"
+    "except Exception as _e:\n"
+    "    import traceback\n"
+    f"    sys.stderr.write({(LOG_LINE + chr(10))!r} % "
+    f"(time.strftime({LOG_CLOCK!r}), 'ERROR', "
+    f"'vibration: {VIBRATION_BUNDLE} did not load -- %s: %s (it needs "
+    f"numpy and ASE in the job env: envs/recipes.py)' "
+    "% (type(_e).__name__, _e)))\n"
+    "    traceback.print_exc()\n"
+    "    raise SystemExit(1)\n"
+    "raise SystemExit(siesta_vibration.main())\n")
+
+
+def vibration_bundle() -> bytes:
+    """The bytes of :data:`VIBRATION_BUNDLE`, from the one builder."""
+    return _zip_bundle(_VIBRATION_MAIN, VIBRATION_COMPANIONS)
+
+
+#: What a job's ``finish`` may name, and the builder of each -- the one
+#: lookup `render_wrappers` ships a finish bundle by.
+_FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 
 
 @dataclass(frozen=True)
@@ -4385,7 +4531,8 @@ def render_wrappers(script_path: Path, *,
                     env: Optional[str] = None,
                     emit_sbatch: bool = True,
                     project_dir: Optional[Path] = None,
-                    machine_record=None) -> RenderedWrapper:
+                    machine_record=None,
+                    finish: Optional[str] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
@@ -4441,7 +4588,8 @@ def render_wrappers(script_path: Path, *,
         n_atoms = _parse_fdf_n_atoms(script_path)
     text = render_run_wrapper(
         script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
-        project_dir=project_dir, machine_record=machine_record)
+        project_dir=project_dir, machine_record=machine_record,
+        finish=finish)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -4460,6 +4608,12 @@ def render_wrappers(script_path: Path, *,
     # never there, and every production run's monitor died at import, stderr
     # to /dev/null.  A single file cannot be half-shipped.
     blobs = ((MONITOR_BUNDLE, monitor_bundle()),)
+    # AND THE FINISH, when the job has one: the bundle its wrapper runs after
+    # the engine (`Job.finish`, `engines/vibration.md` § 5.5), built by the
+    # same builder from its own table.  `render_run_wrapper` has refused a
+    # name it cannot ship.
+    if finish is not None:
+        blobs += ((finish, _FINISH_BUNDLES[finish]()),)
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue.  Resolving its header values lives here because only
@@ -4485,7 +4639,8 @@ def write_run_wrapper(script_path: Path, *,
                       env: Optional[str] = None,
                       emit_sbatch: bool = True,
                       project_dir: Optional[Path] = None,
-                      machine_record=None) -> Path:
+                      machine_record=None,
+                      finish: Optional[str] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
@@ -4508,7 +4663,7 @@ def write_run_wrapper(script_path: Path, *,
                                resources=resources,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
-                               project_dir=project_dir)
+                               project_dir=project_dir, finish=finish)
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
         written = _sc_write.write_script(parent / name, text)

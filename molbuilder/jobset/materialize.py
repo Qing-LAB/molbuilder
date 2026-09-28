@@ -861,8 +861,11 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # makov_payne_correction.py: the post-run script a CHARGED deck's own
     # header instructs the user to run "after SIESTA finishes" -- HERE,
     # beside the .out.
+    # The FINISH, when the job has one (`Job.finish`): the bundle its wrapper
+    # runs after the engine, beside the deck -- `engines/vibration.md` § 5.5.
     from ..runwrap import MONITOR_BUNDLE
-    for extra in (MONITOR_BUNDLE, "makov_payne_correction.py"):
+    for extra in (MONITOR_BUNDLE, "makov_payne_correction.py",
+                  *((job.finish,) if job.finish else ())):
         _bring(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):

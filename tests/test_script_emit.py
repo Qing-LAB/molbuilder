@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from molbuilder import deck_record as dr
 from molbuilder import script_emit as sc
 
 
@@ -20,14 +21,14 @@ from molbuilder import script_emit as sc
 
 
 def test_begin_end_markers_are_literal():
-    assert sc.begin_marker("provenance") == "# === molbuilder provenance BEGIN ==="
-    assert sc.end_marker("provenance")   == "# === molbuilder provenance END ==="
+    assert dr.begin_marker("provenance") == "# === molbuilder provenance BEGIN ==="
+    assert dr.end_marker("provenance")   == "# === molbuilder provenance END ==="
 
 
 def test_marker_re_matches_begin_and_end():
-    m = sc.MARKER_RE.match("# === molbuilder provenance BEGIN ===")
+    m = dr.MARKER_RE.match("# === molbuilder provenance BEGIN ===")
     assert m and m.group(1) == "provenance" and m.group(2) == "BEGIN"
-    m = sc.MARKER_RE.match("# === molbuilder bench-marks END ===")
+    m = dr.MARKER_RE.match("# === molbuilder bench-marks END ===")
     assert m and m.group(1) == "bench-marks" and m.group(2) == "END"
 
 
@@ -38,7 +39,7 @@ def test_marker_re_rejects_non_markers():
         "# === something else BEGIN ===",
         "# === molbuilder ===",
     ]:
-        assert sc.MARKER_RE.match(line) is None, line
+        assert dr.MARKER_RE.match(line) is None, line
 
 
 # --------------------------------------------------------------------- #
@@ -846,9 +847,9 @@ def test_the_brace_walk_still_accepts_both_json_layouts():
 
     def wrap(body):
         return "\n".join(
-            [sc.begin_marker(sc.BLOCK_ATOM_METADATA), "# format: molstruct-json/v9"]
+            [dr.begin_marker(dr.BLOCK_ATOM_METADATA), "# format: molstruct-json/v9"]
             + ["# " + ln for ln in body.splitlines()]
-            + [sc.end_marker(sc.BLOCK_ATOM_METADATA)])
+            + [dr.end_marker(dr.BLOCK_ATOM_METADATA)])
 
     for name, text in (("pretty", json.dumps(payload, indent=2)),
                        ("compact", json.dumps(payload))):
@@ -877,8 +878,8 @@ def test_a_stray_marker_in_your_zone_loses_nothing_and_is_refused(tmp_path):
     in this framework (`prepare_deck` writes them to the validation report
     before `report` raises).
     """
-    B = sc.begin_marker(sc.BLOCK_USER_CUSTOM)
-    E = sc.end_marker(sc.BLOCK_USER_CUSTOM)
+    B = dr.begin_marker(dr.BLOCK_USER_CUSTOM)
+    E = dr.end_marker(dr.BLOCK_USER_CUSTOM)
 
     for name, zone, must_survive in (
             ("stray BEGIN", ["# keeper", B, "# after"], ("# keeper", "# after")),
@@ -908,10 +909,10 @@ def test_the_check_gate_refuses_a_stray_marker_of_either_kind(tmp_path):
     refused or ignored depending on which half of the pair was duplicated.
     """
     import types
-    B = sc.begin_marker(sc.BLOCK_USER_CUSTOM)
-    E = sc.end_marker(sc.BLOCK_USER_CUSTOM)
-    PB = sc.begin_marker(sc.BLOCK_PROVENANCE)
-    PE = sc.end_marker(sc.BLOCK_PROVENANCE)
+    B = dr.begin_marker(dr.BLOCK_USER_CUSTOM)
+    E = dr.end_marker(dr.BLOCK_USER_CUSTOM)
+    PB = dr.begin_marker(dr.BLOCK_PROVENANCE)
+    PE = dr.end_marker(dr.BLOCK_PROVENANCE)
     spec = types.SimpleNamespace(check_rules=None, engine="siesta")
     rendered = types.SimpleNamespace(emitted=())
 

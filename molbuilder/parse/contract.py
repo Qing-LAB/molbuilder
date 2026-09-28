@@ -137,7 +137,6 @@ def relaxation_of(directory, *,
     load of this very file -- and is used when ``path`` is the file this
     record reads, so that file is parsed once, not twice.
     """
-    import numpy as np
     directory = Path(directory)
     if not directory.is_dir():
         return None
@@ -154,6 +153,20 @@ def relaxation_of(directory, *,
             traj = detect(Path(path)).parse(path)
     except Exception:                                       # noqa: BLE001
         return None
+    return relaxation_of_output(path, traj, engine=engine_of(directory))
+
+
+def relaxation_of_output(path, traj, *,
+                         engine: Optional[str] = None
+                         ) -> Optional[Dict[str, Any]]:
+    """The relaxation record of ONE output already parsed -- ``traj``, the
+    parse of ``path`` -- in :func:`relaxation_of`'s shape, or ``None`` for a
+    run that relaxed nothing.  :func:`relaxation_of` asks it of the file a
+    directory's viewer opens; `prep` asks it of the `relax` stage's own
+    output, the one it reads the relaxed geometry from
+    (`engines/vibration.md` § 5.2a), so the record is of that run and no
+    other, whatever else the directory holds."""
+    import numpy as np
     frames = [fr for fr in getattr(traj, "frames", []) if fr.structure is not None]
     if not frames:
         return None
@@ -188,9 +201,8 @@ def relaxation_of(directory, *,
     judged = max_free if max_free is not None else max_all
     last = frames[-1]
     lines = last.structure.geometry_lines()
-    eng = engine_of(directory)
     return {
-        "engine": (eng if eng and eng != "unknown" else None),
+        "engine": (engine if engine and engine != "unknown" else None),
         "source": Path(path).name,
         "n_steps": int(last.step_index if last.step_index is not None
                        else len(frames) - 1),

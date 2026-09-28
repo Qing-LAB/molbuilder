@@ -973,7 +973,7 @@ rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 | | |
 |---|---|
 | **measure it** | `prep bench <stage>` → `launch bench` → `summarize bench`, and the hint that says which rung is worth measuring |
-| **run it** | `prep run <stage>` → `launch run` — and, when the run leaves a file the host must derive the result from, the deriving verb as the last line: `summarize run freq` for a SIESTA vibration's `freq` stage ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5), read from the description's engine, its kind and the rung's name, never from a list in the page |
+| **run it** | `prep run <stage>` → `launch run` — the last line for every kind: a run writes its own result, and a SIESTA vibration's force-constant job derives its modes itself after SIESTA ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5; the `summarize run freq` line this printed from 2026-09-24 went with the host read-back, 2026-09-28) |
 
 **What each stage will PRODUCE is not in the tab** — it is § 7.1's list, in the
 travelling rail (§ 9a.1). A tab is one rung and that list is the whole ladder:

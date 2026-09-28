@@ -28,8 +28,14 @@ from typing import Sequence
 
 import numpy as np
 
-from ...constants import BOHR_ANGSTROM, HARTREE_EV
-from ..errors import ParseError
+# TWO WAYS: the SIESTA vibration's finish reads the file beside the job
+# (`runwrap.VIBRATION_COMPANIONS`), where the package is not installed.
+try:                                        # inside molbuilder
+    from ...constants import BOHR_ANGSTROM, HARTREE_EV
+    from ..errors import ParseError
+except ImportError:                         # beside a job, in mb_vibration.pyz
+    from constants import BOHR_ANGSTROM, HARTREE_EV
+    from errors import ParseError
 
 #: eV/Å² -> Hartree/Bohr², from the two constants it is made of.
 EV_PER_ANG2_TO_HARTREE_PER_BOHR2 = (BOHR_ANGSTROM ** 2) / HARTREE_EV
@@ -152,22 +158,26 @@ def fc_block_asymmetry(fc: ForceConstantFile,
     return float(np.max(np.abs(block - np.transpose(block, (1, 0, 3, 2)))))
 
 
-def reference_frame_of(trajectory, *, name: str = "the output"):
+def reference_frame_of(reading, *, name: str = "the output"):
     """The force-constant run's FC step 0 -- the UNDISPLACED geometry with
-    the forces SIESTA evaluated there -- out of an already parsed SIESTA
-    trajectory (`parse.engines.siesta`; its frames carry every step's
-    coordinates and forces, so nothing here re-reads the file).
+    the forces SIESTA evaluated there -- out of SIESTA's reading pass over
+    the run's output (`siesta_reader.SiestaReader.finish`): its steps carry
+    every step's coordinates, as ``[label, x, y, z]`` rows in Å, and forces
+    in eV/Å, so nothing here re-reads the file.  The same records the
+    parser's frames are built from, read beside the job where the parser is
+    not.
 
     SIESTA evaluates the reference geometry before the first nudge, so it is
-    the first frame carrying forces.  The read-back takes both halves from
-    it: the coordinates are the geometry the force constants belong to --
-    the relaxed one after a `relax` stage, the input one when the structure
-    was stated relaxed -- and the forces are what stationarity is judged by
-    (R5 on this route; `engines/vibration.md` § 5.2a, § 5.5).
+    the first step carrying forces.  The finish takes both halves from it:
+    the coordinates are the geometry the force constants belong to -- the
+    relaxed one after a `relax` stage, the input one when the structure was
+    stated relaxed -- and the forces are what stationarity is judged by (R5
+    on this route; `engines/vibration.md` § 5.2a, § 5.5).  Returns the step
+    record.
     """
-    for fr in trajectory.frames:
-        if fr.forces is not None and fr.structure is not None:
-            return fr
+    for step in reading.get("steps") or ():
+        if step.get("forces") and step.get("coords"):
+            return step
     raise ParseError(f"{name}: no force block for the reference geometry "
                      f"(FC step 0) -- the force-constant run has not written "
                      f"its first step")
