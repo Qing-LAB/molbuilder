@@ -55,6 +55,60 @@ the same day, with what it turned out to be.
 
 ---
 
+## 0a. THE WORK ORDER — milestones, each closed by a full code-text review *(2026-09-27)*
+
+> *(user: "you need a consolidated persistent plan that get's updated at every
+> milestone and reviewed with agent full code text review to validate
+> results"; the order itself: "yes, that order works. go ahead")*
+
+**This table is the order of work and its state.** The rows it names (W20,
+W33–W39, …) keep the WHAT and the decisions; this table keeps WHEN and HOW FAR.
+It is updated at every milestone, in the commit that closes it.
+
+**How a milestone closes:**
+1. its items are built — the contract first wherever an item changes a rule,
+   then the code, then a test that drives the road (`jobset
+   init/prep/launch/summarize`, or the page on a live server) and is broken on
+   purpose once to watch it fail;
+2. the targeted tests pass (the unit's own and what it touched);
+3. **an agent reads the FULL code text** of the milestone's diff and of the
+   contract sections it touches — not a grep — and reports each finding with
+   its evidence;
+4. every finding is re-read against the code before it is acted on, then fixed
+   or answered;
+5. this row records the commits, the review and its outcome — and only then
+   does the next milestone start.
+
+A full test batch (`tools/testrun.py`) runs at the end of M2 and at the end of
+each programme after it, with nothing changing under it.
+
+| # | milestone | items | done when | review | status |
+|---|---|---|---|---|---|
+| **M1** | W33 P3's last check | T3: export from Results → reload (§ 5q.4) | T3 passes, mutation-checked; W33's status line corrected — its dev-server check is done (2026-09-25) | | **in progress** |
+| **M2a** | the monitor says it started | W36 ① | the session log holds `starting` / `started`, and for a broken member file the error and no `started`; the test breaks a member, not the entry | | open |
+| **M2b** | the small code fixes | W36 ② constants in the zip · ④ the ASE probe · ③ the GPU warning · ⑨ three silent fallbacks · ⑩ one `_mb_outfile` | each as W36 records it | | open |
+| **M2c** | recipes and start-up | W36 ⑤ ⑥ | `ase` in the three job recipes (no install without the user's word); the conda listing and the CUDA probe at their use; the two comments | | open |
+| **M2d** | one prep entry | W38 F7 | the page and the CLI call one prep entry returning its findings and decisions as data; the CLI prints and asks, the page shows and confirms | | open |
+| **M2e** | the pipeline log, always | W20 | every prep writes it, from both doors; the flag is gone | | open |
+| **M2f** | launched and finished | W38 F2, F3 | one door each, the same for flat and hierarchical, asked by every caller | | open |
+| **M2g** | one restart-file list | W36 ⑧, the bias chain's list (W38) | every reader asks the calculation's list; Task setup states which is in effect; the shipped lists say how to customize | | open |
+| **M2h** | the stage hand-over | W37, W38 F9 | the one contract section; the default, the warning, the explicit choice, one record read by all; *Continue from* on the page; `summarize` reads the record | | open |
+| **M2i** | stage numbers, no on/off | W38 F4, F5 | numbers come from disk; no `enabled` (old files read by the agreed rule); a removed stage's files marked `.disabled` | | open |
+| **M2j** | status owns the ladder | W38 F8, the queued attempt | every described stage in status; launched-and-unfinished attempts never hidden; the Results tab reads status | | open |
+| **M2k** | what a job runs with | W36 ⑦, W38 F1 + the one queue record, F6 | one placement and one record; GPU request / claim / match; the precedence table in the contract | | open |
+| **M2l** | the small two-door cases | W38 M1–M5, transport `restart` refused | as W38 records them | | open |
+| **M2m** | customized parameters | W39 | the contract first; one API each side; the pane's section; the two hashes | | open |
+| **M2n** | the text, then the batch | W36 ⑪ and the document sweeps left | the full batch green; then the Sol memory measurement and the sweep for tests that read text | | open |
+| **M3** | the run record, the rest | W35: P2's remainder, P3–P6 | W35's own done-conditions | | open |
+| **M4** | the engine offset, finished | W33 P4, P5 | § 5q.6; the fake-junction ladder resumes at rung 4 | | open |
+| **M5** | transport | W27 floor 3 → W30 ③ → W25 → W24 → W10; W32 ②–⑤ once the single-frame ladder has run end to end | each row's own | | open |
+| **M6** | charge and spin | W34, P1 on | § 5s | | open |
+| **M7** | the spectrum view's API | W21 step 4 | W21's own | | open |
+| **M8** | MolView sealing, the CSS | W15; W1–W6, W13 | each row's own | | open |
+| **M9** | two science features | V1.26, V1.27 | each needs its decision first | | open |
+
+---
+
 ## 1. The 2026-09-01 fact-check — ARCHIVED
 
 *Nine plan documents read against the code; three headers were flatly false. The detail is history now and lives in [`archive/2026-09-10-plan-consolidation.md`](?doc=archive/2026-09-10-plan-consolidation.md). The one live fact it found — bench § 2.2's `parse_util_bound` reads the VERDICT and not the numbers, so the item is open — is a row in § 2.*
