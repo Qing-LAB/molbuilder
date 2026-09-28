@@ -583,13 +583,15 @@ def emit_vibration_record(payload: Mapping[str, Any]) -> str:
     """The VIBRATION block: the facts a SIESTA force-constant run's finish
     reads that no SIESTA keyword states (`engines/vibration.md` § 5.3,
     § 5.5) -- ``force_criterion_ev_ang`` (this stage's resolved
-    ``relax_force_tol``), ``already_relaxed`` (the person's statement, as
-    made) and ``relaxation`` (the `relax` stage's relaxation record,
-    `parse.contract.relaxation_of`, or ``None``).  Written by the framework
+    ``relax_force_tol``), ``temperature_K`` (the thermochemistry's, from the
+    template), ``already_relaxed`` (the person's statement, as made) and
+    ``relaxation`` (the `relax` stage's relaxation record,
+    `parse.contract.relaxation_of`, or ``None``).  The format is ``v2`` since
+    ``temperature_K`` joined it (2026-09-28).  Written by the framework
     from :attr:`DeckSpec.vibration`; read back by
     `deck_record.extract_vibration_record`, beside the job as on the host."""
     out: List[str] = [begin_marker(BLOCK_VIBRATION),
-                      "# format: molbuilder-vibration/v1"]
+                      "# format: molbuilder-vibration/v2"]
     out.extend(f"# {line}" for line in _compact_json_lines(dict(payload)))
     out.append(end_marker(BLOCK_VIBRATION))
     return "\n".join(out)

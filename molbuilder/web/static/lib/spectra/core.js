@@ -68,6 +68,12 @@
     // ----- DOM refs (resolved once at startup) -----------------
     const els = {
         spectrumChart:  null,
+        // The spectrum's whole section (heading, width control, chart) and
+        // the sentence that stands in its place when no strength was
+        // computed (web/spectra.md § 2, § 9b.3); the table they mark.
+        spectrumSection: null,
+        spectrumAbsent: null,
+        modesTable:     null,
         // ``structureText`` slot removed 2026-06-10 along with the
         // ``$("structure-text")`` lookup in init() — the underlying
         // ``<textarea id="structure-text">`` was retired in task #309;
@@ -855,15 +861,14 @@
 
     // ----- Selector / compatibility (lock unused value fields) --
     //
-    // The Model 2 selector (none/all/top_n/threshold/explicit) picks
-    // exactly ONE active value field.  Locking the rest matches the
-    // Build tab's pattern -- the user can't enter a top_n value
-    // when threshold is selected, etc.
+    // The selector (skip/all/explicit) has one value field, the
+    // explicit list, live only under `explicit`; locking it otherwise
+    // matches the Build tab's pattern -- the user can't enter indices
+    // the selector would ignore.
     function _fieldIdByName(name) {
         // The catalogue owns id derivation (`_item_to_field`); this
-        // module never spells an id.  The previous hardcoded
-        // spellings ("s-es_top_n") had drifted from the real ids
-        // ("s-es-top-n"), so the lock below had never fired.
+        // module never spells an id.  Hardcoded spellings once drifted
+        // from the real ids, so the lock below had never fired.
         const schema = state.schemas.pyscf;
         const sections = (schema && schema.sections) || [];
         for (const sect of sections) {
@@ -894,13 +899,9 @@
         const activeByMode = {
             "skip":      null,
             "all":       null,
-            "top_n":     "es_top_n",
-            "threshold": "es_threshold",
             "explicit":  "es_explicit_indices",
         };
-        const valueFields = [
-            "es_top_n", "es_threshold", "es_explicit_indices",
-        ];
+        const valueFields = ["es_explicit_indices"];
         const active = activeByMode[which] || null;
         for (const name of valueFields) {
             const id = _fieldIdByName(name);
@@ -1369,6 +1370,11 @@
         const done = (v) => v === "complete" || v === "not requested";
         if (results.config && results.config.compute_raman && !done(r))
             return "Computing Raman activities (polarizability derivatives)";
+        // A file from before the flag carries "" -- no record, not a phase
+        // still to come (vibration.md § 4.9).
+        const ir = results.phase_ir;
+        if (results.config && results.config.compute_ir && ir && !done(ir))
+            return "Computing infrared intensities (dipole derivatives)";
         const sel = results.config && results.config.es_mode_selection;
         if (sel && sel !== "skip" && !done(e)) {
             const haveES = (results.modes || [])
@@ -1393,6 +1399,10 @@
         const cfg = results.config || {};
         const done = (v) => v === "complete" || v === "not requested";
         if (cfg.compute_raman && !done(results.phase_raman)) return false;
+        // "" is a file written before the infrared flag: no record, and
+        // no reason to wait (vibration.md § 4.9).
+        if (cfg.compute_ir && results.phase_ir && !done(results.phase_ir))
+            return false;
         if (cfg.es_mode_selection && cfg.es_mode_selection !== "skip"
             && !done(results.phase_es)) return false;
         return true;
@@ -1404,6 +1414,13 @@
         const dots = els.phaseIndicator.querySelectorAll(".phase-dot");
         dots.forEach(dot => {
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|es
+            // A phase the file's route does not have shows no dot at all
+            // (web/spectra.md § 3): SIESTA's has neither Raman nor the probe.
+            const has = ph === "raman" ? _routeHas(results, "compute_raman")
+                      : ph === "es" ? _routeHas(results, "es_mode_selection")
+                      : true;
+            const wrap = dot.closest(".phase");
+            if (wrap) wrap.hidden = !has;
             const v  = results["phase_" + ph] || "empty";
             // the state is a phrase (`not requested`); the class is one token
             dot.className = "phase-dot phase-" + String(v).replace(/\s+/g, "-");
@@ -1464,6 +1481,50 @@
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
+    }
+
+    /* WHAT THIS FILE'S ROUTE CAN COMPUTE, read BY ROLE (web/spectra.md
+     * § 9b.3; engines/vibration.md § 3.1): a channel the route has a switch
+     * for sits in the file's own `config`, and a route with no switch for it
+     * -- SIESTA for the strengths and the per-mode probe -- computed nothing
+     * there and never could.  Asked of the file, never of the engine's name,
+     * so the next engine is answered by its own file. */
+    function _routeHas(r, item) {
+        return !!(r && r.config && (item in r.config));
+    }
+
+    /* A SPECTRUM ONLY WHERE A STRENGTH WAS COMPUTED (web/spectra.md § 2):
+     * with none, a height would mean nothing, so none is drawn. */
+    function _anyStrength(r) {
+        return ((r && r.modes) || []).some(m =>
+            Number.isFinite(m.raman_activity_a4_amu)
+            || Number.isFinite(m.ir_intensity_km_mol));
+    }
+
+    /* The one sentence standing where the spectrum would be -- which of
+     * the four cases it is (web/spectra.md § 2): the route computes no
+     * strengths; the run asked for none; they are still being computed;
+     * the run asked and recorded none. */
+    function _noSpectrumSentence(r) {
+        if (!_routeHas(r, "compute_raman") && !_routeHas(r, "compute_ir")) {
+            return "No spectrum: this route computes the frequencies and the "
+                 + "mode shapes, not infrared or Raman intensities.  The modes "
+                 + "table and the animation are its result.";
+        }
+        const cfg = r.config || {};
+        if (!cfg.compute_raman && !cfg.compute_ir) {
+            return "No spectrum: infrared and Raman intensities were not "
+                 + "requested in this run -- the frequencies and the mode "
+                 + "shapes only.";
+        }
+        const running = (v) => v === "empty" || v === "running";
+        if (running(r.phase_frequencies) || running(r.phase_raman)
+            || running(r.phase_ir)) {
+            return "The intensities are still being computed; the spectrum "
+                 + "is drawn as soon as the first ones land.";
+        }
+        return "No spectrum: the run asked for intensities and recorded "
+             + "none -- its log says why.";
     }
 
     function renderResults(results, path) {
@@ -1593,6 +1654,17 @@
                     return "computed — " + r.ir_route;
             }
         }
+        /* The per-mode orbital energies by the same rule as the two
+         * strengths: a route with no switch for the probe computed nothing
+         * there, and names nothing it could not have asked for. */
+        function _esRouteLabel(r) {
+            if (!_routeHas(r, "es_mode_selection")) {
+                return "not computed on this route (its electronic response "
+                     + "along a mode, the projected DOS, is planned)";
+            }
+            if (r.config.es_mode_selection === "skip") return "not requested";
+            return r.phase_es;
+        }
         const meta = [
             ["Engine",            results.engine + " " + (results.engine_version || "?")],
             ["Atoms (total)",     results.n_atoms_total],
@@ -1614,7 +1686,7 @@
             ["Frequencies (Hessian)",     results.phase_frequencies],
             ["IR intensities",            _irRouteLabel(results)],
             ["Raman activities",           _ramanRouteLabel(results)],
-            ["Per-mode orbital energies",  results.phase_es],
+            ["Per-mode orbital energies",  _esRouteLabel(results)],
         ];
         // The Methods paragraph is composed during the run and grows as
         // phases complete, so it is rendered from whatever is present
@@ -1637,20 +1709,13 @@
             return [dt, dd];
         }));
 
-        // ES-derived table columns: ALWAYS visible.  Pre-fix the
-        // ES column headers vanished when no mode had electronic_
-        // structure populated -- same disease as the hide-frozen-
-        // row case (UI presence tied to data).  Users would see
-        // the column headers disappear on first results-load and
-        // wonder where they went; subsequent runs of a different
-        // job with ES data would have the columns reappear,
-        // breaking column-position muscle memory.
-        //
-        // Contract: column presence is a stable affordance.  When
-        // no mode has ES data, the cells render empty (per
-        // ``renderModesTable`` below) -- that's the honest UX.
-        // See 2026-06-14 hide-frozen-row precedent + the same-day
-        // audit findings for context.
+        // Table columns follow the file's ROUTE, never its data
+        // (web/spectra.md § 9b.3): a column the route can compute stays
+        // up with its cells empty until they land, so a run whose
+        // per-mode orbitals are still cooking does not lose and regain
+        // its headers (the 2026-06-14 hide-frozen-row lesson: UI
+        // presence tied to data); a column the route has no switch for
+        // -- SIESTA's -- is not shown at all (the class toggles below).
         const anyES = (results.modes || []).some(m => !!m.electronic_structure);
 
         // Auto-select the highest-Raman-activity real mode so the
@@ -1677,7 +1742,24 @@
             state.selectedMode = null;
         }
 
-        renderSpectrumChart(results.modes || []);
+        // THE SPECTRUM ONLY WHERE A STRENGTH WAS COMPUTED, and the columns
+        // only for what the route computes (web/spectra.md § 2, § 9b.3).
+        const drawn = _anyStrength(results);
+        if (els.spectrumSection) els.spectrumSection.hidden = !drawn;
+        if (els.spectrumAbsent) {
+            els.spectrumAbsent.hidden = drawn;
+            els.spectrumAbsent.textContent = drawn ? ""
+                : _noSpectrumSentence(results);
+        }
+        if (els.modesTable) {
+            els.modesTable.classList.toggle("route-no-raman",
+                                            !_routeHas(results, "compute_raman"));
+            els.modesTable.classList.toggle("route-no-ir",
+                                            !_routeHas(results, "compute_ir"));
+            els.modesTable.classList.toggle("route-no-es",
+                                            !_routeHas(results, "es_mode_selection"));
+        }
+        if (drawn) renderSpectrumChart(results.modes || []);
         renderModesTable();
         renderESPanel();
         renderThermoPanel(results);
@@ -1779,6 +1861,7 @@
             _actSum("ir_intensity_km_mol"),
             results.phase_frequencies || "",
             results.phase_raman || "",
+            results.phase_ir || "",
             results.ir_route || "",
             results.raman_route || "",
             results.phase_es || "",
@@ -1960,6 +2043,9 @@
         const raman = (m.raman_activity_a4_amu == null)
             ? "—"
             : Number(m.raman_activity_a4_amu).toFixed(2);
+        /* The Raman, IR and orbital cells carry their column's class, so a
+         * column the route cannot compute goes with its header
+         * (`.route-no-*`, web/spectra.md § 9b.3). */
         /* "—" IS NOT ZERO.  A null means the run did not compute this
          * channel (`compute_ir` is off by default); 0.00 means it did and the
          * mode is silent there.  CO2 needs both readings in one table: its
@@ -1979,16 +2065,18 @@
         };
         addCell(String(m.index_1based));
         addCell(Number(m.frequency_cm1).toFixed(1));
-        addCell(raman);
-        addCell(ir);
+        addCell(raman, "raman-col");
+        addCell(ir, "ir-col");
         addCell(m.has_imag ? "✓" : "");
-        addCell(m.electronic_structure ? "✓" : "");
+        addCell(m.electronic_structure ? "✓" : "", "es-col");
         /* ALWAYS FOUR CELLS, because the header always has four.  This was
          * `if (anyES)`, while `_spectra_inspector.html` emits the four
-         * `es-col` <th> unconditionally and no CSS hides them -- so on a
-         * result where no mode carries electronic structure, every row was
-         * four columns short of its header (2026-09-10).  An empty cell says
-         * "no value"; a missing cell shifts the whole row. */
+         * `es-col` <th> unconditionally -- so on a result where no mode
+         * carries electronic structure, every row was four columns short of
+         * its header (2026-09-10).  An empty cell says "no value"; a missing
+         * cell shifts the whole row.  Where the ROUTE has no probe, the
+         * table's `route-no-es` class hides the header and these cells
+         * together (web/spectra.md § 9b.3), so the two still line up. */
         addCell(anyES ? fmt(_homoEq(m), 3)  : "", "es-col");
         addCell(anyES ? fmt(_lumoEq(m), 3)  : "", "es-col");
         addCell(anyES ? fmt(_gapEq(m),  3)  : "", "es-col");
@@ -2100,23 +2188,27 @@
         // 2026-06-17 and the chart on 2026-09-11 and reached this row builder
         // on neither, so ticking "Compute IR intensities" produced a file
         // with every IR number missing and nothing saying so.
-        const headers = ["index_1based", "frequency_cm1",
-                         "raman_activity_a4_amu", "ir_intensity_km_mol",
-                         "has_imag", "has_es"];
+        // THE EXPORT FOLLOWS THE TABLE: a column the route cannot compute
+        // is left out of both (web/spectra.md § 9b.3).
+        const hasRaman = _routeHas(state.results, "compute_raman");
+        const hasIr = _routeHas(state.results, "compute_ir");
+        const hasEs = _routeHas(state.results, "es_mode_selection");
+        const headers = ["index_1based", "frequency_cm1"]
+            .concat(hasRaman ? ["raman_activity_a4_amu"] : [])
+            .concat(hasIr ? ["ir_intensity_km_mol"] : [])
+            .concat(["has_imag"])
+            .concat(hasEs ? ["has_es"] : []);
         if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
                                  "gap_eq_ev", "dgap_max_mev");
         const lines = [headers.join(",")];
         for (const m of _modesForTable()) {
-            const row = [
-                m.index_1based,
-                Number(m.frequency_cm1).toFixed(4),
-                m.raman_activity_a4_amu == null ? "" :
-                    Number(m.raman_activity_a4_amu).toFixed(4),
-                m.ir_intensity_km_mol == null ? "" :
-                    Number(m.ir_intensity_km_mol).toFixed(4),
-                m.has_imag ? "1" : "0",
-                m.electronic_structure ? "1" : "0",
-            ];
+            const row = [m.index_1based, Number(m.frequency_cm1).toFixed(4)];
+            if (hasRaman) row.push(m.raman_activity_a4_amu == null ? ""
+                : Number(m.raman_activity_a4_amu).toFixed(4));
+            if (hasIr) row.push(m.ir_intensity_km_mol == null ? ""
+                : Number(m.ir_intensity_km_mol).toFixed(4));
+            row.push(m.has_imag ? "1" : "0");
+            if (hasEs) row.push(m.electronic_structure ? "1" : "0");
             if (anyES) {
                 const fmt4 = v => v == null ? "" : Number(v).toFixed(4);
                 row.push(fmt4(_homoEq(m)));
@@ -2259,11 +2351,28 @@
             }
             // `.status` keeps newlines (white-space: pre-line), so the "\n"
             // breaks the line where the <br> did.
-            showNotice(els.esBarDiagram,
-                       "No electronic-structure data for this mode.\n"
-                       + "Re-run with es_mode_selection covering this mode "
-                       + "(or pick 'all') to see HOMO/LUMO drift here.",
-                       "muted");
+            /* WHY THERE IS NONE, by role (web/spectra.md § 9b.3): a route
+             * with no probe is told what its electronic response will be,
+             * never an item it has no way to set. */
+            const r = state.results || {};
+            const running = r.phase_es === "empty" || r.phase_es === "running";
+            // The selection is in the file from the first probed mode on, so
+            // a mode it left out is told so while the probe still runs.
+            const sel = r.selected_mode_idxs_1based || [];
+            const leftOut = sel.length > 0 && !sel.includes(m.index_1based);
+            const why = !_routeHas(r, "es_mode_selection")
+                ? "This route computes the modes, not the electrons' "
+                  + "response along them.\nThat response is the projected "
+                  + "density of states at structures displaced along a mode "
+                  + "-- planned (engines/vibration.md § 5.10), not built yet."
+                : r.config.es_mode_selection === "skip"
+                ? "The per-mode orbital check was not requested in this run "
+                  + "(Mode selection: skip)."
+                : (running && !leftOut)
+                ? "The per-mode orbital check has not reached this mode yet."
+                : "This mode was not in the run's selection for the per-mode "
+                  + "orbital check.";
+            showNotice(els.esBarDiagram, why, "muted");
             els.esSummary.innerHTML = "";
             return;
         }
@@ -3297,20 +3406,29 @@
 
     // ----- Thermochemistry panel (v5 `thermo`; plan § 2b) -------
     //
-    // The DECK computes, this panel draws: the headline (T, P)
-    // numbers, the regime sentence and the T-grid arrays are all read
-    // off `results.thermo`.  The ONE derived quantity is the
-    // electronic reference E_elec, recovered exactly from the grid's
-    // own construction  h = E_elec + zpe + u_vib + kB*T  (how the
-    // deck builds `h_eh`), so no thermochemistry formula lives here.
+    // The DECK computes, this panel draws, and it DERIVES NOTHING
+    // (web/spectra.md § 3): the headline, the regime sentence and the
+    // T-grid arrays are read off `results.thermo`, and the electronic
+    // reference is the file's own equilibrium energy -- PySCF's SCF
+    // energy, zero on a route that reports none (SIESTA), whose numbers
+    // are then the vibrational contributions alone.  (It was recovered
+    // from the grid as h - zpe - u_vib - k_B*T until 2026-09-28: a k_B*T
+    // the vibrational sums do not contain, and without the translational
+    // and rotational energies the RRHO sums do -- one formula for two
+    // constructions, so both regimes' curves were shifted.)
+    //
+    // THE LABELS FOLLOW THE REGIME: `rrho` is the full gas-phase answer
+    // (H, S, G); `vibrational-only` -- any atom held, and every SIESTA
+    // result -- is the vibrational part (ZPE + U_vib, S_vib, F_vib), and
+    // no pressure enters it (engines/vibration.md § 4.7).
     //
     // Tab-owned Plotly, same rules as the ES level diagram: colours
     // from _esTheme()'s CSS tokens, NO `height` in the layout (the
     // .thermo-chart box owns it), and a plain degrade when Plotly is
     // not on the page (/results loads it; /spectra does not mount
     // this panel at all).
-    // Boltzmann in Eh/K and Hartree in kcal/mol are `K.boltzmann_hartree_k`
-    // and `K.hartree_kcal_mol`, served with the results (see `K`).
+    // Hartree in kcal/mol is `K.hartree_kcal_mol`, served with the
+    // results (see `K`).
 
     function renderThermoPanel(results) {
         const th   = (results && results.thermo) || {};
@@ -3325,32 +3443,38 @@
             if (state.modeTab === "thermo") _activateModeTab("table");
             return;
         }
+        const rrho = th.regime === "rrho";
+        const eq = results.equilibrium || {};
+        const eElec = Number.isFinite(eq.scf_energy_eh) ? eq.scf_energy_eh : 0;
+        const kcal = (eh) => eh * K.hartree_kcal_mol;
+        const calK = (ehk) => ehk * K.hartree_kcal_mol * 1000.0;
 
-        // --- The words: headline numbers + the deck's regime note --
+        // --- The words: headline numbers + the writer's own note --------
         if (els.thermoNote) {
             const bits = [];
-            let head = "At T = " + th.temperature_K + " K, P = "
-                     + th.pressure_atm + " atm: ZPE "
-                     + Number(th.zpe_eh).toFixed(6) + " Eh ("
-                     + (th.zpe_eh * K.hartree_kcal_mol).toFixed(1) + " kcal/mol)";
-            if (th.g_eh != null) {
-                // The headline names its regime: full RRHO for a free
-                // molecule, the vibrational sums when atoms are held --
-                // one quantity under one label (engines/vibration.md § 4.7).
-                head += "; H " + Number(th.h_eh).toFixed(6) + " Eh"
-                      + "; S " + Number(th.s_eh_k).toExponential(4) + " Eh/K"
-                      + "; G " + Number(th.g_eh).toFixed(6)
-                      + (th.regime === "rrho" ? " Eh (full RRHO)"
-                                              : " Eh (vibrational contributions only)");
+            const zpe = "ZPE " + Number(th.zpe_eh).toFixed(6) + " Eh ("
+                      + kcal(th.zpe_eh).toFixed(2) + " kcal/mol)";
+            if (rrho) {
+                bits.push("At T = " + th.temperature_K + " K, P = "
+                    + th.pressure_atm + " atm (full RRHO: electronic + "
+                    + "translational + rotational + vibrational): " + zpe
+                    + (th.g_eh != null
+                       ? "; H − E_elec " + kcal(th.h_eh - eElec).toFixed(2)
+                         + " kcal/mol; S " + calK(th.s_eh_k).toFixed(2)
+                         + " cal/mol/K; G − E_elec "
+                         + kcal(th.g_eh - eElec).toFixed(2) + " kcal/mol"
+                       : "") + ".");
+            } else {
+                bits.push("At T = " + th.temperature_K + " K (vibrational "
+                    + "contributions only — no pressure enters them): " + zpe
+                    + (th.g_eh != null
+                       ? "; ZPE + U_vib " + kcal(th.h_eh - eElec).toFixed(2)
+                         + " kcal/mol; S_vib " + calK(th.s_eh_k).toFixed(3)
+                         + " cal/mol/K; F_vib = ZPE + U_vib − T·S_vib "
+                         + kcal(th.g_eh - eElec).toFixed(2) + " kcal/mol"
+                       : "") + ".");
             }
-            bits.push(head + ".");
             if (th.note) bits.push(String(th.note) + ".");
-            bits.push("Curves show the harmonic VIBRATIONAL contributions "
-                + "above the electronic minimum"
-                + (th.regime === "rrho"
-                   ? "; rotational/translational terms enter only the "
-                     + "headline RRHO numbers above."
-                   : "."));
             els.thermoNote.textContent = bits.join("  ");
         }
         if (typeof Plotly === "undefined") {
@@ -3362,23 +3486,20 @@
         }
 
         const t = _esTheme();
-        // E_elec off the grid identity -- exact, not a fit.
-        const eRef = grid.h_eh[0] - grid.zpe_eh[0] - grid.u_vib_eh[0]
-                   - K.boltzmann_hartree_k * T[0];
-        const gRel = grid.g_eh.map((g) => (g - eRef) * K.hartree_kcal_mol);
-        const hRel = grid.h_eh.map((h) => (h - eRef) * K.hartree_kcal_mol);
-        const ts   = T.map((Ti, i) => Ti * grid.s_eh_k[i] * K.hartree_kcal_mol);
+        const hRel = grid.h_eh.map((h) => kcal(h - eElec));
+        const gRel = grid.g_eh.map((g) => kcal(g - eElec));
+        const ts   = T.map((Ti, i) => kcal(Ti * grid.s_eh_k[i]));
         const config = {
             displaylogo: false, responsive: true,
             modeBarButtonsToRemove: ["select2d", "lasso2d",
                                      "toggleSpikelines"],
         };
         Plotly.react(els.thermoCurves, [
-            { x: T, y: gRel, name: "G − E_elec", mode: "lines",
-              line: { color: t.homo, width: 2 } },
-            { x: T, y: hRel, name: "H − E_elec", mode: "lines",
-              line: { color: t.stick, width: 2 } },
-            { x: T, y: ts, name: "T·S", mode: "lines",
+            { x: T, y: gRel, name: rrho ? "G − E_elec" : "F_vib",
+              mode: "lines", line: { color: t.homo, width: 2 } },
+            { x: T, y: hRel, name: rrho ? "H − E_elec" : "ZPE + U_vib",
+              mode: "lines", line: { color: t.stick, width: 2 } },
+            { x: T, y: ts, name: rrho ? "T·S" : "T·S_vib", mode: "lines",
               line: { color: t.lumo, width: 2 } },
         ], {
             // NO height -- the .thermo-chart box owns it.
@@ -3390,27 +3511,35 @@
                       font: { color: t.ink, size: 10 } },
             xaxis: { title: { text: "T (K)", font: { size: 10 } },
                      gridcolor: t.grid, zeroline: false },
-            yaxis: { title: { text: "kcal/mol above E_elec",
+            yaxis: { title: { text: rrho ? "kcal/mol above E_elec"
+                                         : "kcal/mol, vibrational contributions",
                               font: { size: 10 } },
                      gridcolor: t.grid, zeroline: false },
         }, config);
 
-        // --- Decomposition at the grid point nearest the headline T --
+        // --- The decomposition at the grid point nearest the headline T --
+        // Every bar is read off the grid; the parts sum to the last bar.
         let i0 = 0, dmin = Infinity;
         for (let i = 0; i < T.length; i++) {
             const d = Math.abs(T[i] - th.temperature_K);
             if (d < dmin) { dmin = d; i0 = i; }
         }
-        const zpe  = grid.zpe_eh[i0] * K.hartree_kcal_mol;
-        const uth  = (grid.u_vib_eh[i0] + K.boltzmann_hartree_k * T[i0]) * K.hartree_kcal_mol;
-        const mts  = -T[i0] * grid.s_eh_k[i0] * K.hartree_kcal_mol;
-        const gnet = (grid.g_eh[i0] - eRef) * K.hartree_kcal_mol;
+        const zpe  = kcal(grid.zpe_eh[i0]);
+        const uvib = kcal(grid.u_vib_eh[i0]);
+        const mts  = -kcal(T[i0] * grid.s_eh_k[i0]);
+        const gnet = kcal(grid.g_eh[i0] - eElec);
+        // Full RRHO: what is left of H above E_elec, ZPE and U_vib is the
+        // translational and rotational energy and pV -- read, not assumed.
+        const rest = kcal(grid.h_eh[i0] - eElec) - zpe - uvib;
+        const bars = rrho
+            ? { x: ["ZPE", "U_vib", "trans + rot + pV", "−T·S", "G − E_elec"],
+                y: [zpe, uvib, rest, mts, gnet],
+                c: [t.stick, t.homo, t.axis, t.lumo, t.stickSel] }
+            : { x: ["ZPE", "U_vib", "−T·S_vib", "F_vib"],
+                y: [zpe, uvib, mts, gnet],
+                c: [t.stick, t.homo, t.lumo, t.stickSel] };
         Plotly.react(els.thermoDecomp, [{
-            type: "bar",
-            x: ["ZPE", "U_vib + kT", "−T·S",
-                "G − E_elec"],
-            y: [zpe, uth, mts, gnet],
-            marker: { color: [t.stick, t.homo, t.lumo, t.stickSel] },
+            type: "bar", x: bars.x, y: bars.y, marker: { color: bars.c },
         }], {
             margin: { t: 8, r: 8, b: 34, l: 52 },
             plot_bgcolor: t.paper, paper_bgcolor: t.paper,
@@ -3465,7 +3594,7 @@
         const raw = parseFloat(els.broadeningFwhm.value);
         const v = Number.isFinite(raw) ? Math.max(0, raw) : 0;
         state.broadeningFWHM = v;
-        if (state.results) {
+        if (state.results && _anyStrength(state.results)) {
             renderSpectrumChart(state.results.modes || []);
         }
     }
@@ -3520,6 +3649,9 @@
         els.displayFloorOut = $("display-floor-out");
         els.modesTbody     = $("modes-tbody");
         els.spectrumChart  = $("spectrum-chart");
+        els.spectrumSection = $("spectrum-section");
+        els.spectrumAbsent = $("spectrum-absent");
+        els.modesTable     = $("modes-table");
         // Mode-table interactions + ES panel.
         els.modesFilter       = $("modes-filter");
         els.modesCsvBtn       = $("modes-csv-btn");

@@ -275,17 +275,22 @@ def test_a_list_that_is_not_a_list_is_refused():
     assert got == []
 
 
-# --- § 6.2  the two pictures -------------------------------------------------
+# --- § 6.2  heights only where strengths exist --------------------------------
 
-def test_with_no_strengths_anywhere_every_stick_is_the_same_height():
+def test_with_no_strengths_anywhere_no_height_and_no_curve_is_drawn():
+    """§ 6.2 — with nothing computed there is nothing to draw: no stick, no
+    curve (the rug alone carries the positions).  Until 2026-09-28 every
+    stick stood at height one under a broadened curve, a frequency
+    distribution that read as an intensity spectrum."""
     calls = drive(
         "chart.setModes(MODES.map(m => ({ index: m.index, freq: m.freq })));\n"
+        "chart.setBroadening(20);\n"
         "console.log(JSON.stringify(__calls));"
     )
     react = last_react(calls)
-    bars = [t for t in react["traces"] if t["type"] == "bar"][0]
-    assert bars["y"] == [1, 1, 1]
-    assert "strengths not computed" in react["layout"]["annotations"][0]["text"]
+    bars = [t for t in react["traces"] if t["type"] == "bar"]
+    assert bars and all(not b.get("y") for b in bars), bars
+    assert not [t for t in react["traces"] if t.get("mode") == "lines"]
 
 
 def test_a_mode_with_no_strength_is_marked_not_drawn_at_zero():

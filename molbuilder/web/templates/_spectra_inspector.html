@@ -74,9 +74,11 @@
         <span id="watch-status" class="status"></span>
       </div>
 
-      <!-- Phase-progress chips: three dots that fill in as each
-           computational phase (Frequencies, Raman, Per-mode ES)
-           lands.  Hidden until first load / watch tick. -->
+      <!-- Phase-progress chips: one dot per computational phase
+           (Relaxation, Frequencies, Raman, Per-mode ES), filling in as
+           each lands; a phase the file's route does not have shows no
+           dot (web/spectra.md § 3).  Hidden until first load / watch
+           tick. -->
       <div id="phase-indicator" class="phase-indicator" hidden
            aria-label="Run-phase progress">
         <span class="phase">
@@ -124,6 +126,12 @@
            <code>docs/science/references.bib</code>.</p>
       </details>
 
+      {#- THE SPECTRUM, ONLY WHERE A STRENGTH WAS COMPUTED (web/spectra.md § 2,
+          § 9b.3): a result with none -- every SIESTA result -- hides this
+          whole section, width control included, and the sentence below
+          (#spectrum-absent) says why.  The modes table and the animation
+          are that result's whole view. -#}
+      <div id="spectrum-section">
       <h3 class="subsection-h">Spectrum</h3>
       <!-- Spectrum controls.  Each control is a BLOCK carrying its own
            label and its own hint, and the blocks lay out side by side
@@ -155,10 +163,7 @@
              "above X% of the strongest peak in its own channel" does.
 
              It decides only what is DRAWN -- nothing is recomputed and
-             nothing is discarded, which is what makes it free to drag.
-             Not to be confused with the Raman-activity threshold in the
-             Spectrum tab, which decides what is COMPUTED (two SCFs per
-             mode) and is absolute and expensive. -->
+             nothing is discarded, which is what makes it free to drag. -->
         <div class="spectrum-control">
           <label class="inline-label">
             <span>Hide bands below</span>
@@ -193,6 +198,8 @@
           which took two fifths of the width for one molecule. -#}
         <div id="spectrum-chart" class="spectrum-chart"
              aria-label="Raman spectrum (frequency vs activity)"></div>
+      </div>
+      <p id="spectrum-absent" class="status muted spectrum-absent" hidden></p>
 
       {#- ONE SELECTION, THREE VIEWS.
           The modes table, the 3-D animation and the electronic structure all
@@ -242,7 +249,7 @@
               <tr id="modes-thead-row">
                 <th data-col="index_1based"          data-numeric="1">#</th>
                 <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
-                <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
+                <th data-col="raman_activity_a4_amu" data-numeric="1" class="raman-col">Raman (Å⁴/amu)</th>
                 {#- IR SITS BESIDE RAMAN because they are two readings of ONE
                     mode, not two spectra: one Hessian, two property
                     derivatives on the same eigenvectors.  The run has written
@@ -251,9 +258,9 @@
                     in exactly one place, a change-detection fingerprint, so a
                     person who ticked "Compute IR intensities" got correct
                     physics they could only see by opening the JSON (W21). -#}
-                <th data-col="ir_intensity_km_mol"   data-numeric="1">IR (km/mol)</th>
+                <th data-col="ir_intensity_km_mol"   data-numeric="1" class="ir-col">IR (km/mol)</th>
                 <th data-col="has_imag">imag?</th>
-                <th data-col="has_es">ES?</th>
+                <th data-col="has_es" class="es-col">ES?</th>
                 <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
                 <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
                 <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>

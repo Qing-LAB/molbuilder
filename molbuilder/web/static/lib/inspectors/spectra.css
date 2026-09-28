@@ -240,6 +240,18 @@ so there is no
 .modes-table th[hidden],
 .modes-table td[hidden] { display: none; }
 
+/* A COLUMN THE FILE'S ROUTE CANNOT COMPUTE IS NOT SHOWN (web/spectra.md
+ * § 9b.3): the viewer marks the table with the channels the route lacks --
+ * read by role, from the file's own config -- and the cells go with their
+ * headers.  Within a route an absent value stays a "—" in its cell. */
+.modes-table.route-no-raman .raman-col,
+.modes-table.route-no-ir .ir-col,
+.modes-table.route-no-es .es-col { display: none; }
+
+/* The sentence standing where the spectrum would be when no strength was
+ * computed. */
+.spectrum-absent { margin: var(--space-sm) 0; }
+
 .modes-table th[data-col] {
     cursor: pointer;
     user-select: none;
@@ -608,6 +620,9 @@ so #phase-indicator was
     gap: var(--space-sm);
     color: var(--text-secondary);
 }
+/* A phase the file's route does not have (web/spectra.md § 3) -- the same
+ * author-cascade guard as the indicator's own, one rule up. */
+.phase[hidden] { display: none; }
 .phase-label { user-select: none; }
 .phase-dot {
     display: inline-block;

@@ -516,6 +516,11 @@ class TestPartialSpectraInspectorEndpoint:
         "results-summary-list",
         "spectrum-chart",
         "broadening-fwhm",
+        # The spectrum only where a strength was computed (web/spectra.md
+        # § 2): the section the core hides, and the sentence it shows in
+        # its place.
+        "spectrum-section",
+        "spectrum-absent",
         # The intensity floor, and the methods block the spectrum is
         # reported with.  Both arrived with the one-view rewrite
         # (b337f91c) and the contract list was not extended with them,

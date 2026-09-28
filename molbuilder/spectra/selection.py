@@ -11,22 +11,20 @@ Public surface:
     previous run, return the 1-based indices of modes that should
     get per-mode displaced-geometry SCFs in this run.
 
-The five Model-2 selectors:
+The three selectors (`engines/vibration.md` § 4.8):
 
     skip      -> []  (no L4 work)
     all       -> every mode (respecting the freq filter)
-    top_n     -> top-N by raman_activity_a4_amu (respecting the
-                 freq filter); REQUIRES L3 complete
-    threshold -> modes with raman_activity > cfg.es_threshold
-                 (respecting the freq filter); REQUIRES L3 complete
     explicit  -> exactly cfg.es_explicit_indices (frequency
                  filter IGNORED -- the user named specific modes,
                  the window doesn't override)
 
+(`top_n` and `threshold` ranked modes by Raman activity; retired by
+decision 2026-09-23 and removed 2026-09-28, V1.6 -- the probe measures
+d(eps)/dQ, which follows its own selection rule.)
+
 The freq filter (cfg.freq_min_cm1 / cfg.freq_max_cm1, either
-side optionally None) composes with selector by INTERSECTION:
-"top_n=10 within [500, 2000] cm⁻¹" means top-10-by-activity
-*among* modes in that window.
+side optionally None) restricts `all` to the modes in that window.
 
 Resume / non-destructive L4 (spec § 2.5.2): when ``prior`` is
 provided, modes that already have ``electronic_structure``
@@ -60,12 +58,6 @@ def select_modes(modes: List[ModeData],
 
       * cfg.es_mode_selection == "skip"  -> []
       * cfg.es_mode_selection == "all"   -> every mode (after freq filter)
-      * cfg.es_mode_selection == "top_n" -> top cfg.es_top_n by Raman
-                                            activity (after freq filter,
-                                            requires L3 data)
-      * cfg.es_mode_selection == "threshold" -> Raman activity above
-                                            cfg.es_threshold (after
-                                            freq filter, requires L3)
       * cfg.es_mode_selection == "explicit" -> cfg.es_explicit_indices
                                             (freq filter IGNORED)
 
@@ -82,19 +74,6 @@ def select_modes(modes: List[ModeData],
     elif sel == "all":
         base = [m.index_1based for m in modes
                 if _passes_freq_window(m, cfg)]
-
-    elif sel == "top_n":
-        ranked = _modes_with_activity_sorted(modes)
-        # Apply freq window first, then take top-N -- order matters
-        # for "top 10 within the window" semantics (spec § 8.1).
-        windowed = [m for m in ranked if _passes_freq_window(m, cfg)]
-        base = [m.index_1based for m in windowed[:max(0, int(cfg.es_top_n))]]
-
-    elif sel == "threshold":
-        base = [m.index_1based for m in modes
-                if (_passes_freq_window(m, cfg)
-                    and m.raman_activity_a4_amu is not None
-                    and m.raman_activity_a4_amu > cfg.es_threshold)]
 
     elif sel == "explicit":
         # Frequency filter intentionally IGNORED -- the user named
@@ -157,19 +136,6 @@ def _passes_freq_window(m: ModeData, cfg: "VibrationConfigView") -> bool:
     if cfg.freq_max_cm1 is not None and m.frequency_cm1 > cfg.freq_max_cm1:
         return False
     return True
-
-
-def _modes_with_activity_sorted(modes: List[ModeData]) -> List[ModeData]:
-    """Return modes sorted by Raman activity DESCENDING; modes
-    without Raman activity (raman_activity_a4_amu = None) drop
-    out entirely (top_n / threshold semantics: you can't rank by
-    a quantity you haven't computed).  Ties broken by ascending
-    mode index for determinism (spec § 8 table)."""
-    with_activity = [m for m in modes if m.raman_activity_a4_amu is not None]
-    return sorted(
-        with_activity,
-        key=lambda m: (-m.raman_activity_a4_amu, m.index_1based),
-    )
 
 
 __all__ = ["select_modes"]

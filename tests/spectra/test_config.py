@@ -63,7 +63,7 @@ class TestSpectraDefaults:
 
     def test_es_off_by_default(self):
         """First-pass run should be cheap -- spectrum only, no
-        displaced SCFs.  User opts in to top_n / explicit after
+        displaced SCFs.  User opts in to all / explicit after
         seeing the spectrum."""
         cfg = _spectra_cfg()
         assert cfg.es_mode_selection == "skip"
@@ -132,7 +132,7 @@ class TestSpectraFieldMetadata:
         # None on Optional[str] field stays valid.
         _spectra_cfg(dispersion=None)
         # All declared choices remain accepted.
-        for v in ("skip", "all", "top_n", "threshold", "explicit"):
+        for v in ("skip", "all", "explicit"):
             _spectra_cfg(es_mode_selection=v)
 
 

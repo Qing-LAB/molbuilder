@@ -387,12 +387,6 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView",
     sel = cfg.es_mode_selection
     if sel == "all":
         criterion = "every vibrational mode"
-    elif sel == "top_n":
-        criterion = (f"the top {cfg.es_top_n} modes ranked by Raman "
-                     f"activity")
-    elif sel == "threshold":
-        criterion = (f"modes with Raman activity > {cfg.es_threshold:g} "
-                     f"Å⁴/amu")
     elif sel == "explicit":
         criterion = (f"a user-specified set of {len(cfg.es_explicit_indices)} "
                      f"modes")

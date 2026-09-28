@@ -1686,24 +1686,26 @@ Turn it off only if you do not want the extra file.
 """
 
 [item.temperature_K]
-kind = "engine"
+kind = "deck"
 category = ["procedure"]
-engines = ["pyscf"]
+engines = ["pyscf", "siesta"]
 calculations = ["vibration"]
-anchor = "thermo.thermo"
-engine_key = "thermo.thermo(temperature=...)"
+expands = ["thermo.thermo(temperature=)", "the harmonic vibrational sums"]
+engine_key = "(molbuilder: the thermochemistry's temperature -- PySCF's thermo.thermo(temperature=) for a free molecule, the harmonic vibrational sums otherwise and in SIESTA's finish)"
 manual = "PySCF 2.13 pyscf.hessian.thermo 'thermo(temperature=)'"
 type = "float"
 value = 298.15
 default = 298.15
 unit = "K"
-range = [0.0, 5000.0]
+range = [1.0, 5000.0]
 group = "profile"
 label = "Thermochemistry temperature"
 tier = "advanced"
 help = """
-The temperature the thermochemistry is evaluated at, under the rigid-rotor harmonic-oscillator (RRHO) model in thermo.thermo(). The standard value is 298.15 K.
-It sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S curves run over their own temperature grid, so this does not move them.
+The temperature the thermochemistry is evaluated at.  The standard value is 298.15 K.
+Both engines: on PySCF with nothing held it is the full rigid-rotor harmonic-oscillator (RRHO) answer of thermo.thermo(); with atoms held, and on every SIESTA run, it is the harmonic VIBRATIONAL part alone -- the zero-point energy, the thermal vibrational energy and entropy, and their free energy (engines/vibration.md 4.7 says what those are good for and where they stop).
+It sets the headline for the thermochemistry block; the viewer's curves run over their own temperature grid, which passes through this temperature.
+It starts at 1 K: near absolute zero every sum is the zero-point energy, and the free molecule's translational entropy has no value at 0 K itself.
 """
 
 [item.pressure_atm]
@@ -1723,8 +1725,8 @@ group = "profile"
 label = "Thermochemistry pressure"
 tier = "advanced"
 help = """
-The pressure the thermochemistry is evaluated at, for the RRHO (rigid-rotor harmonic-oscillator) treatment PySCF's thermo.thermo() applies.  Standard conditions are 1 atm = 101325 Pa.
-It sets the headline (T, P) for the thermochemistry block; the viewer's G/H/S curves run over their own temperature grid.
+The pressure of the gas-phase translational term of the full rigid-rotor harmonic-oscillator (RRHO) thermochemistry -- PySCF with no atom held.  The standard value is 1 atm.
+Nothing else takes it: with atoms held the thermochemistry is the vibrational part alone, which no pressure enters, and the result records the pressure as not used (null).  A SIESTA vibration does not offer it for the same reason (engines/vibration.md 4.7).
 """
 
 
@@ -1828,58 +1830,17 @@ engine_key = "(molbuilder: per-mode electronic-structure selector)"
 type = "enum"
 value = "skip"
 default = "skip"
-choices = ["skip", "all", "top_n", "threshold", "explicit"]
+choices = ["skip", "all", "explicit"]
 group = "profile"
 label = "Mode selection"
 tier = "basic"
 help = """
 Which vibrational modes get the displaced-geometry orbital-energy probe -- a look at the orbital energies with the molecule pushed along a mode.
   skip      -- don't run this step at all; you get a spectrum but no per-mode HOMO/LUMO data.  Use this for first-pass exploration.
-  all       -- every mode (cost ~ 2 N modes).
-  top_n     -- the N modes with the strongest Raman activity.
-  threshold -- every mode whose Raman activity exceeds your cutoff.
+  all       -- every mode inside the frequency window (cost ~ 2 N modes).
   explicit  -- you list specific mode numbers.
-Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick.
-Caveat: top_n and threshold rank by Raman brightness, which is NOT the same as electron-phonon coupling strength -- a mode that's transport-critical can be Raman-weak ([Galperin2007]).  When in doubt, use explicit (after looking at the spectrum) or all.
-"""
-
-[item.es_top_n]
-kind = "deck"
-calculations = ["vibration"]
-expands = ["per-mode displaced-SCF loop"]
-category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode selector parameter)"
-type = "int"
-value = 10
-default = 10
-range = [1, 1000]
-group = "profile"
-label = "Top-N modes"
-tier = "advanced"
-help = """
-How many of the brightest Raman-active modes get orbital-energy data.  Used only when Mode selection is set to top_n.
-Cost grows linearly: N modes = 2 N SCF calculations.
-"""
-
-[item.es_threshold]
-kind = "deck"
-calculations = ["vibration"]
-expands = ["per-mode displaced-SCF loop"]
-category = ["procedure"]
-engines = ["pyscf"]
-engine_key = "(molbuilder: per-mode selector parameter)"
-type = "float"
-value = 1.0
-default = 1.0
-range = [0.0, 1000.0]
-unit = "Å⁴/amu"
-group = "profile"
-label = "Raman-activity threshold"
-tier = "advanced"
-help = """
-Raman-activity cutoff in A^4/amu: every mode brighter than this gets orbital-energy data.  Used only when Mode selection is set to threshold.
-The final mode count is unpredictable -- it depends on how many modes happen to land above your cutoff, so you cannot know the cost of the run in advance.
+Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
+The probe is PySCF's: a SIESTA vibration computes the modes only, and the electrons' response along a mode there is the projected density of states at displaced structures, planned (engines/vibration.md 5.10).
 """
 
 [item.es_explicit_indices]

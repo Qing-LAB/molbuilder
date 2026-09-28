@@ -101,8 +101,11 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
     for k in ("phase_relaxation", "phase_frequencies", "phase_raman"):
         assert d[k] == "complete", (k, d[k])
     # the probe was never asked for (`es_mode_selection` left at `skip`):
-    # the flag says so from the first write (vibration.md § 4.9)
+    # the flag says so from the first write (vibration.md § 4.9) -- and so
+    # does infrared's, which this description does not ask for either
     assert d["phase_es"] == "not requested"
+    assert d["config"]["compute_ir"] is False
+    assert d["phase_ir"] == "not requested"
 
     # D3, live: the relaxation ran, was tracked, and converged.
     rel = d["relaxation"]
@@ -218,7 +221,10 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
         f"IR ran but recorded no route: {d.get('ir_route')!r}")
 
     # Raman was NOT requested: its phase says so (vibration.md § 4.9),
-    # and the run says so as a route, not as a zero.
+    # and the run says so as a route, not as a zero.  Infrared's own flag
+    # is closed by the dipole sweep -- the one a reader waits on while that
+    # sweep, which writes nothing until it ends, runs (§ 4.9).
+    assert d["phase_ir"] == "complete"
     assert d["phase_raman"] == "not requested"
     assert all(m["raman_activity_a4_amu"] in (None, 0.0) for m in modes)
     assert d["raman_route"] == "none" and d["raman_fd_step_ang"] is None
@@ -443,6 +449,10 @@ def test_water_with_its_oxygen_held_reports_three_vibrations(tmp_path,
     assert 1400.0 < freqs[0] < 1900.0 and 3300.0 < freqs[2] < 4100.0, freqs
     th = d["thermo"]
     assert th["regime"] == "vibrational-only"
+    # no pressure enters the vibrational sums, on this engine as on SIESTA,
+    # and the note gives the reason the answer is vibrational-only (§ 4.7)
+    assert th["pressure_atm"] is None
+    assert "atoms are held" in th["note"], th["note"]
     # ONE quantity under one label here too: the vibrational sums above the
     # electronic energy, the headline a row of the grid, no gas-phase term.
     tg = th["grid"]["temperatures_K"]

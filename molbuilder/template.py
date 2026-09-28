@@ -1713,15 +1713,38 @@ def config_from_template(text: str, config_cls):
     unknown = sorted(k for k in vals if k not in known)
     if unknown:
         # Refused, never dropped (U16): this is a file people edit by
-        # hand, and an item the schema does not know is a typo or a
-        # renamed field -- either way, silently ignoring it renders a
-        # deck missing what the person believes they set.
-        raise ValueError(
-            f"template names item(s) the {config_cls.__name__} schema does "
-            f"not declare: {', '.join(map(repr, unknown))}.  A template "
-            f"item is a schema field (engines/template.md § 7); check the "
-            f"spelling against the schema's own names.")
+        # hand, and an item the schema does not know is a typo, a renamed
+        # field or a retired one -- either way, silently ignoring it
+        # renders a deck missing what the person believes they set.  A
+        # retired item is named as retired, so a template written before
+        # the retirement is not sent looking for a misspelling.
+        retired = [k for k in unknown if k in RETIRED_ITEMS]
+        other = [k for k in unknown if k not in RETIRED_ITEMS]
+        why = []
+        if retired:
+            why.append(
+                "template names item(s) retired from the schema -- delete "
+                "them: " + ", ".join(f"{k!r} ({RETIRED_ITEMS[k]})"
+                                     for k in retired) + ".")
+        if other:
+            why.append(
+                f"template names item(s) the {config_cls.__name__} schema "
+                f"does not declare: {', '.join(map(repr, other))}.  A "
+                f"template item is a schema field (engines/template.md § 7); "
+                f"check the spelling against the schema's own names.")
+        raise ValueError("  ".join(why))
     return config_cls(**vals)
+
+
+#: Items a schema once declared and no longer does, each with where its
+#: retirement is recorded -- read by the refusal above so a template written
+#: before the retirement is told to delete the item, not to fix a spelling.
+RETIRED_ITEMS = {
+    "es_top_n": "the top_n selector, retired 2026-09-28 -- "
+                "engines/vibration.md § 4.8",
+    "es_threshold": "the threshold selector, retired 2026-09-28 -- "
+                    "engines/vibration.md § 4.8",
+}
 
 
 #: The module's public surface.  It omitted `select` and `one` -- which § 8.0

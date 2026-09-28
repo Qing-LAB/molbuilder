@@ -181,16 +181,14 @@ a pinning test:
 | V4 | **A duplicated rule** — hybrid `grid_level < 4` in both `validation/pyscf.py` and the spectra engine (now `validation/spectra.py`) with different detectors. | One body: `validation.pyscf.is_hybrid_functional` + `check_hybrid_grid_level(cfg, context=…)`, called by both sites; the message is context-selected (opt forces vs Hessian frequencies). |
 | V5 | **Doc drift** — `chemistry-correctness` pointed at a non-existent `molbuilder/analyzer.py` / `analysis_notes`. | Repointed to `chemistry.py::analyze_structure` / field `warnings` / the real deterministic-analyzer test. |
 
-**The render-gate vs preflight-UX split (a V1/V2 subtlety).** Registering the
-spectra preflight surfaced that it mixed two concerns: render-gate **science**
-(grid / amplitude / parity / method / open-shell) and a preflight-only
-**selector-availability** check (`top_n` / `threshold` want prior Raman data).
-Only the science gates render — a `top_n` script is valid to *emit* (it resolves
-at run time). So the spectra engine split into `render_checks` (registered as
-the `SpectraConfig` validator; run by both the render path and `validate()`) and
-`selector_checks` (preflight-only UX the `/spectra` endpoint adds on top).
-`preflight()` composes both for back-compat. Pinned by
-`test_validate_dispatches_spectra_render_science_but_not_selector`.
+**The render gate is the science alone.** The vibration deck's gate is
+`validation/spectra.py::spectra_render_checks` (grid, amplitude, parity,
+method, open shell), run by the render path and by `validate()` through the
+kind's own step (`validation/__init__._validate_vibration_kind`). *(It once had
+a preflight-only sibling, `selector_checks`, for the `top_n` / `threshold`
+selectors' wish for prior Raman data, registered beside a `SpectraConfig`
+validator; the class went on 2026-08-22 and the two selectors on 2026-09-28 —
+`engines/vibration.md` § 4.8 — and the sibling with them.)*
 
 ---
 

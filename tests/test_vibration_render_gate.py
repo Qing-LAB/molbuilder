@@ -74,12 +74,15 @@ def test_the_kind_door_runs_the_same_gate_body():
     hand -- a test.  A vibration's science is the kind's:
     `_validate_vibration_kind` runs `spectra_render_checks` against the
     deck's config view, which is the object the emitters get.  Same body,
-    reached the way production reaches it.
+    reached the way production reaches it: `validate(..., calculation=
+    "vibration")` with the config a person describes, the door `prep` and
+    the Task-setup preflight both go through.
     """
-    from molbuilder.validation.spectra import spectra_render_checks
-    issues = list(spectra_render_checks(
-        _water(), _spectra_cfg(es_mode_selection="top_n")))
-    assert any("Raman-weak" in i.message for i in issues)
+    from molbuilder.validation import validate
+    cfg = PySCFConfig(es_mode_selection="explicit", es_explicit_indices=[])
+    issues = validate(_water(), cfg, calculation="vibration")
+    assert any(i.where == "config.es_explicit_indices" for i in issues), [
+        (i.where, i.message) for i in issues]
 
 
 def test_an_ecp_deck_compiles_and_carries_one_ecp_kwarg():

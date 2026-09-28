@@ -200,32 +200,6 @@ def spectra_render_checks(struct: Structure,
                      f"(open-shell Hartree-Fock)."),
             where="config.method",
         ))
-    # Selector-by-Raman scientific caveat.  top_n / threshold
-    # rank vibrational modes by Raman activity, but Raman
-    # brightness is NOT the same as electron-phonon coupling
-    # strength.  Transport-critical modes can be Raman-weak and
-    # would be silently dropped.  This is a SCIENTIFIC caveat
-    # (the user picked a valid option) -- warn, don't error.
-    if cfg.es_mode_selection in ("top_n", "threshold"):
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                f"Mode selection \"{cfg.es_mode_selection}\" ranks "
-                f"vibrational modes by Raman activity, but Raman "
-                f"brightness is NOT the same as electron-phonon "
-                f"coupling strength.  A mode that's important for "
-                f"transport (or any IETS/inelastic application) "
-                f"can be Raman-weak and would be silently skipped "
-                f"by this selector.  For transport-preparation "
-                f"runs, look at the spectrum first with mode "
-                f"selection = \"skip\", then re-run with "
-                f"\"explicit\" listing the modes you care about, "
-                f"or use \"all\" if cost allows.  Cf. "
-                f"[Galperin2007]."
-            ),
-            where="config.es_mode_selection",
-        ))
-
     # Empty explicit list: the run will produce no orbital-energy
     # data even though the user asked for it.  Warn so they don't
     # waste wall time discovering this after the run.
@@ -238,8 +212,7 @@ def spectra_render_checks(struct: Structure,
                 "mode indices were entered.  No per-mode "
                 "orbital-energy data will be computed.  Either "
                 "add at least one mode index, or switch the "
-                "selector to \"skip\", \"all\", \"top_n\", or "
-                "\"threshold\"."
+                "selector to \"skip\" or \"all\"."
             ),
             where="config.es_explicit_indices",
         ))

@@ -449,7 +449,7 @@ def test_switching_files_replaces_the_view_it_does_not_merge(
     assert unexpected == [], f"the page reported JS errors: {unexpected}"
 
 
-def test_the_thermo_panel_states_the_zero_point_energy_in_kcal_mol(
+def test_the_thermo_panel_reads_the_file_and_its_bars_add_up(
         page, flask_server, co2_run):
     """The page converts the file's Hartree with the constants the server
     serves with the results (`web/blueprints/spectra.py::_page_constants`,
@@ -457,14 +457,24 @@ def test_the_thermo_panel_states_the_zero_point_energy_in_kcal_mol(
     point energy the thermochemistry note states in kcal/mol is the file's
     ``zpe_eh`` times that one constant.
 
-    MUTATION THIS MUST FAIL AGAINST: the page not taking the served
-    constants (`renderResults`) -- the figure reads NaN.
+    And the decomposition is the FILE's, read and not derived
+    (`web/spectra.md` § 3): the electronic reference is the file's own SCF
+    energy, the parts add up to the last bar, the last bar is the headline
+    ``G - E_elec`` -- and, CO2 being linear, what is left of ``H - E_elec``
+    after the ZPE and U_vib is 3.5 k_B T (translation 3/2, rotation 1, pV 1),
+    which is the full RRHO's and nothing else's.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the page not taking the served
+    constants (`renderResults`) -- the figure reads NaN; the reference
+    derived from the grid as before 2026-09-28 (``h - zpe - u_vib - k_B T``)
+    -- the translation + rotation + pV bar reads k_B T, not 3.5 k_B T.
     """
     import re
 
     from molbuilder import constants as C
 
-    zpe_eh = json.loads(co2_run.read_text())["thermo"]["zpe_eh"]
+    doc = json.loads(co2_run.read_text())
+    zpe_eh = doc["thermo"]["zpe_eh"]
     page.add_init_script(
         "try {"
         f" sessionStorage.setItem('molbuilder.current_dir', {json.dumps(str(co2_run.parent))});"
@@ -481,5 +491,23 @@ def test_the_thermo_panel_states_the_zero_point_energy_in_kcal_mol(
         timeout=30000).json_value()
     stated = re.search(r"ZPE \S+ Eh \((\S+) kcal/mol\)", note)
     assert stated, note
+    kcal = C.HARTREE_EV / C.KCAL_MOL_EV
     assert float(stated.group(1)) == pytest.approx(
-        zpe_eh * C.HARTREE_EV / C.KCAL_MOL_EV, abs=0.051), (note, zpe_eh)
+        zpe_eh * kcal, abs=0.051), (note, zpe_eh)
+
+    th = doc["thermo"]
+    assert th["regime"] == "rrho"
+    page.click("#mode-tabbtn-thermo")
+    bars = page.wait_for_function(
+        "() => { const d = document.getElementById('thermo-decomp');"
+        "  return d && d.data && d.data[0] ? {x: d.data[0].x, y: d.data[0].y}"
+        "  : null; }", timeout=20000).json_value()
+    assert bars["x"] == ["ZPE", "U_vib", "trans + rot + pV", "−T·S",
+                         "G − E_elec"], bars["x"]
+    y = bars["y"]
+    assert sum(y[:-1]) == pytest.approx(y[-1], abs=1e-9), y
+    assert y[-1] == pytest.approx(
+        (th["g_eh"] - doc["equilibrium"]["scf_energy_eh"]) * kcal,
+        abs=1e-6), (y, th)
+    kT = C.BOLTZMANN_EV_K / C.KCAL_MOL_EV * th["temperature_K"]
+    assert y[2] == pytest.approx(3.5 * kT, abs=0.01), (y[2], kT)

@@ -248,10 +248,12 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **486 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **482 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
-`wrap_into_cell` retired on 2026-09-25 — both falls in the series came from
-deleting a home rather than from adding a check).
+`wrap_into_cell` retired on 2026-09-25, and 482 on 2026-09-28 once PySCF's
+`es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA —
+every fall in the series came from deleting a home rather than from adding a
+check).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
 the item and the key and printing both values. What it does **not** do is
@@ -707,7 +709,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `read_by` | which **other** layers derive something from this value — § 6.1 |
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
-| `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the fourteen vibration items stay out of an optimization template by declaration |
+| `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
 | `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, as § 3.3 rules for every value) |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
@@ -1221,8 +1223,9 @@ mental model.
 **And `calculations` is `engines`' exact sibling for the calculation KIND**
 *(spectra-migration plan P0, 2026-08-20)*: an item may declare which kinds
 select it (`calculations = ["vibration"]`), and its absence means every
-kind — so the 80-plus pre-existing items needed no edit, and the fourteen
-vibration items stay out of an optimization template by declaration rather
+kind — so the 80-plus pre-existing items needed no edit, and the vibration
+items (thirteen since two retired selectors went, 2026-09-28) stay out of an
+optimization template by declaration rather
 than by luck (they leaked into one the day they were added; measured, and
 the reason the key exists). The same writer rule applies on emit: a
 generated per-calculation template serves ONE kind, so no item in it
@@ -1236,7 +1239,7 @@ own rows with `calculations = [...]`, shares everything genuinely shared by
 leaving the key off, and every door (the schema route, `template_with_values`,
 the columns endpoint) narrows the same one source to (engine, kind). The
 vibration kind proved the shape: its template IS the optimization template
-plus fourteen declared rows, because one of its steps *is* an optimization. A
+plus its declared rows, because one of its steps *is* an optimization. A
 second catalogue per kind would be § 2.1a's two-homes drift all over again,
 one axis over.
 

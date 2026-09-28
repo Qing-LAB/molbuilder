@@ -154,18 +154,6 @@ class TestRenderMethodsMdPreRun:
         assert "0.02" in md
         assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
 
-    def test_selector_top_n_named_in_prose(self):
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=7)
-        md = render_methods_md(cfg)
-        assert "top 7" in md
-
-    def test_selector_threshold_named_in_prose(self):
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(es_mode_selection="threshold", es_threshold=2.5)
-        md = render_methods_md(cfg)
-        assert "Raman activity > 2.5" in md
-
     def test_selector_explicit_states_count(self):
         from molbuilder.spectra import render_methods_md
         cfg = _spectra_cfg(es_mode_selection="explicit",

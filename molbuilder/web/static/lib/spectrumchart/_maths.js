@@ -43,10 +43,11 @@ export function bandHalfWidth(broadening) {
 /**
  * Which modes the envelope sums over, and at what height — § 9, following § 6.2.
  *
- * With strengths known anywhere, the sum runs over the modes that have one and a
- * mode without one contributes nothing: it is missing, not weak. With none known,
- * every mode contributes a peak of height one and the curve is a frequency
- * distribution. No imaginary mode is ever in the sum, in either picture.
+ * The sum runs over the modes that have a strength, and a mode without one
+ * contributes nothing: it is missing, not weak. With none known there is no
+ * curve at all — a sum over heights nobody computed would be a picture of
+ * nothing (§ 6.2; until 2026-09-28 every mode added a peak of height one).
+ * No imaginary mode is ever in the sum.
  */
 /* WHICH NUMBER IS THIS CURVE'S HEIGHT is the caller's to say.
  *
@@ -60,11 +61,8 @@ const defaultHeight = (m) => m.activity;
 
 function summedPeaks(modes, heightOf = defaultHeight) {
     const real = modes.filter((m) => !m.imaginary);
-    const withActivity = real.filter((m) => isFiniteNumber(heightOf(m)));
-    if (withActivity.length > 0) {
-        return withActivity.map((m) => ({ freq: m.freq, height: heightOf(m) }));
-    }
-    return real.map((m) => ({ freq: m.freq, height: 1 }));
+    return real.filter((m) => isFiniteNumber(heightOf(m)))
+               .map((m) => ({ freq: m.freq, height: heightOf(m) }));
 }
 
 const lorentzianAt = (x, peaks, gamma) => {

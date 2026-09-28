@@ -65,13 +65,6 @@ except ImportError:                         # beside a job, in mb_vibration.pyz
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                          SCHEMA_VERSION, ModeData, SpectraResults)
 
-#: The temperature and pressure the thermochemistry is summed at when the
-#: route states none -- the headline PySCF's items default to
-#: (`engines/vibration.md` § 5.5: reachable on SIESTA is owed).
-DEFAULT_TEMPERATURE_K = 298.15
-DEFAULT_PRESSURE_ATM = 1.0
-
-
 def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          positions_ang, elements: Sequence[str],
                          held: Sequence[int], *,
@@ -88,8 +81,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          force_criterion_ev_ang: Optional[float] = None,
                          already_relaxed: bool = False,
                          ladder_relaxation: Optional[Mapping[str, Any]] = None,
-                         temperature_K: float = DEFAULT_TEMPERATURE_K,
-                         pressure_atm: float = DEFAULT_PRESSURE_ATM,
+                         temperature_K: float,
                          config: Optional[Mapping[str, Any]] = None,
                          engine_metadata: Optional[Mapping[str, Any]] = None,
                          timestamp: Optional[str] = None) -> SpectraResults:
@@ -181,7 +173,10 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     thermo = {
         "regime": "vibrational-only",
         "temperature_K": float(temperature_K),
-        "pressure_atm": float(pressure_atm),
+        # NO PRESSURE ENTERS the vibrational sums -- only the gas-phase
+        # translational term takes one -- so none is recorded
+        # (`engines/vibration.md` § 4.7).
+        "pressure_atm": None,
         "zpe_eh": zpe,
         "h_eh": grid["h_eh"][k_head],
         "s_eh_k": grid["s_eh_k"][k_head],
@@ -189,12 +184,19 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         "n_modes": len(modes),
         "n_imag_excluded": n_imag,
         "n_rigid_removed": n_rigid,
-        "note": ("VIBRATIONAL contributions only, above the electronic "
-                 "minimum, the headline and the grid alike: this route "
-                 "reports no total energy and has no gas-phase "
-                 "translational or rotational partition function to add; "
-                 "the whole-body motions of the free atoms "
-                 "(n_rigid_removed) were removed before diagonalising"),
+        "note": ("The harmonic VIBRATIONAL contributions of the free atoms "
+                 "at this temperature -- ZPE, U_vib, S_vib and F_vib = "
+                 "ZPE + U_vib - T*S_vib -- the headline and the grid "
+                 "alike.  Good for the zero-point and vibrational "
+                 "free-energy correction of one structure against another "
+                 "computed the same way; not an enthalpy or a free energy "
+                 "of the system: this route carries no electronic energy, "
+                 "a free molecule's translation and rotation are not "
+                 "added, and no pressure enters.  Modes below about 100 "
+                 "cm-1 are anharmonic in practice and carry most of S_vib, "
+                 "so the entropy is the least reliable number; the "
+                 "whole-body motions of the free atoms were removed before "
+                 "diagonalising"),
         "grid": grid,
     }
 
@@ -228,6 +230,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         # the relaxing stage's record is what says so here.
         phase_frequencies=PHASE_COMPLETE,
         phase_raman=PHASE_NOT_REQUESTED,
+        phase_ir=PHASE_NOT_REQUESTED,
         phase_es=PHASE_NOT_REQUESTED,
         phase_relaxation=(PHASE_COMPLETE if ladder_relaxation is not None
                           else PHASE_NOT_REQUESTED),
@@ -302,5 +305,4 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
             "converged": converged, "warning": warning}
 
 
-__all__ = ["vibrational_analysis", "DEFAULT_TEMPERATURE_K",
-           "DEFAULT_PRESSURE_ATM"]
+__all__ = ["vibrational_analysis"]

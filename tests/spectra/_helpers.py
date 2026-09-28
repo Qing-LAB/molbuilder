@@ -104,7 +104,7 @@ def _make_results(complete: bool = True) -> SpectraResults:
 
 def _modes_fixture() -> list[ModeData]:
     """6-mode fixture with varied frequencies + Raman activities for
-    exercising top_n / threshold / window / explicit selectors.
+    exercising the window / explicit selectors.
 
       idx  freq (cm⁻¹)  raman_activity_a4_amu
       ---  -----------  ---------------------

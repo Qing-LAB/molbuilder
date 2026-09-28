@@ -1,14 +1,14 @@
 """L2 mode-selection tests: ``select_modes`` (the reference selector).
 
-`web/spectra.md` § 9a.1 -- the five selectors, the frequency window that
-filters four of them, and the resume skip.  Pure functions, exhaustively
+`web/spectra.md` § 9a.1 -- the three selectors, the frequency window that
+filters `all`, and the resume skip.  Pure functions, exhaustively
 tested:
 
-  * the five Model-2 selectors (skip / all / top_n / threshold /
-    explicit) on a 6-mode fixture with varied (freq, Raman activity)
-    pairs;
-  * the frequency-range filter composes with each selector by
-    INTERSECTION (archived-spec § 8.1);
+  * the three selectors (skip / all / explicit) on a 6-mode fixture;
+    `top_n` and `threshold` were removed 2026-09-28 (V1.6) with their
+    tests;
+  * the frequency-range filter restricts `all`, and `explicit` ignores it
+    (archived-spec § 8.1);
   * priors / resume behaviour (archived-spec § 2.5.3);
 
 Also includes the cross-check that the emitted script's inlined
@@ -52,63 +52,6 @@ class TestSelectModes:
         cfg = _spectra_cfg(es_mode_selection="all",
                             freq_min_cm1=800.0, freq_max_cm1=2500.0)
         assert select_modes(_modes_fixture(), cfg) == [3, 4]
-
-    def test_selector_top_n_orders_by_activity_descending(self):
-        """Top-3: brightest first -> 3 (87.2), 5 (45.0), 6 (18.5)."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=3)
-        assert select_modes(_modes_fixture(), cfg) == [3, 5, 6]
-
-    def test_selector_top_n_skips_modes_without_activity(self):
-        """Mode 4 has raman_activity=None -- excluded from top_n
-        ranking even if N would otherwise include it."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=10)
-        # Asks for 10, only 5 modes have activities; all 5 returned.
-        out = select_modes(_modes_fixture(), cfg)
-        assert 4 not in out
-        assert sorted(out) == [1, 2, 3, 5, 6]
-
-    def test_selector_top_n_with_freq_window(self):
-        """Top-2 within [2000, 4000] -> 5 (45), 6 (18) -- mode 4
-        falls in the window but has no activity, mode 5 + 6 are the
-        only Raman-active candidates."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=2,
-                            freq_min_cm1=2000.0, freq_max_cm1=4000.0)
-        assert select_modes(_modes_fixture(), cfg) == [5, 6]
-
-    def test_selector_top_n_clamps_silently(self):
-        """N > available count silently clamps -- the selector's own
-        contract; the too-few-modes ADVISORY is the kind validator's
-        (validation/spectra.py; validate_selection retired)."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=100)
-        out = select_modes(_modes_fixture(), cfg)
-        # 5 modes have activities; all 5 returned regardless of N=100.
-        assert len(out) == 5
-
-    def test_selector_threshold(self):
-        """Threshold 15 -> activities > 15 are modes 3 (87) and 5 (45).
-        Mode 6 has 18.5, so it passes too.  Modes 2 (12.5) and 1 (3.2)
-        fall under.  Mode 4 has no activity (excluded)."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="threshold",
-                            es_threshold=15.0)
-        out = select_modes(_modes_fixture(), cfg)
-        assert sorted(out) == [3, 5, 6]
-
-    def test_selector_threshold_with_freq_window(self):
-        """Threshold 10 + window [500, 1500] -> only mode 3 passes
-        both (mode 2's freq is in window but activity 12.5 > 10; let
-        me recompute: mode 2 freq=745 in [500,1500] ✓, activity 12.5 >
-        10 ✓ -- passes.  Mode 3 freq=1023 in window ✓, 87 > 10 ✓ --
-        passes.)"""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="threshold",
-                            es_threshold=10.0,
-                            freq_min_cm1=500.0, freq_max_cm1=1500.0)
-        assert sorted(select_modes(_modes_fixture(), cfg)) == [2, 3]
 
     def test_selector_explicit(self):
         from molbuilder.spectra import select_modes
@@ -195,21 +138,6 @@ class TestSelectModesWithPriorResume:
                             es_explicit_indices=[2, 3])
         assert select_modes(_modes_fixture(), cfg, prior=None) == [2, 3]
 
-    def test_prior_filters_top_n_path_too(self):
-        """Resume works for every selector, not just explicit.
-        top_n=3 with prior ES on mode 3 -> returns the next-best
-        modes instead."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="top_n", es_top_n=3)
-        prior = self._prior_with_es_on_mode(idx=3)
-        out = select_modes(_modes_fixture(), cfg, prior=prior)
-        # top_n=3 normally returns [3, 5, 6]; with 3 already done -> [5, 6].
-        # Note that this is a DROP (3 removed), not a re-rank to take
-        # the 4th-place mode (2) -- resume preserves "what was asked"
-        # minus "what's done", it doesn't re-allocate slots.
-        assert out == [5, 6]
-
-
 # (TestValidateSelection retired 2026-08-21 with its subject -- see the
 #  tombstone in spectra/selection.py.)
 
@@ -230,13 +158,10 @@ class TestSelectorEquivalence:
 
     def _build_selector_namespace(self, cfg, modes_payload):
         """Re-create the runtime environment the inlined selector
-        sees: ES_MODE_SELECTION / ES_TOP_N / ES_THRESHOLD /
-        ES_EXPLICIT_INDICES / FREQ_MIN_CM1 / FREQ_MAX_CM1 plus the
-        modes_payload list."""
+        sees: ES_MODE_SELECTION / ES_EXPLICIT_INDICES / FREQ_MIN_CM1 /
+        FREQ_MAX_CM1 plus the modes_payload list."""
         return {
             "ES_MODE_SELECTION":    cfg.es_mode_selection,
-            "ES_TOP_N":             cfg.es_top_n,
-            "ES_THRESHOLD":         cfg.es_threshold,
             "ES_EXPLICIT_INDICES":  list(cfg.es_explicit_indices),
             "FREQ_MIN_CM1":         cfg.freq_min_cm1,
             "FREQ_MAX_CM1":         cfg.freq_max_cm1,
@@ -286,12 +211,6 @@ class TestSelectorEquivalence:
         dict(es_mode_selection="skip"),
         dict(es_mode_selection="all"),
         dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
-        dict(es_mode_selection="top_n", es_top_n=3),
-        dict(es_mode_selection="top_n", es_top_n=10),  # exceeds count
-        dict(es_mode_selection="top_n", es_top_n=2,
-             freq_min_cm1=1000.0, freq_max_cm1=3000.0),
-        dict(es_mode_selection="threshold", es_threshold=10.0),
-        dict(es_mode_selection="threshold", es_threshold=100.0),  # nothing
         dict(es_mode_selection="explicit", es_explicit_indices=[1, 3, 5]),
         dict(es_mode_selection="explicit", es_explicit_indices=[2]),
     ])

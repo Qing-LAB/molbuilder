@@ -94,11 +94,11 @@ class TestEnvelope:
         assert got["x"][i] == pytest.approx(1000.0, abs=w / 8)
         assert got["y"][i] == pytest.approx(expected, rel=0.02)
 
-    def test_with_no_strengths_anywhere_every_mode_adds_a_peak_of_height_one(self):
-        """§ 9 — the sum follows the picture (§ 6.2): a frequency distribution."""
-        got = curve([mode(1, 1000.0), mode(2, 2000.0)], 20)
-        peak = max(got["y"])
-        assert peak == pytest.approx(1.0, rel=0.02)
+    def test_with_no_strengths_anywhere_there_is_no_curve(self):
+        """§ 9, § 6.2 — a sum over heights nobody computed would be a picture
+        of nothing (it drew a unit-height frequency distribution until
+        2026-09-28, which read as an intensity spectrum)."""
+        assert curve([mode(1, 1000.0), mode(2, 2000.0)], 20) is None
 
     def test_a_mode_without_a_strength_adds_nothing_when_others_have_one(self):
         """§ 9 — missing is not weak: it is absent from the sum, not a zero peak."""
@@ -107,18 +107,13 @@ class TestEnvelope:
         assert max(with_gap["y"]) == pytest.approx(max(alone["y"]), rel=1e-9)
 
     def test_an_imaginary_mode_is_never_in_the_sum(self):
-        """§ 6.4 / § 9 — adding one leaves the envelope unchanged, in both pictures."""
+        """§ 6.4 / § 9 — adding one leaves the envelope unchanged."""
         real_only = curve([mode(1, 1000.0, 10.0)], 20)
         plus_imaginary = curve(
             [mode(1, 1000.0, 10.0), mode(2, 300.0, 40.0, imaginary=True)], 20
         )
         assert max(plus_imaginary["y"]) == pytest.approx(max(real_only["y"]), rel=1e-9)
         assert min(plus_imaginary["x"]) == pytest.approx(min(real_only["x"]), rel=1e-9)
-
-    def test_an_imaginary_mode_is_out_of_the_density_picture_too(self):
-        """§ 9 — 'in either picture'."""
-        got = curve([mode(1, 1000.0), mode(2, 300.0, imaginary=True)], 20)
-        assert max(got["y"]) == pytest.approx(1.0, rel=0.02)
 
     @pytest.mark.parametrize("width", [2, 20, 200])
     def test_a_peak_carries_at_least_eight_samples_across_its_full_width(self, width):

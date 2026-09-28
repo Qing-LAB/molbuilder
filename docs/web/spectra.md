@@ -27,7 +27,10 @@ frequencies and mode shapes, and on PySCF the infrared and Raman strengths
 beside them ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.5) — and then shows it as an interactive chart: two stacked
 panels of sticks over one frequency axis, a sortable table of the vibrational
 modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
-both times.
+both times. **A result with no strength computed has no spectrum**: every
+SIESTA result, whose route computes none, and a PySCF run with infrared and
+Raman both off show the modes table and the animation, and one sentence
+says why (§ 2, § 9b.3).
 
 ## 1. Two surfaces, one engine
 
@@ -96,10 +99,21 @@ Two special cases are worth knowing:
 - **Imaginary modes** (a negative frequency — a sign the geometry is a saddle
   point, not a true minimum) are drawn in **red at their negative frequency**, so
   a bad optimization is visible at a glance.
-- **"Density" mode.** Early in a run — or if the calculation was set up without
-  Raman intensities — no mode has an activity value yet. Rather than a blank
-  chart, the viewer draws every mode as a **unit-height stick** so you can still
-  see *where* the frequencies are while the intensities are still being computed.
+- **No strengths, no chart** *(user, 2026-09-28: "there should be no width or
+  spectrum for siesta result. it is just mode of frequency, and animation of
+  the mode")*. A result in which no mode carries a strength draws no chart
+  and no width control — a height that means nothing is not drawn at all.
+  One sentence stands where the chart would be and says which of four cases
+  it is: **the route computes none** (SIESTA — *this route computes the
+  frequencies and the mode shapes, not infrared or Raman intensities*);
+  **the run asked for none** (a PySCF run with both strengths off);
+  **they are still being computed** (a PySCF run before its first strength
+  lands — its `phase_raman` or `phase_ir` still to finish, § 7 — which draws
+  the chart the moment one does); or **the run asked and recorded none**
+  (its log says why). The modes are picked from the table. *(Until 2026-09-28 the chart drew every
+  mode as a unit-height stick with a broadened curve over them — a
+  frequency distribution, which read as an intensity spectrum wherever modes
+  crowded.)*
 
 ## 3. The three views of one mode
 
@@ -114,12 +128,15 @@ a 3D canvas and a chart both take their size from a box, and a box in a hidden
 tab has none — so opening a tab re-fits the viewer and re-sizes the chart.
 
 The **Modes table** is a table of every vibrational mode — its number,
-frequency, Raman activity, IR intensity, whether it's imaginary, and whether it carries
-excited-state data — that you can **sort and filter**, export to CSV, and click a
-row to select a mode. When the run also computed **excited states**, four more
-columns appear (HOMO, LUMO, gap, and the gap's shift). Those columns are always
-present in the header; their cells simply fill in once there's excited-state
-data.
+frequency, Raman activity, IR intensity, whether it is imaginary, and whether
+the per-mode orbital check reached it (*ES?*) — that you can **sort and
+filter**, export to CSV, and click a row to select a mode. Four more columns
+give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
+shift along the mode. **The columns follow the file's route, never its data**:
+a column the route can compute stays in the header and its cells fill in as
+the numbers land, and a column the route cannot compute — infrared, Raman and
+the four orbital columns on SIESTA — is not shown, nor exported to CSV
+(§ 9b.3).
 
 ### 3.1 The level diagram — and why it has to zoom
 
@@ -164,13 +181,29 @@ the input every number below depends on rather than a result among them.
 **A fourth, run-level tab: Thermochemistry** *(v5 artifacts)*. Beside the
 three per-mode views sits a tab that appears when the results carry a
 `thermo` block ([`archive/2026-08-20-spectra-migration-plan.md`](?doc=archive/2026-08-20-spectra-migration-plan.md)
-§ 2b): the headline (T, P) numbers with the regime sentence, G/H/T·S curves
-over the deck's temperature grid, and the free-energy decomposition bar at the
-headline temperature. The **deck computes, the viewer draws** — the only
-derived number in JS is the electronic reference, recovered exactly from the
-grid's own construction (`h = E_elec + zpe + u_vib + k_B·T`). The phase
+§ 2b): the headline numbers with the regime sentence, curves over the deck's
+temperature grid, and the decomposition bar at the headline temperature. The
+**deck computes, the viewer draws, and the viewer derives nothing**: the
+electronic reference is the file's own equilibrium energy — PySCF's SCF
+energy; SIESTA's route carries none, and its numbers are vibrational
+contributions alone ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 4.7). **The labels follow the regime**:
+
+| `thermo.regime` | the headline | the curves | the bar |
+|---|---|---|---|
+| `rrho` — PySCF, nothing held | T, P, ZPE, `H − E_elec`, S, `G − E_elec` (kcal/mol), *full RRHO* | `H − E_elec`, `G − E_elec`, `T·S` | ZPE · U_vib · translation + rotation + pV · −T·S · `G − E_elec` |
+| `vibrational-only` — atoms held, and every SIESTA result | T, ZPE, `ZPE + U_vib`, `S_vib`, `F_vib`, *vibrational contributions only* — no pressure, which enters only the gas-phase translation | `ZPE + U_vib`, `F_vib = ZPE + U_vib − T·S_vib`, `T·S_vib` | ZPE · U_vib · −T·S_vib · `F_vib` |
+
+The writer's own `thermo.note` says what the numbers are good for and where
+they stop, beside them. *(Until 2026-09-28 the viewer recovered E_elec from the
+grid as `h − zpe − u_vib − k_B·T` — a `k_B·T` the vibrational sums do not
+contain, and without the translational and rotational energies the RRHO sums
+do — so both regimes' curves were shifted and neither bar summed to its total;
+and it printed `P = 1 atm` over results no pressure entered.)* The phase
 indicator gained a **Relaxation** dot the same way (data-driven off
-`phase_relaxation`); a v4 file simply shows it empty and hides the thermo tab.
+`phase_relaxation`), and shows no dot for a phase the file's route does not
+have (Raman and the probe on SIESTA); a v4 file simply shows it empty and
+hides the thermo tab.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -468,8 +501,10 @@ If you load a spectrum whose calculation is still running, the viewer **polls
 `/api/spectra/load` every 2 seconds** and redraws as new modes arrive. (That's a
 faster cadence than the trajectory viewer's 15 seconds — a spectrum job produces
 its phases in quicker bursts.) It considers the run done once every phase the
-description asked for reports `complete`; a phase it never asked for reports
-`not requested` from the first write and counts as finished
+description asked for reports `complete` — the infrared intensities included,
+which carry their own flag, `phase_ir`; a phase it never asked for reports
+`not requested` from the first write and counts as finished, and a file
+written before the infrared flag (`phase_ir` `""`) is not waited on for it
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9).
 
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
@@ -597,18 +632,19 @@ anyway. See [`presenters.md`](?doc=web/presenters.md) and
 **Two things the deck decides that nothing else can, and both end up in what
 you publish.**
 
-### 9a.1 The five selectors
+### 9a.1 The three selectors
 
 Electronic structure at a displaced geometry is an SCF per mode, so which
-modes get one is a real cost decision. `es_mode_selection` takes one of five
-answers:
+modes get one is a real cost decision. `es_mode_selection` — a PySCF item:
+SIESTA's route has no probe (§ 9b.3) — takes one of three answers:
 
 | | picks |
 |---|---|
 | `skip` | none |
 | `all` | every mode |
 | `explicit` | exactly the indices you list |
-| ~~`top_n`~~ · ~~`threshold`~~ | **retired** *(decided 2026-09-23)*. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths (§ 9b.3) they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters (8 SCFs for CO₂). *The code still carries both, in seven places named by V1 in [`plans/plan.md`](?doc=plans/plan.md); the retirement is owed.* |
+
+*(`top_n` and `threshold` were retired by decision on 2026-09-23 and removed on 2026-09-28, V1.6. Both ranked modes by **Raman activity**, and the probe measures how the gap moves along a mode — ∂ε/∂Q, which follows its own selection rule: in a centrosymmetric molecule the Raman-bright modes are exactly the infrared-dark ones, so the filter kept one symmetry class and dropped the other every time; and for an engine that computes no strengths they were undefined rather than empty. The frequency window is the cost control, and `all` is cheap where it matters — 8 SCFs for CO₂.)*
 
 **The frequency window filters `all` (`skip` selects nothing) and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
@@ -669,27 +705,29 @@ So the file has to carry a result with pieces missing, and say so.
 names who produced the file. A key an engine cannot produce is absent or
 `null`, and a reader treats that as *not computed* — a different statement
 from `0.0`, which is a measured absence (`ModeData`'s own rule, and the
-`partial` activity class). The consequences, each already the code's
-behaviour for a channel that was not requested and now the rule for an engine
-that cannot request it:
+`partial` activity class). The consequences, for an engine that cannot
+compute a channel and for a run that did not ask for one:
 
 | where | what a reader sees |
 |---|---|
-| the chart | a result with no computed strength is drawn as **lines at the mode positions**, all one height, under the note *strengths not computed — height means nothing here*; a lane whose channel is missing is titled *not computed* |
-| the rug | every mode, in the `partial` colour — never `silent`, because nobody looked |
-| the modes table | a `—` in the cell, not a `0.00` |
+| the chart | **no chart and no width control** when no mode carries a strength — every SIESTA result — and one sentence in its place: *not computed on this route* (§ 2) *(user, 2026-09-28)*. With some strengths computed, a lane whose channel is missing is titled *not computed* |
+| the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked. With no chart, the modes table carries every mode |
+| the modes table | **a column the file's route cannot compute is not shown** — IR, Raman and the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them. Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
+| the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names PySCF's `es_mode_selection`, which a SIESTA run has no way to set. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
+| the run summary | *not computed on this route* for every channel the route lacks — infrared, Raman, the per-mode orbital energies — by the same rule; *not requested* only where the run could have asked |
+| the thermochemistry tab | labelled by its regime (§ 3): on SIESTA the vibrational contributions alone, with what they are good for and where they stop ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.7) |
 | the write-up | names what was computed; the file and the viewer name what was not, so an absence cannot be read as a zero |
 
 **What the file carries for each engine** — the molecular-orbital block
 optional as a whole, the intensities `null` on every SIESTA mode, the routes
 recorded per run, the SIESTA metadata naming the `.FC` file and its range —
-is [`engines/vibration.md`](?doc=engines/vibration.md) § 6.5. What this tab
-must still learn from it is registered under V1: the equilibrium energy drawn
-as a dash rather than `0.00000000` when it is `null`, the Raman line said by
-route rather than by a phase flag, the change fingerprint reading `ir_route`
-rather than the `phase_ir` nothing writes, and
-[`presenters.md`](?doc=web/presenters.md)'s *PySCF spectrum* label, which
-names an engine and will be wrong the day it is not.
+is [`engines/vibration.md`](?doc=engines/vibration.md) § 6.5. *(What this
+tab had to learn from it — the equilibrium energy drawn as a dash rather than
+`0.00000000` when it is `null`, the Raman line said by route rather than by a
+phase flag, the change fingerprint, and an engine-neutral label in
+[`presenters.md`](?doc=web/presenters.md) — was done on 2026-09-24, V1.3 and
+V1.13; the fingerprint reads `phase_ir` since that flag has been written,
+2026-09-28.)*
 
 ## 10. Test map
 
@@ -701,4 +739,10 @@ relaxation dot included), `test_task_setup_tab.py` (the send flow: the shared
 door, the kind, and the browser-vs-CLI byte-compat pin),
 `test_vibration_render_gate.py` (the deck runs the science gate — and it
 refuses), `tests/test_vibration_e2e.py` (the live water runs),
+`tests/test_siesta_vibration_results_e2e.py` (a SIESTA result on the Results
+tab: the modes without a spectrum, the columns and dots by route, the
+vibrational-only thermochemistry and its bars), `tests/test_spectra_from_a_real_run_e2e.py`
+(a PySCF result computed and read back, its RRHO bars summing to the headline),
+`test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role,
+and when the viewer stops waiting — infrared's own flag included, § 7),
 `test_vibrationview_maths_js.py` (the animation's eigenvector math).

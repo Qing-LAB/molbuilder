@@ -12,8 +12,10 @@ Pins from this session:
     show/hide logic were retired in the MolView migration, task #34;
     the toggle now lives in the always-rendered flat force-controls
     block, so there is no JS visibility transition left to pin.)
-  * spectra-inspector ``.modes-table .es-col`` headers -- always
-    visible (no ``th.hidden = !anyES`` write).
+  * spectra-inspector ``.modes-table .es-col`` headers -- visible
+    whatever the data (no ``th.hidden = !anyES`` write); only a route
+    with no probe at all, SIESTA's, shows none (`web/spectra.md`
+    § 9b.3) -- a property of the route, not of the data.
   * mol-viewer-embed Animation Export section -- always visible
     (no ``sect.hidden = !hasAnim`` write).
 

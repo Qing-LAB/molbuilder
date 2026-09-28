@@ -125,6 +125,17 @@ def _tick_already_relaxed(bundle):
     tmpl.write_text(head + "[item.already_relaxed]" + tail)
 
 
+def _set_template_value(bundle, item, old, new):
+    """Change one item's value in the calculation's template, the way a
+    person edits it -- the ``value = <old>`` line under ``[item.<item>]``."""
+    tmpl = bundle / "H2.template.toml"
+    head, _, tail = tmpl.read_text().partition(f"[item.{item}]")
+    assert tail, item
+    assert f"value = {old}" in tail, (item, tail[:400])
+    tmpl.write_text(head + f"[item.{item}]"
+                    + tail.replace(f"value = {old}", f"value = {new}", 1))
+
+
 def _the_monitor_closed(attempt, stage, step_words):
     """What the monitor beside a real run said at its end
     (`run-reports.md` § 2.1a, § 2.3): how the run ended in the Results tab's
@@ -269,7 +280,17 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     """The box ticked: no relaxation, the force constants at the geometry as
     given, the reference forces judged by the template's tolerance.  And
     the contradiction refused first: unticked with no relax stage in the
-    ladder is neither state, and prep names both ways out (§ 5.2a)."""
+    ladder is neither state, and prep names both ways out (§ 5.2a).
+
+    The thermochemistry is summed at the TEMPLATE'S temperature, which is
+    one meaning on both engines (§ 3.1): set to 350 K here, it reaches the
+    result through the deck's `vibration` block -- and a vibrational-only
+    result records no pressure, since none enters it (§ 4.7).
+
+    MUTATION THIS MUST FAIL AGAINST: prep leaving the temperature out of the
+    block -- the finish then refuses the deck and the launch fails (it was
+    fixed at 298.15 K on SIESTA until 2026-09-28, V1.7).
+    """
     tree = tmp_path / "projects"
     # the relaxed bond (fixtures/siesta_fc/README.md)
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
@@ -281,6 +302,7 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     assert r.exit_code != 0 and "already_relaxed = true" in r.output \
         and "`relax` stage" in r.output, r.output
     _tick_already_relaxed(bundle)
+    _set_template_value(bundle, "temperature_K", "298.15", "350.0")
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "run", "freq", "--bundle", str(bundle),
@@ -289,6 +311,9 @@ def test_ticked_freq_alone_measures_at_the_geometry_as_given(tmp_path,
     attempt = bundle / "01_freq" / "run-0"
     d = _the_result(attempt, "01_freq")
     _common_assertions(d)
+    assert d["thermo"]["temperature_K"] == 350.0, d["thermo"]["temperature_K"]
+    assert d["thermo"]["pressure_atm"] is None
+    assert 350.0 in d["thermo"]["grid"]["temperatures_K"]
     assert d["relaxation"]["already_relaxed"] is True
     # nothing relaxed: the force-constant run itself never does
     assert d["phase_relaxation"] == "not requested"

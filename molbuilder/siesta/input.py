@@ -1648,8 +1648,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             ]
         out += [
             "#",
-            "# 1. Mulliken population analysis (per-atom charge breakdown):",
-            "# WriteMullikenPop    1     # 0=off, 1=atom, 2=atom+orbital",
+            "# 1. Mulliken population analysis (per-atom charge breakdown;",
+            "#    SIESTA 5's names -- WriteMullikenPop is the retired one):",
+            "# Charge.Mulliken         end   # when: none | end (of the SCF) | scf (every step)",
+            "# Charge.Mulliken.Format  1     # 1 = atomic and orbital charges; 2, 3 add overlap populations",
             "#",
             "# 2. Band structure along high-symmetry path (set kgrid > 1):",
             "# %block BandLines",

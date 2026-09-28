@@ -701,6 +701,24 @@ class SiestaConfig:
         "item_kind": "produce",
         "engine_key": "(molbuilder: no engine keyword -- the ladder or the deck decides)",
     })
+    # THE THERMOCHEMISTRY'S TEMPERATURE, one meaning on both engines
+    # (`engines/vibration.md` § 3.1, § 4.7): the job's finish sums the
+    # harmonic vibrational part at it, read from the deck's `vibration`
+    # block (§ 5.3).  No pressure beside it -- no SIESTA result has the
+    # gas-phase translational term one would enter.
+    temperature_K: float = field(default=298.15, metadata={
+        "category": ("procedure",),
+        "section": "Vibration",
+        "workflow_group": "profile",
+        "label": "Thermochemistry temperature", "unit": "K",
+        # `produce`, as `already_relaxed` beside it: no SIESTA keyword --
+        # the deck's `vibration` block carries it to the finish.
+        "item_kind": "produce",
+        "engine_key": "(molbuilder: the thermochemistry's temperature -- PySCF's thermo.thermo(temperature=) for a free molecule, the harmonic vibrational sums otherwise and in SIESTA's finish)",
+        "id_suffix": "temperature",
+        "range": (1.0, 5000.0),
+        "tier":  "advanced",
+    })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),
         "section": "Compute & budget",

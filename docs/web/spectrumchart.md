@@ -39,8 +39,10 @@ It is not a tour of the current code; the code it replaces is 345 lines inside a
 > - **The band** — the invisible region around each stick within which a click
 >   counts as clicking that mode (§ 6.3). It is the reason picking a mode is not
 >   a test of aim.
-> - **The two pictures** — with strengths known, a stick's height means its
->   strength; with none known, every stick is the same height (§ 6.2).
+> - **Heights only where strengths exist** — with strengths known, a stick's
+>   height means its strength; with none known there is nothing to draw but
+>   the positions, and the Spectrum viewer does not mount a chart at all
+>   (§ 6.2).
 > - **An imaginary mode** — one whose frequency came out imaginary, meaning the
 >   structure is not sitting at rest (§ 6.4).
 
@@ -346,37 +348,42 @@ ask first is whether it is a fact about *the picture* or about *the science* —
 the second belongs to the tab, and this list is how the boundary in § 2 stays
 real rather than aspirational.
 
-### 6.2 Two pictures, decided by the data, not by a setting
+### 6.2 Heights only where strengths exist — decided by the data, not by a setting
 
-A run computes frequencies before it computes intensities, so a result can
-legitimately arrive with no activities at all:
+A run computes frequencies before it computes intensities, and some routes
+compute none (SIESTA's, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 1.3), so a result can arrive with some strengths or with none:
 
 ```
-  SOME STRENGTHS KNOWN                  NONE KNOWN YET
-  height means strength                 every stick is height one,
-                                        and the picture says why
+  SOME STRENGTHS KNOWN
+  height means strength
 
-      │      ┃                              │  ┃ ┃    ┃  ┃ ┃   ┃
-      │      ┃   ┃                          │  ┃ ┃    ┃  ┃ ┃   ┃
-      │  ┃   ┃   ┃                          │  ┃ ┃    ┃  ┃ ┃   ┃
-      │  ┃   ┃   ┃  ×   ×                   │  ┃ ┃    ┃  ┃ ┃   ┃
-      └──┸───┸───┸──────────▶               └──┸─┸────┸──┸─┸───┸──▶
-                 ↑                           "strengths not computed"
+      │      ┃
+      │      ┃   ┃
+      │  ┃   ┃   ┃
+      │  ┃   ┃   ┃  ×   ×
+      └──┸───┸───┸──────────▶
+                 ↑
           × = computed as zero?
               No — NOT COMPUTED, and
               marked so it cannot be
               mistaken for silent
 ```
 
-**The right-hand picture is not a chart with nothing in it.** Every stick stands
-at height one, and the curve over them is the sum of those — so the picture
-answers *where are the modes, and where do they crowd together*, which is a real
-question and the only one the data can answer yet (§ 9).
+**None known draws no heights.** With no strength anywhere there is no height
+to draw: the chart draws no sticks and no curve, only the rug of positions —
+and its caller does not mount it for such a result at all. The Spectrum viewer
+shows the modes table and one sentence saying why instead
+([`spectra.md`](?doc=web/spectra.md) § 2) *(user, 2026-09-28: "there should be no
+width or spectrum for siesta result. it is just mode of frequency, and
+animation of the mode")*. *(Until 2026-09-28 a list with none known drew every
+stick at height one with the curve over them — a frequency distribution, which
+read as an intensity spectrum wherever modes crowded.)*
 
-**Both markings are drawn in the plot**, as the pictures show: the `×` on the
-axis, the words along the top. Neither is a label beside the chart or a banner
-above it — a chart made of one drawing surface stays a chart made of one drawing
-surface, and § 5.3's "no controls" holds without an exception carved for it.
+**The marking is drawn in the plot**, as the picture shows: the `×` on the
+axis. It is not a label beside the chart or a banner above it — a chart made of
+one drawing surface stays a chart made of one drawing surface, and § 5.3's "no
+controls" holds without an exception carved for it.
 
 **Which picture you get is derived, never configured.** A flag would be a second
 place to believe something the data already says, and the failure mode is a flat
@@ -873,12 +880,15 @@ has to mean the same thing the stick heights mean:
 - **Strengths known** — the sum runs over the modes that have one. A mode whose
   strength has not been computed contributes **nothing**, not a zero-height peak:
   it is missing, not weak.
-- **None known** — every mode contributes a peak of height one, and the curve is
-  a genuine frequency distribution: where it is high, modes are crowded. Drawing
-  unit sticks with no curve over them would leave exactly the barcode § 1 says
-  this component exists to avoid.
+- **None known** — there is no curve: a sum over heights nobody computed would
+  be a picture of nothing (§ 6.2).
 
-**No imaginary mode is ever in the sum**, in either picture (§ 6.4).
+**No imaginary mode is ever in the sum** (§ 6.4).
+
+*(Fixed with this rule, 2026-09-28: the sum used to fall back to unit heights
+where none was known, so the default PySCF run — Raman computed, infrared not
+— drew a curve in its infrared lane under the title "not computed". The curve
+now runs over known heights only, so a lane with none draws none.)*
 
 ---
 
@@ -995,7 +1005,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
 | § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
-| § 6.2 — the picture is derived | a result with no activities anywhere draws every stick at height one, with a curve over them; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
+| § 6.2 — the picture is derived | a result with no activities anywhere draws no sticks and no curve; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
 | § 6.2 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 6.3 — every mode keeps a full-size target | the width does not take the frequencies as an argument at all, so no arrangement of neighbours can shrink one |
@@ -1015,7 +1025,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.4 — the scale comes up with the position | what goes up says both where the pointer was and what one pixel is worth there |
 | § 6.4 — an imaginary mode is drawn and clickable | it appears at its own frequency and a click on it reports its index, exactly like any other mode |
 | § 6.4 — an imaginary mode is marked | it is drawn differently from an ordinary mode of the same height |
-| § 6.4 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged, in both pictures |
+| § 6.4 — an imaginary mode is not in the curve | adding one to a list leaves the envelope unchanged |
 | § 6.4 — the flag and the sign are independent | a negative `freq` without the flag is drawn as an ordinary mode; the flag with a positive `freq` is drawn as imaginary |
 | § 7 — mount always resolves | a mount with no library still resolves with `ok === false` **and** a working `dispose`; nothing rejects and nothing returns null |
 | § 7 — a failed handle has three keys | its keys are exactly `ok`, `error`, `dispose`: calling any other door throws rather than silently doing nothing |
@@ -1037,7 +1047,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 8.4 — a click comes up as a position | the seal reports where the click landed on the frequency axis and nothing more; a click in empty space beside a peak still reaches the handle |
 | § 8.4 — appearance is the seal's | nothing above the seal names a colour, and the palette the seal uses comes from the module's own values (§ 11) — never from a page variable, never from a literal in the module |
 | § 9 — the envelope is the sum | the curve at a mode's frequency equals that mode's activity plus the tails of the others, computed independently of the implementation |
-| § 9 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, every mode adds a peak of height one |
+| § 9 — the sum follows the picture | with strengths known, a mode without one adds nothing; with none known anywhere, there is no curve |
 | § 9 — a peak is smooth at every width | at any broadening, the narrowest peak drawn carries at least eight samples across its full width |
 | § 9 — the grid is bounded by the modes, not by the width | a 36-mode spectrum at a 0.05 cm⁻¹ broadening draws from a grid of a few thousand points, not millions, and its peaks are still smooth |
 | § 9 — the curve ends rather than being cut off | at any broadening, the envelope at both ends of the grid is below 1% of the tallest peak |
@@ -1072,7 +1082,7 @@ before anyone sizes the work from the line counts below:
 | New | Where |
 |---|---|
 | the four-step band rule, with the floor and the minimum as fixed numbers | § 6.3 |
-| the sum following the picture — unit heights when no strength is known | § 9 |
+| the sum following the picture — no curve when no strength is known | § 9 |
 | imaginary modes marked, and kept out of the envelope | § 6.4, § 9 |
 | the grid stated as accuracy: eight samples a peak, ends below 1% | § 9 |
 | the selection recorded rather than refused | § 8.3 |

@@ -179,7 +179,7 @@ export async function mount(host, options = {}) {
             .filter((m) => !m.imaginary)
             .map((m) => Math.abs(valueIn(m, key) ?? 0)));
 
-        const lanes = channels.map((c, i) => {
+        const lanes = channels.map((c) => {
             const known = laneKnown(c.key);
             const lanePeak = peakIn(c.key);
 
@@ -206,20 +206,20 @@ export async function mount(host, options = {}) {
             const toScreen = (v) => (
                 c.relative && lanePeak > 0 ? (v / lanePeak) * 100 : v);
 
-            /* THE "NO HEIGHTS" PICTURE BELONGS TO ONE LANE, NOT EVERY
-             * LANE.  With nothing computed there is no height to draw,
-             * and § 6.2's answer is a row of equal sticks saying "these
-             * modes exist".  Drawn once that is a mode list; drawn in
-             * every panel it is the same list repeated, which reads as
-             * two spectra that happen to agree exactly -- the most
-             * misleading thing the chart could put on screen.
+            /* WITH NOTHING COMPUTED THERE IS NOTHING TO DRAW (§ 6.2).
+             * No strength anywhere means no height, so no lane draws a
+             * stick or a curve -- the rug still carries the positions,
+             * and the Spectrum viewer does not mount a chart for such a
+             * result at all (web/spectra.md § 2).  Until 2026-09-28 the
+             * first lane drew every mode at height one with a curve over
+             * them, a frequency distribution that read as an intensity
+             * spectrum wherever modes crowded.
              *
              * `blank` is about having nothing to DRAW.  It is not the
              * `silent` activity class, which is a statement about the
              * physics of a mode; one word for both would be two ideas
              * wearing one name. */
-            const placeholder = !anyKnown && i === 0;
-            const blank = !anyKnown && i !== 0;
+            const blank = !anyKnown;
             return {
                 key: c.key,
                 direction: c.direction,
@@ -233,14 +233,13 @@ export async function mount(host, options = {}) {
                  * declared. */
                 title: known
                     ? `${c.label} (${c.unit})`.replace(" ()", "")
-                    : (anyKnown ? `${c.label} — not computed` : "modes"),
+                    : `${c.label} — not computed`,
                 known,
                 sticks: blank
                     ? { x: [], y: [], width: [], state: [] }
                     : {
                         x: modes.map((m) => m.freq),
                         y: modes.map((m) => {
-                            if (placeholder) return 1;
                             const v = valueIn(m, c.key);
                             if (v === null) return 0;
                             return shown(m) ? toScreen(v) : 0;
@@ -280,9 +279,7 @@ export async function mount(host, options = {}) {
             rug,
             readout,
             xTitle: "frequency (cm⁻¹)",
-            note: anyKnown
-                ? (anyPending ? "× strengths not computed for these modes" : "")
-                : "strengths not computed — height means nothing here",
+            note: anyPending ? "× strengths not computed for these modes" : "",
         };
     };
 

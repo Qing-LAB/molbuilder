@@ -98,7 +98,6 @@ def _page_constants():
     return {
         "hartree_ev":          C.HARTREE_EV,               # 1 Eh in eV
         "hartree_kcal_mol":    C.HARTREE_EV / C.KCAL_MOL_EV,  # 1 Eh in kcal/mol
-        "boltzmann_hartree_k": C.BOLTZMANN_HARTREE_K,      # k_B in Eh/K
         "cm1_kelvin":          C.CM1_EV / C.BOLTZMANN_EV_K,   # hc/k_B, K per cm-1
     }
 

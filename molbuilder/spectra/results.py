@@ -201,7 +201,7 @@ _RESULTS_KEYS = frozenset({
     "phase_relaxation", "relaxation", "thermo", "removed_motions",
     "hessian_scope", "n_atoms_in_hessian", "hessian_density_fit", "ir_route",
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
-    "phase_es", "engine_metadata", "runtime_info",
+    "phase_ir", "phase_es", "engine_metadata", "runtime_info",
 })
 
 
@@ -667,6 +667,12 @@ class SpectraResults:
     raman_fd_step_ang:         Optional[float] = None
     phase_frequencies:         str = PHASE_EMPTY
     phase_raman:               str = PHASE_EMPTY
+    #: The infrared intensities' own flag (`engines/vibration.md` § 4.9):
+    #: closed with the Raman sweep that carries the dipole, or by the
+    #: dipole sweep alone.  Older sidecars parse as "" -- absence of a
+    #: record, which a reader must not take for *empty* (asked, not yet
+    #: started): a finished run written before the flag has none.
+    phase_ir:                  str = ""
     phase_es:                  str = PHASE_EMPTY
     #: v5: the in-deck relaxation is a tracked step (user, 2026-08-20 --
     #: the viewer tracks ALL the steps; a silent gap while geomeTRIC works
@@ -678,8 +684,9 @@ class SpectraResults:
     #: chip can show "step 14, max force 0.0042" ticking down.
     relaxation:                Dict[str, Any] = field(default_factory=dict)
     #: v5: RRHO thermochemistry (D2's re-homing) -- headline numbers at
-    #: (temperature_K, pressure_atm), the T-grid arrays the viewer's
-    #: G/H/S curves draw, and `regime`: "rrho" for a free molecule,
+    #: temperature_K (and pressure_atm for "rrho"; null for
+    #: "vibrational-only", which no pressure enters), the T-grid arrays the
+    #: viewer's curves draw, and `regime`: "rrho" for a free molecule,
     #: "vibrational-only" (stated, never refused) when atoms are held: there
     #: is no gas-phase partition function to add, and the whole-body motions
     #: that survived the hold were removed before diagonalising
@@ -823,6 +830,11 @@ class SpectraResults:
                     f"SpectraResults.{name}={val!r} is not a valid "
                     f"phase status; expected one of {_VALID_PHASE_STATES}"
                 )
+        if self.phase_ir not in _VALID_PHASE_STATES + ("",):
+            raise ValueError(
+                f"SpectraResults.phase_ir={self.phase_ir!r} is not a valid "
+                f"phase status; expected one of {_VALID_PHASE_STATES}, or "
+                f"'' for a file written before the flag")
         # Equilibrium geometry (optional).  When both elements and
         # positions are supplied, validate shape + count match.
         if self.equilibrium_elements is not None or self.equilibrium_positions_ang is not None:
@@ -991,6 +1003,7 @@ class SpectraResults:
             "raman_fd_step_ang":    (None if self.raman_fd_step_ang is None
                                      else float(self.raman_fd_step_ang)),
             "phase_raman":          str(self.phase_raman),
+            "phase_ir":             str(self.phase_ir),
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
             "runtime_info":         dict(self.runtime_info),
@@ -1073,6 +1086,7 @@ class SpectraResults:
             raman_fd_step_ang    = (None if d.get("raman_fd_step_ang") is None
                                     else float(d["raman_fd_step_ang"])),
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
+            phase_ir             = str(d.get("phase_ir",          "")),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),
             runtime_info         = dict(d.get("runtime_info", {})),

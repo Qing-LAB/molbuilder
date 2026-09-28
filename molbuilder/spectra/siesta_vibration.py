@@ -25,8 +25,9 @@ EVERY INPUT IS A RECORD THE ATTEMPT HOLDS, and each is read by its owner:
     the fdf reader, `parse.fdf`;
   * the deck's molbuilder blocks -- their one reader, `deck_record`:
     ``engine-offset`` (the axis kinds, R3) and ``vibration`` (the
-    stationarity criterion, the person's statement, the ladder's relaxation
-    record, the stage, the molbuilder that prepped it);
+    stationarity criterion, the thermochemistry's temperature, the person's
+    statement, the ladder's relaxation record, the stage, the molbuilder
+    that prepped it);
   * ``<label>.FC`` -- `parse.engines.siesta_fc`;
   * the run's output (FC step 0's geometry and forces, SIESTA's version) --
     SIESTA's one reading pass, `siesta_reader`;
@@ -95,14 +96,16 @@ GEOMETRY_NOTE = ("the force-constant run relaxes nothing: its reference "
 def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      already_relaxed: bool,
                      relaxation: Optional[Mapping[str, Any]],
+                     temperature_K: float,
                      molbuilder_version: str) -> dict:
     """The deck's ``vibration`` block (`engines/vibration.md` § 5.3): what
     the finish reads back and no SIESTA keyword states.  Built by `prep`,
     which holds every fact -- the stage it prepares, the stage's resolved
     config (``relax_force_tol``, ``already_relaxed``), the `relax` stage's
     relaxation record it read the coordinates from
-    (`parse.contract.relaxation_of_output`, ``None`` without one) and the
-    molbuilder that renders the deck -- and placed in the deck as given
+    (`parse.contract.relaxation_of_output`, ``None`` without one), the
+    thermochemistry's temperature, and the molbuilder that renders the
+    deck -- and placed in the deck as given
     (`script_emit.emit_vibration_record`).  Its keys are read by
     :func:`result_of` and nowhere else."""
     return {"stage": str(stage),
@@ -111,6 +114,7 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "already_relaxed": bool(already_relaxed),
             "relaxation": (dict(relaxation) if relaxation is not None
                            else None),
+            "temperature_K": float(temperature_K),
             "molbuilder_version": str(molbuilder_version)}
 
 
@@ -257,6 +261,11 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
     H = hessian_from_fc(run.fc, run.displaced)
     rec = run.record
     criterion = rec.get("force_criterion_ev_ang")
+    if rec.get("temperature_K") is None:
+        raise FinishError(
+            f"{run.deck.name}'s vibration block states no temperature_K -- "
+            f"a deck prepared before its finish summed at the template's "
+            f"temperature (2026-09-28): prepare the stage again")
     res = vibrational_analysis(
         H, [float(atomic_masses[z]) for z in run.atomic_numbers],
         run.positions_ang, run.elements, run.held,
@@ -268,6 +277,7 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         force_criterion_ev_ang=criterion,
         already_relaxed=bool(rec.get("already_relaxed")),
         ladder_relaxation=rec.get("relaxation"),
+        temperature_K=float(rec["temperature_K"]),
         config={"engine": "siesta", "calculation": "vibration",
                 "stage": rec.get("stage")},
         engine_metadata={

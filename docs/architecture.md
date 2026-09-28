@@ -173,12 +173,14 @@ the one home:
   ruling (*"shipping a periodic table into JavaScript is the same mistake
   with a longer commute"*) — in the reply the page already fetches:
   `web/blueprints/modify.py` serves the lattice parameters, and
-  `/api/spectra/load` carries the four constants the spectrum page converts
+  `/api/spectra/load` carries the three constants the spectrum page converts
   with (`web/blueprints/spectra.py::_page_constants` — Hartree in eV and in
-  kcal/mol, Boltzmann in Eh/K, kelvin per cm⁻¹), so the browser holds no
-  copy and nothing needs pinning *(user, 2026-09-27: one source per fact.
-  Until then those four were copied into `lib/spectra/core.js` and held equal
-  by a test that read the file, which `testing.md` gives no place)*;
+  kcal/mol, kelvin per cm⁻¹), so the browser holds no copy and nothing needs
+  pinning *(user, 2026-09-27: one source per fact. Until then four were
+  copied into `lib/spectra/core.js` and held equal by a test that read the
+  file, which `testing.md` gives no place; Boltzmann in Eh/K went on
+  2026-09-28, when the thermochemistry panel stopped deriving its reference
+  energy and read the file's)*;
 * a **class body copied by `inspect.getsource`**, where a module-level
   import would not travel with the copy → pin the literal to `constants`
   with a test rather than letting it stand alone.

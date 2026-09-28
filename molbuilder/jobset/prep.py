@@ -729,6 +729,7 @@ def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
         force_criterion_ev_ang=getattr(cfg, "relax_force_tol", None),
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         relaxation=relaxed_by,
+        temperature_K=float(cfg.temperature_K),
         molbuilder_version=str(_mb_version))
 
 

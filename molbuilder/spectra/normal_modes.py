@@ -219,16 +219,19 @@ def vibrational_thermo(freqs_cm1, temperature_K, kb_eh_per_k, eh_per_cm1):
     out an imaginary mode, which has no partition function.  The two
     constants are passed in because this function travels into a deck as
     source text and may read no module-level name; the caller takes them
-    from the one home (``constants.py``).  ``T <= 0`` or no frequencies
-    give three zeros.
+    from the one home (``constants.py``).  No frequencies give three
+    zeros; ``T <= 0`` gives the T -> 0 limit -- the zero-point energy,
+    which no temperature removes, with no thermal energy and no entropy.
     """
     import numpy as _np
     w = _np.asarray(freqs_cm1, dtype=float).reshape(-1) * float(eh_per_cm1)
     T = float(temperature_K)
-    if w.size == 0 or T <= 0.0:
+    if w.size == 0:
         return 0.0, 0.0, 0.0
-    x = _np.clip(w / (float(kb_eh_per_k) * T), 1e-12, 700.0)
     zpe = float(0.5 * w.sum())
+    if T <= 0.0:
+        return zpe, 0.0, 0.0
+    x = _np.clip(w / (float(kb_eh_per_k) * T), 1e-12, 700.0)
     u = float((w / (_np.exp(x) - 1.0)).sum())
     s = float(float(kb_eh_per_k) * ((x / (_np.exp(x) - 1.0)
                                      - _np.log1p(-_np.exp(-x))).sum()))
@@ -262,9 +265,9 @@ def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh,
     return grid
 
 
-#: The temperatures the viewer's G/H/S curves run over -- a documented
-#: presentation default, not a scientific knob (the headline T and P are
-#: the knobs): 50-1500 K in 30 points, wide enough to show the trend and
+#: The temperatures the viewer's curves run over -- a documented
+#: presentation default, not a scientific knob (the headline temperature
+#: is the knob): 50-1500 K in 30 points, wide enough to show the trend and
 #: free to compute.  Both writers take it from here and add the headline
 #: temperature to it, so the curve passes through the headline number.
 THERMO_GRID_K = tuple(float(x) for x in

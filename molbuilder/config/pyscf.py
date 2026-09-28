@@ -770,34 +770,11 @@ class PySCFConfig:
         "workflow_group": "profile",
         "section": "Vibration",
         "label": 'Mode selection',
-        "choices": ('skip', 'all', 'top_n', 'threshold', 'explicit'),
+        "choices": ('skip', 'all', 'explicit'),
         "tier": "basic",
         "item_kind": "deck",
         "expands": ('per-mode displaced-SCF loop',),
         "engine_key": '(molbuilder: per-mode electronic-structure selector)',
-    })
-    es_top_n: int = field(default=10, metadata={
-        "category": ("procedure",),
-        "workflow_group": "profile",
-        "section": "Vibration",
-        "label": 'Top-N modes',
-        "range": (1, 1000),
-        "tier": "advanced",
-        "item_kind": "deck",
-        "expands": ('per-mode displaced-SCF loop',),
-        "engine_key": '(molbuilder: per-mode selector parameter)',
-    })
-    es_threshold: float = field(default=1.0, metadata={
-        "category": ("procedure",),
-        "workflow_group": "profile",
-        "section": "Vibration",
-        "label": 'Raman-activity threshold',
-        "unit": 'Å⁴/amu',
-        "range": (0.0, 1000.0),
-        "tier": "advanced",
-        "item_kind": "deck",
-        "expands": ('per-mode displaced-SCF loop',),
-        "engine_key": '(molbuilder: per-mode selector parameter)',
     })
     es_explicit_indices: str = field(default='', metadata={
         "category": ("procedure",),
@@ -860,13 +837,15 @@ class PySCFConfig:
     temperature_K: float = field(default=298.15, metadata={
         "category": ("procedure",),
         "section": "Frequencies / thermochemistry",
-        # Profile-level: standard-state thermochemistry condition;
-        # paired with ``pressure_atm`` (also profile).
+        # ONE MEANING ON BOTH ENGINES (`engines/vibration.md` § 3.1): the
+        # thermochemistry's temperature, SIESTA's too since 2026-09-28.
         "workflow_group": "profile",
         "label": "Thermochemistry temperature", "unit": "K",
-        "engine_key":  'thermo.thermo(temperature=...)',
+        "item_kind": "deck",
+        "expands": ('thermo.thermo(temperature=)', 'the harmonic vibrational sums'),
+        "engine_key":  "(molbuilder: the thermochemistry's temperature -- PySCF's thermo.thermo(temperature=) for a free molecule, the harmonic vibrational sums otherwise and in SIESTA's finish)",
         "id_suffix": "temperature",
-        "range": (0.0, 5000.0),
+        "range": (1.0, 5000.0),
         "tier":  "advanced",
     })
     pressure_atm: float = field(default=1.0, metadata={

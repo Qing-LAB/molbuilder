@@ -1539,7 +1539,17 @@ _SIESTA = Recipe(
                     # the file IO later work may need (plan W36 ⑤).  Both
                     # are in the GPU recipe too, so the GPU switch never
                     # changes what a job can import.
-                    "numpy", "ase"),
+                    #
+                    # sisl: SIESTA's own reader of its outputs -- the
+                    # Hamiltonian and overlap (.HSX, .TSHS, binary),
+                    # TBtrans's .TBT.nc (NetCDF), the .PDOS (XML) -- in
+                    # EVERY SIESTA env, so a
+                    # job's python can always read what its engine wrote
+                    # (the user, 2026-09-28: "just include sisl for all
+                    # siesta related env so it is always available when
+                    # we need them"; the planned electronic kind,
+                    # `engines/vibration.md` § 5.10 D5).
+                    "numpy", "ase", "sisl"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
 )
@@ -2514,10 +2524,11 @@ _SIESTA_GPU = Recipe(
         # libraries" recommends.
         #
         # numpy + ASE: what the job's own python imports to finish a
-        # vibration (`engines/vibration.md` § 5.5) -- the same pair the
-        # packaged recipe carries, so the GPU switch never changes what a
-        # job can import (plan W36 ⑤).
-        "numpy", "ase",
+        # vibration (`engines/vibration.md` § 5.5) -- and sisl, SIESTA's
+        # own reader of its binary outputs: the same three the packaged
+        # recipe carries, so the GPU switch never changes what a job can
+        # import (plan W36 ⑤; `engines/vibration.md` § 5.10 D5).
+        "numpy", "ase", "sisl",
     ),
     build_spec=_SIESTA_GPU_BUILD,
     # ---- bare-name toolchain shims (runs after conda create, BEFORE

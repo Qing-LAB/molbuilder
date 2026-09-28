@@ -195,28 +195,10 @@ def test_the_two_registries_hold_what_the_contract_says():
         "or vibration prep actually travels")
 
 
-def test_the_render_gate_carries_the_science_but_not_the_selector(water_struct):
-    """The render gate runs the SCIENCE (the hybrid grid_level advisory)
-    but NOT the selector-availability check -- a top_n script is valid to
-    emit, so the gate must not block on it (V1/V2).
-
-    Called the way production calls it.  This went through
-    `validate(struct, cfg)` and a `SpectraConfig` registry row until
-    2026-08-22; the row keyed on a class nothing constructed, and the
-    live door is the vibration KIND's."""
-    from molbuilder.validation.spectra import spectra_render_checks
-    cfg = _spectra_cfg(functional="B3LYP", grid_level=3,
-                       es_mode_selection="top_n")
-    issues = list(spectra_render_checks(water_struct, cfg))
-    wheres = [i.where for i in issues]
-    # render-gate science reached it (hybrid + low grid):
-    assert any(w == "config.grid_level" for w in wheres), wheres
-    # selector-availability (top_n soft-dep) is NOT a render gate, so it
-    # must be absent here -- it lives in engine.selector_checks (preflight).
-    assert not any(i.severity == "error"
-                   and i.where == "config.es_mode_selection"
-                   for i in issues), (
-        "the top_n selector soft-dep leaked into the render gate")
+# `test_the_render_gate_carries_the_science_but_not_the_selector` retired
+# 2026-09-28 with the selector it guarded (`top_n`, V1.6): its other half,
+# the hybrid grid advisory through the render gate, is
+# `tests/test_vibration_render_gate.py`'s.
 
 
 # `test_validate_dispatches_transport_preflight` deleted 2026-09-17 with

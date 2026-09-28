@@ -109,10 +109,18 @@ def _run_with_results(
     if dot_phases is None:
         dot_phases = ["frequencies", "raman", "es"]
     fn = _extract_fn_source("updatePhaseIndicator")
+    # the route question it asks of the file (web/spectra.md § 3)
+    route = _extract_fn_source("_routeHas")
     stub = _make_phase_indicator_stub(dot_phases=dot_phases)
     bootstrap = f"""
         // ===== Stub the ``els.phaseIndicator`` element =====
         const dots = {json.dumps(stub["_dots"])};
+        // each dot sits in its own ``.phase`` label, as in the partial
+        dots.forEach(d => {{
+            const wrap = {{ hidden: false }};
+            d._wrap = wrap;
+            d.closest = (sel) => (sel === ".phase" ? wrap : null);
+        }});
         const phaseIndicator = {{
             hidden: {json.dumps(stub["hidden"])},
             querySelectorAll(sel) {{
@@ -125,6 +133,7 @@ def _run_with_results(
                               else "null")},
         }};
 
+        {route}
         {fn}
 
         updatePhaseIndicator({json.dumps(results)});
@@ -137,6 +146,7 @@ def _run_with_results(
                 phase: d.dataset.phase,
                 className: d.className,
                 title: d.title,
+                shown: !d._wrap.hidden,
             }})),
         }}));
     """
@@ -273,6 +283,32 @@ def test_relaxation_dot_is_data_driven():
     )
     by_phase = {d["phase"]: d for d in v4["dot_states"]}
     assert by_phase["relaxation"]["className"] == "phase-dot phase-empty"
+
+
+def test_a_phase_the_files_route_does_not_have_shows_no_dot():
+    """web/spectra.md § 3: no dot for a phase the file's route does not
+    have, read BY ROLE -- the file's own config carries the switch or it
+    does not.  A SIESTA file's config has no `compute_raman` and no
+    `es_mode_selection`, so its Raman and probe dots are gone; a PySCF
+    file that switched both off still has them, reading *not requested*.
+
+    MUTATION THIS MUST FAIL AGAINST: asking the switch's VALUE instead of
+    its presence -- the PySCF run with Raman off would lose a dot its
+    route has."""
+    phases = ["relaxation", "frequencies", "raman", "es"]
+    siesta = _run_with_results(
+        {"config": {"engine": "siesta", "calculation": "vibration"},
+         "phase_frequencies": "complete", "phase_raman": "not requested",
+         "phase_es": "not requested"}, dot_phases=phases)
+    shown = {d["phase"]: d["shown"] for d in siesta["dot_states"]}
+    assert shown == {"relaxation": True, "frequencies": True,
+                     "raman": False, "es": False}, shown
+
+    pyscf = _run_with_results(
+        {"config": {"compute_raman": False, "es_mode_selection": "skip"},
+         "phase_frequencies": "complete", "phase_raman": "not requested",
+         "phase_es": "not requested"}, dot_phases=phases)
+    assert all(d["shown"] for d in pyscf["dot_states"]), pyscf["dot_states"]
 
 
 def test_dot_title_carries_human_readable_status():

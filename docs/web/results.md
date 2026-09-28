@@ -417,7 +417,8 @@ that only a remembered file can mount ([`presenters.md`](?doc=web/presenters.md)
 
 - a **read-only 3D structure** for a `.xyz`/`.pdb`,
 - a **trajectory movie + plots** for an optimization log (`trajectory.md`),
-- a **spectrum chart + modes** for a `.spectra.json` (`spectra.md`),
+- the **modes, and a spectrum chart where a strength was computed**, for a
+  `.spectra.json` (`spectra.md`),
 - a **bench sweep summary + chart** for a sweep's `job-set.json`
   (`bench-summary.md`),
 - an **I–V table + transmission plot** for a `<label>.transport.json`,

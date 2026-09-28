@@ -118,7 +118,7 @@ def test_the_modes_come_back_in_the_input_order(tmp_path):
         hessian_from_fc(read_fc(FIXTURES / "siesta_fc" / "h2.FC"), [1]),
         [atomic_mass(e) for e in copy.elements], copy.positions,
         copy.elements, [0], axis_kind=copy.axis_kind, cell=copy.cell,
-        permutation=perm, label="h2", engine="siesta")
+        permutation=perm, label="h2", engine="siesta", temperature_K=298.15)
     assert r.engine == "siesta"
     assert r.free_atom_idxs == [0] and r.frozen_atom_idxs == [1]
     assert [round(m.frequency_cm1, 1) for m in r.modes] == [3354.6]
@@ -162,7 +162,7 @@ def _fc_attempt(root, *, criterion=0.02):
                                   [0.0, 0.0, 10.0]], stated=True)
     rec = vibration_record(stage="freq", force_criterion_ev_ang=criterion,
                            already_relaxed=True, relaxation=None,
-                           molbuilder_version="fixture")
+                           temperature_K=298.15, molbuilder_version="fixture")
     (root / "h2.fdf").write_text(
         (fx / "h2.fdf").read_text() + "\n"
         + emit_engine_offset(frame, ["isolated"] * 3) + "\n"
