@@ -790,7 +790,28 @@ def _derived_for(state, cfg) -> dict:
     derived = {}
     derived.update(_spin_facts(state))
     derived.update(_parallel_facts(cfg))
+    derived.update(_contour_facts(cfg))
     return derived
+
+
+def _contour_facts(cfg) -> dict:
+    """The count the pole energy gives, said beside it (`engines/transport.md`
+    § 6.1c).
+
+    The deck states an ENERGY and TranSIESTA derives the count from it at the
+    run's temperature, so a reader of the deck is told the count the engine
+    will take -- by the engine's own rule, asked of its one home.  Nothing is
+    said where the rule has no answer (no temperature, or one at or below
+    zero), and the settings gate refuses that deck.
+    """
+    from .transiesta import pole_count
+    energy = getattr(cfg, "negf_eq_pole_ev", None)
+    temp = getattr(cfg, "electronic_temperature", None)
+    if energy is None or temp is None or float(temp) <= 0:
+        return {}
+    return {"beside": {"negf_eq_pole_ev":
+                       f"{pole_count(energy, temp)} poles at "
+                       f"{float(temp):g} K"}}
 
 
 def _state_block(state, *, on_junction: bool):

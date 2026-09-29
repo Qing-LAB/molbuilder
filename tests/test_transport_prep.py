@@ -107,10 +107,26 @@ def _same_token(got: str, want: str) -> bool:
         return got == want
 
 
-def _junction_struct(*, order="canonical", buffers=False):
+#: The fixture's leads are a CHAIN, one gold atom per layer, so they are
+#: ISOLATED across the transport axis in the 8 Å box they sit in -- what the
+#: relaxation deck records and `compose` carries (`engines/transport.md`
+#: § 6.1c).  One layer spacing is the room the transport boundary leaves.
+_ACROSS = ("isolated", "isolated")
+_SPACING = _LAYERS_L[1] - _LAYERS_L[0]
+
+
+def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
+                     width=8.0, room=None):
     """The BDT-ish fixture sandwich; ``order="scrambled"`` writes the
     same geometry with the bridge FIRST and the leads swapped after it
-    — exactly the order the emitter's preflight refuses."""
+    — exactly the order the emitter's preflight refuses.
+
+    *across* and *width* are the transverse axes' kinds and length: the
+    chain in an 8 Å box is a wire, isolated across; ``across=("periodic",
+    "periodic"), width=_SPACING`` is the same chain as a lattice it tiles --
+    the reading a relaxation deck from before the placement record gets
+    (`compose._junction_axis_kind`).  *room* is what the transport boundary
+    leaves, one layer spacing unless a test opens it."""
     rows = []       # (element, z, label)
     for z in _LAYERS_L:
         rows.append(("Au", z, REGION_LEFT_ELECTRODE))
@@ -139,11 +155,20 @@ def _junction_struct(*, order="canonical", buffers=False):
     # It went unnoticed because the device rung had NO settings gate until
     # TR5b put it on the seam -- the first time anything looked.  Sized from
     # the geometry so it cannot drift again.
+    #
+    # AND IT IS THE STRUCTURE A TRANSPORT RUN CAN USE (M5 step 2, § 6.1c).
+    # The leads continue through the transport boundary into the image, so
+    # the room there is ONE of the lead's layer spacings -- this fixture left
+    # 5.5 A against a 2.5 A spacing, a missing layer the gate now refuses.
+    # And the leads are a CHAIN, one gold atom per layer, in an 8 A box: a
+    # wire, isolated across transport, which is what it states -- periodic
+    # there would say the chain tiles a plane it does not.
     zs = positions[:, 2]
-    c = float(zs.max() - zs.min()) + 5.5      # the fixture's own end gap
+    c = float(zs.max() - zs.min()) + (_SPACING if room is None else room)
     return Structure(elements=elements, positions=positions,
                      regions=regions, frozen_atoms=frozen,
-                     cell=np.diag([8.0, 8.0, max(40.0, c)]))
+                     cell=np.diag([width, width, c]),
+                     axis_kind=(*across, "transport"))
 
 
 def _write_junction(root, struct, *, record=True):
@@ -167,10 +192,21 @@ def _write_junction(root, struct, *, record=True):
                                atoms=len(struct.elements)),
         varies=(), stages=(Stage(name="coarse", enabled=True,
                                  overrides={}),)))
-    # The deck is SELF-DESCRIBING (4.1b form A): its own coordinate
-    # block is the frozen gate's baseline, and the in-body
-    # ATOM-METADATA block carries the labels -- emitted through the
-    # real emitter, never hand-spelled.
+    deck_text = _cited_deck_text(struct, record=record)
+    (attempt / "Relax_01_coarse.fdf").write_text(deck_text)
+    (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
+    _write_xv(attempt / "Relax.XV", struct)
+    # Pseudos live IN the cited directory (4.1b: same-directory rule).
+    write_pseudos(attempt, ["Au", "S", "C"])
+    return calc
+
+
+def _cited_deck_text(struct, *, record=True):
+    """The cited relaxation's deck.  SELF-DESCRIBING (4.1b form A): its own
+    coordinate block is the frozen gate's baseline, and the in-body
+    ATOM-METADATA block carries the labels -- emitted through the real
+    emitter, never hand-spelled -- and, with *record*, the ENGINE-OFFSET
+    block whose axis kinds `compose` reads across the transport axis."""
     from molbuilder.script_emit import emit_atom_metadata
     coords = "\n".join(
         f"  {p[0]:.6f}  {p[1]:.6f}  {p[2]:.6f}  1"
@@ -183,22 +219,15 @@ def _write_junction(root, struct, *, record=True):
     if record:
         from molbuilder.cell import to_engine
         from molbuilder.script_emit import emit_engine_offset
-        kinds = ("periodic", "periodic", "transport")
+        kinds = tuple(struct.axis_kind)
         block += "\n" + emit_engine_offset(
-            to_engine(struct.replace(axis_kind=kinds,
-                                     engine_offset=np.zeros(3))), kinds)
-    deck_text = (_CITED_DECK
-                 + "AtomicCoordinatesFormat Ang\n"
-                 + "%block AtomicCoordinatesAndAtomicSpecies\n"
-                 + coords + "\n"
-                 + "%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
-                 + block + "\n")
-    (attempt / "Relax_01_coarse.fdf").write_text(deck_text)
-    (attempt / "Relax_01_coarse-run0.concluded").write_text("rc=0\n")
-    _write_xv(attempt / "Relax.XV", struct)
-    # Pseudos live IN the cited directory (4.1b: same-directory rule).
-    write_pseudos(attempt, ["Au", "S", "C"])
-    return calc
+            to_engine(struct.replace(engine_offset=np.zeros(3))), kinds)
+    return (_CITED_DECK
+            + "AtomicCoordinatesFormat Ang\n"
+            + "%block AtomicCoordinatesAndAtomicSpecies\n"
+            + coords + "\n"
+            + "%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
+            + block + "\n")
 
 
 def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
@@ -898,7 +927,12 @@ class TestTheLadderPreps:
         from molbuilder.parse.coords.siesta_xv import read_xv_with_cell
         from molbuilder.deck_record import extract_engine_offset
         root = tmp_path / "projects"
-        _write_junction(root, _junction_struct(), record=recorded)
+        # A deck from before the rule records no axis kinds either, and its
+        # junction is read periodic across -- so the chain it cites is the
+        # lattice it tiles, or the settings gate refuses its vacuum.
+        _write_junction(root, _junction_struct() if recorded else
+                        _junction_struct(across=("periodic", "periodic"),
+                                         width=_SPACING), record=recorded)
         calc = _describe_transport(root)
         xv, _ = read_xv_with_cell(root / _CITE / "Relax.XV")
 
@@ -1037,9 +1071,12 @@ class TestTheLadderPreps:
         """
         root = tmp_path / "projects"
         # A relaxation from before the rule: its buffer layers overhang the
-        # cell as authored (z = -5 and 39.5 in c = 50), and with no placement
-        # record the rule centres the junction (plan § 5q D7).
-        _write_junction(root, _junction_struct(buffers=True), record=False)
+        # cell as authored (z = -5 and 39.5 in c = 47), and with no placement
+        # record the rule centres the junction (plan § 5q D7) -- and reads it
+        # periodic across, so the chain is the lattice it tiles.
+        _write_junction(root, _junction_struct(
+            buffers=True, across=("periodic", "periodic"), width=_SPACING),
+            record=False)
         dest = _describe_transport(root)
         prep_calculation(dest, "device")
         text = (dest / "04_device" / "T_04_device.fdf").read_text()
@@ -1091,21 +1128,8 @@ class TestTheRecord:
         attempt = root / "J" / "optimization" / "Relax" / "01_coarse" \
             / "run-1"
         attempt.mkdir()
-        from molbuilder.script_emit import emit_atom_metadata
         s2 = _junction_struct()
-        coords = "\n".join(
-            f"  {p[0]:.6f}  {p[1]:.6f}  {p[2]:.6f}  1"
-            for p in s2.positions)
-        store = {k: list(v) for k, v in s2.regions.items()}
-        store["frozen_atoms"] = list(s2.frozen_atoms)
-        blk = emit_atom_metadata(regions=store,
-                                 n_atoms_total=len(s2.elements)) or ""
-        (attempt / "Relax_01_coarse.fdf").write_text(
-            _CITED_DECK
-            + "AtomicCoordinatesFormat Ang\n"
-            + "%block AtomicCoordinatesAndAtomicSpecies\n"
-            + coords + "\n%endblock AtomicCoordinatesAndAtomicSpecies\n\n"
-            + blk + "\n")
+        (attempt / "Relax_01_coarse.fdf").write_text(_cited_deck_text(s2))
         (attempt / "Relax_01_coarse-run1.concluded").write_text("rc=0\n")
         _write_xv(attempt / "Relax.XV", s2, perturb_bridge=0.4)
         cite2 = "J/optimization/Relax/01_coarse/run-1"
@@ -2292,18 +2316,9 @@ def test_a_cited_decks_spin_is_read_in_any_word_siesta_accepts(
     assert one(tmpl, "unpaired_electrons").value == "free"
 
 
-class TestEachDeckCarriesWhatItsProgramReads:
-    """`engines/transport.md` § 6.1b, through `molbuilder jobset prep`:
-    two programs read the NEGF rungs' decks, and each deck carries what its
-    own program reads, every value with its note.
-
-    Read in the engine's source (SIESTA 5.4.2): `siesta` holds no `TBT.*`
-    label, so the device deck carries none; `tbtrans` reads the `TS.*`
-    junction description and takes `TS.Voltage` and `TS.Elecs.Bulk` as the
-    defaults of its own settings, so the transmission deck carries them; and
-    `tbtrans` reads `TBT.k` only as a bracketed list or a block, so the bare
-    triple the deck wrote until 2026-09-29 was skipped for the SCF's grid.
-    """
+class _LadderThroughTheCli:
+    """A ladder prepped through `molbuilder jobset prep`, rung by rung --
+    the road the classes below drive.  No tests of its own."""
 
     def _cli(self, args, root, monkeypatch):
         from click.testing import CliRunner
@@ -2339,6 +2354,20 @@ class TestEachDeckCarriesWhatItsProgramReads:
         """The deck's non-comment lines -- what a program reads."""
         return [ln.strip() for ln in deck.splitlines()
                 if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+class TestEachDeckCarriesWhatItsProgramReads(_LadderThroughTheCli):
+    """`engines/transport.md` § 6.1b, through `molbuilder jobset prep`:
+    two programs read the NEGF rungs' decks, and each deck carries what its
+    own program reads, every value with its note.
+
+    Read in the engine's source (SIESTA 5.4.2): `siesta` holds no `TBT.*`
+    label, so the device deck carries none; `tbtrans` reads the `TS.*`
+    junction description and takes `TS.Voltage` and `TS.Elecs.Bulk` as the
+    defaults of its own settings, so the transmission deck carries them; and
+    `tbtrans` reads `TBT.k` only as a bracketed list or a block, so the bare
+    triple the deck wrote until 2026-09-29 was skipped for the SCF's grid.
+    """
 
     def test_each_deck_carries_what_its_own_program_reads(self, tmp_path,
                                                          monkeypatch):
@@ -2435,16 +2464,14 @@ class TestEachDeckCarriesWhatItsProgramReads:
 
     def test_a_zero_that_means_the_programs_own_rule_writes_nothing(
             self, tmp_path, monkeypatch):
-        """Three defaults are FORMULAS, and a 0 written in their place replaces
-        the formula: an explicit `TS.Contours.Eq.Pole 0` sends TranSIESTA to a
-        pole count of 8 and a refused run (`m_ts_chem_pot.F90`), an explicit
-        0 broadening overrides min(eta)/10.  So at 0 nothing is written.
-        `TBT.Spin`'s default IS a number -- 0, every channel (`m_tbt_hs.F90`)
-        -- so it is written."""
+        """Two defaults are FORMULAS, and a 0 written in their place replaces
+        the formula: an explicit 0 broadening overrides min(eta)/10.  So at 0
+        nothing is written.  `TBT.Spin`'s default IS a number -- 0, every
+        channel (`m_tbt_hs.F90`) -- so it is written.  (The pole energy was
+        the third until M5 step 2: it is always written now, § 6.1c.)"""
         device, transmission = self._ladder(tmp_path, monkeypatch)
         dev, tr = self._settings(device), self._settings(transmission)
-        for key in ("TS.Contours.Eq.Pole", "TS.Contours.nEq.Eta"):
-            assert not any(ln.startswith(key) for ln in dev), key
+        assert not any(ln.startswith("TS.Contours.nEq.Eta") for ln in dev)
         assert not any(ln.startswith("TBT.Contours.Eta") for ln in tr)
         assert "TBT.Spin               0" in tr
 
@@ -2524,4 +2551,151 @@ class TestEachDeckCarriesWhatItsProgramReads:
         from molbuilder.template import read_template
         got = {i.name: i.value for i in read_template(tmpl.read_text()).items}
         assert got["electrodes_bulk"] is False, got.get("electrodes_bulk")
+
+
+class TestBeforeAnyDeviceRuns(_LadderThroughTheCli):
+    """`engines/transport.md` § 6.1c (M5 step 2), through `molbuilder jobset
+    prep`: the device's equilibrium contour stated with the count it gives,
+    vacuum refused where the crystal continues and kept where a wire is
+    isolated, and `tbtrans` asked for what the Results tab draws."""
+
+    def _prep_seed(self, root, monkeypatch):
+        return self._cli(["prep", "run", "seed", "--bundle", "J/transport/T"],
+                         root, monkeypatch)
+
+    @staticmethod
+    def _described(tmp_path, **values):
+        """A described ladder whose template states *values* -- set the way
+        a person edits the file, through its own reader and writer."""
+        from molbuilder.template import _emit, find_template, read_template
+        import dataclasses
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
+        tmpl = find_template(calc)
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=values[i.name])
+             if i.name in values else i
+             for i in read_template(tmpl.read_text()).items],
+            engines=("siesta",)))
+        return root, calc
+
+    def test_the_pole_energy_is_written_with_the_count_it_gives(
+            self, tmp_path, monkeypatch):
+        """10 eV, always written, and beside it the count TranSIESTA takes at
+        the run's own temperature -- the cited relaxation's 200 K here, where
+        its rule, N = int(E / (pi k_B T)), gives 184 (123 at 300 K).  The
+        count is a comment: libfdf ends a line's tokens at `#`, so `siesta`
+        reads the energy alone."""
+        device, _ = self._ladder(tmp_path, monkeypatch)
+        assert ("TS.Contours.Eq.Pole    10.0000 eV   # 184 poles at 200 K"
+                in self._settings(device)), [
+            ln for ln in device.splitlines() if "Eq.Pole" in ln]
+
+    @pytest.mark.parametrize("energy", [0.0, 1.0],
+                             ids=["zero", "eighteen-poles"])
+    def test_a_pole_energy_under_twenty_poles_is_refused_before_any_rung(
+            self, tmp_path, monkeypatch, energy):
+        """TranSIESTA stops a device run under 20 poles, after the queue
+        wait; the settings gate refuses it at the first rung prepped, and
+        names the least energy it would take.  0 is refused too -- it no
+        longer leaves the choice to TranSIESTA, whose own 42 lost the charge
+        on a real device, and TranSIESTA does not take it as an energy.  (1 eV
+        is 18 poles at the fixture's 200 K.)"""
+        root, calc = self._described(tmp_path, negf_eq_pole_ev=energy)
+        r = self._prep_seed(root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "TranSIESTA needs at least 20" in r.output, r.output
+        assert "the least energy is 1.09 eV" in r.output, r.output
+        assert not (calc / "01_seed" / "T_01_seed.fdf").exists()
+
+    def test_the_floor_is_the_runs_own_temperature(self, tmp_path,
+                                                  monkeypatch):
+        """The count follows the temperature, so the floor does: 1.2 eV is
+        22 poles at the fixture's 200 K and preps -- the same energy is 14 at
+        300 K, so a gate that assumed 300 K would refuse it."""
+        root, _ = self._described(tmp_path, negf_eq_pole_ev=1.2)
+        r = self._prep_seed(root, monkeypatch)
+        assert r.exit_code == 0, r.output
+
+    def test_an_electronic_temperature_under_ten_kelvin_is_refused(
+            self, tmp_path, monkeypatch):
+        """TranSIESTA stops below 10 K before it counts a pole
+        (`m_ts_options.F90`); refused at the first rung, naming the floor."""
+        root, _ = self._described(tmp_path, electronic_temperature=5.0)
+        r = self._prep_seed(root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "below 10 K" in r.output, r.output
+
+    def test_tbtrans_is_asked_for_the_dos_and_the_eigenchannels(
+            self, tmp_path, monkeypatch):
+        """For two electrodes `tbtrans` writes T(E) alone unless asked
+        (`m_tbt_options.F90`); W35 decision 7 asks for the device DOS, the
+        spectral DOS from the electrodes, the leads' bulk DOS and
+        transmission, and four eigenchannels."""
+        _, transmission = self._ladder(tmp_path, monkeypatch)
+        for keyword, value in (("TBT.DOS.Gf", ".true."),
+                               ("TBT.DOS.A", ".true."),
+                               ("TBT.DOS.Elecs", ".true."),
+                               ("TBT.T.Bulk", ".true."),
+                               ("TBT.T.Eig", "4")):
+            assert _says(transmission, keyword, value), keyword
+
+    @pytest.mark.parametrize("room,refused", [(3.5, False), (4.0, True)],
+                             ids=["1.4-spacings", "1.6-spacings"])
+    def test_the_room_along_transport_is_measured_against_the_lead(
+            self, tmp_path, monkeypatch, room, refused):
+        """The leads continue through the transport boundary into the
+        periodic image, so the room there is one of the lead's layer
+        spacings; above 1.5 of them it is vacuum, refused before any rung
+        runs and naming both numbers.  Against the chain's 2.5 Å: 3.5 Å
+        preps -- which the fixed 3.0 Å rule this replaced would have flagged
+        -- and 4.0 Å is refused."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct(room=room))
+        _describe_transport(root, bias=(0.0,))
+        r = self._prep_seed(root, monkeypatch)
+        if not refused:
+            assert r.exit_code == 0, r.output
+            return
+        assert r.exit_code != 0, r.output
+        assert "leaves 4.00 Å at the transport boundary" in r.output, r.output
+        assert "2.50 Å layer spacings" in r.output, r.output
+
+    def test_vacuum_on_a_periodic_transverse_axis_is_refused(
+            self, tmp_path, monkeypatch):
+        """Periodic says the crystal continues across the boundary.  The
+        chain in its 8 Å box, declared periodic, reaches 8 Å across it
+        against its own 2.5 Å bond: refused, naming the axis."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct(across=("periodic",
+                                                       "periodic")))
+        _describe_transport(root, bias=(0.0,))
+        r = self._prep_seed(root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "axis a is declared periodic" in r.output, r.output
+        assert "axis b is declared periodic" in r.output, r.output
+        # each lead on its own, and named
+        assert "nearest atom of L-electrode" in r.output, r.output
+        assert "nearest atom of R-electrode" in r.output, r.output
+
+    def test_an_isolated_wire_keeps_its_vacuum_through_the_ladder(
+            self, tmp_path, monkeypatch):
+        """A wire is isolated across transport, and its vacuum is what
+        isolates it.  The declaration the relaxation's deck recorded reaches
+        the composed junction -- `compose` stated every junction periodic
+        across until 2026-09-29 -- and the lead cut from it, and every rung
+        preps."""
+        device, _ = self._ladder(tmp_path, monkeypatch)
+        calc = tmp_path / "projects" / "J" / "transport" / "T"
+        from molbuilder.sidecars.molstruct import load
+        assert list(load(calc / "junction.molstruct.json")["axis_kind"]) == [
+            "isolated", "isolated", "transport"]
+        # each deck's own placement record, read by its one reader -- the
+        # device open along transport, the lead cut from it periodic there
+        from molbuilder.deck_record import extract_engine_offset
+        lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        for deck, along in ((device, "transport"), (lead, "periodic")):
+            assert extract_engine_offset(deck)["axis_kind"] == [
+                "isolated", "isolated", along], along
 

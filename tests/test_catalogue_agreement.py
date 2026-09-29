@@ -258,3 +258,29 @@ def test_the_declared_TYPE_agrees_with_the_annotation(engine, cls):
         "the catalogue and the annotation disagree about a value's TYPE:\n  "
         + "\n  ".join(bad) +
         "\nOne of them coerces where the other does not.")
+
+
+@pytest.mark.parametrize("engine,cls", ENGINES, ids=lambda x: getattr(x, "__name__", x))
+def test_the_DEFAULT_agrees(engine, cls):
+    """The default has two homes as well, read by two roads: the catalogue's
+    is what a form offers, and the class's is what a new transport template
+    is written with (`transport_template_text` builds it from a config).  Two
+    homes that disagree give a person a different starting value by the road
+    that described the calculation.  Measured 2026-09-29, zero disagreements
+    across both engines -- the day M5 step 2 changed six defaults in both
+    places (plan W48 records the facts still unguarded)."""
+    cat = _catalogue()
+    bad = []
+    for f in dataclasses.fields(cls):
+        item = cat.get(f.name)
+        if item is None or item.default is None:
+            continue
+        if f.default is not dataclasses.MISSING:
+            mine = f.default
+        elif f.default_factory is not dataclasses.MISSING:
+            mine = f.default_factory()
+        else:
+            continue
+        if not _same(mine, item.default):
+            bad.append(f"{f.name}: class={mine!r} catalogue={item.default!r}")
+    assert not bad, "the default disagrees:\n  " + "\n  ".join(bad)

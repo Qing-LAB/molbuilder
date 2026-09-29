@@ -929,6 +929,12 @@ SEAM_STEP_TOL_ANG = 0.3
 #: 1.5 sits above any real relaxation (the measured `Au-BDT-Au` seam holds at
 #: 1.0000 -- 2.4008 Å across a 2.4006 Å spacing) and far below the several
 #: spacings of room that even a thin vacuum layer opens.
+#:
+#: ONE RULE FOR "IS THIS BOUNDARY VACUUM", along any axis: the transport
+#: settings gate asks it too, of the room at the transport boundary against
+#: the lead's layer spacing (:func:`transport_room`) and of the lead's reach
+#: across a periodic transverse boundary against its own bond
+#: (:func:`transverse_reach`) -- `engines/transport.md` § 6.1c, I12.
 SEAM_VACUUM_FACTOR = 1.5
 
 
@@ -1152,6 +1158,66 @@ def classify_seam(positions, cell) -> SeamVerdict:
         message=("the layer across the boundary matches none of this slab's "
                  "own layers, so the boundary is neither a continuation, a "
                  "twin, nor an eclipse"))
+
+
+# --------------------------------------------------------------------- #
+#  Where a transport structure's crystal continues, is there vacuum?     #
+#  (`engines/transport.md` § 6.1c, I12)                                  #
+# --------------------------------------------------------------------- #
+
+def transport_room(positions, cell,
+                   leads: Sequence[Sequence[int]]
+                   ) -> Tuple[float, Optional[float]]:
+    """``(room, spacing)`` at the transport boundary, the cell's ``c``.
+
+    *room* is VERTICAL, as :func:`classify_seam` measures a seam's -- the
+    lowest atom's image one cell up, less the highest atom -- over every atom,
+    since whatever sits outermost is what meets its image.  *spacing* is the
+    median step between atomic layers WITHIN each lead of *leads* (index
+    lists, one per lead), pooled: measured lead by lead, so the jump from one
+    lead to the other across the molecule never counts as a step.  ``None``
+    when no lead has two layers, and so no spacing to measure.
+
+    Transport runs along ``c`` = z, as the seam rule and the device's
+    k-grid assume; the vertical room reads ``c``'s z component.
+    """
+    pos = np.asarray(positions, dtype=float).reshape(-1, 3)
+    box = np.asarray(cell, dtype=float).reshape(3, 3)
+    z = pos[:, 2]
+    room = float(z.min() + box[2, 2] - z.max())
+    steps: List[float] = []
+    for lead in leads:
+        layers = detect_layers(z[list(lead)])
+        steps += [float(s) for s in np.diff(layers)]
+    return room, (float(np.median(steps)) if steps else None)
+
+
+def transverse_reach(positions, cell, axis: int,
+                     lead: Sequence[int]) -> Tuple[float, Optional[float]]:
+    """``(reach, bond)`` across the boundary of the transverse *axis*.
+
+    *reach* is the shortest distance from a lead atom to the image of a lead
+    atom one lattice vector along *axis* -- the other two vectors free to step
+    by one either way, so a hexagonal cell's diagonal neighbour counts.  A
+    surface the lead tiles is bonded across its boundary as it is inside, so
+    the reach is its own bond; vacuum makes it longer.  *bond* is the lead's
+    shortest interatomic distance inside the cell, ``None`` for a one-atom
+    lead.  Distance against distance, both in 3-D: comparing a 3-D reach with
+    a 1-D spacing is what called a padded fcc(110) seam vacuum
+    (:func:`classify_seam`).
+    """
+    pos = np.asarray(positions, dtype=float).reshape(-1, 3)[list(lead)]
+    box = np.asarray(cell, dtype=float).reshape(3, 3)
+    o1, o2 = (ax for ax in range(3) if ax != axis)
+    pair = pos[:, None, :] - pos[None, :, :]            # (N, N, 3)
+    reach = min(
+        float(np.linalg.norm(pair + s * box[axis] + m * box[o1]
+                             + n * box[o2], axis=2).min())
+        for s in (1, -1) for m in (-1, 0, 1) for n in (-1, 0, 1))
+    if len(pos) < 2:
+        return reach, None
+    inside = np.linalg.norm(pair, axis=2)
+    return reach, float(inside[~np.eye(len(pos), dtype=bool)].min())
 
 
 #: Layers per stacking period, by fcc surface.  (111) is ABCABC, the

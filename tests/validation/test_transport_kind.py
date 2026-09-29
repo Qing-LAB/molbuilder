@@ -202,19 +202,9 @@ class TestThePoleEnergyIsTiedToTheTemperature:
         assert not _find(validate(junction, cfg, calculation="transport"),
                          "config.negf_eq_pole_ev", "error")
 
-    def test_zero_means_the_engine_chooses_and_is_never_refused(self,
-                                                                junction):
-        """The default, and the escape from the relation.
-
-        The engine's own choice scales with the temperature; a fixed number
-        cannot. A check that refused 0 would refuse every shipped default.
-        """
-        for temp in (300.0, 1000.0):
-            cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1),
-                               negf_eq_pole_ev=0.0,
-                               electronic_temperature=temp)
-            assert not _find(validate(junction, cfg, calculation="transport"),
-                             "config.negf_eq_pole_ev", "error"), temp
+    # `test_zero_means_the_engine_chooses_and_is_never_refused` retired
+    # 2026-09-29 with its rule (M5 step 2): 0 is refused now, through the
+    # road -- `test_transport_prep.py::TestBeforeAnyDeviceRuns`.
 
 
 class TestTheLinearResponseAdvisory:
@@ -304,13 +294,9 @@ class TestTheCellWrapsAlongTransport:
                       regions=dict(junction.regions))
         return s
 
-    def test_a_gap_along_transport_is_flagged(self, junction):
-        span = float(junction.positions[:, 2].max()
-                     - junction.positions[:, 2].min())
-        s = self._with_c(junction, span + 9.0)
-        assert _find(validate(s, SiestaConfig(system_label="j"),
-                              calculation="transport"),
-                     "cell.transport_vacuum", "warn")
+    # `test_a_gap_along_transport_is_flagged` retired 2026-09-29 (M5 step 2):
+    # the gap is refused now, measured from the lead, through the road --
+    # `test_transport_prep.py::TestBeforeAnyDeviceRuns`.
 
     def test_a_seamless_cell_says_nothing(self, junction):
         """The discriminating half -- and the number is derived from the

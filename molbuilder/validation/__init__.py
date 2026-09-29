@@ -391,11 +391,6 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
 #: proof: `engines/transport.md` § 4.2 asks for a kz sweep.
 _ELECTRODE_KZ_THIN = 20
 
-#: More than this much empty space along transport and the cell no longer
-#: wraps (I12).  Also `preflight.py`'s number, for the same reason.
-_DEVICE_Z_VACUUM_MAX = 3.0
-
-
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
                              prior=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
@@ -446,45 +441,58 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"Nanoscale Systems, 2008; Reed et al. 2006).",
             where="config.bias_voltage_v"))
     # THE POLE ENERGY AND THE TEMPERATURE ARE ONE QUESTION, so neither can be
-    # checked alone.  This is not a fitted rule: it is TranSIESTA's own, read
-    # out of SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred.
+    # checked alone.  The rule is TranSIESTA's own -- SIESTA 5.4.2
+    # `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred -- and it
+    # has one home, `transiesta.pole_count`, which the device deck also asks
+    # for the count it states beside the energy.  TranSIESTA stops a run under
+    # twenty poles, after the queue wait; this says so before it.
     #
-    # Our decks declare `%block TS.ChemPot.<name>` with no `contour.eq` inside
-    # it, which selects the CONTINUED-FRACTION branch (`:299`).  There the pole
-    # count comes from the ENERGY at `:319`
+    # 0 IS REFUSED TOO (M5 step 2, `engines/transport.md` § 6.1c).  It meant
+    # "write nothing and let TranSIESTA choose" until 2026-09-29, and
+    # TranSIESTA's choice -- about 42 poles at 300 K -- lost the charge on a
+    # real Au-BDT-Au device, where 10 eV (123 poles) held it.  So the energy is
+    # always written; and an energy at or below zero is not taken as one --
+    # TranSIESTA keeps its 8-pole count and stops (`pole_count` says why).
     #
-    #     this%N_poles = int( E_pole / Pi / this%kT )
-    #
-    # and `:324` stops the run when it is under twenty -- *"The continued
-    # fraction method requires at least 20 poles"* -- after the queue wait,
-    # having read the electrodes.
-    #
-    # The branch's own default is `:316`, `E = Pi * 60 * kT * 0.7`, i.e. about
-    # 42 poles, and it scales with the temperature as a fixed number cannot.
-    # That is why 0 (write nothing) is the right default and why this refuses
-    # only a value a person NAMED.  Confirmed against a live run at every
-    # point: 1.5 eV -> 18 and dies, 1.7 -> 20, 2.0 -> 24, 3.0 -> 36, 4.0 -> 49,
-    # nothing written -> 42.  1.5 was this project's shipped default.
+    # AND THE TEMPERATURE HAS ITS OWN FLOOR: TranSIESTA stops below 10 K
+    # before any pole is counted (`transiesta.MIN_TS_TEMPERATURE_K`).
     pole = getattr(cfg, "negf_eq_pole_ev", None)
     temp = getattr(cfg, "electronic_temperature", None)
-    if pole and temp:
-        from ..constants import BOLTZMANN_EV_K
-        kT = BOLTZMANN_EV_K * float(temp)          # eV
-        n = int(float(pole) / (math.pi * kT))
-        if n < 20:
-            need = 20.0 * math.pi * kT
+    if pole is not None:
+        from ..transport.transiesta import (MIN_EQ_POLES,
+                                            MIN_TS_TEMPERATURE_K, pole_count,
+                                            pole_energy_for)
+        if temp is None or float(temp) < MIN_TS_TEMPERATURE_K:
             out.append(Issue(
                 "error",
-                f"the equilibrium contour's pole energy is "
-                f"{float(pole):g} eV, which at {float(temp):g} K gives {n} "
-                f"poles -- TranSIESTA needs at least 20 and stops with "
-                f"\"the continued fraction method requires at least 20 "
-                f"poles\", after the queue wait.  The count is DERIVED, "
-                f"N = E / (pi kT), so it moves with the temperature: at "
-                f"{float(temp):g} K you need at least {need:.2f} eV.  Raise "
-                f"it, or set it to 0 and let the engine choose an energy "
-                f"that scales with the temperature by itself.",
-                where="config.negf_eq_pole_ev"))
+                f"the electronic temperature is "
+                f"{0.0 if temp is None else float(temp):g} K, and TranSIESTA "
+                f"stops a device run below {MIN_TS_TEMPERATURE_K:g} K before "
+                f"it starts -- \"TranSiesta electronic temperature *must* be "
+                f"larger than 10 kT\".  Set it to at least "
+                f"{MIN_TS_TEMPERATURE_K:g} K; 300 K is the default "
+                f"(engines/transport.md 6.1c).",
+                where="config.electronic_temperature"))
+        else:
+            n = pole_count(pole, temp)
+            if n < MIN_EQ_POLES:
+                need = pole_energy_for(MIN_EQ_POLES, temp)
+                said = (f"{float(pole):g} eV is not an energy TranSIESTA "
+                        f"takes -- it keeps its own count of {n} poles"
+                        if float(pole) <= 0 else
+                        f"{float(pole):g} eV gives {n} poles at "
+                        f"{float(temp):g} K")
+                out.append(Issue(
+                    "error",
+                    f"the equilibrium contour's pole energy: {said}, and "
+                    f"TranSIESTA needs at least {MIN_EQ_POLES}.  It stops "
+                    f"with \"the continued fraction method requires at least "
+                    f"20 poles\", after the queue wait.  The count is "
+                    f"DERIVED, N = int(E / (pi kT)), so it moves with the "
+                    f"temperature: at {float(temp):g} K the least energy is "
+                    f"{need:.2f} eV.  The default is 10 eV "
+                    f"(engines/transport.md 6.1c).",
+                    where="config.negf_eq_pole_ev"))
     # THE TRANSMISSION GRID IS A GRID, not a mode.  It carried `0 0 0` as a
     # sentinel for "inherit the SCF's" until 2026-09-16 -- a triple of zeros
     # sitting in a field labelled k-grid, where every value is a scientific
@@ -576,33 +584,94 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"lead's Fermi level has settled (engines/transport.md 4.2).",
             where="config.electrode_kz"))
 
-    # ---- I12: no vacuum along transport (`engines/transport.md` § 5) ----
+    # ---- I12: no vacuum where the crystal continues (§ 5, § 6.1c) ----
     #
-    # The other invariant the verb held alone.  A junction's cell must wrap
-    # seamlessly along z: the leads continue into the periodic image, so a gap
-    # there is not padding, it is a SEVERED lead.  This is the reverse of the
-    # advice an isolated molecule gets, which is why it is keyed on the
-    # calculation kind and not on the cell alone -- `cell.vacuum_thin` is
-    # right for a molecule and is correctly gated on `axis_kind`.
+    # MEASURED FROM THE LEAD, since M5 step 2 (TD3, user 2026-09-29).  It was
+    # a warning above a fixed 3.0 Å along transport, and one number was wrong
+    # both ways: a lead spaced wider than 3 Å is warned at its perfect seam,
+    # and one spaced 1.44 Å passes a missing layer.  Now each rule reads the
+    # lead's own spacing, and both are refusals -- a gap along transport
+    # severs the lead, and vacuum on a periodic axis contradicts the
+    # declaration.  An ISOLATED transverse axis is left alone: a wire or chain
+    # lead is vacuum-surrounded across transport, and that vacuum is the one
+    # the structure states.  The threshold is the seam rule's, one rule for
+    # "is this boundary vacuum" (`cell.SEAM_VACUUM_FACTOR`).
+    #
+    # This is the reverse of the advice an isolated molecule gets, which is
+    # why it is keyed on the calculation kind and not on the cell alone --
+    # `cell.vacuum_thin` is right for a molecule and is gated on `axis_kind`.
     _cell = cell if cell is not None else getattr(struct, "cell", None)
     if _cell is not None and getattr(struct, "n_atoms", 0):
-        try:
-            import numpy as _np
-            c_len = float(_np.linalg.norm(_np.asarray(_cell, dtype=float)[2]))
-            z = _np.asarray(struct.positions, dtype=float)[:, 2]
-            gap = c_len - float(z.max() - z.min())
-        except Exception:
-            gap = None
-        if gap is not None and gap > _DEVICE_Z_VACUUM_MAX:
+        from ..cell import (SEAM_VACUUM_FACTOR, transport_room,
+                            transverse_reach)
+        from ..config.transport import is_electrode_label
+        # THE LEAD: the electrode-labelled atoms of a junction, one list per
+        # lead; an electrode rung's structure IS the lead and carries no
+        # labels, so all of it.
+        leads = [list(idx) for label, idx in
+                 (getattr(struct, "regions", None) or {}).items()
+                 if is_electrode_label(label) and idx]
+        if not leads:
+            leads = [list(range(struct.n_atoms))]
+        room, spacing = transport_room(struct.positions, _cell, leads)
+        if spacing is None:
             out.append(Issue(
                 "warn",
-                f"the cell leaves ~{gap:.1f} Å of vacuum along the transport "
-                f"axis (cell c = {c_len:.1f} Å, atoms span "
-                f"{c_len - gap:.1f} Å).  A junction wraps seamlessly along z "
-                f"-- the lead continues into the periodic image -- so a gap "
-                f"there is a severed lead rather than padding.  Extend the "
-                f"cell by the bulk interlayer spacing instead, so z closes.",
+                f"the lead has fewer than two atomic layers, so its layer "
+                f"spacing -- and whether the {room:.2f} Å at the transport "
+                f"boundary is a seam or vacuum -- cannot be measured "
+                f"(engines/transport.md 6.1c).",
                 where="cell.transport_vacuum"))
+        elif room > SEAM_VACUUM_FACTOR * spacing:
+            out.append(Issue(
+                "error",
+                f"the cell leaves {room:.2f} Å at the transport boundary -- "
+                f"{room / spacing:.1f} of the lead's {spacing:.2f} Å layer "
+                f"spacings.  The leads continue through that boundary into "
+                f"the periodic image, so the room there is one layer "
+                f"spacing, not a gap; above {SEAM_VACUUM_FACTOR:g} spacings "
+                f"it is vacuum, and the lead is a surface rather than a lead "
+                f"(engines/transport.md 6.1c, I12).  Set the cell's c so "
+                f"the boundary closes to one spacing (the Cell page).",
+                where="cell.transport_vacuum"))
+        # LEAD BY LEAD, as the rule is stated: pooled, two leads answer for
+        # each other -- one that tiles hides one that does not on the
+        # junction's rungs, while the electrode rung that sees it alone
+        # refuses the same calculation; and two one-atom leads measure the
+        # distance between the leads as a "bond".
+        kinds = getattr(struct, "axis_kind", None) or ("isolated",) * 3
+        named = ([label for label, idx in
+                  (getattr(struct, "regions", None) or {}).items()
+                  if is_electrode_label(label) and idx]
+                 or ["the lead"])
+        for ax, name in ((0, "a"), (1, "b")):
+            if kinds[ax] != "periodic":
+                continue
+            for label, lead in zip(named, leads):
+                reach, bond = transverse_reach(struct.positions, _cell, ax,
+                                               lead)
+                if bond is None:
+                    out.append(Issue(
+                        "warn",
+                        f"axis {name} is declared periodic, but {label} is "
+                        f"one atom, so whether it reaches across that "
+                        f"boundary cannot be measured (engines/transport.md "
+                        f"6.1c).",
+                        where="cell.transverse_vacuum"))
+                elif reach > SEAM_VACUUM_FACTOR * bond:
+                    out.append(Issue(
+                        "error",
+                        f"axis {name} is declared periodic, but across its "
+                        f"boundary the nearest atom of {label} is "
+                        f"{reach:.2f} Å away -- {reach / bond:.1f} of its own "
+                        f"{bond:.2f} Å bond, so the crystal does not continue "
+                        f"there: that is vacuum.  A wire or chain lead is "
+                        f"isolated across the transport axis: declare the "
+                        f"axis isolated on the structure (the Cell page), "
+                        f"relax it, and cite that relaxation -- its deck "
+                        f"records the axis kinds (engines/transport.md "
+                        f"6.1c).",
+                        where="cell.transverse_vacuum"))
     return out
 
 

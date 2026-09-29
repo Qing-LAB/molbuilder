@@ -355,6 +355,7 @@ This is not the temperature of your simulation. It is a property of the electron
 Why it exists: in a metal, states sit right at the Fermi level and swap occupancy between SCF cycles, so the density oscillates and never settles. Smearing lets states be partially occupied, which damps that. A molecule with a clear HOMO-LUMO gap does not need it, and for such a system the value barely matters.
 Raise it to 1000-2000 K for a metal or a metal-molecule junction whose SCF will not converge -- after lowering the mixing weight, which is the first thing to try. Lower it toward 0 only for an insulator where you want strictly integer occupations.
 A raised smearing temperature adds an entropy term to the free energy (F = E - TS), which is what makes the free-energy convergence criterion worth turning on for exactly these systems -- see 'Also require the free energy to settle'. 300 K is SIESTA's own default.
+In a transport calculation TranSIESTA stops below 10 K before it starts (`m_ts_options.F90`), and the device's contour takes fewer poles the hotter it is, so the pole energy may need raising too.
 """
 
 [item.kgrid]
@@ -2291,13 +2292,14 @@ anchor = "TBT.DOS.Gf"
 engine_key = "TBT.DOS.Gf"
 manual = "SIESTA 5.4.2 TBtrans §'Output options'"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
 group = "output"
 label = "Write the Green-function DOS"
 tier = "advanced"
 help = """
 Write the device's Green-function density of states.  This is what you read to see where on the molecule a transmitting state sits.
+On by default, so every transmission run keeps it -- tbtrans writes none of its DOS for a two-electrode junction unless asked (`m_tbt_options.F90`).  It makes the run compute more per energy point.
 """
 
 [item.tbt_dos_a]
@@ -2310,13 +2312,14 @@ anchor = "TBT.DOS.A"
 engine_key = "TBT.DOS.A"
 manual = "SIESTA 5.4.2 TBtrans §'Output options'"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
 group = "output"
 label = "Write the spectral DOS per electrode"
 tier = "advanced"
 help = """
-Write the spectral function density of states, resolved per electrode -- that is, which lead a state is fed from.
+Write the spectral function density of states from the electrodes -- which lead a state is fed from.  tbtrans computes it for every electrode but the last (`m_tbt_trik.F90`), so with two leads it is the left one's.
+On by default, so every transmission run keeps it -- tbtrans writes none of its DOS for a two-electrode junction unless asked (`m_tbt_options.F90`).  It makes the run compute more per energy point.
 """
 
 [item.tbt_dos_elecs]
@@ -2329,13 +2332,14 @@ anchor = "TBT.DOS.Elecs"
 engine_key = "TBT.DOS.Elecs"
 manual = "SIESTA 5.4.2 TBtrans §'Output options'"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
 group = "output"
 label = "Write the bulk electrode DOS"
 tier = "advanced"
 help = """
 Write the density of states of the bulk leads themselves.
+On by default, so every transmission run keeps it.
 """
 
 [item.tbt_t_eig]
@@ -2348,14 +2352,15 @@ anchor = "TBT.T.Eig"
 engine_key = "TBT.T.Eig"
 manual = "SIESTA 5.4.2 TBtrans §'Output options'"
 type = "int"
-value = 0
-default = 0
+value = 4
+default = 4
 range = [0, 20]
 group = "output"
 label = "Transmission eigenchannels"
 tier = "advanced"
 help = """
 How many transmission eigenchannels to decompose T(E) into -- the independent conduction pathways whose transmissions sum to the total.  0 writes none.  The eigenchannels are what turn a single number into a picture of which orbital pathway carries the current.
+Four by default, so every transmission run keeps them -- tbtrans writes none for a two-electrode junction unless asked (`m_tbt_options.F90`).  It makes the run compute more per energy point.
 """
 
 [item.tbt_t_bulk]
@@ -2368,14 +2373,14 @@ anchor = "TBT.T.Bulk"
 engine_key = "TBT.T.Bulk"
 manual = "SIESTA 5.4.2 TBtrans §'Output options'"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
 group = "output"
 label = "Write the bulk transmission"
 tier = "advanced"
 help = """
 Also write the transmission of the pristine bulk lead, which is the ideal T(E) the junction is measured against.
-Turn it on when you want the junction's curve read as a fraction of that ideal rather than as an absolute number.
+On by default, so the junction's curve can be read as a fraction of that ideal rather than as an absolute number.  It also writes the leads' bulk DOS (`m_tbt_options.F90`).
 """
 
 [item.tbt_t_all]
@@ -2428,20 +2433,18 @@ anchor = "TS.Contours.Eq.Pole"
 engine_key = "TS.Contours.Eq.Pole"
 manual = "SIESTA 5.4.2 TranSIESTA §'Complex contour'"
 type = "float"
-value = 0.0
-default = 0.0
+value = 10.0
+default = 10.0
 unit = "eV"
-range = [0.0, 10.0]
+range = [1.0, 40.0]
 group = "stage"
 label = "Equilibrium pole energy"
 tier = "advanced"
 help = """
-How far up the imaginary axis the equilibrium contour's poles sit.  0 means LET TRANSIESTA CHOOSE, which is the default and is usually right.
-It is not independent of the electronic temperature.  In SIESTA 5.4.2's own source (`Src/m_ts_chem_pot.F90`), a deck that declares `%block TS.ChemPot.<name>` without a `contour.eq` inside it takes the continued-fraction branch (:299), where the pole count is `N = int(E / (pi * kT))` (:319) and the run STOPS when N < 20 (:324) -- "The continued fraction method requires at least 20 poles" -- after the queue wait.
-At 300 K that makes 1.63 eV the floor.  Confirmed on a live run at every point: 1.5 eV gives 18 poles and dies, 1.7 gives 20, 2.0 gives 24, 3.0 gives 36, 4.0 gives 49.
-Left at 0 nothing is written and the branch's own default applies -- `E = pi * 60 * kT * 0.7` (:316), about 42 poles -- which scales with the temperature as a fixed number cannot.
-The COUNT cannot be set from here.  `TS.Contours.Eq.Pole.N` is a real keyword (:113) and this branch overwrites it from the energy; only the block-interior `contour.eq.pole.n` (:263) short-circuits that, and this emitter does not write blocks.
-More poles cost SCF time and buy a better-integrated density matrix.
+How far up the imaginary energy axis TranSIESTA takes the poles of the device's equilibrium contour.  It is an ENERGY, not a count: TranSIESTA turns it into a number of poles by its own rule, and the deck states that number beside the value.
+Why an energy.  The device's density is an integral of its Green function over energy.  The equilibrium part is taken on a contour in the complex plane, where the Green function is smooth, and the Fermi function then contributes poles up the imaginary axis; this says how far up to take them.  The count follows as N = int(E / (pi * k_B * T)) (SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`:319), so it depends on the electronic temperature: the same energy gives fewer poles hotter.
+TranSIESTA stops a run with fewer than 20 poles (:324), after the queue wait, so that is refused here first.  At 300 K: 1.5 eV gives 18 (refused); leaving the choice to TranSIESTA gives 42, which lost the charge on a real gold-benzenedithiol-gold device (584 electrons off after 1000 iterations); 4 eV gives 49; 10 eV gives 123 and held the charge on the same device.
+10 eV is the default and is always written.  More poles cost SCF time and buy a better-integrated density.
 """
 
 [item.bias_voltage_v]

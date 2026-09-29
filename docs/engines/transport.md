@@ -1159,7 +1159,7 @@ failure it exists to prevent:
 | needed | why |
 |---|---|
 | **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
-| **the equilibrium pole COUNT** | `TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword, and too few makes the device abort |
+| ~~**the equilibrium pole COUNT**~~ | ~~`TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword~~ — **withdrawn**: on our deck shape TranSIESTA derives the count from the energy and overwrites the count keyword (§ 6.1c, `plan.md` § 5p.3o); the deck states the count beside the energy since M5 step 2 |
 | **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
 | **`TBT.Verbosity`** | *(added 2026-09-23; its row lands with M5 step 1, § 6.1b.)* Class C at the transmission, an output preference like `write_forces`. **Closed 2026-09-29** — the row `tbt_verbosity` (the transmission's table above). Until then both NEGF decks wrote it from `TransportConfig.log_level`, which no catalogue row declared and no description could set: not a wrong answer, since the value, 5, IS tbtrans's own default, but a keyword entering a deck from outside the catalogue — the last of them, of the 19 fields the lifted NEGF block read |
 
@@ -1519,7 +1519,7 @@ dissolves at the same place:
 | symptom | the floor-3 fact behind it |
 |---|---|
 | the seed ran 1000 SCF iterations and died `SCF_NOT_CONV` | `MaxSCFIterations` is not in the hardcoded list, so the citation's `30` cannot travel |
-| the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row now defaults to 0 — *let the engine choose*, whose choice scales with the temperature as a fixed number cannot — and `_validate_transport_kind` refuses any stated energy too small for the run's own temperature, with the arithmetic. The refusal's rule is `:319` + `:324` verbatim, not a curve fitted to observations |
+| the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row defaulted to 0 — *let the engine choose* — from 2026-09-17 to 2026-09-29, when a real device lost the charge on the engine's 42 and held it on 10 eV's 123: it now defaults to **10 eV, always written** (§ 6.1c), and `_validate_transport_kind` refuses any stated energy too small for the run's own temperature, with the arithmetic. The refusal's rule is `:319` + `:324` verbatim, not a curve fitted to observations |
 | `TBT.k` is emitted as a bare scalar the parser cannot read | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
 | `tbt_k_grid`'s transport axis is unguarded | there is no declaration to carry a bound |
 | the electronic contract is two frozensets and a predicate spelled twice | floor 2's job done in code, because floor 2 held nothing |
@@ -2398,7 +2398,7 @@ by a command a person must run.
 | I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`config.electrode_kz`** — `_validate_transport_kind`, error at 1 / warn below 20 *(re-homed 2026-09-17)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
-| I12 | z-vacuum ≈ 0 at the leads | device | a gap = severed lead, not a junction | **`cell.transport_vacuum`** — `_validate_transport_kind`, warn *(re-homed 2026-09-17)* |
+| I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
 | I13 | Electrode writes its HS | electrode | the device run needs `electrode.TSHS` to exist | **construction** — `TS.HS.Save` is a `role` item on the electrode rung |
 | I14 | The structure states its cell | citation | transport derives no box — the lateral pair is I6's, the period is the bulk repeat (§ 7), and a box from atom extents is neither (§ 2a.9) | `compose.py::_unusable_cell` — **refuses** at the citation door; `_validate_transport_kind`, **error** on every prep *(ruled 2026-09-23; the kind-gate row is owed in code)* |
 
@@ -2455,7 +2455,7 @@ be.
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
-| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I8 (device `kz` = 1), I9 (lead `kz` dense), I12 (z-vacuum at the leads). § 5 names which holder holds which |
+| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I8 (device `kz` = 1), I9 (lead `kz` dense), I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c), and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`); a point whose transmission has not run reads as **pending**, never as a failure |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
@@ -2869,6 +2869,139 @@ none of it: it was text `siesta` never read.
 * **`TBT.Verbosity` gets its catalogue row** (§ 2a.13, *what this map says is
   missing*), at `tbtrans`'s own default, 5 (`tbt_reinit_m.F90` 206).
 
+### 6.1c Before any device runs — the contour stated, vacuum by axis, TBtrans's outputs on *(M5 step 2; user, 2026-09-29: `plan.md` § 5u.2 TD1, TD3; W35 decision 7)*
+
+#### The equilibrium contour: an energy, always written, with the count it gives
+
+**What the number is.** TranSIESTA builds the device's density from its
+Green function, integrated over energy. The equilibrium part of that
+integral is not taken along the real axis, where the Green function is
+sharp, but on a contour in the complex plane, where it is smooth — and the
+Fermi function then contributes a set of **poles up the imaginary energy
+axis**. `TS.Contours.Eq.Pole` says **how far up that axis the poles are
+taken**, and so it is an **energy**, not a count. TranSIESTA turns it into a
+count by its own rule, on the continued-fraction branch our deck shape takes
+(SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`: the branch at `:299`, the rule at
+`:319`):
+
+```
+N = int( E_pole / (π · k_B · T) )      and the run stops when N < 20  (:324)
+```
+
+So the count depends on the electronic temperature — the same energy gives
+fewer poles hotter — and the deck says the count beside the energy, at the
+run's own temperature: `TS.Contours.Eq.Pole    10.0000 eV   # 123 poles at
+300 K`. (`TS.Contours.Eq.Pole.N` is also read, `:113`, but this branch
+overwrites it from the energy, so it cannot act here — `plan.md` § 5p.3o.)
+
+**Measured, at 300 K** (`π k_B T` = 81.2 meV):
+
+| the deck states | poles | what happened |
+|---|---|---|
+| 1.5 eV (this project's default until 2026-09-17) | 18 | TranSIESTA refused it, after the queue wait |
+| nothing (TranSIESTA's own choice, `E = 0.7 · 60 · π k_B T`, `:316`) | 42 | `claude-w33`'s device lost the charge: 584 electrons off after 1000 iterations |
+| 4 eV | 49 | — (the manual asks for at least 50) |
+| 10 eV | 123 | the same device, the decks differing in this one line, held the charge to 0.024 by step 4 |
+
+**The ruling.** `negf_eq_pole_ev` defaults to **10 eV** and is **always
+written**, the count beside it; a stated energy that gives fewer than 20
+poles at the run's temperature is refused before the queue wait, and the
+refusal names the least energy that is accepted. 0 no longer means *let
+TranSIESTA choose* (§ 5p.3o's reading, superseded: TranSIESTA's own choice is
+the 42 that lost the charge), and it is not an energy TranSIESTA takes — the
+branch reads the energy only when it is positive (`:318`), so the count stays
+at `TS.Contours.Eq.Pole.N`'s default of 8 and the run stops at the floor.
+**The temperature has a floor of its own**: TranSIESTA stops below 10 K before
+it counts a pole — *"TranSiesta electronic temperature \*must\* be larger than
+10 kT"* (`m_ts_options.F90`:258–262, and per chemical potential :284–288) — so
+that is refused too. The range the form offers is 1–40 eV: 10 eV gives fewer
+than 20 poles above 1847 K, and the electronic temperature runs to 5000 K,
+where 27.1 eV is needed. It is
+the device's alone (`stages = ["device"]`): `tbtrans` integrates no density.
+**The 10 eV is interim** — M3 P4's stated contour (`contour.eq` inside the
+chemical potential's block, W35 decision 2) replaces it, and the first
+device run may say sooner.
+
+**One home for the rule.** `transiesta.pole_count` is TranSIESTA's rule
+written once — with its inverse, `pole_energy_for`, the least energy that
+gives a count (rounded up, since the count truncates), and the two floors,
+`MIN_EQ_POLES` and `MIN_TS_TEMPERATURE_K`; the settings gate asks them for
+the refusal, and the deck's context asks for the count the line states.
+
+#### Vacuum, by axis — measured from the lead
+
+A transport structure may state vacuum anywhere (`model/structure-periodicity.md`
+owns periodicity), but a transport calculation cannot use vacuum where its
+declaration says the crystal continues:
+
+| axis | declared | the settings gate | why |
+|---|---|---|---|
+| transport (`c`) | any | **refuses** a room at the boundary above 1.5 of the lead's interlayer spacings | the leads continue through the boundary into the periodic image, so the room there is exactly one layer spacing of the lead (2.40 Å on the Au–BDT–Au junction), not zero; more is a gap, and a gap makes the lead a surface (I12) |
+| transverse (`a`, `b`) | `periodic` | **refuses** a lead that does not reach across the boundary: its closest approach there above 1.5 of its own nearest-neighbour distance — **each lead on its own**, and named | periodic says the crystal continues across the boundary, and vacuum contradicts the declaration |
+| transverse | `isolated` | **allows** it | a wire or chain lead is vacuum-surrounded across the transport axis — the standard TranSIESTA setup — and the vacuum is the one the structure states |
+
+**How each is measured.** *The lead* is the electrode-labelled atoms — the
+whole structure on an electrode rung, which has no labels. *The room* along
+transport is vertical, as `cell.classify_seam` measures a seam's: the lowest
+atom's image one cell up, less the highest atom. *The spacing* is the median
+step between the lead's atomic layers (`cell.detect_layers`). *The reach*
+across a transverse boundary is the shortest distance from a lead atom to the
+image of a lead atom one lattice vector along that axis; *the bond* is the
+lead's shortest interatomic distance inside the cell. **Both use the seam
+rule's factor, `cell.SEAM_VACUUM_FACTOR` = 1.5**, for the seam rule's reason: a
+boundary is a seam only when the faces across it are close enough to be
+bonded, and 1.5 sits above any real relaxation and far below the room even a
+thin vacuum layer opens. A lead too small to measure — one layer, one atom —
+is said, never passed in silence. **Each lead is measured on its own** —
+pooled, a lead that tiles hides one that does not on the junction's rungs,
+while the electrode rung that sees the second alone refuses the same
+calculation, and two one-atom leads measure the distance between the leads
+as a bond.
+
+**What the transverse check does not catch.** It catches vacuum, not a cell
+that is one atom column too long: a multi-layer fcc(111) lead in such a cell
+is still bonded across the boundary through its next layer (the reach 4.08 Å
+against a 2.88 Å bond, 1.41) and passes; a single-layer lead does not (1.73).
+A correctly tiled fcc(111), (100) or (110) lead measures 1.000.
+
+**The declaration reaches the junction.** `compose` takes the transverse
+kinds the cited relaxation's deck recorded — its ENGINE-OFFSET block carries
+the structure's `axis_kind` — and states transport along z; it stated every
+junction periodic across until 2026-09-29, which made a wire's vacuum a
+contradiction. The lead cut from the junction keeps the pair
+(`ElectrodeModel.transverse_kind`). A deck written before that record states
+no kinds, and its junction is read periodic across; a record that states
+anything but `periodic` or `isolated` across is refused, never read as the
+old default. **Correcting the kinds today means a new relaxation**: the kinds
+come from the cited attempt's deck, a launched attempt is never rewritten,
+and a calculation composed before keeps the kinds it was composed with
+(`load_compose_record` reloads the junction it wrote) — so the structure is
+declared isolated on the Cell page, relaxed, and that relaxation cited. A
+lighter door is `plan.md` § 5u.2's TD13.
+
+This replaces I12's fixed 3.0 Å warning
+(§ 5), which only warned, and whose one number was wrong both ways: a lead
+spaced wider than 3 Å (a graphite-like stack, 3.35 Å) is warned at its perfect
+seam, and one spaced 1.44 Å (Au(110)) passes a missing layer.
+
+#### TBtrans's outputs, on
+
+For a two-electrode junction `tbtrans` writes T(E) and nothing else unless
+asked: `TBT.T.Eig`, `TBT.DOS.Gf`, `TBT.DOS.A`, `TBT.DOS.Elecs` and `TBT.T.Bulk`
+all default off when there are two electrodes (`m_tbt_options.F90` 535–565).
+W35 decision 7 asks for all of it, so the catalogue defaults them **on**: the
+device DOS (`TBT.DOS.Gf`), the spectral DOS from the electrodes (`TBT.DOS.A`
+— `tbtrans` computes it for every electrode but the last unless
+`TBT.DOS.A.All` is set, `m_tbt_trik.F90`, so with two leads the left one's), the
+leads' bulk DOS and bulk transmission (`TBT.DOS.Elecs`, and `TBT.T.Bulk`,
+which writes the bulk transmission and implies the bulk DOS, 547–553), and
+**four eigenchannels** (`TBT.T.Eig 4`, the shipped value in § 2a's transmission
+panel). `TBT.T.All` stays at `tbtrans`'s own default. **The cost is stated,
+not hidden**: the eigenchannels and the two device DOS switch off the path
+`tbtrans` takes when only T(E) is asked (`only_T_Gf`, 525–565), so the
+transmission rung computes more per energy point — accepted, so that the
+first ladder writes what M3 P3 draws.
+
 ---
 
 ### 6.2 What happens to the STRUCTURE — citation to deck, hop by hop
@@ -2885,7 +3018,7 @@ reorders it, and hands two views of it to the renderer.
 ```mermaid
 flowchart TB
     XV["<b>1 · the citation</b><br/>.XV: cell + positions + elements<br/>the deck: contract, start coords, labels"]
-    LOAD["<b>2 · labeled_citation_structure</b><br/>cell from the .XV · labels from the deck block<br/>or one sidecar · axis_kind STATED · origin stripped"]
+    LOAD["<b>2 · labeled_citation_structure</b><br/>cell from the .XV · labels from the deck block<br/>or one sidecar · axis_kind: z STATED, x/y as the relaxation recorded · origin stripped"]
     GATE["<b>3 · _unusable_cell</b><br/>refuses: no cell · not 3 finite vectors · no volume"]
     OVER["<b>4 · replace(positions, cell)</b><br/>the relaxed overlay"]
     SORT["<b>5 · categorical_sort</b><br/>atoms reordered [buf][lower][bridge][upper][buf]<br/>permutation recorded"]
@@ -2956,7 +3089,7 @@ sideways.
 |---|---|---|
 | regions, annotations, `info`, identity | hops 2→6 | `replace()` names the per-atom fields and carries everything else, so the label store, the recorded contract and the identity columns all survive the sort |
 | regions, annotations, `info`, identity | **hop 7 — NOT carried** | `as_structure()` states elements, positions, title, cell and `axis_kind`, and nothing else. A lead therefore renders with no region partition (correct — it has no partition to state), and also with no recorded contract and no identity columns |
-| `axis_kind` | **stated at hop 2, never read from a file** | no cited file records it: the `.XV` carries the cell, the metadata block carries regions and annotations, and SIESTA has no such concept. I8 settles it — z is open, x and y are the transverse mesh. It is a fact of *being a transport calculation*, not something inherited from the relaxation |
+| `axis_kind` | **z stated at hop 2; x and y as the relaxation recorded them** *(since M5 step 2)* | along z it is a fact of *being a transport calculation*: I8 settles it, z is open. Across z it is the person's declaration, and the relaxation's deck recorded it — its ENGINE-OFFSET block carries the structure's kinds (since 2026-09-25): a slab junction is periodic across, a wire or chain junction isolated (§ 6.1c). A deck from before that record states none, and its junction is read periodic across, as every junction was until 2026-09-29. The `.XV` and the metadata block carry no kinds; SIESTA has no such concept |
 | `engine_offset` | **stated `0` at hop 2, when the cited deck carries its `engine-offset` record** | the `.XV` is SIESTA's own frame, the cell at the origin, so the junction states an offset of 0 with its coordinates (`structure-periodicity.md` § 6.0) on either label lane. A deck with no record was prepped before the rule and left its atoms flush against a face, so its junction states none and the rule centres it (plan § 5q D7). An authoring sidecar's offset belonged to *different* coordinates and is never carried |
 
 #### Where the box and the atoms come from

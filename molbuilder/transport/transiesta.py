@@ -15,6 +15,9 @@ set of emitters the two live writers reach into, plus the engine preflight:
 * :func:`electrode_hs_stem` — the ONE spelling of an electrode run's
   identity, so the device deck's ``HS`` line and the electrode deck's
   ``SystemLabel`` cannot disagree.
+* :func:`pole_count` — TranSIESTA's rule for how many poles an equilibrium
+  pole ENERGY gives, written once for the settings gate's refusal and the
+  count the device deck states beside the energy.
 This module emits NO deck of its own and holds NO gate.  ``TransiestaEngine``
 and its ``preflight`` were deleted 2026-09-17 (the tombstone at the foot of the
 file lists every check and where it lives now), as were the ``TransportEngine``
@@ -33,6 +36,7 @@ here to wait for it.
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -108,6 +112,67 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
     the device will ask for.
     """
     return f"{job_name}_{label}"
+
+
+#: TranSIESTA's floor: the continued-fraction branch stops a run whose
+#: equilibrium contour has fewer poles than this (SIESTA 5.4.2
+#: `Src/m_ts_chem_pot.F90`:324) -- after the queue wait.
+MIN_EQ_POLES = 20
+
+#: TranSIESTA's other floor: it stops a run whose electronic temperature is
+#: under this, before any pole is counted -- *"TranSiesta electronic
+#: temperature *must* be larger than 10 kT"* (`m_ts_options.F90`:258-262, and
+#: again per chemical potential, :284-288; the message means kelvin).
+MIN_TS_TEMPERATURE_K = 10.0
+
+
+def pole_count(energy_ev: float, temperature_k: float) -> int:
+    """How many poles TranSIESTA takes for an equilibrium pole ENERGY.
+
+    TranSIESTA's own rule, not a fitted one.  Our device deck declares
+    ``%block TS.ChemPot.<name>`` with no ``contour.eq`` inside it, which takes
+    the continued-fraction branch (`m_ts_chem_pot.F90`:299), where the count
+    is ``int(E_pole / (pi * kT))`` (`:319`) and ``TS.Contours.Eq.Pole.N`` is
+    overwritten by it.  So the energy is the handle and the count follows the
+    temperature: the same energy gives fewer poles hotter
+    (`engines/transport.md` § 6.1c).
+
+    AN ENERGY AT OR BELOW ZERO IS NOT TAKEN AS ONE: the branch reads the
+    energy only when it is positive (`:318`), so the count stays at
+    ``TS.Contours.Eq.Pole.N``'s default of 8 (`:25`, `:113`) and the run
+    stops at the floor -- which is what this answers for it.  At 0 K the
+    rule divides by zero, so a temperature at or below zero is refused here
+    rather than answered (TranSIESTA stops below :data:`MIN_TS_TEMPERATURE_K`
+    first).
+    """
+    from ..constants import BOLTZMANN_EV_K
+    kT = BOLTZMANN_EV_K * float(temperature_k)
+    if kT <= 0:
+        raise ValueError(
+            f"the pole count is int(E / (pi kT)), undefined at "
+            f"{float(temperature_k):g} K")
+    if float(energy_ev) <= 0:
+        return _DEFAULT_EQ_POLES
+    return int(float(energy_ev) / (math.pi * kT))
+
+
+#: The count TranSIESTA keeps when the energy is not positive -- the
+#: `TS.Contours.Eq.Pole.N` default (`m_ts_chem_pot.F90`:25, `def_poles`).
+_DEFAULT_EQ_POLES = 8
+
+
+def pole_energy_for(poles: int, temperature_k: float) -> float:
+    """The least energy, in eV to two decimals, that :func:`pole_count` turns
+    into at least *poles* at *temperature_k* -- the rule inverted, beside it,
+    so a refusal can say what to type and have it accepted.  Rounded UP: the
+    count truncates, so an energy rounded to the nearest hundredth can fall
+    one pole short."""
+    from ..constants import BOLTZMANN_EV_K
+    exact = int(poles) * math.pi * BOLTZMANN_EV_K * float(temperature_k)
+    energy = math.ceil(exact * 100.0) / 100.0
+    while pole_count(energy, temperature_k) < poles:      # float edge
+        energy += 0.01
+    return round(energy, 2)
 
 
 def _find_electrode_regions(

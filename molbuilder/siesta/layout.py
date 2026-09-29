@@ -248,17 +248,20 @@ _FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e",
         "tbt_contours_eta_ev": ".6f"}
 
 #: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes nothing.  Each of
-#: these engine defaults is a FORMULA rather than a number -- the continued
-#: fraction's pole energy scales with the temperature, the non-equilibrium
-#: and the device Green function's broadenings are the leads' smallest over
-#: ten -- and a number written in its place would REPLACE the rule: an
-#: explicit `TS.Contours.Eq.Pole 0` sends TranSIESTA to a pole count of 8
-#: and a refused run (`m_ts_chem_pot.F90`), an explicit 0 broadening
-#: overrides the formula (`engines/transport.md` § 6.1b; each item's note
-#: says what 0 leaves).  Where the default IS a number, the item writes it:
-#: `TBT.Spin 0` is tbtrans's own default, all channels (`m_tbt_hs.F90`).
+#: these engine defaults is a FORMULA rather than a number -- the
+#: non-equilibrium and the device Green function's broadenings are the
+#: leads' smallest over ten -- and a number written in its place would
+#: REPLACE the rule: an explicit 0 broadening overrides the formula
+#: (`engines/transport.md` § 6.1b; each item's note says what 0 leaves).
+#: Where the default IS a number, the item writes it: `TBT.Spin 0` is
+#: tbtrans's own default, all channels (`m_tbt_hs.F90`).
+#:
+#: THE POLE ENERGY LEFT THIS SET on 2026-09-29 (M5 step 2, § 6.1c).
+#: TranSIESTA's own choice for it -- about 42 poles at 300 K -- lost the
+#: charge on a real device where a stated 10 eV held it, so the energy is
+#: always written, and the settings gate refuses one under 20 poles.
 _ZERO_LEAVES_IT_TO_THE_ENGINE = frozenset({
-    "negf_eq_pole_ev", "negf_neq_eta_ev", "tbt_contours_eta_ev"})
+    "negf_neq_eta_ev", "tbt_contours_eta_ev"})
 
 
 def note_lead(param: Parameter) -> Tuple[str, ...]:
@@ -310,6 +313,12 @@ def line(derived: dict):
     needing different syntax could not share one.  The framework was being
     worked around rather than used.
     """
+    # A DERIVED FACT SAID BESIDE A VALUE: the deck writer works it out and
+    # this door writes it after the value as an fdf comment -- libfdf ends a
+    # line's tokens at `#` outside a string or list (`parse.F90`), so the
+    # engine reads the value and nothing else.  The pole energy's count at
+    # the run's temperature is the one today (`engines/transport.md` § 6.1c).
+    beside = derived.get("beside") or {}
     computed = {"block_size":     derived.get("block_size"),
                 "parallel_over_k": derived.get("over_k"),
                 "diag_algorithm": derived.get("algorithm"),
@@ -414,6 +423,17 @@ def line(derived: dict):
                 f"{keys[1]:<18}{float(n):.1f}")
 
     def _line(param: Parameter) -> Optional[str]:
+        if param.name in beside and (
+                param.name in ("spin_treatment", "unpaired_electrons")
+                or param.name in computed or param.name in override
+                or param.name == "md_target_temperature"
+                or len(param.writes) == 2):
+            # One line, one value, one statement: a keyword this door writes
+            # as a pair or computes has no single line to say it beside, and
+            # dropping the text would lose it in silence.
+            raise TypeError(
+                f"{param.name}: a statement beside a value is written on a "
+                f"plain one-keyword line, and this item is not one")
         if param.name in ("spin_treatment", "unpaired_electrons"):
             return _spin(param)
         if param.name in computed:
@@ -426,7 +446,10 @@ def line(derived: dict):
             return None
         if len(param.writes) == 2:
             return _pair(param)
-        return _plain(param)
+        text = _plain(param)
+        if text is not None and param.name in beside:
+            text = f"{text}   # {beside[param.name]}"
+        return text
 
     return _line
 

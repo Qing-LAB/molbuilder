@@ -495,6 +495,34 @@ def resolve_citation(citation: str, tree_root: Path
     return cite_dir, classify_citation(cite_dir)
 
 
+def _junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
+    """The composed junction's axis kinds: across the transport axis, what
+    the cited relaxation declared; along it, ``transport``.
+
+    The relaxation's deck records its structure's kinds in its ENGINE-OFFSET
+    block (`script_emit.emit_engine_offset`), so a person who built a wire or
+    chain junction -- isolated across, `engines/transport.md` § 6.1c -- keeps
+    that declaration through the composition.  A deck written before that
+    record (plan § 5q D7) states none, and its junction is read the way every
+    junction was until 2026-09-29: periodic across.
+    """
+    from ..deck_record import extract_engine_offset
+    recorded = (extract_engine_offset(deck_text) or {}).get("axis_kind")
+    if not recorded:
+        return ("periodic", "periodic", "transport")
+    across = tuple(str(k) for k in recorded)[:2]
+    if len(recorded) == 3 and all(k in ("periodic", "isolated")
+                                  for k in across):
+        return (across[0], across[1], "transport")
+    # A RECORD THAT SAYS SOMETHING ELSE IS NOT SILENCE.  Read as "periodic
+    # across" it would replace the person's declaration with the old default
+    # without a word -- so it is refused, naming what it says.
+    raise ComposeError(
+        f"the cited deck records the axis kinds {list(recorded)!r}; across "
+        f"the transport axis a junction is periodic or isolated, so this "
+        f"record does not say which (engines/transport.md 6.1c)")
+
+
 def labeled_citation_structure(cited: CitedDir):
     """The cited directory's LABELED structure, and where its labels
     live -- ``(structure, source)`` with *source* the deck (in-body
@@ -520,13 +548,15 @@ def labeled_citation_structure(cited: CitedDir):
         return StructureCodec().load(cited.xyz), cited.sidecar
 
     cell, xv_elements, xv_pos = read_xv(cited.xv)
-    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT.  No cited file records
-    # `axis_kind`: the ATOM-METADATA block carries `regions` + `annotations`
-    # only, the `.XV` carries the cell, and SIESTA has no such concept.  It
-    # does not need recording -- `engines/transport.md` § 5 I8 settles it for
-    # every transport run: z is open (kz = 1, the leads enter as self-energies
-    # Σ, and the engine preflight refuses kz != 1) while x and y are the
-    # transverse periodic mesh.
+    # STATED AT CONSTRUCTION, AND Z IS TRANSPORT.  Along z the answer is
+    # settled for every transport run (`engines/transport.md` § 5 I8: z is
+    # open, kz = 1, the leads enter as self-energies Σ).  ACROSS it the
+    # answer is the person's, and the relaxation recorded it: its deck's
+    # ENGINE-OFFSET block carries the structure's `axis_kind`
+    # (`_junction_axis_kind`).  A slab junction is periodic across; a wire or
+    # chain junction is isolated across, and stating it periodic here made
+    # its vacuum a contradiction the settings gate refuses (§ 6.1c).  *(Until
+    # 2026-09-29 x and y were stated periodic for every junction.)*
     #
     # Assigning `.cell` afterwards instead skipped `__post_init__`, so the
     # box arrived unvalidated and every axis stayed `isolated`: the emitted
@@ -534,6 +564,7 @@ def labeled_citation_structure(cited: CitedDir):
     # vacuum / is not periodic; the electrode .TSHS cannot attach seamlessly"
     # on a junction that is periodic in-plane and open along z by design.
     deck_text = cited.deck.read_text()
+    kinds = _junction_axis_kind(deck_text)
     # ...and the `.XV` is the engine's frame, so it states an offset of 0 on
     # either label lane -- WHEN THE DECK RECORDED ITS PLACEMENT (§ 6.0, plan
     # § 5q D7): every rung composed from it then applies nothing.  A deck
@@ -545,8 +576,7 @@ def labeled_citation_structure(cited: CitedDir):
               else None)
     try:
         struct = Structure(elements=list(xv_elements), positions=xv_pos.copy(),
-                           cell=cell,
-                           axis_kind=("periodic", "periodic", "transport"),
+                           cell=cell, axis_kind=kinds,
                            engine_offset=stated)
     except ValueError as exc:
         # Live now that the cell goes through the constructor: `prep` catches
@@ -642,10 +672,11 @@ def labeled_citation_structure(cited: CitedDir):
             # says was fixed, live again through the sidecar branch.
             #
             # A cited relaxation being composed into a junction has exactly
-            # one answer here (`engines/transport.md` § 5 I8: the device has
-            # open boundary along transport), so it is stated outright rather
+            # one answer here -- the construction's above: transport along z
+            # (`engines/transport.md` § 5 I8), and across it what the
+            # relaxation's deck recorded -- so it is stated outright rather
             # than offered as a fallback the loader makes unreachable.
-            "axis_kind": ["periodic", "periodic", "transport"],
+            "axis_kind": list(kinds),
         })
         if struct.regions:
             return struct, sidecars[0]

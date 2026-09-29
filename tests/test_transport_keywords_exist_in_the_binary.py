@@ -220,12 +220,7 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
     from molbuilder.siesta.input import spec_for
     from molbuilder.structure import Structure
 
-    struct = Structure(
-        elements=["Au", "Au", "S", "C", "Au", "Au"],
-        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
-        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 14.0]], dtype=float),
-        regions={"L-electrode": [0, 1], "bridge": [2, 3],
-                 "R-electrode": [4, 5]})
+    struct = _toy_junction()
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, stage_token=token, calculation="transport"),
@@ -254,17 +249,30 @@ def test_the_device_deck_holds_no_label_siesta_cannot_read():
     siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
     if siesta is None:
         pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
-    struct = Structure(
-        elements=["Au", "Au", "S", "C", "Au", "Au"],
-        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
-        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 14.0]], dtype=float),
-        regions={"L-electrode": [0, 1], "bridge": [2, 3],
-                 "R-electrode": [4, 5]})
+    struct = _toy_junction()
     cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
     deck = sc.render_deck(
         spec_for(struct, cfg, stage_token="04_device",
                  calculation="transport"), struct, cfg)
     _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
+
+
+def _toy_junction():
+    """A labelled toy junction the settings gate accepts: a chain, so
+    isolated across the transport axis in its 8 Å box, and closed to one of
+    its 2 Å layer spacings at the transport boundary (`engines/transport.md`
+    § 6.1c).  Its geometry is otherwise meaningless -- what is under test is
+    the LABELS the deck writes."""
+    import numpy as np
+
+    from molbuilder.structure import Structure
+    return Structure(
+        elements=["Au", "Au", "S", "C", "Au", "Au"],
+        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
+        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 12.0]], dtype=float),
+        axis_kind=("isolated", "isolated", "transport"),
+        regions={"L-electrode": [0, 1], "bridge": [2, 3],
+                 "R-electrode": [4, 5]})
 
 
 def _junction_and_config():

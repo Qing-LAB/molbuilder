@@ -1307,7 +1307,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_dos_gf: bool = field(default=False, metadata={
+    tbt_dos_gf: bool = field(default=True, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
@@ -1316,7 +1316,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_dos_a: bool = field(default=False, metadata={
+    tbt_dos_a: bool = field(default=True, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
@@ -1325,7 +1325,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_dos_elecs: bool = field(default=False, metadata={
+    tbt_dos_elecs: bool = field(default=True, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
@@ -1334,7 +1334,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_t_eig: int = field(default=0, metadata={
+    tbt_t_eig: int = field(default=4, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
@@ -1344,7 +1344,7 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    tbt_t_bulk: bool = field(default=False, metadata={
+    tbt_t_bulk: bool = field(default=True, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",
@@ -1372,14 +1372,14 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    negf_eq_pole_ev: float = field(default=0.0, metadata={
+    negf_eq_pole_ev: float = field(default=10.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
         "label":       "Equilibrium pole energy",
         "engine_key":  "TS.Contours.Eq.Pole",
         "unit":        "eV",
-        "range":       (0.0, 10.0),
+        "range":       (1.0, 40.0),
         "tier":        "advanced",
     })
 
