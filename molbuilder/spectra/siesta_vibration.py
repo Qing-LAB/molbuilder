@@ -107,7 +107,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     thermochemistry's temperature, and the molbuilder that renders the
     deck -- and placed in the deck as given
     (`script_emit.emit_vibration_record`).  Its keys are read by
-    :func:`result_of` and nowhere else."""
+    :func:`result_of` -- and, before the deck is written, its
+    ``relaxation`` by the stage's own checks (`validate`'s ``prior``,
+    handed in by the SIESTA spec)."""
     return {"stage": str(stage),
             "force_criterion_ev_ang": (None if force_criterion_ev_ang is None
                                        else float(force_criterion_ev_ang)),

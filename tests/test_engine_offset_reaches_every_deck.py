@@ -354,10 +354,10 @@ _RELAX_RUN = (Path(__file__).parent / "fixtures" / "siesta_relax"
               / "01_relax" / "run-0")
 
 
-def _h2(z_moved=5.741):
+def _h2(z_moved=5.741, frozen=(0,)):
     return Structure(elements=["H", "H"],
                      positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, z_moved]]),
-                     regions={"frozen_atoms": [0]},
+                     regions={"frozen_atoms": list(frozen)},
                      cell=np.diag([10.0, 10.0, 10.0]),
                      axis_kind=("isolated",) * 3)
 
@@ -444,6 +444,85 @@ def test_the_freq_stage_leaves_the_inputs_relaxation_record_behind(
                       if l.startswith("# NetCharge:"))
     assert "(recorded:" in net_charge and "elsewhere.fdf" in net_charge, (
         net_charge)
+
+
+@pytest.mark.parametrize("ticked, tol, frozen, says, never", [
+    # The box unticked, the relax within tolerance: the outcome, as a fact.
+    (False, 0.01, (0,), "within this calculation's tolerance",
+     ("ladder relaxes it first", "box may be ticked")),
+    # The box ticked on a ladder that still holds `relax` -- which runs it
+    # whatever the box says (§ 5.2a): the geometry is NOT "as given".
+    (True, 0.01, (0,), "within this calculation's tolerance",
+     ("taken at the geometry as given", "No relaxation record")),
+    # A tolerance tighter than the relax reached: the one remedy, launch
+    # included -- a prepped continuation continues nothing until it runs.
+    (False, 0.0005, (0,), "`molbuilder jobset launch run relax`",
+     ("ladder relaxes it first", "untick the box")),
+    # The held set changed since `relax` ran (the measured run held atom 0,
+    # this description holds none): free atoms it never balanced.
+    (False, 0.01, (), "stage held 1 atom(s); this stage holds 0",
+     ("untick the box", "The ladder relaxes this set first")),
+])
+def test_a_force_constant_stage_is_told_what_its_relax_stage_left(
+        isolated_projects_root, ticked, tol, frozen, says, never):
+    """At `freq` after `relax`, the fact is that stage's outcome -- its
+    largest remaining force on the moved atoms against this calculation's
+    tolerance -- and, when it stopped short, continuing it
+    (`engines/vibration.md` § 5.2a; plan V1.36, the user's word
+    2026-09-29).  The box's describe-time advice was written for the
+    input and is moot once the ladder has relaxed.  The measured fixture
+    stopped at 0.001042 eV/Å on the moved atom (its README)."""
+    import shutil
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.pyscf.stages import vibration_stages
+
+    def the_relax_ran(dest):
+        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0")
+
+    dest, stage, _text = _prep(
+        isolated_projects_root, _h2(frozen=frozen),
+        SiestaConfig(system_label="H2", already_relaxed=ticked,
+                     relax_force_tol=tol),
+        vibration_stages("siesta", already_relaxed=False), "siesta",
+        stage="freq", calculation="vibration", name="H2",
+        before_prep=the_relax_ran)
+    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt"))
+    said = report.read_text()
+    assert says in said and "0.0010 eV/Å" in said, said
+    for phrase in never:
+        assert phrase not in said, phrase
+
+
+def test_a_bench_trial_of_the_force_constant_stage_is_told_it_too(
+        isolated_projects_root):
+    """A trial deck of `freq` is written at the `relax` stage's geometry as
+    the run's is, so its checks judge that stage's outcome as the run's do
+    -- not the box's "taken at the geometry as given" (V1.36; found by
+    review 2026-09-29: the record rode only on the finish's block, which a
+    trial does not carry)."""
+    import shutil
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.pyscf.stages import vibration_stages
+
+    def the_relax_ran(dest):
+        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0")
+
+    dest, _stage, _text = _prep(
+        isolated_projects_root, _h2(),
+        SiestaConfig(system_label="H2", already_relaxed=True,
+                     relax_force_tol=0.01),
+        vibration_stages("siesta", already_relaxed=False), "siesta",
+        stage="freq", calculation="vibration", name="H2",
+        before_prep=the_relax_ran)
+    r = CliRunner().invoke(jobset_group, ["prep", "bench", "freq", "--bundle",
+                                          str(dest), "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    reports = sorted(next(dest.glob("*_freq")).rglob("*.validation.txt"))
+    assert reports, r.output
+    for report in reports:
+        said = report.read_text()
+        assert "within this calculation's tolerance" in said, (report, said)
+        assert "taken at the geometry as given" not in said, (report, said)
 
 
 def test_a_relaxed_pairs_record_still_vouches_through_prep(

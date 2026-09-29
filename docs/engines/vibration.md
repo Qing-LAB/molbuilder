@@ -1088,7 +1088,13 @@ deck's `vibration` block to the finish (§ 5.3), which judges the relaxed
 geometry at FC step 0 (§ 5.5). Its calculation record (`info.calculation`)
 stays, because every stage reads the same electronic state from it
 ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-§ 2a). *(Until 2026-09-29 the input's record went along, and every such prep
+§ 2a). **What the stage is told about that geometry is the `relax` stage's
+outcome** (§ 5.8, V1.36): `prep` hands that stage's record to every deck
+written at its geometry — `spec_for`'s `relaxed_by`, a bench trial's deck too,
+which carries no block — and the spec hands it to the stage's checks as
+`validate`'s `prior`, and the checks judge it — the largest remaining force on the moved atoms against this
+calculation's tolerance, and the held set — rather than the box's
+describe-time advice, which was written for the input. *(Until 2026-09-29 the input's record went along, and every such prep
 said the structure's record was "for a different geometry -- another frame of
 that run, or edited since": measured on the Au–BDT–Au spectrum, whose input
 was the final frame of its own relaxation.)*
@@ -1428,7 +1434,19 @@ the template's force tolerance, before the force constants; with it ticked, a
 at this level of theory, and that the finish measures the reference-step
 forces against that tolerance (§ 5.5); the relaxation-record findings of
 § 2.2 when the structure carries one; and the
-unconsumed-region-label notice every kind carries. The SIESTA engine
+unconsumed-region-label notice every kind carries. **At a force-constant stage
+whose ladder relaxed the coordinates** the precondition and the record are
+not said in those words — the box's two states and the input's record are
+moot once the `relax` stage has run — and the stage is told that stage's
+outcome instead (§ 5.2a): its largest remaining force on the moved atoms
+against this calculation's tolerance, as information when within it and as a
+**warning** when above it, naming the one remedy — continue the `relax` stage
+from its newest attempt (`prep run relax --from <that attempt>`, then
+`launch run relax`), and prep this stage again once it has concluded; and a
+held set changed between the two stages, which leaves free atoms that
+relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
+trial of that stage is written at the same geometry and told the same
+(`prep` hands the record to every deck at it, `spec_for`'s `relaxed_by`). The SIESTA engine
 validator defers that notice and its own *held during relaxation* line on
 this kind — one fact, one finding ([`science/validation.md`](?doc=science/validation.md) § 7).
 
@@ -2106,6 +2124,7 @@ mode matching across runs (V1.24).
 | `tests/test_spectra_from_a_real_run_e2e.py` | CO₂ computed, then read back through the Results tab's own door — nothing faked |
 | `tests/test_siesta_vibration_deck.py` · `tests/test_siesta_vibration_e2e.py` | the FC deck's lines and refusals; the record table of § 2.2 on the measured relaxation fixture (`tests/fixtures/siesta_relax`: a matching record's info line, a looser record's warning, another geometry, another level of theory or engine, the unticked offer to skip, no record accepted with a hint); the analysis on the measured fixtures (`vibrational_analysis` over the `.FC` block, the reference step through the reading pass) — the modes in the input order, the reference forces judged both ways, the zero-point displacement derived and absent for an imaginary mode; the whole SIESTA road through jobset in both states of the box, the launch alone leaving the spectrum (red with the wrapper's finish removed) — unticked, `relax` then `freq` on the experimental bond, `freq` refused before `relax` has concluded and written at the relaxed geometry afterwards, the relaxed bond's frequency and the reference forces within the template's own tolerance; ticked, `freq` alone on the relaxed fixture, after the contradiction (unticked, no `relax` stage) is refused; the displacement sweep — every force-constant stage at the relaxed bond, a stage still to come pending in its attempt's words, the record naming each stage's files and copying none, and the sweep refused after a relaxation re-run between the stages; a flat calculation refusing a second force-constant stage, a disabled one included; the finish that fails — the marker naming it, the job read failed, and the same attempt stopped inside its finish (failed) and still in it (running); a finish that cannot load, stopping the job before SIESTA with a marker that reads failed; the finish run where molbuilder is not (the bundle alone, on a measured attempt) |
 | `tests/test_siesta_vibration_results_e2e.py` | the SIESTA road on H₂ and then the Results tab, read against `web/spectra.md`: the mode positions under their heading — one line of one height, no curve, no height numbers — with no width or floor control and the sentence saying why, no infrared, Raman or orbital column and the summary saying *not computed on this route*, no Raman or probe dot, the electronic-structure tab naming the planned projected density of states, the thermochemistry labelled vibrational-only with no pressure and its bars summing to `F_vib` — every hiding read from the computed style (red against the width control shown whatever the strengths, the `.phase[hidden]` guard removed, the notice's route branch removed, the RRHO labels forced) |
+| `tests/test_engine_offset_reaches_every_deck.py` | a force-constant stage written at the `relax` stage's geometry, unmoved (§ 5.2a); the input's relaxation record left behind while its calculation record still sets the electronic state (V1.35); what the stage is told about the relaxation its ladder ran — within tolerance, above it with the continue-and-launch remedy, a held set changed between the stages — on the run's deck and on a bench trial's (V1.36) |
 | `tests/test_displacement_sweep.py` | matching by shape on a measured fixture (`tests/fixtures/siesta_h2o_modes`, free water — atoms of unequal mass): a rank swap found, a mixed pair's overlap the mass-weighted cosine; a PySCF vibration refused by `summarize run` on the road |
 | `tests/test_vibration_render_gate.py` | the deck runs the science gate and refuses; an unknown engine class is refused |
 | `tests/test_vibration_form_honesty.py` | every offered parameter changes the deck |
@@ -2184,7 +2203,7 @@ nothing is in that state as of 2026-09-28.
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
 | the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |
 | the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
-| what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **owed** — V1.36, needs a decision | § 2.2, § 5.2a, § 5.8 |
+| what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **built 2026-09-29** — V1.36, the user's word the same day | § 5.2a, § 5.8 |
 | the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
 
 ---

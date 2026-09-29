@@ -671,6 +671,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                stage_token: Optional[str] = None,
                calculation: str = "optimization",
                vibration: Optional[dict] = None,
+               relaxed_by: Optional[dict] = None,
                state=None) -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
 
@@ -679,6 +680,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     record as given and never read here, because only `prep` holds its facts
     (`engines/vibration.md` § 5.3).  A force-constant deck also names the
     bundle that finishes its run (`DeckSpec.finish`, § 5.5).
+
+    ``relaxed_by`` is the relaxation record the ladder's `relax` stage left,
+    at a force-constant stage written at its geometry -- a bench trial's
+    deck too, which carries no `vibration` block: the checks judge that
+    outcome rather than the input's (`validate`'s ``prior``; V1.36).
 
     ``state`` is a transport calculation's electronic state, which `prep`
     resolves ONCE on the whole junction and hands to every rung
@@ -1057,8 +1063,13 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         check_rules=_layout.check_rules,
         # WHAT the settings gate judges: the structure as this deck
         # expresses it, not as it arrived.
-        validate_subject=lambda s, c: (validation_struct,
-                                       {"cell": cell, "design": struct}),
+        validate_subject=lambda s, c: (validation_struct, {
+            "cell": cell, "design": struct,
+            # AND WHAT THE LADDER'S `relax` STAGE LEFT, at a force-constant
+            # stage that measures at its geometry: the checks judge that
+            # outcome, not the input's (`validate`'s ``prior``; V1.36).
+            **({"prior": relaxed_by}
+               if _vibration and relaxed_by is not None else {})}),
         # A FORCE-CONSTANT RUN LEAVES FORCE CONSTANTS, NOT THE RESULT: its
         # job is finished by the bundle that derives the modes, and the deck
         # carries what that finish reads (`engines/vibration.md` § 5.3, 5.5).

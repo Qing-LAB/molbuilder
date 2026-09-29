@@ -189,11 +189,12 @@ def validate(struct: Structure, cfg, *,
         resolution; the file-existence check may then misfire and is
         downgraded to a WARN.
     prior
-        Optional prior engine results (Spectra ``SpectraResults`` /
-        Transport ``TransportResults``) that the Spectra/Transport
-        engine validators use for selector / cross-run checks.  None
-        on a first run and on every SIESTA/PySCF Build call (their
-        validators ignore it).
+        What an EARLIER STAGE of this calculation left that this stage's
+        checks judge -- today, at a SIESTA force-constant stage, the ladder's
+        `relax` stage's relaxation record (`engines/vibration.md` § 5.2a),
+        handed in by the deck's spec from the `vibration` block `prep`
+        built.  ``None`` everywhere else.  *(It named the retired Spectra /
+        Transport engines' results until 2026-09-29, and nothing passed it.)*
 
     design
         The structure AS THE PERSON HOLDS IT, when ``struct`` is the placed
@@ -343,13 +344,11 @@ def report(issues: List[Issue], *,
 # --------------------------------------------------------------------- #
 
 
-# --- Spectra / Transport validators ------------------------------------ #
-# These engines carry their scientific checks in the engine's own
-# ``preflight(struct, cfg, prior=None)`` classmethod (selected by
-# ``cfg.engine`` via the engine registry).  Registering thin wrappers here
-# makes ``validate(struct, cfg, prior=prior)`` the SINGLE per-engine gate,
-# so /spectra and /transport no longer hand-concatenate a second
-# ``engine.preflight()`` pass (the silent-skip risk; V1/V2).  The engine
+# --- The calculation kinds' validators ---------------------------------- #
+# A kind's science runs beside the engine's, keyed by what the description
+# says it is, so every deck of that kind is checked on every route.  What an
+# earlier stage left -- a SIESTA force-constant stage's `relax` record --
+# arrives as ``validate``'s ``prior`` and is forwarded here (V1.36).
 #: The calculation KIND's science, keyed by the described fact
 #: (``task.calculation``).  "optimization" deliberately has no entry:
 #: its science IS the engine validators above.  A new kind registers
@@ -373,7 +372,8 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
     from ..config.siesta import SiestaConfig
     if isinstance(cfg, SiestaConfig):
         from .spectra import siesta_vibration_checks
-        return list(siesta_vibration_checks(struct, cfg, design=design))
+        return list(siesta_vibration_checks(struct, cfg, design=design,
+                                            relaxed_by=prior))
     # The kind's science is written per engine, and an engine this dispatch
     # does not name has NO science here -- a gap to refuse, never an empty
     # verdict: an empty list reads as "checked, nothing found" on every

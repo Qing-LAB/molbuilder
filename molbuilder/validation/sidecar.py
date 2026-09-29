@@ -13,7 +13,7 @@ signature are identical to the pre-split version.
 
 from __future__ import annotations
 
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping, Optional, Tuple
 
 from ..issues import Issue
 from ..structure import Structure
@@ -195,10 +195,44 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
     )]
 
 
+def _ev(x) -> str:
+    """A measured force in eV/Å, readable at both ends of the range: four
+    decimals down to half a milli-eV/Å, an exponent below that.  A
+    tolerance prints as the person typed it (``:g``)."""
+    x = float(x)
+    return f"{x:.4f}" if x >= 5e-4 else f"{x:.1e}"
+
+
+def _held_sets_differ(struct: Structure, rec: Mapping[str, Any]
+                      ) -> Optional[Tuple[int, int]]:
+    """``(held then, held now)`` when a relaxation record's held set is not
+    this structure's -- compared by the atoms themselves, never by an index,
+    because a deck's copy may list them in another order; ``None`` when they
+    are the same atoms or the record keeps no set."""
+    keys_then = rec.get("held_atom_keys")
+    if not isinstance(keys_then, list):
+        return None
+    lines = struct.geometry_lines()
+    keys_now = sorted(lines[i] for i in (struct.frozen_atoms or [])
+                      if 0 <= int(i) < len(lines))
+    if sorted(keys_then) == keys_now:
+        return None
+    return len(keys_then), len(keys_now)
+
+
+def _judged_force(rec: Mapping[str, Any]) -> Optional[float]:
+    """The force a relaxation is judged by: the largest on the atoms it
+    moved, when the record says; on every atom otherwise."""
+    f_free = rec.get("max_force_free_ev_ang")
+    return f_free if f_free is not None else rec.get("max_force_ev_ang")
+
+
 def check_relaxation_record(struct: Structure, *, engine: str,
                             already_relaxed: bool,
                             force_tolerance_ev_ang: Optional[float],
-                            level: Optional[Mapping[str, Any]] = None
+                            level: Optional[Mapping[str, Any]] = None,
+                            relaxed_by: Optional[Mapping[str, Any]] = None,
+                            relax_stage: str = "relax"
                             ) -> List[Issue]:
     """The structure's own evidence against the person's statement
     (`engines/vibration.md` § 2.2, the record table; `model/parse.md`
@@ -214,7 +248,16 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     largest remaining force against THIS calculation's tolerance, a
     different held set.  Ticked, a disagreement is a warning; unticked,
     the same fact is information, because the ladder relaxes regardless.
+
+    ``relaxed_by`` is the other question, asked at a force-constant stage
+    whose ladder relaxed the coordinates itself: that stage's record
+    (`engines/vibration.md` § 5.2a, V1.36) -- judged by
+    :func:`_ladder_relaxation_findings`, never by the box's advice.
     """
+    if relaxed_by is not None:
+        return _ladder_relaxation_findings(struct, relaxed_by,
+                                           force_tolerance_ev_ang,
+                                           stage=relax_stage)
     issues: List[Issue] = []
     where = "config.already_relaxed"
     info = getattr(struct, "info", None) or {}
@@ -234,13 +277,6 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     disagree = "warn" if already_relaxed else "info"
     disagreed = False           # any fact below that says "not stationary here"
     rec_engine = rec.get("engine")
-
-    def _ev(x) -> str:
-        """A measured force in eV/Å, readable at both ends of the range:
-        four decimals down to half a milli-eV/Å, an exponent below that.
-        A tolerance prints as the person typed it (``:g``)."""
-        x = float(x)
-        return f"{x:.4f}" if x >= 5e-4 else f"{x:.1e}"
 
     if rec["geometry_sha256"] != struct.geometry_fingerprint():
         issues.append(Issue(
@@ -303,30 +339,23 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                        "will be off." if already_relaxed else
                        "  The ladder relaxes it at this level first.")),
                 where=where))
-    # -- the held set: by the atoms themselves, never by an index, because a
-    #    deck's copy may list them in another order -------------------------
-    keys_then = rec.get("held_atom_keys")
-    if isinstance(keys_then, list):
-        lines = struct.geometry_lines()
-        keys_now = sorted(lines[i] for i in (struct.frozen_atoms or [])
-                          if 0 <= int(i) < len(lines))
-        if sorted(keys_then) != keys_now:
-            disagreed = True
-            issues.append(Issue(
-                severity=disagree, where=where,
-                message=(f"The relaxation held {len(keys_then)} atom(s); this "
-                         f"calculation holds {len(keys_now)}, and they are not "
-                         f"the same atoms.  The free atoms are not the same "
-                         f"set, so the geometry is not stationary for this "
-                         f"calculation's free atoms."
-                         + ("  Untick the box so the ladder relaxes this set, "
-                            "or keep the statement knowing that."
-                            if already_relaxed
-                            else "  The ladder relaxes this set first."))))
+    # -- the held set ------------------------------------------------------
+    held = _held_sets_differ(struct, rec)
+    if held is not None:
+        disagreed = True
+        issues.append(Issue(
+            severity=disagree, where=where,
+            message=(f"The relaxation held {held[0]} atom(s); this "
+                     f"calculation holds {held[1]}, and they are not "
+                     f"the same atoms.  The free atoms are not the same "
+                     f"set, so the geometry is not stationary for this "
+                     f"calculation's free atoms."
+                     + ("  Untick the box so the ladder relaxes this set, "
+                        "or keep the statement knowing that."
+                        if already_relaxed
+                        else "  The ladder relaxes this set first."))))
     # -- the largest remaining force against THIS calculation's tolerance --
-    f_free = rec.get("max_force_free_ev_ang")
-    f_all = rec.get("max_force_ev_ang")
-    judged = f_free if f_free is not None else f_all
+    judged = _judged_force(rec)
     rec_tol = rec.get("force_tolerance_ev_ang")
     who = (f"relaxed on {rec_engine or 'an engine the record does not name'}"
            + (f" to {float(rec_tol):g} eV/Å" if rec_tol is not None else "")
@@ -366,3 +395,72 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                         "  The ladder's relaxation tightens it."))))
     return issues
 
+
+def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
+                                force_tolerance_ev_ang: Optional[float], *,
+                                stage: str) -> List[Issue]:
+    """What a force-constant stage is told about the geometry its ladder's
+    `relax` stage left (`engines/vibration.md` § 5.2a; plan V1.36, the
+    user's word 2026-09-29).
+
+    The fact at this stage is that stage's OUTCOME -- how far it got, against
+    this calculation's tolerance -- and, when it stopped short, the one
+    remedy: continue it.  Not the box's describe-time advice ("the ladder
+    relaxes it first", "the box may be ticked", "untick the box"), which
+    was written for the input and is moot once the ladder has relaxed; not
+    the level of theory, which is this calculation's own by construction;
+    and not the geometry's fingerprint, since the coordinates are that
+    record's last frame.  The held set IS compared: a set changed between
+    the stages leaves free atoms the relaxation never balanced.
+    """
+    issues: List[Issue] = []
+    where = "config.already_relaxed"
+    remedy = (f"  Continue the `{stage}` stage from its newest attempt -- "
+              f"`molbuilder jobset prep run {stage} --from <that attempt>` "
+              f"starts from the geometry it stopped at, then `molbuilder "
+              f"jobset launch run {stage}` -- and prep this stage again once "
+              f"it has concluded.")
+    held = _held_sets_differ(struct, rec)
+    if held is not None:
+        issues.append(Issue(
+            severity="warn", where=where,
+            message=(f"The `{stage}` stage held {held[0]} atom(s); this "
+                     f"stage holds {held[1]}, and they are not the same "
+                     f"atoms, so the geometry is not stationary for this "
+                     f"stage's free atoms." + remedy)))
+    judged = _judged_force(rec)
+    steps = rec.get("n_steps", "?")
+    if judged is None:
+        issues.append(Issue(
+            severity="info", where=where,
+            message=(f"The force constants are taken at the geometry the "
+                     f"`{stage}` stage left ({steps} geometry step(s)); its "
+                     f"record carries no final force to judge.")))
+    elif force_tolerance_ev_ang is None:
+        issues.append(Issue(
+            severity="info", where=where,
+            message=(f"The force constants are taken at the geometry the "
+                     f"`{stage}` stage left: a largest force of "
+                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
+                     f"{steps} geometry step(s).")))
+    elif float(judged) <= float(force_tolerance_ev_ang):
+        issues.append(Issue(
+            severity="info", where=where,
+            message=(f"The force constants are taken at the geometry the "
+                     f"`{stage}` stage left: a largest force of "
+                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
+                     f"{steps} geometry step(s), within this calculation's "
+                     f"tolerance of {float(force_tolerance_ev_ang):g} "
+                     f"eV/Å.")))
+    else:
+        issues.append(Issue(
+            severity="warn", where=where,
+            message=(f"The `{stage}` stage stopped with a largest force of "
+                     f"{_ev(judged)} eV/Å on the atoms it moved, after "
+                     f"{steps} geometry step(s) -- above this "
+                     f"calculation's tolerance of "
+                     f"{float(force_tolerance_ev_ang):g} eV/Å, so the force "
+                     f"constants would be taken off a stationary point and "
+                     f"the frequencies will be off, the low ones most."
+                     + remedy)))
+    return issues

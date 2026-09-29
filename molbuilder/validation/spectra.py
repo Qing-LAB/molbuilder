@@ -536,7 +536,8 @@ def spectra_render_checks(struct: Structure,
 
 
 def siesta_vibration_checks(struct: Structure, cfg, *,
-                            design: Optional[Structure] = None) -> List[Issue]:
+                            design: Optional[Structure] = None,
+                            relaxed_by: Optional[dict] = None) -> List[Issue]:
     """The vibration kind's science on SIESTA -- the force-constant run.
 
     What holds on both engines is said once here and in
@@ -547,6 +548,12 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     states of the person's box -- unticked the ladder's `relax` stage runs
     first, ticked the force constants are taken at the geometry as given
     and the job's finish measures it (`engines/vibration.md` § 2.2, § 5.8).
+
+    ``relaxed_by`` is the ladder's `relax` stage's record, at a
+    force-constant stage whose coordinates that stage left (`validate`'s
+    ``prior``).  Then the box's two states are moot -- the ladder relaxed
+    whatever it says -- and the stage is told that relaxation's outcome
+    instead (§ 5.2a, V1.36).
     """
     issues: List[Issue] = []
     n = int(struct.n_atoms)
@@ -609,6 +616,23 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     _tol = getattr(cfg, "relax_force_tol", None)
     _tol_text = (f"{float(_tol):g} eV/Å" if _tol is not None
                  else "the template's relax_force_tol")
+    if relaxed_by is not None:
+        # THE LADDER RELAXED THESE COORDINATES: its `relax` stage's outcome
+        # is this stage's fact, said in place of the box's describe-time
+        # advice and of the input's own record (`sidecar.
+        # _ladder_relaxation_findings`).
+        from ..pyscf.stages import VIBRATION_RELAX_STAGE
+        from .sidecar import (check_relaxation_record,
+                              check_unconsumed_region_labels)
+        issues.extend(check_relaxation_record(
+            design if design is not None else struct, engine="siesta",
+            already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
+            force_tolerance_ev_ang=(float(_tol) if _tol is not None
+                                    else None),
+            relaxed_by=relaxed_by, relax_stage=VIBRATION_RELAX_STAGE))
+        issues.extend(check_unconsumed_region_labels(
+            struct, engine="SIESTA vibration"))
+        return issues
     if not bool(getattr(cfg, "already_relaxed", False)):
         issues.append(Issue(
             severity="info",

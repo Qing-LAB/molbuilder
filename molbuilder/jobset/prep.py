@@ -1282,6 +1282,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                          **({"vibration": _vibration_block(
                                                 pset.stage, cfg, _relaxed_by)}
                                             if _finishes and not element.is_trial
+                                            else {}),
+                                         # THE RELAX STAGE'S RECORD reaches
+                                         # every deck at its geometry -- a
+                                         # trial's too, which carries no
+                                         # finish (V1.36).
+                                         **({"relaxed_by": _relaxed_by}
+                                            if _relaxed_by is not None
                                             else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
                                  dest_dir=base, findings=findings)
