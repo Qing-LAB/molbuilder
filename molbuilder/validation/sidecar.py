@@ -32,9 +32,7 @@ def _check_frozen_atoms_consumed(struct: Structure, *,
       * SIESTA: ``honored`` is False when ``cfg.relax_type == 'none'``
         (no MD block emitted, so Geometry.Constraints does nothing).
       * PySCF: ``honored`` is False when ``cfg.optimize == False``
-        (single-point energy, no relaxation) OR
-        ``cfg.optimizer != 'geometric'`` (the only PySCF optimizer
-        with constraint support).
+        (single-point energy, no relaxation).
 
     When honored is True we emit an INFO-severity Issue so the user
     sees an explicit "N atoms held fixed during relaxation" line in

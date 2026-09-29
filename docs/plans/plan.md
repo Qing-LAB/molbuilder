@@ -4573,8 +4573,7 @@ IS STILL MISSING"* · `chemistry-correctness.md`'s two channels, in the present
 tense.
 
 **Elsewhere** (M2n's sweeps): `junction-cell.md` against X3 · `normal-modes.md`'s *"no comparison tool"* ·
-`vibration.md`'s V1.25 / V1.27 / compose lines · `on_nonconvergence` called open
-in `siesta.md`, `tuning.md`, `stages.md` (settled in `pyscf.md` § 3) ·
+`vibration.md`'s V1.25 / V1.27 / compose lines ·
 `stages.md`'s folder conversion (answered no) · `execution/overview.md`'s
 remaining ⏳ row (the fork of a what-if tail) · `engines/transport.md` § 3.7's *`dataclass_to_form_schema` LIVE*
 (no production caller since the transport form reads the catalogue; its retirement
@@ -4675,6 +4674,35 @@ PySCF decks, which is a wrong answer given silently. Then the declarations
 K1–K4, which the surfaces read; K5; K11; K7; K8; K10; K12–K16; K17; K9 and the
 text sweep last. Then W50's step 3, the road in the browser per track, with the
 reviewers' probes (the archive's § E lists) among its runs.
+
+### 5w.5 Progress
+
+* **K6 — in progress.** *Step 1 done 2026-09-29*: both PySCF decks relax
+  through one spliced function, `relax_policy.relax`, which calls
+  `geometric_solver.kernel` and applies the policy to geomeTRIC's own flag —
+  `halt` stops before the relaxed geometry is written, `continue` re-enters
+  from the geometry reached, `proceed` keeps it and says so; every step's SCF
+  must converge under every policy (PS-C1 = PO-C1). The vibration result's
+  `relaxation.converged` has one meaning on every route, the judged force
+  against the criterion, set after the relaxation and under the person's
+  statement alike. `berny` retired, and with one choice left the `optimizer`
+  item retired too (`template.RETIRED_ITEMS`: a template naming it is refused
+  and the line deleted — the user's `PDT/spectrum/pySCF_PDT` template carries
+  one; left untouched) — K17's berny fork, done here because the door is
+  geomeTRIC's. PO-C15's comment corrected (the warm start it described is not
+  there; unchanged behaviour). Tests: the emitted retry loop's text tests
+  retired with it (`test_one_relax_retry_loop.py`, C3, the PySCF signature
+  probe, the berny cases), anchors re-pointed; one road test added
+  (`test_pyscf_relaxation_outcome_e2e.py`: halt, continue, proceed on H2),
+  each assertion mutation-tested red. *Measured on it*: a re-entry starts
+  geomeTRIC's step history afresh, so a batch of two steps makes about one good
+  step — a cost of a step or two per batch at ordinary budgets. *No test pins*
+  the step-SCF guard under `proceed`: the road cannot make a step SCF fail
+  inside the declared ranges; it is one literal in the one function.
+  *Left*: SS-C2 (one remedy text), SS-C3 (retry resumability from the kind's
+  warm-state declaration), PO-C2 (a capability the engine lacks, declared),
+  PS-C10 with V1.31 (the run's own relaxation record on its pair), then the
+  full review.
 
 ---
 

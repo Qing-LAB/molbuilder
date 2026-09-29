@@ -132,17 +132,16 @@ def test_no_second_gto_M_call(small_struct):
 
 
 # --------------------------------------------------------------------- #
-#  Trajectory contract: every optimize() with write_trajectory=True     #
-#  and optimizer="geometric" must include a prefix= kwarg.              #
+#  Trajectory contract: the relax() call with write_trajectory=True     #
+#  must include a prefix= kwarg naming this rung.                       #
 # --------------------------------------------------------------------- #
 
 
 _OPTIMIZE_BLOCK_RE = re.compile(
-    # Match either ``x = optimize(`` (loop body) or ``return
-    # optimize(`` (inside the _mb_run_stage_opt helper introduced
-    # in #534 6c).  Both shapes have the same multi-line arg list
-    # we want to inspect.
-    r"^\s*(?:\w+\s*=|return)\s*optimize\s*\(\s*\n"
+    # The one relaxation call, ``mol_eq, _GEOM_CONVERGED = relax(`` --
+    # a multi-line arg list, the geomeTRIC keywords among it
+    # (`relax_policy.py`, `engines/pyscf.md` § 3).
+    r"^\s*[\w, ]+?\s*=\s*relax\s*\(\s*\n"
     # Body lines: anything that ISN'T a bare ``)`` line.  Negative
     # lookahead lets body lines contain balanced parens (e.g. the
     # 2026-05-27 ``prefix = _mb_outfile(JOB + ".."),`` wrapping)
@@ -154,14 +153,14 @@ _OPTIMIZE_BLOCK_RE = re.compile(
 
 
 def _optimize_calls(text: str):
-    """Yield each ``... = optimize(...)`` block's body text."""
+    """Yield each ``... = relax(...)`` block's body text."""
     code = _strip_comments(text)
     for m in _OPTIMIZE_BLOCK_RE.finditer(code):
         yield m.group("body")
 
 
 def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
-    """Spec: with ``write_trajectory=True`` the single ``optimize()`` call passes
+    """Spec: with ``write_trajectory=True`` the single ``relax()`` call passes
     a ``prefix=`` naming **this rung**, so two rungs of one ladder cannot write
     into the same geomeTRIC trajectory.
 
@@ -181,17 +180,17 @@ def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
     bodies = list(_optimize_calls(render_script(small_struct, cfg,
                                                stage_token="02_tight")))
     assert len(bodies) == 1, (
-        f"Expected exactly 1 optimize() call, found {len(bodies)}")
+        f"Expected exactly 1 relax() call, found {len(bodies)}")
     body = bodies[0]
     assert "prefix" in body
     m = re.search(r"_mb_outfile\(JOB \+ '([^']+)'\)", body)
-    assert m, f"optimize() has no composed prefix.  Body was:\n{body}"
+    assert m, f"relax() has no composed prefix.  Body was:\n{body}"
     # geomeTRIC appends `_optim.xyz` to the prefix, so THAT is the filename.
     produced = "my-job" + m.group(1) + "_optim.xyz"
     got = parse(produced, "my-job")
     assert got is not None, f"the name geomeTRIC will write does not parse: {produced}"
     assert got.stage == "02_tight", (
-        f"optimize() prefix must carry this rung's token so two rungs get "
+        f"relax() prefix must carry this rung's token so two rungs get "
         f"separate trajectory files; parsed stage was {got.stage!r}")
     assert got.role == "_geom_optim.xyz", (
         f"the name geomeTRIC will write ({produced}) has role {got.role!r}, "
@@ -239,7 +238,7 @@ def test_optimizer_import_wrapped_in_try_except(small_struct):
     text = render_script(small_struct, PySCFConfig())
     # The geomopt import must be inside a try/except, with the except
     # raising SystemExit and directing the user to the managed backend.
-    assert "from pyscf.geomopt.geometric_solver import optimize" in text
+    assert "from pyscf.geomopt import geometric_solver" in text
     assert "except ImportError" in text
     assert "raise SystemExit(" in text
     assert "bash scripts/install-env.sh bootstrap --yes" in text

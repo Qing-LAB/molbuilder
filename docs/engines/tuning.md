@@ -104,9 +104,9 @@ oscillation dominates the cost — don't switch back to CG).
 - **SIESTA** `MD.TypeOfRun` — `CG` / `Broyden` / `FIRE` (`none` = single-point, skip
   the MD block; `Verlet` / `Nose` also exist for finite-temperature MD, not geometry
   optimization). The staged ladder uses CG for stage 1, Broyden for 2 + 3.
-- **PySCF** `cfg.optimizer` — `"geometric"` (default; translation-rotation-invariant
-  internal coordinates, BFGS internally) or `"berny"`. **The staged-opt loop supports
-  only `geometric`** — `berny` doesn't accept the per-stage convergence kwargs.
+- **PySCF** — geomeTRIC, the one optimizer (translation-rotation-invariant internal
+  coordinates, BFGS internally); [`pyscf.md` § 3](?doc=engines/pyscf.md) says why
+  `berny` was retired.
 
 **Worked example.** On the 2026-06-23 BDT/Au(111) junction (444 atoms, organic-on-
 metal, vdW interface, `MD.MaxForceTol 0.04 eV/Å`), CG bounced between 0.087 and
@@ -910,10 +910,10 @@ default**.
 > loop was retired on 2026-08-18
 > ([`stages.md § 1.1a`](?doc=engines/stages.md)).*
 >
-> **`on_nonconvergence` survives as a PySCF field with a narrower meaning**: it
-> sets `assert_convergence` for THIS rung's `optimize()` call — whether an
-> unconverged rung raises or exits with the partial geometry. That is a property
-> of one deck, not of an edge between two, and it is
+> **`on_nonconvergence` survives as a PySCF field with a narrower meaning**: what
+> THIS rung does when geomeTRIC reports its criteria unmet at the step budget —
+> stop, re-enter from the geometry reached, or take it. That is a property of one
+> deck, not of an edge between two, and it is
 > [`pyscf.md § 3`](?doc=engines/pyscf.md)'s to describe.
 
 | Stage (tier) | SIESTA | PySCF |
@@ -1001,7 +1001,7 @@ on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 |---|---|---|
 | Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | re-run — the emitted `<JOB>.chk` chkfile-init shim reloads |
 | Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or pass `runwrap`'s `--cold` / `--from-scratch` (resets the engine state too) |
-| Switch optimizer at a stage boundary | use the new algorithm's `MD.Use*Save*`; the old history file is now stale | only `geometric` is supported in stages |
+| Switch optimizer at a stage boundary | use the new algorithm's `MD.Use*Save*`; the old history file is now stale | not applicable — geomeTRIC is the one optimizer |
 
 **Why keep CG history on a resume but reset on a tier switch.** CG's conjugate basis
 builds up over moves; discarding it wastes ~5–10 moves of warm-up. But when you

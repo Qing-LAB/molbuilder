@@ -250,25 +250,47 @@ re-convergence at the relaxed geometry warm-starts via `mf.reset(mol_eq)`);
 (2) `mol.build()` without
 `dump_input=False`; (3) any reassignment of `mol.stdout`.
 
-**Optimizer.** `optimizer="geometric"` (default) needs the `geometric` package,
-`"berny"` needs `pyberny`; both are imported inside a `try/except ImportError` that
-raises `SystemExit` with an actionable `pip install …` message, not a traceback.
-`optimize=False` → a single-point `mf.kernel()`, no trajectory files. **`berny` works
-only for single-stage runs** — it doesn't accept the per-stage `convergence_drms` /
-`convergence_dmax` kwargs the staged-opt loop (§ 5) emits, so use `geometric` for any
-multi-stage ladder.
+**Optimizer.** geomeTRIC is the one optimizer, a fact of the engine rather than a
+parameter: the `geometric` package is imported inside a `try/except ImportError`
+that raises `SystemExit` with an actionable message, not a traceback. `optimize=False` → a single-point `mf.kernel()`, no trajectory files.
+*`berny` was a second choice until 2026-09-29 and was retired (plan § 5w K17): the
+`pyberny` package is not in `molbuilder-pySCF`, and PySCF's berny driver takes
+neither this rung's criteria (its own are `gradientmax` / `gradientrms` / `stepmax`
+/ `steprms`), nor a constraints file, nor a step callback — so it could not honour
+the rung, the held atoms, the trajectory or the live log. With one choice left the
+`optimizer` item retired with it: a template that still names it is refused with
+the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
 
 **Non-convergence policy.** A deck carries one rung's policy —
 `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} (default `halt`) — deciding
-what happens when it hits `geom_max_steps` without converging:
+what happens when the relaxation reaches `geom_max_steps` without meeting
+geomeTRIC's criteria. **The deck asks geomeTRIC whether it converged; it never
+assumes it.** geomeTRIC raises `GeomOptNotConvergedError` at its step cap, PySCF's
+driver catches it, and `geometric_solver.kernel` returns the flag with the geometry
+— while `optimize()` returns the geometry alone and drops the flag (PySCF 2.14
+`geomopt/geometric_solver.py`). So both decks relax through **one function**,
+`relax_policy.relax`, spliced verbatim into each (the way the HOMO rule is), which
+calls `kernel` and applies the policy to what it reports:
 
-- **`proceed`** → take the partial geometry (geomeTRIC's
-  `assert_convergence=False`). The loose rung's default; a warm-up is meant to be
-  rough.
-- **`halt`** → hard-fail with geomeTRIC's diagnostic (`assert_convergence=True`).
-- **`continue`** → extend this rung for up to `geom_continue_retries` more
-  `geom_max_steps` batches (total budget = `geom_max_steps × (1 +
-  geom_continue_retries)`), then halt.
+- **`halt`** → the run stops, naming the step budget and the policy (exit
+  status 1), **before the relaxed geometry is written** — no `_optimized.xyz`,
+  so no later rung can start from a geometry nobody accepted.
+- **`continue`** → the relaxation **re-enters from the geometry it reached**, for
+  up to `geom_continue_retries` more batches of `geom_max_steps` (total budget
+  `geom_max_steps × (1 + geom_continue_retries)`), each re-entry said in the log;
+  geomeTRIC starts its own step history afresh at each. Still short at the end of
+  the budget, it stops as `halt` does.
+- **`proceed`** → the run takes the geometry it reached, says so, and records the
+  relaxation as **not converged**.
+
+**Every step's SCF must converge, whatever the policy** (`assert_convergence=True`
+on every call): a gradient from an unconverged SCF is not a force, so an SCF that
+fails at a step stops the run with PySCF's own message under every policy — it is
+not a step budget the policy can extend. *(Until 2026-09-29 both decks called
+`optimize` and wired the policy to `assert_convergence`, which guards only that
+step SCF: a rung that ran out of steps was recorded converged and handed on under
+every policy, `continue` retried only an SCF failure and from the input geometry,
+and `proceed` turned the step guard off — found by the M11 review, plan § 5w K6.)*
 
 **There is no last-rung override.** A deck is one rung and cannot see the others,
 so nothing can force the final one to `halt` from inside a script. SIESTA has
@@ -276,10 +298,10 @@ never had such an override; the setting the user gave stands, for both engines.
 
 ```mermaid
 flowchart TD
-    ST["this rung exhausts geom_max_steps<br/>without converging"] --> P{"on_nonconvergence?"}
-    P -->|halt| H["HALT — hard-fail (RuntimeError).<br/>The job ends without an answer<br/>nobody accepted"]
-    P -->|continue| C["retry, same targets, up to<br/>geom_continue_retries more batches,<br/>then halt"]
-    P -->|proceed| PR["save the partial geometry and exit 0.<br/>A person decides whether the<br/>next rung starts from it"]
+    ST["geomeTRIC reports its criteria unmet<br/>at geom_max_steps (kernel's flag)"] --> P{"on_nonconvergence?"}
+    P -->|halt| H["HALT — the run stops, exit status 1,<br/>before the relaxed geometry is written.<br/>The job ends without an answer<br/>nobody accepted"]
+    P -->|continue| C["re-enter from the geometry reached,<br/>same targets, up to geom_continue_retries<br/>more batches — then as halt"]
+    P -->|proceed| PR["keep the geometry reached, record<br/>'not converged', exit 0.<br/>A person decides whether the<br/>next rung starts from it"]
 ```
 
 **The rung's own setting decides, and nothing overrides it.** A deck is one
@@ -741,7 +763,7 @@ filled the D3BJ default — a person who switched dispersion off ran D3BJ.
 | optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
 | vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one; a mis-wiring that read it at this site lived for part of 2026-08-21 and this row is its correction | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
 | vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one Hessian column; frequencies from it are not frequencies |
-| vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE (proceed = `assert_convergence=False`, recorded as `converged: null` + a warning in the artifact; continue = the optimization deck's retry budget; halt = raise) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
+| vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE, through the one relaxation function of § 3 (halt stops before the Hessian; continue re-enters from the geometry reached; proceed takes it and records `converged: false` with a warning in the artifact) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
 
 **The gate that keeps this true**: the honesty test (every parameter the
 vibration form shows is read by the vibration render, or refused by name

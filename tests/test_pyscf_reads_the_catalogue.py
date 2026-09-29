@@ -260,7 +260,6 @@ def test_a_parameter_the_engine_has_no_setting_for_is_marked_not_asked():
     _, out = _run_record(_render())
     rows = {r["item"]: r for r in read_parameters_fence(out)}
     assert rows["save_optimized_xyz"]["used"] is None
-    assert rows["optimizer"]["used"] is None
 
 
 def test_the_record_is_fenced_so_one_reader_serves_either_engine():

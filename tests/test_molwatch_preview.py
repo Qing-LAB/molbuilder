@@ -202,10 +202,8 @@ def test_pyscf_generated_script_emits_preview_block_text():
     # The preview block is emitted before optimize() is called -- the
     # class instantiation line must appear before the optimize(...) call.
     inst_pos = text.index("MolwatchEmitter(")
-    # optimize() lives inside the _mb_run_optimization helper; the policy
-    # dispatch calls the helper rather than optimize() directly, so the
-    # helper definition is the anchor.
-    opt_pos = text.index("def _mb_run_optimization(")
+    # The relaxation is the one `relax(...)` call (relax_policy.py).
+    opt_pos = text.index("mol_eq, _GEOM_CONVERGED = relax(")
     assert inst_pos < opt_pos
 
 
@@ -233,8 +231,13 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
         log_file=False,
         # A deck IS one rung (`stages.md` § 1.1a), so a cheap run is a small
         # step cap on this config -- not a one-row ladder.  Two steps is
-        # enough to produce the preview block this test reads.
+        # enough to produce the preview block this test reads -- and not
+        # enough to converge, so the rung says to keep what it reached:
+        # under the default `halt` it would stop, as it should
+        # (`engines/pyscf.md` § 3; until 2026-09-29 `halt` never stopped,
+        # and this run leaned on that).
         geom_max_steps=2,
+        on_nonconvergence="proceed",
         basis="STO-3G",
         dispersion="none",
         density_fit=False,

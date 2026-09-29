@@ -118,7 +118,7 @@ def test_the_emitter_is_built_after_the_last_runtime_fact():
                        positions=np.array([[0., 0., 0.], [0., 0., 1.21]]))
     cfg = PySCFConfig(job_name="j", spin_treatment="unrestricted",
                       unpaired_electrons=2, basis="sto-3g",
-                      optimize=True, optimizer="geometric",
+                      optimize=True,
                       write_molwatch_log=True,
                       scf_soscf=True, scf_conv_tol_grad=1e-6)
     lines = render_script(struct, cfg).splitlines()

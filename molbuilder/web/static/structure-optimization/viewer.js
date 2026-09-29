@@ -449,16 +449,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         // electronic state's rule, judged once by the server's gate and
         // shown live on the chemistry card -- never a second copy here.)
 
-        // optimize=false -> optimizer choice + per-stage ladder moot.
-        // The stage-table widget renders its own enabled-stage rows;
-        // we only need to lock the optimizer dropdown here, since the
-        // stage-table can still be edited (and a future ``optimize=
-        // true`` flip would carry those edits forward).
-        const optimize = $("py-optimize") && $("py-optimize").checked;
-        const optReason = optimize ? null
-            : "Geometry optimization is disabled (set 'Optimize geometry' on).";
-        setLock("py-optimizer", optReason);
-
         // Solvent <-> solvent_method: method only meaningful when a
         // solvent is selected.
         const solv = $("py-solvent") && $("py-solvent").value;

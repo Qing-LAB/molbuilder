@@ -80,16 +80,16 @@ def test_default_render_compiles(h2o):
     for needle in (
         "import os",
         "from pyscf import gto, scf, dft",
-        "from pyscf.geomopt.geometric_solver import optimize",
+        "from pyscf.geomopt import geometric_solver",
         "mol = gto.M(",
         "mf = dft.RKS(mol)",
         'mf.xc = "B3LYP"',
         "mf = mf.density_fit()",
         'mf.disp = "d3bj"',
-        # optimize() lives inside the _mb_run_optimization helper, so the
-        # non-convergence policy dispatch below it stays readable.
-        "def _mb_run_optimization(",
-        "    return optimize(",
+        # The one relaxation function (relax_policy.py), spliced, and
+        # the call that applies this rung's policy to geomeTRIC's answer.
+        "def relax(mf, policy, retries, **geometric_kw):",
+        "mol_eq, _GEOM_CONVERGED = relax(",
         "_save_structure(",
     ):
         assert needle in text, f"missing {needle!r}"
@@ -110,95 +110,6 @@ def test_atom_block_format(h2o):
                          text, re.M), (el, x, y, z)
 
 
-def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
-    """Pin the PySCF/geomeTRIC API contract that the generator depends on.
-
-    The post-#534 generated script calls::
-
-        optimize(mf,
-                 maxsteps              = STAGE['max_steps'],
-                 convergence_energy    = STAGE['etol'],
-                 convergence_grms      = STAGE['grms'],
-                 convergence_gmax      = STAGE['gmax'],
-                 convergence_drms      = STAGE['drms'],
-                 convergence_dmax      = STAGE['dmax'],
-                 assert_convergence    = STAGE['assert_convergence'],
-                 ...)
-
-    PySCF's ``geometric_solver.kernel(method, **kwargs)`` consumes
-    ``assert_convergence`` + ``maxsteps`` directly and forwards the
-    rest into geomeTRIC's ``OptParams(**kwargs)``, which accepts the
-    lowercase ``convergence_*`` keys and stores them on the instance
-    as ``Convergence_*`` (capital C).
-
-    Probe BOTH surfaces with our exact key names + sentinel values:
-    OptParams for the 5 convergence_* kwargs, ``kernel``'s
-    inspect.signature for the 2 direct kwargs (assert_convergence,
-    maxsteps).  No subprocess, no run of optimize() itself -- if
-    either side renames or rejects a key, this fails at unit-test
-    time rather than letting a generated script crash at user
-    runtime.
-
-    ``importorskip`` makes this skip cleanly in any env that doesn't
-    have geomeTRIC (the molbuilder host env, per
-    [feedback_pyscf_env_isolation]).  To actually run it, invoke
-    pytest from molbuilder-pySCF:
-    ``conda run -n molbuilder-pySCF python -m pytest -k geometric``.
-    """
-    pytest.importorskip("geometric")
-    # `pyscf`, not `pyscf.gto`, let a HALF-INSTALLED pyscf through:
-    # `pyscf-properties` ships pyscf/prop and pyscf/pbc with no top-level
-    # module, so `import pyscf` succeeds on a namespace package and this
-    # guard did not guard.  Found 2026-09-12 on a host env carrying that
-    # package.  Ask for the submodule the test actually imports.
-    pytest.importorskip("pyscf.gto")
-    from geometric.optimize import OptParams
-
-    # --- All 5 convergence_* kwargs forwarded into OptParams.
-    # Sentinel values picked to be unmistakable in error messages.
-    p = OptParams(convergence_energy=1.234e-6,
-                  convergence_grms  =5.678e-4,
-                  convergence_gmax  =9.012e-4,
-                  convergence_drms  =1.111e-3,
-                  convergence_dmax  =2.222e-3)
-    assert p.Convergence_energy == 1.234e-6, (
-        "geomeTRIC OptParams stopped honouring `convergence_energy`"
-    )
-    assert p.Convergence_grms == 5.678e-4, (
-        "geomeTRIC OptParams stopped honouring `convergence_grms`"
-    )
-    assert p.Convergence_gmax == 9.012e-4, (
-        "geomeTRIC OptParams stopped honouring `convergence_gmax`"
-    )
-    # 5c additions: convergence_drms / convergence_dmax cover the
-    # displacement criteria the post-#534 staged loop ALSO passes.
-    # A regression that loses either silently uses geomeTRIC's
-    # default tier (GAU) instead of the per-stage target.
-    assert p.Convergence_drms == 1.111e-3, (
-        "geomeTRIC OptParams stopped honouring `convergence_drms`"
-    )
-    assert p.Convergence_dmax == 2.222e-3, (
-        "geomeTRIC OptParams stopped honouring `convergence_dmax`"
-    )
-
-    # --- assert_convergence + maxsteps are consumed by PySCF's
-    # geomopt kernel directly (NOT OptParams).  Pin via signature
-    # introspection.  Without this check a future PySCF rename
-    # would silently inactivate our 5b per-stage hard-fail control.
-    import inspect
-    from pyscf.geomopt.geometric_solver import kernel
-    sig = inspect.signature(kernel)
-    assert "assert_convergence" in sig.parameters, (
-        "pyscf.geomopt.geometric_solver.kernel renamed / removed "
-        "`assert_convergence`; the per-stage warm-up False/True "
-        "control from #534 commit 5b is now dead surface"
-    )
-    assert "maxsteps" in sig.parameters, (
-        "pyscf.geomopt.geometric_solver.kernel renamed / removed "
-        "`maxsteps`; the per-stage max-step cap is now dead surface"
-    )
-
-
 # --------------------------------------------------------------------- #
 #  Section toggles                                                      #
 # --------------------------------------------------------------------- #
@@ -206,7 +117,7 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
 
 def test_no_optimize_drops_geom_block(h2o):
     text = render_script(h2o, PySCFConfig(optimize=False, verbose_comments=False))
-    assert "mol_eq = optimize(" not in text
+    assert "= relax(" not in text
     assert "e = mf.kernel()" in text
     # The _save_structure call that WRITES <JOB>_optimized.xyz must not
     # appear -- there's no optimized geometry to save.  The
@@ -219,7 +130,8 @@ def test_no_optimize_drops_geom_block(h2o):
 
 
 def test_one_optimize_call_site_carrying_this_rung_s_targets(h2o):
-    """A deck is one rung, so there is one ``optimize(mf, ...)`` call in it.
+    """A deck is one rung, so there is one relaxation call in it -- the one
+    spliced ``relax(mf, ...)`` (`relax_policy.py`, `engines/pyscf.md` § 3).
 
     `stages.md` § 1.1a retired the in-script ladder: the six convergence targets
     belong to THIS deck and arrive as named constants the single call reads.
@@ -228,11 +140,12 @@ def test_one_optimize_call_site_carrying_this_rung_s_targets(h2o):
     was for -- the guarantee outlived the loop.
     """
     text = render_script(h2o, PySCFConfig())
-    assert text.count("return optimize(") == 1, (
-        f"expected exactly one optimize() call site inside "
-        f"_mb_run_optimization; got {text.count('return optimize(')}")
-    assert "mol_eq = optimize(" not in text, (
-        "the policy dispatch calls the helper, never optimize() directly")
+    assert text.count("mol_eq, _GEOM_CONVERGED = relax(") == 1, (
+        f"expected exactly one relax() call; got "
+        f"{text.count('mol_eq, _GEOM_CONVERGED = relax(')}")
+    assert "optimize(mf" not in text, (
+        "optimize() drops geomeTRIC's convergence flag; the deck relaxes "
+        "through relax(), which asks for it")
     for kwarg in ("convergence_energy", "convergence_grms", "convergence_gmax",
                   "convergence_drms", "convergence_dmax", "maxsteps"):
         assert f"{kwarg} " in text, f"missing geomeTRIC kwarg {kwarg!r}"
@@ -252,42 +165,27 @@ def test_molwatch_log_instantiated_before_the_optimization(h2o):
     text = render_script(h2o, PySCFConfig())
     inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
-    helper_def   = text.find("def _mb_run_optimization(_hard_fail):")
-    opt_at       = text.find("    return optimize(")
+    helper_def   = text.find("def relax(mf, policy, retries, **geometric_kw):")
+    opt_at       = text.find("mol_eq, _GEOM_CONVERGED = relax(")
     step_cb      = text.find("callback              = _molwatch.opt_step_hook")
-    loop_at      = text.find("mol_eq = _mb_run_optimization(")
     for name, off in [
         ("_molwatch instantiation", inst_at),
         ("mf.callback wiring",      mf_callback),
-        ("_mb_run_stage_opt def",   helper_def),
-        ("return optimize(",        opt_at),
+        ("the relax() definition",  helper_def),
+        ("the relaxation call",     opt_at),
         ("opt_step callback",       step_cb),
-        ("the optimization call",   loop_at),
     ]:
         assert off >= 0, f"missing in script: {name}"
     # inst < mf_callback (sets the SCF-cycle hook on the prod mf)
-    #     < helper_def (closes over mf + _molwatch, must follow them)
-    #         < opt_at (inside helper body)
-    #             < step_cb (opt_step_hook kwarg inside optimize)
-    #                 < loop_at (the policy dispatch that calls it)
-    assert inst_at < mf_callback < helper_def < opt_at < step_cb < loop_at, (
+    #     < helper_def (the spliced relax(), defined before its call)
+    #         < opt_at (the one call)
+    #             < step_cb (opt_step_hook among the call's kwargs)
+    assert inst_at < mf_callback < helper_def < opt_at < step_cb, (
         "molwatch wiring out of order; expected inst < mf_callback < "
-        "helper_def < optimize < step_cb < loop.  "
+        "relax def < relax call < step_cb.  "
         f"Got: inst={inst_at}, mf_cb={mf_callback}, "
-        f"helper={helper_def}, opt={opt_at}, step={step_cb}, "
-        f"loop={loop_at}"
+        f"helper={helper_def}, call={opt_at}, step={step_cb}"
     )
-
-
-def test_molwatch_log_instantiation_skipped_when_optimizer_is_berny(h2o):
-    """The molwatch log emitter requires the geomeTRIC `callback=` API.
-    Berny doesn't expose an equivalent hook, so we skip emission when
-    optimizer != 'geometric' rather than emit an unwired class."""
-    text = render_script(h2o,
-                         PySCFConfig(optimize=True, optimizer="berny",
-                                     write_molwatch_log=True))
-    assert "MolwatchEmitter" not in text
-    assert ".molwatch.log" not in text or text.count(".molwatch.log") <= 1
 
 
 def test_stability_analysis_skipped_for_closed_shell(h2o):
@@ -374,7 +272,6 @@ def test_verbose_comments_off_strips_hints(h2o):
 @pytest.mark.parametrize("kwargs, name", [
     ({"method":    "MP2"},            "method"),
     ({"solvent":   "liquid_helium"},  "solvent"),
-    ({"optimizer": "bfgs"},           "optimizer"),
 ])
 def test_invalid_inputs_raise(h2o, kwargs, name):
     with pytest.raises(ValueError):

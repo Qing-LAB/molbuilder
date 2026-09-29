@@ -1529,26 +1529,6 @@ Whether to relax the geometry.  On, the optimizer moves the atoms until the conv
 On the command line, --no-optimize is the spelling for off.
 """
 
-[item.optimizer]
-kind = "engine"
-category = ["procedure"]
-engines = ["pyscf"]
-anchor = "geomeTRIC"
-engine_key = "geomeTRIC / berny  (driver selection)"
-manual = "PySCF 2.13 pyscf.geomopt.geometric_solver 'optimize()'"
-type = "enum"
-choices = ["geometric", "berny"]
-value = "geometric"
-default = "geometric"
-group = "profile"
-label = "Optimizer"
-help = """
-Which driver moves the atoms during a geometry optimization.
-  geometric (default) -- translation-rotation-invariant internal coords (Wang & Song JCP 2016); BFGS quasi-Newton under the hood.  Robust on large flexible molecules, transition states, surface-anchored systems.  REQUIRED for the staged-opt loop -- only geometric accepts the per-stage convergence_drms / convergence_dmax kwargs.
-  berny -- Cartesian + redundant internals; ships with PySCF, so no extra dependency.  Less robust on biomolecules, and it DOES NOT work with the staged-opt loop (incompatible kwarg set).  Use it only for single-stage runs.
-Both are quasi-Newton; both converge tightly near a minimum.
-"""
-
 [item.solvent]
 refs = ["Tomasi2005", "Cances1997"]
 kind = "engine"
@@ -2090,10 +2070,11 @@ group = "stage"
 label = "If max_steps runs out"
 tier = "advanced"
 help = """
-What this deck does if geomeTRIC's 5 criteria aren't all met when max_steps runs out:
-  proceed  -- accept the partial geometry and let the next rung start from it.
-  continue -- extend this rung with more iterations.
-  halt     -- raise, rather than hand on a geometry nobody accepted.
+What this deck does when geomeTRIC reports its 5 criteria unmet at max_steps -- the deck asks geomeTRIC, it never assumes convergence:
+  proceed  -- keep the geometry reached, record the relaxation as not converged, and let the next rung start from it.
+  continue -- re-enter from the geometry reached, up to continue_retries more batches of max_steps; still short, stop as halt does.
+  halt     -- stop the run before the relaxed geometry is written, rather than hand on a geometry nobody accepted.
+Every step's SCF must converge under all three: a gradient from an unconverged SCF is not a force, so an SCF that fails at a step stops the run whatever this says.
 This is THIS rung's answer: a ladder is N decks and N jobs, so each deck carries its own policy and none of them can see the others.
 """
 
@@ -2101,7 +2082,7 @@ This is THIS rung's answer: a ladder is N decks and N jobs, so each deck carries
 kind = "produce"
 category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: max optimize() re-entries when on_nonconvergence=continue)"
+engine_key = "(molbuilder: re-entries from the geometry reached when on_nonconvergence=continue)"
 type = "int"
 value = 1
 default = 1
@@ -2110,7 +2091,7 @@ group = "stage"
 label = "Continue retries"
 tier = "advanced"
 help = """
-When geomeTRIC stops at its step cap without converging, this is how many further max_steps batches the job may spend before it falls through to halt. Only meaningful when on_nonconvergence='continue'.
+When geomeTRIC reports its criteria unmet at its step cap, this is how many further max_steps batches the job may spend -- each re-entering from the geometry the last one reached -- before it stops as halt does. Only meaningful when on_nonconvergence='continue'.
 Total step budget = max_steps * (1 + continue_retries).
 The geom_ prefix keeps it distinct from Resources.continue_retries, which is the wrapper's warm-restart count and a different thing entirely.
 """

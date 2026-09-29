@@ -446,16 +446,6 @@ class PySCFConfig:
         "label":   "Optimize geometry",
         "engine_key":  '(molbuilder: gates geomeTRIC opt() vs single-point)',
     })
-    optimizer: str = field(default="geometric", metadata={
-        "category": ("procedure",),
-        "section": "Compute & budget",
-        # Profile-level: optimizer family choice; parallel to SIESTA's
-        # relax_type (also profile).
-        "workflow_group": "profile",
-        "label":   "Optimizer",
-        "engine_key":  'geomeTRIC / berny  (driver selection)',
-        "choices": ("geometric", "berny"),
-    })
     # ---------------- geomeTRIC convergence (per-stage knobs) ----------
     #
     # **Flat, one value each** -- exactly as SIESTA's per-rung knobs
@@ -546,8 +536,8 @@ class PySCFConfig:
         "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "Continue retries",
-        "engine_key": ("(molbuilder: max optimize() re-entries when "
-                       "on_nonconvergence=continue)"),
+        "engine_key": ("(molbuilder: re-entries from the geometry reached "
+                       "when on_nonconvergence=continue)"),
         "range": (0, 5),
         "tier": "advanced",
     })
@@ -706,11 +696,9 @@ class PySCFConfig:
     # Match SiestaConfig's naming (``write_molwatch_log``) so the two
     # configs read the same way.  ``molwatch_log`` is kept as a
     # back-compat property below in __post_init__ for callers passing
-    # the old kwarg.  Emission also requires ``optimize=True`` AND
-    # ``optimizer="geometric"`` -- the molwatch hooks ride on the
-    # SCF and geomeTRIC opt-step callbacks, so a single-point or
-    # berny run has nowhere to attach.  See spec
-    # docs/engines/pyscf.md L33 for the exact gate.
+    # the old kwarg.  Emission also requires ``optimize=True`` -- the
+    # molwatch hooks ride on the SCF and geomeTRIC opt-step callbacks,
+    # so a single-point run has nowhere to attach.
     write_molwatch_log: bool = field(default=True, metadata={
         # molbuilder's own doing, not a PySCF keyword: it shapes
         # what the PRODUCER writes, so it is kind="produce" (§ 6).

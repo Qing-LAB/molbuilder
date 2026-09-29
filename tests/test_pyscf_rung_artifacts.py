@@ -208,13 +208,14 @@ def test_the_write_flag_no_longer_decides_the_read():
 
 def test_the_deck_runs_exactly_one_optimisation():
     """The in-script ladder is gone: no loop over rungs, and one
-    ``optimize()`` call.  A deck that ran several would end once, at the end
-    -- and a ladder exists so that somebody looks BETWEEN the rungs."""
+    relaxation, the spliced ``relax()`` (`engines/pyscf.md` § 3).  A deck that
+    ran several would end once, at the end -- and a ladder exists so that
+    somebody looks BETWEEN the rungs."""
     tree = ast.parse(_deck(token="01_coarse"))
     calls = [n for n in ast.walk(tree)
              if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Name) and n.func.id == "optimize"]
-    assert len(calls) == 1, f"{len(calls)} optimize() calls"
+             and isinstance(n.func, ast.Name) and n.func.id == "relax"]
+    assert len(calls) == 1, f"{len(calls)} relax() calls"
     assert not re.search(r"^STAGES\s*=", ast.unparse(tree), re.M)
 
 

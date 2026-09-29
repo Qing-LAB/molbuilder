@@ -210,9 +210,7 @@ def _validate_pyscf(struct: Structure, cfg,
     # `science/chemistry-correctness.md` § 2a).
 
     # Frozen-atom carrier (three-stage contract).  PySCF emits the
-    # geomeTRIC constraints file only when ``cfg.optimize`` is True
-    # AND ``cfg.optimizer == 'geometric'`` -- berny's API doesn't
-    # accept a constraints file in pyscf.geomopt.berny_solver, and
+    # geomeTRIC constraints file only when ``cfg.optimize`` is True:
     # single-point runs have nothing to constrain.
     #
     # DEFERRED on the vibration kind: the vibration deck ignores both
@@ -221,22 +219,14 @@ def _validate_pyscf(struct: Structure, cfg,
     # emission -- ruled 2026-08-21); the kind's science states the
     # frozen regime explicitly instead.
     if not vibration:
-        _opt_geometric = (bool(getattr(cfg, "optimize", False))
-                          and getattr(cfg, "optimizer", "") == "geometric")
-        _drop_reason = ""
-        if not bool(getattr(cfg, "optimize", False)):
-            _drop_reason = ("cfg.optimize = False (single-point energy; "
-                            "no relaxation)")
-        elif getattr(cfg, "optimizer", "") != "geometric":
-            _drop_reason = (
-                f"cfg.optimizer = {cfg.optimizer!r}; only the geomeTRIC "
-                f"optimizer accepts a constraints file in PySCF's geomopt "
-                f"API"
-            )
+        _relaxes = bool(getattr(cfg, "optimize", False))
+        _drop_reason = ("" if _relaxes else
+                        "cfg.optimize = False (single-point energy; "
+                        "no relaxation)")
         issues += _check_frozen_atoms_consumed(
             struct,
             engine="PySCF",
-            honored=_opt_geometric,
+            honored=_relaxes,
             reason_when_dropped=_drop_reason,
         )
     # Pattern B, re-homed here from the deleted web endpoints (C-shared

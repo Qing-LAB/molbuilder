@@ -104,7 +104,7 @@ def test_pyscf_frozen_maps_to_correct_physical_atom():
     from molbuilder.config.pyscf import PySCFConfig
     s = _distinct_struct()
     s.frozen_atoms = [1, 3]
-    script = render_script(s, PySCFConfig(optimize=True, optimizer="geometric"))
+    script = render_script(s, PySCFConfig(optimize=True))
     atoms = _pyscf_atoms(script)
     assert len(atoms) == 5, (
         f"expected 5 atom lines in the generated script, got {len(atoms)} -- "

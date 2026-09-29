@@ -347,7 +347,6 @@ def _stub_pyscf_summary(out_path):
     # preflight's declared-type row instead.
     ("pyscf", "--method",          "UKKS"),
     ("pyscf", "--scf-init-guess",  "huckl"),
-    ("pyscf", "--optimizer",       "geometric_v2"),
 ])
 def test_real_subcommand_choice_validation_rejects_typos(
         subcommand, flag, bad_val, tmp_path):

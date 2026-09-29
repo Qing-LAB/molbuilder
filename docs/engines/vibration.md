@@ -380,7 +380,7 @@ fitting, the implicit solvent (`solvent`, PCM), the SCF machinery, the
 geometry-convergence criteria (`geom_gmax` family, whose values for this
 kind are the tight tier through the catalogue's `recommended` key — the row
 above; V1.20 closed 2026-09-24), the relaxation's workflow knobs
-(`on_nonconvergence`, `geom_max_steps`, `geom_continue_retries`, `optimizer`,
+(`on_nonconvergence`, `geom_max_steps`, `geom_continue_retries`,
 `write_trajectory`, `write_molwatch_log`, `save_initial_xyz`,
 `save_optimized_xyz` — § 4.2 says what each does here), the execution category
 (threads, memory, GPU, `mpi_np`) — are the engines' own rows, selected into the
@@ -509,21 +509,30 @@ optimisation deck does. It is a **tracked phase**: `phase_relaxation` goes
 count and the current largest force, so the viewer's chip shows convergence
 ticking down *(user, 2026-08-20: a silent gap while geomeTRIC works, likely the
 longest part of the run, would betray "the viewer tracks all the steps")*.
+When it ends, the phase records `relaxation.converged` — the judged force at
+the geometry it reached (the free atoms' largest component, R5) against
+`geom_gmax`, the one meaning that key has on every route (§ 4.3, § 5.5) —
+while geomeTRIC's own verdict, all of its criteria, is what decides the
+policy below.
 
 What the phase honours from the description: the convergence criteria
 (`geom_gmax`, `geom_grms`, `geom_dmax`, `geom_drms`, `geom_etol`,
 `geom_max_steps` — the tight tier at the kind's recommendation, § 3.1), `on_nonconvergence`
-(**this** is the phase that policy governs — `proceed` takes the partial
-geometry and records `converged: null` with a warning; `continue` re-runs the
-optimiser with the optimisation deck's retry budget; `halt` raises),
+(**this** is the phase that policy governs, through the one relaxation function
+the optimisation deck relaxes with — [`pyscf.md` § 3](?doc=engines/pyscf.md),
+which asks geomeTRIC whether it converged rather than assuming it: `halt` stops
+the run before the Hessian; `continue` re-enters from the geometry reached, up to
+the retry budget; `proceed` takes that geometry and records `converged: false`
+with a warning),
 `write_trajectory` (geomeTRIC's streaming XYZ), `write_molwatch_log` (the same
 live-watch hooks the optimisation deck emits), `save_initial_xyz` /
 `save_optimized_xyz` (`<job>_initial.xyz`, `<job>_optimized.xyz`, written as
 **pairs**, geometry plus `.molstruct.json`, through the codec — a bare `.xyz`
 carries no labels, no cell and no identity; fixed 2026-09-22 and proven by a
 held set `frozen_atoms: [6, 7]` surviving into the output and reading back
-through molbuilder's own codec). `optimizer` is geomeTRIC by refusal: pyberny is absent from the
-run environment and has no step callback for a tracked phase.
+through molbuilder's own codec). The optimizer is geomeTRIC, the engine's one
+([`pyscf.md` § 3](?doc=engines/pyscf.md) says why `berny`, and with it the
+`optimizer` item, was retired).
 
 `already_relaxed = true` skips the optimiser and marks the phase
 **complete by assertion**; the gradient check of § 4.3 then carries the number
@@ -562,7 +571,10 @@ template's own `geom_gmax` — 2·10⁻⁴ Eh/Bohr at the kind's recommendation 
 the one rule both routes judge by (§ 2.2; SIESTA's finish judges the same
 quantity against `relax_force_tol`, § 5.5) *(ten times it until 2026-09-24)*,
 recording it as `relaxation.max_force_eh_bohr` and the all-atom figure beside
-it as `max_force_all_atoms_eh_bohr` — the keys say their unit *(they said
+it as `max_force_all_atoms_eh_bohr`, and the verdict as `relaxation.converged`
+— the key the relaxation phase sets from the force at the geometry it reached
+(§ 4.2) and SIESTA's finish from its reference step (§ 5.5), so it means one
+thing on every route: the judged force within this calculation's criterion — the keys say their unit *(they said
 `_a` until 2026-09-24 while the viewer printed "Eh/Å"; the number was always
 Eh/Bohr)*. Measured
 2026-09-22, why the free-atom rule matters: water with O and one H held,
@@ -1773,7 +1785,7 @@ by name.
 | `hessian_scope` · `n_atoms_in_hessian` · `hessian_density_fit` | both | `free` (second derivatives for the free atoms only) or `all`; how many; whether the Hessian itself was density-fitted (`false` on the reduced route, `null` on SIESTA) |
 | `ir_route` · `ir_fd_step_ang` · `raman_route` · `raman_fd_step_ang` | both | which route produced each strength and the step of a difference (§ 4.6); `none` when not computed; an older file reads `""` — absence of a record, never a claim (`raman_*`: § 10) |
 | `phase_relaxation` · `phase_frequencies` · `phase_raman` · `phase_ir` · `phase_es` | both | `empty` · `running` · `complete` · `not requested` (§ 4.9), and `phase_ir` `""` in a file written before 2026-09-28; the SIESTA writer writes `complete` for the frequencies, `not requested` for Raman, infrared and the probe, and for the relaxation `complete` when the ladder's `relax` stage ran (its record's `n_steps` in `relaxation.n_steps`, `enabled` true) or `not requested` when the box was ticked |
-| `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3); SIESTA writes `enabled` true when the ladder's `relax` stage ran — its relaxation record, carried in the deck's `vibration` block (§ 5.3), gives `n_steps` — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
+| `relaxation.{enabled, already_relaxed, n_steps, max_force_eh_bohr, max_force_all_atoms_eh_bohr, converged, warning}` | both | the tracked precondition; the judged force is over the free atoms, in Eh/Bohr (§ 4.3), and `converged` is its verdict against the criterion on every route — after the relaxation, under the person's statement, at SIESTA's reference step (§ 4.2, § 4.3, § 5.5); SIESTA writes `enabled` true when the ladder's `relax` stage ran — its relaxation record, carried in the deck's `vibration` block (§ 5.3), gives `n_steps` — and false when the box was ticked, `already_relaxed` as the person's statement, the judged force and verdict of § 5.5, and the warning the viewer shows in the phase's row |
 | `thermo` | both | `regime`, the headline temperature — and pressure for `rrho`, `null` for `vibrational-only` — with `zpe_eh`, `h_eh`, `s_eh_k`, `g_eh`, `n_modes`, `n_imag_excluded`, `n_rigid_removed`, `note`, and `grid` (§ 4.7) |
 | `selected_mode_idxs_1based` | PySCF | the modes that got the electronic-structure probe |
 | `config` | both | what the description held (the PySCF config as a dict; on SIESTA the engine, kind and stage) |

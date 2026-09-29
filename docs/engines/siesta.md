@@ -565,10 +565,10 @@ verb names its stage, on a one-rung ladder exactly as on three
   2026-08-10 the field was **removed from the producer rather than left inert**
   ([`stages.md § 3`](?doc=engines/stages.md)). A stage that runs out of steps
   simply stops, and you decide what to do — which is what you were doing between
-  stages anyway. **PySCF kept it** (`pyscf.md § 3`) while its ladder was
-  a loop inside one process and the policy was real control flow; with that loop
-  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)) the question is open
-  again and belongs to the unit that removes it.
+  stages anyway. **PySCF kept it** as one rung's own policy — what that deck
+  does when geomeTRIC reports its criteria unmet at the step budget
+  ([`pyscf.md` § 3](?doc=engines/pyscf.md)) — settled when its in-process loop
+  retired ([`stages.md § 1.1a`](?doc=engines/stages.md)).
 - **Validation.** A stage is validated as a **resolved whole, never as a
   diff** (§ 4 R2): the caller resolves it and runs the ordinary single-config
   validator on the result, so there is no parallel copy of the knob rules to

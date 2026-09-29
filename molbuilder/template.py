@@ -1847,6 +1847,8 @@ RETIRED_ITEMS = {
                 "engines/vibration.md § 4.8",
     "es_threshold": "the threshold selector, retired 2026-09-28 -- "
                     "engines/vibration.md § 4.8",
+    "optimizer": "geomeTRIC is the one PySCF optimizer; berny and with it "
+                 "the choice were retired 2026-09-29 -- engines/pyscf.md § 3",
 }
 
 

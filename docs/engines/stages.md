@@ -311,7 +311,7 @@ question. The vocabulary is closed and lives in `template.GROUPS`
 | group | meaning | SIESTA | PySCF |
 |---|---|---|---|
 | `setup` | what the run is called, and where its pseudopotentials come from — nothing can be built without these | *(2)* `system_label`, `psml_lib` | *(1)* `job_name` |
-| `profile` | set once for the calculation | *(14)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(23)* `method`, `basis`, `functional`, `optimizer`, `solvent`, … |
+| `profile` | set once for the calculation | *(14)* `xc_functional`, `solution_method`, `spin_treatment`, `net_charge`, `species_order`, … | *(23)* `method`, `basis`, `functional`, `dispersion`, `solvent`, … |
 | **`stage`** | **the settings that typically vary across a sequence** | *(11)* `basis_size`, `pao_energy_shift`, `mesh_cutoff`, `dm_tolerance`, `dm_energy_tolerance`, `scf_energy_converge`, `kgrid`, `kgrid_displacement`, `relax_type`, `relax_force_tol`, `relax_max_displ` | *(3)* `scf_conv_tol`, `scf_conv_tol_grad`, `grid_level` |
 | `budget` | what it is allowed to spend | *(5)* `max_scf_iter`, `relax_steps`, `block_size`, `diag_algorithm`, `parallel_over_k` | *(1)* `scf_max_cycle` |
 | `output` | what the run writes | *(7)* the `write_*` set, plus `copy_psml` | *(6)* `verbose`, `chkfile`, `log_file`, `save_*`, `write_trajectory` |
@@ -636,12 +636,10 @@ scheduler there is nothing for it to mean.
 > and the reason the same word meant something on one engine and nothing on the
 > other.
 >
-> ⚠ **That reason expires with the loop** *(2026-08-18, § 1.1a)*. Once a PySCF
-> rung is its own job, what happens after a rung fails to converge is once again
-> the gap between two jobs, which is exactly where SIESTA's copy was deleted for
-> having no effect. Whether `on_nonconvergence` survives, and in what form, is
-> settled by the unit that retires the loop — not assumed here in either
-> direction.
+> **Settled with the loop's retirement** *(2026-08-18, § 1.1a)*: it survives as
+> ONE rung's own policy — what that deck does when geomeTRIC reports its
+> criteria unmet at the step budget — never an edge between two jobs, and
+> [`pyscf.md` § 3](?doc=engines/pyscf.md) owns it.
 
 Leaving the stage is not enough, though: if it stayed a field of the **shared
 schema** it would be promotable through `overrides` like anything else, and § 2's

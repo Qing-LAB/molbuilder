@@ -10,7 +10,7 @@ the hook that emits code is what it is really about.
 
 The namespace, from the deck itself rather than from a rule someone invented:
 
-* **The engine's, unprefixed** — ``gto``, ``scf``, ``dft``, ``optimize``,
+* **The engine's, unprefixed** — ``gto``, ``scf``, ``dft``, ``geometric_solver``,
   ``mol``, ``mf``. This is the vocabulary a person reads the deck in and edits.
 * **molbuilder's, prefixed** — ``_mw_np``, ``_mw_time``, ``_mb_socket``,
   ``_os``, ``_cp``, ``_pyscf_lib``. Prefixed *so that* molbuilder's machinery
@@ -159,7 +159,8 @@ def test_molbuilders_own_machinery_stays_in_its_own_prefix():
     imported = _imported(ast.parse(text))
     #: The unprefixed imports a deck is ALLOWED to have -- the engine's own
     #: surface and the stdlib names a reader expects to see spelled normally.
-    engine_surface = {"gto", "scf", "dft", "optimize", "gpu4pyscf",
+    engine_surface = {"gto", "scf", "dft", "geometric_solver", "kernel",
+                      "gpu4pyscf",
                       "os", "time", "psutil", "np", "numpy"}
     stray = sorted(n for n in imported
                    if not n.startswith("_") and n not in engine_surface)

@@ -696,7 +696,7 @@ def test_pyscf_frozen_atoms_emit_constraints_file_and_optimize_kwarg():
     script = render_script(
         _struct_with_frozen([1, 4]),
         PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="geometric", spin_treatment="unrestricted", unpaired_electrons=1),
+                     spin_treatment="unrestricted", unpaired_electrons=1),
     )
     # The runtime constraints-file emission.
     assert "_FROZEN_CONSTRAINTS_PATH" in script
@@ -716,26 +716,11 @@ def test_pyscf_no_frozen_atoms_no_constraints_emission():
     script = render_script(
         _struct_with_frozen([]),
         PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="geometric", spin_treatment="unrestricted", unpaired_electrons=1),
+                     spin_treatment="unrestricted", unpaired_electrons=1),
     )
     assert "_FROZEN_CONSTRAINTS_PATH" not in script
     assert '"$freeze' not in script
     assert "constraints           =" not in script
-
-
-def test_pyscf_frozen_atoms_with_non_geometric_optimizer_emits_warning_comment():
-    """If user picks berny (no constraint support in PySCF's berny API),
-    DO NOT emit the constraints file -- emit a warning comment instead
-    so the user sees their /modify freeze isn't honored."""
-    from molbuilder.pyscf import PySCFConfig, render_script
-    script = render_script(
-        _struct_with_frozen([1, 4]),
-        PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="berny", spin_treatment="unrestricted", unpaired_electrons=1),
-    )
-    assert "_FROZEN_CONSTRAINTS_PATH" not in script
-    assert "WARNING" in script and "frozen_atoms" in script
-    assert "geometric" in script  # the suggested fix
 
 
 # --------------------------------------------------------------------- #

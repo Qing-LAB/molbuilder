@@ -182,6 +182,11 @@ def _vib_constants(cfg) -> List[str]:
            f"GEOM_DRMS      = {float(cfg.geom_drms)!r}",
            f"GEOM_MAX_STEPS = {int(cfg.geom_max_steps)}",
            f"GEOM_ETOL      = {float(cfg.geom_etol)!r}",
+           "# What the relaxation does when geomeTRIC reports its criteria",
+           "# unmet at GEOM_MAX_STEPS (engines/pyscf.md 3): halt, continue",
+           "# from the geometry reached, or proceed with it.",
+           f"ON_NONCONVERGENCE     = {str(cfg.on_nonconvergence)!r}",
+           f"GEOM_CONTINUE_RETRIES = {int(cfg.geom_continue_retries)}",
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
            f"THERMO_T_GRID  = {_THERMO_GRID_K}",
@@ -220,16 +225,19 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     Every step writes the artifact, so the viewer's chip shows
     'step N, max force F' ticking down.
 
-    Category 3 of the integration plan (2026-08-21): the workflow knobs
-    are honored here — ``geom_etol`` joins the convergence dict,
-    ``on_nonconvergence='continue'`` wraps the call in the SAME retry
-    budget the optimization deck uses, ``write_trajectory`` hands
-    geomeTRIC its streaming-XYZ prefix, ``write_molwatch_log`` composes
-    the molwatch hooks beside the artifact callback, and the two
-    ``save_*_xyz`` flags write their standalone files.  ``optimizer``
-    is geomeTRIC by REFUSAL upstream (the kind validator: pyberny is
-    absent from the run environment, probed 2026-08-21, and its solver
-    has no step callback for the tracked phase)."""
+    The workflow knobs are honored here — ``geom_etol`` joins the
+    convergence dict, ``on_nonconvergence`` and its retry budget go to the
+    ONE relaxation function both PySCF decks run (`relax_policy.relax`,
+    `engines/pyscf.md` § 3), which asks geomeTRIC whether it converged;
+    ``write_trajectory`` hands geomeTRIC its streaming-XYZ prefix,
+    ``write_molwatch_log`` composes the molwatch hooks beside the artifact
+    callback, and the two ``save_*_xyz`` flags write their standalone
+    files.  geomeTRIC is the one optimizer (`optimizer`'s only choice).
+
+    ``relaxation.converged`` is the judged force at the geometry reached
+    against ``geom_gmax`` — the meaning the key has on every route
+    (`engines/vibration.md` § 4.2, § 4.3, § 5.5); geomeTRIC's own verdict,
+    all of its criteria, decides the policy."""
     out: List[str] = [
         "",
         "# ============================================================",
@@ -239,7 +247,6 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "    print('=== Stage: relaxation (geomeTRIC) ===')",
         "    state['phase_relaxation'] = 'running'",
         "    _atomic_write_json(state, JSON_PATH)",
-        "    from pyscf.geomopt.geometric_solver import optimize as _geom_opt",
         "    _mf_relax = _build_mf_at(COORDS_EQ_ANG)",
     ]
     if getattr(cfg, "scf_soscf", False):
@@ -343,45 +350,26 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         _pfx = _rf_tail(ROLE_GEOM_TRAJ,
                         stage_token or None)[:-len(GEOMETRIC_APPENDS)]
         _opt_kw += f", prefix=str(_mb_outfile(JOB + {_pfx!r}))"
-    # The on_nonconvergence policy is the RELAXATION's (its catalogue
-    # help says so: what to do when geomeTRIC's criteria are not met).
-    # proceed = accept the last geometry UNASSERTED; continue = retry
-    # the same budget; halt = raise.  The mechanism is the same
-    # `assert_convergence` kwarg the optimization deck uses.
-    _policy = str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower()
-    if _policy == "continue":
-        _retries = int(getattr(cfg, "geom_continue_retries", 0) or 0)
-        # THE ONE RETRY LOOP (`pyscf/relax_policy.py`).  This block spelled
-        # the optimization deck's loop out a second time until 2026-08-23 --
-        # same budget, same convergence-vs-real-error test, same countdown --
-        # so a fix to either reached one deck of the two.  The CALL is this
-        # deck's own (a two-line `_geom_opt`, aligned under its own opening
-        # paren); the loop around it is not.
-        from .relax_policy import emit_retry_loop
-        out += emit_retry_loop(
-            [f"mol = _geom_opt(_mf_relax, {_opt_kw},",
-             "                assert_convergence=True, **_conv)"],
-            retries=_retries, steps_var="GEOM_MAX_STEPS",
-            what="relaxation ", indent="    ")
-        out += ["    state['relaxation']['converged'] = True"]
-    elif _policy == "proceed":
-        out += [
-            f"    mol = _geom_opt(_mf_relax, {_opt_kw},",
-            "                    assert_convergence=False, **_conv)",
-            "    # UNASSERTED by policy: the geometry is whatever the step",
-            "    # budget bought.  Recorded as unknown, never claimed True.",
-            "    state['relaxation']['converged'] = None",
-            "    state['relaxation']['warning'] = (",
-            "        'on_nonconvergence=proceed: convergence was not '",
-            "        'asserted; frequencies below are for the geometry the '",
-            "        'step budget produced')",
-        ]
-    else:
-        out += [
-            f"    mol = _geom_opt(_mf_relax, {_opt_kw},",
-            "                    assert_convergence=True, **_conv)",
-            "    state['relaxation']['converged'] = True",
-        ]
+    # THE ONE RELAXATION FUNCTION (`relax_policy.relax`, spliced above):
+    # it asks geomeTRIC whether it converged and applies this rung's
+    # on_nonconvergence to the answer -- halt stops the run here, before
+    # the Hessian; continue re-enters from the geometry reached; proceed
+    # returns it with False.  The recorded verdict is the judged force at
+    # that geometry (R5), the key's one meaning on every route.
+    out += [
+        "    mol, _geometric_converged = relax(",
+        "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
+        f"        {_opt_kw}, **_conv)",
+        "    _judged = state['relaxation']['max_force_eh_bohr']",
+        "    state['relaxation']['converged'] = (",
+        "        None if _judged is None else bool(_judged <= GEOM_GMAX))",
+        "    if not _geometric_converged:",
+        "        state['relaxation']['warning'] = (",
+        '            f"the relaxation did not meet geomeTRIC\'s criteria in "',
+        '            f"{GEOM_MAX_STEPS} steps; on_nonconvergence = proceed kept "',
+        '            f"the geometry it reached, so the frequencies below are the "',
+        '            f"curvature there, not at the minimum")',
+    ]
     if getattr(cfg, "save_optimized_xyz", False):
         out += [
             "    _save_structure(mol, _mb_outfile(JOB + '_optimized.xyz'),",
@@ -421,6 +409,7 @@ def _vib_gradient_check() -> List[str]:
         "        _maxf = float(np.abs(_g0[FREE_ATOM_IDXS]).max())",
         "        state['relaxation']['max_force_eh_bohr'] = _maxf",
         "        state['relaxation']['max_force_all_atoms_eh_bohr'] = _maxf_all",
+        "        state['relaxation']['converged'] = bool(_maxf <= GEOM_GMAX)",
         "        if _maxf > GEOM_GMAX:",
         "            _w = (f'the input geometry is not a stationary point '",
         "                  f'at this level of theory: the largest force on '",
@@ -755,6 +744,10 @@ def vibration_spec(struct: Structure, cfg, *,
         out += _emit_initial_state()
         out += _vib_state_init()
         out += _emit_displaced_scf_helpers(view)
+        # The one relaxation function both PySCF decks run (`engines/pyscf.md`
+        # § 3), spliced before the phase that calls it.
+        from .relax_policy import emit_relax
+        out += [""] + emit_relax()
         # The VIEW, not the raw config: the relax block needs the frozen
         # set (a structure-side fact the view lifted), and the view
         # forwards every config field it does not bridge.

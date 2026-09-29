@@ -254,7 +254,7 @@ def spec_for(struct: Structure,
             # ONE rung's targets, because one deck IS one rung: a ladder is N
             # decks and N jobs (`stages.md` § 1.1a).  A summary of the whole
             # ladder would be this deck describing runs it cannot see.
-            out.append(f"Optimizer : {cfg.optimizer}"
+            out.append("Optimizer : geomeTRIC"
                        + (f"   (rung {stage_token})" if stage_token else ""))
             out.append(f"            maxsteps={cfg.geom_max_steps}, "
                        f"grms={cfg.geom_grms:.1e} Ha/Bohr, "
@@ -304,7 +304,7 @@ def spec_for(struct: Structure,
             out.append(f"    {_rf(label, '_initial.xyz')}      -- input coordinates")
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append(f"    {_rf(label, '_optimized.xyz')}    -- final relaxed coords")
-        if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
+        if cfg.optimize and cfg.write_trajectory:
             out.append(f"    {_rf(label, '_geom_optim.xyz', stage_token)}"
                        f"   -- this rung's streaming")
             out.append("                                          trajectory (multi-frame")
@@ -314,7 +314,7 @@ def spec_for(struct: Structure,
             out.append(f"    {_rf(label, '_geom.log', stage_token)}"
                        f"         -- geomeTRIC's opt log")
             out.append("                                          for this rung.")
-        if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
+        if cfg.optimize and cfg.write_molwatch_log:
             out.append(f"    {_rf(label, '.molwatch.log', stage_token)}     -- unified per-step log: marker-")
             out.append("                                  delimited blocks containing")
             out.append("                                  coords, energy (eV), forces")
@@ -325,9 +325,6 @@ def spec_for(struct: Structure,
         out.append("    The wrapper activates it; this is how it gets built.")
         out.append("    Bootstrap managed environments once:")
         out.append("        bash scripts/install-env.sh bootstrap --yes")
-        if cfg.optimize and cfg.optimizer == "berny":
-            out.append("    Berny is optional and installed separately in molbuilder-pySCF:")
-            out.append("        conda run -n molbuilder-pySCF pip install pyberny")
         out.append("\n")
         out.append('"""')
         out.append("")
@@ -386,31 +383,18 @@ def spec_for(struct: Structure,
             min_compute_capability=GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
         )
         if cfg.optimize:
-            if cfg.optimizer == "geometric":
-                opt_pkg = "geometric"
-                opt_module = "pyscf.geomopt.geometric_solver"
-            elif cfg.optimizer == "berny":
-                opt_pkg = "pyberny"
-                opt_module = "pyscf.geomopt.berny_solver"
-            else:
-                raise ValueError(
-                    f"unknown optimizer {cfg.optimizer!r}; "
-                    f"expected 'geometric' or 'berny'"
-                )
-            # Wrap the optimizer import in a try/except so missing-dep gives
-            # a one-line actionable message instead of a 6-frame traceback.
+            # geomeTRIC is the one optimizer (`engines/pyscf.md` § 3).  Its
+            # import is checked HERE, before any SCF is paid for, with a
+            # one-line actionable message instead of a traceback; `relax`
+            # imports the driver's `kernel` itself when it runs.
             out.append("try:")
-            out.append(f"    from {opt_module} import optimize")
+            out.append("    from pyscf.geomopt import geometric_solver  # noqa: F401")
             out.append("except ImportError as _exc:")
             out.append("    raise SystemExit(")
-            out.append(f'        "molbuilder PySCF script needs the {opt_pkg} '
+            out.append('        "molbuilder PySCF script needs the geometric '
                        'optimizer package.\\n"')
-            if opt_pkg == "pyberny":
-                out.append('        "Install the optional Berny optimizer in molbuilder-pySCF:\\n"')
-                out.append('        "conda run -n molbuilder-pySCF pip install pyberny\\n"')
-            else:
-                out.append('        "Bootstrap or repair the managed backend:\\n"')
-                out.append('        "bash scripts/install-env.sh bootstrap --yes\\n"')
+            out.append('        "Bootstrap or repair the managed backend:\\n"')
+            out.append('        "bash scripts/install-env.sh bootstrap --yes\\n"')
             out.append('        f"(import error: {_exc})"')
             out.append("    )")
         if cfg.solvent:
@@ -759,7 +743,7 @@ def spec_for(struct: Structure,
         #
         # So the rule is: _RUNTIME_INFO is populated FIRST, the emitter is
         # built AFTER.  Any future runtime fact belongs above this line.
-        if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
+        if cfg.optimize and cfg.write_molwatch_log:
             out += _emit_molwatch_emitter(v, cfg, stage_token)
             out.append(_emit_molwatch_callback_wire("mf"))
         out.append("")
@@ -780,10 +764,8 @@ def spec_for(struct: Structure,
                 out.append("# ============================================================")
                 out.append("#  Geometry optimization")
                 out.append("# ============================================================")
-                out.append("# geomeTRIC is the recommended optimizer (translation-")
-                out.append("# rotation-invariant internal coords, robust on large")
-                out.append("# steps).  Berny is built into PySCF, fewer dependencies,")
-                out.append("# but less robust on flexible biomolecules.")
+                out.append("# geomeTRIC is the one optimizer (translation-rotation-")
+                out.append("# invariant internal coords, robust on large steps).")
                 out.append("#")
                 out.append("# Per-tier convergence (Gaussian-OPT family):")
                 out.append("#   screening    gmax 2.0e-3 Ha/Bohr  conv_tol 1e-7  max_steps 30")
@@ -797,16 +779,15 @@ def spec_for(struct: Structure,
                 out.append("# docs/engines/tuning.md sect. 4 for the full preset")
                 out.append("# table + SIESTA <-> PySCF crosswalk + citations.")
             # Frozen-atom constraints (three-stage contract carrier).  When
-            # Structure.frozen_atoms is non-empty AND we're using the
-            # geomeTRIC optimizer (only one with constraint support), write
-            # a sibling <JOB>.constraints.txt at run time and pass it via
+            # Structure.frozen_atoms is non-empty, write a sibling
+            # <JOB>.constraints.txt at run time and pass it to geomeTRIC via
             # the ``constraints=`` kwarg.  Indices are 1-based per geomeTRIC.
             # See molbuilder/structure.py + pyscf/vibration_emitters.py for the
             # cross-engine carrier; the spectra path uses cfg.frozen_indices
             # while Build PySCF reads struct.frozen_atoms directly so /modify
             # sidecar flows through without an explicit form field.
             frozen = list(getattr(struct, "frozen_atoms", []) or [])
-            emit_constraints = bool(frozen) and cfg.optimizer == "geometric"
+            emit_constraints = bool(frozen)
             _derived["emit_constraints"] = emit_constraints
             if emit_constraints:
                 if v:
@@ -825,13 +806,6 @@ def spec_for(struct: Structure,
                 out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
                 out.append('    _fh.write("$freeze\\n")')
                 out.append(f'    _fh.write("xyz {ids_1based}\\n")')
-            elif frozen and cfg.optimizer != "geometric":
-                out += [
-                    f'# WARNING: Structure.frozen_atoms = {frozen!r}  (0-based)',
-                    f'#   but optimizer = {cfg.optimizer!r} -- only the geomeTRIC',
-                    '#   optimizer supports frozen-atom constraints.  Switch to',
-                    "#   ``cfg.optimizer = 'geometric'`` to honor the sidecar.",
-                ]
         return "\n".join(out) if out else None
 
     def _science_d(struct, cfg) -> Optional[str]:
@@ -1269,18 +1243,30 @@ def _emit_optimization(cfg: PySCFConfig,
     # config and answers which (`script-preparation.md` § 4.1).
     out: List[str] = [""]
     if v:
-        out.append("# One optimize() call: this deck IS one rung of the ladder.")
+        out.append("# One relaxation: this deck IS one rung of the ladder.")
         out.append("# The ladder lives in task.json and runs as separate jobs,")
         out.append("# so that a person can look at this geometry before")
         out.append("# spending anything on the next rung.")
-    out.append("def _mb_run_optimization(_hard_fail):")
-    out.append("    return optimize(")
-    out.append("        mf,")
+    # THE ONE RELAXATION FUNCTION both PySCF decks run (`relax_policy.relax`,
+    # `engines/pyscf.md` § 3), spliced here: it asks geomeTRIC whether it
+    # converged -- `optimize()` cannot say -- and applies this rung's
+    # on_nonconvergence to the answer.
+    from .relax_policy import emit_relax
+    out += emit_relax()
+    out.append("")
+    policy = (cfg.on_nonconvergence or "halt").strip().lower()
+    if v:
+        out += _sc.parameter("on_nonconvergence", "pyscf").note()
+        if policy == "continue":
+            out += _sc.parameter("geom_continue_retries", "pyscf").note()
+    out.append(f"_ON_NONCONVERGENCE = {policy!r}")
+    out.append(f"_GEOM_CONTINUE_RETRIES = {int(cfg.geom_continue_retries or 0)}")
+    out.append("mol_eq, _GEOM_CONVERGED = relax(")
+    out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
     out.extend(_layout.geom_kwargs())
-    out.append("        assert_convergence    = _hard_fail,")
     if emit_constraints:
         out.append("        constraints           = _FROZEN_CONSTRAINTS_PATH,")
-    if cfg.write_trajectory and cfg.optimizer == "geometric":
+    if cfg.write_trajectory:
         # The rung's own trajectory name.  Two rungs are two processes writing
         # into one calculation, so the one name this script chooses for itself
         # has to say which rung it is (`stages.md` § 1.1a, consequence 1).
@@ -1298,44 +1284,18 @@ def _emit_optimization(cfg: PySCFConfig,
         _tail = _rf_tail(ROLE_GEOM_TRAJ, stage_token)[:-len(GEOMETRIC_APPENDS)]
         _traj = f"JOB + {_tail!r}"
         out.append(f"        prefix                = _mb_outfile({_traj}),")
-    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
+    if cfg.write_molwatch_log:
         out.append("        callback              = _molwatch.opt_step_hook,")
     out.append("    )")
     out.append("")
-    policy = (cfg.on_nonconvergence or "halt").strip().lower()
     if v:
-        out += _sc.parameter("on_nonconvergence", "pyscf").note()
-        if policy == "continue":
-            out += _sc.parameter("geom_continue_retries", "pyscf").note()
-        out.append(f"# This rung: {policy!r}.")
-    if policy == "proceed":
-        if v:
-            out.append("#   take whatever geomeTRIC produced when the step")
-            out.append("#   budget ran out; the next rung starts from it.")
-        out.append("mol_eq = _mb_run_optimization(_hard_fail=False)")
-    elif policy == "continue":
-        retries = int(cfg.geom_continue_retries or 0)
-        if v:
-            out.append(f"#   retry the same targets up to {retries} more time(s)")
-            out.append("#   (total budget = max_steps x (1 + retries)), then raise.")
-        # THE ONE RETRY LOOP (`pyscf/relax_policy.py`).  The vibration deck's
-        # relaxation spelled the same loop out until 2026-08-23, so a fix here
-        # reached one deck of the two.
-        from .relax_policy import emit_retry_loop
-        out += emit_retry_loop(
-            ["mol_eq = _mb_run_optimization(_hard_fail=True)"],
-            retries=retries, steps_var="_GEOM_MAX_STEPS")
-    else:
-        if v:
-            out.append("#   raise on non-convergence rather than hand on a")
-            out.append("#   geometry nobody accepted.")
-        out.append("mol_eq = _mb_run_optimization(_hard_fail=True)")
-    out.append("")
-    if v:
-        out.append("# Re-converge SCF at the relaxed geometry: snapshot the")
-        out.append("# converged density so we do not restart from MINAO, drop")
-        out.append("# the stale integrals, then converge at mol_eq.  That is")
-        out.append("# the state the answer below is read from.")
+        out.append("# Re-converge the SCF at the relaxed geometry.  The")
+        out.append("# relaxation's own SCFs ran on PySCF's scanner, a copy, so")
+        out.append("# `mf` holds no density there: this starts from `mf`'s own")
+        out.append("# density when it has one -- an open-shell run's stability")
+        out.append("# check leaves one, at the input geometry -- else from the")
+        out.append("# initial guess, and it is the state the answer below is")
+        out.append("# read from.")
     out.append("dm_prev = (mf.make_rdm1()")
     out.append("           if mf.mo_coeff is not None and mf.mo_occ is not None")
     out.append("           else None)")
@@ -1669,7 +1629,6 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("#   * Loosen this rung's gmax / grms and prep it again")
     out.append("#   * Add a looser warm-up rung ahead of it in task.json")
     out.append("#   * Raise this rung's geom_max_steps")
-    out.append("#   * Switch optimizer 'geometric' -> 'berny' for stiff systems")
     out.append("#")
     out.append("# Charged / open-shell anions need diffuse functions:")
     out.append("#   * cfg.basis = 'aug-cc-pVDZ' or 'def2-SVPD'")

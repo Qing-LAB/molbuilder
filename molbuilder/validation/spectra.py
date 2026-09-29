@@ -475,47 +475,24 @@ def spectra_render_checks(struct: Structure,
             where="config.symmetry",
         ))
 
-    # optimizer: geomeTRIC by REFUSAL, and the refusal is informed
-    # (the user's 2026-08-21 ruling: an educated suggestion, with the
-    # source).  Probed against the run environment on 2026-08-21:
-    # pyberny is NOT installed in molbuilder-pySCF, and berny_solver's
-    # optimize() offers no step callback -- the tracked relaxation
-    # phase (n_steps / max-force ticking in the viewer) is fed by
-    # geomeTRIC's callback, so berny would run blind even if present.
-    # PySCF manual: pyscf.geomopt (geometric_solver vs berny_solver).
-    _optzr = str(getattr(cfg, "optimizer", "geometric") or "geometric").lower()
-    if _optzr != "geometric":
-        issues.append(Issue(
-            severity="error",
-            message=(
-                f"optimizer = {_optzr!r}: the vibration calculation "
-                f"relaxes with geomeTRIC only.  pyberny is not installed "
-                f"in the run environment (probed 2026-08-21), and its "
-                f"solver exposes no per-step callback, so the tracked "
-                f"relaxation phase the Results tab shows would run "
-                f"blind.  Set optimizer = 'geometric' (the geom_* "
-                f"criteria map to its convergence_* keywords; see the "
-                f"PySCF manual, pyscf.geomopt)."),
-            where="config.optimizer",
-        ))
-
-    # on_nonconvergence policy (pyscf.md § 7a's role table): warning
-    # past a failed equilibrium SCF is a legitimate survey-mode choice,
-    # but on a VIBRATION run every downstream quantity -- frequencies,
-    # intensities, thermochemistry -- inherits the unconverged density.
+    # on_nonconvergence policy (pyscf.md § 3): taking a relaxation that
+    # did not converge is a legitimate survey-mode choice, but on a
+    # VIBRATION run every downstream quantity -- frequencies, intensities,
+    # thermochemistry -- is the curvature at the geometry it reached.
     _pol = str(getattr(cfg, "on_nonconvergence", "halt") or "halt").lower()
     if _pol == "proceed":
         issues.append(Issue(
             severity="warn",
             message=(
-                "on_nonconvergence = 'proceed': the relaxation's convergence "
-                "will not be asserted, and frequencies computed on a "
-                "not-quite-relaxed geometry commonly show spurious imaginary "
-                "modes and shifted band positions.  Legitimate for a survey; "
-                "for publishable spectra use 'halt' (or 'continue' with "
-                "geom_continue_retries).  The artifact records "
-                "relaxation.converged = null with a warning when this "
-                "policy fires."),
+                "on_nonconvergence = 'proceed': a relaxation that does not "
+                "meet geomeTRIC's criteria in geom_max_steps is kept where "
+                "it stopped, and frequencies computed on a not-quite-relaxed "
+                "geometry commonly show spurious imaginary modes and shifted "
+                "band positions.  Legitimate for a survey; for publishable "
+                "spectra use 'halt' (or 'continue' with "
+                "geom_continue_retries).  When it fires, the result says so "
+                "in the relaxation's warning, beside relaxation.converged -- "
+                "the judged force against geom_gmax."),
             where="config.on_nonconvergence",
         ))
 

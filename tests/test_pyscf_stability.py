@@ -52,7 +52,8 @@ def test_stability_runs_before_the_geometry_optimization():
     wrong frequencies; finding out afterwards helps nobody."""
     t = _script(optimize=True)
     assert "_internal = mf.stability()[0]" in t
-    assert t.index("_internal = mf.stability()[0]") < t.index("optimize("), (
+    assert (t.index("_internal = mf.stability()[0]")
+            < t.index("mol_eq, _GEOM_CONVERGED = relax(")), (
         "the stability check must precede the optimizer")
 
 

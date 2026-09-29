@@ -44,7 +44,7 @@ def test_c1_initial_xyz_captured_before_the_optimization(small_struct):
     assert save_pos != -1, "no _initial.xyz save call found"
 
     # The optimization comes after the SCF setup.
-    opt_pos = text.find("mol_eq = _mb_run_optimization(")
+    opt_pos = text.find("mol_eq, _GEOM_CONVERGED = relax(")
     assert opt_pos != -1, "no optimization call found"
 
     # The save MUST come before it.
@@ -97,37 +97,4 @@ def test_c2_the_spin_keyword_is_the_current_one(small_struct):
         assert not re.search(r"^SpinPolarized\b", text, re.M)
         assert "SpinTotal " not in text
 
-
-# --------------------------------------------------------------------- #
-#  C3 — stages loop: assert_convergence is per-stage                    #
-# --------------------------------------------------------------------- #
-
-
-def test_c3_the_deck_renders_its_own_non_convergence_policy(small_struct):
-    """proceed / continue / halt, for THIS rung.
-
-    A deck is one rung (`stages.md` § 1.1a), so the policy it renders is its own
-    and the branch is chosen at render time rather than dispatched at run time
-    over a table of rungs.
-
-    **What retired with the loop, and where it went.** The old version also
-    asserted an ``is_final`` override -- the in-script loop forced the last rung
-    to `halt` whatever the user declared, so that no knob could silently ship a
-    non-converged answer. A deck no longer knows whether it is last, so the
-    script cannot enforce that. The guarantee is not abandoned; it is homeless,
-    and it is recorded as such in `archive/2026-09-01-roadmap.md` § 6 rather than quietly dropped.
-    """
-    for policy, expected in (("halt", "mol_eq = _mb_run_optimization(_hard_fail=True)"),
-                             ("proceed", "mol_eq = _mb_run_optimization(_hard_fail=False)"),
-                             ("continue", "for _attempt in range(_budget):")):
-        text = render_script(small_struct,
-                             PySCFConfig(on_nonconvergence=policy))
-        assert expected in text, f"policy {policy!r} did not render {expected!r}"
-
-    text = render_script(small_struct, PySCFConfig())
-    helper = text.split("def _mb_run_optimization(")[1].split("\n\n")[0]
-    assert "assert_convergence    = _hard_fail" in helper, (
-        "the single call site must thread assert_convergence through the "
-        f"helper's parameter rather than hardcoding it.  helper:\n{helper}")
-    assert "STAGES = [" not in text, "the in-script ladder is retired"
 

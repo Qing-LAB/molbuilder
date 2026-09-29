@@ -23,16 +23,15 @@ from ..jobset.model import OPTIMIZER_TRAIT
 
 
 def _traits(eff) -> Dict[str, str]:
-    """The per-job facts a warm file can be conditioned on.
+    """The per-job facts a warm file can be conditioned on -- none on PySCF.
 
-    Normalised to lower case at this one producer: the pair rule compares
-    strings, and ``geomeTRIC`` against ``geometric`` -- the same optimizer
-    spelled by two hands -- would compare unequal and silently withhold a
-    geometry the rule exists to carry.  That is the exact defect SIESTA's
-    ``Broyden`` / ``broyden`` pair hit, and it is cheaper to not repeat it.
+    SIESTA conditions its ``.CG`` on the optimizer both rungs use
+    (``requires_same = "optimizer"``).  PySCF has one optimizer, geomeTRIC
+    (`engines/pyscf.md` § 3, the ``optimizer`` item retired 2026-09-29), and
+    its rules file conditions nothing on a trait, so there is no fact to
+    report.
     """
-    return {OPTIMIZER_TRAIT:
-            str(getattr(eff, "optimizer", "") or "").strip().lower()}
+    return {}
 
 
 def _warm_declaration(label: str, eff,
