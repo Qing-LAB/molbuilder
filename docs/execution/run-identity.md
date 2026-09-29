@@ -9,7 +9,8 @@ changes; [`execution/running-a-job.md`](?doc=execution/running-a-job.md) — how
 run is actually launched and what the wrapper does with the files;
 [`engines/stages.md`](?doc=engines/stages.md) — the description this id is
 derived from; [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-— the plan that motivates this contract and schedules the work.
+— the plan that motivated this contract, archived; open work lives in
+[`plans/plan.md`](?doc=plans/plan.md), the one plan.
 
 **Status: landed.** Written first, then built to: `task.json` stores the id
 and proves it on every parse (`Task._check_id`, with `describe` — 2026-08-11,
@@ -701,7 +702,7 @@ owns it.*
   §§ 2, 3 and 5. Unchanged here.
 - **What a stage is, and the description the id is derived from** —
   [`engines/stages.md`](?doc=engines/stages.md).
-- **Phasing and what is built when** —
-  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) and
-  [`plans/plan.md`](?doc=plans/plan.md) — `conventions.md`'s R3. *(Open questions about the **id** are
+- **Phasing and what is built when** — [`plans/plan.md`](?doc=plans/plan.md),
+  `conventions.md`'s R3 (the record of how it was built is
+  [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)). *(Open questions about the **id** are
   § 6a above, because they are this contract's to answer.)*

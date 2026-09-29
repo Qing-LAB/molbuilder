@@ -7,7 +7,8 @@
 what a stage is; [`execution/checkpointing.md`](?doc=execution/checkpointing.md)
 — what the history guarantees;
 [`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md)
-— the plan and the order of work.
+— the plan it was written against, archived; open work lives in
+[`plans/plan.md`](?doc=plans/plan.md).
 
 This is the whole design followed once, with a real molecule, in the order a
 person would actually do it. It exists for two reasons: to show how the pieces

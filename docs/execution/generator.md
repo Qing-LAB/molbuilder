@@ -971,7 +971,7 @@ removes the places where two things can disagree:**
 | the wrapper knowing which keyword means what | `read_by` names the items it depends on (`template.md` § 6.1). *(The ELPA half of this row was deleted outright in 2026-08-13 rather than replaced — the premise that only the source build has ELPA was measured false, so there was no read left to move. `use_gpu` is the live case.)* |
 | a second copy of every bound | the catalogue is the one place a bound is stated; the template is it narrowed and answered, and BENCH-MARKS is checked against it (§ 3) |
 
-**The size test** (`staged-runs-implementation-plan.md` § 9.4): a change made
+**The size test** ([`archive/2026-08-19-staged-runs-implementation-plan.md`](?doc=archive/2026-08-19-staged-runs-implementation-plan.md) § 9.4): a change made
 under this document that does not delete more than it adds, or remove a place
 where two things can disagree, is not this work.
 

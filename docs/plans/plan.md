@@ -4580,9 +4580,8 @@ goes with § 5u step 3).
 references — only `spectra.md`'s #102 is left (W15's presenters pass); the rest
 were rewritten to their homes on 2026-09-29 (#102, #103, #106, #107 and #105's
 module half → W15; #105's feature half → § 0a's *smaller open items*; #108 →
-§ 0a's *Unscheduled*; #73 and #104 done) · archived plans named as *the plan* (`run-identity.md`,
-`worked-example.md`, `execution/overview.md`, `generator.md`, `stages.md`,
-`siesta.md`) · *owed* tables inside contracts
+§ 0a's *Unscheduled*; #73 and #104 done) · archived plans named as *the plan* (`stages.md`, `siesta.md` — the
+four others corrected 2026-09-29) · *owed* tables inside contracts
 (`template.md` § 12.1, `worked-example.md`'s gaps, `vibration.md` § 10 and its
 *"open items: row V1 … and nowhere else"*, `checkpointing.md` § 13.4,
 `engines/overview.md` § 3a) — each item goes to a row here, and the table
