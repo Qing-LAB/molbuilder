@@ -167,10 +167,7 @@ class TestSpectraPage:
         )
         body = r.data.decode()
         for inspect_only_id in (
-            "watch-path",              # load-by-path input
-            "load-path-btn",           # one-shot load button
-            "watch-btn",               # live-watch toggle
-            "watch-stop-btn",          # live-watch stop
+            "watch-status",            # the run's progress line
             "load-from-selection-btn", # sidebar handoff
             "phase-indicator",         # phase-progress chips
             "results-summary",         # results meta + chart container
@@ -208,10 +205,10 @@ class TestSpectraPage:
 
     def test_path_load_endpoint_works(self, web_client, tmp_path):
         """End-to-end sanity: POST /api/spectra/load with {path}
-        succeeds for a real on-disk spectra.json (mirrors what the
-        new 'Load once' button does).  Regression check against a
-        future blueprint change accidentally breaking the path-input
-        mode of the load endpoint."""
+        succeeds for a real on-disk spectra.json (what the viewer's
+        loadByPath sends for the dropdown's pick).  Regression check
+        against a future blueprint change accidentally breaking the
+        path mode of the load endpoint."""
         from molbuilder.sidecars.spectra import dump_spectra_json
         results = _make_minimal_results()
         p = tmp_path / "live.spectra.json"

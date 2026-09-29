@@ -13,10 +13,10 @@
  * by molbuilder's spectra wrapper).
  *
  * Auto-load: the spectra core's mount() honors ``opts.file`` by
- * pre-filling the watch-path field + firing loadByPath(), so
- * picking a .spectra.json in the sidebar (or via the /results
- * dropdown) lands directly on the rendered modes + chart with no
- * extra click.
+ * calling loadByPath(opts.file), so picking a .spectra.json in the
+ * /results dropdown -- the one route to a file -- lands directly on
+ * the rendered modes + chart, and a run still going is followed with
+ * no extra click (web/spectra.md § 7).
  *
  * Mount flow + error-card rendering live in
  * lib/inspectors/_partial_inspector_factory.js (DRY'd 2026-06-09,

@@ -98,6 +98,29 @@ def ongoing_trajectory(isolated_projects_root_module) -> str:
         pass
 
 
+@pytest.fixture(scope="module")
+def running_spectra(isolated_projects_root_module) -> str:
+    """A vibration result whose run is still going: frequencies done, the
+    Raman activities the description asked for still to come.
+
+    Built through the writer's OWN types -- `SpectraResults`, written by
+    `dump_spectra_json`, the door the deck's writer and the load route
+    share -- rather than by a run, and that is a decision, not a shortcut:
+    the state lasts only while a Raman sweep runs, so no road test can hold
+    a page there (the same reasoning as
+    `test_spectra_no_spectrum_sentence_js.py`).  Nothing here is typed as
+    JSON by hand.
+    """
+    from molbuilder.sidecars.spectra import dump_spectra_json
+    from tests.spectra._helpers import _make_results
+
+    live = isolated_projects_root_module / "spectra_timer" / "frequency"
+    live.mkdir(parents=True)
+    dest = live / "job.spectra.json"
+    dump_spectra_json(_make_results(complete=False), dest)
+    return str(dest.resolve())
+
+
 def _pyscf_env():
     """The env molbuilder routes PySCF to, if it exists here.
 
@@ -289,7 +312,7 @@ class TestInspectorListenerTeardown:
         Note: the spectra adapter does an async partial fetch before
         calling into the core's mount.  We wait for the inner mount
         to land by polling for the partial's well-known id
-        (``watch-path``).  Without that wait, dispose() might run
+        (``watch-status``).  Without that wait, dispose() might run
         before mount() ever wires its listeners and the test would
         always pass trivially.
         """
@@ -325,10 +348,10 @@ class TestInspectorListenerTeardown:
                 // ran.  Bounded poll (10x100ms) so a stuck mount
                 // surfaces as a test timeout, not a hang.
                 for (let i = 0; i < 30; i += 1) {
-                    if (host.querySelector("#watch-path")) break;
+                    if (host.querySelector("#watch-status")) break;
                     await new Promise(r => setTimeout(r, 100));
                 }
-                const mounted = !!host.querySelector("#watch-path");
+                const mounted = !!host.querySelector("#watch-status");
                 const addsAfterMount = adds;
                 const removesBeforeDispose = removes;
                 handle.dispose();
@@ -373,7 +396,8 @@ class TestInspectorListenerTeardown:
             f"test_all_element_listeners_route_through_on_helper)."
         )
 
-    def test_no_interval_survives_mount_dispose(self, page, flask_server):
+    def test_no_interval_survives_mount_dispose(self, page, flask_server,
+                                                running_spectra):
         """Every ``setInterval`` started during mount is cleared by dispose.
 
         **Why this exists (2026-09-03).**  The trajectory core's timer
@@ -392,20 +416,18 @@ class TestInspectorListenerTeardown:
         sidebar click, so the leak compounds across a browsing session.
 
         **The watch must actually be RUNNING, or the test is vacuous.**
-        Mounting alone starts no timer — ``startWatch()`` is user-driven,
-        behind the partial's "Start watching" button.  The first draft of
-        this test disposed a freshly-mounted inspector and asserted zero
-        live intervals, which is ``0 == 0``: it passed with the
-        dispose-path ``clearInterval`` commented out.  So the test drives
-        the real control, and asserts a timer was live *before* dispose —
-        that guard is what keeps it honest if the watch path changes.
-
-        The watched path need not exist: `startWatch` starts the interval
-        even when the immediate tick 404s, precisely so polling continues
-        while a run is still producing its first output.
+        The first draft of this test disposed a freshly-mounted inspector
+        and asserted zero live intervals, which is ``0 == 0``: it passed
+        with the dispose-path ``clearInterval`` commented out.  So the test
+        mounts a result whose run is still going -- which the viewer
+        FOLLOWS from its first load (`web/spectra.md` § 7) -- and asserts a
+        timer was live *before* dispose; that guard is what keeps it honest
+        if the follow ever changes.  (Until 2026-09-28 it typed a path into
+        the partial's box and pressed "Start watching"; the box is gone,
+        and following needs no button.)
         """
         _open_results(page, flask_server)
-        result = page.evaluate("""async () => {
+        result = page.evaluate("""async (RUNNING) => {
             const live = new Set();
             const origSet   = window.setInterval;
             const origClear = window.clearInterval;
@@ -424,44 +446,39 @@ class TestInspectorListenerTeardown:
                 document.body.appendChild(host);
                 const reg    = window.molbuilder.inspectors;
                 const ctx    = reg.createDefaultContext(host);
-                const handle = reg.mount(
-                    host, "/projects/foo/job.spectra.json", ctx);
+                // Anything the PAGE started before we mount is not ours to
+                // clear.  lib/system-load-monitor.js re-arms its own
+                // interval on visibilitychange, and counting it would fail
+                // this test for a reason that has nothing to do with the
+                // inspector.  So take a baseline and reason in deltas.
+                const background = live.size;
+                const handle = reg.mount(host, RUNNING, ctx);
                 for (let i = 0; i < 30; i += 1) {
-                    if (host.querySelector("#watch-btn")) break;
+                    if (host.querySelector("#watch-status")) break;
                     await new Promise(r => setTimeout(r, 100));
                 }
-                const mounted = !!host.querySelector("#watch-btn");
+                const mounted = !!host.querySelector("#watch-status");
                 if (!mounted) {
                     return {mounted, background: 0, watching: 0,
-                            afterDispose: 0};
+                            afterDispose: 0, status: ""};
                 }
-                // Anything the PAGE started while we were mounting is not
-                // ours to clear.  lib/system-load-monitor.js re-arms its
-                // own interval on visibilitychange, and counting it would
-                // fail this test for a reason that has nothing to do with
-                // the inspector.  So take a baseline and reason in deltas.
-                const background = live.size;
-
-                // Drive the user's own control: type a path, press
-                // "Start watching".  The path 404s, which is the case
-                // the poll loop is built for.
-                host.querySelector("#watch-path").value =
-                    "/projects/foo/job.spectra.json";
-                host.querySelector("#watch-btn").click();
-                for (let i = 0; i < 30; i += 1) {
+                // The result is still running, so its first load settles
+                // into WATCHING and the poll starts by itself.
+                for (let i = 0; i < 50; i += 1) {
                     if (live.size > background) break;
                     await new Promise(r => setTimeout(r, 100));
                 }
+                const status = host.querySelector("#watch-status").textContent;
                 const watching = live.size;
                 handle.dispose();
                 const afterDispose = live.size;
                 document.body.removeChild(host);
-                return {mounted, background, watching, afterDispose};
+                return {mounted, background, watching, afterDispose, status};
             } finally {
                 window.setInterval   = origSet;
                 window.clearInterval = origClear;
             }
-        }""")
+        }""", running_spectra)
         assert result["mounted"], (
             "spectra inspector did not finish mounting within 3s -- fix the "
             "mount path before reading the timer counts below")
@@ -470,9 +487,11 @@ class TestInspectorListenerTeardown:
         started = result["watching"] - result["background"]
         assert started >= 1, (
             "no interval was running when dispose() was called, so this "
-            "test proves nothing about teardown.  Either 'Start watching' "
-            "no longer starts a poll interval, or the control moved -- fix "
-            "the driving above rather than deleting this assertion")
+            "test proves nothing about teardown.  A result still running "
+            "is no longer followed from its first load (web/spectra.md "
+            f"§ 7) -- the status line read {result['status']!r}; fix the "
+            "follow rather than deleting this assertion")
+        assert "following" in result["status"], result["status"]
         assert result["afterDispose"] <= result["background"], (
             f"{result['afterDispose'] - result['background']} of {started} "
             f"setInterval handle(s) started by the watch outlived dispose(). "
@@ -481,6 +500,127 @@ class TestInspectorListenerTeardown:
             f"dispatcher mounts and disposes on every sidebar click, so the "
             f"leak compounds.  Every interval must be held where dispose() "
             f"can reach it (the lifecycle scope), not in a bare local.")
+
+    def test_a_followed_run_is_let_go_when_its_last_phase_lands(
+            self, page, flask_server, isolated_projects_root_module):
+        """`web/spectra.md` § 7: a result still running is followed, and the
+        follow ENDS by itself -- the tick that finds every phase the
+        description asked for complete settles to LOADED, clears its
+        interval and says the run is complete.  The half of decision 1 the
+        teardown test above cannot see: that one disposes a viewer still
+        following; this one watches the run finish under it.
+
+        The run's two states are written through the writer's own types
+        (`dump_spectra_json`), as `running_spectra` explains.
+
+        MUTATION THIS MUST FAIL AGAINST: the tick not settling (a finished
+        run polled forever).
+        """
+        from molbuilder.sidecars.spectra import dump_spectra_json
+        from tests.spectra._helpers import _make_results
+
+        live = isolated_projects_root_module / "spectra_finish" / "frequency"
+        live.mkdir(parents=True)
+        dest = live / "job.spectra.json"
+        dump_spectra_json(_make_results(complete=False), dest)
+        _open_results(page, flask_server)
+        started = page.evaluate("""async (RUNNING) => {
+            const live = new Set();
+            const origSet = window.setInterval, origClear = window.clearInterval;
+            window.setInterval = function (...a) {
+                const id = origSet.apply(window, a); live.add(id); return id; };
+            window.clearInterval = function (id) {
+                live.delete(id); return origClear.call(window, id); };
+            window.__finish = { live, origSet, origClear };
+            const background = live.size;
+            const host = document.createElement("div");
+            host.id = "finish-host";
+            document.body.appendChild(host);
+            const reg = window.molbuilder.inspectors;
+            window.__finish.handle = reg.mount(
+                host, RUNNING, reg.createDefaultContext(host));
+            for (let i = 0; i < 50; i += 1) {
+                const s = host.querySelector("#watch-status");
+                if (s && /following/.test(s.textContent)) break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+            const s = host.querySelector("#watch-status");
+            return { background, watching: live.size,
+                     status: s ? s.textContent : "" };
+        }""", str(dest))
+        assert "following" in started["status"], started
+        assert started["watching"] > started["background"], started
+
+        # the run finishes: its last phase lands in the file
+        dump_spectra_json(_make_results(complete=True), dest)
+        ended = page.wait_for_function("""() => {
+            const s = document.querySelector("#finish-host #watch-status");
+            return (s && /Run complete/.test(s.textContent))
+                ? { status: s.textContent, live: window.__finish.live.size }
+                : null; }""", timeout=10000).json_value()
+        page.evaluate("""() => {
+            window.__finish.handle.dispose();
+            document.getElementById("finish-host").remove();
+            window.setInterval = window.__finish.origSet;
+            window.clearInterval = window.__finish.origClear; }""")
+        assert ended["live"] <= started["background"], (
+            "the run finished but its poll interval is still live", ended)
+
+    def test_a_viewer_whose_file_cannot_load_says_why_and_lets_go(
+            self, page, flask_server, isolated_projects_root_module):
+        """A load that fails has ENDED, and says so twice: the viewer's own
+        status line carries the reason, and the ready signal goes -- so the
+        tab's cover and the picker's "Parsing…" line lift at once instead
+        of sitting over the error for their safety timers (`web/results.md`
+        § 3; the Results-tab review, 2026-09-28).  The trajectory panel's
+        line keeps its own layout class through the write.
+
+        MUTATIONS THIS MUST FAIL AGAINST: spectra's refused load with no
+        signal; the one status writer replacing the line's whole class list
+        (it stripped `trajectory-status` on the first write).
+        """
+        gone = isolated_projects_root_module / "gone"
+        gone.mkdir(parents=True, exist_ok=True)
+        files = {"trajectory": str(gone / "vanished.molwatch.log"),
+                 "spectra": str(gone / "vanished.spectra.json")}
+        _open_results(page, flask_server)
+        out = page.evaluate("""async (files) => {
+            const C = window.molbuilder.constants;
+            const got = [];
+            const onReady = (e) => got.push(e.detail || {});
+            document.addEventListener(C.EVENT_INSPECTOR_READY, onReady);
+            const reg = window.molbuilder.inspectors;
+            const out = {};
+            for (const [name, file] of Object.entries(files)) {
+                const host = document.createElement("div");
+                document.body.appendChild(host);
+                got.length = 0;
+                const t0 = performance.now();
+                const h = reg.mount(host, file, reg.createDefaultContext(host));
+                for (let i = 0; i < 60; i += 1) {
+                    if (got.some(d => d.inspector === name)) break;
+                    await new Promise(r => setTimeout(r, 100));
+                }
+                const line = host.querySelector(name === "trajectory"
+                    ? "#trajectory-status" : "#watch-status");
+                out[name] = {
+                    signal: got.find(d => d.inspector === name) || null,
+                    ms: Math.round(performance.now() - t0),
+                    text: line ? line.textContent : null,
+                    cls: line ? line.className : null };
+                h.dispose();
+                host.remove();
+            }
+            document.removeEventListener(C.EVENT_INSPECTOR_READY, onReady);
+            return out;
+        }""", files)
+        for name in ("trajectory", "spectra"):
+            got = out[name]
+            assert got["signal"] and got["signal"].get("error"), (name, got)
+            assert got["ms"] < 6000, (name, got)
+            assert got["text"], (name, got)
+            assert "error" in got["cls"].split(), (name, got)
+        assert "trajectory-status" in out["trajectory"]["cls"].split(), out
 
     def test_no_trajectory_listener_survives_dispose(
             self, page, flask_server, ongoing_trajectory):
@@ -916,14 +1056,14 @@ def test_the_exported_csv_does_not_carry_the_users_name(
 #  itself names as bug #35.  Plan row T1.                                #
 #                                                                       #
 #  TWO THINGS THAT MAKE IT HARD TO SEE, both worth their own look:      #
-#   * `setStatus` is a NO-OP on /results (`if (!document                 #
-#     .getElementById("status")) return;`), so `rebuildModel`'s catch    #
-#     -- "Viewer failed to load the run" -- reports into nothing on the  #
-#     page where the inspector actually lives.                           #
-#   * "Loaded N frames" is written by `applyNewData` from the FEED's     #
-#     count, while `rebuildModel` runs unawaited beside it.  The tab can #
-#     therefore claim frames it is not showing, which is what it did     #
-#     here.                                                              #
+#   * `setStatus` WAS a no-op on /results -- the partial had no status #
+#     line -- so `rebuildModel`'s catch ("Viewer failed to load the     #
+#     run") reported into nothing; since 2026-09-28 it writes into     #
+#     #trajectory-status.                                              #
+#   * "Loaded N frames" was written by `applyNewData` from the FEED's    #
+#     count, while `rebuildModel` runs unawaited beside it, so the tab   #
+#     could claim frames it was not showing.  That line went on          #
+#     2026-09-28: an ordinary load writes only the cell's provenance.    #
 #                                                                       #
 #  A test can be finished in minutes once the rebuild path updates the   #
 #  movie: mount, assert the Metadata rows, move frame `oldLen - 1` and   #

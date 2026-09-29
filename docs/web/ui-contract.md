@@ -21,7 +21,7 @@ distinct thing**:
 ```mermaid
 flowchart TD
   T["lib/tokens.css<br/>every color, space, size — as var(--…)"]
-  PS["lib/page-shell.css<br/>body · header · .card · form controls<br/>.status severity · <b>.issues-panel — the finding row</b><br/>the app shell · .dock-panel · .card-row"]
+  PS["lib/page-shell.css<br/>body · .app-header · .card · form controls<br/>.status severity · <b>.issues-panel — the finding row</b><br/>the app shell · .dock-panel · .card-row"]
   FC["lib/form-components.css<br/>.app-grid · .hint · shared buttons · viewer chrome<br/>a finding beside its .schema-field"]
   M["module sheets<br/>projects-sidebar · fused-layout · selection-panel · form-schema · the 3D embed"]
   P["the tab's own sheet<br/>composition only: max-width, per-instance values"]
@@ -31,7 +31,7 @@ flowchart TD
 | Layer | Owns |
 |---|---|
 | `lib/tokens.css` | **only** the design tokens — every color, spacing, size, and type value (§ 2). Nothing else. |
-| `lib/page-shell.css` | the shell (`body`, `header`, `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner. |
+| `lib/page-shell.css` | the shell (`body`, `.app-header` — the banner, a class since 2026-09-28 because a bare `header` selector dressed every `<header>` on the page — `main`), the generic form controls, `.card`, the `.status` message severities, **the finding row (`.issues-panel`, `.issue-item[data-severity]`)** — *moved here from form-components 2026-09-11: one renderer for every surface needs one stylesheet on every surface, and `/results` loads no form sheet but mounts MolView, which draws notices through that renderer* — the app-shell + sidebar dock geometry, `.card-row`, the spinner. |
 | `lib/form-components.css` | the **shared form-page widgets** — the form grid, hints, the shared buttons, the viewer chrome, the engine strip (`.tabs` / `.tab-btn` / `.tab-panel`, whose behaviour is `lib/tab-strip.js`), and the one findings rule only a form can use (a finding sitting beside its `.schema-field` control). |
 | `lib/<module>/*.css` | one self-contained component each (the projects sidebar, the fused MolView card, the selection panel, the form renderer, the embed), class-prefixed so they don't collide. |
 | `<tab>/style.css` | **composition only** — arranging a page: max-width, centering, per-instance token values. |
@@ -86,8 +86,10 @@ Two naming tiers:
 > A `:root` block matches the document wherever its sheet is loaded, so a
 > token defined in a component file is set for every page that loads it — and
 > two components setting the same name differently is decided by `<head>`
-> order. `test_css_no_hex_literals` enforces the rule as stated: **no token
-> definition outside `tokens.css`, prefixed or not.** It used to exempt any
+> order. The rule as stated: **no token definition outside `tokens.css`,
+> prefixed or not** — held by review since 2026-09-10, when
+> `test_css_no_hex_literals` was retired with the other tests that read
+> source for where code lives (`082ba979`). It used to exempt any
 > name that was not already canonical, on the reasoning that a per-file
 > namespaced palette is legitimate; what that exemption actually protected on
 > 2026-09-02 was three tokens with no prefix at all — `--page-max-width` and
@@ -158,7 +160,7 @@ the body a full-height flex **column** whose middle row is
 
 ```html
 <body data-sidebars="projects">
-  <header>…</header>  <nav class="app-tabs">…</nav>
+  <header class="app-header">…</header>  <nav class="app-tabs">…</nav>
   <div class="app-body">
     <aside class="sidebar-rail">…</aside>
     <div class="app-content">…the tab…</div>
@@ -201,8 +203,9 @@ own `[hidden]` guard (§ 6).
   the shell's background / radius / shadow verbatim and *then* drifted — a
   softer border in one, `--radius-lg` and its own padding in the other — so
   one class had three looks and source order picked the winner. Deleting the
-  copies was the fix, and `test_css_no_duplicate_selectors` now enforces it
-  rather than excusing it.
+  copies was the fix. *(`test_css_no_duplicate_selectors` enforced it until
+  2026-09-10, retired with the other source-reading tests, `082ba979`; the
+  rule is held by review.)*
 - **One owner survives a rename** (2026-08-31). That check asks whether one
   *selector* has two homes, and there is a second shape it cannot see: the
   same reasoning and the same declaration under two *different* selectors.
@@ -211,8 +214,10 @@ own `[hidden]` guard (§ 6).
   only in the id — invisible to a per-selector check, because neither
   selector was ever duplicated. It lives in the module sheet now
   (`.molviewer-host`) and pages opt in with the class, so a third page needs
-  no third copy. `test_no_long_block_is_copied_between_stylesheets` fails on
-  ten identical non-blank lines shared by two sheets.
+  no third copy. *(`test_no_long_block_is_copied_between_stylesheets`
+  failed on ten identical non-blank lines shared by two sheets until
+  2026-09-10, retired with the other source-reading tests, `082ba979`; the
+  rule is held by review.)*
 - **One inset per card** (2026-08-30). A card states its inset once, on
   itself; everything inside it — title, rule, tab row, fieldsets, form rows —
   **begins at that inset and adds none of its own**. A nested block may add

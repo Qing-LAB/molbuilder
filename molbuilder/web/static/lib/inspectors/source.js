@@ -60,7 +60,7 @@
 
             // ---- DOM scaffold ---------------------------------- //
             const card = document.createElement("section");
-            card.className = "inspector-card source-card";
+            card.className = "card inspector-card source-card";
 
             const header = document.createElement("header");
             header.className = "inspector-card-header";

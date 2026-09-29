@@ -1,28 +1,23 @@
 {#- molbuilder shared trajectory-inspector scaffolding.
 
     Included by:
-      * watch.html               -- the /watch page (legacy)
-      * results.html (planned)   -- the /results trajectory panel,
-                                    once migration step 4 wires up
-                                    the dispatch.
+      * results.html             -- the /results trajectory panel, fetched
+                                    from GET /partials/trajectory-inspector
+                                    (the /watch page that included it
+                                    server-side is gone).
 
-    This partial is the DOM contract for what the trajectory-side
-    of static/watch/viewer.js (and the future lib/trajectory-
-    inspector.js) reaches via getElementById.  Moving these blocks
-    into one file is migration step 1, stage A: structural seam
-    only, no JS change.  Stages B + C scope the JS lookups, lift
-    the logic into lib/, and make /results call the same lib.
+    This partial is the DOM contract for what lib/trajectory/core.js
+    reaches via getElementById (the pinned set is
+    tests/test_trajectory_inspector_partial.py's TRAJECTORY_PARTIAL_IDS).
 
     Hardcoded element ids are the API: the JS finds elements by
     these names.  Renaming any of them is a wire-format change --
     update the JS at the same time.
 
-    Page-specific bits intentionally NOT in this partial:
-      * the loader bar (path-input + Load button + status banner)
-        -- /watch loads from a path field; /results loads from the
-        sidebar selection.  Different UX, different markup.
-      * the staged-relaxation workflow guide -- /watch tutorial
-        content, not part of the inspector itself.
+    Not in this partial: a loader bar -- /results picks the file in its
+    own dropdown (web/results.md § 2.1) -- and any page-level status
+    banner.  The inspector's OWN status line is here, namespaced
+    (#trajectory-status), so it cannot collide with a page's #status.
 -#}
 
 <!-- Result-list dropdown lifted from this partial to the
@@ -82,6 +77,14 @@
      with a header + key/value rows, no card chrome (lives between
      the badge and the plots row, structurally part of the metadata
      band). -->
+<!-- THE INSPECTOR'S OWN STATUS LINE: a refused load, a viewer that could
+     not mount, the cell's provenance, an export's result.  core.js writes
+     it through setStatus; until 2026-09-28 /results had no such element and
+     every one of those messages was dropped, so a failed load showed an
+     empty skeleton and nothing else (the Results tab's design review).
+     Namespaced: a bare `#status` is the page-level banner some pages carry
+     (modify.html), and this partial must not collide with one. -->
+<p id="trajectory-status" class="status trajectory-status" role="status" aria-live="polite"></p>
 <section id="convergence-summary" class="convergence-summary" hidden>
   <header class="convergence-summary-header">
     <span class="convergence-summary-title">Convergence targets</span>
@@ -106,7 +109,7 @@
       atom-index labels, selection + measurement + picking, and atom hiding (its
       render pipeline's isolate/selection).  See
       docs/web/overview.md -#}
-  <div id="viewer-host" class="trajectory-viewer-slot"></div>
+  <div id="viewer-host" class="trajectory-viewer-slot molviewer-host"></div>
 
   {#- The trajectory-specific controls: the FORCE PARAMETERS.  What this page
       hands MolView is RAW per-frame forces (``molview.data.setForces``), never a

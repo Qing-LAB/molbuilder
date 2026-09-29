@@ -51,6 +51,9 @@ from _node_esm import run_node
 # classic IIFE runs + publishes its global, an ES module runs + exports; structure.js's `import`
 # transitively loads the whole molview graph, which the DOM/storage stub below lets load in Node.
 _INSPECTOR_MODULES = [
+    # The shared element builder the record viewers call (`lib/dom.js`),
+    # loaded before them on the page.
+    STATIC / "lib/dom.js",
     STATIC / "lib/inspectors/registry.js",
     # Listed first among the matchers on /results, because an exact
     # basename is the most specific predicate there is -- and source.js

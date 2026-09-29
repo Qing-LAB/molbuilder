@@ -958,6 +958,13 @@
         function _emitFileSelected(file) {
             const forced = forceNextAnnounce;
             forceNextAnnounce = false;
+            /* "Parsing…" STARTS BEFORE THE ANNOUNCEMENT, because a viewer
+             * may answer inside it: the one already showing this file says
+             * ready at once, from within the listener this dispatch runs.
+             * Started after, the status met that answer with nothing to
+             * clear and then waited out its whole timer (the Results-tab
+             * review, 2026-09-28). */
+            _startParseStatus(file);
             try {
                 document.dispatchEvent(new CustomEvent(
                     C.EVENT_FILE_SELECTED,
@@ -991,7 +998,6 @@
                 // browsers; the try/catch is belt + braces for older
                 // headless test runners.
             }
-            _startParseStatus(file);
         }
         function _onSelectChange() {
             const newPath = selEl.value;
@@ -1196,9 +1202,11 @@
             // 60 s -- way too slow for a deliberate user refresh).
             // Fired separately from EVENT_FILE_SELECTED because
             // the file path didn't change -- re-emitting that would
-            // remount + lose camera/playback state.  Inspectors
-            // that don't poll (e.g. spectra, structure) can ignore
-            // the event entirely.
+            // remount + lose camera/playback state.  The trajectory and
+            // spectra inspectors reload their file on it (spectra
+            // follows a running result on its own, every 2 s, but a
+            // deliberate refresh should not wait for a tick); the
+            // structure inspector ignores it.
             try {
                 document.dispatchEvent(new CustomEvent(
                     C.EVENT_REFRESH_REQUESTED));

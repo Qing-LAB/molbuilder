@@ -99,6 +99,9 @@ class TestPartialIntegrity:
         "viewer-host",
         # Run-state badge + compact runtime-info one-liner.
         "run-state-badge", "run-state-label", "run-state-detail",
+        # The inspector's own status line (2026-09-28): namespaced, since a
+        # bare `#status` is a page-level banner this partial must not carry.
+        "trajectory-status",
         "runtime-summary",
         # Pre-data empty-state banner (batch A, 2026-06-14): rendered
         # by lib/trajectory/core.js::_renderEmptyStatus when the

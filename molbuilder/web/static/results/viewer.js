@@ -120,7 +120,8 @@
             els.fileReadout.classList.toggle(
                 "is-diverged",
                 !!sc.diverged || (!!file && !!dir && _dirOf(file) !== dir));
-            els.fileReadout.title = file || dir || "";
+            // the whole line, warning included -- the ellipsis may hide it
+            els.fileReadout.title = text;
         }
         if (els.kindReadout) {
             // The kind readout is rendered as an accent pill by
@@ -296,6 +297,14 @@
         if (file && file === mountedFile && currentHandle
                  && !(sel && sel.force)) {
             _renderStatus(file, mountedName, scope);
+            // ...and what is on screen IS the answer: say so, or the picker's
+            // "Parsing <file>..." line waits out its fallback timer over a
+            // view that never went away.
+            try {
+                document.dispatchEvent(new CustomEvent(
+                    window.molbuilder.constants.EVENT_INSPECTOR_READY,
+                    { detail: { inspector: mountedName, unchanged: true } }));
+            } catch (_) { /* older headless runners */ }
             return;
         }
         // Dispatch on THE SERVER'S ANSWER when the picker sent one

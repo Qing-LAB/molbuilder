@@ -15,10 +15,11 @@ module.
 When you open a file on the **Results** tab, something has to pick the right way
 to show it — a 3D structure for a `.xyz`, a trajectory movie for a
 `.molwatch.log`, a spectrum for a `.spectra.json`, a sweep summary for a
-`job-set.json`, a markdown editor for a `.md`, a plain scrollable text pane for
-a `.log` or `.fdf`. This module is that switchboard: a small **registry** of
+`job-set.json`, an I–V table for a `.transport.json`, a displacement sweep for
+a `.fc-sweep.json`. This module is that switchboard: a small **registry** of
 **presenters**, one per file type, and the rule that picks the matching one and
-mounts it.
+mounts it. (A markdown editor and a plain text pane are registered too, and
+mount nowhere today — § 3.)
 
 > **Current → target.** In the code today this module is still
 > `window.molbuilder.inspectors` (in `lib/inspectors/`), and most of its files
@@ -165,7 +166,7 @@ flowchart TB
     REG -->|"the matching viewer"| CTRL
     CTRL -->|"put away the old viewer, then mount the chosen one"| PANEL["the viewer, in the panel"]
     PANEL -->|"reads the file's bytes through the shared reader"| PROJ["projects.readFile / readRange"]
-    PANEL --> OUT["draws it: 3D structure · trajectory movie · spectrum · bench sweep · text · markdown"]
+    PANEL --> OUT["draws it: 3D structure · trajectory movie · spectrum · bench sweep · I–V table · displacement sweep"]
 ```
 
 1. The controller asks the registry which presenter matches the filename.
@@ -173,8 +174,19 @@ flowchart TB
    dropping timers, listeners, and the old DOM) **before** mounting the new one.
 3. It mounts the chosen presenter into the panel.
 4. For the slow, 3D ones (structure, trajectory, spectra) it shows a
-   "parsing…" cover and lifts it when the presenter signals it has painted; the
-   instant ones (text, markdown) just appear.
+   "parsing…" cover and lifts it when the presenter signals it has painted —
+   or that it could not load its file, which it says in its own status line.
+   The table viewers (bench sweep, transport, displacement sweep) draw at
+   once and signal the same way, which drops the dropdown's "Parsing…" line.
+
+**The markdown editor and the text pane never reach this panel.** They are
+`isResult: false`, so the dropdown never lists them, and nothing mounts a
+viewer here except the dropdown ([`results.md`](?doc=web/results.md) § 2.1 —
+a double-click opens the sidebar's own file viewer). No other page loads the
+registry, so they mount nowhere; they are kept registered by decision
+(2026-09-28) until the user decides whether the markdown editor returns to the
+Results tab. This said they "just appear" until that day, a route removed on
+2026-09-19.
 
 The registry is a **Results-tab** switchboard. Other tabs mount their viewers
 directly — the Modify/Spectra/Transport tabs call the MolView or spectra
@@ -183,7 +195,7 @@ shared renderer** (`markdown-render.js`), not through this registry.
 
 ## 4. Thin viewers over heavy engines
 
-Five of the seven presenters are simple, but two — **trajectory** and
+Six of the eight presenters are simple, but two — **trajectory** and
 **spectra** — are *thin adapters* over big rendering engines:
 
 - the **structure** presenter mounts the whole MolView viewer read-only in one
@@ -194,11 +206,15 @@ Five of the seven presenters are simple, but two — **trajectory** and
   polling while the job runs, and draws the 3D movie plus the energy/force and
   SCF plots;
 - the **spectra** presenter hands off the same way to the spectrum engine
-  (`lib/spectra/core.js`) — the chart and modes table;
+  (`lib/spectra/core.js`) — the chart and modes table, following a run still
+  going until its phases finish ([`spectra.md`](?doc=web/spectra.md) § 7);
 - **bench-summary** is self-contained: it reads a sweep's `job-set.json`,
   renders the trials and a chart, and re-polls on its own cadence;
 - **transport** is self-contained too: it reads a `<label>.transport.json` and
   draws the I–V table and transmission plot, once, with no polling;
+- **fc-sweep** likewise: it reads a `<label>.fc-sweep.json` and draws the
+  stages' and modes' tables, once (bench-summary, transport and fc-sweep build
+  their elements through one shared helper, `lib/dom.js`);
 - **source** (plain text) and **markdown** are small and self-contained.
 
 The two engines are large enough to be their own subject — this doc names them

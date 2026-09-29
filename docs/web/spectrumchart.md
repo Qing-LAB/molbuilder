@@ -26,8 +26,9 @@ It is not a tour of the current code; the code it replaces is 345 lines inside a
 >   it holds. Two on a page are two of these, sharing nothing.
 > - **The handle** — the object you get back from `mount`. It *is* the chart;
 >   there is no other way to reach one.
-> - **The box** — the rectangle the chart lives in: how wide and how tall it is
->   on screen. Whoever puts the chart on the page decides it (§ 5.4).
+> - **The box** — the rectangle the chart lives in on screen. Its width is
+>   decided by whoever puts the chart on the page; its height is the chart's
+>   own frame's (§ 5.4, § 11).
 > - **The sealed layer** — the one file in this module allowed to name Plotly.
 >   Nothing above it knows that library exists.
 > - **A mode** — one row of the spectrum: a wavenumber, optionally a Raman
@@ -265,15 +266,26 @@ brings a small toolbar of its own (zoom, reset, save); that is the library's, no
 a control this module offers, and what appears on it is decided in the sealed
 layer and nowhere else.
 
-### 5.4 The host owns the box
+### 5.4 The host gives the width; the chart's frame states its height
 
-The host sizes the element and the chart fills whatever it is given: **the box
-states its size, the module never sets one.** And the module watches *its own box*
-rather than the window — a panel opening beside it, a sidebar collapsing, a tab
-becoming visible: each changes the box while the window sits perfectly still.
+The host hands the chart an element, and **its width is the host's**: the chart
+fills it, and the module watches *its own box* rather than the window — a
+panel opening beside it, a sidebar collapsing, a tab becoming visible: each
+changes the box while the window sits perfectly still. **The height is the
+chart's own frame's** (§ 11: the frame states its size, from the module's one
+value block), so a host draws no frame and states no height of its own around
+it.
 
-Three separate bugs came from breaking this rule, all on 2026-08-05. They are
-written down where they can be enforced, as the box rules in § 11.
+*(This section said "the host sizes the element … the module never sets one"
+until 2026-09-28, while § 11 and the module's sheet had the frame state its
+height all along. The Results tab's host stated a height of its own on top —
+420 px capping a frame of up to 460 — and on a tall screen the chart's bottom
+edge, x-axis included, was clipped. The host now gives the width alone. A host
+that needs a different height is a change to the module's value block, not a
+rule on the host.)*
+
+Three separate bugs came from breaking the box rules, all on 2026-08-05. They
+are written down where they can be enforced, as the box rules in § 11.
 
 ---
 
@@ -543,7 +555,7 @@ is worth keeping.
 **The module owns the inside of its host, and nothing else about it.** `mount`
 empties the element it is given before it draws, so whatever was in there — a
 placeholder, a spinner, a chart from a previous result — is gone. The element
-itself, its size and its place on the page remain the host's (§ 5.4).
+itself, its width and its place on the page remain the host's (§ 5.4).
 
 `dispose()` releases the drawing surface, disconnects the box watcher and leaves
 the host element empty. Calling it twice is safe.
@@ -599,7 +611,7 @@ mount(host, options) -> Promise<handle>
 
 | What is passed | What it is | Required | Default |
 |---|---|---|---|
-| `host` | the element the chart lives in. The **host sizes it** (§ 5.4); the module never writes a width or a height onto it | yes | — |
+| `host` | the element the chart lives in. The **host gives its width** (§ 5.4); the module never writes a width or a height onto it — its own frame, inside, states the height (§ 11) | yes | — |
 | `options.channels` | the channels this chart draws, in order: `[{ key, label, unit, direction, relative? }]`. `direction` is `"up"` or `"down"` and decides which stacked panel a channel occupies — nothing else about layout. `relative: true` normalises that lane's drawn heights to its own strongest band, for a channel whose conventional axis is not the unit it was computed in; what the axis is CALLED still comes from `unit`, because this module names no quantity | no | one generic lane keyed `activity` — what a caller with a single quantity still means |
 | `options.onSelect` | `(index) => void`, called when a **user** clicks a mode. Never called by anything the tab does (§ 8.3) | no | nothing is reported |
 | `options.modes` | the first mode list, exactly as `setModes` takes it | no | empty — an empty chart, not an error |
@@ -1024,7 +1036,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 5.1 — recolouring is not redrawing | after `setSelected`, the picture handed to the seal is the same picture, with only its colours changed |
 | § 5.2 — the selection is mirrored, not owned | a click emits `onSelect` and changes **nothing** on screen until `setSelected` is called; a chart mounted without `onSelect` still draws |
 | § 5.3 — no controls | a mounted chart contains no heading, button, input or control of any kind |
-| § 5.4 — the host owns the box | the module writes no width or height onto its host — not at mount, not at any door — and a box that changes size redraws while the window sits still |
+| § 5.4 — the host gives the width | the module writes no width or height onto its host — not at mount, not at any door — and a box that changes size redraws while the window sits still |
 | § 6.1 — the two required fields | a record without `index`, or without `freq`, is refused |
 | § 6.1 — a refusal takes the whole call | one malformed record among many draws **nothing**, rather than a spectrum quietly missing that mode |
 | § 6.1 — a refused list empties the chart | after a refused `setModes`, the previous spectrum is gone from the screen rather than left standing as though the call had worked |

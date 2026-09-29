@@ -13,7 +13,8 @@ call; [`web-api.md`](?doc=web/web-api.md) — that route, plus `/api/watch/*` an
 You ran a calculation; you open it on the **Results** tab. The tab is a
 **dispatch shell**: a file picker across the top, and one panel below that
 becomes *whatever viewer fits the file you picked* — a 3D structure, a trajectory
-movie, a spectrum, or a bench sweep. The tab draws no file itself — every file
+movie, a spectrum, a bench sweep, a transport run's I–V table, or a vibration's
+displacement sweep. The tab draws no file itself — every file
 type is a viewer's — only the Run panel (§ 3a) and the server-load strip (§ 6).
 
 ## 0. The tab as a system — read this first
@@ -60,7 +61,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
 | the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
-| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport, the displacement sweep, markdown, text: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
+| their data | trajectory: `/api/watch/load`, `/api/watch/data` (`watch.py`) · spectra: `/api/spectra/*` · bench: `/api/bench/summary` · transport, the displacement sweep: `/api/files/*` | each reads its file through the registry — the readers the rest of molbuilder uses ([`model/parse.md`](?doc=model/parse.md)) |
 
 ### 0.3 The rules that keep it right
 
@@ -101,7 +102,7 @@ flowchart TD
   EV --> CTRL["results/viewer.js — dispose the old viewer, mount the new one"]
   CTRL -->|"who shows a file named like this?"| REG["the presenter registry"]
   REG --> ENG["the matching viewer renders into the one panel"]
-  ENG --> S["a 3D structure · a trajectory movie + plots · a spectrum + modes · a bench sweep"]
+  ENG --> S["a 3D structure · a trajectory movie + plots · a spectrum + modes · a bench sweep · an I–V table · a displacement sweep"]
   ENG -. "if the run is still going" .-> POLL["it polls for new data — every 15s (trajectory) / 2s (spectra)"]
   POLL -. "new data" .-> ENG
 ```
@@ -406,32 +407,45 @@ root.
 
 The controller asks the registry "who shows a file named like this?", disposes
 whatever was mounted (dropping its timers and 3D contexts so nothing leaks), and
-mounts the chosen viewer into the one panel. For the slow, 3D viewers it first
-drops an opaque **"parsing…" cover** over the panel so the *previous* scene can't
-be mistaken for the new result while it loads; the cover lifts when the viewer
-signals it has painted (or after a 15-second safety timeout).
+mounts the chosen viewer into the one panel. For the slow, 3D viewers
+(trajectory, structure, spectra) it first drops a near-opaque **"parsing…"
+cover** over the panel — the page's own background at 78 % with a blur — so
+the *previous* scene can't be mistaken for the new result while it loads; the
+cover lifts when the viewer signals it has painted, or failed to (a viewer
+that cannot load its file says so and signals too), or after a 15-second
+safety timeout.
 
-The viewers you can land in — **five from the result dropdown**, and two more
-that only a remembered file can mount ([`presenters.md`](?doc=web/presenters.md)
-§ 1 is the registry's own list):
+The viewers you can land in — **six, all from the result dropdown**
+([`presenters.md`](?doc=web/presenters.md) § 1 is the registry's own list).
+Each sits on page-shell's `.card` surface: the structure, spectra and the
+three record viewers as one card each, the trajectory viewer's 3-D view on
+one, with its run badge, notes and plots around it:
 
 - a **read-only 3D structure** for a `.xyz`/`.pdb`,
 - a **trajectory movie + plots** for an optimization log (`trajectory.md`),
-- the **modes, and a spectrum chart where a strength was computed**, for a
-  `.spectra.json` (`spectra.md`),
+- the **modes and a chart** — the spectrum where a strength was computed,
+  the mode positions where none was — for a `.spectra.json` (`spectra.md`),
 - a **bench sweep summary + chart** for a sweep's `job-set.json`
   (`bench-summary.md`),
 - an **I–V table + transmission plot** for a `<label>.transport.json`,
-- and not from the dropdown at all: a **markdown editor** for a `.md` and a
-  **plain paginated text pane** for everything else. Both are `isResult:
-  false`, so the menu never lists them; they mount only when the tab reopens
-  on a file you were already looking at.
+- a SIESTA vibration's **displacement sweep** for a `<label>.fc-sweep.json`.
 
-*(This said "the three viewers" until 2026-09-17 and "four" until 2026-09-19,
-each time omitting a presenter that had been registering the whole time —
-bench-summary, then transport. `presenters.md` § 1 carries the list that is
-machine-checked against the registrations; this prose is not, which is why it
-has now drifted twice. Read it as a tour, and that table as the count.)*
+The **markdown editor** and the **plain paginated text pane** are registered
+too, `isResult: false`, and the menu never lists them — so on this tab they
+never mount: nothing reaches a viewer except through the dropdown (§ 2.1),
+and a double-click opens the sidebar's own file viewer instead. No other page
+loads the registry, so they mount nowhere; they are kept registered by
+decision (2026-09-28) until you decide whether the markdown editor returns to
+this tab.
+
+*(This said "the three viewers" until 2026-09-17, "four" until 2026-09-19,
+and "five" until 2026-09-28, each time omitting a presenter that had been
+registering the whole time — bench-summary, transport, then the displacement
+sweep; and until the same day it said the markdown and text viewers mounted
+"when the tab reopens on a file you were already looking at", a route removed
+on 2026-09-19. `presenters.md` § 1 carries the list that is machine-checked
+against the registrations; this prose is not, which is why it drifted three
+times. Read it as a tour, and that table as the count.)*
 
 ## 3a. The Run panel — what ran, with what, and how it went
 
@@ -517,8 +531,8 @@ parser flags as in-progress are shown in the list but kept out of the plots.
 
 ### 4.1 A run is finished when it has said so **twice** *(written down 2026-09-02)*
 
-A watching viewer flips to *finished* only after **two consecutive** ticks
-report the run ended. One tick can lie: the parser may still be flushing
+A watching **trajectory** viewer flips to *finished* only after **two
+consecutive** ticks report the run ended. One tick can lie: the parser may still be flushing
 trailing output, so a viewer that believed the first one stopped polling with
 the last few frames still on their way — and the plot you were left looking at
 was short of the end of the run you had just watched finish.
@@ -527,6 +541,11 @@ A tick that reports *still running* **resets the count**: the buffer counts
 consecutive ticks, not ticks in total. A stopped or out-of-memory run is a
 different answer and is taken at once — those do not get better on a second
 look.
+
+**The spectra viewer has no such buffer, on purpose** (`lib/spectra/core.js`,
+`_settlePostLoad`): its phase flags only move forward — *running* to
+*complete*, never back — and each file write is atomic, so one tick that finds
+every asked-for phase complete is already the end.
 
 > **Why this is here now.** The rule has been in the code since the state
 > machine landed, and the only place it was written down was the design
@@ -579,8 +598,8 @@ because a number moved.
 > `blueprints/spectra.py` resolves the request through
 > `_resolve_within_roots`, which expands `~`, expands `$VARS` and follows
 > symlinks. The echoed absolute path would then differ from the string the
-> user typed into the path box for every one of those cases, `APPLY` would
-> drop **every** payload, and the viewer would render nothing at all — in
+> viewer was handed for every one of those cases, `APPLY` would drop
+> **every** payload, and the viewer would render nothing at all — in
 > silence, because a dropped payload is a `return`, not an error. The
 > spectra guard is correct precisely because one string feeds both sides.
 
@@ -606,7 +625,10 @@ Two consequences worth stating, because they are the point:
   had two — `loadByPath` read the filename from the DOM input box and
   `watchTick` read it from state, two sources of truth for *which file is
   this*. Both now go through `fetchResults(path, signal)`, which returns
-  the answer paired with the name it asked for.
+  the answer paired with the name it asked for. *(The box itself went on
+  2026-09-28: `loadByPath(path)` takes the dropdown's pick as its argument,
+  and a run still going is followed without a button —
+  [`spectra.md`](?doc=web/spectra.md) § 7.)*
 
 *This was a static-review finding, not a test one: three tests asserted the
 old shape and all three failed on the correction, one of them because a
@@ -836,8 +858,9 @@ file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
   under a rebind whose scan fails.
 - `test_results_state_contract_js.py` — § 4's buckets, its two guards and
   § 4.1's two-tick settle, on the trajectory side.
-- `test_results_state_contract_spectra_js.py` — the same rules on the spectra
-  side, which is a second inspector and not a copy.
+- `test_results_state_contract_spectra_js.py` — § 4's buckets and guards on
+  the spectra side, which is a second inspector and not a copy (it settles on
+  one tick, § 4.1).
 
 *(The last two were missing from this list until 2026-09-02, which is how they
 came to be read as tests of a retired design: the vocabulary they use —

@@ -752,14 +752,20 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     function setStatus(msg, kind) {
-        // The page-level banner, a legacy of the /watch loader bar.  On
-        // /results no such element exists and this is EXPECTED, not a bug --
-        // error surfacing there is the embed's onError plus the per-inspector
-        // renderers.  So the absent slot is swallowed here rather than
-        // reported: the shared writer warns, and warning on every trajectory
-        // render would be noise that trains people to ignore it.
-        if (!document.getElementById("status")) return;
-        window.molbuilder.status.set("status", msg, kind);
+        // The inspector's own status line (`_trajectory_inspector.html`
+        // #trajectory-status): a refused load, a viewer that could not
+        // mount, the cell's provenance, an export.  It was absent on
+        // /results until 2026-09-28 and this returned in silence, so every
+        // one of those messages was lost; a mount without the partial
+        // still has none.
+        if (!document.getElementById("trajectory-status")) return;
+        window.molbuilder.status.set("trajectory-status", msg, kind);
+    }
+
+    /* THE LOAD HAS ENDED -- drawn, or refused (the shared inspector door,
+     * lib/inspectors/lifecycle.js). */
+    function _announceReady(detail) {
+        window.molbuilder.inspectorLifecycle.announceReady("trajectory", detail);
     }
 
     /* ------------------------------------------------------------------ */
@@ -1133,7 +1139,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             accent:     get("--accent",     "#6ba6ff"),
             success:    get("--success",    "#4ade80"),
             warnSoft:   get("--warn-soft",  "#d8a64b"),
-            textMuted:  get("--text-muted", "#6c7280"),
+            textMuted:  get("--text-muted", "#959ba7"),
             // Non-themable plot conventions
             forceAllAtoms: "#d62728",   // red — "all atoms" informational trace
             energy:        "#1f77b4",   // blue — single-trace
@@ -2501,22 +2507,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // paint cycle.  Subsequent polls also dispatch but that's a
         // no-op for the picker (it idempotently clears the parse
         // status; ``parsingFor`` is null on poll-triggered fires).
-        try {
-            const dispatch = () => document.dispatchEvent(new CustomEvent(
-                window.molbuilder.constants.EVENT_INSPECTOR_READY,
-                { detail: { inspector: "trajectory", frames: n } }
-            ));
-            if (typeof requestAnimationFrame === "function") {
-                requestAnimationFrame(() => requestAnimationFrame(dispatch));
-            } else {
-                dispatch();
-            }
-        } catch (_) {
-            // CustomEvent / rAF unavailable in some ancient runtimes;
-            // the picker's timeout fallback covers it.
-        }
+        _announceReady({ frames: n });
 
-        const ts = new Date(r.mtime * 1000).toLocaleTimeString();
         // Two clocks, and they are not interchangeable
         // (docs/model/parse.md § 2a).  `elapsed_s[]` counts from the
         // run's start and is the only series that may be shown as a
@@ -2608,25 +2600,27 @@ import { molviewFiles } from "../projects/molview-doors.js";
             }
         }
 
-        // Bottom status banner keeps the diagnostic detail (mtime,
-        // frame count) -- the badge above is the user-facing state,
-        // this is the technical readout.
-        /* AND WHERE THE BOX CAME FROM, when there is one.  A cell drawn round a
-         * structure is a claim about its physics, and this one was not made by
-         * the person reading it -- the run reported it and molbuilder applied
-         * it, which for a molecule in a large SIESTA box means a box appears
-         * round something isolated.  Saying so is the difference between a
-         * shown fact and a silent one; the Cell page deliberately answers "is
-         * this box mine?" and not "where did it come from" (molview.md \u00a7 9.5),
-         * so the tab that did the load is what says it. */
-        setStatus(
-            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + "."
-            + (_cellCameFromTheRun()
-               ? "  Unit cell from the run (its output, or the box its deck"
-                 + " placed the atoms in), not set by you."
-               : ""),
-            "ok"
-        );
+        /* WHERE THE BOX CAME FROM, when there is one -- and nothing else on
+         * an ordinary load.  A cell drawn round a structure is a claim about
+         * its physics, and this one was not made by the person reading it --
+         * the run reported it and molbuilder applied it, which for a molecule
+         * in a large SIESTA box means a box appears round something isolated.
+         * Saying so is the difference between a shown fact and a silent one;
+         * the Cell page deliberately answers "is this box mine?" and not
+         * "where did it come from" (molview.md \u00a7 9.5), so the tab that did
+         * the load is what says it.
+         *
+         * "Loaded N frames -- mtime ..." stood here too, and went on
+         * 2026-09-28 once the line was visible (the Results-tab review): the
+         * file's mtime sat beside the run-state badge's own "ended" time --
+         * two times for one run, the pairing web/trajectory.md § 4 warns
+         * against -- and the count could disagree with the frames the movie
+         * shows.  The badge carries the run's state and the frame bar its
+         * frames; this line carries what neither does. */
+        setStatus(_cellCameFromTheRun()
+                  ? "Unit cell from the run (its output, or the box its deck"
+                    + " placed the atoms in), not set by you."
+                  : "", null);
     }
 
     // Refresh-button listener wiring.  Wired ONCE at mount; not
@@ -2758,6 +2752,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (path !== state.fileState.path) return;
             if (!r.ok) {
                 setStatus(r.error || "Load failed.", "error");
+                _announceReady({ error: r.error || "Load failed." });
                 return;
             }
             applyNewData({
@@ -2798,13 +2793,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (r.resolved_from) {
                 const baseDir = r.resolved_from.replace(/\/+$/, "");
                 const fileNm  = (r.path || "").split("/").pop() || r.path;
-                const ts = new Date(r.mtime * 1000).toLocaleTimeString();
                 // A directory resolves to ONE file (watch.py's discovery
                 // chain).  A "loaded N stages" arm stood here until
                 // 2026-09-05, for a merge that is deleted: stages are
                 // separate runs, and the person picks one.
+                // No mtime: the badge carries the run's time (see the
+                // routine load's note above).
                 const msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
-                    + "/  \u2014 mtime " + ts + ".";
+                    + "/.";
                 setStatus(msg, "ok");
             }
             // Contract § 2: transition to LOADED or WATCHING based
@@ -2823,6 +2819,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
             transition("ERROR");
+            // The load has ended, without a render: say so, as the refused
+            // load does, so the cover does not sit over this error.
+            _announceReady({ error: e.message });
         }
     }
 

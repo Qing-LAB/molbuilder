@@ -9,19 +9,20 @@
  * Cascade discipline (2026-05-19 cleanup):
  *   * ``body { ... }`` -- canonical here.  Per-tab duplicates were
  *     removed; every page inherits these rules.
- *   * ``.card { ... }`` -- canonical here.  index/build dropped its
- *     identical duplicate; modify + spectra keep their own .card
- *     rules because they're INTENTIONALLY different (different
- *     border, radius, padding for the per-page card vocabulary).
- *   * ``header { ... }`` -- per-tab.  Each page has a different
- *     header padding + border treatment by design; the per-tab
- *     headers stay.
+ *   * ``.card { ... }`` -- canonical here, and the only definition:
+ *     index/build dropped its identical duplicate, and the copies modify
+ *     and spectra once kept went on 2026-08-24 (modify keeps a
+ *     ``.card[hidden]`` guard, which restyles nothing).
+ *   * ``.app-header { ... }`` -- canonical here.  Modify and the Spectrum
+ *     page restyle its padding and border in their own sheets, naming the
+ *     banner by its class (a bare ``header`` dressed every section header
+ *     until 2026-09-28).
  *
  * Do NOT add NEW rules to per-tab stylesheets that page-shell.css
  * already covers -- they'd silently override the canonical version.
  *
  * Scope:
- *   * body + header + main + .card -- the outer page chrome
+ *   * body + .app-header + main + .card -- the outer page chrome
  *   * generic form controls (input / select / button / checkbox /
  *     range) -- the project's design-token-driven defaults
  *   * .status helper + scrollbar treatment
@@ -70,7 +71,12 @@ body {
 
 /* ---- Page header (banner above the tabs nav) -------------------- */
 
-header {
+/* THE BANNER, BY ITS CLASS -- never the bare element.  Every rule here was
+ * `header { ... }` until 2026-09-28, and a card's own <header> (a Results
+ * inspector card, a spectra section, the trajectory's convergence summary,
+ * the sidebar's checkpoint row) took the banner's padding, rule and gradient
+ * with it, against ui-contract.md § 4's one-inset rule. */
+.app-header {
     padding: var(--space-md) 22px 12px;
     border-bottom: 1px solid var(--border-strong);
     background: linear-gradient(180deg,
@@ -84,14 +90,14 @@ header {
     justify-content: space-between;
     gap: var(--space-md);
 }
-header h1 {
+.app-header h1 {
     margin: 0;
     font-size: var(--text-xl);
     font-weight: 600;
     letter-spacing: -0.01em;
     color: var(--text-primary);
 }
-header .tagline {
+.app-header .tagline {
     margin: var(--space-sm) 0 0;
     color: var(--text-secondary);
     font-size: var(--text-base);
@@ -101,7 +107,7 @@ header .tagline {
    of this element is the header, so its styling lives here.  Colours
    use the page palette (header is a card-ish surface), not the dark
    sidebar palette the old nav placement used. */
-header .app-account {
+.app-header .app-account {
     display: flex;
     align-items: center;
     gap: var(--space-sm2);
@@ -110,8 +116,8 @@ header .app-account {
     font-size: var(--text-sm);
     white-space: nowrap;
 }
-header .app-account__email { color: var(--text-primary); font-weight: 500; }
-header .app-account__logout {
+.app-header .app-account__email { color: var(--text-primary); font-weight: 500; }
+.app-header .app-account__logout {
     color: var(--accent);
     text-decoration: none;
     padding: var(--space-xs) var(--space-sm2);
@@ -120,7 +126,7 @@ header .app-account__logout {
     font-weight: 500;
     transition: background 0.12s, color 0.12s;
 }
-header .app-account__logout:hover {
+.app-header .app-account__logout:hover {
     background: var(--accent);
     color: var(--text-on-accent);
 }
@@ -129,7 +135,7 @@ header .app-account__logout:hover {
  * Sign out: it is rarer, it is destructive to everyone's session, and a
  * control that shouts invites the click it should not get.  It reads as a
  * warning only on hover, when the pointer is already committed. */
-header .app-account__reload {
+.app-header .app-account__reload {
     color: var(--text-secondary);
     background: transparent;
     padding: var(--space-xs) var(--space-sm2);
@@ -139,18 +145,20 @@ header .app-account__reload {
     cursor: pointer;
     transition: border-color 0.12s, color 0.12s;
 }
-header .app-account__reload:hover:not(:disabled) {
+.app-header .app-account__reload:hover:not(:disabled) {
     border-color: var(--warn-soft);
     color: var(--warn-soft);
 }
-header .app-account__reload:disabled {
+.app-header .app-account__reload:disabled {
     opacity: 0.55;
     cursor: default;
 }
 /* [hidden] must win over the display the rule above implies -- the button is
  * drawn hidden and revealed only when the server says this session may use it
- * (test_css_hidden_attribute_audit.py pins this class of bug). */
-header .app-account__reload[hidden] { display: none; }
+ * (a `display` rule beats the attribute in the author cascade; the audit that
+ * hunted this class, test_css_hidden_attribute_audit.py, was retired on
+ * 2026-09-10, so the guard is review's). */
+.app-header .app-account__reload[hidden] { display: none; }
 
 /* ---- Main layout container -------------------------------------- */
 
@@ -185,7 +193,7 @@ body[data-sidebars] {
 
 /* header + tabs nav (+ the notifications bar): natural-height rows that stay on
  * top -- they don't scroll because the body doesn't. */
-body[data-sidebars] > header,
+body[data-sidebars] > .app-header,
 body[data-sidebars] > nav.app-tabs,
 body[data-sidebars] > #app-notifications {
     flex: 0 0 auto;
@@ -317,19 +325,28 @@ body[data-sidebars][data-sidebars-hidden] .sidebar-rail {
  * It is fixed HERE because `main` is page-shell's and element-level chrome
  * is what this sheet owns (it already styles input / select / textarea) --
  * and it is gated on an attribute because the pages that would inherit it
- * have not been reviewed: /documents and /results set their own link colour
- * and rely on the UA underline, so an unconditional `text-decoration: none`
- * silently strips it there.  A tab opts in when someone has looked.
+ * have not all been reviewed: /documents sets its own link colour and relies
+ * on the UA underline, so an unconditional `text-decoration: none` silently
+ * strips it there.  A tab opts in when someone has looked -- /transport-
+ * calculation, and /results since its design review of 2026-09-28 (its one
+ * bare link, the amplitude help in the spectra partial, drew in the UA's
+ * blue at 1.9:1; its card links carry their own accent).
  *
  * Underline on hover only: in a card full of `--accent` legends and badges
  * colour alone is not enough to find a link, but a permanently underlined
  * one turns a paragraph into a fence.
+ *
+ * BARE LINKS ONLY (`:not([class])`): a link that carries a class is a
+ * component styled by its owner, and this rule outranks a single class --
+ * on /results it underlined the structure viewer's button-like "Open in
+ * Molbuilder" on hover, whose own rule says no underline (the Results-tab
+ * review, 2026-09-28).
  */
-body[data-content-links="accent"] main a {
+body[data-content-links="accent"] main a:not([class]) {
     color: var(--accent);
     text-decoration: none;
 }
-body[data-content-links="accent"] main a:hover {
+body[data-content-links="accent"] main a:not([class]):hover {
     /* `--accent-strong` is DARKER than `--accent`, which is the wrong
      * direction on a dark ground -- the underline is the whole signal. */
     text-decoration: underline;
@@ -420,6 +437,9 @@ button:disabled {
     /* Multi-line error messages render with their newlines preserved. */
     white-space: pre-line;
     line-height: 1.4;
+    /* A status names paths ("Loading /abs/path…"), and a path has no space
+     * to break at: without this it ran out of its box. */
+    overflow-wrap: anywhere;
 }
 /* Severity modifiers — the SINGLE home for the ``status <severity>`` convention
  * (`web/ui-contract.md` § 1.1: one class = one owner).  page-shell is loaded on every

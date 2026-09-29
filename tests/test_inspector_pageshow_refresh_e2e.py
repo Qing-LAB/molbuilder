@@ -13,9 +13,10 @@ adjacent inspectors with the same shape:
     to 15 s LATER.  A user who generated more frames in another tab
     can be staring at the old trajectory for that long.
 
-  * ``lib/spectra/core.js`` -- mount-once, no auto-poll, no reload
-    button.  A spectra calculation re-run in another tab is
-    invisible until the user re-picks the file from the dropdown.
+  * ``lib/spectra/core.js`` -- mount-once, no reload button, and
+    (until 2026-09-28) no auto-poll: it follows a run still going now,
+    but a FINISHED result re-run in another tab was invisible until the
+    user re-picked the file from the dropdown.
 
 Fix: hook ``pageshow`` (covers bfcache restore + initial load) and
 ``visibilitychange`` -> visible (covers backgrounded-tab re-focus)

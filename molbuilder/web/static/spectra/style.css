@@ -26,17 +26,19 @@ html, body { height: 100%; }
 /* ``body { ... }`` removed 2026-05-19; the canonical rules live in
  * lib/page-shell.css.  Header rules below stay per-page (the spectra
  * page uses different padding + border treatment than the shared
- * default). */
+ * default).  Scoped to the banner's own class: a bare ``header`` also
+ * dressed every ``<header class="section-header">`` on the page (the
+ * shell moved to ``.app-header`` for the same reason, 2026-09-28). */
 
-header {
+.app-header {
     padding: var(--space-lg2) var(--space-xl) var(--space-md);
     border-bottom: 1px solid var(--border-soft);
 }
-header h1 {
+.app-header h1 {
     margin: 0;
-    font: var(--weight-bold) 1.6rem/1.2 "Inter", var(--font-sans);
+    font: var(--weight-bold) 1.6rem/1.2 var(--font-sans);
 }
-header .tagline {
+.app-header .tagline {
     /* COMPOSITION ONLY (`ui-contract.md` § 5).  The `color` and `font-size`
        that stood here restated page-shell's VERBATIM; only the tighter top
        margin is this page's own. */

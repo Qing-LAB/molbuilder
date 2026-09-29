@@ -19,12 +19,10 @@
 (function (root) {
     "use strict";
 
-    function _el(tag, cls, text) {
-        const e = root.document.createElement(tag);
-        if (cls) e.className = cls;
-        if (text !== undefined) e.textContent = text;
-        return e;
-    }
+    /* The one element builder, `lib/dom.js`, loaded before this file on
+     * /results.  Looked up when called, so a page that has not loaded it
+     * still registers this viewer and fails only where it draws. */
+    const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
     function _num(x, digits) {
         if (x === null || x === undefined) return "—";
@@ -52,9 +50,19 @@
         return String(path || "").split("/").pop();
     }
 
+    /* A table in its own scroller: wider than the card on a narrow panel,
+     * it scrolls inside the card rather than spilling past it -- and stays
+     * a table, which `display: block` on the table itself would not for
+     * every screen reader. */
+    function _scroller(table) {
+        const box = _el("div", "fcsweep-scroll");
+        box.appendChild(table);
+        return box;
+    }
+
     function render(host, rec) {
         host.innerHTML = "";
-        const wrap = _el("div", "fcsweep-record");
+        const wrap = _el("div", "fcsweep-record card");
         const stages = Array.isArray(rec.stages) ? rec.stages : [];
         const modes = Array.isArray(rec.modes) ? rec.modes : [];
         const pending = Array.isArray(rec.pending) ? rec.pending : [];
@@ -100,7 +108,7 @@
                                  : ", no force-constant file"),
             ]));
         });
-        wrap.appendChild(st);
+        wrap.appendChild(_scroller(st));
 
         /* THE MODES: one row each, one column per stage -- beside the
          * reference, the change, the shapes' overlap, and the mode it
@@ -136,7 +144,7 @@
             mt.appendChild(_row(cells, m.flagged === true ? "fcsweep-flagged"
                                                           : null));
         });
-        wrap.appendChild(mt);
+        wrap.appendChild(_scroller(mt));
 
         (Array.isArray(rec.force_constants) ? rec.force_constants : [])
             .forEach((c) => {
@@ -165,7 +173,7 @@
             failed.forEach((p) => wt.appendChild(_row(
                 [p.stage, "failed", p.state || "", p.detail || ""],
                 "fcsweep-failed")));
-            wrap.appendChild(wt);
+            wrap.appendChild(_scroller(wt));
         }
 
         wrap.appendChild(_el("p", "fcsweep-note",

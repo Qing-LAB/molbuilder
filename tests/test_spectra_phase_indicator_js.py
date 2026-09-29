@@ -288,27 +288,39 @@ def test_relaxation_dot_is_data_driven():
 def test_a_phase_the_files_route_does_not_have_shows_no_dot():
     """web/spectra.md § 3: no dot for a phase the file's route does not
     have, read BY ROLE -- the file's own config carries the switch or it
-    does not.  A SIESTA file's config has no `compute_raman` and no
-    `es_mode_selection`, so its Raman and probe dots are gone; a PySCF
-    file that switched both off still has them, reading *not requested*.
+    does not.  A SIESTA file's config has no `compute_raman`, no
+    `compute_ir` and no `es_mode_selection`, so its Raman, infrared and
+    probe dots are gone; a PySCF file that switched all three off still
+    has them, reading *not requested*.  Infrared's flag is "" in a file
+    written before it existed: no record, so no dot.
 
-    MUTATION THIS MUST FAIL AGAINST: asking the switch's VALUE instead of
+    MUTATIONS THIS MUST FAIL AGAINST: asking the switch's VALUE instead of
     its presence -- the PySCF run with Raman off would lose a dot its
-    route has."""
-    phases = ["relaxation", "frequencies", "raman", "es"]
+    route has; the infrared dot shown for a file with no flag."""
+    phases = ["relaxation", "frequencies", "raman", "ir", "es"]
     siesta = _run_with_results(
         {"config": {"engine": "siesta", "calculation": "vibration"},
          "phase_frequencies": "complete", "phase_raman": "not requested",
-         "phase_es": "not requested"}, dot_phases=phases)
+         "phase_ir": "not requested", "phase_es": "not requested"},
+        dot_phases=phases)
     shown = {d["phase"]: d["shown"] for d in siesta["dot_states"]}
     assert shown == {"relaxation": True, "frequencies": True,
-                     "raman": False, "es": False}, shown
+                     "raman": False, "ir": False, "es": False}, shown
 
     pyscf = _run_with_results(
-        {"config": {"compute_raman": False, "es_mode_selection": "skip"},
+        {"config": {"compute_raman": False, "compute_ir": False,
+                    "es_mode_selection": "skip"},
          "phase_frequencies": "complete", "phase_raman": "not requested",
-         "phase_es": "not requested"}, dot_phases=phases)
+         "phase_ir": "not requested", "phase_es": "not requested"},
+        dot_phases=phases)
     assert all(d["shown"] for d in pyscf["dot_states"]), pyscf["dot_states"]
+
+    before_the_flag = _run_with_results(
+        {"config": {"compute_raman": True, "compute_ir": True},
+         "phase_frequencies": "complete", "phase_raman": "complete",
+         "phase_ir": ""}, dot_phases=phases)
+    shown = {d["phase"]: d["shown"] for d in before_the_flag["dot_states"]}
+    assert shown["ir"] is False and shown["raman"] is True, shown
 
 
 def test_dot_title_carries_human_readable_status():

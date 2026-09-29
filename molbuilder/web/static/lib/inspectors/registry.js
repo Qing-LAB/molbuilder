@@ -239,6 +239,16 @@
                 div.className = "inspector-error";
                 div.textContent = message;
                 host.appendChild(div);
+                // The load has ended, in this error: say so, as a render
+                // does, so neither the tab's cover nor the picker's
+                // "Parsing…" waits out its timer over it (2026-09-28).
+                try {
+                    document.dispatchEvent(new CustomEvent(
+                        ((root.molbuilder || {}).constants || {})
+                            .EVENT_INSPECTOR_READY
+                            || "molbuilder:inspector:ready",
+                        { detail: { error: String(message || "") } }));
+                } catch (_) { /* older headless runners */ }
             },
             // Read a file's bytes as text.  ``opts.maxBytes`` raises the read budget
             // (source inspector does this for multi-MB .out/.log); the server caps at 16

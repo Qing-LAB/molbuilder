@@ -93,7 +93,7 @@
 
     --molviewer-color-text:          var(--text-primary,   #e6e9ef);
     --molviewer-color-text-dim:      var(--text-secondary, #a8aebb);
-    --molviewer-color-text-faint:    var(--text-muted,     #6c7280);
+    --molviewer-color-text-faint:    var(--text-muted,     #959ba7);
     --molviewer-color-accent:        var(--accent,     #6ba6ff);
     --molviewer-color-accent-on:     var(--bg-page,    #14171c);
     --molviewer-color-accent-wash:   var(--accent-bg,  rgba(107, 166, 255, 0.10));

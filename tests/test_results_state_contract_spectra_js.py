@@ -125,11 +125,6 @@ for (const [flat, bucket] of %s) {
                        && (state[flat] === "v:" + flat);         // and reads back
     out.saves[flat] = scheduled - before;
 }
-out.watchPath = (function () {
-    state.watchPath = "/p/run.log";
-    return state.fileState.path === "/p/run.log"
-        && state.watchPath === "/p/run.log";
-})();
 console.log(JSON.stringify(out));
 """ % json.dumps([[f, b] for f, b in _FIELDS])
     return run_node([_LIB / "inspectors" / "lifecycle.js"], probe)
@@ -170,12 +165,9 @@ class TestBackcompatAliases:
             f"name and the bucket are now two values and the render code "
             f"reading one cannot see the other.")
 
-    def test_watchPath_is_fileState_path(self, wired):
-        """The one RENAMING alias: `watchPath` -> `fileState.path`
-        (`results.md` § 7's spectra mapping)."""
-        assert wired["watchPath"], (
-            "``state.watchPath`` no longer reads through to "
-            "``state.fileState.path``; legacy code gets stale data.")
+    # (`test_watchPath_is_fileState_path` went with the alias on
+    #  2026-09-28: `state.watchPath` named a path box that is gone, and the
+    #  path is `loadByPath`'s argument, stored in `fileState.path` alone.)
 
     @pytest.mark.parametrize("flat", _KNOBS)
     def test_a_knob_write_schedules_the_save(self, wired, flat):
@@ -391,33 +383,13 @@ class TestRefreshListenerWiredOnce:
 
 
 class TestEntryPointsRouteThroughTransition:
-    """The public entry points (loadByPath, startWatch, stopWatch,
-    dispose) MUST route state mutations through transition()."""
+    """The public entry points (loadByPath, stopWatch, dispose) MUST route
+    state mutations through transition()."""
 
-    def test_loadByPath_calls_transition_loading(self, core_body):
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(
-            r"transition\s*\(\s*[\"']LOADING[\"']", body,
-        ), ("loadByPath doesn't call transition('LOADING').  The "
-            "reset matrix isn't run; the per-load counters "
-            "(watchErrors) leak across loads.")
-
-    def test_startWatch_calls_transition_loading(self, core_body):
-        m = re.search(
-            r"function\s+startWatch\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert re.search(
-            r"transition\s*\(\s*[\"']LOADING[\"']", body,
-        ), ("startWatch doesn't call transition('LOADING') first.  "
-            "A previous file's fileState leaks into the new watch.")
+    # (`test_loadByPath_calls_transition_loading` retired 2026-09-28 with
+    #  the settle pins below: a load that skipped the LOADING reset would
+    #  leave the previous file's poll running, which the registry e2e's
+    #  follow tests see by running it.)
 
     def test_dispose_calls_transition_idle(self, core_body):
         # The dispose handler is in the return-object literal.
@@ -435,39 +407,13 @@ class TestEntryPointsRouteThroughTransition:
 
 
 # --------------------------------------------------------------------- #
-#  _settlePostLoad (post-fetch state transitioner)                      #
+#  _settlePostLoad -- RETIRED as source pins (2026-09-28)               #
 # --------------------------------------------------------------------- #
-
-
-class TestSettlePostLoad:
-    """Spectra's _settlePostLoad helper checks allPhasesComplete +
-    transitions to LOADED or WATCHING based on the startWatch flag.
-    Mirrors trajectory's helper of the same name."""
-
-    def test_helper_exists(self, core_body):
-        assert re.search(
-            r"function\s+_settlePostLoad\s*\(\s*startWatch\s*\)",
-            core_body,
-        ), ("spectra/core.js doesn't define _settlePostLoad.")
-
-    def test_helper_called_from_loadByPath(self, core_body):
-        m = re.search(
-            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "_settlePostLoad(false)" in body, (
-            "loadByPath doesn't call _settlePostLoad(false).  Load-"
-            "once doesn't transition to LOADED.")
-
-    def test_helper_called_from_watchTick(self, core_body):
-        m = re.search(
-            r"async\s+function\s+watchTick\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
-            core_body, re.DOTALL,
-        )
-        assert m is not None
-        body = m.group(1)
-        assert "_settlePostLoad(true)" in body, (
-            "watchTick doesn't call _settlePostLoad(true).  "
-            "allPhasesComplete handling won't transition to LOADED.")
+#
+# Three greps asserted that `_settlePostLoad` exists and that `loadByPath`
+# and `watchTick` call it -- text that survives the call being moved into a
+# dead branch.  What they stood for is asserted by RUNNING it now
+# (`test_inspector_registry_e2e.py`): a result still going is followed from
+# its first load (`test_no_interval_survives_mount_dispose`, whose guard
+# needs the live poll), and let go when its last phase lands
+# (`test_a_followed_run_is_let_go_when_its_last_phase_lands`).

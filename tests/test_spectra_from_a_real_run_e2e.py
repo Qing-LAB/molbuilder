@@ -20,8 +20,8 @@ So this walks it:
   3. run it in the env molbuilder itself routes PySCF to
      (`Capabilities.env_for_category("pyscf")`, the four-env model's own
      routing, and dispatched with `conda run -n <name>` as molbuilder does);
-  4. load the `.spectra.json` that came out into the real page, through the
-     page's own "Load once" button;
+  4. load the `.spectra.json` that came out into the real page, by picking
+     it in the Results tab's dropdown -- the one route to a file;
   5. read the modes off the screen.
 
 **2.3 seconds of compute.**  RHF/STO-3G on three atoms — the most

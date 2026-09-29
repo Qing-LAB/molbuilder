@@ -497,11 +497,9 @@ class TestPartialSpectraInspectorEndpoint:
     # diagram).  Each id is queried by ``els.<key> = document.
     # getElementById(...)`` near the top of the IIFE.
     REQUIRED_IDS = (
-        # Load controls
-        "watch-path",
-        "load-path-btn",
-        "watch-btn",
-        "watch-stop-btn",
+        # The run's progress: the status line and the phase dots (the
+        # path box and its three buttons went on 2026-09-28 -- the
+        # dropdown is the one route to a file, web/spectra.md § 7).
         "watch-status",
         "phase-indicator",
         # Thermochemistry tab (v5 `thermo`; spectra-migration-plan § 2b):

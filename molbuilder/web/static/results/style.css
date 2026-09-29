@@ -6,7 +6,8 @@
  *                              these results came from (+ the file)
  *   * .results-inspector-host -- the mount-point frame
  *   * .results-fallback      -- empty state when no file is picked
- *   * .inspector-card        -- the single top-level surface per inspector
+ *   * .inspector-card        -- an inspector's top-level block (its surface is
+ *                               page-shell's .card, carried beside it)
  *   * .inspector-section     -- logical chunk within an inspector
  *   * .inspector-error / .inspector-inline-error -- error state
  *   * .source-body / .structure-viewer -- the two simple inspectors'
@@ -16,9 +17,10 @@
  *   * lib/trajectory/trajectory-inspector.css -- trajectory's viewer-card / ctab /
  *     plots-row / frame-strip etc.  Those are LARGER concrete elements
  *     that wouldn't benefit from the generic .inspector-section frame.
- *   * static/spectra/style.css -- spectra inspector partial's
+ *   * lib/inspectors/spectra.css -- the spectra inspector partial's
  *     .modes-table / .mode-viewer-wrap / .spectrum-chart etc.  Same
- *     reason.
+ *     reason.  (static/spectra/style.css is the Spectrum tab's own and
+ *     is not loaded here.)
  *
  * Both of those sheets use the same tokens + spacing scale (defined in
  * lib/tokens.css), so the visual rhythm matches even where they don't
@@ -70,12 +72,20 @@
     color: var(--text-primary);
     font-size: var(--text-base);
     font-weight: var(--weight-medium);
-    /* Truncate long paths -- the full path lives in the title
+    /* Truncate long paths -- the whole line lives in the title
      * attribute (set by results/viewer.js) for hover-reveal. */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-primary);
+}
+/* ...EXCEPT when the line carries the warning.  "The sidebar has moved on;
+ * Reload to follow" is appended to the END of the path, so an ellipsis cut
+ * exactly the clause web/results.md § 2.1 says must stay on screen ("if the
+ * header readout ever goes away, the subscription has to come back"). */
+.results-file-readout.is-diverged {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .results-file-kind {
@@ -116,12 +126,10 @@
    extensions" cheatsheet for the user.
    =========================================================== */
 
+/* On page-shell's `.card`, the surface every viewer on this tab sits on; it
+ * restated that surface by hand -- with a softer border and its own inset --
+ * until 2026-09-28, the same restatement `.inspector-card` had. */
 .results-fallback {
-    padding: var(--space-xl) var(--space-lg);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-card);
     color: var(--text-primary);
 }
 
@@ -149,7 +157,7 @@
 }
 .results-ladder-table td {
     padding: var(--space-xs) var(--space-sm);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-soft);
     vertical-align: baseline;
 }
 .results-ladder-table td:first-child {
@@ -248,14 +256,12 @@
    tokens above keep them visually compatible.
    =========================================================== */
 
-.inspector-card {
-    padding: var(--space-md) var(--space-lg) var(--space-lg);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-card);
-    color: var(--text-primary);
-}
+/* THE SURFACE IS page-shell's `.card`, which every inspector card now also
+ * carries (`ui-contract.md` § 4: ".card is the canonical surface ... and it
+ * is the only one").  This rule restated it -- a softer border and a wider
+ * inset than `.card`'s -- so sibling boxes on one tab showed two border tones
+ * and three insets (the Results tab's design review, 2026-09-28).  What
+ * stays here is what is the inspector's own: the spacing between cards. */
 
 .inspector-card + .inspector-card {
     /* Inspector mount points have at most one card on /results
@@ -311,6 +317,9 @@
     color: var(--text-secondary);
     font-size: var(--text-sm);
     line-height: var(--line-normal);
+    /* The failed-mount card's reason and file sit here, often a path or an
+     * HTTP line with no space to break at. */
+    overflow-wrap: anywhere;
 }
 
 .inspector-card-note code {
@@ -376,12 +385,17 @@
 
 .inspector-error {
     padding: var(--space-md) var(--space-lg);
-    background: rgba(248, 113, 113, 0.08);
+    /* The error colour at 8 %, from its token rather than a second spelling
+     * of it (the literal stood here until 2026-09-28). */
+    background: color-mix(in srgb, var(--error) 8%, transparent);
     border: 1px solid var(--error);
     border-radius: var(--radius);
     color: var(--error);
     font-size: var(--text-sm);
     line-height: var(--line-normal);
+    /* An error names a path more often than not, and a path has no space to
+     * break at: without this it ran straight out of the box. */
+    overflow-wrap: anywhere;
 }
 
 .inspector-inline-error,

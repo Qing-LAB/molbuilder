@@ -4,7 +4,7 @@
  *   lib/inspectors/spectra.js on /results AND composed into the /spectra page).
  * ROLE: styles for the inspector's COMPONENT classes only (.card-section /
  *   .section-header / .modes-table / .spectrum-chart / .mode-viewer /
- *   .phase-indicator / .es-* / .results-meta / .field-block / .inline-row).
+ *   .phase-indicator / .es-* / .results-meta / .inline-row).
  *   Extracted from spectra/style.css (2026-07) so /results no longer loads the
  *   spectra PAGE sheet -- whose bare `button` / `textarea` / `.card` rules were
  *   overriding page-shell's canonical controls across the whole /results page
@@ -17,17 +17,10 @@
 
 /* ---- Card / section model ----
  *
- * A `.card` is the column container; inside it,
-`.card-section`
- * blocks separate concerns (Structure,
-Parameters,
-Generate;
- * Issues,
-Generated script,
-Load,
-Results).  Sections use
- * consistent vertical rhythm (1.4rem gap between sections,
-* 0.7rem inside).
+ * A `.card` is the column container; inside it, `.card-section`
+ * blocks separate concerns -- on the Results tab, the run's progress and
+ * the Results panel.  Sections use consistent vertical rhythm (1.4rem gap
+ * between sections, 0.7rem inside).
  */
 .card-section {
     padding: var(--space-sm2) 0;
@@ -38,11 +31,9 @@ Results).  Sections use
 .card-section:first-of-type { padding-top: 0.4rem; }
 .card-section:last-of-type { padding-bottom: 0; }
 
-/* Section headers: consistent layout,
-one source of truth.
+/* Section headers: consistent layout, one source of truth.
  * Step-numbered for the left column (Structure / Parameters /
- * Generate),
-plain for the right column. */
+ * Generate), plain for the right column. */
 .section-header {
     display: flex;
     align-items: baseline;
@@ -53,43 +44,24 @@ plain for the right column. */
 }
 .section-header h2 {
     margin: 0;
-    font: 600 1.02rem/1.2 "Inter", system-ui, sans-serif;
+    font: var(--weight-semibold) 1.02rem/1.2 var(--font-sans);
     color: var(--text-primary);
 }
 .section-header h3 {
     margin: 0;
-    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    font: var(--weight-semibold) var(--text-base)/1.2 var(--font-sans);
     color: var(--text-primary);
 }
-.section-hint {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-}
-/* Subsection heading inside a section (e.g. "Spectrum",
-"Modes"
+/* Subsection heading inside a section (e.g. "Spectrum", "Modes"
  * inside the Results section). */
 .subsection-h {
     margin: var(--space-md) 0 var(--space-sm);
-    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    font: var(--weight-semibold) var(--text-base)/1.2 var(--font-sans);
     color: var(--text-primary);
 }
 
-/* ---- Generic field/row helpers (used by structure + actions) ---- */
+/* ---- Row helpers ---- */
 
-.field-block {
-    display: grid;
-    gap: var(--space-xs);
-    margin: 0 0 var(--space-sm);
-}
-.field-block > .field-label {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-}
-.field-block > textarea,
-.field-block > input {
-    width: 100%;
-}
 /* Horizontal rows of controls.  inline-row stays inline and wraps
  * on narrow viewports.  primary-actions gives a bit more vertical
  * breathing room for the main Generate row. */
@@ -167,34 +139,24 @@ plain for the right column. */
        than competing with the next control for the same row. */
 }
 
-/* ---- The spectrum,
-and the three views under it ----
+/* ---- The spectrum, and the three views under it ----
  *
  * The chart used to share its row with the mode viewer (`.spectrum-and-mode`,
-* a two-column grid with a `.spectrum-pane`).  Both are gone: the three views
- * of a selected mode are tabs below the full-width chart now,
-so there is no
+ * a two-column grid with a `.spectrum-pane`).  Both are gone: the three views
+ * of a selected mode are tabs below the full-width chart now, so there is no
  * split to lay out and no pane to hold one side of it.  Their rules went with
  * the markup rather than staying behind as selectors nothing can match. */
 
+/* The HOST is a place, not a frame: SpectrumChart mounts its own frame
+ * inside, which states its height and draws its border and background
+ * (`web/spectrumchart.md` § 11).  Until 2026-09-28 this rule drew a second
+ * frame around it -- two borders -- with a HEIGHT of its own and `overflow:
+ * hidden`: the host capped at 420 px while the frame inside grew to 460, so
+ * on a tall screen the chart's bottom edge, x-axis included, was cut off. */
 .spectrum-chart {
     width: 100%;
-    /* Scales with the box instead of sitting at one fixed height: tall enough
-       to read on a wide screen, never taller than the viewport beside it. */
-    height: clamp(240px, 34vh, 420px);
     margin: 0 0 var(--space-xs);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius);
-    /* NO PADDING -- the same trap the level diagram fell into.  Plotly sizes
-       itself from the container's clientWidth, and clientWidth INCLUDES padding,
-       so every pixel of padding here is a pixel the chart draws past its own
-       right edge: the plot sits slightly wider than the frame around it.  The
-       plot's own margins already keep the axis labels off the border. */
-    padding: 0;
-    overflow: hidden;
 }
-.spectrum-chart:empty { height: 0; min-height: 0; padding: 0; border: 0; }
 /* ---- Modes table ---- */
 
 .modes-table-controls {
@@ -278,56 +240,41 @@ so there is no
     outline-offset: -1px;
 }
 .modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--ps-danger-fg); }
-/* ---- The mode viewer,
-in its own tab ----
+/* ---- The mode viewer, in its own tab ----
  *
  * VibrationView renders the equilibrium structure inside #mode-viewer and
  * animates the selected mode; this sheet owns only the BOX it is given
  * (vibrationview.md § 13) -- the module styles everything inside it.
  *
- * It has been three things: a full-width band under the modes table,
-then a
- * bordered card beside the chart,
-now one of three tabs under it.  Each move
- * left chrome behind that the next layout did not need -- the divider,
-then the
+ * It has been three things: a full-width band under the modes table, then a
+ * bordered card beside the chart, now one of three tabs under it.  Each move
+ * left chrome behind that the next layout did not need -- the divider, then the
  * card border -- which is why what is left here is almost nothing.
  *
- * ONE STEP DOWN THE TYPE SCALE,
-deliberately: this is a dense instrument panel,
-* not body copy,
-so its chrome sits at --text-2xs where the page reads at
- * --text-base.  The sizes are token steps,
-not hand-picked decimals. */
-/* NO CARD CHROME.  A border,
-a background and a padding made this a card when
+ * ONE STEP DOWN THE TYPE SCALE, deliberately: this is a dense instrument panel,
+ * not body copy, so its chrome sits at --text-2xs where the page reads at
+ * --text-base.  The sizes are token steps, not hand-picked decimals. */
+/* NO CARD CHROME.  A border, a background and a padding made this a card when
    it sat inside the results section beside the chart.  It fills a tab panel
-   now,
-and a card drawn just inside a panel is a box around a box -- the 3-D
-   window below carries its own ground and its own edge,
-which is the boundary
+   now, and a card drawn just inside a panel is a box around a box -- the 3-D
+   window below carries its own ground and its own edge, which is the boundary
    that means something. */
 .mode-viewer-wrap { min-width: 0; }
 .mode-viewer-wrap[hidden] { display: none; }
 
-/* The sentence under the 3-D view: which elements carry the mode,
-how far
-   anything moves,
-and whether that size is real (spectra.md § 4.2).  A full line
-   of its own,
-because it IS a sentence -- in the header beside the title it was
+/* The sentence under the 3-D view: which elements carry the mode, how far
+   anything moves, and whether that size is real (spectra.md § 4.2).  A full line
+   of its own, because it IS a sentence -- in the header beside the title it was
    squeezed to a fragment.  The margin shorthand also clears the left indent
    page-shell gives an inline `.status`; that indent is for a status trailing a
-   button,
-not for a paragraph. */
+   button, not for a paragraph. */
 .mode-viewer-wrap .viewer-readout {
     margin: var(--space-xs) 0 0;
     font-size: var(--text-2xs);
     line-height: var(--line-snug);
 }
 
-/* COMPACT,
-so the controls read as part of the 3-D view rather than as a form
+/* COMPACT, so the controls read as part of the 3-D view rather than as a form
    stacked on top of one. */
 .mode-viewer-wrap .viewer-controls {
     gap: var(--space-xs) var(--space-sm);
@@ -363,37 +310,26 @@ so the controls read as part of the 3-D view rather than as a form
 .amplitude-help-body p { margin: 0 0 var(--space-xs); }
 .amplitude-help-note { color: var(--text-muted); }
 
-/* NO RULES FOR TABLES OR CODE HERE ANY MORE,
-and that absence is the point: the
-   derivation,
-its constants and its tables of numbers live in docs/web/spectra.md
-   § 4.1,
-which the help links.  A panel this narrow could show a five-column
-   table of frequencies only by wrapping it into unreadability,
-and the same
+/* NO RULES FOR TABLES OR CODE HERE ANY MORE, and that absence is the point: the
+   derivation, its constants and its tables of numbers live in docs/web/spectra.md
+   § 4.1, which the help links.  A panel this narrow could show a five-column
+   table of frequencies only by wrapping it into unreadability, and the same
    sentence written in two places drifts.  The panel says what the three choices
-   mean; the doc says why,
-once. */
+   mean; the doc says why, once. */
 /* The BOX the mode viewer is given — its size and where it sits on the page,
-* which is all a host decides (vibrationview.md § 13).  What is inside it,
-its
- * ground and how its canvas is positioned,
-belongs to the module and is declared
- * module's own sheet,
-which the module links itself.
+ * which is all a host decides (vibrationview.md § 13).  What is inside it, its
+ * ground and how its canvas is positioned, belongs to the module and is declared
+ * module's own sheet, which the module links itself.
  *
- * Two rules used to live here that did not belong: a `background`,
-which fought
+ * Two rules used to live here that did not belong: a `background`, which fought
  * the module's own scene ground on the same element and won or lost by load
  * order; and a `position: relative` carrying a comment about how the 3-D drawing
  * library lays out its canvas.  A page sheet knowing that is the seal leaking
  * into another language. */
 /* The BOX the module is given.  Smaller than it was: one molecule needs a
-   fraction of the width the full-page band used to take,
-and the height now
+   fraction of the width the full-page band used to take, and the height now
    tracks the box so the card stays square-ish beside a chart of the same
-   height (vibrationview.md § 13 -- the host sizes it,
-the module fills it). */
+   height (vibrationview.md § 13 -- the host sizes it, the module fills it). */
 .mode-viewer {
     width: 100%;
     height: clamp(200px, 26vh, 320px);
@@ -410,12 +346,10 @@ the module fills it). */
     font-size: var(--text-sm);
 }
 /* A class that sets `display` ties with the browser's own
-   `[hidden] { display: none }` on specificity and wins on source order,
-so
+   `[hidden] { display: none }` on specificity and wins on source order, so
    `element.hidden = true` stops hiding anything -- the control stays in the
    layout as a ghost.  The Temperature row is toggled exactly that way (it
-   belongs to the thermal amplitude only),
-and it sat visible under
+   belongs to the thermal amplitude only), and it sat visible under
    "exaggerated" until this guard existed.  docs/process/code-audit.md. */
 .viewer-controls .inline-label[hidden] { display: none; }
 .viewer-controls .inline-label {
@@ -429,17 +363,14 @@ and it sat visible under
 }
 /* ---- Electronic structure: the level diagram and its numbers ----
  *
- * ONE FIGURE,
-TWO HALVES.  The diagram shows the SHAPE of the change -- which
+ * ONE FIGURE, TWO HALVES.  The diagram shows the SHAPE of the change -- which
  * way the frontier levels move as the molecule is pushed along the mode -- and
- * the numbers give it MAGNITUDE.  They were stacked,
-so reading "the gap opens
+ * the numbers give it MAGNITUDE.  They were stacked, so reading "the gap opens
  * by 12 meV" meant scrolling away from the picture that showed it opening.
  * Side by side they are one act of reading.
  *
  * Every length and colour below comes from lib/tokens.css.  The two exceptions
- * are named here as this component's own tokens,
-because they are facts about
+ * are named here as this component's own tokens, because they are facts about
  * THIS figure that the global scale has no opinion on. */
 .es-panel {
     /* How narrow the numbers may get before wrapping inside their own rows --
@@ -469,20 +400,15 @@ because they are facts about
 }
 
 /* Queries `.results-summary` (declared above): the diagram stops being readable
-   below roughly 22rem and the numbers below --es-numbers-min,
-so 40rem is where
+   below roughly 22rem and the numbers below --es-numbers-min, so 40rem is where
    the two together stop fitting -- not a round number picked for looks.  A
-   container query condition cannot read a custom property,
-which is why this
+   container query condition cannot read a custom property, which is why this
    one threshold is written out.
-   The figure takes what is left AFTER the numbers,
-rather than a share of the
-   whole: three columns of levels do not get more readable with more width,
-so
+   The figure takes what is left AFTER the numbers, rather than a share of the
+   whole: three columns of levels do not get more readable with more width, so
    growing the box should not grow the plot without limit. */
 @container (min-width: 40rem) {
-    /* The figure takes everything the numbers do not.  It was capped,
-from when
+    /* The figure takes everything the numbers do not.  It was capped, from when
        it sat in a narrow column beside other things; in its own tab a cap just
        leaves a hole to the right of the panel. */
     .es-body {
@@ -502,10 +428,11 @@ from when
      * onto each other and left a 10px strip -- the padding and borders alone --
      * with the plot's SVG overflowing across the numbers panel beside it.
      *
-     * So the box leads and the plot follows.  Same rule as .spectrum-chart
-     * above, which has always carried an explicit height for the same reason.
-     * Shorter than the spectrum: this figure is three columns of levels, not a
-     * whole spectrum, and it sits beside a panel it should not tower over. */
+     * So the box leads and the plot follows -- the rule SpectrumChart's own
+     * frame keeps for the spectrum above (`web/spectrumchart.md` § 11), which
+     * is why that host carries no height of its own.  The same clamp as that
+     * frame (`spectrumchart/_style.css`), so the two figures stand the same
+     * height. */
     height: clamp(220px, 34vh, 460px);
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
@@ -520,27 +447,19 @@ from when
 }
 /* Plotly sizes its own <svg> and re-sizes it through Plotly.Plots.resize when
    the box changes (core.js _watchChartWidth).  A width rule here would fight
-   that,
-so the sheet owns the BOX and the library owns what is inside it. */
+   that, so the sheet owns the BOX and the library owns what is inside it. */
 .es-bar-diagram p.status { padding: var(--space-md); margin: 0; }
 
-/* NO INK RULES HERE,
-and the absence is the record of a decision.
+/* NO INK RULES HERE, and the absence is the record of a decision.
  *
- * This sheet used to colour a hand-rolled SVG level diagram: an axis,
-ticks,
-* level dashes and tie lines,
-each a class the renderer emitted.  The figure is
+ * This sheet used to colour a hand-rolled SVG level diagram: an axis, ticks,
+ * level dashes and tie lines, each a class the renderer emitted.  The figure is
  * now drawn by Plotly -- the same library as the spectrum above it -- because
  * the shifts it exists to show are meV against an eV scale and cannot be seen
- * without zoom,
-pan and a reset,
-all of which that library already has.
+ * without zoom, pan and a reset, all of which that library already has.
  *
- * Plotly takes colours as JavaScript values rather than inheriting CSS,
-so the
- * palette moved to `chartTheme()` in lib/spectra/core.js,
-which READS these same
+ * Plotly takes colours as JavaScript values rather than inheriting CSS, so the
+ * palette moved to `chartTheme()` in lib/spectra/core.js, which READS these same
  * tokens off the document.  The tokens are still the one source of truth; what
  * changed is who asks them.  Leaving the old rules here would have been styling
  * for markup nothing emits any more. */
@@ -576,8 +495,7 @@ which READS these same
 
 
 /* label | value | unit -- three columns so the numbers form a straight edge and
-   the units line up beside them,
-instead of "-6.1234 eV" being one blob whose
+   the units line up beside them, instead of "-6.1234 eV" being one blob whose
    digits never align between rows. */
 .es-group dl {
     display: grid;
@@ -595,9 +513,10 @@ instead of "-6.1234 eV" being one blob whose
 .es-group .es-unit { color: var(--text-muted); }
 /* ---- Live-watch phase indicator ----
  *
- * Three chips that visualize the per-phase state (empty / running /
- * complete) of the loaded or watched spectra.json.  The dot colour
- * mirrors the PHASE_* string in molbuilder.spectra.results so the
+ * One chip per phase (relaxation, frequencies, Raman, infrared, the
+ * per-mode probe) that visualizes its state -- empty / running / complete
+ * / not requested -- in the loaded or followed spectra.json.  The dot
+ * colour mirrors the PHASE_* string in molbuilder.spectra.results so the
  * UI never disagrees with the backend's notion of "what's done". */
 .phase-indicator {
     display: flex;
@@ -612,8 +531,7 @@ instead of "-6.1234 eV" being one blob whose
 }
 /* 2026-05-28 [hidden]-attribute audit: ``display: flex`` above ties
  * on specificity with the UA stylesheet's ``[hidden] { display: none
- * }`` rule and wins (author cascade),
-so #phase-indicator was
+ * }`` rule and wins (author cascade), so #phase-indicator was
  * VISIBLE at page load despite ``hidden=`` being set in the
  * template.  Same pattern as .page-busy-cover.  Explicit guard wins. */
 .phase-indicator[hidden] { display: none; }
@@ -655,8 +573,7 @@ so #phase-indicator was
     box-shadow: none;
 }
 @keyframes phase-pulse {
-    0%,
-100% { opacity: 1; }
+    0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
 }
 
@@ -669,6 +586,21 @@ so #phase-indicator was
     gap: var(--space-sm2);
 }
 .thermo-chart { min-height: 260px; }
+/* The run's status line, above the phase dots: a line of its own, so none
+ * of page-shell's left indent (meant for a status trailing a button) and
+ * none of a paragraph's default margins. */
+.run-progress > .status { margin: 0 0 var(--space-xs); }
+/* The regime sentence above the two figures -- what these numbers are (full
+ * RRHO, or the vibrational contributions alone) and what they are good for.
+ * It borrowed the form sheet's `.hint` until 2026-09-28, and /results does
+ * not load that sheet, so the one sentence saying what the numbers mean
+ * rendered as unstyled body text. */
+.thermo-note {
+    margin: 0 0 var(--space-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+}
 @media (max-width: 900px) {
     .thermo-charts { grid-template-columns: 1fr; }
 }
@@ -686,7 +618,10 @@ so #phase-indicator was
  * bibliography list whose line structure is meaningful, and a user is
  * about to paste it somewhere that will keep those line breaks. */
 .methods-block { margin: var(--space-md) 0 var(--space-sm); }
-.methods-block > summary { cursor: pointer; }
+/* The block spaces itself; its summary is a `.subsection-h` for the type
+ * alone, so the heading's own top margin is dropped here -- the two stacked
+ * into a double gap above "Methods text". */
+.methods-block > summary { cursor: pointer; margin: 0; }
 .methods-hint { font-weight: 400; opacity: 0.7; }
 .methods-actions {
     display: flex;

@@ -163,6 +163,10 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         assert _shown(page, '.phase-dot[data-phase="frequencies"]')
         assert not _shown(page, '.phase-dot[data-phase="raman"]')
         assert not _shown(page, '.phase-dot[data-phase="es"]')
+        # the Infrared dot exists in the partial and, SIESTA computing no
+        # intensities, is not shown (web/spectra.md § 3)
+        assert page.locator('.phase-dot[data-phase="ir"]').count() == 1
+        assert not _shown(page, '.phase-dot[data-phase="ir"]')
 
         # THE ELECTRONS' RESPONSE: planned, and named as what it will be.
         page.click("#mode-tabbtn-es")

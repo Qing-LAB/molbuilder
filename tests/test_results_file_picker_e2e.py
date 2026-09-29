@@ -89,6 +89,22 @@ def project_with_one_out(tmp_path, monkeypatch):
     return proj, str(proj)
 
 
+@pytest.fixture
+def project_with_one_xyz(tmp_path, monkeypatch):
+    """A folder holding one structure and nothing else -- no calculation, so
+    the server offers no pick and the structure is shown only when a person
+    picks it in the menu.  The structure viewer is the one that does NOT
+    reload its own file when the tab comes back, so a rescan's
+    re-announcement is the only thing that can end the picker's "Parsing…"
+    line for it."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "myproj" / "structure" / "w"
+    proj.mkdir(parents=True)
+    (proj / "w.xyz").write_text(
+        "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n")
+    return proj, str(proj)
+
+
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
@@ -294,6 +310,50 @@ class TestVisibilityChangeForcesRescan:
         )
         opts = _option_basenames(_picker_options(page))
         assert set(opts) == {"run1.out", "run2.out"}
+
+
+    def test_a_rescan_of_the_file_on_screen_does_not_leave_parsing_up(
+            self, page, flask_server, project_with_one_xyz):
+        """A tab return rescans the folder and re-announces the file already
+        on screen, and its viewer answers ready at once -- from inside that
+        announcement.  The picker started its "Parsing…" line only AFTER
+        announcing, so the answer met nothing to clear and the line sat
+        busy for its whole timer (the Results-tab review, 2026-09-28).
+
+        MUTATION THIS MUST FAIL AGAINST: `_startParseStatus` called after
+        the dispatch in `_emitFileSelected`.
+        """
+        proj, dir_str = project_with_one_xyz
+        _setup_modify_dir(page, flask_server, dir_str)
+        _open_results(page, flask_server)
+        xyz = str(proj / "w.xyz")
+        page.wait_for_function(
+            "(want) => [...document.querySelectorAll("
+            "  '#results-file-picker-select option')].some(o => o.value === want)",
+            arg=xyz, timeout=20000)
+        # the person picks the structure; it mounts and says it is drawn
+        page.select_option("#results-file-picker-select", value=xyz)
+        page.wait_for_selector("#inspector-host .structure-status",
+                               timeout=20000)
+        page.wait_for_function("""() => {
+            const m = document.getElementById("results-file-picker-meta");
+            const s = document.querySelector("#inspector-host .structure-status");
+            return m && !m.classList.contains("is-busy")
+                && s && /Loaded/.test(s.textContent); }""", timeout=30000)
+        page.evaluate("""() => {
+            const m = document.getElementById("results-file-picker-meta");
+            window.__seen = [];
+            new MutationObserver(() => window.__seen.push(m.textContent))
+                .observe(m, { childList: true, characterData: true,
+                              subtree: true });
+            document.dispatchEvent(new Event("visibilitychange")); }""")
+        page.wait_for_timeout(3000)
+        state = page.evaluate("""() => {
+            const m = document.getElementById("results-file-picker-meta");
+            return { seen: window.__seen, busy: m.classList.contains("is-busy"),
+                     text: m.textContent }; }""")
+        assert any("Scanning" in t for t in state["seen"]), state  # it rescanned
+        assert not state["busy"], state
 
 
 class TestOneScanPerVisit:

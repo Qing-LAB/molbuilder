@@ -32,16 +32,14 @@
         return exp ? n.toExponential(digits) : n.toFixed(digits);
     }
 
-    function _el(tag, cls, text) {
-        const e = root.document.createElement(tag);
-        if (cls) e.className = cls;
-        if (text !== undefined) e.textContent = text;
-        return e;
-    }
+    /* The one element builder, `lib/dom.js`, loaded before this file on
+     * /results.  Looked up when called, so a page that has not loaded it
+     * still registers this viewer and fails only where it draws. */
+    const _el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
     function render(host, rec) {
         host.innerHTML = "";
-        const wrap = _el("div", "transport-record");
+        const wrap = _el("div", "transport-record card");
 
         const pts = Array.isArray(rec.points) ? rec.points : [];
         const pending = Array.isArray(rec.pending) ? rec.pending : [];
@@ -258,7 +256,7 @@
             ? root.getComputedStyle(root.document.documentElement) : null;
         const get = (n, fb) =>
             ((cs && cs.getPropertyValue(n)) || "").trim() || fb;
-        return { textMuted: get("--text-muted", "#6c7280") };
+        return { textMuted: get("--text-muted", "#959ba7") };
     }
 
     /* One Plotly call, the same shape every other plot in this tree uses
@@ -340,7 +338,15 @@
                     else host.textContent = String(e);
                     return;
                 }
-                if (!disposed) render(host, rec);
+                if (disposed) return;
+                render(host, rec);
+                /* FIRST RENDER ON SCREEN: the picker drops its "Parsing..."
+                 * line on this event (`lib/results/file-picker.js`) rather than
+                 * waiting out its fallback timer -- as the sweep presenter does. */
+                root.document.dispatchEvent(new root.CustomEvent(
+                    ((root.molbuilder || {}).constants || {})
+                        .EVENT_INSPECTOR_READY || "molbuilder:inspector:ready",
+                    { detail: { inspector: "transport" } }));
             })();
             return {
                 dispose() {

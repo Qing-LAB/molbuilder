@@ -61,10 +61,9 @@ def results_page():
 def partial_trajectory_inspector():
     """Return the rendered trajectory inspector partial as HTML.
 
-    Source: ``templates/_trajectory_inspector.html``.  Same partial
-    is included server-side by ``watch.html``; this endpoint exists
-    so ``/results`` can swap the inspector in client-side without
-    duplicating the markup.
+    Source: ``templates/_trajectory_inspector.html``.  This endpoint
+    is how ``/results`` swaps the inspector in client-side (the /watch
+    page that included the partial server-side is gone).
 
     Cache: ``private, max-age=300`` -- the partial is static
     content that only changes on template edits, but capping the

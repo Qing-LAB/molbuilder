@@ -13,7 +13,7 @@
 html, body { height: 100%; }
 
 /* ---- Header code (index tagline) ---- */
-header code {
+.app-header code {
     background: var(--accent-bg);
     color: var(--accent-hover);
     padding: 1px var(--space-sm);

@@ -7,6 +7,7 @@
  * Exports (on window.molbuilder.inspectorLifecycle):
  *   listeners()          -> { on, defer, disposeAll }
  *   alias(state, k, b)   -> a legacy name that reads through to a bucket
+ *   announceReady(name, detail) -> the load has ended: drawn, or refused
  */
 (function (root) {
     "use strict";
@@ -69,7 +70,46 @@
         });
     }
 
-    var api = { listeners: listeners, alias: alias };
+    /**
+     * THE LOAD HAS ENDED -- the first render is on screen, or the load was
+     * refused and its reason is on the inspector's status line.  One signal
+     * for both, so the tab's loading cover and the picker's "Parsing…" line
+     * go when the answer is on screen, whichever it is (a refused load used
+     * to leave both up for their safety timers).  Deferred two frames so the
+     * browser paints first -- AND a short timer beside them, whichever comes
+     * first, ONCE: frames do not run in a background tab, so a result opened
+     * there left "Parsing…" up until the picker's own timer (the structure
+     * viewer's reasoning, which it has always had).  Both cores wrote the
+     * frames-only version byte for byte
+     * (`tests/test_no_duplicated_ui_components.py`, 2026-09-28).
+     */
+    function announceReady(inspector, detail) {
+        try {
+            var fired = false;
+            var dispatch = function () {
+                if (fired) return;
+                fired = true;
+                root.document.dispatchEvent(new root.CustomEvent(
+                    root.molbuilder.constants.EVENT_INSPECTOR_READY,
+                    { detail: Object.assign({ inspector: inspector },
+                                            detail || {}) }));
+            };
+            if (typeof root.requestAnimationFrame === "function") {
+                root.requestAnimationFrame(function () {
+                    root.requestAnimationFrame(dispatch);
+                });
+                root.setTimeout(dispatch, 250);
+            } else {
+                dispatch();
+            }
+        } catch (_) {
+            // CustomEvent / rAF unavailable in some ancient runtimes; the
+            // picker's timeout fallback covers it.
+        }
+    }
+
+    var api = { listeners: listeners, alias: alias,
+                announceReady: announceReady };
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

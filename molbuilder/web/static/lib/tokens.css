@@ -32,7 +32,14 @@
     /* ---- Text ---- */
     --text-primary:   #e6e9ef;
     --text-secondary: #a8aebb;
-    --text-muted:     #6c7280;
+    /* 4.5:1 or better on every ground it sits on -- card 5.8, page 6.4,
+     * input 5.1, a FOCUSED input 4.6 (where a placeholder shows) -- the WCAG
+     * floor page-shell.css cites.  It was #6c7280 (3.35:1 on a card) until
+     * 2026-09-28, under the Run panel's labels, the ladder's columns and the
+     * transport and sweep notes; then #8e94a0 for an afternoon, which left
+     * the focused input at 4.2.  Still well below --text-secondary (7.3 on a
+     * card), so muted stays muted. */
+    --text-muted:     #959ba7;
     --text-mono:      #b8c4d6;
 
     /* ---- Accents ---- */

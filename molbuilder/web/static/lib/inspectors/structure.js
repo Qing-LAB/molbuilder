@@ -78,7 +78,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
 
             // -- Outer card scaffold (per-inspector chrome) ------- //
             const card = document.createElement("section");
-            card.className = "inspector-card structure-card";
+            card.className = "card inspector-card structure-card";
 
             const header = document.createElement("header");
             header.className = "inspector-card-header";
@@ -126,13 +126,38 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // empty-host build path and BUILDS the fused card (viewer +
             // panel + fold + view-controls + measurement) inside.
             const molviewHost = document.createElement("div");
-            molviewHost.className = "structure-viewer-slot";
+            // `molviewer-host`: below MolView's own floor the viewer scrolls in
+            // its box rather than dragging the page sideways (molview.css).
+            molviewHost.className = "structure-viewer-slot molviewer-host";
             card.appendChild(molviewHost);
 
             host.appendChild(card);
 
             let handle   = null;
             let disposed = false;
+            /* THE LOAD HAS ENDED -- drawn, or refused with its reason on the
+             * status line.  One signal for both, ONCE, so the tab's loading
+             * cover and the picker's "Parsing…" line go when the answer is on
+             * screen, whichever it is.  The six ways this could fail used to
+             * return without a word, and the cover sat over the error for the
+             * tab's 15 s safety timer (the Results-tab review, 2026-09-28). */
+            let readyFired = false;
+            const signalReady = (detail) => {
+                if (readyFired || disposed) return;
+                readyFired = true;
+                try {
+                    document.dispatchEvent(new CustomEvent(
+                        ((root.molbuilder || {}).constants || {})
+                            .EVENT_INSPECTOR_READY || "molbuilder:inspector:ready",
+                        { detail: Object.assign({ inspector: "structure" },
+                                                detail) }));
+                } catch (_) { /* see core.js for context */ }
+            };
+            const fail = (msg) => {
+                status.textContent = msg;
+                status.classList.add("inspector-inline-error");
+                signalReady({ error: msg });
+            };
 
             // The ONE door (projects.parser.openMolecule) reads the .xyz + its
             // .molstruct.json sidecar and installs the model (labels + cell ride along
@@ -146,11 +171,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // creates one, and testing for one first is what stopped three
                 // pages mounting at all.
                 if (typeof mount !== "function") {
-                    status.textContent = (
-                        "Viewer unavailable: the MolView module is missing "
-                        + "from the template script tags."
-                    );
-                    status.classList.add("inspector-inline-error");
+                    fail("Viewer unavailable: the MolView module is missing "
+                         + "from the template script tags.");
                     return;
                 }
 
@@ -162,10 +184,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // never mixes with the Modify tab's or another inspector's.
                 const ws = root.molbuilder && root.molbuilder.workspace;
                 if (!ws) {
-                    status.textContent = (
-                        "Viewer unavailable: the persistence layer "
-                        + "(workspace/dispatcher.js) is missing from the template.");
-                    status.classList.add("inspector-inline-error");
+                    fail("Viewer unavailable: the persistence layer "
+                         + "(workspace/dispatcher.js) is missing from the template.");
                     return;
                 }
 
@@ -186,9 +206,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                         return;
                     }
                     if (!handle || !handle.ok) {
-                        status.textContent = "Viewer failed: "
-                            + ((handle && handle.error) || "molview.mount failed.");
-                        status.classList.add("inspector-inline-error");
+                        fail("Viewer failed: "
+                             + ((handle && handle.error) || "molview.mount failed."));
                         return;
                     }
 
@@ -241,16 +260,14 @@ import { molviewFiles } from "../projects/molview-doors.js";
                         const _proj = root.molbuilder && root.molbuilder.projects;
                         if (!_proj || !_proj.parser
                                 || typeof _proj.parser.openMolecule !== "function") {
-                            status.textContent = "Viewer unavailable: the projects "
-                                + "file package is missing from the template.";
-                            status.classList.add("inspector-inline-error");
+                            fail("Viewer unavailable: the projects "
+                                 + "file package is missing from the template.");
                             return;
                         }
                         const res = await _proj.parser.openMolecule(handle, structPath);
                         if (res && res.ok === false) {
-                            status.textContent = "Error: "
-                                + (res.error || "could not load " + structPath);
-                            status.classList.add("inspector-inline-error");
+                            fail("Error: "
+                                 + (res.error || "could not load " + structPath));
                             return;
                         }
                     }
@@ -295,19 +312,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     // browser paints the 3Dmol canvas before the picker meta clears
                     // -- matches the trajectory inspector's pattern (core.js).
                     try {
-                        var _readyFired = false;
-                        const dispatch = function () {
-                            if (_readyFired) return;   // fire ONCE (rAF + timer race)
-                            _readyFired = true;
-                            document.dispatchEvent(
-                                new CustomEvent(
-                                    ((root.molbuilder || {}).constants || {})
-                                        .EVENT_INSPECTOR_READY
-                                    || "molbuilder:inspector:ready",
-                                    { detail: { inspector: "structure" } }
-                                )
-                            );
-                        };
+                        // ONCE, whichever of rAF and the timer wins.
+                        const dispatch = function () { signalReady({}); };
                         // Prefer a post-paint dispatch (double-rAF) so the 3Dmol
                         // canvas is on screen before the picker drops its "parsing…"
                         // overlay -- no flash of empty viewer.  BUT rAF is paused in a
@@ -324,9 +330,8 @@ import { molviewFiles } from "../projects/molview-doors.js";
                         }
                     } catch (_) { /* see core.js for context */ }
                 } catch (e) {
-                    status.textContent = "Viewer failed: "
-                                       + (e && e.message ? e.message : String(e));
-                    status.classList.add("inspector-inline-error");
+                    fail("Viewer failed: "
+                         + (e && e.message ? e.message : String(e)));
                 }
             })();
 

@@ -220,11 +220,11 @@ function ordered(part) {
 
 /* ---- DOM ---------------------------------------------------------------- */
 
+/* The one element builder the Results tab shares, `lib/dom.js` -- a classic
+ * script, so it has run before this module does.  This was a fourth copy of
+ * it, byte for byte. */
 function el(tag, cls, text) {
-    const n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined && text !== null) n.textContent = String(text);
-    return n;
+    return NS.dom.el(tag, cls, text);
 }
 
 function chip(state) {

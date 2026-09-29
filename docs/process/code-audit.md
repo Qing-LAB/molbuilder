@@ -58,7 +58,7 @@ These hold regardless of which dimension you're auditing.
    | asserts | a property the shipped artifact must not violate | that one line is spelled a certain way |
    | a rename | is irrelevant to it | breaks it |
    | deleting the code | **fails** it | passes it, if the name survives in a comment |
-   | examples | `test_no_inline_scripts.py`, `test_css_no_duplicate_selectors.py`, `test_page_ids_unique.py` | `assert "function _themeColors" in core_js` |
+   | examples | `test_no_inline_scripts.py`, `test_page_ids_unique.py` (and `test_css_no_duplicate_selectors.py`, until its retirement on 2026-09-10) | `assert "function _themeColors" in core_js` |
 
    A lint is a *generalised* audit — the same reading you did by hand, done over
    the whole class, forever. A pin is a transcript of one line you happened to be
@@ -470,11 +470,14 @@ guard in the same commit:
 - 2026-06-14 — `.ctab-panel label.check` (`trajectory-inspector.css`, commit `e7651cb`,
   the "ghost hide-frozen toggle").
 
-**Audit invariant — now an enforced test.** This one has graduated:
-`tests/test_css_hidden_attribute_audit.py` cross-references the IDs JS actually toggles
-via `.hidden = …` against the CSS rules that target them, and fails if any such rule
-sets a non-`none` `display` without a matching `[hidden]` guard. Run it; add new
-violations to it rather than re-grepping by hand.
+**Audit invariant — a review step again.** `tests/test_css_hidden_attribute_audit.py`
+cross-referenced the IDs JS toggles via `.hidden = …` against the CSS rules that target
+them, and failed on a non-`none` `display` without a `[hidden]` guard — until
+2026-09-10, when it was retired with the other tests that read source for where code
+lives (`082ba979`). So this is checked by hand, per sheet, as the list below says; the
+behaviour it protects is asserted where a page test reads the COMPUTED style (e.g.
+`test_siesta_vibration_results_e2e.py`, whose `.phase[hidden]` case is exactly this
+class).
 
 ### 3.2 Per-feature option-dependency traversal
 
@@ -670,9 +673,9 @@ change" from "the handler never ran."
 For each component CSS file:
 
 - [ ] Every class/id selector that sets `display: <not none>` has a matching `[hidden]`
-      guard (§ 3.1) — enforced by `test_css_hidden_attribute_audit.py`.
+      guard (§ 3.1) — by hand: its test was retired 2026-09-10 (`082ba979`).
 - [ ] No full selector is defined in two CSS files (a cascade collision where the
-      later-loaded copy silently wins) — enforced by `test_css_no_duplicate_selectors.py`.
+      later-loaded copy silently wins) — by hand: its test was retired the same day.
 - [ ] Every id used in HTML has a CSS rule *or* a JS reference; dead selectors get
       deleted.
 - [ ] Colour/spacing values come from the token sheet; raw hex literals outside
@@ -728,9 +731,10 @@ When a new bug class turns up:
    line: [`testing.md § 3a`](?doc=process/testing.md)) and mark it enforced here.
 
 > **Migration note.** Corrected against code during the docs migration: the `[hidden]`
-> invariant § 3.1 only *wished for* a test in the legacy copy — it now exists
-> (`test_css_hidden_attribute_audit.py`), as does the duplicate-selector guard
-> (`test_css_no_duplicate_selectors.py`), so both are marked enforced. Test-layer
+> invariant § 3.1 only *wished for* a test in the legacy copy — it then existed
+> (`test_css_hidden_attribute_audit.py`), as did the duplicate-selector guard
+> (`test_css_no_duplicate_selectors.py`), and both were marked enforced; both were
+> retired on 2026-09-10 (`082ba979`) and are review steps again. Test-layer
 > terminology was aligned to the current marker scheme (`unit`/`module`/`interface`/
 > `integration` + `e2e`, not the retired "L1–L5"). One precedent commit hash that no
 > longer resolves in history was dropped while keeping its lesson.

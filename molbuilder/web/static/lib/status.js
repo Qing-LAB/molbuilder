@@ -68,8 +68,23 @@
             }
             kind = null;
         }
-        el.textContent = msg == null ? "" : String(msg);
-        el.className = "status" + (kind ? " " + kind : "");
+        /* THE SEVERITY IS REPLACED, NOTHING ELSE.  This wrote
+         * `className = "status" + kind`, which also stripped every class
+         * the line carried for its own layout -- the trajectory panel's
+         * `trajectory-status` went on the first "Loading…" (the Results-tab
+         * review, 2026-09-28).  And a line whose text and severity are
+         * unchanged is not written again: a status line is a live region,
+         * and a poll that rewrote the same words re-announced them to a
+         * screen reader on every tick. */
+        var text = msg == null ? "" : String(msg);
+        var classes = String(el.className || "").split(/\s+/).filter(
+            function (c) { return c && KINDS.indexOf(c) === -1; });
+        if (classes.indexOf("status") === -1) classes.unshift("status");
+        if (kind) classes.push(kind);
+        var cls = classes.join(" ");
+        if (el.textContent === text && el.className === cls) return true;
+        el.textContent = text;
+        el.className = cls;
         return true;
     }
 

@@ -152,7 +152,9 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius, 4px);
     padding: var(--space-xs) 10px;
-    font: 12px/1.3 system-ui, sans-serif;
+    /* the app's font, named (ui-contract.md § 4: a `font:` shorthand
+     * names var(--font-sans), or it is not written) */
+    font: var(--text-xs)/1.3 var(--font-sans);
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
@@ -449,19 +451,26 @@
  *  ``el.hidden = true`` -- the trap documented in the projects-      *
  *  sidebar design doc (specificity tie between author and UA CSS).  *
  * ------------------------------------------------------------------ */
-/* Parse-warnings panel: intentional warm-amber pastel theme over a
- * dark page background.  The four hex values below (bg / lighter-bg
- * / snippet-bg / metadata-text-amber) are part of one cohesive
- * warning-panel theme — exempt from the no-hex rule on the
- * grounds that adding 4 tokens for one panel would split the
- * theme's source-of-truth across files. */
+/* The inspector's own status line (#trajectory-status): a refused load, a
+ * viewer that could not mount, the cell's provenance, an export.  Empty on
+ * an ordinary load, and then it takes no room -- by its margin, not by
+ * `display: none`: the line is a live region, and one taken out of the page
+ * while empty can lose the first message written into it. */
+.trajectory-status { margin: 0 0 var(--space-sm); }
+.trajectory-status:empty { margin: 0; }
+
+/* Parse-warnings panel: the warning palette of the dark theme, from the
+ * tokens (`ui-contract.md` § 2).  It was a light pastel panel -- five hex
+ * literals marked exempt, which § 2's list of exemptions does not cover --
+ * a bright box on a dark page, until 2026-09-28.  It sits flush with its
+ * siblings: the side inset it had began 8px in from every block beside it. */
 .parse-warnings {
-    margin: var(--space-sm) var(--space-sm) var(--space-sm);
+    margin: var(--space-sm) 0;
     padding: 0;
     border:  1px solid var(--warn-soft);
     border-radius: var(--radius-sm);
-    background: #fff7e0; /* exempt: warn-pastel theme */
-    color:      #6b4a00; /* exempt: warn-pastel theme */
+    background: var(--warning-bg);
+    color:      var(--text-primary);
     font-size: var(--text-sm);
 }
 .parse-warnings[hidden] { display: none; }
@@ -484,7 +493,7 @@
     flex-direction: column;
     gap: var(--space-sm);
     border-top: 1px dashed var(--warn-soft);
-    background: #fffaef; /* exempt: warn-pastel theme */
+    background: var(--bg-card);
 }
 .parse-warning {
     display: grid;
@@ -500,7 +509,7 @@
     grid-area: meta;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    color:       #8c6d20; /* exempt: warn-pastel theme */
+    color:       var(--warn-soft);
     white-space: nowrap;
 }
 .parse-warning-error  { grid-area: error; }
@@ -508,7 +517,7 @@
     grid-area: snippet;
     margin: 0;
     padding: var(--space-xs) var(--space-sm);
-    background: #f5e8c2; /* exempt: warn-pastel theme */
+    background: var(--bg-input);
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: var(--text-xs);

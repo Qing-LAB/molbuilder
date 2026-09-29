@@ -43,13 +43,13 @@ html, body { height: 100%; }
  * default). */
 
 /* ---- Header ---- */
-header {
+.app-header {
     padding: var(--space-xl) var(--space-xl) var(--space-lg);
     border-bottom: 1px solid var(--border-soft);
 }
-header h1 {
+.app-header h1 {
     margin: 0;
-    font: var(--weight-bold) var(--text-xl)/1.2 "Inter", var(--font-sans);
+    font: var(--weight-bold) var(--text-xl)/1.2 var(--font-sans);
     color: var(--text-primary);
 }
 
@@ -286,7 +286,7 @@ header h1 {
 @media (max-width: 785px) {
     .modify-main { padding: 6px; gap: 6px; }
     .modify-init-card { margin: 0; padding: var(--space-sm) var(--space-md); }
-    header               { padding: var(--space-md) var(--space-lg) var(--space-sm); }
+    .app-header          { padding: var(--space-md) var(--space-lg) var(--space-sm); }
 }
 
 /* ---- Init structure card (was Sources) ----
@@ -362,8 +362,9 @@ header h1 {
  * already carry a class of their own (`.modify-init-card` at modify.html:55,
  * `.modify-section` at :322), so the layout attaches to those and the
  * surface stays in one home (`process/code-audit.md` -- a module owns its
- * CSS; `tests/test_css_no_duplicate_selectors.py` now enforces it, the
- * `.card` allowlist entry having been retired with this change).
+ * CSS).  `tests/test_css_no_duplicate_selectors.py` enforced it, the `.card`
+ * allowlist entry retired with this change, until the test itself was
+ * retired on 2026-09-10 (`082ba979`); the rule is held by review.
  *
  * The planned fix recorded in that allowlist was to scope the copies as
  * `.modify-tab .card`.  That would have preserved the divergence with

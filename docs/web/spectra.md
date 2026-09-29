@@ -39,11 +39,11 @@ why there are no heights (§ 2, § 9b.3).
 Everything below is drawn by a single module, `lib/spectra/core.js`. It is
 mounted by two different pages, each a thin wrapper:
 
-- **The standalone Spectrum tab** (`/spectrum-calculation`) — the full
-  *describe-then-view* workflow: inspect a structure, set parameters, Send
-  the description to Task setup (this tab renders no deck — § 5), and load
-  the spectrum as the prepped calculation runs. Its
-  controller is `spectra/viewer.js`.
+- **The standalone Spectrum tab** (`/spectrum-calculation`) — the
+  *describe* half: inspect a structure, set parameters, and Send the
+  description to Task setup (this tab renders no deck — § 5). It shows no
+  result; the finished spectrum, or one still being computed, is read on the
+  Results tab (§ 7). Its controller is `spectra/viewer.js`.
 - **The Results-tab presenter** — the *view-only* half. When you open a
   `*.spectra.json` result on the Results tab, the presenter
   (`lib/inspectors/spectra.js`, registered as **"Spectra results"**) mounts the
@@ -211,9 +211,11 @@ contain, and without the translational and rotational energies the RRHO sums
 do — so both regimes' curves were shifted and neither bar summed to its total;
 and it printed `P = 1 atm` over results no pressure entered.)* The phase
 indicator gained a **Relaxation** dot the same way (data-driven off
-`phase_relaxation`), and shows no dot for a phase the file's route does not
-have (Raman and the probe on SIESTA); a v4 file simply shows it empty and
-hides the thermo tab.
+`phase_relaxation`), and an **Infrared** dot off `phase_ir` (2026-09-28 — the
+flag existed and was waited on, and no dot showed it); it shows no dot for a
+phase the file's route does not have (Raman, infrared and the probe on
+SIESTA), nor for infrared in a file written before its flag (`""`, no
+record); a v4 file simply shows it empty and hides the thermo tab.
 
 ## 4. Clicking a mode — the 3D animation
 
@@ -483,8 +485,8 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    machine that runs it
    ([`execution/script-preparation.md`](?doc=execution/script-preparation.md)).
 
-When the job runs it writes a `.spectra.json`; loading that (here, or on the
-Results tab) is what fills the chart. On SIESTA the force-constant run leaves
+When the job runs it writes a `.spectra.json`; picking that on the Results
+tab is what fills the chart, and a run still going is followed there (§ 7). On SIESTA the force-constant run leaves
 `<label>.FC` and the same job then derives the modes from it — its finish,
 `mb_vibration.pyz`, run by the wrapper — and writes the same file beside the
 run, so the launch is the last step on both engines
@@ -507,10 +509,19 @@ travel with the structure now — § 8).
 
 ## 7. Live updating, and what a refresh does
 
-If you load a spectrum whose calculation is still running, the viewer **polls
-`/api/spectra/load` every 2 seconds** and redraws as new modes arrive. (That's a
-faster cadence than the trajectory viewer's 15 seconds — a spectrum job produces
-its phases in quicker bursts.) It considers the run done once every phase the
+The file is the one picked in the Results tab's dropdown — the only route; a
+path box with *Load once*, *Start watching* and *Stop* stood above the panel
+until 2026-09-28, a second way to name a file, and a run picked while still
+going was shown as a snapshot unless someone pressed *Start watching*
+*(user, 2026-09-28: the dropdown is the only route, and a still-running result
+is followed until its phases finish)*. If you pick a spectrum whose calculation
+is still running, the viewer **follows it by itself — it polls
+`/api/spectra/load` every 2 seconds** and redraws as new modes arrive, and the
+status line above the phase dots says it is following. (That's a faster
+cadence than the trajectory viewer's 15 seconds — a spectrum job produces its
+phases in quicker bursts.) The poll stops when the run is done, when the file
+goes away or keeps failing to load, and with the viewer — another pick, or
+leaving the tab. It considers the run done once every phase the
 description asked for reports `complete` — the infrared intensities included,
 which carry their own flag, `phase_ir`; a phase it never asked for reports
 `not requested` from the first write and counts as finished, and a file

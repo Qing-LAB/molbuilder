@@ -3,15 +3,18 @@
  * Spec: docs/web/bench-summary.md § 3.
  * Arrangement only: page-shell owns the surfaces and the severity
  * vocabulary, tokens.css owns every colour (ui-contract.md § 1–2).
- * There is no raw hex here on purpose — every stylesheet is checked
- * now, with no allowlist to be left off.
+ * There is no raw hex here on purpose.  (The audit that checked every
+ * stylesheet for one was retired on 2026-09-10, `082ba979`; the rule is
+ * held by review.)
  */
 
 .bench-summary {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    padding: var(--space-md);
+    /* No padding: the element is also page-shell's `.card`, which states the
+     * one inset every Results-tab viewer shares (ui-contract.md, "one inset
+     * per card"); a padding here, loaded after page-shell, replaced it. */
     min-height: 0;
 }
 

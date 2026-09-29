@@ -16,7 +16,10 @@
     parity between this file and ``lib/spectra/core.js``'s lookups.
 
     Inspector scope:
-      * "Load results"      -- watch-path input + load/watch buttons
+      * the run's progress  -- one status line + one dot per phase; the
+                               file comes from the Results tab's dropdown
+                               alone, and a run still going is followed
+                               until its phases finish (web/spectra.md § 7)
       * "Results"           -- summary + spectrum chart + modes table
                                + CSV export
       * "Mode visualisation" -- 3D mode-eigenvector animation
@@ -28,57 +31,29 @@
     in the /spectra page; they are NOT part of this partial.
 -#}
 
-    <!-- ── Load / Watch results ─────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2>Load results</h2>
-        <p class="section-hint">
-          Point at a <code>&lt;job&gt;.spectra.json</code> file produced
-          by an earlier run.  Either pick it in the
-          <strong>Projects</strong> sidebar on the left and click
-          &ldquo;Use this file&rdquo; in the banner below, or paste
-          the absolute path into the input.  &ldquo;Watch&rdquo; polls
-          every 2&nbsp;s and auto-stops when all configured phases
-          finish.
-        </p>
-      </header>
-
-      <!-- Primary: load (or watch) by server-side path.  This
-           is what most users want -- molbuilder typically runs
-           on the same machine as the spectra.py job, so reading
-           the file directly is faster + keeps the user from
-           re-uploading after every phase write. -->
-      <label class="field-block" for="watch-path">
-        <span class="field-label">Path on this server</span>
-        <input id="watch-path" type="text"
-               placeholder="/abs/path/to/job.spectra.json">
-      </label>
-      {#- Action row: explicit "Load once" + the live-watch toggle.
-
-          ``#load-from-selection-btn`` + ``#workspace-indicator``
-          (dropped 2026-05-18) were wired on the legacy /spectra page
-          by the now-deleted ``static/spectra/page.js``.  On /results
-          the sidebar selection IS the dispatch -- picking a
-          ``.spectra.json`` auto-mounts this inspector + auto-loads
-          via the spectra-core's ``opts.file`` path -- so the button
-          duplicated functionality that already lives in the
-          selection mechanism, and the workspace-indicator just
-          duplicated the sidebar's own current-dir display.  Both
-          dropped cleanly: /spectra (now generate-only) doesn't
-          render this partial; /results renders it without the
-          vestigial controls. -#}
-      <div class="inline-row">
-        <button id="load-path-btn"  type="button">Load once</button>
-        <button id="watch-btn"      type="button">Start watching</button>
-        <button id="watch-stop-btn" type="button" disabled>Stop</button>
-        <span id="watch-status" class="status"></span>
-      </div>
+  {#- ONE ROOT, AND IT IS A CARD: page-shell's `.card` is the surface every
+      Results-tab viewer sits on, and `.card-section` blocks divide a card
+      (lib/inspectors/spectra.css).  The sections were dropped straight into
+      the host until 2026-09-28, so this viewer alone had no surface once the
+      host stopped drawing one. -#}
+  <div class="card spectra-inspector">
+    <!-- ── The run's progress ───────────────────── -->
+    {#- The file is the one the Results tab's dropdown picked -- the only
+        route (web/results.md § 2.1).  A path box with "Load once", "Start
+        watching" and "Stop" stood here until 2026-09-28: a second way to
+        name a file, and a live run was shown as a snapshot unless someone
+        pressed "Start watching".  Now a run still going is followed by
+        itself, every 2 s, until every phase its description asked for is
+        done (web/spectra.md § 7).  What stays is what the controls
+        reported: one status line, and the phase dots. -#}
+    <div class="card-section run-progress">
+      <p id="watch-status" class="status" role="status" aria-live="polite"></p>
 
       <!-- Phase-progress chips: one dot per computational phase
-           (Relaxation, Frequencies, Raman, Per-mode ES), filling in as
-           each lands; a phase the file's route does not have shows no
-           dot (web/spectra.md § 3).  Hidden until first load / watch
-           tick. -->
+           (Relaxation, Frequencies, Raman, Infrared, Per-mode ES),
+           filling in as each lands; a phase the file's route does not
+           have shows no dot (web/spectra.md § 3).  Hidden until the
+           first load. -->
       <div id="phase-indicator" class="phase-indicator" hidden
            aria-label="Run-phase progress">
         <span class="phase">
@@ -92,6 +67,10 @@
         <span class="phase">
           <span class="phase-label">Raman</span>
           <span class="phase-dot" data-phase="raman"></span>
+        </span>
+        <span class="phase">
+          <span class="phase-label">Infrared</span>
+          <span class="phase-dot" data-phase="ir"></span>
         </span>
         <span class="phase">
           <span class="phase-label">Per-mode ES</span>
@@ -118,7 +97,7 @@
       <details id="methods-block" class="methods-block" hidden>
         <summary class="subsection-h">Methods text <span class="methods-hint">— for your paper</span></summary>
         <div class="methods-actions">
-          <button type="button" id="methods-copy" class="btn btn-small">Copy</button>
+          <button type="button" id="methods-copy">Copy</button>
           <span id="methods-copy-note" class="status muted" role="status" aria-live="polite"></span>
         </div>
         <pre id="methods-text" class="methods-text"></pre>
@@ -470,7 +449,7 @@
             the headline numbers and the T-grid; this panel only draws
             them.  Two figures: G/H/T·S over the grid, and the
             free-energy decomposition at the headline temperature. -#}
-        <p id="thermo-note" class="hint"></p>
+        <p id="thermo-note" class="thermo-note"></p>
         <div class="thermo-charts">
           <div id="thermo-curves" class="thermo-chart"
                aria-label="Gibbs free energy, enthalpy and T times entropy
@@ -482,3 +461,4 @@
         </div>
       </div>
     </div>
+  </div><!-- /.card.spectra-inspector -->

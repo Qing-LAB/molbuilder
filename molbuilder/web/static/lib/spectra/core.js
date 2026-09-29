@@ -97,8 +97,8 @@
         preflightPanel: null,
         // resultsFile / loadResultsBtn / resultsStatus removed for the
         // same reason as xyz* above; loadResults() also gone.  The
-        // /api/spectra/load endpoint stays -- it's still used by the
-        // path-based watch-path loader (els.loadPathBtn) below.
+        // /api/spectra/load endpoint stays -- loadByPath reads the file
+        // the Results tab's dropdown picked through it.
         resultsSummary: null,
         resultsMeta:    null,
         methodsBlock:   null,
@@ -118,11 +118,10 @@
         esModeFreq:     null,
         esBarDiagram:   null,
         esSummary:      null,
-        // Load / live-watch by server-side path:
-        watchPath:      null,
-        loadPathBtn:    null,
-        watchBtn:       null,
-        watchStopBtn:   null,
+        // The run's progress: one status line and the phase dots.  The
+        // path box and its three buttons went on 2026-09-28 -- the
+        // dropdown is the one route to a file, and a running result is
+        // followed by itself (web/spectra.md § 7).
         watchStatus:    null,
         phaseIndicator: null,
         // Spectrum chart Lorentzian-broadening control.
@@ -172,12 +171,10 @@
         machine: "IDLE",
 
         fileState: {
-            // ``path`` was state.watchPath pre-PR-3.  The contract
-            // § 7 spectra mapping settled on fileState.path being
-            // canonical; the legacy `watchPath` name lives only as
-            // a backward-compat alias.  Both Load and Start-watching
-            // read els.watchPath.value into this field via
-            // transition('LOADING').
+            // The file on screen, written by transition('LOADING') from
+            // the path loadByPath was handed -- the dropdown's pick, a
+            // Refresh, or the registry's hot swap.  (`state.watchPath`
+            // was an alias of it, for a path box that is gone.)
             path:    null,
             // results: SpectraResults dict from /api/spectra/load.
             // Replaced atomically inside transition('APPLY').
@@ -392,13 +389,6 @@
         function alias(key, bucket) {
             root.molbuilder.inspectorLifecycle.alias(state, key, bucket);
         }
-        // fileState: legacy `watchPath` -> canonical `path`.
-        Object.defineProperty(state, "watchPath", {
-            get: function ()  { return state.fileState.path; },
-            set: function (v) { state.fileState.path = v; },
-            enumerable: true,
-            configurable: true,
-        });
         alias("results",        "fileState");
         alias("selectedMode",   "viewState");
         // The uiPrefs knobs alias AND schedule a save: the alias setter is
@@ -440,13 +430,15 @@
     //   'LOADING'  -> { path }: empty fileState, reset viewState,
     //                 abort in-flight controllers, clear timer,
     //   'LOADED'   -> {}:       stop watchTimer.  Used when
-    //                 allPhasesComplete OR after a Load-once.
-    //   'WATCHING' -> {}:       start watchTimer.  Used by
-    //                 startWatch and by watchTick when the run is
-    //                 still progressing.
-    //   'ERROR'    -> {}:       stop watchTimer.  Used after
-    //                 WATCH_MAX_ERRORS consecutive failures or a
-    //                 fatal schema mismatch.
+    //                 allPhasesComplete, and when following stops --
+    //                 a tick's error, or WATCH_MAX_ERRORS consecutive
+    //                 network failures (stopWatch).
+    //   'WATCHING' -> {}:       start watchTimer.  Used after a load or
+    //                 a tick when the run is still progressing.
+    //   'ERROR'    -> {}:       stop watchTimer.  Used by loadByPath
+    //                 alone, when a load fails (network, missing file,
+    //                 wrong schema) -- there is nothing on screen to
+    //                 keep.
     //   'IDLE'     -> {}:       full reset on dispose.
     //   'APPLY'    -> {path?, results?}: atomic fileState write.
     //                 Single canonical fileState writer per
@@ -503,21 +495,21 @@
             return;
         }
         if (target === "LOADED") {
-            // Run finished (allPhasesComplete true) OR Load-once.
-            // Stop watchTimer if running.
+            // Run finished (allPhasesComplete true), or following
+            // stopped.  Stop watchTimer if running.
             if (state.lifecycle.watchTimer) {
                 clearInterval(state.lifecycle.watchTimer);
                 state.lifecycle.watchTimer = null;
             }
             // ABORT THE TICK ALREADY ON THE WIRE, as LOADING and IDLE
-            // both do.  Without it "Stop" did not stop: `stopWatch`
+            // both do.  Without it a stop did not stop: `stopWatch`
             // cleared the timer, but a tick mid-flight then resolved
             // with `signal.aborted` false and -- because LOADED keeps
             // `fileState.path` on purpose -- passed the path guard too,
-            // so it rendered and called `_settlePostLoad(true)`, which
+            // so it rendered and called `_settlePostLoad()`, which
             // transitions back to WATCHING and starts a NEW interval.
-            // The buttons said stopped while the poll ran on, and the
-            // only way out was Start-then-Stop.
+            // (Found when a Stop button still existed: it said stopped
+            // while the poll ran on.)
             //
             // Safe on the normal-completion path as well: `watchTick`
             // builds a fresh AbortController every tick, and the tick
@@ -607,26 +599,20 @@
 
     // _settlePostLoad: after fileState has been populated by
     // transition('APPLY'), inspect the fresh results and route to
-    // the appropriate post-LOADING state.
-    //
-    // Two callers:
-    //   * loadByPath (Load-once button) calls with start_watch=false.
-    //     Run is rendered but no timer starts; we go to LOADED
-    //     regardless of completion.
-    //   * watchTick / startWatch call with start_watch=true.  If
-    //     allPhasesComplete -> transition('LOADED') (run done; stop
-    //     polling).  Else -> transition('WATCHING') (keep polling).
+    // the appropriate post-LOADING state -- for both callers,
+    // loadByPath and watchTick, the same rule: allPhasesComplete ->
+    // transition('LOADED') (run done; no polling), else ->
+    // transition('WATCHING') (the run is FOLLOWED, web/spectra.md § 7).
+    // Until 2026-09-28 a load was a snapshot and following took a
+    // "Start watching" press, so a run picked from the dropdown while
+    // still going sat unchanged on screen.
     //
     // Unlike trajectory there is NO 2-tick buffer here: spectra's
     // allPhasesComplete is a sticky monotonic flag (phase_*
     // markers progress forward through "running" -> "complete"
     // and never flap back).  One "complete" tick is sufficient.
-    function _settlePostLoad(startWatch) {                            // eslint-disable-line no-unused-vars
+    function _settlePostLoad() {
         const results = state.fileState.results;
-        if (!startWatch) {
-            transition("LOADED");
-            return;
-        }
         if (results && allPhasesComplete(results)) {
             transition("LOADED");
         } else {
@@ -684,11 +670,15 @@
     }
 
     // ----- Status helper ----------------------------------------
+    /* Through the ONE status writer (`lib/status.js`, loaded on both pages
+     * that mount this module): the severity vocabulary is its, and a line
+     * rewritten with the same words -- the follow's progress line, every
+     * 2 s -- is left alone rather than re-announced to a screen reader.
+     * A missing slot stays silent here: /spectrum-calculation has no
+     * Results panel, and its absence is not a bug. */
     function setStatus(el, msg, kind) {
         if (!el) return;
-        el.textContent = msg || "";
-        el.classList.remove("ok", "error", "muted", "warn");
-        if (kind) el.classList.add(kind);
+        window.molbuilder.status.set(el, msg || "", kind || null);
     }
 
     /* A notice that REPLACES what a host holds.  The message is set
@@ -1062,25 +1052,22 @@
 
     // (loadResults removed 2026-05-18: the in-template multipart-
     // upload affordance is gone, replaced by the server-side path
-    // loader below (els.loadPathBtn) and the sidebar's "Load from
-    // current selection" path published via spectra/page.js.  The
-    // /api/spectra/load endpoint still accepts multipart upload --
-    // it just has no client today.)
+    // loader below.  The /api/spectra/load endpoint still accepts
+    // multipart upload -- it just has no client today.)
 
-    // ----- Load once by server-side path -----------------------
+    // ----- Load by server-side path ----------------------------
     //
     // Same /api/spectra/load endpoint as the file-upload path, but
     // with {path: "<server-side path>"} so the server reads the
-    // file directly.  This is the primary path for users running
-    // molbuilder on the same machine as their spectra.py job --
-    // no re-upload after every phase write.
+    // file directly -- no re-upload after every phase write.
     /** THE one route to `/api/spectra/load` (`results.md` § 4).
      *
      *  There were two, and that was the defect underneath everything else:
-     *  `loadByPath` read the filename out of the DOM box
-     *  (`els.watchPath.value`) and `watchTick` read it out of the state
-     *  (`state.fileState.path`).  Two sources of truth for *which file is
-     *  this*, each with its own copy of the abort + sequence-guard dance.
+     *  `loadByPath` read the filename out of a DOM box and `watchTick` read
+     *  it out of the state (`state.fileState.path`).  Two sources of truth
+     *  for *which file is this*, each with its own copy of the abort +
+     *  sequence-guard dance.  (The box itself went on 2026-09-28; the path
+     *  is an argument now.)
      *
      *  One door, and the answer comes back WITH the name it was asked for,
      *  so no caller is in a position to write it under another.
@@ -1089,7 +1076,7 @@
     // from the argument.  `/api/spectra/load` does not send a path, and it
     // must not be made to: the route resolves through
     // `_resolve_within_roots` (~ and $VARS expanded, symlinks followed), so
-    // a server-echoed path would not equal the string in the path box and
+    // a server-echoed path would not equal the string the caller holds and
     // APPLY would drop every payload.  One string feeds both sides.
     async function fetchResults(path, signal) {
         const r = await fetch("/api/spectra/load", {
@@ -1101,29 +1088,20 @@
         return { path: path, body: await r.json() };
     }
 
-    async function loadByPath() {
-        const path = (els.watchPath.value || "").trim();
-        if (!path) {
-            setStatus(els.watchStatus, "Enter a path first.", "error");
-            return;
-        }
+    /** Load the file ``path`` names -- the dropdown's pick, a Refresh, a
+     *  return to the tab, or the registry's hot swap -- and FOLLOW it while
+     *  its run is still going (web/spectra.md § 7): `_settlePostLoad` starts
+     *  the poll when a phase the description asked for is unfinished, and
+     *  `watchTick` stops it when the last one lands. */
+    async function loadByPath(path) {
+        path = String(path || "").trim();
+        if (!path) return;
         setStatus(els.watchStatus, "Loading " + path + "…", "muted");
         // Contract § 2: file-switch / Load -> transition('LOADING').
         // Aborts loadAbort + watchAbort, clears watchInFlight, stops
         // the watchTimer if running, empties fileState (sets path),
-        // and resets viewState.  Pre-PR-3 the inline aborts + path write
-        // lived here;
-        // PR 3 centralizes them in transition() for a single source
-        // of truth.
-        //
-        // Subtle: pre-PR-3 the watchTimer was NOT cleared by Load-
-        // once (K2 2026-06-14: "user still wants live updates").
-        // PR 3 inverts: Load-once stops the timer.  Rationale: the
-        // user clicking "Load once" while a watch is running is an
-        // explicit "stop watching, show me this snapshot" gesture;
-        // they can click "Start watching" again if they want polls.
-        // This also matches contract § 5 ("Refresh = file-switch")
-        // which forbids partial resets.
+        // and resets viewState -- the same reset for a new file and
+        // for a Refresh of this one (contract § 5: no partial resets).
         transition("LOADING", { path: path });
         state.lifecycle.loadAbort = new AbortController();
         const signal = state.lifecycle.loadAbort.signal;
@@ -1144,6 +1122,7 @@
             setStatus(els.watchStatus,
                       "Network error: " + exc.message, "error");
             transition("ERROR");
+            _announceReady({ error: exc.message });
             return;
         }
         // Contract § 4 Invariant 1, asked of the ANSWER'S OWN IDENTITY.
@@ -1165,101 +1144,72 @@
                     + body.actual_version + "). "
                     + "Update molbuilder or use a matching script version.";
             } else if (body.kind === "not_found") {
+                // The dropdown lists files that exist, so this one went
+                // between the listing and the read.
                 msg = "File not found at " + path
-                    + ".  If the run is still in equilibrium SCF, "
-                    + "click 'Start watching' to poll until the first "
-                    + "phase checkpoint appears.";
+                    + " -- it was removed after the folder was listed.";
             }
             setStatus(els.watchStatus, msg, "error");
             transition("ERROR");
+            _announceReady({ error: msg });
             return;
         }
         renderResults(body.results, path);
         updatePhaseIndicator(body.results);
-        setStatus(els.watchStatus, "Loaded.", "ok");
-        // Load-once: no polling.  Transition to LOADED regardless
-        // of completion -- the user explicitly asked for a snapshot.
-        _settlePostLoad(false);
-        // Signal "first render visible" so the /results tab-level
-        // picker drops its "Parsing…" status.  Deferred via
-        // double-rAF so the browser paints the spectra chart +
-        // mode-table content before the picker meta clears -- see
-        // ``lib/trajectory/core.js`` for the reasoning behind the
-        // double-tick wait.
-        try {
-            const dispatch = () => document.dispatchEvent(new CustomEvent(
-                window.molbuilder.constants.EVENT_INSPECTOR_READY,
-                { detail: { inspector: "spectra" } }
-            ));
-            if (typeof requestAnimationFrame === "function") {
-                requestAnimationFrame(() => requestAnimationFrame(dispatch));
-            } else {
-                dispatch();
-            }
-        } catch (_) { /* see lib/trajectory/core.js for context */ }
+        // LOADED when every asked-for phase is done, else WATCHING: a
+        // run still going is followed from here (web/spectra.md § 7).
+        _settlePostLoad();
+        _showRunStatus(body.results);
+        _announceReady({});
+    }
+
+    /* THE LOAD HAS ENDED -- drawn, or refused with its reason on the status
+     * line (the shared inspector door, lib/inspectors/lifecycle.js); a
+     * refused load used to leave the cover over its own error for the tab's
+     * 15 s safety timer (the Results-tab review, 2026-09-28). */
+    function _announceReady(detail) {
+        window.molbuilder.inspectorLifecycle.announceReady("spectra", detail);
+    }
+
+    /** The status line for a result: finished, or where the run is now --
+     *  and "following" only while the poll actually runs, read off the
+     *  machine the settle just moved, never re-derived beside it.  By ROLE,
+     *  like the rest of the viewer: it names the phases the file's own
+     *  flags carry, never a switch only one engine has. */
+    function _showRunStatus(results) {
+        if (state.machine === "WATCHING") {
+            setStatus(els.watchStatus, _watchProgressLine(results)
+                      + " — following, every "
+                      + (WATCH_INTERVAL_MS / 1000) + " s.", "muted");
+        } else if (allPhasesComplete(results)) {
+            const n = (results.modes || []).length;
+            setStatus(els.watchStatus, "Run complete ✓ — " + n + " mode"
+                      + (n === 1 ? "" : "s") + ".", "ok");
+        } else {
+            setStatus(els.watchStatus,
+                      _watchProgressLine(results) + ".", "muted");
+        }
     }
 
     // ----- Live-watch poller (spec § 6.1) -----------------------
     //
     // Polls /api/spectra/load { path: <...> } every WATCH_INTERVAL_MS
-    // while a job is running.  The engine writes <job>.spectra.json
-    // atomically at each phase boundary, so each poll either:
-    //   * gets a 404 (file not written yet -- equilibrium SCF still
-    //     in flight); shows "Waiting..." and keeps polling.
-    //   * gets a parsed SpectraResults; re-renders the UI with
-    //     whatever phases are populated so far.
+    // while a job is running -- started by `_settlePostLoad` when a load
+    // finds a phase still to finish.  The engine writes <job>.spectra.json
+    // atomically at each phase boundary, so each poll gets a parsed
+    // SpectraResults and re-renders the UI with whatever phases are
+    // populated so far.
     //
-    // Auto-stops when allPhasesComplete() returns true, when the
-    // user clicks Stop, or after WATCH_MAX_ERRORS consecutive
-    // transient failures.
-    function startWatch() {
-        const path = (els.watchPath.value || "").trim();
-        if (!path) {
-            setStatus(els.watchStatus, "Enter a path first.", "error");
-            return;
-        }
-        if (state.lifecycle.watchTimer) return;  // already watching
-        // Contract § 2: Start-watching = transition('LOADING') with
-        // the user's path (full reset including any prior fileState
-        // from a previous Load-once), then transition('WATCHING')
-        // which starts the timer.  Same reset matrix as Load-once;
-        // the difference is the post-load transition target.
-        transition("LOADING", { path: path });
-        els.watchBtn.disabled     = true;
-        els.watchStopBtn.disabled = false;
-        els.watchPath.disabled    = true;
-        setStatus(els.watchStatus,
-                  "Watching " + path + " every "
-                  + (WATCH_INTERVAL_MS / 1000) + " s...", "muted");
-        // First tick immediately so the user doesn't wait
-        // WATCH_INTERVAL_MS before seeing any feedback.  The
-        // immediate watchTick() will call _settlePostLoad(true) on
-        // success, which transitions to WATCHING or LOADED.
-        watchTick();
-        // If the immediate tick didn't already transition us to
-        // WATCHING (e.g. the file 404'd and watchTick returned
-        // before _settlePostLoad), explicitly start the timer here
-        // so polling continues.  transition('WATCHING') is
-        // idempotent.
-        if (state.machine !== "WATCHING" && state.machine !== "LOADED") {
-            transition("WATCHING");
-        }
-    }
-
+    // Stops by itself when allPhasesComplete() returns true, when the
+    // file goes away, or after WATCH_MAX_ERRORS consecutive transient
+    // failures -- and with the inspector, when another file is picked
+    // or it is disposed.
     function stopWatch(reason) {
-        // Contract § 2: Stop-watching transitions to LOADED (the
-        // file is no longer being polled but the loaded snapshot
-        // remains visible).  Pre-PR-3 this nulled watchPath which
-        // wiped the fileState.path; PR 3 keeps the path so the
-        // user can see what they were watching.
+        // Contract § 2: stop following -> LOADED (the file is no longer
+        // being polled but the loaded snapshot remains visible, and
+        // fileState.path is kept so the status names what it was).
         transition("LOADED");
-        els.watchBtn.disabled     = false;
-        els.watchStopBtn.disabled = true;
-        els.watchPath.disabled    = false;
-        if (reason) {
-            setStatus(els.watchStatus, reason,
-                      reason.startsWith("Run complete") ? "ok" : "muted");
-        }
+        if (reason) setStatus(els.watchStatus, reason, "muted");
     }
 
     async function watchTick() {
@@ -1303,8 +1253,7 @@
         // (2026-09-04) briefly rested on it doing both.  It does not:
         //
         //   watching A -> tick resolves, continuation queued
-        //   -> Refresh / "Load once" fires for A (neither button is
-        //      disabled during a watch, unlike Start)
+        //   -> Refresh fires for A (a reload of the same file)
         //      -> transition('LOADING') aborts us, stops the timer,
         //         empties results
         //   -> our continuation runs.  myPath === fileState.path, both
@@ -1320,45 +1269,20 @@
         if (signal.aborted) return;
         if (myPath !== state.fileState.path) return;
         if (!body.ok) {
-            if (body.kind === "not_found") {
-                setStatus(els.watchStatus,
-                          "Waiting for first checkpoint (equilibrium "
-                          + "SCF still running)...", "muted");
-                return;
-            }
-            stopWatch("Stopped: " + (body.error || "load failed"));
+            // The engine replaces the file atomically, so a poll never
+            // finds it half-written or briefly missing: an error here --
+            // the file gone included -- ends the follow, and says why.
+            stopWatch("Stopped following: " + (body.error || "load failed"));
             return;
         }
         state.lifecycle.watchErrors = 0;
         // Render whatever phases are populated so far.
         renderResults(body.results, myPath);
         updatePhaseIndicator(body.results);
-        // _settlePostLoad(true): if allPhasesComplete -> LOADED
-        // (stops timer); else -> WATCHING (keeps polling).  This
-        // replaces the inline allPhasesComplete -> stopWatch dance
-        // with the unified post-load settle helper used by both
-        // loadByPath and watchTick.
-        _settlePostLoad(true);
-        // Status banner: completion-message OR progress-line.
-        if (allPhasesComplete(body.results)) {
-            setStatus(els.watchStatus,
-                      "Run complete ✓  ("
-                      + (body.results.modes || []).length
-                      + " modes; "
-                      + (body.results.config && body.results.config.compute_raman
-                         ? "Raman ✓ " : "")
-                      + (body.results.config
-                         && body.results.config.es_mode_selection
-                         && body.results.config.es_mode_selection !== "skip"
-                         ? "ES ✓ " : "")
-                      + ")", "ok");
-            // Restore button enablement that stopWatch normally does.
-            els.watchBtn.disabled     = false;
-            els.watchStopBtn.disabled = true;
-            els.watchPath.disabled    = false;
-        } else {
-            setStatus(els.watchStatus, _watchProgressLine(body.results), "muted");
-        }
+        // The same settle as a load: allPhasesComplete -> LOADED (the
+        // timer stops), else WATCHING (keeps polling).
+        _settlePostLoad();
+        _showRunStatus(body.results);
     }
 
     function _watchProgressLine(results) {
@@ -1424,10 +1348,14 @@
         els.phaseIndicator.hidden = false;
         const dots = els.phaseIndicator.querySelectorAll(".phase-dot");
         dots.forEach(dot => {
-            const ph = dot.dataset.phase;   // relaxation|frequencies|raman|es
+            const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
             // A phase the file's route does not have shows no dot at all
-            // (web/spectra.md § 3): SIESTA's has neither Raman nor the probe.
+            // (web/spectra.md § 3): SIESTA's has no Raman, no infrared and
+            // no probe.  Infrared's flag is "" in a file written before it
+            // existed -- no record, so no dot rather than one left empty.
             const has = ph === "raman" ? _routeHas(results, "compute_raman")
+                      : ph === "ir" ? (_routeHas(results, "compute_ir")
+                                       && results.phase_ir !== "")
                       : ph === "es" ? _routeHas(results, "es_mode_selection")
                       : true;
             const wrap = dot.closest(".phase");
@@ -2295,7 +2223,7 @@
             grid:   tok("--border-soft",     "#2c313a"),
             axis:   tok("--border-strong",   "#3a3f48"),
             ink:    tok("--text-secondary",  "#a8aebb"),
-            dim:    tok("--text-muted",      "#6c7280"),
+            dim:    tok("--text-muted",      "#959ba7"),
             homo:   tok("--accent",          "#6ba6ff"),
             lumo:   tok("--warn-soft",       "#d8a64b"),
             // The spectrum's sticks: a real mode, an imaginary one, the
@@ -3642,10 +3570,7 @@
         _on(document, C.EVENT_REFRESH_REQUESTED, () => {
             const p = state.fileState.path;
             if (!p) return;     // not yet loaded; nothing to refresh
-            // Match the els.watchPath input so loadByPath picks up
-            // the current value (loadByPath reads from the DOM).
-            if (els.watchPath) els.watchPath.value = p;
-            loadByPath();
+            loadByPath(p);
         });
     }
 
@@ -3694,11 +3619,7 @@
         els.thermoCurves      = $("thermo-curves");
         els.thermoDecomp      = $("thermo-decomp");
         els.esSummary         = $("es-summary");
-        // Load-by-path + live-watch.
-        els.watchPath         = $("watch-path");
-        els.loadPathBtn       = $("load-path-btn");
-        els.watchBtn          = $("watch-btn");
-        els.watchStopBtn      = $("watch-stop-btn");
+        // The run's progress: the status line and the phase dots.
         els.watchStatus       = $("watch-status");
         els.phaseIndicator    = $("phase-indicator");
         els.broadeningFwhm    = $("broadening-fwhm");
@@ -3754,16 +3675,14 @@
 
         // --- Inspect-side wiring -----------------------------------
         //
-        // Gated on the partial's ``watch-path`` input.  Post-step 2.5
-        // /spectra drops the inspect-side partial entirely (the page
-        // becomes generate-only), so this whole block must no-op when
-        // none of the inspect-side ids exist; the same module mounts
-        // cleanly into either consumer.
-        const hasInspectSide = Boolean(els.watchPath);
+        // Gated on the partial's Results panel.  Post-step 2.5 /spectra
+        // drops the inspect-side partial entirely (the page becomes
+        // generate-only), so this whole block must no-op when none of
+        // the inspect-side ids exist; the same module mounts cleanly
+        // into either consumer.  (It gated on the path box until that
+        // went, 2026-09-28.)
+        const hasInspectSide = Boolean(els.resultsSummary);
         if (hasInspectSide) {
-            _on(els.loadPathBtn,  "click", loadByPath);
-            _on(els.watchBtn,     "click", startWatch);
-            _on(els.watchStopBtn, "click", function () { stopWatch("Stopped."); });
             // FWHM-controlled broadening re-renders the chart in
             // place.
             /* THE METHODS COPY BUTTON AND THE DISPLAY FLOOR ARE
@@ -3839,25 +3758,12 @@
     // per-load listener-pile-up bug there).
     _wireRefreshListener();
 
-    // If the caller asked for an initial file (the /results-side
-    // mount passes the sidebar's current selection via opts.file),
-    // load it now.  /spectra's bootstrap doesn't pass opts.file --
-    // the user types into watch-path or click-and-loads via the
-    // sidebar handoff there.  Without this call /results would
-    // mount the inspector but leave it empty + force the user to
-    // re-pick the same file in the inspector's loader bar, which
-    // is exactly the UX confusion the registry dispatch is meant
-    // to eliminate.
-    if (opts.file && els.watchPath) {
-        // Pre-fill the watch-path input so the inspector matches
-        // the visual state it'd be in if the user had typed the
-        // path themselves and clicked Load (the existing
-        // loadByPath reads from els.watchPath.value).  Guarded
-        // on els.watchPath because /spectra (generate-only after
-        // step 2.5) has no inspect-side ids and the assignment
-        // would NPE; /results always has the partial mounted.
-        els.watchPath.value = opts.file;
-        loadByPath();
+    // The file the caller mounted us for -- /results passes the
+    // dropdown's pick as opts.file, the one route to a file.  Guarded on
+    // the inspect side because /spectra (generate-only after step 2.5)
+    // mounts this module with no Results panel and passes no file.
+    if (opts.file && els.resultsSummary) {
+        loadByPath(opts.file);
     }
 
     // ---- pageshow / visibilitychange: force-refresh on tab re-entry //
@@ -3872,21 +3778,16 @@
     //
     // Guard on ``state.results !== null`` so a never-loaded inspector
     // doesn't fire spurious /api/spectra/load on every visibility
-    // event.  ``loadByPath()`` is path-driven (reads from
-    // ``els.watchPath.value``), so we don't need to track the path
-    // separately -- it's already pinned in the DOM and survives
-    // bfcache.
+    // event; the file is the one on screen, `fileState.path`.
     function _onPageShow(_evt) {
-        if (state.results !== null && els.watchPath
-            && els.watchPath.value) {
-            loadByPath();
+        if (state.results !== null && state.fileState.path) {
+            loadByPath(state.fileState.path);
         }
     }
     function _onVisibilityChange(_evt) {
         if (document.visibilityState === "visible"
-            && state.results !== null
-            && els.watchPath && els.watchPath.value) {
-            loadByPath();
+            && state.results !== null && state.fileState.path) {
+            loadByPath(state.fileState.path);
         }
     }
     _on(window,   "pageshow",          _onPageShow);
@@ -3946,16 +3847,12 @@
          * Swap the displayed spectra results to ``path`` without
          * re-mounting the inspector.  Mirrors lib/trajectory/core.js's
          * load(path) so the /results registry can hot-swap files
-         * between dispatch ticks instead of dispose → remount.
-         * Equivalent to typing into ``watch-path`` and clicking
-         * "Load once"; uses the same loadByPath path internally
-         * (POST /api/spectra/load, abort + render + status update).
+         * between dispatch ticks instead of dispose → remount.  The
+         * same door as the first load (POST /api/spectra/load, abort +
+         * render + status update, and a run still going followed).
          */
         load(path) {
-            if (els.watchPath) {
-                els.watchPath.value = path;
-            }
-            return loadByPath();
+            return loadByPath(path);
         },
 
         /* THE VIEWER THIS PAGE MOUNTED, handed over by the page that mounted

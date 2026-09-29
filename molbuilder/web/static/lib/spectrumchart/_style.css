@@ -21,7 +21,12 @@
     --spectrumchart-stick:     #7f9cc0;
     --spectrumchart-chosen:    #7cc4a4;   /* the selected mode */
     --spectrumchart-curve:     #9aa6b8;
-    --spectrumchart-pending:   #6b7280;   /* strength not computed (§ 6.2) */
+    /* strength not computed (§ 6.2).  TEXT as well as marks -- the note
+       inside the plot -- so it clears 4.5:1 on the chart's ground: 5.8.  It
+       was #6b7280 (3.3:1) until 2026-09-28, when the app's muted text was
+       raised to this value and the chart, matching the app by choice
+       (§ 11), followed in this one block. */
+    --spectrumchart-pending:   #959ba7;
     --spectrumchart-imaginary: #d98c7a;   /* not at rest (§ 6.4) */
     --spectrumchart-hovered:   #b9c8dc;   /* the mode a click would pick right now */
 

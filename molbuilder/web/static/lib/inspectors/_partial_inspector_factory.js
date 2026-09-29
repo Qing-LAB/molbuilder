@@ -57,7 +57,7 @@
     function _renderError(host, displayName, file, reason) {
         host.innerHTML = "";
         const card = document.createElement("section");
-        card.className = "inspector-card error-card";
+        card.className = "card inspector-card error-card";
         const title = document.createElement("h2");
         title.className = "inspector-card-title";
         title.textContent = displayName + " inspector failed to mount";
@@ -77,6 +77,20 @@
         reasonLine.appendChild(code);
         card.appendChild(reasonLine);
         host.appendChild(card);
+        _announceEnded(reason);
+    }
+
+    /* A mount that ends in an error card has ENDED: say so, the way a
+     * rendered viewer does, so the tab's loading cover and the picker's
+     * "Parsing…" line do not sit over the card for their safety timers
+     * (the Results-tab review, 2026-09-28). */
+    function _announceEnded(reason) {
+        try {
+            document.dispatchEvent(new CustomEvent(
+                ((root.molbuilder || {}).constants || {})
+                    .EVENT_INSPECTOR_READY || "molbuilder:inspector:ready",
+                { detail: { error: String(reason || "") } }));
+        } catch (_) { /* older headless runners */ }
     }
 
     function makePartialInspector(opts) {

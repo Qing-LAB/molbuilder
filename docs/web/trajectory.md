@@ -106,6 +106,15 @@ every criterion, and the SCF-residual plot draws the line of the one it plots.
 
 ## 4. Is it done, and how fast?
 
+**First, the panel's own status line** (`#trajectory-status`, above the
+badge). It carries what nothing else on the panel says: a load that was
+refused and why, a viewer that could not mount, an export's result — and, on
+an ordinary load, only where the unit cell came from when the run supplied
+it. It is otherwise empty. *(Added 2026-09-28: until then the partial had no
+such line and every one of those messages was dropped on the Results tab.
+It does not repeat the file's modification time or a frame count — the badge
+below carries the run's time, and the frame bar its frames.)*
+
 The **run badge** reads the open file's own ending (`run_state`,
 [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is *Finished*, `stopped`
 or `out_of_memory` is *Stopped*, anything else *Running*. It reads the file; the

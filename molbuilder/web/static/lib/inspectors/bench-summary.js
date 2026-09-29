@@ -43,12 +43,10 @@
         failed:        "bad",
     };
 
-    const el = (tag, cls, text) => {
-        const n = document.createElement(tag);
-        if (cls) n.className = cls;
-        if (text !== undefined && text !== null) n.textContent = String(text);
-        return n;
-    };
+    /* The one element builder, `lib/dom.js`, loaded before this file on
+     * /results.  Looked up when called, so a page that has not loaded it
+     * still registers this viewer and fails only where it draws. */
+    const el = (tag, cls, text) => root.molbuilder.dom.el(tag, cls, text);
 
     /** s/iter as the number the server measured, or an em-dash.  No
      *  rounding that changes the value: two decimals is presentation,
@@ -497,7 +495,7 @@
 
     function render(host, data) {
         host.innerHTML = "";
-        const wrap = el("div", "bench-summary");
+        const wrap = el("div", "bench-summary card");
 
         const head = el("div", "bench-head");
         head.appendChild(el("h2", "bench-title", data.name || "sweep"));
@@ -668,6 +666,13 @@
                     return;                       // and stop polling a refusal
                 }
                 render(host, body);
+                /* FIRST RENDER ON SCREEN: the picker drops its "Parsing..."
+                 * line on this event (`lib/results/file-picker.js`) rather than
+                 * waiting out its fallback timer -- as the sweep presenter does. */
+                root.document.dispatchEvent(new root.CustomEvent(
+                    ((root.molbuilder || {}).constants || {})
+                        .EVENT_INSPECTOR_READY || "molbuilder:inspector:ready",
+                    { detail: { inspector: "bench-summary" } }));
                 state.timer = root.setTimeout(refresh, POLL_MS);
             }
             refresh();

@@ -43,7 +43,7 @@
 <script src="{{ url_for('static', filename='lib/constants.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/status.js') }}"></script>
 </head>
-<body data-sidebars="projects">
+<body data-sidebars="projects" data-content-links="accent">
 
 {% set active_tab = "results" %}
 {% include "_app_header.html" %}
@@ -117,7 +117,7 @@
        documents the dispatch contract -- adding a new file type to
        the registry should add a line here so the empty-state
        cheatsheet stays accurate. #}
-    <div id="results-fallback" class="results-fallback">
+    <div id="results-fallback" class="card results-fallback">
       <h2 class="inspector-card-title">Pick a file to inspect</h2>
       {# WHAT THIS DIRECTORY IS, from the server's own answer
          (`/api/results/dir` -> `place`, project-layout.md § 1.4a).  Filled
@@ -154,8 +154,8 @@
         </li>
         <li>
           <code>*.spectra.json</code>
-          &mdash; vibrational spectra (Raman / IR) + 3D mode
-          animation
+          &mdash; a vibration: its modes, their 3D animation, and the
+          infrared / Raman spectrum where the run computed strengths
         </li>
         <li>
           <code>*.xyz</code> <code>*.pdb</code>
@@ -165,6 +165,16 @@
           <code>job-set.json</code>
           &mdash; a benchmark sweep: every trial compared, what each
           asked for beside what it ran, and the verdict
+        </li>
+        <li>
+          <code>*.transport.json</code>
+          &mdash; a transport calculation: the I&ndash;V table, G(E<sub>F</sub>)
+          and what is not drawn
+        </li>
+        <li>
+          <code>*.fc-sweep.json</code>
+          &mdash; a SIESTA vibration's displacement sweep: each
+          force-constant stage and every mode compared across them
         </li>
       </ul>
       <p class="inspector-card-note results-fallback-source-hint">
@@ -228,6 +238,9 @@
    it omitted warning-modal.js. #}
 {% include "_molview_scripts.html" %}
 <script src="{{ url_for('static', filename='lib/inspectors/lifecycle.js') }}"></script>
+{#- The one element builder the record viewers below share (bench-summary,
+    transport, fc-sweep); before them, since they are deferred. -#}
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 {# An ES module now: it exports `render`/`clear` for the modules that import
    it (lib/molview) and still publishes `molbuilder.validationFindings` for the

@@ -992,12 +992,12 @@ class TestTheMachineChoiceIsAskedNotGuessed:
         # and it says the choice is required, in the card the design uses
         assert 'id="ts-target-needs"' in body
 
-        # The `[hidden]`-precedence guard this used to pin by name is covered
-        # by `test_css_hidden_attribute_audit.py`, which DERIVES the ids JS
-        # toggles (58 of them, `#ts-target-state` among them) and requires a
-        # guard for each.  A lint that quantifies beats two remembered names:
-        # verified 2026-09-06 by deleting `.ts-state[hidden]` and watching the
-        # audit name it.
+        # The `[hidden]`-precedence guard this used to pin by name was
+        # covered by `test_css_hidden_attribute_audit.py`, which DERIVED the
+        # ids JS toggles (58 of them, `#ts-target-state` among them) and
+        # required a guard for each -- until that audit was retired on
+        # 2026-09-10 (`082ba979`).  So the guard is UNTESTED now, and held by
+        # review (process/code-audit.md § 3.1).
 
     def test_the_route_lists_the_records_and_says_when_a_choice_is_required(
             self, web_client, tmp_path, monkeypatch):
@@ -1122,9 +1122,10 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     # test_task_setup_prep_e2e.py::
     # test_choosing_a_machine_shows_what_a_prep_would_resolve reads the
     # rendered block and checks the preamble's value AND the file it came
-    # from.  The `[hidden]` guard belongs to
-    # test_css_hidden_attribute_audit.py, which derives `#ts-resolved` with
-    # the other 57.
+    # from.  The `[hidden]` guard belonged to
+    # test_css_hidden_attribute_audit.py, which derived `#ts-resolved` with
+    # the other 57 -- retired on 2026-09-10 (`082ba979`), so the guard is
+    # untested now and held by review (process/code-audit.md § 3.1).
 
 
 

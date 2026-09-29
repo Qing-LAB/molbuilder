@@ -775,7 +775,7 @@
 /* `display:flex` on the class outranks the `hidden` attribute's own
    `display:none`, so a closed panel would stay in the layout while the code
    believed it was gone -- the failure `test_css_hidden_attribute_audit.py`
-   exists for. */
+   existed for (retired 2026-09-10, `082ba979`; the guard is review's now). */
 .ts-next-step[hidden] { display: none; }
 
 /* ---------- what a prep will write, per stage (task-setup.md 7.1) --- */

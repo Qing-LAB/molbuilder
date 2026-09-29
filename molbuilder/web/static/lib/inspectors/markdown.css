@@ -14,7 +14,7 @@
     min-height:        60vh;
     background:        var(--ps-bg, #181818);
     color:             var(--ps-fg, #dddddd);
-    font:              0.9rem system-ui, -apple-system, sans-serif;
+    font:              0.9rem var(--font-sans);
 }
 
 .md-toolbar {
