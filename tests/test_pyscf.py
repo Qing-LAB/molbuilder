@@ -193,12 +193,12 @@ def test_stability_analysis_skipped_for_closed_shell(h2o):
     `mf.stability()` call -- closed-shell stability is rarely the
     user's concern and the call adds noise to a tutorial script
     that's already dense.  Open-shell coverage is in
-    test_science_gaps.test_gap_4_pyscf_uks_emits_stability_analysis."""
+    `test_pyscf_stability.py`."""
     text = render_script(h2o, PySCFConfig(spin_treatment="restricted"))
     code_lines = [ln for ln in text.splitlines()
                   if not ln.lstrip().startswith("#")]
-    assert not any("mf.stability(" in ln for ln in code_lines), (
-        "RKS script should not emit a non-commented mf.stability() call"
+    assert not any("_mb_stability" in ln for ln in code_lines), (
+        "RKS script should not emit the stability check"
     )
 
 

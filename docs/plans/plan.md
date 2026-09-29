@@ -4720,8 +4720,16 @@ reviewers' probes (the archive's § E lists) among its runs.
   Contract: `job-contracts.md` § 4.2a, `running-a-job.md` § 3.5,
   `vibration.md` § 5.3. Test: one road test (the ladder prepped through the
   CLI on the measured relax), red under both mutations.
-  *Left*: PO-C2 (a capability the engine lacks, declared), PS-C10 with V1.31
-  (the run's own relaxation record on its pair), then the full review.
+  *Step 4 done 2026-09-29* (PO-C2): the open-shell stability check asks the
+  mean field whether it has one before calling it — gpu4pyscf's GPU classes
+  declare `stability = NotImplemented`, and calling that killed every
+  open-shell GPU run before its first step — and says NOT CHECKED and why
+  (`pyscf.md` § 7.3); arrays come to the host before the comparison. Test: a
+  real O2 UHF run on this machine's GPU through the road, red when the deck
+  calls without asking; the stability text tests re-anchored, the duplicate
+  gap test retired.
+  *Left*: PS-C10 with V1.31 (the run's own relaxation record on its pair),
+  then the full review.
 
 ---
 

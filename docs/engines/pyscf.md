@@ -665,6 +665,15 @@ and finding out afterwards helps nobody. Restricted and restricted-open runs are
 not checked: a restricted→unrestricted instability is a singlet-versus-triplet
 question you would have asked deliberately.
 
+**A mean field that declares no stability analysis is asked, never called.**
+gpu4pyscf's GPU classes set `stability = NotImplemented` (gpu4pyscf 1.8.1
+`scf/uhf.py`, `scf/hf.py`, `scf/rohf.py`), and the check runs after the GPU
+promotion (§ 2a) — so on the GPU the script asks whether the mean field has
+one, and without one says **NOT CHECKED** and why, the outcome a check that
+cannot run always reports. *(It called it until 2026-09-29: calling
+`NotImplemented` raises a `TypeError` nothing expected, and every open-shell run
+on a GPU died before its first step — the M11 review, PO-C2.)*
+
 **Why the energy and not the orbitals.** Comparing orbital *coefficients* to
 decide "did this change" looks obvious and is wrong. A degenerate shell — O₂'s
 π pair, any symmetric radical — can be rotated freely within its degenerate

@@ -1149,22 +1149,39 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
         "_MB_STABILITY_ROUNDS = 0",
         "_MB_STABLE = None          # None = could not check",
         "import numpy as _mb_np",
-        "try:",
-        "    for _r in range(1, _MB_STABILITY_MAX + 1):",
-        "        _internal = mf.stability()[0]",
-        "        if _mb_np.allclose(_mb_np.asarray(_internal),",
-        "                           _mb_np.asarray(mf.mo_coeff)):",
-        "            _MB_STABLE = True          # nothing suggested at all",
-        "            break",
-        "        _e_prev = e",
-        "        e = mf.kernel(mf.make_rdm1(_internal, mf.mo_occ))",
-        "        if e < _e_prev - _MB_STABILITY_ETOL:",
-        "            _MB_STABILITY_ROUNDS = _r",
-        '            print(f"[molbuilder] stability round {_r}: '
+        # ASKED, NEVER CALLED (`engines/pyscf.md` § 7.3): gpu4pyscf's GPU
+        # classes DECLARE they have no stability analysis -- `stability =
+        # NotImplemented` -- and calling that raises a TypeError nothing
+        # here expected, which killed every open-shell GPU run before its
+        # first step (the M11 review, PO-C2).  The engine's own declaration
+        # is read instead, and a check that cannot run says so below.
+        "_mb_stability = getattr(mf, 'stability', None)",
+        "",
+        "def _mb_host(_a):",
+        "    # a GPU array onto the host, for the comparison below",
+        "    return _mb_np.asarray(_a.get() if hasattr(_a, 'get') else _a)",
+        "",
+        "if not callable(_mb_stability):",
+        '    print("[molbuilder] stability: NOT CHECKED -- this mean field '
+        'declares no stability analysis (on the GPU, gpu4pyscf does not '
+        'implement it)")',
+        "else:",
+        "    try:",
+        "        for _r in range(1, _MB_STABILITY_MAX + 1):",
+        "            _internal = _mb_stability()[0]",
+        "            if _mb_np.allclose(_mb_host(_internal),",
+        "                               _mb_host(mf.mo_coeff)):",
+        "                _MB_STABLE = True      # nothing suggested at all",
+        "                break",
+        "            _e_prev = e",
+        "            e = mf.kernel(mf.make_rdm1(_internal, mf.mo_occ))",
+        "            if e < _e_prev - _MB_STABILITY_ETOL:",
+        "                _MB_STABILITY_ROUNDS = _r",
+        '                print(f"[molbuilder] stability round {_r}: '
         'instability repaired, "',
-        '                  f"{_e_prev:.8f} -> {e:.8f} Hartree '
+        '                      f"{_e_prev:.8f} -> {e:.8f} Hartree '
         '(dE={e - _e_prev:+.3e})")',
-        "            continue",
+        "                continue",
         # The energy did not fall, so the orbitals stability() handed
         # back are not a better solution -- they are the SAME solution
         # expressed differently.  Degenerate shells (O2's pi pair, any
@@ -1172,21 +1189,23 @@ def _emit_stability_block(cfg: PySCFConfig, v: bool) -> List[str]:
         # space, so a coefficient comparison flags them forever while
         # the physics is identical.  The energy is the criterion; the
         # coefficients are not.
-        "        _MB_STABLE = True",
-        '        print(f"[molbuilder] stability round {_r}: suggested '
+        "            _MB_STABLE = True",
+        '            print(f"[molbuilder] stability round {_r}: suggested '
         'orbitals gave no "',
-        '              f"further improvement (dE={e - _e_prev:+.3e}); '
+        '                  f"further improvement (dE={e - _e_prev:+.3e}); '
         'treating as stable. "',
-        '              f"Common for degenerate shells, which are rotated '
+        '                  f"Common for degenerate shells, which are rotated '
         'freely within "',
-        '              f"the degenerate space.")',
-        "        break",
-        "    else:",
-        "        _MB_STABLE = False",
-        "except (NotImplementedError, AttributeError) as _exc:",
+        '                  f"the degenerate space.")',
+        "            break",
+        "        else:",
+        "            _MB_STABLE = False",
+        "    except NotImplementedError as _exc:",
         # Law A: a check that could not run says so.  Silence would read
-        # as a clean bill of health.
-        '    print(f"[molbuilder] stability: NOT CHECKED -- this method '
+        # as a clean bill of health.  A method that HAS the call and
+        # refuses at run time answers this way; one that declares none
+        # was asked above and never called.
+        '        print(f"[molbuilder] stability: NOT CHECKED -- this method '
         'does not implement it ({_exc})")',
         "",
         "# One line, three distinguishable outcomes.",

@@ -37,10 +37,17 @@ def _jobset(*args):
     return CliRunner().invoke(jobset_group, [str(a) for a in args])
 
 
-def _run(tmp_path, monkeypatch, *, calculation, overrides):
-    """H2 at 0.95 Å, its one stage carrying ``overrides``, prepped and
-    launched directly — the bundle, the stage's state as the ladder reads it,
-    and what the run itself printed."""
+#: H2 at 0.95 Å, far from its minimum -- the relaxation's subject.
+_H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
+
+
+def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
+         molecule=_H2):
+    """``molecule``, its one stage carrying ``overrides`` and its template
+    ``template``'s values -- written by the hand-over's own writer
+    (`template_with_values`), since the electronic state binds every rung
+    and is the template's -- prepped and launched directly: the bundle, the
+    stage's state as the ladder reads it, and what the run itself printed."""
     from conftest import write_machine_record
     from molbuilder.jobset.model import FILENAME, JobSet
     from molbuilder.jobset.runstatus import jobset_status
@@ -53,8 +60,8 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides):
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
     StructureCodec().write(
-        Structure(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])),
+        Structure(elements=list(molecule[0]),
+                  positions=np.array(molecule[1], dtype=float)),
         tree / "P" / "structure" / "h2.xyz")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
@@ -64,6 +71,15 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides):
                 "--calculation", calculation)
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / "H2"
+    if template:
+        from molbuilder.config.pyscf import PySCFConfig
+        from molbuilder.template import (config_from_template,
+                                         template_path, template_with_values)
+        path = template_path(bundle, "H2")
+        cfg = dataclasses.replace(
+            config_from_template(path.read_text(), PySCFConfig), **template)
+        path.write_text(template_with_values(cfg, engine="pyscf",
+                                             calculation=calculation))
     task = read_task(bundle / "task.json")
     stage = dataclasses.replace(task.stages[0], overrides=dict(overrides))
     write_task(bundle / "task.json", dataclasses.replace(
@@ -170,3 +186,39 @@ def test_proceed_keeps_the_geometry_and_the_result_says_so(tmp_path,
         rx.get("warning") or ""), rx
     assert rx["converged"] is False, rx
     assert rx["max_force_eh_bohr"] is not None, rx
+
+
+def _a_gpu_is_visible() -> bool:
+    import shutil
+    import subprocess
+    if shutil.which("nvidia-smi") is None:
+        return False
+    r = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
+    return r.returncode == 0 and "GPU" in r.stdout
+
+
+def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
+        tmp_path, monkeypatch):
+    """gpu4pyscf's GPU classes DECLARE no stability analysis (``stability =
+    NotImplemented``), and the open-shell check runs after the GPU promotion:
+    the deck asks the mean field, says NOT CHECKED and why, and the run goes
+    on (`engines/pyscf.md` § 7.3).  Triplet O2, UHF/STO-3G, on the GPU.
+
+    MUTATION THIS MUST FAIL AGAINST: calling ``mf.stability()`` without
+    asking -- the deck before 2026-09-29, where calling ``NotImplemented``
+    raised a TypeError and every open-shell GPU run died before its first
+    step.
+    """
+    if not _a_gpu_is_visible():
+        pytest.skip("no NVIDIA GPU visible here")
+    bundle, state, said = _run(
+        tmp_path, monkeypatch, calculation="optimization",
+        molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
+        template={"method": "HF", "basis": "sto-3g",
+                  "spin_treatment": "unrestricted", "unpaired_electrons": 2},
+        overrides={"use_gpu": True, "geom_max_steps": 1,
+                   "on_nonconvergence": "proceed"})
+    assert "GPU acceleration ON" in said, said[-3000:]
+    assert ("stability: NOT CHECKED -- this mean field declares no stability "
+            "analysis") in said, said[-3000:]
+    assert state == "finished", said[-3000:]

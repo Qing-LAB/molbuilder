@@ -186,7 +186,9 @@ def test_soscf_still_reaches_the_stability_check():
     ``stability()`` -- probed on PySCF 2.13.0.)
     """
     t = _script(scf_soscf=True)
-    assert t.index("mf = mf.newton()") < t.index("_internal = mf.stability()[0]")
+    # the stability analysis is ASKED of the wrapped object (§ 7.3)
+    assert (t.index("mf = mf.newton()")
+            < t.index("_mb_stability = getattr(mf, 'stability', None)"))
 
 
 def test_soscf_documents_what_changes_underneath():

@@ -51,8 +51,8 @@ def test_stability_runs_before_the_geometry_optimization():
     """THE fix.  Optimizing on a saddle produces a wrong geometry and
     wrong frequencies; finding out afterwards helps nobody."""
     t = _script(optimize=True)
-    assert "_internal = mf.stability()[0]" in t
-    assert (t.index("_internal = mf.stability()[0]")
+    assert "_internal = _mb_stability()[0]" in t
+    assert (t.index("_internal = _mb_stability()[0]")
             < t.index("mol_eq, _GEOM_CONVERGED = relax(")), (
         "the stability check must precede the optimizer")
 
@@ -101,9 +101,12 @@ def test_the_log_distinguishes_every_outcome(needle):
 
 def test_a_method_that_cannot_be_checked_says_so():
     """Law A: a check that could not run reports it.  Silence would
-    read as a clean bill of health."""
+    read as a clean bill of health.  A mean field that DECLARES none (the
+    GPU's) is asked, never called; one that refuses at run time answers
+    through its NotImplementedError (`engines/pyscf.md` § 7.3)."""
     t = _script()
-    assert "except (NotImplementedError, AttributeError)" in t
+    assert "if not callable(_mb_stability):" in t
+    assert "except NotImplementedError" in t
     assert "NOT CHECKED" in t
 
 
@@ -115,7 +118,7 @@ def test_closed_shell_gets_no_stability_block_but_still_runs_scf():
     # comment elsewhere in the script mentions `mf.stability()` as a
     # thing the user could try, and a substring test reads that as a
     # call.  (Same error as the `.pyscf.log` wrapper test, fixed today.)
-    assert "_internal = mf.stability()[0]" not in t
+    assert "_internal = _mb_stability()[0]" not in t
     assert "=== Stage: SCF + stability ===" not in t
     assert "mf.kernel()" in t
 
