@@ -401,6 +401,51 @@ def test_the_freq_deck_is_written_at_the_relaxed_geometry_unchanged(
     np.testing.assert_allclose(record["applied_offset"], 0.0, atol=0.0)
 
 
+def test_the_freq_stage_leaves_the_inputs_relaxation_record_behind(
+        isolated_projects_root):
+    """The force-constant stage measures at the `relax` stage's geometry, so
+    the record the INPUT arrived with -- about the input's coordinates -- is
+    not judged there, while its calculation record still gives every stage
+    one electronic state (`engines/vibration.md` § 5.2a).
+
+    Found on the Au-BDT-Au spectrum (2026-09-29): with the input's record
+    carried along, every freq prep said it was "for a different geometry --
+    another frame of that run, or edited since".  The input here was relaxed
+    elsewhere, looser than this calculation, and arrives with both records.
+    """
+    import shutil
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.pyscf.stages import vibration_stages
+
+    struct = _h2()
+    struct.set_info("relaxation", {
+        "engine": "siesta", "source": "elsewhere.out", "n_steps": 3,
+        "force_tolerance_ev_ang": 0.04, "max_force_ev_ang": 0.03,
+        "max_force_free_ev_ang": 0.03, "held_atom_idxs": [0],
+        "held_atom_keys": [struct.geometry_lines()[0]], "converged": True,
+        "run_state": "finished",
+        "geometry_sha256": struct.geometry_fingerprint()})
+    struct.set_info("calculation", {
+        "engine": "siesta", "source": "elsewhere.fdf",
+        "contract": {"net_charge": 0, "spin_treatment": "restricted",
+                     "unpaired_electrons": 0}})
+
+    def the_relax_ran(dest):
+        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0")
+
+    dest, stage, text = _prep(
+        isolated_projects_root, struct, SiestaConfig(system_label="H2"),
+        vibration_stages("siesta", already_relaxed=False), "siesta",
+        stage="freq", calculation="vibration", name="H2",
+        before_prep=the_relax_ran)
+    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt"))
+    assert "does not vouch" not in report.read_text(), report.read_text()
+    net_charge = next(l for l in text.splitlines()
+                      if l.startswith("# NetCharge:"))
+    assert "(recorded:" in net_charge and "elsewhere.fdf" in net_charge, (
+        net_charge)
+
+
 def test_a_relaxed_pairs_record_still_vouches_through_prep(
         isolated_projects_root):
     """The relaxation record a pair carries is judged against the pair.

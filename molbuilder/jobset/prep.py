@@ -752,7 +752,9 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     concluded, through the one SIESTA output parser -- with that run's
     relaxation record (`parse.contract.relaxation_of_output`), of the same
     output and the same parse, which the deck's `vibration` block carries to
-    the finish (§ 5.3) so nothing re-picks the attempt later.  The
+    the finish (§ 5.3) so nothing re-picks the attempt later -- and the
+    structure leaves the input's own relaxation record behind, since it is
+    about other coordinates (§ 5.2a).  The
     cell travels because the deck otherwise re-derives one around the new
     bounding box and shifts the atoms into it, and a relaxed geometry moved
     against the real-space grid is not stationary on that grid any more.
@@ -840,10 +842,17 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     # with them (`model/structure-periodicity.md` § 6.0) -- so this deck
     # applies nothing: the rule would re-centre them, moving the relaxed
     # geometry by the change in its span (-0.0168 Å on the H2 e2e).
+    #
+    # AND THE INPUT'S RELAXATION RECORD STAYS BEHIND (§ 5.2a): it is about
+    # the input's coordinates, not these; this stage's own record rides the
+    # `vibration` block.  The calculation record stays -- every stage reads
+    # the one electronic state from it.
     from ..parse.contract import relaxation_of_output
     return (struct.replace(positions=np.asarray(last.structure.positions,
                                                 dtype=float),
-                           engine_offset=np.zeros(3)),
+                           engine_offset=np.zeros(3),
+                           info={k: v for k, v in (struct.info or {}).items()
+                                 if k != "relaxation"}),
             (np.asarray(cell, dtype=float) if cell is not None else None),
             relaxation_of_output(out, traj, engine=str(task.engine)))
 

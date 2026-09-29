@@ -1080,6 +1080,19 @@ and the ladder holds nothing that would, so the description contradicts
 itself, and the refusal names the two ways out (add the stage, or state the
 structure relaxed) rather than measuring at a geometry nobody chose.
 
+**The relaxed geometry leaves the input's relaxation record behind.** The
+record a structure arrives with (`info.relaxation`, § 2.2) is about the
+input's coordinates, and these are the `relax` stage's, so the force-constant
+deck's structure carries no `relaxation`: that stage's own record rides the
+deck's `vibration` block to the finish (§ 5.3), which judges the relaxed
+geometry at FC step 0 (§ 5.5). Its calculation record (`info.calculation`)
+stays, because every stage reads the same electronic state from it
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+§ 2a). *(Until 2026-09-29 the input's record went along, and every such prep
+said the structure's record was "for a different geometry -- another frame of
+that run, or edited since": measured on the Au–BDT–Au spectrum, whose input
+was the final frame of its own relaxation.)*
+
 **The ladder is the order; the box decides what is proposed and what is
 recorded.** `init` and the hand-over read the box to propose the ladder
 (§ 2.2). Once described, a ladder that holds an enabled `relax` stage runs
@@ -2170,6 +2183,8 @@ nothing is in that state as of 2026-09-28.
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |
 | the PySCF probe: five points, the coupling per zero-point amplitude `g_ν`, a molecule-projected window for a cluster | **owed, needs a decision** — V1.27 | § 4.8 |
+| the force-constant stage leaves the input's relaxation record behind; its calculation record stays | **built 2026-09-29** — V1.35 | § 5.2a |
+| what a force-constant stage says about its geometry after the ladder's relax: the relax stage's outcome and its remedy, not the describe-time box and record advice | **owed** — V1.36, needs a decision | § 2.2, § 5.2a, § 5.8 |
 | the response screen — which mode to take to transport: each mode's character, the charge it moves, the frame set at thermal nodes, an `electronic` kind, the per-mode response record and its ranking table | **decided 2026-09-28, not built** (D1–D5, D7, D8; D6 as recommended; E3 owed) — V1.34, W42 | § 5.10; `science/normal-modes.md` § 4c |
 
 ---
