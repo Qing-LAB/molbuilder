@@ -193,6 +193,65 @@ list from M5 step 1.)*
 that `H` is simply wrong, and evaluating a wrong `H` at more k-points does
 not improve it. Converge the SCF first, then the transmission.)*
 
+### 0.3a The grid's offset — where the samples sit *(user, 2026-09-29)*
+
+`kgrid_displacement` shifts the k-point grid off Γ, one value per axis, in
+units of one grid spacing: `0` is Γ-centred, `0.5` the classic
+Monkhorst–Pack shift. In a transport calculation it acts on one kind of axis
+only, and its value is one fact for the whole ladder.
+
+**Along the transport axis it does nothing.** The leads' self-energies
+replace the k-sum along A3, so both engines force a single k-point there with
+zero offset whatever the deck says — TranSIESTA in `ts_kpoint_scf.F90`
+(`process_k_cell_displ`), `tbtrans` in `m_tbt_kpoint.F90` (the transport
+index's `displ` set to 0).
+
+**Across it, the offset chooses where T(E) is sampled.** T(E) is the average
+of T(E, k⊥) over the transverse grid (§ 0.3), and the offset only moves those
+samples. At `0` the grid contains Γ. At `0.5` every sample moves half a
+spacing: on an **even** count that skips both Γ and the zone edge — the
+Monkhorst–Pack grid — and on an **odd** count it trades Γ for the zone edge.
+The even-or-odd rule is about the **number of k-points** along the axis, never
+the number of atoms in the cell.
+
+**Where the atom count does enter: a supercell folds points onto Γ.** An
+in-plane supercell of n×n primitive cells folds the primitive cell's zone
+points onto its own Γ — the 3×3 Au(111) cell of the acceptance ladder (TD8)
+folds the primitive K point there — so Γ carries degenerate folded states.
+That is not a numerical hazard for NEGF: the Green's function at Γ is as
+well-defined as anywhere, the broadening takes care of degeneracies, and the
+device region is not filled level by level. It matters for a material with a
+special point there — graphene's Dirac point lands on Γ in a 3n×3n cell, so
+whether a coarse grid contains Γ moves T near E_F a great deal. Converge the
+transverse grid until T(E) and G stop changing; for gold it is benign.
+
+**On a hexagonal cell, keep it Γ-centred.** An offset of `0.5` does not respect
+a hexagonal lattice's six-fold symmetry, so the samples fall lopsided. SIESTA
+folds only k with −k (`find_kgrid.F`; no spatial symmetry is used), so nothing
+is computed wrong — the sampling is less balanced and converges more slowly.
+The usual choice for a hexagonal cell, an Au(111) junction among them, is `0`.
+
+**One offset for every rung — and the engine checks it.** TranSIESTA compares
+each lead's grid and offset, read from its `.TSHS`, with the device's and stops
+on *"found incompatible k-grids"* (`ts_electrode.F90`, the
+`TS.Elec.<>.check-kgrid` option, on by default); the manual asks for the same
+parameters in the electrode and the device calculations except the lead's own
+count along its semi-infinite axis. `tbtrans` takes `TBT.k` as a list —
+`TBT.k [3 3 1]`, counts only, no offset — or as a block, which carries one
+(`m_tbt_kpoint.F90`, `read_kgrid`).
+
+**What molbuilder does — and the gap** *(plan § 5w K17, ruled 2026-09-29)*.
+The item is on the shared panel (`shared = ["transport"]`), yet **no transport
+deck honours it**: every rung's `%block kgrid_Monkhorst_Pack` writes `0.0` in
+the offset column, the transmission writes `TBT.k` in its list form, and the
+cited relaxation's offset is not carried into the template, which takes
+`[0, 0, 0]` whatever the relaxation ran. The acceptance ladder relaxed at `0`,
+so it matched by coincidence. **The rule, to be built:** the offset is a
+`citation` item — `jobset init` carries the cited run's offset into the
+template beside its grid — and every rung writes it through the one door,
+the transport axis `0` as both engines use it, with the transmission's `TBT.k`
+in its block form when the offset is not zero.
+
 ### 0.4 The four things that must agree, and where each is enforced
 
 Every one of these, if wrong, gives a **plausible-looking wrong answer**
@@ -1054,7 +1113,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
-| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling | 2 |
+| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's. Acts across the transport axis only; Γ-centred on a hexagonal cell. **Not honoured on any rung yet** — to be cited and written through the door (§ 0.3a; plan § 5w K17) | 2 |
 | `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
