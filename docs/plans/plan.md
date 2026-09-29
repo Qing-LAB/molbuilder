@@ -4514,7 +4514,7 @@ missing documents (`structure-info-plan.md`, `protocols/runtime-registry.md`,
 `spectra-migration-plan.md`, `cell-plan.md`,
 `execution/walkthrough-2026-09-15-junction.md` — cited by `transport.md` and
 `junction-cell.md` — and the bare `staged-runs-implementation-plan.md` in
-`generator.md`), and deleted names still spoken in
+`generator.md`, linked to the archive 2026-09-29), and deleted names still spoken in
 code (`route_overrides`, `_validate_transport`, `render_script`, *"the
 registry"*).
 
