@@ -343,7 +343,7 @@ function renderStages(task) {
  * are set... this does not need to be a message with a window").
  *
  * THE BROWSER DOES NOT ENUMERATE IT.  `/api/task-setup/bench-grid` hands
- * the axes to `_bench_inputs` -- the one enumerator, the same one `prep`
+ * the axes to `bench_inputs` -- the one enumerator, the same one `prep`
  * runs -- and returns its report.  A grid computed here would be the
  * second, drifting decider that the whole cross-out rule was rebuilt to
  * remove: the browser would say a cell is fine and `launch` would refuse
@@ -393,6 +393,7 @@ function freshFolderState() {
         pendingDrop:  "",         // the armed column drop
         stepTab:      "",         // which rung's tab was open
         queue:        "",         // the chosen domain -> `allocation`
+        benchRefusal: null,       // why `prep bench` refuses here, or null
     };
 }
 
@@ -1290,6 +1291,7 @@ async function loadFolder(projects, dir) {
         _fs.runs[name] = st.attempts;
         _fs.tokens[name] = st.token;
     }
+    _fs.benchRefusal = said.bench_refusal || null;
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
@@ -2112,9 +2114,9 @@ function renderNext(task) {
     });
     if (!enabled.length) { card.hidden = true; return; }
 
-    // The bench lane, when the description PLANS a measurement
-    // (`task.bench` non-empty -- stages.md § 6.8): the whole sequence,
-    // taught once with the first stage as the example.  summarize
+    // The bench lane, wherever `prep bench` takes the description (the
+    // folder answer's `bench_refusal` is null -- stages.md § 6.8): the whole
+    // sequence, taught once with the first stage as the example.  summarize
     // writes bench-result.json (the record); the report is PRINTED
     // (a REPORT nothing reads but you); `prep run` uses `execution` --
     // template < declaration < execution < flags.
@@ -2166,6 +2168,10 @@ function renderNext(task) {
      * measured; which is worth measuring is a judgement, and the page
      * hints rather than choosing. */
     const benchKeys = Object.keys((task && task.bench) || {});
+    // VARYING AND DECLARED ARE DIFFERENT THINGS: a one-point axis fixes
+    // its value (`generator.md` § 4.3a), and only a longer one varies.
+    const benchVarying = benchKeys.filter(
+        (k) => ((task.bench[k] || []).length || 0) > 1);
 
     /* ONE TAB PER RUNG (§ 11, user 2026-09-01: "we can make the stage axis
      * as a tab to organize the cards for prep bench and run so the whole
@@ -2231,16 +2237,29 @@ function renderNext(task) {
             id: "ts-steppanel-" + i, "aria-labelledby": "ts-steptab-" + i });
         block.hidden = !active;
 
-        /* MEASURE first, when the description declares axes to measure.
-         * The order is shown because it is load-bearing -- but the middle
-         * step is now a PERSON: `summarize` reports, and what the run uses
-         * is what you then write in the card below (`architecture.md`
-         * § 5.2).  Skipping it does not fail; it runs at the target's full
-         * width, having measured nothing. */
-        if (benchKeys.length) {
+        /* MEASURE first.  The order is shown because it is load-bearing --
+         * but the middle step is now a PERSON: `summarize` reports, and what
+         * the run uses is what you then write in the card below
+         * (`architecture.md` § 5.2).  Skipping it does not fail; it runs at
+         * the target's full width, having measured nothing.
+         *
+         * OFFERED WITH NO AXES TOO: the target machine then proposes the grid
+         * (`generator.md` § 4.3a), as `prep bench` does at the terminal --
+         * the two doors are one prep (`job-system.md` § 5.3).  Until
+         * 2026-09-29 this block, and its button, needed a declared axis.
+         * And offered only where that prep takes it: the entry's own
+         * refusal (a transport calculation, an engine the bench lane does
+         * not speak) comes with the folder, and hides the block. */
+        if (!_fs.benchRefusal) {
             block.appendChild(el("p", { class: "hint" },
-                "Measure it \u2014 varying " + benchKeys.join(", ")
-                + ". Worth doing on the cheapest rung that still has the "
+                (benchVarying.length
+                    ? "Measure it \u2014 varying " + benchVarying.join(", ")
+                      + ". "
+                    : benchKeys.length
+                    ? "Measure it \u2014 at the one declared cell. "
+                    : "Measure it \u2014 no axes are declared, so the target "
+                      + "machine proposes the grid from its own record. ")
+                + "Worth doing on the cheapest rung that still has the "
                 + "expensive stage's shape; the verdict is reported, and you "
                 + "write it into the card below."));
             block.appendChild(el("pre", { class: "ts-cmd" },
@@ -2366,6 +2385,10 @@ function prepButton(kind, stage, continues) {
     btnPreview.addEventListener("click", async () => {
         const no = blocked();
         if (no) return refuse(no);
+        /* A NEW PREVIEW RETIRES THE LAST ANSWER, and its Confirm with it:
+         * that answer was to a plan this preview replaces. */
+        const stale = wrap.querySelector(".ts-prep-answer");
+        if (stale) stale.remove();
         btnPreview.disabled = true;
         try {
             const r = await _prepCall(kind, stage, true);
@@ -2387,6 +2410,16 @@ function prepButton(kind, stage, continues) {
             const chosen = Object.keys(r.chosen || {})
                 .map((k) => k + "=" + r.chosen[k]);
             if (varying.length) bits.push("varying " + varying.join(", "));
+            else if (kind === "bench") {
+                /* A one-point declaration IS the grid -- that cell, exactly
+                 * (`generator.md` § 4.3a); only an absent one leaves the
+                 * target to propose. */
+                const cell = Object.keys(r.bench_axes || {})
+                    .map((k) => k + "=" + (r.bench_axes[k] || []).join(""));
+                bits.push(cell.length
+                    ? "the declared cell " + cell.join(", ")
+                    : "no axes declared — the target proposes the grid");
+            }
             if (chosen.length) bits.push("at " + chosen.join(", "));
             const a = r.allocation || {};
             bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
@@ -2438,32 +2471,33 @@ function prepButton(kind, stage, continues) {
         }
     });
 
-    btnWrite.addEventListener("click", async () => {
-        const no = blocked();
-        if (no) return refuse(no);
+    /* THE ONE ENTRY'S ANSWER, WHOLE (`task-setup.md` § 11.1): the same
+     * answer `molbuilder jobset prep` prints.  A question comes back with
+     * nothing rendered; its Confirm is this tab's answer, and the prep runs
+     * again with it. */
+    async function write(evidence) {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
         try {
             say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
-            const r = await _prepCall(kind, stage, false);
-            if (!r.ok) {
-                say.textContent = r.error;
-                say.setAttribute("data-state", "bad");
-                return;
-            }
-            const dirs = r.dirs || [];
-            say.textContent = "Prepared for " + r.machine + " — "
-                + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
-                + ": " + dirs.slice(0, 3).join(", ")
-                + (dirs.length > 3 ? ", …" : "");
-            say.setAttribute("data-state", "ok");
-            // The folder now holds decks and wrappers it did not before --
-            // the same announcement a restore makes, so every open view
-            // re-reads rather than showing the folder as it was.
-            const p = window.molbuilder && window.molbuilder.projects;
-            if (p && typeof p.publishFolderChanged === "function") {
-                p.publishFolderChanged(_dir);
+            const r = await _prepCall(kind, stage, false, evidence);
+            /* CONFIRM IS A WRITE TOO, so it asks what every write asks
+             * first -- an unsaved edit is not in the task.json prep reads
+             * (`task-setup.md` § 7a). */
+            _showPrepAnswer(wrap, say, r, (shown) => {
+                const no = blocked();
+                if (no) return refuse(no);
+                write(shown);
+            });
+            if (r.ok && !r.question) {
+                // The folder now holds decks and wrappers it did not before --
+                // the same announcement a restore makes, so every open view
+                // re-reads rather than showing the folder as it was.
+                const p = window.molbuilder && window.molbuilder.projects;
+                if (p && typeof p.publishFolderChanged === "function") {
+                    p.publishFolderChanged(_dir);
+                }
             }
         } finally {
             btnPreview.disabled = false;
@@ -2472,6 +2506,12 @@ function prepButton(kind, stage, continues) {
             // it.  Re-enabling would offer a second write of a plan nobody
             // has looked at since.
         }
+    }
+
+    btnWrite.addEventListener("click", () => {
+        const no = blocked();
+        if (no) return refuse(no);
+        write(null);
     });
 
     wrap.append(btnPreview, btnWrite, say);
@@ -2517,8 +2557,12 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stage, plan) {
+async function _prepCall(kind, stage, plan, evidence) {
     const body = { dest: _dir, kind, stage, plan };
+    // THE PERSON'S ANSWER to "already under way here" -- sent only when
+    // they pressed Confirm, WITH the evidence they were shown: the answer
+    // counts for that evidence and no other.  Its absence is not a yes.
+    if (evidence) { body.confirm = true; body.evidence = evidence; }
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.
@@ -2535,6 +2579,105 @@ async function _prepCall(kind, stage, plan) {
     } catch (e) {
         return { ok: false, error: String((e && e.message) || e) };
     }
+}
+
+/** Show one prep answer under its buttons -- the command line's report,
+ *  from the same data (`job-system.md` § 5.3, `task-setup.md` § 11.1).
+ *
+ *  ``onConfirm`` answers the one question the entry asks: *this calculation
+ *  is already under way here -- re-render its decks?*  Nothing was written
+ *  when it is asked, and leaving it writes nothing. */
+function _showPrepAnswer(wrap, say, r, onConfirm) {
+    const old = wrap.querySelector(".ts-prep-answer");
+    if (old) old.remove();
+    const box = el("div", { class: "ts-prep-answer" });
+    const line = (text, state) => {
+        const d = el("div", { class: "ts-prep-answer-line" }, text);
+        if (state) d.setAttribute("data-state", state);
+        box.appendChild(d);
+        return d;
+    };
+    const findingLines = (list) => {
+        for (const f of (list || [])) {
+            line(f.severity + ": " + f.message,
+                 f.severity === "info" ? null : "warn");
+        }
+    };
+    findingLines(r.findings);
+    if ((r.notes || []).length) {
+        box.appendChild(el("pre", { class: "ts-prep-answer-notes" },
+                           r.notes.join("\n")));
+    }
+    if (!r.ok) {
+        /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes, what
+         * the inputs said -- a bench's crossed-out cells -- and whatever
+         * was already written, beside its own sentence. */
+        say.textContent = r.error;
+        say.setAttribute("data-state", "bad");
+        const part = r.partial;
+        if (part) {
+            findingLines(part.deck_findings);
+            for (const d of (part.dirs || [])) line("wrote: " + d);
+        }
+        if (box.childNodes.length) wrap.appendChild(box);
+        return;
+    }
+    if (r.question) {
+        say.textContent = "This calculation is already under way here — "
+            + "no deck was rendered.";
+        say.setAttribute("data-state", "warn");
+        for (const e of r.question.evidence) line(e, "warn");
+        for (const a of r.question.advice) line(a);
+        const ok = el("button", { type: "button", class: "btn" },
+                      "Confirm — re-render the decks");
+        ok.addEventListener("click", () => {
+            ok.disabled = true;
+            onConfirm(r.question.evidence);
+        });
+        box.appendChild(ok);
+        wrap.appendChild(box);
+        return;
+    }
+    findingLines(r.deck_findings);
+    const dirs = r.dirs || [];
+    say.textContent = "Prepared for " + r.machine + " — "
+        + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
+        + ": " + dirs.slice(0, 3).join(", ") + (dirs.length > 3 ? ", …" : "");
+    say.setAttribute("data-state", "ok");
+    const a = r.attempt;
+    if (a) {
+        line("Attempt " + a.dir + (a.fresh ? "" : " (reused — not launched yet)"));
+        line("brought in: " + (a.brought || []).join(", "));
+        if ((a.copied || []).length) {
+            line("copied from " + a.continued_from + ": " + a.copied.join(", "));
+        } else {
+            line(a.cold ? "cold start — nothing copied in"
+                        : "nothing carried in (first stage, or none named)");
+        }
+    }
+    for (const p of (r.points || [])) {
+        line("Attempt " + p.attempt + (p.bias === null ? "" : " @ " + p.bias + " V"));
+        for (const g of (p.gathered || [])) line("gathered: " + g.file + " ← " + g.from);
+    }
+    for (const g of (r.gathered || [])) line("gathered: " + g.file + " ← " + g.from);
+    if (r.resources) {
+        const rs = r.resources;
+        line("resources: mpi_np " + (rs.mpi_np || "auto") + " | omp "
+             + (rs.cpus_per_task || "auto")
+             + (rs.continue_retries ? " | retries " + rs.continue_retries : ""));
+    }
+    const g = r.agreement;
+    if (g && g.verdict === "agrees") {
+        line(r.deck + ": rendered for mpi_np " + g.rendered_for
+             + " — agrees with this launch");
+    } else if (g) {
+        line(r.deck + ": rendered for mpi_np " + g.rendered_for
+             + ", but this launch asks " + g.launching_at
+             + " — launch WILL REFUSE this: " + g.note, "warn");
+        say.setAttribute("data-state", "warn");
+    }
+    if (r.pipeline_log) line("pipeline log: " + r.pipeline_log);
+    if (box.childNodes.length) wrap.appendChild(box);
 }
 
 /* ---------- what has already run ---------- */

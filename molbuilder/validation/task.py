@@ -205,7 +205,7 @@ def _bench_points_fit_their_items(task) -> List[Issue]:
     point must fit its item -- a bool item takes true/false, an enum point
     must be one of the item's choices, and a repeated point would measure
     one configuration twice.  THE ONE HOME of those rules (R2-5 dedup,
-    2026-08-21): `jobset/_cli.py::_declared_execution_pins` calls this
+    2026-08-21): `jobset/prep_inputs.py::_declared_execution_pins` calls this
     same function as its backstop instead of carrying a copy -- the copies
     had diverged (allocation-item duplicates were caught only here).
     Surfaced at save so a typo'd declaration fails there, not after a

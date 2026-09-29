@@ -1704,7 +1704,7 @@ class TestTheBrowserRoute:
             run0 = calc / "04_device" / point / "run-0"
             for n in ("T.DM", "T_L-electrode.TSHS", "T_R-electrode.TSHS"):
                 assert (run0 / n).is_file(), f"{point}/{n} was not carried in"
-        carried = {c["attempt"] for c in body["carried"]}
+        carried = {p["attempt"] for p in body["points"]}
         assert any("v0.2" in c for c in carried), (
             "the response must say what landed where -- a person who cannot "
             "see the carry cannot tell this apart from the old silence")

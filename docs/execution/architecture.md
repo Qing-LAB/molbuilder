@@ -147,8 +147,9 @@ the floor plan had no room for.
 > They overlap without matching. `persist` is import-depth **L1** and sits on
 > **floor 1** with the other plain facts (§ 2.1 row 1 lists it; the floor
 > test pins it — this line once said "no floor at all" against both).
-> `identity` is both. `jobset` is one import tier (`L2`) and spans **five**
-> floors (3–7: `_cli` and `ledger` are row 7's surfaces).
+> `identity` is both. `jobset` is one import tier (`L2`) and spans **six**
+> floors (1 and 3–7: `ledger` is a floor-1 writer, `_cli` is row 7's
+> surface), with the conductor and its assembly beside them.
 >
 > **In this document, "floor" always means the second.** The import grouping is
 > [`architecture.md`](?doc=architecture.md) § 3.
@@ -211,13 +212,13 @@ note records the deletion.)*
 
 | # | floor | the decision it owns | files | **entry points** | what it writes | it must never |
 |---|---|---|---|---|---|---|
-| **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `paths` · `ref` · `scheduler/record` · `scheduler/probe` · `persist` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `Shape.named` · `Shape.stage_dir` · `Shape.stage_glob` · `Ref` · `compose` · `find` · `parse` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` | `environment.json` | know what a folder is |
+| **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `paths` · `ref` · `scheduler/record` · `scheduler/probe` · `persist` · `jobset/ledger` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `Shape.named` · `Shape.stage_dir` · `Shape.stage_glob` · `Ref` · `compose` · `find` · `parse` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` · `ledger.record` / `ledger.prepped` (a verb's decisions, one append each) | `environment.json` · `jobset-decisions.log` | know what a folder is |
 | **2** | **description** | what the person asked for | `task` | `read_task` · `write_task` · `derive_run` · `varies_for` | `task.json` | **name a machine** |
 | **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits | `jobset/materialize` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `run_status` | — | write anything |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `jobset/ledger` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints · `ledger.record` (each verb's decisions, into `jobset-decisions.log`) | `jobset-decisions.log` | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, which its one entry appends | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
 may never reach across.* Floor 5 deciding a rank count that floor 3 already
@@ -230,6 +231,10 @@ assumed is that reach, and it once cost a real run.
 > failures — an allocation re-applied over per-element resources floor 3 had
 > already resolved. **Only a surface may import it.** The sequence it walks is
 > [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.
+> Beside it sit its own assembly (`jobset/prep_inputs.py`, what a prep
+> receives — A12) and its one entry (`prep_stage`, which both prep doors call
+> and which appends the verb's decisions to the ledger); a surface imports
+> them as it imports the conductor.
 
 ---
 
@@ -820,12 +825,12 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A4** | **ask, do not work it out again.** Each object in § 3 has exactly one owning function | **review** (see the note under this table) — **all four**: a `StageRef` only by its resolver, and `Attempt` / `Shape` / `LaunchAgreement` each in one named function |
 | **A5** | **a stage's number is worked out, never stored** | `test_task_description`, `test_stage_resolution` |
 | **A6** | **once a run has started, its folder never changes** | `test_jobset` |
-| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **review**, both halves (`process/code-audit.md` § 1c (e); user, 2026-09-27: *"a static code review problem"*) — L1/L2/L3 between top-level packages against `architecture.md` § 3's index, and a floor boundary **inside** a package against § 2.1's table (`jobset/` alone holds floors 3–7, so `runstatus.py` (6) importing `_cli.py` (7) is a finding). `tests/test_layering.py` scanned the first half until 2026-09-27; what an upward import breaks at run time shows up by itself (a cycle fails the import; a shipped monitor file fails beside the job, `tests/test_monitor_bundle_runs_alone.py`) |
+| **A7** | **nothing depends upwards** — a floor-N file imports floors ≤ N | **review**, both halves (`process/code-audit.md` § 1c (e); user, 2026-09-27: *"a static code review problem"*) — L1/L2/L3 between top-level packages against `architecture.md` § 3's index, and a floor boundary **inside** a package against § 2.1's table (`jobset/` alone holds floors 1 and 3–7, so `runstatus.py` (6) importing `_cli.py` (7) is a finding). `tests/test_layering.py` scanned the first half until 2026-09-27; what an upward import breaks at run time shows up by itself (a cycle fails the import; a shipped monitor file fails beside the job, `tests/test_monitor_bundle_runs_alone.py`) |
 | **A8** | **an object travels whole** (§ 3.1). A door that consumes one of § 3's objects takes the object; its signature may not also name that object's fields, and no caller may destructure one to call it | **review — and the checker was BUILT and rejected, 2026-09-21.** The formulation below is exact and mechanical: read the eleven § 3 classes' fields from their own definitions, read every signature, intersect. Run over the tree it returned **two candidates and zero real violations**, so **the rule currently holds everywhere**. Both candidates collide on `name`: `describe.build_description` takes `Sequence[Stage]` *and* a `name` that its docstring calls *"what the user called this calculation"* — it reads the real stage names off the objects (`tuple(s.name for s in ladder)`), so it is a model citizen that the check flags anyway; `submit._prepare_side_group` takes a `JobSet` and the SHELF's name. Telling those apart needs § 3.1's own carve-out — *a parameter belonging to the invocation rather than to the job* — which is semantic and unreadable from a signature. Shipping it would ship a growing exemption list for correct code, which is what got `test_architecture_rules.py` deleted. The formulation stays here as **what a reviewer computes by hand** |
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | **review** (see the note under this table) — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
-| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing | `test_bench_grid_card` — the browser's prep door must call `prep_run_inputs` and must call none of the pieces it is made of |
+| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry, `jobset/prep.py::prep_stage` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the question asked on both; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab shows the question and its Confirm) |
 | **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, what each segment refuses, and that every name the catalogue can produce is matched by its globs |
 | **A13** | **a run shows its end point.** Every launch parameter the run will be executed with is displayed with its value and its source, resolved by the emitter — never re-derived by the surface, and never left blank when blank resolves to a number | `test_task_setup_tab` — the run card renders an emitted value for every launch parameter, including the ones the description does not state |
 
@@ -896,14 +901,19 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 > from a surface that has none. Never `None`: the verdict is folded *under*
 > it field by field, and there is no field-by-field merge onto nothing.
 >
-> **A12 currently sits on the wrong floor, and that is recorded rather than
-> hidden.** `prep_run_inputs` and `_bench_inputs` both live in
-> `jobset/_cli.py` — floor 7 — so `web/` reaches **across** to them, which is
-> exactly what A7 forbids. It is one door, which is the property A12 is
-> about; it is on the wrong storey, which is A7's. The target is a floor-3
-> module below both surfaces, and the blocker is named: `_bench_inputs`
-> raises `click.ClickException`, so moving it means giving the refusal a type
-> that is not a surface's.
+> **And the whole VERB is one entry** *(plan W38 F7, built 2026-09-29)*:
+> `jobset/prep.py::prep_stage` does everything a prep does — the preflight,
+> the *already under way* question, the five steps, the attempt, the
+> transport carry, the launch agreement, the ledger — and returns what it
+> found and decided as data; the command line prints it and asks, the Task
+> setup tab shows it and confirms ([`job-system.md`](?doc=execution/job-system.md)
+> § 5.3). A surface that did part of the act itself is how the tab came to
+> skip four of them. **The assembly lives beside the conductor**, as its own
+> (`jobset/prep_inputs.py`, § 2.1's note): `prep_run_inputs` and
+> `bench_inputs` sat in `jobset/_cli.py` — floor 7 — until the same day, so
+> `web/` reached across to them, which A7 forbids; the blocker named here,
+> `_bench_inputs` raising `click.ClickException`, went with the move — its
+> refusals are `PrepError`s, which each surface shows as they are.
 
 > **A11 is A1 widened from names to roots and filenames.** A1 stops a second
 > module *assembling* a name; A11 stops a second module *arriving at* a place —

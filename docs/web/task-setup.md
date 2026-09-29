@@ -10,7 +10,7 @@ disagree those win:**
 [`engines/template.md`](?doc=engines/template.md) — the catalogue every control
 on this page is drawn from, and the rule that a description names no machine;
 [`execution/project-layout.md`](?doc=execution/project-layout.md) — what `prep`
-does on the target, and why this page cannot do it;
+does on the target, and why this page renders only from a machine's own record;
 [`execution/generator.md`](?doc=execution/generator.md) — *a run is a sweep of
 length one*, which is the idea § 5 is built on;
 [`execution/run-identity.md`](?doc=execution/run-identity.md) — the id, and what
@@ -26,7 +26,7 @@ the template — and hands you the command to run it somewhere else.
 
 ## 1. The one rule the page rests on
 
-> **The browser describes. The terminal acts.**
+> **The browser describes. A machine's own facts render. The terminal launches.**
 
 A deck carries values that depend on *how it will be launched* — a block size
 whose sensible ceiling is orbitals over ranks, a GPU line that decides which
@@ -36,7 +36,12 @@ cannot be decided before the launch is known**
 laptop does not know the machine, so a deck it "finished" would be full of
 guesses.
 
-So this page writes what any machine can read, and stops:
+So this page writes what any machine can read — and **prepares only against a
+machine's own record**: its Prep buttons run the command line's `prep`, one
+entry for both doors ([`job-system.md`](?doc=execution/job-system.md) § 5.3),
+rendering from the facts of the machine you chose in § 6, never from the
+browser's. **Launching stays at the terminal**: it spends a queue slot, one job
+per invocation, by hand. What the page writes:
 
 ```text
 projects/BDT-Au/optimization/au111-series/bdt_au/
@@ -46,7 +51,8 @@ projects/BDT-Au/optimization/au111-series/bdt_au/
     Au.psml  S.psml  …           the data files
 ```
 
-Then, on the machine that will run it:
+Then, on the machine that will run it (or with this tab's Prep buttons, for
+a machine chosen in § 6):
 
 ```bash
 molbuilder jobset prep run coarse      # resolves this machine, renders the
@@ -462,7 +468,7 @@ to find out why.
 Three rules make it trustworthy rather than merely convenient:
 
 - **The browser does not enumerate it.** `POST /api/task-setup/bench-grid`
-  hands the axes to `_bench_inputs` — the one enumerator, the same one
+  hands the axes to `bench_inputs` — the one enumerator, the same one
   `prep` runs — and returns its report. A grid computed in the page would
   be a second decider, free to say a cell is fine where `launch` refuses
   it. That is the exact failure this whole lane was rebuilt to remove.
@@ -714,7 +720,13 @@ sequenceDiagram
     Prep->>Disk: read_task(dir)
     Prep-->>You: what the SAVED file would launch (A13)
     You->>Prep: Prep run here (enabled only by Preview)
+    Prep->>Disk: the one prep entry (job-system.md § 5.3)
+    alt already under way here
+      Prep-->>You: the evidence, and Confirm (no deck rendered)
+      You->>Prep: Confirm (that evidence)
+    end
     Prep->>Disk: decks + wrappers + run-N/
+    Prep-->>You: the answer: notes, checks, attempt, agreement
 ```
 
 **And the window is covered while any of it runs.** A card edit, and the
@@ -932,12 +944,13 @@ that resolves to nothing is silent by design.
 
 ## 10. What this page does not do
 
-- **It does not render a deck.** § 1.
+- **It does not render a deck from its own facts.** Its Prep buttons run the
+  command line's `prep` against the chosen machine's record (§ 1, § 11).
 - **It does not create folders.** § 2.
 - **It does not choose the physics.** The parameter tab does, and its form comes
   from the same catalogue this page reads
   ([`form-schema.md`](?doc=web/form-schema.md)).
-- **It does not run anything, or watch anything run.** What has already run is
+- **It launches nothing, and watches nothing run.** What has already run is
   read from the folder — how many attempts exist, whether the last converged —
   because you cannot decide what `tight` should be without seeing how `coarse`
   went. That is the page's reason for existing, not a dashboard.
@@ -963,9 +976,9 @@ that resolves to nothing is silent by design.
 *(user, 2026-09-01: "we can make the stage axis as a tab to organize the cards
 for prep bench and run so the whole page won't extend too long".)*
 
-The page does not run anything (§ 10). What it can do is show, per stage, what
-will be prepared and hand you the exact command — and it does that **in a tab
-strip keyed by stage**, because the alternative grows the page by one block per
+The page launches nothing (§ 10). What it does, per stage, is show what will
+be prepared, prepare it for the chosen machine, and hand you the exact command
+— and it does that **in a tab strip keyed by stage**, because the alternative grows the page by one block per
 rung and a five-rung ladder becomes a page nobody scrolls to the bottom of.
 
 **One tab per enabled stage.** Inside a tab, everything you do with that rung:
@@ -1033,3 +1046,48 @@ two-day reservation is the cost of forgetting that, not a missing field.
 **It works the same on a workstation and against a cluster.** Nothing here
 reads `execution.mode`: the commands are the commands, the admission check is
 the target's, and *which* machine is § 6's question, answered once above.
+
+### 11.1 What a Prep button shows — the command line's answer, whole
+
+**Preview** asks what a prep would do — from the same assembly the prep uses
+(`jobset/prep_inputs.py`, [`architecture.md`](?doc=execution/architecture.md)
+A12) — and writes nothing. **Prep run here** / **Prep bench here** reach the
+one prep entry the command line calls
+([`job-system.md`](?doc=execution/job-system.md) § 5.3), so the tab shows what
+the terminal prints, from the same answer:
+
+* **the description's preflight notes**, each with its severity — an error
+  refuses, in its own words, and nothing is written;
+* **what the inputs said** — the run's sizing when nothing stated it, a
+  bench's grid: enumerated, crossed out, kept;
+* **already under way here** — a launched attempt, warm files at the root, a
+  queued trial: the evidence, and a **Confirm** button. No deck is rendered
+  until it is pressed; pressing it answers THAT evidence — if the folder shows
+  something else by then, the question comes back — and is recorded in the
+  calculation's ledger as this tab's answer. Confirm first asks what Prep asks:
+  unsaved edits are not in the `task.json` prep reads (§ 7a);
+* **the folders written**, **what each deck's checks said**, and **the
+  attempt** — opened or reused, what was brought in, what was copied from which
+  attempt — or, on a transport bias scan, one attempt per point;
+* **what a transport rung gathered** from the concluded rungs upstream;
+* **the resources** the stage will launch with, and **whether the deck
+  agrees**: a deck rendered for another width is said here, where it can
+  still be re-prepped, not at `launch`, which refuses it.
+
+**A refusal shows what it had found** — the preflight's notes, what the inputs
+said, and what was already written — beside its own sentence: a bench refused
+because *no cell survived* points at its crossed-out cells, and they are
+there.
+
+**The bench is offered on every stage `prep bench` takes**, with or without
+declared axes: with none, the target machine proposes the grid, as the command
+line does ([`generator.md`](?doc=execution/generator.md) § 4.3a); a one-point
+declaration is that one cell. A description `prep bench` refuses outright — a
+transport calculation, an engine the bench lane does not speak — has no
+Measure step: the folder answer carries the entry's own reason
+(`bench_refusal`, [`job-system.md`](?doc=execution/job-system.md) § 5.3), and
+the page asks it rather than keeping a list of its own.
+*(Until 2026-09-29 this door called the five steps alone: it skipped the
+preflight, the question, the agreement and their ledger lines, refused an
+axis-less bench — and offered no bench button without axes — and showed only
+the folders — plan W38 F7.)*

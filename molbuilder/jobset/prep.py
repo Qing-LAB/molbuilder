@@ -56,8 +56,21 @@ from ..pseudos import PSEUDO_DIRNAME
 
 
 class PrepError(Exception):
-    """A JobSet could not be prepped (invalid set, or a script missing from
-    the bundle root)."""
+    """A prep refused -- in the reader's own words, which each surface shows
+    as they are.
+
+    What the one prep entry had already found when it refused rides with it
+    (`prep_stage`): ``findings`` (the description's preflight notes),
+    ``notes`` (what its inputs said -- a bench's grid with every crossed-out
+    cell, a run's sizing) and ``partial`` (the answer so far, once the five
+    steps have written something).  A refusal that says *see the crossed-out
+    list above* is only honest if the list is shown with it; the command line
+    prints these before the error, the Task setup route returns them beside
+    it.  Empty on a refusal raised anywhere else.
+    """
+    findings: tuple = ()
+    notes: tuple = ()
+    partial: "Optional[PrepAnswer]" = None
 
 
 from contextlib import contextmanager
@@ -908,7 +921,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      target: Optional[str] = None,
                      chosen=None,
                      pipeline_log: bool = False,
-                     opened: Optional[list] = None) -> List[Path]:
+                     opened: Optional[list] = None,
+                     findings: Optional[list] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -938,6 +952,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     attempt reads its freshness from here: opening it a second time finds it
     already there, unlaunched, and calls it reused.
 
+    ``findings``, when given, receives what each deck's checks said
+    (`script_emit.prepare_deck`) -- the terminal also reads them on stderr as
+    each deck renders; the Task setup tab reads them from here, through the
+    one prep entry's answer.
+
     Returns the per-job directories. Raises :class:`PrepError`.
     """
     # TRANSPORT IS THE COMPOSITE (archive/2026-09-01-transport-design.md § 4.2): no
@@ -963,7 +982,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                translation=translation, target=target,
                                chosen=chosen,
                                pipeline_log=pipeline_log,
-                               opened=opened)
+                               opened=opened, findings=findings)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
@@ -1037,10 +1056,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # person typing `--mem` now is answering about now.  Field by field,
     # not object by object: `--np 8` alone must not erase the file's
     # memory ask, which a whole-object override would do silently.
-    # AND THE SHAPE IT DECIDES, when it decides one.  It arrives
-    # as an argument because its producer asks the grid enumerator, which
-    # lives one floor up in the CLI -- so `prep` folds what it is handed and
-    # owns no second translation (`generator.md` § 2).
+    # AND THE SHAPE IT DECIDES, when it decides one.  It arrives as an
+    # argument because its producer, `prep_inputs.declared_run_shape` -- a
+    # DIRECT MAP of the condition's machine items, never the grid
+    # enumerator -- runs with the rest of the inputs before the five steps
+    # (A12), so `prep` folds what it is handed and owns no second
+    # translation (`generator.md` § 2).
     allocation = _under_description(allocation, task.allocation, chosen)
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
@@ -1263,7 +1284,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                             if _finishes and not element.is_trial
                                             else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
-                                 dest_dir=base)
+                                 dest_dir=base, findings=findings)
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
                               where=script, log=log):
@@ -1667,7 +1688,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     target: Optional[str] = None,
                     chosen=None,
                     pipeline_log: bool = False,
-                    opened: Optional[list] = None) -> List[Path]:
+                    opened: Optional[list] = None,
+                    findings: Optional[list] = None) -> List[Path]:
     """`prep` for the transport COMPOSITE — one rung of the ladder.
 
     **The same five steps every kind takes**, with one step of its own.
@@ -1930,7 +1952,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                 # deliberately, so a TypeError still looks like the bug it is.
                 raise PrepError(str(exc)) from exc
             _sc.prepare_deck(spec, struct, cfg, out_dir / script,
-                             log=_tlog, dest_dir=base)
+                             log=_tlog, dest_dir=base, findings=findings)
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     if stage == "transmission":
@@ -2443,9 +2465,10 @@ def _under_description(flags, declared, chosen=None) -> "Resources":
 
     **A PURE FOLD**: the two pieces arrive as arguments, so this function
     reads no file and no enumerator and can be exercised with two objects.
-    The SHAPE's producer is `_cli.declared_run_shape`, which asks the one
-    grid enumerator and takes its answer only when the description decides
-    everything -- a run is a sweep of length one (`generator.md` § 2).
+    The SHAPE's producer is `prep_inputs.declared_run_shape`: a direct map
+    of the condition's machine items onto `Resources` fields, which leaves
+    every field the condition does not name to the chain that already
+    answers it (`running-a-job.md` § 3.1).
     """
     out = flags or Resources()
     import dataclasses as _dc
@@ -2530,4 +2553,455 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
     with _calling("shared_package", engine=engine, log=log):
         return list(seam.shared_package(base))
 
-__all__ = ["prep_calculation", "prep_jobset", "PrepError", "resolve_target"]
+
+# --------------------------------------------------------------------- #
+#  The prep verb's ONE entry (`job-system.md` § 5.3; plan W38 F7)       #
+# --------------------------------------------------------------------- #
+#
+# `prep` has two doors -- `molbuilder jobset prep` and the Task setup tab's
+# Prep buttons -- and until 2026-09-29 each did its own part of the act: the
+# command line ran the preflight, asked the *already under way* question,
+# checked the launch agreement and wrote their ledger lines; the tab called
+# the five steps alone and showed the folders.  One act, two answers.  This
+# is the act, once; it prints nothing and asks nothing, and returns what it
+# found and decided as data for each door to show in its own way.
+
+
+@dataclass(frozen=True)
+class Answer:
+    """A person's answer to the one question prep asks -- *this calculation
+    is already under way here: re-render its decks?* -- and the words the
+    ledger records it in: ``yes``, ``no``, the command line's *no answer
+    (non-interactive) -> proceed*, the Task setup tab's confirm.
+
+    ``evidence`` is the evidence the person was SHOWN.  The answer is to
+    that question and no other: if the folder shows something else by the
+    time it arrives -- a trial launched while the tab sat on its Confirm --
+    the entry asks again, rather than re-rendering over what nobody saw and
+    recording that they agreed to it.  ``None`` answers whatever the folder
+    shows (a caller that asked nothing, a script)."""
+    proceed: bool
+    said: str
+    evidence: Optional[Tuple[str, ...]] = None
+
+
+@dataclass(frozen=True)
+class UnderwayQuestion:
+    """*Already under way here* (`run-identity.md` § 6): what the folder
+    shows, and what re-rendering over it does and does not touch."""
+    evidence: Tuple[str, ...]
+    advice: Tuple[str, ...]
+
+
+@dataclass
+class PrepAnswer:
+    """What one prep found and decided -- the whole of what either door shows
+    (`job-system.md` § 5.3's table).  With ``question`` set nothing was
+    rendered and ``dirs`` is empty: the caller asks, then calls again with
+    the :class:`Answer`."""
+    kind: str
+    stage: Optional[str]
+    #: The description's preflight notes (an error refuses instead).
+    findings: list = dataclasses.field(default_factory=list)
+    #: What the inputs said: the run's sizing when nothing stated it, a
+    #: bench's grid -- enumerated, crossed out, kept (`prep_inputs`).
+    notes: List[str] = dataclasses.field(default_factory=list)
+    question: Optional[UnderwayQuestion] = None
+    dirs: List[Path] = dataclasses.field(default_factory=list)
+    provenance: Optional[dict] = None
+    #: A flat run: its wrappers are rendered and there is no attempt to open.
+    flat: bool = False
+    #: The attempt opened or reused (`materialize.Attempt`).
+    attempt: Optional[object] = None
+    #: A transport bias scan: ``(attempt, volts, [(source, file), ...])``
+    #: per point (`gather_for_stage`).
+    points: List[tuple] = dataclasses.field(default_factory=list)
+    #: A transport rung's carry into its one attempt: ``(source, file)``.
+    gathered: List[tuple] = dataclasses.field(default_factory=list)
+    #: What each deck's checks said (`script_emit.prepare_deck`), one of each
+    #: -- the terminal read them on stderr as the decks rendered.
+    deck_findings: list = dataclasses.field(default_factory=list)
+    resources: Optional[dict] = None
+    #: The stage's deck, by file name -- what the agreement is about.
+    deck: Optional[str] = None
+    #: `agreement.LaunchAgreement`, unless the deck makes no claim.
+    agreement: Optional[object] = None
+    pipeline_log: Optional[Path] = None
+
+    def as_dict(self, base) -> dict:
+        """The answer as JSON, paths relative to the calculation folder --
+        what the Task setup tab's prep route returns (`web/web-api.md`)."""
+        from .agreement import disagreement_note
+        base = Path(base)
+
+        def rel(p):
+            try:
+                return str(Path(p).resolve().relative_to(base.resolve()))
+            except ValueError:
+                return str(p)
+
+        def carried(pairs):
+            return [{"file": fn, "from": src} for src, fn in pairs]
+
+        q, a, g = self.question, self.attempt, self.agreement
+        return {
+            "kind": self.kind, "stage": self.stage,
+            # THE ONE WIRE FORM of a finding (`Issue.to_json`).
+            "findings": [i.to_json() for i in self.findings],
+            "deck_findings": [i.to_json() for i in self.deck_findings],
+            "notes": list(self.notes),
+            "question": ({"evidence": list(q.evidence),
+                          "advice": list(q.advice)} if q else None),
+            "dirs": [rel(d) for d in self.dirs],
+            "provenance": self.provenance,
+            "flat": self.flat,
+            "attempt": ({"dir": rel(a.dir), "fresh": a.fresh,
+                         "brought": list(a.brought), "copied": list(a.copied),
+                         "continued_from": a.continued_from, "cold": a.cold}
+                        if a is not None else None),
+            "points": [{"attempt": rel(att), "bias": v,
+                        "gathered": carried(got)}
+                       for att, v, got in self.points],
+            "gathered": carried(self.gathered),
+            "resources": self.resources,
+            "deck": self.deck,
+            "agreement": ({"verdict": g.verdict,
+                           "rendered_for": g.rendered_text,
+                           "launching_at": g.launch_text,
+                           "note": (disagreement_note(g)
+                                    if g.verdict == "differs" else None)}
+                          if g is not None else None),
+            "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,
+        }
+
+
+def underway_evidence(base, task, stage, *, bench_container=None) -> List[str]:
+    """§ 6's moment (run-identity.md, softened 2026-08-08): what in the folder
+    says a run already HAPPENED -- a launched attempt's ``run.json``, warm
+    files at the root -- so prep can ask before re-rendering over it
+    (2026-08-12 plan A3/U14).  ``[]`` when nothing does.
+
+    ``bench_container`` NARROWS the evidence to a sweep's launched trials
+    (2026-08-12 plan A7; narrowed 2026-08-21, user: "bench always starts cold
+    -- there is no point of asking"): `prep bench` re-renders the very decks a
+    QUEUED trial's symlinks point at, so THAT is worth a question -- while the
+    run's launched attempts and the root's warm files cannot be touched by
+    re-rendering relabelled cold trial decks and are not asked about.
+
+    (It was the first half of the command line's `_ask_if_underway` until
+    2026-09-29; the asking is each door's.)
+    """
+    from ..paths import Shape, attempt_dir
+    from .materialize import attempts, launched_trials, was_launched
+    base = Path(base)
+    evidence: List[str] = []
+    if bench_container is None and stage is not None:
+        try:
+            token = token_for(task, stage)
+        except Exception:                                     # noqa: BLE001
+            token = None
+        if token:
+            sd = Shape.named(task.shape).stage_dir(token)
+            d = base / sd if sd != "." else base
+            for n in attempts(d):
+                a = attempt_dir(d, n)
+                if was_launched(a):
+                    evidence.append(
+                        f"{a.relative_to(base)}/ was launched (its run.json)")
+    if bench_container is not None:
+        launched = launched_trials(bench_container, Shape.named(task.shape))
+        if launched:
+            evidence.append(
+                f"launched trial(s) in "
+                f"{Path(bench_container).relative_to(base)}/: "
+                + ", ".join(launched))
+    if bench_container is None:
+        from ..validation.identity import warm_files_present
+        warm = warm_files_present(base, task.label, task.engine)
+        if warm:
+            evidence.append("warm files at the root: " + ", ".join(warm))
+    return evidence
+
+
+def prep_stage(base, kind: str, stage: Optional[str] = None, *,
+               target: Optional[str] = None, allocation=None,
+               from_attempt: Optional[str] = None, cold: bool = False,
+               env: Optional[str] = None, emit_sbatch: bool = True,
+               pipeline_log: bool = False,
+               answer: Optional[Answer] = None,
+               on_found=None) -> PrepAnswer:
+    """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
+    tab's Prep buttons both call (`job-system.md` § 5.3).
+
+    In order: the description is refused unless it is one (a ``task.json``
+    and its template; transport has no template); the stage is resolved
+    through the one grammar (a name, or ``#N``); the description's preflight
+    runs -- an error refuses, the notes come back as ``findings``; the inputs
+    are assembled (`prep_inputs`, A12); then, when the folder shows a run
+    already under way and no ``answer`` was given, the answer comes back
+    with ``question`` set and NOTHING RENDERED.  Answered -- or with nothing
+    to ask -- it runs the five steps (:func:`prep_calculation`), opens or
+    reuses the attempt, carries a transport rung's inputs, and compares the
+    rendered deck with the launch it will get.  Every decision lands in
+    ``jobset-decisions.log``, whichever door called.
+
+    ``answer`` counts for the evidence it names (:class:`Answer`): if the
+    folder shows something else when it arrives, the question comes back
+    instead.  ``allocation`` is what the person asks for on THIS prep -- the
+    command line's flags, an empty ``Resources()`` from a surface with none
+    (A12: never ``None``).  Every refusal is a :class:`PrepError` in the
+    reader's own words, carrying what the entry had found by then --
+    ``findings``, ``notes`` and the ``partial`` answer.
+
+    ``on_found``, when given, is called with ``(findings, notes)`` as soon
+    as the inputs are assembled -- before the question, and before anything
+    is rendered -- so a terminal prints them ahead of what the decks say
+    while they are written; the answer carries them either way.
+    """
+    from ..scheduler import AmbiguousTarget, UnknownTarget
+    from ..task import FILENAME as TASK_FILENAME, read_task
+    from ..template import find_template, template_path
+    from ..validation.task import preflight
+    from .ledger import prepped as ledger_prepped
+    from .ledger import record as ledger
+    from .prep_inputs import bench_inputs, bench_refusal, prep_run_inputs
+    base = Path(base).resolve()
+    desc = base / TASK_FILENAME
+    findings: list = []
+    notes: List[str] = []
+    deck_findings: list = []
+    out: Optional[PrepAnswer] = None
+    recorded: List[bool] = []
+
+    def _record_preflight():
+        # The preflight's notes land in the ledger on the pass that ACTS or
+        # REFUSES -- never on one that only asks, so the answering pass does
+        # not write them twice -- and ahead of what follows them, the order
+        # the terminal prints them in.
+        if findings and not recorded:
+            ledger(base, "prep", "preflight-report", stage=stage,
+                   notes=[i.message for i in findings])
+            recorded.append(True)
+
+    def _refused(exc: PrepError) -> PrepError:
+        # WHAT WAS FOUND RIDES WITH THE REFUSAL: a sentence that points at
+        # "the crossed-out list above" is honest only if the list is shown.
+        _record_preflight()
+        exc.findings, exc.notes, exc.partial = (tuple(findings), tuple(notes),
+                                                out)
+        return exc
+
+    try:
+        # 1 · A DESCRIBED CALCULATION is "a template PLUS task.json"
+        #     (project-layout.md § 2.1), and prep builds everything else from
+        #     the two.  The TRANSPORT composite has no template
+        #     (transport-design.md § 4.1: its electronic contract arrives
+        #     from the citation), so for it the pair is task.json alone.
+        is_transport = False
+        if desc.is_file():
+            try:
+                is_transport = read_task(desc).calculation == "transport"
+            except Exception:                                 # noqa: BLE001
+                pass      # an unreadable description: the gate below owns it
+        if not (desc.is_file() and (is_transport
+                                    or find_template(base) is not None)):
+            raise PrepError(
+                f"{base} is not a described calculation -- no task.json + "
+                "template pair.  `prep` derives everything from those two "
+                "(project-layout.md § 2.1); run `molbuilder jobset init` "
+                "first.  (Hand-built job-sets remain launchable: `launch` "
+                "and `status` read job-set.json directly.)")
+        if (from_attempt or cold) and stage is None:
+            raise PrepError(
+                "--from / --cold describe ONE stage's attempt; name the "
+                "stage:\n"
+                "    molbuilder jobset prep run <stage> --from "
+                "01_coarse/run-0")
+        task = read_task(desc)
+        if kind == "bench":
+            why = bench_refusal(task)
+            if why:
+                raise PrepError(why)
+
+        # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): a ladder stage is
+        #     named by its NAME, or by `#N` -- the NN of its directory --
+        #     through the ONE resolver, with refs built from the full ladder,
+        #     so `prep run #2` and `status #2` cannot disagree about which
+        #     stage that is.
+        if stage is not None and getattr(task, "stages", None):
+            from ..identity import StageRef, resolve_stage_ref
+            refs = StageRef.ladder([s.name for s in task.stages])
+            stage = resolve_stage_ref(refs, stage).name
+
+        # 3 · § 6.6's PREFLIGHT, at its live moment (R5, 2026-08-12): prep
+        #     on a machine whose molbuilder differs from the description's
+        #     author.  The template rides along when it is where prep will
+        #     look for it, which adds § 6.4/§ 6.6a's sequence warnings.  An
+        #     error refuses -- carrying the notes beside it, and writing them
+        #     to the ledger, as every refusal does.
+        tpl = template_path(base, task.label)
+        issues = preflight(task, template_text=(
+            tpl.read_text(encoding="utf-8") if tpl.is_file() else None))
+        findings[:] = [i for i in issues if i.severity != "error"]
+        errors = [i for i in issues if i.severity == "error"]
+        if errors:
+            raise PrepError(
+                "the description fails its own preflight "
+                "(engines/stages.md § 6.6):\n  - "
+                + "\n  - ".join(i.message for i in errors))
+
+        # 4 · THE INPUTS -- one assembly per kind (`prep_inputs`, A12).  A
+        #     bench measures ONE stage's configuration, and there is always a
+        #     stage to name (§ 6.5).  Assembled before the question, and so
+        #     is what they read of the target -- a bench's grid, and the type
+        #     of the devices a run's condition counts -- so a refusal about
+        #     THAT machine comes first; the rest of a run's machine is
+        #     resolved by the five steps, after the answer.
+        sweep = pins = translation = None
+        chosen: dict = {}
+        container = None
+        if kind == "bench":
+            if stage is None:
+                raise PrepError(
+                    "prep bench measures ONE stage's configuration; name "
+                    "it:\n    molbuilder jobset prep bench <stage>")
+            from ..paths import Shape
+            from .materialize import bench_container
+            sweep, pins, translation = bench_inputs(base, target, notes=notes)
+            container = base / bench_container(Shape.named(task.shape),
+                                               token_for(task, stage))
+        else:
+            allocation, pins, chosen = prep_run_inputs(
+                base, target, task, stage, allocation, notes=notes)
+        if on_found is not None:
+            on_found(findings, notes)
+
+        # 5 · ALREADY UNDER WAY HERE.  Asked, never assumed: the default is
+        #     to proceed -- re-rendering replaces decks, touches no warm file
+        #     and renames nothing -- but the person hears it first, and the
+        #     answer counts only for the evidence they were shown.
+        evidence = underway_evidence(base, task, stage,
+                                     bench_container=container)
+        if evidence and (answer is None or (
+                answer.evidence is not None
+                and tuple(answer.evidence) != tuple(evidence))):
+            advice = ["re-rendering replaces the DECKS only: the warm files "
+                      "are NOT touched and nothing is renamed "
+                      "(run-identity.md § 6)."]
+            if (base / ".git").is_dir():
+                advice.append("(a checkpoint repo exists -- `molbuilder "
+                              "checkpoint save` first records the current "
+                              "state)")
+            return PrepAnswer(kind, stage, findings=findings, notes=notes,
+                              question=UnderwayQuestion(tuple(evidence),
+                                                        tuple(advice)))
+        _record_preflight()
+        if evidence:
+            ledger(base, "prep", "underway-ask", stage=stage,
+                   evidence=evidence, answer=answer.said)
+            if not answer.proceed:
+                raise PrepError(
+                    "stopped at your request -- nothing was re-rendered.")
+
+        # 6 · THE FIVE STEPS.
+        opened: list = []
+        dirs = prep_calculation(base, stage, allocation=allocation, env=env,
+                                emit_sbatch=emit_sbatch, sweep=sweep,
+                                pins=pins, translation=translation,
+                                target=target, chosen=chosen,
+                                pipeline_log=pipeline_log, opened=opened,
+                                findings=deck_findings)
+        seen: set = set()
+        out = PrepAnswer(
+            kind, stage, findings=findings, notes=notes, dirs=list(dirs),
+            provenance=ledger_prepped(base, kind=kind, stage=stage, dirs=dirs),
+            # ONE OF EACH: a sweep's trials repeat one finding per deck, and
+            # the terminal said each once (`prep_calculation`).
+            deck_findings=[i for i in deck_findings
+                           if not (repr(i.to_json()) in seen
+                                   or seen.add(repr(i.to_json())))])
+        if pipeline_log:
+            from ..pipeline_log import log_name
+            out.pipeline_log = (container or base) / log_name(
+                task.label, token_for(task, stage) or "", task.engine,
+                task.shape)
+        if kind == "bench":
+            return out
+
+        # 7 · THE ATTEMPT.  Flat keeps no attempt directories, so a flat
+        #     prep is complete here -- unless --from / --cold asked for
+        #     attempt machinery, whose refusal is `prepare_attempt`'s to word.
+        js = JobSet.load(base / JOBSET_FILENAME)
+        sh = shape_of(js, base)
+        if (sh is not None and not sh.keeps_attempts_as_directories
+                and not from_attempt and not cold):
+            out.flat = True
+            return out
+        # A TRANSPORT BIAS SCAN keeps one attempt per point (04_device/v0.2/
+        # run-<n>, layout ruled 2026-08-29), which the five steps opened;
+        # each is gathered against its own voltage.
+        from ..transport.stages import bias_points
+        scan = (bias_points(task)
+                if is_transport and stage in ("device", "transmission")
+                else ())
+        if scan:
+            if from_attempt or cold:
+                raise PrepError(
+                    "--from / --cold name ONE attempt, and a bias scan keeps "
+                    "one per point -- per-point continuation is not named "
+                    "yet (transport-design.md 4.3; re-prep opens fresh "
+                    "attempts for every point).")
+            out.points = gather_for_stage(base, task, stage)
+            return out
+        from .materialize import prepare_attempt
+        try:
+            rep = prepare_attempt(js, base, stage, continue_from=from_attempt,
+                                  cold=cold)
+        except ValueError as e:
+            raise PrepError(str(e))
+        # FRESH IS THE FIRST OPEN'S ANSWER: the five steps opened this
+        # attempt a moment ago, so opening it again here finds it unlaunched
+        # and calls it reused (2026-09-25).
+        out.attempt = dataclasses.replace(
+            rep, fresh=next((a.fresh for a in opened if a.dir == rep.dir),
+                            rep.fresh))
+        if is_transport:
+            out.gathered = [pair for _att, _v, got
+                            in gather_for_stage(base, task, rep.stage)
+                            for pair in got]
+
+        # 8 · WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch`
+        #     refuses a deck rendered for another width, and prep is the step
+        #     that exists so there are no surprises there (`agreement.py`).
+        job = next((j for j in js.jobs if j.name == rep.stage), None)
+        if job is not None:
+            r = job.resources
+            out.resources = {"mpi_np": r.mpi_np,
+                             "cpus_per_task": r.cpus_per_task,
+                             "continue_retries": r.continue_retries}
+            out.deck = Path(job.script).name
+            from .agreement import launch_agreement
+            agreement = launch_agreement(rep.dir, job)
+            if agreement.verdict != "silent":
+                out.agreement = agreement
+                ledger(base, "prep", "launch-agreement", stage=rep.stage,
+                       verdict=agreement.verdict,
+                       rendered_for=agreement.rendered_text,
+                       launching_at=agreement.launch_text)
+        return out
+    except PrepError as exc:
+        raise _refused(exc)
+    except (UnknownTarget, AmbiguousTarget, ValueError, KeyError) as exc:
+        # WHICH MACHINE is this for -- an answer only the person has
+        # (`preparing-for-another-machine.md` § 4) -- and the plain
+        # `ValueError`/`KeyError` the steps raise for what is the USER'S to
+        # fix (a template naming an item its schema does not declare, a
+        # bundle written before a rename), said the same way on both doors;
+        # the Task setup route answered them 400 while the terminal showed a
+        # traceback.  A `TypeError` is not translated: it is a bug, and
+        # should look like one.
+        raise _refused(PrepError(str(exc))) from exc
+
+
+__all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
+           "Answer", "PrepError", "resolve_target"]

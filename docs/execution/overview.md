@@ -142,11 +142,14 @@ executed, and the whole `execution/` domain is shaped by it:
   GPUs/cores actually run fastest. The **JobSet framework** answers all of that —
   and it is **shipped on the CLI today**.
 - **Where the browser landed — narrower than first planned, by decision**
-  (2026-08-07). The browser gets to **describe a staged calculation and observe
-  one**; it does not get to run one. **The browser describes and observes; the
-  terminal acts.** That is not a limitation of the UI, it is
-  `project-layout.md § 2.2`: a deck carries values that depend on how it will be
-  launched, so it cannot be finished before the machine is known. **The two
+  (2026-08-07). The browser gets to **describe a staged calculation, prepare
+  it for a named machine, and observe it**; it does not get to launch one.
+  **The browser describes, prepares and observes; the terminal launches.** A
+  deck carries values that depend on how it will be launched
+  (`project-layout.md § 2.2`), so it is rendered from the chosen machine's
+  record — the Task setup tab's Prep buttons call the one prep entry the
+  terminal calls (`job-system.md` § 5.3) — and launching, which spends a
+  queue slot, stays at the terminal. **The two
   tabs this needed are built and shipped**: the generating tabs hand over, and
   the shared **Task setup** tab writes the description
   ([`web/task-setup.md`](?doc=web/task-setup.md)); the whole loop ran end to
@@ -183,7 +186,8 @@ flowchart TB
 | `molbuilder.json` config (envs, activation, scheduler) | ✅ | — | `running-a-job.md § 5` |
 | Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
 | Describe a staged calculation (shape · stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
-| Prep / submit a staged ladder (one stage at a time) | ✅ | — *(by design: the terminal acts)* | `job-system.md § 3` |
+| Prep a staged ladder (one stage at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |
+| Launch a stage | ✅ | — *(by design: it spends a queue slot, by hand)* | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
 | SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
@@ -194,10 +198,12 @@ flowchart TB
 
 Two facts keep the picture honest:
 
-- **The web's describe half is built; the act half stays on the terminal by
-  design.** The parameter tabs write no deck at all — the old deck-rendering
-  routes were deleted (2026-08-18) — they hand over to Task setup, which
-  writes the description; `prep`/`launch` run where the machine is. What the
+- **The web's describe and prepare halves are built; launching stays on the
+  terminal by design.** The parameter tabs write no deck at all — the old
+  deck-rendering routes were deleted (2026-08-18) — they hand over to Task
+  setup, which writes the description and preps it from the chosen machine's
+  record through the one prep entry (`job-system.md` § 5.3); `launch` runs
+  where the machine is. What the
   web still lacks is the observe half beyond the Results tab: a plan view
   and a per-stage status roll-up (`plans/plan.md` **W14**).
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared

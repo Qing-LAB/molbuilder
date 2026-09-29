@@ -255,6 +255,140 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     assert list(d.glob("*.run.sh")), "no wrapper"
 
 
+def test_the_tab_asks_before_re_rendering_a_run_already_under_way(
+        page, flask_server, calc_dir):
+    """`task-setup.md` § 11.1: the one prep entry's question, on the page.
+
+    A launched attempt is evidence the run is under way.  Prep run here
+    shows it, with a Confirm button, and renders nothing; Confirm is the
+    answer, and the answer box then names the attempt it opened.  The
+    launched attempt is set up through the entry itself -- this test is
+    about what the page does with its answer.
+    """
+    from molbuilder.jobset.materialize import RUN_LAUNCH_FILE, attempts
+    from molbuilder.jobset.prep import Answer, prep_stage
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    done = prep_stage(calc_dir, "run", "coarse", target=LOCAL_TARGET,
+                      answer=Answer(True, "the test's setup"))
+    (done.attempt.dir / RUN_LAUNCH_FILE).write_text("{}")
+    launched = attempts(calc_dir / "01_coarse")
+
+    _open(page, flask_server, calc_dir)
+    page.wait_for_selector("#ts-target-card button", timeout=20000)
+    page.evaluate(
+        "() => { for (const b of document.querySelectorAll('button'))"
+        "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
+        "    { b.click(); return; } }")
+    panel = "[id^=ts-steppanel]"
+    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+        .first.click()
+    prep_sel = f"{panel} .ts-prep button:has-text('Prep run here')"
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
+        arg=f"{panel} .ts-prep button", timeout=30000)
+    page.locator(prep_sel).first.click()
+
+    confirm = f"{panel} .ts-prep-answer button:has-text('Confirm')"
+    page.wait_for_selector(confirm, timeout=60000)
+    said = page.locator(f"{panel} .ts-prep-answer").first.inner_text()
+    assert "was launched" in said, said
+    assert attempts(calc_dir / "01_coarse") == launched, (
+        "the question was asked after a deck was re-rendered")
+
+    # CONFIRM IS A WRITE: an unsaved edit is not in the task.json prep
+    # reads, so it is refused exactly as Prep is, and nothing renders.
+    original = page.evaluate(
+        "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
+    page.evaluate(
+        "() => { const cm = document.querySelector('.CodeMirror').CodeMirror;"
+        " cm.setValue(cm.getValue() + ' '); }")
+    page.locator(confirm).first.click()
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
+        " .some(n => /Save first/.test(n.textContent))", timeout=20000)
+    assert attempts(calc_dir / "01_coarse") == launched, (
+        "Confirm rendered a deck over an unsaved edit")
+    page.evaluate(
+        "(v) => document.querySelector('.CodeMirror').CodeMirror.setValue(v)",
+        original)
+    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+        .first.click()
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
+        arg=f"{panel} .ts-prep button", timeout=30000)
+    page.locator(prep_sel).first.click()
+    page.wait_for_selector(confirm, timeout=60000)
+
+    page.locator(confirm).first.click()
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
+        " .some(n => /Prepared for/.test(n.textContent))", timeout=60000)
+    opened = f"01_coarse/run-{launched[-1] + 1}"
+    said = page.locator(f"{panel} .ts-prep-answer").first.inner_text()
+    assert f"Attempt {opened}" in said, said
+    assert (calc_dir / opened).is_dir()
+
+
+def test_a_stage_with_no_axes_offers_the_machines_proposal(
+        page, flask_server, calc_dir):
+    """`generator.md` § 4.3a, on this door too: with no bench axes declared
+    the target machine proposes the grid -- as `prep bench` does at the
+    terminal -- so the measure block and its Prep bench button are offered,
+    saying so.  Until 2026-09-29 both needed a declared axis."""
+    _open(page, flask_server, calc_dir)
+    panel = "[id^=ts-steppanel]"
+    page.wait_for_selector(f"{panel} .ts-prep", state="attached",
+                           timeout=20000)
+    hints = page.eval_on_selector_all(
+        "p.hint", "els => els.map(e => e.textContent).join('\\n')")
+    assert "no axes are declared" in hints, hints
+    assert page.locator(
+        f"{panel} .ts-prep button:has-text('Prep bench here')").count(), (
+        "no Prep bench button on a stage with no declared axes")
+
+
+def test_a_description_prep_bench_refuses_offers_no_measure_step(
+        page, flask_server, isolated_projects_root_module):
+    """The Measure step is offered exactly where `prep bench` takes the
+    description: a PySCF one it refuses ("the benchmark lane only speaks
+    SIESTA today"), so its stage panel teaches the run and no bench -- the
+    folder answer's `bench_refusal`, the entry's own words (found by review,
+    2026-09-29: the block showed on every PySCF and transport stage)."""
+    import numpy as np
+
+    from molbuilder import describe as D
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.structure import Structure
+    from molbuilder.task import Stage
+
+    root = isolated_projects_root_module / "prep_pyscf"
+    src_dir = root / "structure"
+    src_dir.mkdir(parents=True)
+    d = root / "optimization" / "pyscf"
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    src = src_dir / "pyscf.xyz"
+    src.write_text(struct.to_xyz(), encoding="utf-8")
+    D.write_description(
+        D.build_description(struct, PySCFConfig(), [Stage(name="coarse")],
+                            engine="pyscf", shape="hierarchical",
+                            name="pyscf", source=str(src)),
+        d, struct=struct)
+    _open(page, flask_server, d)
+    panel = "[id^=ts-steppanel]"
+    page.wait_for_selector(
+        f"{panel} .ts-prep button:has-text('Prep run here')",
+        state="attached", timeout=20000)
+    hints = page.eval_on_selector_all(
+        "p.hint", "els => els.map(e => e.textContent).join('\\n')")
+    assert "Measure it" not in hints, hints
+    assert not page.locator(
+        f"{panel} .ts-prep button:has-text('Prep bench here')").count()
+
+
 @pytest.fixture(scope="module")
 def filled_dir(isolated_projects_root_module):
     """A calculation that ALREADY states a run condition, at both levels.
@@ -680,9 +814,10 @@ def two_stage_dir(isolated_projects_root):
 
     Two, because the claim under test is *per stage, not only the first* --
     the card once offered `prep bench` for `enabled[0]` alone, which a
-    one-stage fixture cannot tell apart from correct.  The bench block,
-    because the Measure half renders only when the description declares axes
-    to measure (`viewer.js`: `if (benchKeys.length)`).
+    one-stage fixture cannot tell apart from correct.  A declared bench
+    axis, because the Measure half names what a declaration varies
+    (`viewer.js`: `benchVarying`) -- the half itself renders on every stage
+    of a description `prep bench` takes (`if (!_fs.benchRefusal)`).
     """
     import json as _json
 

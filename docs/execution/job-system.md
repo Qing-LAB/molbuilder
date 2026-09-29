@@ -120,14 +120,15 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 
 ### Where it stands today (read this before the details)
 
-> **The job system is shipped on the command line; the web describes and
-> observes.** Everything in this document — the `JobSet` model, the
-> `molbuilder jobset` verbs, one-job-at-a-time SLURM submission with routing
-> domains, and the whole benchmark workflow — works today from a terminal.
-> The web's half is the description (the Task setup tab writes `task.json` +
-> the template — [`web/task-setup.md`](?doc=web/task-setup.md)) and the
-> Results tab; `prep` and `launch` stay on the terminal **by design** (*the
-> browser describes and observes; the terminal acts*). What the web still
+> **The job system is shipped on the command line; the web describes,
+> prepares and observes.** Everything in this document — the `JobSet` model,
+> the `molbuilder jobset` verbs, one-job-at-a-time SLURM submission with
+> routing domains, and the whole benchmark workflow — works today from a
+> terminal. The web's half is the description (the Task setup tab writes
+> `task.json` + the template — [`web/task-setup.md`](?doc=web/task-setup.md)),
+> `prep` through the same entry the terminal calls (§ 5.3, *One prep, two
+> doors*), and the Results tab; `launch` stays on the terminal **by design**:
+> it spends a queue slot, one job per invocation, by hand. What the web still
 > lacks is a plan view and a per-stage status roll-up — § 8.
 
 > ### How a ladder advances
@@ -968,6 +969,69 @@ is the only place the measured numbers, the chosen starting geometry and the
 rendered deck appear together — exactly where a person should be looking before
 committing cluster time.
 
+#### One prep, two doors *(plan W38 F7, agreed 2026-09-27: "yes, one prep entry for both")*
+
+`prep` has two doors — this command, and the Task setup tab's **Prep run** /
+**Prep bench** buttons ([`web/task-setup.md`](?doc=web/task-setup.md) § 11) —
+and **one entry**, `jobset/prep.py::prep_stage`, which both call. It does the
+whole act and returns what it found and decided **as data** (`PrepAnswer`),
+and it asks nothing: the asking is each door's. The five steps inside it still
+say, as each deck renders, what that deck's checks found — on the terminal's
+stderr and in the deck's `<deck>.validation.txt` — and the answer carries those
+findings too, for the door that has no stderr.
+[`architecture.md`](?doc=execution/architecture.md) A12 — one assembly per
+route — is this, for the whole verb.
+
+| in the answer | what it is |
+|---|---|
+| `findings` | the description's preflight notes (`engines/stages.md` § 6.6); an error refuses instead |
+| `notes` | what the inputs said: the run's sizing when nothing stated it, a bench's grid — enumerated, crossed out, kept |
+| `question` | *already under way here*: the `evidence` (a launched attempt, warm files at the root, a queued trial) and the `advice` beside it (what re-rendering does and does not touch), when there is evidence and it has not been answered — **no deck is rendered** until it is |
+| `dirs` | the job folders the five steps wrote |
+| `provenance` | which configuration file supplied each setting (`configuration.md` § 2.2) |
+| `deck_findings` | what each deck's checks said, one of each (a sweep's trials repeat them) |
+| `flat` | a flat run: its wrappers are rendered and there is no attempt to open |
+| `attempt` | the attempt it opened or reused, what it brought in, what it copied and from where (`--from`, `--cold`) |
+| `points` | a transport bias scan's attempts instead — one per point, each with what it gathered |
+| `gathered` | a transport rung's inputs, copied into its one attempt from the concluded upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
+| `pipeline_log` | the step-by-step record, when one was written |
+
+**The question is answered by calling again with the answer** (`Answer`),
+**which names the evidence it answers**: if the folder shows something else by
+then — a trial launched while the tab sat on its Confirm — the question comes
+back instead, so nothing is re-rendered over evidence nobody saw. The ledger
+records the answer in its words (`underway-ask`); *no* stops, and nothing is
+re-rendered. What the inputs read of the target — a bench's grid, and the
+type of the devices a run's condition counts — is read before the question,
+so a refusal about that machine comes first; the rest of a run's machine is
+resolved by the five steps, after the answer. The command line asks at the
+terminal (`y` by default; with no terminal to ask it proceeds and says so —
+re-rendering replaces decks only, run-identity.md § 6); the tab shows the
+evidence and a Confirm button. Every decision the entry makes lands in
+`jobset-decisions.log` whichever door called it — the preflight's notes first,
+on the pass that acts or refuses and never on one that only asks.
+
+**A refusal carries what the entry had found** (`PrepError`'s `findings`,
+`notes` and `partial`): the preflight's notes, what the inputs said — a bench
+refused because *no cell survived* points at its crossed-out cells — and what
+the five steps had already written. The command line prints them before the
+refusal's sentence; the tab's route returns them beside it. The plain
+`ValueError` / `KeyError` the steps raise for what is the person's to fix (a
+template naming an item its schema does not declare) are refused the same way
+on both doors; a `TypeError` is a bug, and looks like one.
+
+**A bench with no declared axes is the machine's proposal on both doors**
+([`generator.md`](?doc=execution/generator.md) § 4.3a: an absent declaration
+keeps the machine's enumeration), and the tab offers its bench button whether
+or not axes are declared. The tab refused it until 2026-09-29 while the
+command line prepped it — one of the four things the page skipped, with the
+preflight, the question and the agreement. **Where `prep bench` refuses the
+description itself** — a transport calculation, an engine the bench lane does
+not speak — one function says so for every door (`prep_inputs.bench_refusal`):
+the entry's gate, the bench's assembly before it reads any machine, and the
+folder answer, whose `bench_refusal` hides the tab's Measure step.
+
 #### Examples
 
 A two-stage relaxation on a **workstation**, `shape: hierarchical`:
@@ -1492,7 +1556,8 @@ Where each responsibility lives, for someone extending the framework:
 | SIESTA's stage knowledge — the shipped ladder, the warm-file declaration, the traits — consumed by the engine seam | `molbuilder/siesta/stages.py` |
 | The benchmark grid — the `(G × K × c)` enumeration `prep bench` consumes | `molbuilder/bench/grid.py` |
 | Lay out the materialized tree (job folders with their copies, and `prepare_attempt`) | `molbuilder/jobset/materialize.py` |
-| The five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
+| The prep verb's one entry (`prep_stage` → `PrepAnswer`, § 5.3), which the command line and the Task setup tab both call; the five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
+| What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`) | `molbuilder/jobset/runstatus.py` |

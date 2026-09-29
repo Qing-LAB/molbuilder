@@ -283,8 +283,9 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
 # refuse"), which is why it had zero callers: the design had moved and the
 # function pinned the old one.  What § 6 still requires -- before writing,
 # SAY what is in the folder -- is served by :func:`warm_files_present`
-# (the evidence) and asked at the surface (`jobset/_cli._ask_if_underway`),
-# where a question belongs.
+# (the evidence, through `jobset/prep.underway_evidence`) and asked by
+# each door of the one prep entry -- the terminal's prompt, the Task setup
+# tab's Confirm -- where a question belongs.
 
 
 

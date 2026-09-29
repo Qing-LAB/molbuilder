@@ -4,7 +4,7 @@ What lives here after the 2026-08-12 fold (step 6 u5's tombstone below
 is the authority; this header used to describe the pre-fold design --
 script emitters, "ships to the target", "the next increment" -- none of
 which survived): ``sweep_grid`` (the one G x K x C enumeration
-`_bench_inputs` consumes), ``sweep_K`` (topology-derived rank counts),
+`jobset/prep_inputs.bench_inputs` consumes), ``sweep_K`` (topology-derived rank counts),
 Trials are rendered by `jobset prep bench` and launched by
 `jobset launch` -- no script is formatted here, and nothing ships.
 (The adapter classes this module was named for folded away 2026-08-12;
@@ -39,7 +39,7 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
 def sweep_grid(gpn, cps, ks, cs_explicit):
     """The canonical ``(G, K, c)`` enumeration -- the SINGLE source of truth
     for the sweep grid, iterated by every consumer of the grid
-    (today: `jobset prep bench`'s `_bench_inputs`), so no two consumers
+    (today: `jobset prep bench`'s `prep_inputs.bench_inputs`), so no two consumers
     can define it differently.  Order: G outer, then K, then c
     (the per-K bracket ``{1, cores//K, 2*cores//K}`` when ``cs_explicit`` is
     None).  Yields ``(g, k, c)`` tuples."""

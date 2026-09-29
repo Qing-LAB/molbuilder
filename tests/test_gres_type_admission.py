@@ -218,7 +218,7 @@ class TestTheGridFitCheckReportsHonestly:
         -- must carry one.  With no reason it read as *this machine can
         hold it*, which is the opposite of the truth."""
         import molbuilder.runtime_config as rc
-        from molbuilder.jobset._cli import _cells_this_machine_holds
+        from molbuilder.jobset.prep_inputs import _cells_this_machine_holds
         cpu_only = [_dom("cpuonly", max_cores=128,
                          node_types=[{"cores": 128, "nodes": 10}])]
         monkeypatch.setattr(rc, "get_routing", lambda **k: cpu_only)
@@ -244,7 +244,7 @@ class TestTheGridFitCheckReportsHonestly:
         the demotion is `where == "admit.gpu_type"` and this test names the
         ordering instead of recognising it by a fragment.
         """
-        from molbuilder.jobset._cli import _rank_reasons
+        from molbuilder.jobset.prep_inputs import _rank_reasons
         from molbuilder.scheduler.admit import Refusal
         ranked = _rank_reasons([
             Refusal("gpu_type", "gaudi", asked="a100", allowed="hl225"),
@@ -260,7 +260,7 @@ class TestTheGridFitCheckReportsHonestly:
         stated answer over a failure that had nothing to do with it."""
         import molbuilder.runtime_config as rc
         import molbuilder.scheduler as sched
-        from molbuilder.jobset._cli import _gpu_type_for_bench
+        from molbuilder.jobset.prep_inputs import _gpu_type_for_bench
 
         monkeypatch.setattr(rc, "get_scheduler",
                             lambda **k: {"gpu": {"default_type": "a100"}})

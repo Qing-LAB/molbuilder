@@ -21,9 +21,9 @@ import pytest
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Domain, Environment, Topology
-from molbuilder.jobset._cli import _bench_inputs
+from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.materialize import latest_attempt
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import PrepError, prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
@@ -98,12 +98,13 @@ def _declare(calc, axes):
 #  enumeration: families, inventory fallback, cap drop                   #
 # --------------------------------------------------------------------- #
 
-def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
+def test_the_users_matrix_enumerates_both_families(sol_calc):
     """The acceptance matrix: 18 CPU trials (every declared rank count)
     and 18 GPU trials (only np32 survives the 48-core cap; its G ranges
     over the divisors 1/2/4) — and the dropped cells are said BY NAME."""
     _declare(sol_calc, USERS_MATRIX)
-    points, pins, tr = _bench_inputs(sol_calc, None)
+    notes: list = []
+    points, pins, tr = bench_inputs(sol_calc, None, notes=notes)
 
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
@@ -120,8 +121,9 @@ def test_the_users_matrix_enumerates_both_families(sol_calc, capsys):
     # to print "dropped from the GPU family (domain 'general' allows 48
     # cores/node)" and now prints the whole grid, kept and crossed out,
     # each struck row carrying its own reason.  The CLAIM is unchanged:
-    # nothing is dropped silently.
-    out = capsys.readouterr().out
+    # nothing is dropped silently -- the notes say it, which both prep
+    # doors show (`prep.prep_stage`).
+    out = "\n".join(notes)
     assert "crossed out" in out
     assert "general" in out and "48" in out
     assert "G1K64C1" in out and "G1K128C1" in out
@@ -134,7 +136,7 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     device count and gres type come from the menu's recorded inventory,
     which is what lets a login node enumerate for the cluster behind it."""
     _declare(sol_calc, USERS_MATRIX)
-    points, _pins, tr = _bench_inputs(sol_calc, None)
+    points, _pins, tr = bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
     res = tr.to_resources(g2, None)
     assert res["gres"] == "gpu:a100:2"
@@ -149,13 +151,12 @@ def test_two_inventory_types_refuse_with_the_curation_remedy(sol_calc):
     """Choosing between recorded GPU types would be a ranking — the probe
     buried ``best_gpu_type`` for exactly that.  Refused, with the row
     named."""
-    import click
     env = json.loads((sol_calc / "environment.json").read_text())
     env["domains"][1]["gpu"] = {"a100": 4, "a100.20gb": 16}
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "several GPU types" in str(e.value)
     assert "a100.20gb" in str(e.value)
 
@@ -177,7 +178,7 @@ def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
 
-    points, _pins, tr = _bench_inputs(sol_calc, None)
+    points, _pins, tr = bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
     assert tr.to_resources(g2, None)["gres"] == "gpu:a100:2"
     # ...and the cap still applies: the row's 48 cores are unchanged by the
@@ -188,13 +189,12 @@ def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     """No local GPU and no recorded inventory: the family cannot be
     enumerated, and the refusal names the probe AND the menu."""
-    import click
     env = json.loads((sol_calc / "environment.json").read_text())
     del env["domains"][1]["gpu"]
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "no domain row with a recorded GPU inventory" in str(e.value)
 
 
@@ -211,7 +211,7 @@ def _small_matrix():
 
 def _prep(calc):
     from molbuilder.jobset.model import Resources
-    points, pins, tr = _bench_inputs(calc, None)
+    points, pins, tr = bench_inputs(calc, None)
     dirs = prep_calculation(calc, "coarse", allocation=Resources(),
                             emit_sbatch=False, sweep=points, pins=pins,
                             translation=tr)
@@ -461,52 +461,49 @@ def test_declared_gpu_count_is_exact(sol_calc):
     never rounded."""
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [1, 2, 3]})
-    points, _pins, _tr = _bench_inputs(sol_calc, None)
+    points, _pins, _tr = bench_inputs(sol_calc, None)
     assert sorted(p["G"] for p in points) == [1, 2],         "exactly the declared counts that divide -- G4 must NOT appear"
     assert all(p["G"] * p["K"] == 32 for p in points)
 
 
-def test_uneven_split_is_dropped_by_name(sol_calc, capsys):
+def test_uneven_split_is_dropped_by_name(sol_calc):
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [2, 3]})
-    _bench_inputs(sol_calc, None)
-    out = capsys.readouterr().out
+    notes: list = []
+    bench_inputs(sol_calc, None, notes=notes)
+    out = "\n".join(notes)
     assert "split EVENLY" in out and "mpi_np=32 x gpu_count=3" in out
 
 
 def test_gpu_count_beyond_the_record_is_refused(sol_calc):
-    import click
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [8]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "gpu_count = [8]" in str(e.value)
     assert "4 device(s)" in str(e.value)
 
 
 def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
-    import click
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [False],
                         "gpu_count": [2]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "silently ignored" in str(e.value)
 
 
 def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
-    import click
     _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
                         "gpu_count": [3]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "no GPU cell survived" in str(e.value)
     assert "crossed-out list" in str(e.value), (
         "the refusal must point at the list that names each struck cell "
         "and why -- not merely say that everything went")
 
 
-def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
-                                                                capsys):
+def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc):
     """tuning.md § 2.12's own worked declaration, end to end: gpu_count
     filters ONLY the GPU family (the CPU family keeps every declared rank
     count); use_gpu as a two-point axis beside gpu_count does NOT
@@ -516,7 +513,8 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
     _declare(sol_calc, {"mpi_np": [32, 64], "omp_threads": [1],
                         "use_gpu": [True, False],
                         "gpu_count": [1, 2, 4]})
-    points, _pins, _tr = _bench_inputs(sol_calc, None)
+    notes: list = []
+    points, _pins, _tr = bench_inputs(sol_calc, None, notes=notes)
     cpu = [p for p in points if not p["G"]]
     gpu = [p for p in points if p["G"]]
     assert sorted({p["K"] for p in cpu}) == [32, 64], \
@@ -527,7 +525,7 @@ def test_the_worked_example_matrix_enumerates_as_the_doc_states(sol_calc,
     # 48-core node), each named in the echo; np32 keeps all three counts
     assert sorted((p["G"], p["K"]) for p in gpu) == \
         [(1, 32), (2, 16), (4, 8)]
-    out = capsys.readouterr().out
+    out = "\n".join(notes)
     assert "crossed out" in out
     for cell in ("G1K64C1", "G2K32C1", "G4K16C1"):
         assert cell in out, f"the struck cell {cell} must be named"
@@ -538,7 +536,7 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     half stays the machine's proposal, filtered to the declared device
     counts."""
     _declare(sol_calc, {"use_gpu": [True], "gpu_count": [2]})
-    points, _pins, _tr = _bench_inputs(sol_calc, None)
+    points, _pins, _tr = bench_inputs(sol_calc, None)
     assert points, "the probed ladder must survive the filter"
     assert {p["G"] for p in points} == {2}
     assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
@@ -625,10 +623,9 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
     classified allocation entries before checking them, so
     ``mpi_np: [8, 8, 16]`` was refused at describe and ACCEPTED at prep
     -- two identical grid cells measuring one configuration twice."""
-    import click
     _declare(sol_calc, {"mpi_np": [8, 8, 16]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(sol_calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(sol_calc, None)
     assert "repeated point" in str(e.value)
     assert "mpi_np" in str(e.value)
 

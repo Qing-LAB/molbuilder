@@ -1258,9 +1258,8 @@ def api_task_setup_prep():
     stage = (body.get("stage") or "").strip() or None
     target = (body.get("target") or "").strip() or None
     # NO `--from` HERE.  Continuing from a named attempt is `prep run
-    # --from <stage>/run-N`, which goes through `prepare_attempt` rather
-    # than `prep_calculation`, and WHICH run you continue from is a
-    # scientific choice the CLI makes you say out loud
+    # --from <stage>/run-N` -- the entry's ``from_attempt`` -- and WHICH run
+    # you continue from is a scientific choice the CLI makes you say out loud
     # (`project-layout.md` § 1.6).  A button that offered it would have to
     # pick a default, and there is no honest one.
     plan_only = bool(body.get("plan"))
@@ -1336,14 +1335,12 @@ def api_task_setup_prep():
         The write path refuses in its own words; this falls back to the
         condition AS WRITTEN, so the card says a number instead of going
         blank."""
-        import contextlib
-        import io as _io
-
-        from molbuilder.jobset._cli import prep_run_inputs, run_condition
+        from molbuilder.jobset.model import Resources
+        from molbuilder.jobset.prep_inputs import (prep_run_inputs,
+                                                   run_condition)
         try:
-            with contextlib.redirect_stdout(_io.StringIO()):
-                _alloc, _pins, chosen = prep_run_inputs(
-                    dest, target, task, stage)
+            _alloc, _pins, chosen = prep_run_inputs(dest, target, task, stage,
+                                                    Resources())
             return chosen
         except Exception:                                     # noqa: BLE001
             return run_condition(task, stage)
@@ -1356,15 +1353,12 @@ def api_task_setup_prep():
         again.  A parameter nobody stated is reported as WHAT BLANK RESOLVES
         TO, never as blank.
         """
-        import contextlib
-        import io as _io
-
-        from molbuilder.jobset._cli import prep_run_inputs
+        from molbuilder.jobset.model import Resources
+        from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.runwrap import auto_ranks, header_ntasks
         try:
-            with contextlib.redirect_stdout(_io.StringIO()):
-                alloc, _pins, _chosen = prep_run_inputs(dest, target, task,
-                                                        stage)
+            alloc, _pins, _chosen = prep_run_inputs(dest, target, task, stage,
+                                                    Resources())
         except Exception:                                     # noqa: BLE001
             return []
         gres = getattr(alloc, "gres", None)
@@ -1372,7 +1366,7 @@ def api_task_setup_prep():
         # one: a GPU description that names no device count has no gres yet
         # and would read as CPU here, so the card printed the target's full
         # width where the header will carry one rank per device.
-        from molbuilder.jobset._cli import run_uses_device
+        from molbuilder.jobset.prep_inputs import run_uses_device
         gpu = bool(gres) or run_uses_device(dest, task, stage)
         n_gpu = None
         if gres:
@@ -1452,6 +1446,13 @@ def api_task_setup_prep():
 
     # ---- the PLAN: what this would do, writing nothing ----------------- #
     if plan_only:
+        # A DESCRIPTION WITH NO BENCH has no bench plan either -- the entry's
+        # own refusal, asked of the same function, so a preview cannot
+        # promise a grid the write refuses.
+        from molbuilder.jobset.prep_inputs import bench_refusal
+        why = bench_refusal(task) if kind == "bench" else None
+        if why:
+            return jsonify({"ok": False, "error": why}), 400
         alloc = task.allocation
         return jsonify({
             "ok": True, "plan": True, "kind": kind, "stage": stage,
@@ -1486,122 +1487,49 @@ def api_task_setup_prep():
             "writes_into": str(dest),
         })
 
-    # ---- the real thing ------------------------------------------------ #
-    from molbuilder.jobset._cli import _bench_inputs
-    from molbuilder.jobset.prep import PrepError, prep_calculation
-    from molbuilder.jobset.ledger import prepped as _ledger_prepped
-    # A machine question raised from INSIDE prep is the user's to answer,
-    # like every refusal here -- not a server fault.  Uncaught it was a 500.
-    from molbuilder.scheduler.record import AmbiguousTarget as _AmbiguousTarget
-    from molbuilder.scheduler.record import UnknownTarget as _UnknownTarget
-    kwargs = {}
-    if kind == "run":
-        # THE SAME ASSEMBLY THE COMMAND LINE USES -- the bench's pins, the
-        # this run's own condition and the calculation's ask, composed
-        # by `prep_run_inputs`.  This door puts NOTHING together itself:
-        # the UI is not a second framework, it is a way to see and decide
-        # (user, 2026-09-02).  It assembled its own for an hour that day and
-        # was missing the verdict and the bench's pins both.
-        #
-        # ITS REFUSALS ARE THE USER'S, like every other refusal at this door:
-        # "which machine is this for" and "this machine cannot hold your
-        # condition" are answers only a person has, and both would be a 500
-        # uncaught.  The note `prep_run_inputs` echoes for a terminal is
-        # swallowed -- a server log is not where that reader is.
-        import contextlib
-        import io as _io
-
-        from molbuilder.jobset._cli import prep_run_inputs
-        try:
-            with contextlib.redirect_stdout(_io.StringIO()):
-                allocation, pins, chosen = prep_run_inputs(
-                    dest, target, task, stage)
-        except Exception as exc:                              # noqa: BLE001
-            return jsonify({"ok": False, "error": str(exc)}), 400
-        kwargs = {"chosen": chosen, "allocation": allocation, "pins": pins}
-    if kind == "bench":
-        if not (task.bench or {}):
-            return jsonify({
-                "ok": False,
-                "error": ("this description declares nothing to measure -- "
-                          "add a bench axis, or prep the run instead"),
-            }), 400
-        try:
-            # THE TARGET GOES HERE TOO.  `_bench_inputs` enumerates the
-            # grid from a MACHINE's probed topology -- how many devices it
-            # has -- so it resolves one, and without the target it resolved
-            # with `None` and hit the ambiguity refusal.  The CLI passes it
-            # (`_bench_inputs(base, target)`); this call did not, so `prep
-            # bench` from the browser failed at the WRITE while its own
-            # preview succeeded (reported 2026-08-24).
-            sweep, pins, translation = _bench_inputs(dest, target)
-        except Exception as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
-        kwargs = {"sweep": sweep, "pins": pins, "translation": translation}
-
+    # ---- the real thing: THE ONE ENTRY (`job-system.md` § 5.3) --------- #
+    # The command line's own prep, called whole -- the preflight, the
+    # *already under way* question, the five steps, the attempt, the
+    # transport carry, the launch agreement and their ledger lines -- and its
+    # answer returned whole, for the tab to show (`task-setup.md` § 11.1).
+    # Until 2026-09-29 this door called the five steps alone and showed only
+    # the folders: no preflight, no question, no agreement, no ledger lines
+    # for them, and an axis-less bench refused that the command line preps
+    # as the machine's proposal (plan W38 F7).
+    #
+    # A QUESTION COMES BACK UNANSWERED, with nothing rendered; the page shows
+    # the evidence, and pressing Confirm sends `confirm: true` WITH the
+    # evidence it showed -- the answer counts for that evidence only, and
+    # the ledger records it as this tab's.
+    from molbuilder.jobset.model import Resources
+    from molbuilder.jobset.prep import Answer, PrepError, prep_stage
+    answer = (Answer(True, "confirmed on the Task setup tab",
+                     evidence=tuple(str(e) for e in
+                                    (body.get("evidence") or ())))
+              if body.get("confirm") else None)
     try:
-        dirs = prep_calculation(dest, stage, target=target, **kwargs)
-    except (PrepError, ValueError, KeyError,
-            _AmbiguousTarget, _UnknownTarget) as exc:
-        # Refused, not repaired -- the reader's own words, as the CLI gives
-        # them.  A browser that "fixed" a refusal would be the second,
-        # drifting decider this design exists to avoid.
-        #
-        # `ValueError`/`KeyError` are 400 beside `PrepError` because the
-        # conditions that raise them are the USER'S to fix and say so
-        # plainly: a template naming an item the schema does not declare
-        # (a bundle written before a rename) came back as a 500 -- "server
-        # bug" -- over a message that already told the person exactly which
-        # item to correct.
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        ans = prep_stage(dest, kind, stage, target=target,
+                         allocation=Resources(), answer=answer)
+    except PrepError as exc:
+        # Refused, not repaired -- the reader's own words, as the terminal
+        # gives them -- WITH what the entry had found by then: the preflight's
+        # notes, what the inputs said (a bench's crossed-out cells, which a
+        # refusal may point at), and what was already written.
+        return jsonify({
+            "ok": False, "error": str(exc),
+            "findings": [i.to_json() for i in exc.findings],
+            "notes": list(exc.notes),
+            "partial": (exc.partial.as_dict(dest)
+                        if exc.partial is not None else None),
+        }), 400
     except Exception as exc:                      # pragma: no cover
         return jsonify({"ok": False,
                         "error": f"{type(exc).__name__}: {exc}"}), 500
-
-    # THE COMPOSITE'S OTHER CARRY, and until 2026-09-16 this door did not
-    # take it.  `prep_calculation` renders the decks and opens the attempt;
-    # for a transport rung the § 4.2 DAG's inputs -- the leads' `.TSHS`, the
-    # seed's `.DM`, the device's `.TS.HSX` -- still have to be copied in, and
-    # only the CLI did it.
-    #
-    # It used to be survivable by accident: the transport arm opened no
-    # attempt at all, so `launch` refused the folder by name and that refusal
-    # was the guard.  Opening the attempt (the same day, for a different
-    # reason) removed the symptom and left the gap standing -- a device job
-    # could reach the node and die for want of an electrode `.TSHS`, after
-    # the queue wait.  One fix made the other reachable.
-    #
-    # `gather_for_stage` is the door the CLI takes too, so the two roads now
-    # do the same thing and its three gates -- upstream prepped, CONCLUDED,
-    # and running the deck this composition renders -- refuse HERE, in the
-    # browser, with the sentence the terminal gives.
-    carried = []
-    if (task.calculation or "") == "transport":
-        from molbuilder.jobset.prep import gather_for_stage
-        try:
-            carried = [
-                {"attempt": str(att.relative_to(dest)),
-                 "gathered": [{"file": fn, "from": src} for src, fn in got]}
-                for att, _v, got in gather_for_stage(dest, task, stage)
-            ]
-        except (PrepError, ValueError, KeyError) as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # AND THE BUNDLE RECORDS IT.  This surface acted, so this surface
-    # appends (`jobset/ledger.py`) -- it did not, while the Task Setup
-    # bundle card below listed `jobset-decisions.log` as "every decision
-    # prep made, one line each".  A calculation prepped only from the
-    # browser had no such file, and one prepped from both told a false
-    # story by holding the CLI's lines alone.  The recipe is the ledger's;
-    # the call is ours.
-    _ledger_prepped(dest, kind=kind, stage=stage, dirs=dirs)
-
     return jsonify({
-        "ok": True, "kind": kind, "stage": stage,
+        "ok": True,
         "machine": "(this machine)" if target == LOCAL_TARGET
                    else (target or "(this machine)"),
-        "dirs": [str(pathlib.Path(d).relative_to(dest)) for d in dirs],
-        "carried": carried,
+        **ans.as_dict(dest),
     })
 
 
@@ -2023,7 +1951,7 @@ def api_task_setup_bench_grid():
     **The same list the terminal prints, as data** -- served rather than
     recomputed, because a browser enumerating the grid a second way would
     be exactly the drifting second decider `generator.md` § 4.3a's rebuild
-    removed.  `_bench_inputs` is the one enumerator; this hands it the
+    removed.  `bench_inputs` is the one enumerator; this hands it the
     axes and collects its report.
 
     POST ``{dest, target?, bench}``.  ``bench`` is the axis map AS IT IS
@@ -2069,22 +1997,17 @@ def api_task_setup_bench_grid():
     if target in ("(this machine)", LOCAL_TARGET):
         target = LOCAL_TARGET
 
-    import contextlib
-    import io
-
-    from molbuilder.jobset._cli import _bench_inputs
+    from molbuilder.jobset.prep_inputs import bench_inputs
     rows: list = []
     try:
-        # `_bench_inputs` PRINTS its report for the terminal.  This door
-        # wants the same report as data, and the card refreshes it on
-        # every keystroke -- so the printing is swallowed rather than
-        # left to fill the server log.  One function, two renderings.
-        with contextlib.redirect_stdout(io.StringIO()):
-            _bench_inputs(dest, target, bench_override=bench, report=rows)
+        # THE SAME REPORT the prep's notes print, as data: the card refreshes
+        # it on every keystroke, so it asks for the rows and not the notes.
+        # One function, two renderings.
+        bench_inputs(dest, target, bench_override=bench, report=rows)
     except Exception as exc:                      # noqa: BLE001
         # A grid where nothing survives raises, and its report is still the
         # answer worth showing -- the crossed-out rows say why.  The COUNT
-        # is computed, never assumed: `_bench_inputs` fills the report
+        # is computed, never assumed: `bench_inputs` fills the report
         # before its last few refusals, so a raise can follow cells that
         # did survive, and writing 0 here would report them as struck.
         if rows:
@@ -2120,8 +2043,8 @@ def api_task_setup_prep_plan():
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
-    from molbuilder.jobset._cli import run_condition
     from molbuilder.jobset.prep import token_for
+    from molbuilder.jobset.prep_inputs import run_condition
     from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
@@ -2393,7 +2316,25 @@ def api_task_setup_folder():
         # door deciding for it.
         "attempts": (_folder_attempts(folder) if described is not None
                      else {"ok": True, "shape": None, "stages": {}}),
+        # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
+        # answer (`prep_inputs.bench_refusal`), so the page offers the
+        # Measure step exactly where `prep bench` would take it.
+        "bench_refusal": _folder_bench_refusal(folder, described),
     })
+
+
+def _folder_bench_refusal(folder, described):
+    """The folder answer's ``bench_refusal``: the entry's reason this
+    description takes no bench, or ``None`` -- also when there is no
+    readable description to ask, since then there is no Measure step."""
+    if described is None:
+        return None
+    from molbuilder.jobset.prep_inputs import bench_refusal
+    from molbuilder.task import FILENAME as TASK_FILENAME, read_task
+    try:
+        return bench_refusal(read_task(folder / TASK_FILENAME))
+    except Exception:                                         # noqa: BLE001
+        return None
 
 
 @bp.route("/api/task-setup/machines", methods=["GET"])

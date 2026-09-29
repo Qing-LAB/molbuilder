@@ -37,7 +37,6 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
-from ..paths import attempt_dir
 
 
 def _load(bundle: str) -> tuple:
@@ -863,110 +862,9 @@ def _load_bench_set(base, stage):
         raise click.ClickException(str(e))
 
 
-def _ask_if_underway(base, stage, *, bench_container=None) -> None:
-    """§ 6's moment (run-identity.md, softened 2026-08-08): before writing,
-    SAY what is in the folder — and when what is there says a run already
-    HAPPENED (a launched attempt's ``run.json``, warm files at the root),
-    ask before re-rendering over it (2026-08-12 plan A3/U14).
-
-    ``bench_container`` NARROWS the evidence to a sweep's launched trials
-    (2026-08-12 plan A7; narrowed 2026-08-21, user: "bench always starts cold
-    -- there is no point of asking"): `prep bench` re-renders the very
-    decks a QUEUED trial's symlinks point at, so THAT is worth a
-    question -- while the run's launched attempts and the root's warm
-    files, which the run-side ask weighs, cannot be touched by
-    re-rendering relabelled cold trial decks and are not asked about.
-
-    The default is YES and an unanswerable prompt PROCEEDS, saying so —
-    the inverse of the verdict offer, deliberately: applying someone
-    else's numbers silently is the thing silence must not do, while
-    re-rendering decks is § 6's "ordinary thing to do" (warm files are
-    never touched, nothing is renamed), so a scripted re-prep must not
-    hang or die on a question it cannot hear.
-    """
-    from ..task import FILENAME, read_task
-    desc = Path(base) / FILENAME
-    if not desc.is_file():
-        return
-    task = read_task(desc)
-    from .materialize import RUN_LAUNCH_FILE, attempts, was_launched
-    from ..paths import Shape
-    evidence = []
-    # A BENCH prep weighs ONE kind of evidence only (user, 2026-08-21:
-    # "bench always starts cold -- there is no point of asking"): launched
-    # trials in this stage's container, whose decks a queued job may be
-    # reading mid-flight (2026-08-12 plan A7).  The run's own attempts
-    # and the root's warm files are irrelevant to it -- trial decks are
-    # relabelled and forced cold, so re-rendering them cannot touch the
-    # run -- and asking about them made every bench re-prep beside a
-    # launched run a question with no stakes.
-    # No `task.stages` test: `read_task` above refuses a description whose
-    # ladder is absent OR empty (`task.py`, engines/stages.md 6.5), so on
-    # this path it is always non-empty.  The TYPE is weaker -- it permits
-    # `stages=None` when `varies` is None too -- which is why the invariant
-    # is named here against the reader that establishes it rather than
-    # assumed from the dataclass.
-    if bench_container is None and stage is not None:
-        from .prep import token_for
-        try:
-            token = token_for(task, stage)
-        except Exception:
-            token = None
-        if token:
-            sd = Shape.named(task.shape).stage_dir(token)
-            d = Path(base) / sd if sd != "." else Path(base)
-            for n in attempts(d):
-                a = attempt_dir(d, n)
-                if was_launched(a):
-                    evidence.append(
-                        f"{a.relative_to(Path(base))}/ was launched "
-                        f"(its run.json)")
-    # (2026-08-12 plan A7 added a second arm here for a STAGELESS calculation,
-    # whose attempts sat at the ROOT where the stage gate above could not
-    # see them.  § 6.5 retired that shape on 2026-08-16: every attempt now
-    # lives under its stage, so the gate above sees all of them.)
-    if bench_container is not None:
-        # ASKED FOR.  This globbed `bench-*/**/run.json` -- one pattern for
-        # both depths, since a trial keeps attempts (§ 1.5a) -- and then
-        # walked the path parts backwards for the `bench-` component, because
-        # taking the parent would have named the ATTEMPT in the layout that
-        # has one.  Both halves are `materialize`'s knowledge: the prefix it
-        # composes and where the shape puts the record.
-        from .materialize import launched_trials
-        launched = launched_trials(bench_container, Shape.named(task.shape))
-        if launched:
-            evidence.append(
-                f"launched trial(s) in "
-                f"{Path(bench_container).relative_to(Path(base))}/: "
-                + ", ".join(launched))
-    if bench_container is None:
-        from ..validation.identity import warm_files_present
-        warm = warm_files_present(base, task.label, task.engine)
-        if warm:
-            evidence.append("warm files at the root: " + ", ".join(warm))
-    if not evidence:
-        return
-    click.echo("this calculation is already under way here:")
-    for e in evidence:
-        click.echo(f"    {e}")
-    click.echo("  re-rendering replaces the DECKS only: the warm files are "
-               "NOT touched and nothing is renamed (run-identity.md § 6).")
-    if (Path(base) / ".git").is_dir():
-        click.echo("  (a checkpoint repo exists -- `molbuilder checkpoint "
-                   "save` first records the current state)")
-    try:
-        ok = click.confirm("  proceed (re-render the decks)?", default=True)
-        answer = "yes" if ok else "no"
-    except click.exceptions.Abort:
-        click.echo("")
-        click.echo("  no answer (non-interactive): proceeding -- § 6 warns, "
-                   "it does not refuse.")
-        ok, answer = True, "no answer (non-interactive) -> proceed"
-    _ledger(base, "prep", "underway-ask", stage=stage,
-            evidence=evidence, answer=answer)
-    if not ok:
-        raise click.ClickException(
-            "stopped at your request -- nothing was re-rendered.")
+# `_ask_if_underway` stood here until 2026-09-29: its evidence half is
+# `prep.underway_evidence`, asked by the one prep entry for both doors, and
+# its asking half is `_ask_underway` beside the prep verb.
 
 
 # `_refuse_if_measured_elsewhere` and `_measured_on` stood here until
@@ -1021,1147 +919,12 @@ def _memory(text):
         raise click.ClickException(f"--mem: {e}")
 
 
-def _declared_execution_pins(base, engine, bench_override=None):
-    """`task.json` ``bench``, read as the OVERRIDE LANE it is (user rule,
-    2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
-    the template -- several points = an axis to try, ONE point = the value
-    in force, applied at prep as a pin for the bench's trials and the run
-    alike.  Nothing migrates between files: the description stays exactly
-    as edited, and prep is where a declaration is resolved.
-
-    Returns ``(pins, axes, value_axes)``: the one-point non-machine values
-    as a pins dict, the machine-answered entries untouched (the grid's
-    axes), and the MULTI-point non-machine entries as value axes --
-    ``{name: [points...]}`` -- which `_bench_inputs` crosses with the
-    machine grid so every trial's deck carries its coordinates
-    (§ 4.3a's built rule, 2026-08-21; refused by name until then).
-
-    Refused BY NAME, never repaired -- through the ONE shape checker
-    (`validation/task.py::_bench_points_fit_their_items`, R2-5 dedup
-    2026-08-21): an enum value outside the item's choices, a non-bool on
-    a bool item, a repeated point.  This function carried its own copy
-    of those rules; the copies had already diverged (a duplicated
-    allocation point -- ``mpi_np: [8, 8, 16]`` -- was refused at
-    describe and accepted here, because the local copy classified
-    allocation entries before checking them).  The dispatch runs the
-    full preflight BEFORE this helper, so in the CLI flow the refusal
-    normally lands there with every finding listed; the call here is
-    the backstop for direct callers, first-refusal shaped as the CLI's
-    errors are.
-
-    MEMBERSHIP is not this function's question (one door): every bench key
-    must be an ``execution`` item, and `validation/task.py`'s
-    ``_bench_names_a_speed_knob`` owns that rule -- a non-execution name
-    was refused upstream and an unknown name here is simply skipped.
-    Point SHAPES are `read_task`'s (task.py `_bench_from_obj`): every
-    value arrives as a non-empty tuple of scalars, so no scalar/empty
-    arms exist here.
-    """
-    from ..task import FILENAME as TASK_FILENAME, read_task
-    from ..validation.task import _bench_points_fit_their_items
-    from .. import template as _T
-
-    task = read_task(Path(base) / TASK_FILENAME)
-    if bench_override is not None:
-        # THE AXES AS THEY ARE BEING EDITED, not as they were last saved.
-        # The task-setup card resolves its grid live, and its edits live in
-        # the browser's model until the person saves -- so a live answer
-        # read from disk would describe the previous state.  Through
-        # `_bench_from_obj`, the ONE normaliser, so the override arrives
-        # in the same shape (and earns the same refusals) as a declaration
-        # that came off disk.
-        import dataclasses as _dc
-
-        from ..task import _bench_from_obj
-        task = _dc.replace(task,
-                           bench=_bench_from_obj({"bench": bench_override}))
-    declared = {k: list(v) for k, v in (task.bench or {}).items()}
-    if not declared:
-        return {}, {}, {}
-
-    shape_errors = [i for i in _bench_points_fit_their_items(task)
-                    if i.severity == "error"]
-    if shape_errors:
-        raise click.ClickException(shape_errors[0].message)
-
-    # THE ENGINE IS THE DESCRIPTION'S OWN (task.engine): the caller
-    # passed the same value, but reading it here keeps this door and
-    # the shape checker it calls keyed on one source.
-    items = {i.name: i
-             for i in _T.select(_T.catalogue(), engine=str(task.engine))
-             if "execution" in (i.category or ())}
-    pins, axes, value_axes = {}, {}, {}
-    for name, pts in declared.items():
-        it = items.get(name)
-        if it is None:
-            continue     # membership is the preflight's refusal, upstream
-        if it.allocation:
-            axes[name] = pts                 # machine-answered: the grid's
-            continue                         # business, never a value
-        if len(pts) > 1:
-            value_axes[name] = pts           # a VALUE AXIS (§ 4.3a): the
-            continue                         # grid multiplies per point
-        pins[name] = pts[0]
-    return pins, axes, value_axes
-
-
-#: What makes a trial a MEASUREMENT rather than a run -- schema values
-#: resolved like any other (`template.md` § 8.1: rebuild and render, never
-#: splice): capped SCF, single point, forced cold, run-once, and
-#: ``scf_must_converge: False`` so the cap ends CLEAN.  Applied OVER every
-#: declared value (one-point pins and value-axis coordinates alike), and a
-#: value AXIS naming one of these is refused -- its trials would be one
-#: measurement under many labels.  One spelling for both uses (the pins
-#: and that refusal); the per-key whys sit at the application site.
-#: ``max_scf_iter: 3`` since 2026-08-21 (user, from measured experience:
-#: iterations 3-5 agree within seconds on a 444-atom junction, and the
-#: bench reads SCALING and DEPENDENCY -- the knee -- not tight rankings):
-#: iteration 1 never forms a timing delta, the iter-2 delta is dropped as
-#: warm-up-adjacent, iteration 3 is the one clean sample.  It was 5 (a
-#: three-sample mean) from 2026-08-19; older 5-iteration records still
-#: average, the reader is shape-blind (tuning.md § 2.12).
-_MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
-                     "continue_retries": 0, "scf_must_converge": False}
-
-
-def _gpu_inventory(base):
-    """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
-    row (`scheduler.place.candidates` -- one walk, shared with the cap and
-    the routing, so the grid's device count, the cap and the submission
-    can never read three different rows) -- § 4.3a's fallback when THIS
-    node's probe has none (a login node).
-
-    ``(None, None)`` when that row records no inventory.  Refuses when it
-    records SEVERAL types: choosing one would be a ranking, and the probe
-    buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
-    the remedy is curating the row down to the type this bench measures.
-    """
-    from ..runtime_config import get_routing
-    from ..scheduler.place import candidates
-    # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
-    # long a job may run, so it passes no wall and the answer is the menu's
-    # own recommendation -- the first gpu-capable row (R7).
-    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
-    row = rows[0] if rows else None
-    # `Domain.devices`, never `row.gpu`: the column has two spellings and this
-    # read the map one only, so the documented hand-declared row
-    # (`{type, per_node, mem_gb}`) refused below naming its own KEYS as GPU
-    # types.  One reader, in the record (`scheduler/record._read_devices`).
-    inv = row.devices if row is not None else ()
-    if not inv:
-        return None, None
-    if len(inv) > 1:
-        raise click.ClickException(
-            f"domain {row.name!r} records several GPU types "
-            f"({', '.join(sorted(d.type for d in inv))}), and choosing one "
-            f"is not the machine's call.  Edit that row in environment.json "
-            f"to keep the type this benchmark should measure.")
-    dev = inv[0]
-    return (dev.per_node or None), dev.type
-
-
-def _gpu_type_for_bench(base, topo):
-    """WHICH card this sweep measures: the person's stated choice, else the
-    target's probed one.
-
-    M-1's fact/preference split, applied to the bench (2026-08-30).  *Which
-    card exists here* is a measurement (`topology.gpu_type`); *which card
-    you want to measure* is a choice, and `scheduler.gpu.default_type` is
-    where it is stated -- the override `runtime_config` has honoured since
-    N4 (2026-08-17) and `runwrap` reads at run time.  The bench read the
-    measurement directly, so the run path and the prep path answered one
-    question two ways, and there was no way at all to say *benchmark the
-    a100, not the a100.40gb*.
-
-    That mattered on Sol, where the probe lands on a 64-core node carrying
-    `a100.40gb` -- four such nodes cluster-wide -- while `a100` sits on 52
-    nodes of `public` alone.  The measurement picked the rarer card, and
-    nothing the person could write would change it.
-
-    The stated value is recognised by DIFFERING from this machine's probed
-    one: `get_scheduler` back-fills the probed answer when nothing is
-    stated, so an equal value is either "stated the same" or "not stated"
-    -- and both mean the same string.  A different value was written by
-    hand, and it wins.  Where nothing is stated, the TARGET's topology
-    answers, which is what keeps a `--target` prep measuring the target.
-    """
-    probed_here = None
-    stated = None
-    try:
-        from ..runtime_config import get_scheduler
-        stated = ((get_scheduler(project_dir=Path(base)) or {})
-                  .get("gpu") or {}).get("default_type")
-    except Exception:                                       # noqa: BLE001
-        stated = None
-    try:
-        # SEPARATELY, because this one raises on its own account: on a
-        # workstation carrying named targets `machine_for` asks "which
-        # machine did you mean" (`submit._reject_if_this_machine_says_no`
-        # records the same trap).  Losing the answer to *which card* over
-        # that would discard a preference the person did state.
-        from ..scheduler import machine_for
-        probed_here = getattr(getattr(machine_for(Path(base)), "topology",
-                                      None), "gpu_type", None)
-    except Exception:                                       # noqa: BLE001
-        probed_here = None
-    if stated and stated != probed_here:
-        return stated
-    return getattr(topo, "gpu_type", None)
-
-
-def _cells_this_machine_holds(base, plan, gtype, *,
-                              local_cores=None, local_gpus=None):
-    """Every enumerated bench cell, checked one by one against THIS
-    machine's queues -- ``[(fam, (g, k, c), domains, why)]`` in enumeration
-    order, ``domains`` naming every queue that would take the cell and
-    ``why`` the reasons it fits nowhere.  Exactly one of the two is
-    non-empty, so ``why`` alone decides kept-vs-crossed.
-
-    **Enumerate everything, then cross out what the machine cannot hold,
-    then show what is left** (user, 2026-08-30).  What this replaces was a
-    single ``max_cores`` number (`_gpu_core_cap`) compared against the GPU
-    family only, and it was wrong three ways at once: it read
-    ``candidates()[0]`` -- on Sol the *debug* queue, whose 15-minute wall
-    this bench can never use -- it read ``max_cores``, which since
-    2026-08-27 is the widest machine OF ANY KIND rather than the widest
-    with a device, and it never looked at the device TYPE.  So it answered
-    128 for a grid whose GPU cells can only land on 48- and 64-core nodes,
-    dropped nothing, and left the disagreement to be discovered by sbatch.
-
-    The check is `scheduler.admits` over `scheduler.place.candidates` --
-    the same pair `place` itself walks, so "some queue admits it" here and
-    "placeable" at launch are one verdict, not two.  What is NOT done here
-    is CHOOSING one: the choice depends on the wall, and R7 says `prep`
-    knows the shape and the device but not the wall or the memory.  Naming
-    a winner anyway put ``-> debug`` beside every GPU cell -- the queue
-    with the tightest ceiling wins when no wall is stated, and debug's
-    ceiling is fifteen minutes.  So the row lists WHERE IT COULD GO and
-    lets `launch` pick once the wall is known.
-
-    A machine with no queue menu at all is answered by ``local_cores`` /
-    ``local_gpus`` -- the probed topology of the box this runs on, which
-    IS the machine when nothing schedules for it.  That is the ONLY place
-    topology may bound a cell: on a cluster it measures whichever node the
-    probe happened to land on, and R0 says a queue holds many kinds.  A
-    declared 128-rank point was refused outright against it until
-    2026-08-30, on a cluster whose `public` holds 107 nodes of 128 cores.
-    """
-    from ..runtime_config import get_routing
-    from ..scheduler.admit import Request, admits
-    from ..scheduler.place import candidates
-    try:
-        routing = get_routing(project_dir=Path(base))
-    except Exception:                                       # noqa: BLE001
-        # No readable menu is not a small menu (R3): a record we cannot
-        # read must not cross out work the machine may well run.
-        routing = []
-
-    if not routing:
-        return [(fam, cell, (), _local_refusals(cell, fam, gtype,
-                                                local_cores, local_gpus))
-                for fam, cell in plan]
-
-    out = []
-    for fam, (g, k, c) in plan:
-        want_gpu = bool(fam and g)
-        req = Request(ranks=_cell_ranks(want_gpu, g, k), cpus_per_task=c,
-                      gpus=g if want_gpu else None,
-                      gpu_type=gtype if want_gpu else None)
-        # THE POOL IS THE FIT QUESTION'S, NOT THE PREFERENCE'S.  For a
-        # device cell it is `candidates` -- gpu-capability is a filter,
-        # since a cpu-only row states no inventory and R3 would read that
-        # silence as permission.  For a CPU cell it is the WHOLE menu: a
-        # CPU job runs anywhere, and `candidates` narrows to cpu-only rows
-        # to express a PREFERENCE (idle devices cost).  Letting a
-        # preference decide the fit question would cross out a 128-rank
-        # CPU cell that Sol's `public` runs on 107 nodes, because the two
-        # cpu-only queues happen to be smaller.
-        pool = candidates(routing, prefer_gpu=True) if want_gpu \
-            else list(routing)
-        fits, why = [], []
-        for row in pool:
-            no = admits(row, req)
-            if no:
-                why.extend(no)
-            else:
-                fits.append(row.name)
-        if not fits and not why:
-            # An EMPTY POOL says nothing, and silence here would be read
-            # as "it fits": the kept/crossed split is on ``why``, so a
-            # cell nothing could even be offered to must carry a reason.
-            # `place` refuses this case in the same words.
-            from ..scheduler.admit import Refusal
-            why = [Refusal("no_queue", "this machine",
-                           note="no gpu-capable queue" if want_gpu
-                                else "no queue for cpu work")]
-        out.append((fam, (g, k, c), tuple(fits),
-                    () if fits else _rank_reasons(why)))
-    return out
-
-
-def _rank_reasons(reasons):
-    """The refusals worth showing, most actionable first.
-
-    A cell no queue takes collects one reason per queue, and they are not
-    equally useful: *"needs a100.40gb but gaudi offers hl225"* says only
-    that the wrong queue was asked, while *"largest machine with
-    a100.40gb has 64"* names the number to change.  So the
-    wrong-card reasons sort last, and duplicates -- Sol repeats the same
-    node groups across debug/htc/general -- collapse.
-    """
-    # Findings since 2026-09-09, so "which refusal is this" is a FIELD.
-    # The demotion rule used to read `" offers " in r and " at most " not in r`
-    # -- a substring standing in for `where == "admit.gpu_type"`, which the
-    # comparison knew by name and threw into prose.
-    seen, ranked = set(), []
-    for r in reasons:
-        key = (r.limit, r.message)
-        if key not in seen:
-            seen.add(key)
-            ranked.append(r)
-    ranked.sort(key=lambda r: (r.limit == "gpu_type", len(r.message)))
-    return tuple(ranked)
-
-
-def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
-    """Why THIS BOX cannot hold a cell -- the no-scheduler answer.
-
-    Empty means it fits, or that the probe measured nothing to compare
-    against: an unmeasured topology is silence, and silence never bars
-    (R3).  Reasons name their numbers (R4).
-    """
-    # FINDINGS, NOT SENTENCES -- the same conversion `admits` had on
-    # 2026-09-09 and this function did not get.  Everything downstream reads
-    # the FIELDS: `_rank_reasons` dedups on `(limit, message)` and demotes
-    # `limit == "gpu_type"`, and the task-setup card renders `.message` per
-    # cell.  Handed strings, all three raise -- and the browser showed the
-    # raise: `'str' object has no attribute 'message'` in the machine-fit
-    # panel, on the ONE path that reaches here, a box with no scheduler
-    # (found 2026-09-11 by walking the UI).  The numbers stay numbers; the
-    # sentence is rendered at the edge, once.
-    from ..scheduler.admit import Refusal
-    g, k, c = cell
-    ranks = _cell_ranks(fam, g, k)
-    why = []
-    if cores_total and ranks * c > cores_total:
-        why.append(Refusal("cores", "this machine",
-                           asked=ranks * c, allowed=cores_total,
-                           unit="cores"))
-    if fam and g and gpus_per_node and g > gpus_per_node:
-        why.append(Refusal("gpus", "this machine",
-                           asked=g, allowed=gpus_per_node,
-                           unit=(gtype or "gpu")))
-    return tuple(why)
-
-
-def _cell_ranks(fam, g, k) -> int:
-    """How many ranks a cell runs -- ``G x K`` on the GPU family, ``K`` on
-    the CPU one.
-
-    ONE SPELLING.  It was written three times -- in the fit check, in the
-    shape line, and in the report -- and the three agreed only because the
-    CPU family always holds ``G=0``.  Three copies of one arithmetic is how
-    the ceilings in this very file came to disagree; this is the same fault
-    at a smaller scale, fixed before it could grow one.
-    """
-    return g * k if (fam and g) else k
-
-
-def _cell_label(g, k, c, *, machine_axes) -> str:
-    """A cell's name, spelled the way its trial directory will be
-    (`job-contracts.md` § 6.3) -- so the fit list and the directory
-    listing name the same thing."""
-    return (f"G{g}K{k}C{c}" if "G" in machine_axes else f"K{k}C{c}")
-
-
-def _cell_shape(g, k, c, gtype) -> str:
-    """What a cell ASKS FOR, in words -- ranks, cores each, and the card."""
-    bit = f"{_cell_ranks(bool(g), g, k)} rank(s) x {c} core(s)"
-    return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
-
-
-def run_condition(task, stage=None):
-    """What this run uses — the calculation's block with the rung's over it,
-    FIELD BY FIELD (`stages.md` § 6.8d).
-
-    A stage naming only ``mpi_np`` keeps the calculation's solver and its
-    thread count; whole-object precedence would drop the two nobody
-    mentioned, which is the class of silent loss this file's every other
-    merge avoids.
-    """
-    out = dict(getattr(task, "execution", None) or {})
-    for st in (getattr(task, "stages", None) or ()):
-        if stage is not None and st.name == stage:
-            out.update(dict(getattr(st, "execution", None) or {}))
-    return out
-
-
-#: The catalogue's words for a launch field, and `Resources`' own.  Most
-#: agree; these never did.  It is a NAME MAP and nothing else -- no default,
-#: no enumeration, no arithmetic.  PySCF's ``threads`` is SIESTA's
-#: ``omp_threads`` -- the cores one process runs on (`job-contracts.md`
-#: § 6.2) -- and an item missing here is DROPPED by `declared_run_shape`.
-#: `stages.md` § 6.8e -- the run's own wall and queue, carried through the
-#: direct map under their own names (they are already `Resources` fields).
-from ..task import LANE_ASKS as _LANE_ASKS
-
-_AS_RESOURCE = {
-    "omp_threads": "cpus_per_task",
-    "threads": "cpus_per_task",
-    "gpu_count": "gres",
-    "max_memory_mb": "max_memory_mb",
-}
-
-
-def run_uses_device(base, task, stage=None):
-    """Does this RUN use a device? — the TEMPLATE's ``use_gpu``, overridden by
-    the condition's.
-
-    **ONE PRODUCER, because two readers had two answers.**  `declared_run_shape`
-    asked the shipped CATALOGUE, whose ``use_gpu`` value is ``false`` — so the
-    test was a constant, and `execution: {"gpu_count": 2}` on a GPU
-    calculation had its device ask **silently deleted** unless the condition
-    also spelled ``use_gpu``.  Meanwhile the Task-setup card asked
-    ``bool(gres)`` and the emitter asked `_wants_gpu`, so the card could print
-    a rank count the header would not carry — the discrepancy A13 exists to
-    end.  `_bench_inputs` had it right all along (it reads the template), and
-    this is that read, named once.
-    """
-    cond = run_condition(task, stage)
-    if "use_gpu" in cond:
-        return bool(cond["use_gpu"])
-    try:
-        from ..template import read_template, template_path
-        from ..template import select as _tsel
-        tmpl = read_template(
-            template_path(Path(base), task.label).read_text(encoding="utf-8"))
-        return any(i.name == "use_gpu" and bool(i.value)
-                   for i in _tsel(tmpl, engine=task.engine))
-    except Exception:                                         # noqa: BLE001
-        # No template (the transport composite has none) -- nothing claims a
-        # device, which is the same answer an absent flag gives.
-        return False
-
-
-def declared_run_shape(base, target, task, stage=None):
-    """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
-    fields.  ``{}`` when the condition states none.
-
-    **A DIRECT MAP, because there is nothing to work out.** Every parameter
-    already has a value: the template carries the physics and the deck knobs
-    (`template.md` § 5), and a machine-answered item that this block does not
-    name is resolved by the wrapper at run time, by the chain
-    `running-a-job.md` § 3.1 states — ``-np`` flag > ``MB_NP`` >
-    ``SLURM_NTASKS`` > the generation default. So an unnamed field is not a
-    gap to fill; it is a field this layer does not write, and the pipeline
-    already answers it.
-
-    > **This went through the grid enumerator for one afternoon**
-    > (2026-09-02) on the argument that a run is a sweep of length one. It is
-    > — *below* `resolve()`, which is where the shared pipeline actually is.
-    > `_bench_inputs` sits ABOVE that and is a sweep's own machinery: it must
-    > invent the axes a condition does not mention. So `{omp_threads: 4}`
-    > came back as a **single-rank job** (its `mpi_np or [1]` default),
-    > `{use_gpu: true, mpi_np: 8}` came back **empty** because G enumerated
-    > three cells and "not one cell" was read as "nothing decided", and
-    > `max_memory_mb` was refused as a bench axis the translation did not
-    > know. Reusing a wheel is right; reusing the wrong wheel invents the
-    > problem it then solves.
-
-    The device ask is the one field needing a fact this block may not hold:
-    WHICH card. That comes from the target's own record through
-    `_gpu_type_for_bench`, the same producer the sweep uses — a description
-    may not name a machine (`template.md` § 7).
-    """
-    cond = run_condition(task, stage)
-    if not cond:
-        return {}
-    from ..template import catalogue, select
-    from .model import Resources
-    items = {i.name: i for i in select(catalogue(),
-                                       engine=getattr(task, "engine", ""))}
-    known = {f.name for f in __import__("dataclasses").fields(Resources)}
-    out, want_devices = {}, None
-    for name, val in sorted(cond.items()):
-        if name in _LANE_ASKS:
-            # THE RUN'S OWN SCHEDULER ASK (`stages.md` § 6.8e).  Not a
-            # catalogue item, so `items` does not have it -- and falling
-            # through the skip below would DROP a value a person typed,
-            # which is the defect class this lane keeps producing.
-            out[name] = val
-            continue
-        it = items.get(name)
-        if it is None:
-            continue                    # membership is validation's refusal
-        if name == "use_gpu":
-            want_devices = bool(val)    # a PIN for the deck; read here as a gate
-            continue
-        if not it.allocation:
-            continue                    # a parameter -- pins, never the launch
-        field = _AS_RESOURCE.get(name, name)
-        if field == "gres":
-            out["gres"] = int(val)      # resolved below, once the type is known
-        elif field in known:
-            out[field] = val
-    if "gres" in out:
-        # WHETHER there is a device is the description's answer (the template's
-        # `use_gpu`, overridden by this condition's); HOW MANY is this block's;
-        # WHICH KIND is the machine's.  A count without a device run is not an
-        # ask -- it is a contradiction, and validation names it.
-        if want_devices is None:
-            want_devices = run_uses_device(base, task, stage)
-        if not want_devices:
-            del out["gres"]
-        else:
-            from ..scheduler import machine_for
-            topo = getattr(machine_for(Path(base), target=target,
-                                       probe=(target is None)), "topology", None)
-            gtype = _gpu_type_for_bench(base, topo)
-            n = out["gres"]
-            out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
-    return out
-
-
-def run_inputs(base, target, task, stage=None):
-    """The run's two halves from its condition — ``(chosen, pins)``.
-
-    One block, two destinations, split by the catalogue's own answer: a
-    machine-answered item is the launch SHAPE (`declared_run_shape`), anything
-    else is a PIN over the template — through `_declared_execution_pins`, the
-    same door the bench's one-point declarations go through, so the two lanes
-    cannot disagree about what a name means.
-    """
-    cond = run_condition(task, stage)
-    if not cond:
-        return {}, {}
-    pins, _axes, _value_axes = _declared_execution_pins(
-        base, task.engine, {k: [v] for k, v in cond.items()})
-    return declared_run_shape(base, target, task, stage), dict(pins or {})
-
-
-def prep_run_inputs(base, target, task, stage, allocation=None):
-    """Everything ``prep run`` needs, assembled ONCE -- ``(allocation, pins,
-    chosen)``.
-
-    **`architecture.md` A12**, and the contract stated there: the ask handed
-    in is what the person is saying RIGHT NOW -- flags, or an EMPTY
-    `Resources()` from a surface that has none, never ``None``.
-
-    **THE UI IS NOT A SECOND FRAMEWORK** *(user, 2026-09-02: "I go through
-    the same back end to generate the execution script or the CLI command.
-    This is important because if you handcraft two branches to collect the
-    parameter and generate the thing, then you have to maintain two branches
-    of the logic.  The UI is not a different thing.  It goes through the same
-    framework.  It just helps the user to visualize and to decide.")*
-
-    So the browser's prep button and ``molbuilder jobset prep run`` call
-    THIS, and neither assembles anything of its own.  Three sources compose
-    here, weakest first (`generator.md` § 4.3a):
-
-      1. the bench's one-point NON-machine declarations -- pins in force for
-         the trials and the run alike (user rule, 2026-08-20);
-      2. *(removed 2026-09-02)* -- the benchmark's verdict filled the
-         allocation fields no flag stated, and its own pins;
-      3. ``execution`` -- what the person ASKED for, the most specific thing
-         the file says: its machine items are the launch shape, the rest are
-         pins over both of the above.
-
-    A flag beats all three and is already in ``allocation`` when it arrives.
-
-    **It was three branches for an hour on 2026-09-02** and each divergence
-    was a different run: the browser had no verdict, no bench pins, and at
-    first no condition pins -- so a solver chosen on the run card reached the
-    sbatch's neighbour and not the deck.  That is the class of bug one
-    assembly makes impossible rather than merely unlikely.
-    """
-    import dataclasses as _dc
-
-    from .model import Resources
-
-    # NEVER NONE (§ 6.0a's contract): the verdict is folded UNDER this field
-    # by field, and there is no field-by-field merge onto nothing.  A surface
-    # with no flags passes an empty ask, not an absent one.
-    allocation = allocation if allocation is not None else Resources()
-
-    # 1 · THE CONDITION -- the only thing on the launch-shape ladder between
-    #     `auto_ranks` and a flag (`architecture.md` § 5.2).
-    chosen, cond_pins = run_inputs(base, target, task, stage)
-    known = {f.name for f in _dc.fields(Resources)}
-    patch = {k: v for k, v in chosen.items()
-             if k in known and getattr(allocation, k, None) in (None, "")}
-    if patch:
-        allocation = _dc.replace(allocation, **patch)
-
-    # 1b · AND THE CALCULATION'S SCHEDULER ASK, before the verdict for the
-    #      same reason: `architecture.md` § 5.2's scheduler ladder is
-    #      `unstated < allocation < flag` and has NO verdict rung.  Folded
-    #      after the verdict, a `run-config.toml` carrying `mem` would beat a
-    #      description that asked for more -- over the two fields whose
-    #      absence killed five Sol jobs.  `summarize` stopped writing them on
-    #      2026-08-24, so this closes a reader wider than any writer.
-    if getattr(task, "allocation", None):
-        _ask = task.allocation
-        _p = {n: v for n, v in (("domain", _ask.domain), ("time", _ask.time),
-                                ("mem", _ask.mem))
-              if v and getattr(allocation, n, None) in (None, "")}
-        if _p:
-            allocation = _dc.replace(allocation, **_p)
-
-    # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict was folded in here
-    #     until 2026-09-02, from an editable `run-config.toml`.  It is now a
-    #     REPORT a person reads (printed by `summarize`), and what the
-    #     run uses is what that person then wrote in `execution`
-    #     (`architecture.md` § 5.2, user ruling: "the run parameter needs to
-    #     be explicitly decided/written").  A measurement that reaches the
-    #     launch on its own is a second arrival route, and every silent-value
-    #     defect this lane has had was a second arrival route.
-
-    # 3 · THE PINS, weakest first: the bench's one-point declarations, then
-    #     the condition's -- 5.2's deck/speed ladder, now two rungs not three.
-    declared_pins, _axes, _value_axes = _declared_execution_pins(
-        base, task.engine)
-    pins = {**declared_pins, **cond_pins} or None
-
-    # 4 · SAY WHAT WILL HAPPEN WHEN NOTHING WAS STATED.  Not a decision --
-    #     the decision is `auto_ranks`, made in the emitter -- but prep must
-    #     not go silent about it: an unstated shape is the ordinary case, and
-    #     "sizing from the target" and "about to refuse" look identical until
-    #     one of them is said (`project-layout.md` § 2.3.3).
-    #
-    #     The note this replaces named the WRAPPER's runtime policy, because
-    #     an unstated shape used to be settled at run time on the machine the
-    #     job landed on.  It is settled at prep now, from the target's record.
-    if not any(getattr(allocation, f, None) not in (None, "")
-               for f in ("mpi_np", "cpus_per_task", "gres")):
-        _rec = None
-        _ambiguous = None
-        _resolve_failed = None
-        from ..scheduler.record import AmbiguousTarget as _Ambiguous
-        try:
-            from ..scheduler import machine_for
-            _rec = machine_for(Path(base), target=target)
-        except _Ambiguous as _exc:      # noqa: PERF203
-            # "SEVERAL MACHINES, NONE NAMED" IS NOT "NO RECORD", and the hint
-            # below said the second when it meant the first -- so the advice
-            # was `probe --write`, which cannot help: the record already
-            # exists, probing rewrites it, and `probe --name this` refuses
-            # because `this` is reserved.  Every road from that sentence is a
-            # dead end, and the one word that fixes it (`--target this`) was
-            # printed AFTER it, by the real error (user, 2026-09-08).
-            _ambiguous = _exc
-        except Exception as _exc:                             # noqa: BLE001
-            # ANY OTHER RESOLUTION FAILURE SPEAKS FOR ITSELF, and better than
-            # this hint can.  `--target sol` against a calculation already
-            # snapshotted to another machine raised here too, and the hint
-            # then said "no core count -- probe sol", when probing Sol is not
-            # the problem and the real error (one line later) already named
-            # the snapshot and how to move it.  Same shape as the
-            # `AmbiguousTarget` case above: a swallowed cause becomes wrong
-            # advice.  So the probe hint is printed ONLY when the record is
-            # genuinely absent -- which is the one case probing fixes.
-            _rec, _resolve_failed = None, _exc
-        from ..runwrap import auto_ranks
-        _w = auto_ranks(_rec, None, getattr(allocation, "domain", None))
-        _where = (f"the selected target/domain"
-                  + (f" ({allocation.domain})" if allocation.domain else ""))
-        if _w:
-            click.echo(f"  no launch shape in `execution` and no rank/thread "
-                       f"flags --\n"
-                       f"  sizing from {_where}: {_w} core(s).\n"
-                       f"  To decide it yourself:  "
-                       f'"execution": {{"mpi_np": N}} in task.json\n'
-                       f"  To measure first:       "
-                       f"molbuilder jobset prep bench {stage or '<stage>'}")
-        elif _ambiguous is not None:
-            _opts = "\n".join(
-                f"      --target {c}" for c in _ambiguous.choices
-                if c != "(this machine)")
-            click.echo("  no launch shape in `execution` and no flags, and\n"
-                       "  more than one machine is on file -- so there is no\n"
-                       "  target to read a core count FROM until you name one:\n"
-                       + _opts +
-                       "\n      --target this   (this machine, already probed)\n"
-                       "  Nothing needs probing: these records exist.")
-        elif _resolve_failed is not None:
-            pass          # the refusal that follows names the real cause
-        else:
-            click.echo(f"  no launch shape in `execution`, no flags, and no "
-                       f"core count for {_where} --\n"
-                       f"  `prep` will refuse rather than guess.  Probe it:\n"
-                       f"  molbuilder jobset probe --write"
-                       + ("" if target is None else " --name " + str(target)))
-
-    # `chosen` is returned for the PREVIEW to name; it is already folded in.
-    return allocation, pins, chosen
-
-
-def _bench_inputs(base, target, *, bench_override=None, report=None):
-    """The benchmark specialisation's three inputs — `project-layout.md`
-
-    ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
-    ``target=None`` until a caller forgot it: the browser's prep door called
-    ``_bench_inputs(dest)``, Python filled the default, and the grid was
-    enumerated against "no machine named" -- which is a MEANINGFUL state
-    (one record, no ambiguity) so nothing raised, and it failed only on a
-    machine holding two records, only on the write path.  This function
-    exists to read a SPECIFIC machine's hardware; letting that be omitted
-    made the one fact it needs the one fact a caller could forget.  Pass
-    ``None`` deliberately to mean "this machine".
-
-    § 2.3.1a's split, stated as data: WHERE the values come from (the grid,
-    enumerated from THIS machine's probed topology, as explicit points), the
-    point → Resources translation, and the trial pins.  The framework —
-    `prep`'s five steps — receives a longer list and never asks why
-    (`generator.md` § 2).
-
-    **The grid is RESOLVED here, at prep — and the description may DECLARE
-    it** (`generator.md` § 4.3a, user-settled 2026-08-17, wired 2026-08-19).
-    ``task.json``'s ``bench`` names the points to try — *"try 4, 8 and 16
-    ranks"* is true on every cluster, so it is portable and belongs with the
-    calculation; what those points MEAN on this machine is resolved here.
-    With no declaration the machine proposes: the grid is enumerated from
-    the probed topology, exactly as before.  (Until 2026-08-19 the
-    declaration was read by nothing — this function always enumerated, so
-    declaring ``{mpi_np: [1,2,3]}`` produced eleven machine-chosen K×C
-    trials, and the user had no say in what was measured.)
-
-    **Whether this is a GPU grid is the DESCRIPTION's answer, not this
-    function's assumption** (2026-08-17).  `web/task-setup.md` § 6.2 —
-    *"use GPU or not is set up only at the Job Prep UI"* — makes ``use_gpu``
-    a value the person chose, carried in the template like any other; and
-    § 6.2 is equally explicit that the eigensolver is NOT the same question
-    (``diag_algorithm`` is a `budget` item on the parameter tab).  This
-    function pinned ``use_gpu=True`` and ``diag_algorithm='ELPA-1STAGE'``
-    flat, so every trial measured a GPU regardless of what was asked for —
-    and on a machine with no GPU the whole verb refused, which made a
-    CPU benchmark impossible to run at all.  Both pins are gone: the
-    description answers, and the grid follows its answer.
-
-    **A multi-point non-machine entry is a VALUE AXIS** (§ 4.3a, built
-    2026-08-21): its points multiply the machine grid, each point carries
-    its coordinates (the resolver's parameter lane applies them per
-    trial), and ``use_gpu`` with two points is the grid-FAMILY axis --
-    the grid enumerates once per flag, G=0 holding the CPU family's
-    device coordinate.  See the section for the cap, naming, and
-    split-submission halves of the rule.
-    """
-    from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
-    from ..resolve import MachineTranslation
-    from ..task import FILENAME as TASK_FILENAME, read_task
-    from ..template import (read_template, template_path,
-                            select as template_select)
-    from .prep import _environment_for
-    # The grid is enumerated from the TARGET's topology, not from whatever
-    # box you happen to be typing on (P2, 2026-08-17).  Without this a
-    # benchmark prepped on a workstation for a cluster measured the
-    # workstation -- 20 cores, no GPU -- and said nothing.
-    environment = _environment_for(base, target)
-    topo = getattr(environment, "topology", None)
-    gpn = getattr(topo, "gpus_per_node", None) or 0
-    cps = getattr(topo, "cores_per_socket", None)
-    gtype = _gpu_type_for_bench(base, topo)
-
-    task = read_task(Path(base) / TASK_FILENAME)
-    # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
-    # lane speaks SIESTA's vocabulary today: the measurement pins name
-    # SiestaConfig fields (`max_scf_iter`, `restart`, ...), and the GPU
-    # question is read under SIESTA's `use_gpu`.  A PySCF description
-    # used to be stopped only by ACCIDENT -- those pins failing resolve
-    # with a message blaming settings the user never wrote -- and the
-    # accident evaporates the day PySCFConfig grows any same-named
-    # field, after which a `use_gpu` sweep silently enumerates a CPU
-    # grid (`engines/stages.md` § 6.8's recorded hazard).
-    if str(task.engine) != "siesta":
-        raise click.ClickException(
-            f"this description's engine is {task.engine!r}, and the "
-            f"benchmark lane only speaks SIESTA today: its measurement "
-            f"pins (a capped-SCF probe run) name SIESTA settings, so a "
-            f"{task.engine} bench would measure nothing meaningful.  "
-            f"Benchmark support for other engines is a recorded design "
-            f"(engines/stages.md § 6.8); for now, size the run from "
-            f"the engine's own scaling guidance in docs/engines/tuning.md.")
-    tmpl = read_template(
-        template_path(Path(base), task.label).read_text(encoding="utf-8"))
-    # Through `select` -- `template.md` § 8.0 owns the rule.  What it cost
-    # HERE: the hand-rolled comprehension ignored ``engines``, so on a PySCF
-    # description it read the GPU flag as absent and enumerated a CPU grid,
-    # silently -- § 2.2's predicted failure exactly.
-    #
-    # TWO names answer one question until § 6.3's settled merge is renamed:
-    # SIESTA's `use_gpu`, PySCF's `use_gpu`.  Spelling both here is the
-    # honest encoding of "an un-renamed pair stays two items", and it collapses
-    # to one line when the rename lands.
-    #
-    # ``select`` rather than ``one`` because the question is *is it on?*: a
-    # template that never carried the item answers "no", while ``one`` RAISES
-    # on a name the file never had -- right for a caller that NEEDS the item,
-    # wrong for one asking whether it exists.
-    #
-    # THE NAME IS SIESTA'S, AND THAT IS A DEPENDENCY RATHER THAN A CHOICE.
-    # The GPU question has no engine-agnostic name yet: `template.md` § 6.3's
-    # merge of ``use_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
-    # today two names answer one question.  Writing an engine->name table here
-    # would put that un-landed rename in a second place to maintain.  Reading
-    # SIESTA's name flat is SAFE because the seam refusal above already
-    # stopped every non-SIESTA description by name (E-J1, restored
-    # 2026-08-21) -- the un-renamed pair can no longer make a `use_gpu`
-    # sweep enumerate a CPU grid.  The engine-agnostic bench remains
-    # § 12.1 row 9's recorded design.
-    # THE DECLARED OVERRIDE LANE, split before anything is decided (user
-    # rule, 2026-08-20): one-point non-machine entries are pins -- values
-    # in force for every trial -- and the machine-answered entries are the
-    # grid's axes.  A declared use_gpu pin OVERRIDES the template's
-    # answer below, which is what makes the machine card's choice reach
-    # the sweep without touching the template file.
-    declared_pins, declared_axes, value_axes = _declared_execution_pins(
-        base, task.engine, bench_override)
-
-    on_gpu = any(i.name == "use_gpu" and bool(i.value)
-                 for i in template_select(tmpl, engine=task.engine))
-    if "use_gpu" in declared_pins:
-        on_gpu = bool(declared_pins["use_gpu"])
-
-    # THE GRID-FAMILY AXIS (§ 4.3a, user 2026-08-21): use_gpu with two
-    # points enumerates the machine grid once per flag -- the CPU family
-    # holds the device count at G=0, the GPU family ranges it -- and the
-    # flag rides each point as an ordinary value coordinate, so the deck's
-    # answer and the point's family agree by construction (submit reads
-    # the deck, `_job_wants_gpu`, and splits the groups from that answer).
-    gpu_flags = None
-    if "use_gpu" in value_axes:
-        gpu_flags = [bool(v) for v in value_axes.pop("use_gpu")]
-    families = gpu_flags if gpu_flags is not None else [bool(on_gpu)]
-    mixed = gpu_flags is not None
-
-    # What makes a trial a MEASUREMENT (the pins below) must win over what
-    # it measures -- so an axis NAMING a measurement pin would render its
-    # trials identical under different labels: one measurement, twice.
-    _measured = sorted(set(value_axes) & set(_MEASUREMENT_PINS))
-    if _measured:
-        raise click.ClickException(
-            f"task.json declares {', '.join(_measured)} as a value axis, "
-            f"and the benchmark pins "
-            f"{'it' if len(_measured) == 1 else 'them'} on every trial (a "
-            f"trial is a measurement -- generator.md § 4.3a).  Its points "
-            f"would render identical decks under different labels.  Drop "
-            f"the entry.")
-
-    if any(families) and (not gpn or not gtype):
-        # No GPU on THIS node -- but the cluster behind a login node may
-        # still have one: the probe records each partition's gres
-        # inventory on its domain row (§ 4.3a), and that answers here.
-        _gpn, _gtype = _gpu_inventory(base)
-        if _gpn:
-            gpn, gtype = _gpn, _gtype
-        else:
-            raise click.ClickException(
-                f"this description asks for the GPU (use_gpu = "
-                f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
-                f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
-                f"cores) -- and this machine's probe found no GPU topology "
-                f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
-                f"domain row with a recorded GPU inventory.  Delete "
-                f"environment.json to re-probe, run `jobset probe --write` "
-                f"on the cluster's login node, or run the benchmark on "
-                f"the target it is meant to measure -- the comparison is "
-                f"by node type (asu-sol.md § 5.2).")
-
-    # The axes come from the split above -- the value entries already left
-    # as pins or value axes, so what remains is machine-answered by
-    # construction.  (The
-    # raw read + unknown-axes refusal that stood here moved into
-    # `_declared_execution_pins`, which refuses by name with the § 4.3a
-    # story: non-execution items, bad enum/bool values, and the
-    # multi-point value axis that is recorded rather than built.)
-    declared = {k: list(v) for k, v in declared_axes.items()}
-    _KNOWN_AXES = ("mpi_np", "omp_threads", "gpu_count")
-    _unresolvable = sorted(k for k in declared if k not in _KNOWN_AXES)
-    if _unresolvable:
-        # `max_memory_mb` (and PySCF's `threads`) are machine-answered
-        # execution items TOO -- the helper hands every allocation item
-        # through as an axis, and the grid resolves exactly these two.
-        # Without this refusal a declared memory axis was silently ignored
-        # (the static review's catch; the pre-split code refused it here).
-        raise click.ClickException(
-            f"task.json declares bench axes this machine translation does "
-            f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
-            f"resolve today are {', '.join(_KNOWN_AXES)} "
-            f"(generator.md § 4.3a).")
-    sockets = getattr(topo, "sockets", None) or 1
-    #: What the LOCAL box holds -- the ceiling only when this machine has
-    #: no queues to answer for it (`_cells_this_machine_holds`).
-    cores_total = (sockets * cps) if cps else None
-    # gpu_count alone does not declare a RANK grid: without mpi_np /
-    # omp_threads the K x C half stays the machine's proposal, filtered
-    # to the declared device counts below.
-    grid_declared = bool(declared.get("mpi_np") or declared.get("omp_threads"))
-    if grid_declared:
-        # THE DECLARED GRID (§ 4.3a).  ``mpi_np`` is the TOTAL rank count a
-        # point runs -- the same meaning it has everywhere else -- and
-        # ``omp_threads`` the cores per rank.  A point the machine cannot
-        # hold is refused BY NAME, not clamped: a clamped point would
-        # measure a configuration nobody declared.
-        ranks = [int(v) for v in declared.get("mpi_np") or [1]]
-        cores = [int(v) for v in declared.get("omp_threads") or [1]]
-        # A DECLARED POINT IS NOT REFUSED HERE ANY MORE (2026-08-30).  It
-        # was, against ``topology.sockets x cores_per_socket`` -- ONE
-        # machine's measurement, taken wherever the probe happened to run.
-        # R0 is the whole reason the scheduler subsystem exists: a
-        # partition is a QUEUE holding many machine kinds, and on Sol the
-        # probe lands on a 64-core GPU node while `public` holds 107
-        # nodes of 128.  So a declared 128-rank point -- which those 107
-        # nodes run happily -- was refused outright, and the person was
-        # told to "benchmark on the machine it is meant to measure" while
-        # standing on it.
-        #
-        # The queues answer instead, cell by cell, in
-        # `_cells_this_machine_holds` -- which falls back to this same
-        # topology when there is no queue menu at all, because a
-        # workstation IS its own machine.
-
-    # THE DECLARED DEVICE COUNTS (user, 2026-08-21: "explicit is what we
-    # need").  Declared, gpu_count is exact: those G values and no others,
-    # each its own shelf.  A count the machine does not have is refused by
-    # name (the same rule as a rank count the machine cannot hold); a
-    # (mpi_np, G) pair that cannot split EVENLY is dropped by name below
-    # -- ELPA's own rule is the same rank count on every device
-    # (tuning.md § 2.12), and refusing the whole prep would deny the
-    # divisible cells and the CPU family a rank count they hold fine.
-    gpu_counts = ([int(v) for v in declared.get("gpu_count")]
-                  if declared.get("gpu_count") else None)
-    if gpu_counts and not any(families):
-        raise click.ClickException(
-            "task.json declares gpu_count, but this bench resolves to the "
-            "CPU family (use_gpu is false and not an axis) -- the "
-            "device counts would be silently ignored.  Declare use_gpu "
-            "= [true] (or the [true, false] axis), or drop gpu_count.")
-    if gpu_counts and any(families):
-        _over = sorted(g for g in gpu_counts if g > (gpn or 0))
-        if _over:
-            raise click.ClickException(
-                f"task.json declares gpu_count = {_over!r} and this "
-                f"machine's record holds {gpn or 0} device(s) per node.  "
-                f"Trim the declaration, or benchmark on the machine it "
-                f"is meant to measure.")
-
-    def _family_cells(fam):
-        """The machine cells of ONE family, as (G, K, C) -- G=0 is the CPU
-        family's held coordinate (plain ranks), G>=1 the device count with
-        G*K == the total rank count."""
-        if grid_declared:
-            if fam:
-                counts = gpu_counts or range(1, gpn + 1)
-                cells = sorted({(g, r // g, c)
-                                for r in ranks for c in cores
-                                for g in counts if r % g == 0})
-                if gpu_counts:
-                    bad = sorted({(r, g) for r in ranks for g in gpu_counts
-                                  if r % g})
-                    if bad:
-                        click.echo(
-                            "  dropped (ranks must split EVENLY over the "
-                            "devices -- ELPA's equal-share rule, "
-                            "tuning.md § 2.12): "
-                            + ", ".join(f"mpi_np={r} x gpu_count={g}"
-                                        for r, g in bad))
-                return cells
-            return [(0, r, c) for r in ranks for c in cores]
-        ks = sweep_K(topo) or list(_FALLBACK_KS)
-        # ONE enumeration, both grids (`bench/grid.py`: the single source
-        # of truth for the sweep grid, so no two consumers can define it
-        # differently).  On CPU there is no device to range over, so G is
-        # held at 0 and dropped from a single-family coordinate below.
-        # A declared gpu_count FILTERS the probed grid to exactly those
-        # device counts.
-        return [(g if fam else 0, k, c)
-                for g, k, c in sweep_grid(gpn if fam else 1, cps, ks, None)
-                if not (fam and gpu_counts) or g in gpu_counts]
-
-    # ENUMERATE EVERYTHING, THEN CROSS OUT WHAT THIS MACHINE CANNOT HOLD,
-    # THEN SHOW WHAT IS LEFT (user, 2026-08-30: "we don't have to fight
-    # with what language we use to indicate error, but present the correct
-    # outcome").  The grid is a proposal; the machine record is the thing
-    # that decides; and what the person needs on screen is the surviving
-    # list, not a sentence about a number.
-    #
-    # Both families go through it.  The CPU family was never checked at
-    # all -- the old cap applied to GPU cells only -- so a rank count no
-    # queue here can hold was carried all the way to `launch`.
-    plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
-    checked = _cells_this_machine_holds(base, plan, gtype,
-                                        local_cores=cores_total,
-                                        local_gpus=gpn)
-    _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
-
-    kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
-    crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
-
-    # THE SAME REPORT THE TERMINAL PRINTS, AS DATA.  The task-setup card
-    # shows this list live beside the axes being edited, and a browser that
-    # enumerated it a second way would be exactly the drifting second
-    # decider this grid was rebuilt to remove.  One enumerator, two
-    # renderings.
-    if report is not None:
-        report.extend(
-            {"label": _cell_label(g, k, c, machine_axes=_axes),
-             "shape": _cell_shape(g, k, c, gtype),
-             "family": "gpu" if fam else "cpu",
-             "ranks": _cell_ranks(fam, g, k), "cores_each": c,
-             "gpus": (g if (fam and g) else 0), "gpu_type": gtype if g else None,
-             # The wire carries the SENTENCES; the finding's `where` is for
-             # callers inside the process (`_rank_reasons` ranks on it).  The
-             # browser renders prose, so it gets prose.
-             "fits": list(doms), "why": [i.message for i in why]}
-            for fam, (g, k, c), doms, why in checked)
-
-    # "THIS MACHINE" WAS THE WRONG WORD.  The menu these cells are checked
-    # against is the TARGET's -- `prep --target sol` on a workstation reads
-    # the record for Sol, and a declared `scheduler.routing` describes a
-    # cluster you are not standing on at all
-    # (`preparing-for-another-machine.md`).  So the count is about the
-    # QUEUES, and says so.
-    click.echo(f"  bench grid: {len(checked)} combination(s) enumerated, "
-               f"{len(kept)} fit a queue")
-    for fam, (g, k, c), doms in kept:
-        # WHERE IT COULD GO, not where it will: the wall decides that and
-        # is stated at `launch`.  Four names then an ellipsis -- enough to
-        # see whether a cell has real room or is riding one queue.
-        where = ", ".join(doms[:4]) + (" ..." if len(doms) > 4 else "")
-        click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
-                   f"{_cell_shape(g, k, c, gtype):<37}"
-                   + (f"  fits: {where}" if where else ""))
-    if crossed:
-        click.echo(f"  crossed out ({len(crossed)}) -- no queue takes "
-                   f"them:")
-        for fam, (g, k, c), why in crossed:
-            # `.message`, NOT the Refusal itself.  These became findings on
-            # 2026-09-11 (`_local_refusals`, so the task-setup card could stop
-            # printing a Python AttributeError) and this line still
-            # interpolated the object -- which prints its repr,
-            # `Refusal(limit='cores', ..., asked=8192, ...)`, where the
-            # terminal wants "needs 8192 cores but this machine allows 4".
-            # The numbers are fields so callers can read them; the SENTENCE is
-            # what a person is shown.
-            click.echo(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
-                       f"{_cell_shape(g, k, c, gtype):<37}  "
-                       f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
-
-    cells = []
-    for fam in families:
-        fcells = [cell for f, cell, _dom in kept if f == fam]
-        if fam and fcells:
-            # Checks 1-3 of the GPU-sharing note (user, 2026-08-23): ALWAYS
-            # state ranks/GPU, warn past MPS's 48-client ceiling, note past
-            # this stack's ~4-rank tuned point.  Check 4 (node-fit) is the
-            # crossing-out above -- this does not re-derive it, only
-            # states the sharing fact for whatever survived it.  ONE
-            # function (`ask.gpu_share_notes`) so this and the submission
-            # display can never disagree about the arithmetic.
-            from .ask import gpu_share_notes
-            shares = sorted({(g, k) for g, k, c in fcells})
-            bits = []
-            for g, k in shares:
-                notes = gpu_share_notes(g, k)
-                flag = ""
-                if len(notes) > 1:
-                    flag = ("  <- WARNING, past MPS's ceiling"
-                           if "WARNING" in notes[1] else
-                           "  <- past the tuned point")
-                bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
-            click.echo(f"  GPU sharing in this family: " + ", ".join(bits))
-        if fam and not fcells:
-            # every GPU cell was crossed out above, or fell to the
-            # even-split rule -- both are listed by name, so this names
-            # the consequence.
-            if mixed:
-                click.echo(
-                    "  NOTE: no GPU cell survived -- this sweep measures "
-                    "only the CPU family.")
-            else:
-                raise click.ClickException(
-                    "no GPU cell survived (see the crossed-out list "
-                    "above, and the even-split rule).  Adjust mpi_np / "
-                    "gpu_count in task.json, name a domain whose GPU "
-                    "nodes are larger, or benchmark the card this "
-                    "machine's queues actually offer.")
-        cells.extend((fam, cell) for cell in fcells)
-    # THE VALUE-AXIS CARTESIAN (§ 4.3a): every machine cell is crossed
-    # with the remaining declared value axes, in declaration order, and
-    # each point CARRIES its coordinates -- the resolver's ordinary
-    # parameter lane applies them to that trial's config (provenance
-    # "sweep"), and the coordinate rides the trial's name and, as data,
-    # `job-set.json`'s per-trial ``point``.
-    if not cells:
-        raise click.ClickException(
-            "no bench cell survived the declaration on this machine -- "
-            "see the crossed-out list above.")
-    combos = [{}]
-    for name, vals in value_axes.items():
-        combos = [{**c, name: v} for c in combos for v in vals]
-
-    points = []
-    for fam, (g, k, c) in cells:
-        if mixed:
-            coord = {"G": g, "K": k, "C": c, "use_gpu": fam}
-        elif on_gpu:
-            coord = {"G": g, "K": k, "C": c}
-        else:
-            coord = {"K": k, "C": c}
-        points.extend({**coord, **vc} for vc in combos)
-
-    if mixed:
-        # ONE translation serves both families: G=0 maps to plain ranks
-        # and NO gres, G>=1 to G*K ranks plus the device ask -- which is
-        # what lets `launch` put the CPU group on an allocation that
-        # holds no device (§ 4.3a's split submission).
-        translation = MachineTranslation(
-            axes=("G", "K", "C"),
-            to_resources=lambda p, _env: (
-                {"mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
-                 "gres": f"gpu:{gtype}:{p['G']}"} if p["G"] else
-                {"mpi_np": p["K"], "cpus_per_task": p["C"]}))
-    elif on_gpu:
-        translation = MachineTranslation(
-            axes=("G", "K", "C"),
-            to_resources=lambda p, _env: {
-                "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
-                "gres": f"gpu:{gtype}:{p['G']}"})
-    else:
-        translation = MachineTranslation(
-            axes=("K", "C"),
-            to_resources=lambda p, _env: {
-                "mpi_np": p["K"], "cpus_per_task": p["C"]})
-    # The trial pins -- what `transform_fdf` used to SPLICE into a finished
-    # deck, now schema values resolved like any other (`template.md` § 8.1:
-    # rebuild and render, never splice): capped SCF, single point, forced
-    # cold -- and ``scf_must_converge: False``, the switch that makes the
-    # cap CLEAN (item added 2026-08-19: until then the keyword had no
-    # schema field, the retired splicer used to invent the line, and every
-    # properly-capped trial ended ABNORMAL_TERMINATION, classified
-    # incomplete, and could never win -- `choose_winner` ranks only
-    # completed points, so a sweep could not produce a verdict at all).
-    #
-    # What is pinned here is what makes a trial a MEASUREMENT rather than a
-    # run.  What the calculation IS -- the GPU, the eigensolver, the block
-    # size -- is the description's, and pinning it here would measure a
-    # configuration nobody asked to run.
-    #
-    # ``continue_retries: 0`` is what makes the trial run ONCE.  Without it
-    # the capped SCF above guarantees non-convergence, the wrapper's retry
-    # budget reads that as a failure and re-runs, and `summarize` reads the
-    # HIGHEST run index -- so every trial that retried was timed on its second
-    # run and every trial that did not was timed on its first.  Those are not
-    # comparable, which is the one thing a sweep exists to be.  (Until the
-    # `restart: clean` group was written out rather than omitted, the second
-    # run was also WARM, so the second measurement was of a different
-    # calculation as well as a different run.)
-    # The declared values ride UNDER the measurement pins: what makes a
-    # trial a measurement (capped SCF, forced cold, run-once) must win
-    # over any declaration -- one-point declarations and value-axis
-    # coordinates alike (the resolver applies pins over a point's
-    # parameters, and the overlap refusal above bars an AXIS on a pin).
-    pins = {**declared_pins, **_MEASUREMENT_PINS}
-    return points, pins, translation
+# THE ASSEMBLY a prep receives -- `_declared_execution_pins` through
+# `bench_inputs`, the bench grid's cell checks and the run's condition --
+# moved to `jobset/prep_inputs.py` on 2026-09-29: the conductor's own
+# assembly, beside it (`architecture.md` § 2.1's note, A7, A12), so the one
+# prep entry can call it and the Task setup tab no longer reaches across to
+# this module.
 
 
 def _resolve_stage_name(js, stage: str) -> str:
@@ -2300,312 +1063,159 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     until 2026-08-21 the stage-less form died earlier, on the BENCHMARK's
     "which stage's benchmark?" question — review B1).
     """
-    # A DESCRIBED calculation is "a template PLUS task.json"
-    # (project-layout.md § 2.1), and `prep` builds everything else from the
-    # two.  **Both are required to take this route, and the template is the
-    # load-bearing half**: a bundle from before `describe` existed carries a
-    # `task.json` and FINISHED DECKS but no template, and for it steps 2 and 3
-    # have already happened elsewhere.  Routing on `task.json` alone sent those
-    # bundles down a path that then asked for a template they never had.
-    from pathlib import Path as _P
-    from ..task import FILENAME as _TASK
-    from ..template import find_template as _find_template
-    base = _P(bundle).resolve()
-    # THE TRANSPORT COMPOSITE HAS NO TEMPLATE (transport-design.md § 4.1:
-    # floor 2 is task.json alone -- the electronic contract arrives from
-    # the citation), so for it the pair rule below is task.json alone.
-    _is_transport = False
-    if (base / _TASK).is_file():
+    # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
+    # tab's Prep buttons call it too.  This verb collects what the person
+    # said -- the flags -- asks the one question when there is one, and
+    # prints the answer; the act itself is `prep.prep_stage`'s.
+    from .model import Resources as _Alloc
+    from .prep import prep_stage
+    base = Path(bundle).resolve()
+    allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
+                        gres=gres, time=time_, mem=mem,
+                        max_memory_mb=max_memory_mb, domain=domain)
+
+    shown: list = []
+
+    def _show(findings, notes):
+        # The preflight's notes and what the inputs said, ONCE, before the
+        # decks are written -- the entry hands them over as soon as it has
+        # them (`on_found`) -- or from a refusal that carries them
+        # (`prep.PrepError`), which the terminal prints before its sentence.
+        if shown:
+            return
+        shown.append(True)
+        for issue in findings:
+            click.echo(f"note: {issue.message}", err=True)
+        for line in notes:
+            click.echo(line)
+
+    def _prep(answer=None):
         try:
-            from ..task import read_task as _rt0
-            _is_transport = _rt0(base / _TASK).calculation == "transport"
-        except Exception:
-            pass          # unreadable description: the generic gate owns it
-    # `find_template` rather than a glob: it REFUSES a folder holding two
-    # rather than answering from the first one alphabetically.
-    if not ((base / _TASK).is_file()
-            and (_is_transport or _find_template(base) is not None)):
-        # Described-only (U2/U4, 2026-08-12): the pre-made-bundle arm that
-        # stood here had NO producer left -- `describe` is the only writer
-        # of floor 2, and the old bench bundles died in step 6 u5.  A
-        # folder without the pair gets the next step, not a guess.
-        raise click.ClickException(
-            f"{base} is not a described calculation -- no task.json + "
-            "template pair.  `prep` derives everything from those two "
-            "(project-layout.md § 2.1); run `molbuilder jobset init` "
-            "first.  (Hand-built job-sets remain launchable: `launch` and "
-            "`status` read job-set.json directly.)")
-    if _is_transport and kind == "bench":
-        raise click.ClickException(
-            "a transport calculation has no benchmark sweep: its "
-            "parameters arrive whole from the citation, and its one "
-            "sweep axis is the bias list in task.json "
-            "(transport-design.md 4.3).")
-    if (from_attempt or cold) and stage is None:
-        # Every description has a ladder (§ 6.5), so an attempt always
-        # belongs to a named stage.  Until 2026-08-16 this was conditional:
-        # a stage-LESS calculation had exactly one attempt line, so the bare
-        # flags were unambiguous there (R1).  That shape is gone.
-        raise click.ClickException(
-            "--from / --cold describe ONE stage's attempt; name the "
-            "stage:\n"
-            "    molbuilder jobset prep run <stage> --from "
-            "01_coarse/run-0")
+            return prep_stage(base, kind, stage, target=target,
+                              allocation=allocation,
+                              from_attempt=from_attempt, cold=cold, env=env,
+                              emit_sbatch=emit_sbatch,
+                              pipeline_log=pipeline_log, answer=answer,
+                              on_found=_show)
+        except PrepError as e:
+            _show(e.findings, e.notes)
+            if e.partial is not None:
+                _echo_prep_answer(e.partial, base, refused=True)
+            raise click.ClickException(str(e))
+
+    ans = _prep()
+    asked = False
+    while ans.question is not None:
+        # AN ANSWER COUNTS FOR THE EVIDENCE IT WAS GIVEN TO: a folder that
+        # changed while the prompt waited -- a trial launched from another
+        # shell -- sends the question back, and nothing was rendered.
+        if asked:
+            click.echo("the folder changed while you answered -- nothing "
+                       "was re-rendered; asked again:")
+        ans = _prep(_ask_underway(ans.question))
+        asked = True
+    _echo_prep_answer(ans, base)
+
+
+def _ask_underway(question):
+    """The one question, at a terminal: *already under way here -- re-render?*
+    (`run-identity.md` § 6; 2026-08-12 plan A3/U14).
+
+    The default is YES and an unanswerable prompt PROCEEDS, saying so -- the
+    inverse of the verdict offer, deliberately: re-rendering decks is § 6's
+    "ordinary thing to do" (warm files are never touched, nothing is
+    renamed), so a scripted re-prep must not hang or die on a question it
+    cannot hear.  The answer's words are what the ledger records.
+    """
+    from .prep import Answer
+    click.echo("this calculation is already under way here:")
+    for e in question.evidence:
+        click.echo(f"    {e}")
+    for a in question.advice:
+        click.echo(f"  {a}")
+    seen = tuple(question.evidence)      # the answer is to THIS evidence
     try:
-        # The ALLOCATION -- what you ask the scheduler for on THIS prep.
-        # Assembled here and nowhere else, so a value cannot reach the wrapper
-        # by two roads (generator.md § 4.1).
-        from .model import Resources as _Alloc
-        allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
-                            gres=gres, time=time_, mem=mem,
-                            max_memory_mb=max_memory_mb, domain=domain)
-        # § 6.6's preflight, at its LIVE moment (R5, 2026-08-12).  It ran
-        # only inside `describe`, BEFORE the fingerprint stamp -- where the
-        # description had just been built from one schema and could not
-        # mismatch itself.  The hazard the fingerprint row exists for is
-        # HERE: prep on a machine whose molbuilder differs from the
-        # description's author.  Errors refuse before anything renders; the
-        # fingerprint row warns and proceeds (§ 6.6's one non-refusal), and
-        # the note lands in the ledger.
-        from ..task import read_task as _rt_preflight
-        from ..template import template_path as _template_path
-        from ..validation.task import preflight as _preflight
-        _pf_task = _rt_preflight(base / _TASK)
-        # THE stage grammar, at the door (user-settled 2026-08-21): a
-        # ladder stage is named by its NAME, or by `#N` (its assigned
-        # number -- the NN in its 02_tight directory).  Resolved here,
-        # pre-produce, through the ONE resolver with refs built from the
-        # FULL ladder (token_for's own ordinal rule), so `prep run #2`
-        # and `status #2` cannot disagree about which stage that is.
-        if stage is not None and getattr(_pf_task, "stages", None):
-            from ..identity import StageRef, resolve_stage_ref
-            _refs = StageRef.ladder([_s.name for _s in _pf_task.stages])
-            try:
-                stage = resolve_stage_ref(_refs, stage).name
-            except ValueError as _e:
-                raise click.ClickException(str(_e))
-        # The template rides along when it is where prep will look for it,
-        # which adds § 6.4/§ 6.6a's SEQUENCE warnings (resolved stages) to
-        # the preflight -- reachable on a production path since 2026-08-13
-        # (A-8).  Absent or unreadable, prep's own refusal owns the story.
-        _tpl_file = _template_path(base, _pf_task.label)
-        _pf_issues = _preflight(
-            _pf_task,
-            template_text=(_tpl_file.read_text(encoding="utf-8")
-                           if _tpl_file.is_file() else None))
-        _pf_errs = [i for i in _pf_issues if i.severity == "error"]
-        _pf_warns = [i for i in _pf_issues if i.severity != "error"]
-        for _i in _pf_warns:
-            click.echo(f"note: {_i.message}", err=True)
-        if _pf_warns:
-            _ledger(base, "prep", "preflight-report", stage=stage,
-                    notes=[_i.message for _i in _pf_warns])
-        if _pf_errs:
-            raise click.ClickException(
-                "the description fails its own preflight "
-                "(engines/stages.md § 6.6):\n  - "
-                + "\n  - ".join(_i.message for _i in _pf_errs))
+        ok = click.confirm("  proceed (re-render the decks)?", default=True)
+        return Answer(ok, "yes" if ok else "no", evidence=seen)
+    except click.exceptions.Abort:
+        click.echo("")
+        click.echo("  no answer (non-interactive): proceeding -- § 6 warns, "
+                   "it does not refuse.")
+        return Answer(True, "no answer (non-interactive) -> proceed",
+                      evidence=seen)
 
-        # The five steps, from the DESCRIPTION -- `prep` resolves the
-        # machine, resolves the parameters, and renders the decks itself.
-        # `bench` is the same call with a longer step 2: the grid as
-        # explicit points, the G/K/C translation, and the trial pins
-        # (§ 2.3.1a -- benchmarking is prep whose parameters are a set).
-        sweep = pins = translation = None
-        chosen = {}
-        if kind == "bench":
-            if stage is None:
-                # A benchmark measures ONE stage's configuration, and there
-                # is always a stage to name (§ 6.5).  Until 2026-08-16 this
-                # refusal was conditional, because a stage-LESS calculation
-                # had no name to give and its bare bench measured the one
-                # parameter set (2026-08-12 plan A4).
-                raise click.ClickException(
-                    "prep bench measures ONE stage's configuration; "
-                    "name it:\n    molbuilder jobset prep bench <stage>")
-            # The SAME which-machine refusal the run arm gives (below):
-            # both are answers only the user has, and this arm reached
-            # `_environment_for` before the run arm's catch -- so an
-            # unnamed target on a two-record machine leaked a TRACEBACK
-            # here while `prep run` spoke plainly (workflow.md § 9: a
-            # gate refuses with the reason, never a stack trace; found
-            # live 2026-08-28).
-            from ..scheduler import AmbiguousTarget, UnknownTarget
-            try:
-                sweep, pins, translation = _bench_inputs(base, target)
-            except (UnknownTarget, AmbiguousTarget) as exc:
-                raise click.ClickException(str(exc))
-            # `chosen` STAYS EMPTY for a bench: a trial's shape is its own
-            # point's, and `translation` gives each cell its ranks, cores
-            # and device ask.  Folding a base shape underneath would put a
-            # second answer where the grid already gives one.
-        elif kind == "run":
-            # ONE ASSEMBLY, and the browser's prep door calls the same one:
-            # the bench's pins, the verdict, and this run's own condition,
-            # composed in `prep_run_inputs`.  Nothing is put together here.
-            from ..scheduler import AmbiguousTarget, UnknownTarget
-            try:
-                allocation, pins, chosen = prep_run_inputs(
-                    base, target, _pf_task, stage, allocation)
-            except (UnknownTarget, AmbiguousTarget) as exc:
-                raise click.ClickException(str(exc))
-        if kind == "run":
-            # § 6's say-what-is-there, and the 2026-08-12 plan A3/U14 ask
-            # when a run already happened here.
-            _ask_if_underway(base, stage)
-        else:
-            # A7: `prep bench` re-renders the decks a QUEUED trial's links
-            # point at -- same moment, wider evidence (launched trials in
-            # the stage's container).  An unresolvable container is left
-            # to prep's own refusal.  (Until 2026-08-13 the stageless arm
-            # hardcoded `base/"bench"` here -- a second spelling of the
-            # container rule, the C-c habit.)
-            try:
-                cont, _tok = _stage_bench_dir(base, stage)
-            except click.ClickException:
-                cont = None
-            _ask_if_underway(base, stage, bench_container=cont)
-        from .prep import prep_calculation
-        from ..scheduler import AmbiguousTarget, UnknownTarget
-        opened: list = []          # the attempts prep opened -- see the report
-        try:
-            dirs = prep_calculation(base, stage, allocation=allocation,
-                                    env=env, emit_sbatch=emit_sbatch,
-                                    sweep=sweep, pins=pins,
-                                    translation=translation, target=target,
-                                    chosen=chosen,
-                                    pipeline_log=pipeline_log,
-                                    opened=opened)
-        except (UnknownTarget, AmbiguousTarget) as exc:
-            # Both are the same class of refusal -- WHICH machine is this
-            # for -- and both are answers only the user has
-            # (`preparing-for-another-machine.md` § 4).
-            raise click.ClickException(str(exc))
-        # `prep` WROTE floor 3 as part of those five steps; read it back
-        # rather than keeping a second copy in hand, so what the attempt
-        # setup below sees is exactly what landed on disk.  A sweep's
-        # record lives in the stage's bench/ container (§ 6.3), a run's
-        # at the root -- read each from its own home.
-        js, _ = (_load_bench_set(str(base), stage) if kind == "bench"
-                 else _load(str(base)))
-    except PrepError as e:
-        raise click.ClickException(str(e))
 
-    # WHERE the effective config came from -- part of "prep prints what it
-    # resolved" (job-system.md § 5.3): a person debugging a machine
-    # difference reads which file supplied each setting, at the moment it
-    # took effect (user request 2026-08-12; secrets excluded by design).
-    # The same facts go to the bundle's LEDGER: the terminal is gone when
-    # a job misbehaves hours later; the bundle is not.
+def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
+    """The prep report, from the entry's answer -- `job-system.md` § 5.3:
+    *"prep prints what it resolved, which is what makes launch a plain
+    yes"*.  Where the configuration came from, what was written, the attempt
+    and what it carries, what it will launch with, whether the deck agrees
+    -- then the next command, naming the bundle so it works from anywhere
+    (job-contracts.md § 2.5b).  The Task setup tab shows the same answer.
+
+    ``refused``: this is what a prep had written before it refused -- the
+    same lines, and no next command.
+    """
+    def say_next(line):
+        if not refused:
+            click.echo(line)
+
     from ..runtime_config import format_provenance
-    from ..jobset.ledger import prepped as _ledger_prepped
-    from ..jobset.ledger import rel_to as _ledger_rel
-    prov = _ledger_prepped(base, kind=kind, stage=stage, dirs=dirs)
-    click.echo(format_provenance(prov))
-
-    if kind == "bench":
-        # Trials RUN in their own directories; the attempt machinery below
-        # is the run-kind's shape (a stage's run-N), and a sweep's jobs are
-        # named by coordinate, not by the stage the ladder names.
+    from .ledger import rel_to as _rel
+    if ans.provenance is not None:
+        # WHERE the effective config came from (user request 2026-08-12;
+        # secrets excluded by design) -- also in the bundle's ledger, since
+        # the terminal is gone when a job misbehaves hours later.
+        click.echo(format_provenance(ans.provenance))
+    stage = ans.stage
+    b = _bundle_hint(base)
+    if ans.kind == "bench":
         where = f" for stage {stage!r}" if stage else ""
-        click.echo(f"prepped {len(dirs)} trial dir(s){where} under {base}:")
-        for d in dirs:
-            # the path from the bundle, not the bare attempt name -- with
-            # the attempt layer every trial's dir ENDS in run-<n>, and a
-            # list reading "run-0, run-0" names nobody (user, 2026-08-28)
-            click.echo(f"  {_ledger_rel(base, d)}")
-        # The REAL grammar (E-J2, 2026-08-21 review): `launch bench
-        # <stage>` -- typed with a trial name, the trial binds as the
-        # STAGE and is refused; and the shipped submission is the
-        # grouped one, not one-per-invocation.
-        #
-        # The hint names the BUNDLE, because `--bundle` reads it from the
-        # projects root, so the line works from wherever the user is
-        # standing (job-contracts.md § 2.5b).
-        _b = _bundle_hint(base)
-        click.echo(f"next: molbuilder jobset launch bench "
-                   f"{stage or '<stage>'}{_b}   (grouped: one job per "
-                   f"resource shelf)")
-        click.echo(f"then: molbuilder jobset summarize bench "
-                   f"{stage or '<stage>'}{_b}"
-                   f"  -- writes the record + a report to read "
-                   f"(the editable proposal `prep run` applies)")
+        click.echo(f"prepped {len(ans.dirs)} trial dir(s){where} under "
+                   f"{base}:")
+        for d in ans.dirs:
+            # the path from the bundle, not the bare attempt name -- with the
+            # attempt layer every trial's dir ENDS in run-<n> (user,
+            # 2026-08-28)
+            click.echo(f"  {_rel(base, d)}")
+        _echo_pipeline_log(ans, base)
+        say_next(f"next: molbuilder jobset launch bench "
+                 f"{stage or '<stage>'}{b}   (grouped: one job per "
+                 f"resource shelf)")
+        say_next(f"then: molbuilder jobset summarize bench "
+                 f"{stage or '<stage>'}{b}"
+                 f"  -- writes the record + a report to read "
+                 f"(the editable proposal `prep run` applies)")
         return
-
-    # `stage` is not None here: § 6.5 gives every description a ladder, so a
-    # bare `prep run` is refused by `resolve` -- with the ladder listed --
-    # long before this point.  A listing branch stood here until 2026-08-16,
-    # printing "prepped N job dir(s)" and pointing at `prep run <stage>`; it
-    # was unreachable (prep_calculation raises first), and `job-system.md`'s
-    # grammar table advertised it as a shipped form.  Both are gone.
-    attempt_target = stage
-
-    from .materialize import prepare_attempt, shape_of
-    sh = shape_of(js, base)
-    if (sh is not None and not sh.keeps_attempts_as_directories
-            and not from_attempt and not cold):
-        # FLAT keeps no attempt directories, so a flat prep is COMPLETE
-        # right here: the wrappers are rendered, the shared warm set lies
-        # in the root, and continuing is free (project-layout.md § 1).
-        # The attempt tail below is the CLI's OWN addition -- until A2
-        # (2026-08-12) it ran anyway and prepare_attempt's flat refusal
-        # turned a SUCCESSFUL prep into exit 1.  An explicit --from or
-        # --cold still falls through: the user asked for attempt
-        # machinery flat does not have, and prepare_attempt owns that
-        # refusal's text.
-        click.echo(f"prepped {len(dirs)} job dir(s) under {base}  "
+    next_line = ("next: molbuilder jobset launch run "
+                 + (f"{stage} " if stage is not None else "")
+                 + f"--mode submit|direct{b}")
+    if ans.flat:
+        click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
-        click.echo("next: molbuilder jobset launch run "
-                   + (f"{stage} " if stage is not None else "")
-                   + f"--mode submit|direct{_bundle_hint(base)}")
+        _echo_pipeline_log(ans, base)
+        say_next(next_line)
         return
-    # A TRANSPORT BIAS SCAN opens one attempt ladder PER POINT
-    # (04_device/v0.2/run-<n>; layout ruled 2026-08-29) and gathers into
-    # each -- the chain walker at launch only cd's and bashes.
-    from ..transport.stages import bias_points as _bias_points
-    _scan = (_bias_points(_pf_task)
-             if _is_transport and stage in ("device", "transmission")
-             else ())
-    if _scan:
-        if from_attempt or cold:
-            raise click.ClickException(
-                "--from / --cold name ONE attempt, and a bias scan keeps "
-                "one per point -- per-point continuation is not named "
-                "yet (transport-design.md 4.3; re-prep opens fresh "
-                "attempts for every point).")
-        # `prep_calculation` opened one attempt per point already; this
-        # carries the DAG's inputs into each, through the ONE door the
-        # browser road now uses too (`prep.gather_for_stage`).
-        from .prep import gather_for_stage
-        try:
-            carried = gather_for_stage(base, _pf_task, stage)
-        except PrepError as e:
-            raise click.ClickException(str(e))
+    if ans.points:
         from ..transport.stages import bias_token as _bias_token
-        for _att, _v, gathered in carried:
-            _at = f" @ {_bias_token(_v)}" if _v is not None else ""
-            click.echo(f"prepared {stage}{_at}: {_att.relative_to(base)}")
-            for _src, _fn in gathered:
-                click.echo(f"  gathered: {_fn} <- {_src}")
-        click.echo("next: molbuilder jobset launch run "
-                   + (f"{stage} " if stage is not None else "")
-                   + f"--mode submit|direct{_bundle_hint(base)}   "
-                   f"(one job: the chain walks the points in order)")
+        for att, v, got in ans.points:
+            at = f" @ {_bias_token(v)}" if v is not None else ""
+            click.echo(f"prepared {stage}{at}: {Path(att).relative_to(base)}")
+            for src, fn in got:
+                click.echo(f"  gathered: {fn} <- {src}")
+        _echo_pipeline_log(ans, base)
+        say_next(next_line + "   (one job: the chain walks the points in "
+                 "order)")
         return
-    try:
-        rep = prepare_attempt(js, base, attempt_target,
-                              continue_from=from_attempt,
-                              cold=cold)
-    except ValueError as e:
-        raise click.ClickException(str(e))
-    # FRESH IS THE FIRST OPEN'S ANSWER.  `prep_calculation` opened this
-    # attempt a moment ago, so opening it again here finds it unlaunched and
-    # calls it reused: every prep said "(reused -- not launched yet)" of a
-    # directory it had just made (2026-09-25).
-    fresh = next((a.fresh for a in opened if a.dir == rep.dir), rep.fresh)
+    rep = ans.attempt
+    if rep is None:
+        # refused before the attempt opened: the folders are what was written
+        for d in ans.dirs:
+            click.echo(f"  wrote: {_rel(base, d)}")
+        return
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
-               f"{'' if fresh else '  (reused -- not launched yet)'}")
+               f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  brought in: {', '.join(rep.brought)}")
     if rep.copied:
         click.echo(f"  copied from {rep.continued_from}: "
@@ -2614,85 +1224,37 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         click.echo("  cold start -- nothing copied in")
     else:
         click.echo("  nothing carried in (first stage, or none named)")
-    if _is_transport:
-        # The composite's OTHER carry: the § 4.2 DAG's inputs, from the
-        # concluded upstream attempts into this one (gather's own three
-        # gates refuse anything stale or unconcluded, by name).  Through the
-        # ONE door, so the browser's Prep button takes the same step.
-        from .prep import gather_for_stage
-        try:
-            carried = gather_for_stage(base, _pf_task, rep.stage)
-        except PrepError as e:
-            raise click.ClickException(str(e))
-        for _att, _v, gathered in carried:
-            for _src, _fn in gathered:
-                click.echo(f"  gathered: {_fn} <- {_src}")
-    _echo_resolved(js, base, rep.stage, rep.dir)
-    click.echo("next: molbuilder jobset launch run "
-               + (f"{stage} " if stage is not None else "")
-               + f"--mode submit|direct{_bundle_hint(base)}")
-
-
-def _echo_resolved(js, base, stage_name: str, attempt) -> None:
-    """The resolved half of the prep report (P6 unit 6).
-
-    `job-system.md` § 5.3: *"**`prep` prints what it resolved, which is what
-    makes `launch` a plain yes.**  It is the only place the measured numbers,
-    the chosen starting geometry and the rendered deck appear together --
-    exactly where a person should be looking before committing cluster
-    time."*
-
-    Two of those three are available today, and this prints those two rather
-    than a placeholder for the third:
-
-    * the **resources** this stage will be launched with;
-    * the **deck's own claim** about the launch it was rendered for, and
-      whether the two agree.
-
-    **The second is the point.** P6 unit 2 made `launch` refuse a launch the
-    deck was not rendered for — correctly, and at the last honest moment. But
-    a refusal that first appears when you are committing cluster time is a
-    surprise, and `prep` is the step that exists so there are none. Both read
-    :func:`~molbuilder.jobset.prep.launch_agreement`, so the warning here and
-    the refusal there cannot disagree.
-
-    **What is still missing, and it is not this function's to invent.** The
-    contract's report opens with the measured verdict
-    (``reading 02_tight/bench/bench-result.json``) and says the deck was
-    ``rendered`` — both of which wait on P6 unit 5 and on the deck moving into
-    `prep`. Until then this reports what the deck *already says*, which is a
-    weaker claim honestly made rather than the stronger one faked.
-    """
-    from .agreement import disagreement_note, launch_agreement
-    job = next((j for j in js.jobs if j.name == stage_name), None)
-    if job is None:
-        return
-    r = job.resources
-    asks = [f"mpi_np {r.mpi_np if r.mpi_np else 'auto'}",
-            f"omp {r.cpus_per_task if r.cpus_per_task else 'auto'}"]
-    if r.continue_retries:
-        asks.append(f"retries {r.continue_retries}")
-    click.echo(f"  resources: {' | '.join(asks)}")
-
-    a = launch_agreement(attempt, job)
-    if a.verdict == "silent":
-        return                       # the deck makes no claim; say nothing
-    deck = Path(job.script).name
-    _ledger(base, "prep", "launch-agreement", stage=stage_name,
-            verdict=a.verdict, rendered_for=a.rendered_text,
-            launching_at=a.launch_text)
-    if a.verdict == "agrees":
-        click.echo(f"  {deck}: rendered for mpi_np {a.rendered_text} "
+    for src, fn in ans.gathered:
+        click.echo(f"  gathered: {fn} <- {src}")
+    if ans.resources is not None:
+        r = ans.resources
+        asks = [f"mpi_np {r['mpi_np'] if r['mpi_np'] else 'auto'}",
+                f"omp {r['cpus_per_task'] if r['cpus_per_task'] else 'auto'}"]
+        if r.get("continue_retries"):
+            asks.append(f"retries {r['continue_retries']}")
+        click.echo(f"  resources: {' | '.join(asks)}")
+    a = ans.agreement
+    if a is not None and a.verdict == "agrees":
+        click.echo(f"  {ans.deck}: rendered for mpi_np {a.rendered_text} "
                    f"-- agrees with this launch")
-        return
-    # The WHY and the remedy are the agreement module's one wording
-    # (disagreement_note); this surface adds only its framing -- what will
-    # happen next if nothing changes.
-    click.echo(click.style(
-        f"  {deck}: rendered for mpi_np {a.rendered_text}, but this launch "
-        f"asks {a.launch_text}\n"
-        f"    submit WILL REFUSE this -- " + disagreement_note(a),
-        fg="yellow"), err=True)
+    elif a is not None:
+        # The WHY and the remedy are the agreement module's one wording
+        # (disagreement_note); this surface adds only its framing -- what
+        # will happen next if nothing changes.
+        from .agreement import disagreement_note
+        click.echo(click.style(
+            f"  {ans.deck}: rendered for mpi_np {a.rendered_text}, but this "
+            f"launch asks {a.launch_text}\n"
+            f"    submit WILL REFUSE this -- " + disagreement_note(a),
+            fg="yellow"), err=True)
+    _echo_pipeline_log(ans, base)
+    say_next(next_line)
+
+
+def _echo_pipeline_log(ans, base) -> None:
+    """Where the step-by-step record went, when one was asked for."""
+    if ans.pipeline_log is not None:
+        click.echo(f"  pipeline log: {Path(ans.pipeline_log).relative_to(base)}")
 
 
 @jobset_group.command("summarize",

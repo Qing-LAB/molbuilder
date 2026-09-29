@@ -306,9 +306,10 @@ not get its own rules: it surfaces the ones above.
   environment. A wrapper that is generated is a wrapper whose bootstrap
   came off the record it names.
 
-> **This narrows a stated boundary, deliberately.** `job-system.md` § 4 says
+> **This narrowed a stated boundary, deliberately.** `job-system.md` § 4 said
 > *"`prep` and `launch` stay on the terminal by design"*, written when
 > `prep` necessarily resolved capability from the machine it ran on.
 > `--target` removed that necessity: capability comes from a record measured
-> on the target. **`launch` is unchanged** — starting a job still happens
-> where the job runs.
+> on the target — which is why the Task setup tab's Prep buttons may call the
+> one prep entry (`job-system.md` § 5.3). **`launch` is unchanged** —
+> starting a job still happens where the job runs.

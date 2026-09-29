@@ -53,8 +53,8 @@ def test_index_page_has_tab_markup(web_client):
         # ``id="generate-pyscf"`` stood here until 2026-08-15: the tab
         # generated the script itself, so the Generate button was the
         # thing that proved the PySCF panel was wired.  The tab now
-        # COLLECTS PARAMETERS and hands them on -- the browser describes,
-        # the terminal acts (`web/task-setup.md` § 1) -- so the
+        # COLLECTS PARAMETERS and hands them on -- *the browser describes;
+        # a machine's own facts render* (`web/task-setup.md` § 1) -- so the
         # container is what proves it, and asserting a button that is
         # deliberately gone would pin the retired shape.
         'id="pyscf-form-container"',
@@ -66,9 +66,11 @@ def test_index_page_has_tab_markup(web_client):
 def test_the_tab_neither_generates_nor_saves(web_client):
     """The tab collects parameters; it does not produce artefacts.
 
-    `web/task-setup.md` § 1 — *the browser describes and observes,
-    the terminal acts*.  A deck carries values that depend on how it will
-    be launched, so a browser that "finished" one would be guessing.  This
+    `web/task-setup.md` § 1 — *the browser describes; a machine's own
+    facts render*.  A deck carries values that depend on how it will be
+    launched, so a browser that "finished" one would be guessing -- the
+    parameter tab hands over, and a deck is only ever rendered from a
+    machine's record, by the one prep entry.  This
     is the guard on that: the buttons are not merely unwired, they are
     absent, and a future edit that re-adds one fails here rather than
     quietly reintroducing the split.

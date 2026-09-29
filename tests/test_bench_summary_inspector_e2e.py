@@ -28,7 +28,7 @@ pytest.importorskip("flask")
 from molbuilder import describe as D                       # noqa: E402
 from molbuilder import diagnostics                         # noqa: E402
 from molbuilder.config.siesta import SiestaConfig          # noqa: E402
-from molbuilder.jobset._cli import _bench_inputs           # noqa: E402
+from molbuilder.jobset.prep_inputs import bench_inputs  # noqa: E402
 from molbuilder.jobset.model import Resources              # noqa: E402
 from molbuilder.jobset.prep import prep_calculation        # noqa: E402
 from molbuilder.scheduler import Environment, Topology     # noqa: E402
@@ -78,7 +78,7 @@ def sweep(tmp_path, monkeypatch):
                                       gpus_per_node=1,
                                       gpu_type="a100")).to_json() + "\n")
 
-    sweep_spec, pins, translation = _bench_inputs(calc, None)
+    sweep_spec, pins, translation = bench_inputs(calc, None)
     prep_calculation(calc, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep_spec, pins=pins, translation=translation,

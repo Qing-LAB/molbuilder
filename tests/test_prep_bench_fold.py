@@ -18,9 +18,9 @@ import pytest
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Environment, Topology
-from molbuilder.jobset._cli import _bench_inputs
+from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import PrepError, prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
@@ -102,7 +102,7 @@ def calc(tmp_path):
     ``use_gpu=True`` is stated here rather than assumed, because from
     2026-08-17 it is the DESCRIPTION that decides whether this is a GPU
     benchmark — `web/task-setup.md` § 6.2, *"use GPU or not is set up only at
-    the Job Prep UI"*.  `_bench_inputs` used to pin it True for every trial, so
+    the Job Prep UI"*.  `bench_inputs` used to pin it True for every trial, so
     this fixture measured a GPU while describing a CPU run and nothing said so.
     Every test below is about the G × K × C grid, and the fixture now says so.
     """
@@ -137,7 +137,7 @@ def calc(tmp_path):
 
 
 def _prep_bench(calc):
-    sweep, pins, translation = _bench_inputs(calc, None)
+    sweep, pins, translation = bench_inputs(calc, None)
     prep_calculation(calc, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep, pins=pins, translation=translation,
@@ -213,13 +213,12 @@ def test_trials_nest_inside_the_stage_they_measure(calc):
 
 
 def test_a_machine_without_gpus_is_refused_by_name(calc):
-    import click
     (calc / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
-    with pytest.raises(click.ClickException, match=r"no GPU topology"):
-        _bench_inputs(calc, None)
+    with pytest.raises(PrepError, match=r"no GPU topology"):
+        bench_inputs(calc, None)
 
 
 def test_cli_prep_bench_requires_a_stage(calc):
@@ -928,9 +927,9 @@ class TestTheRunsOwnCondition:
         work, and the catalogue's `use_gpu` value is `false` -- so the test
         was a constant and the typed `gpu_count` was SILENTLY DELETED unless
         the condition also spelled `use_gpu`.  `run_uses_device` reads the
-        calculation's own template, which is what `_bench_inputs` always
+        calculation's own template, which is what `bench_inputs` always
         did."""
-        from molbuilder.jobset._cli import run_uses_device
+        from molbuilder.jobset.prep_inputs import run_uses_device
         from molbuilder.task import read_task
 
         # the `calc` fixture's template carries use_gpu = True
@@ -984,7 +983,7 @@ class TestTheRunsOwnCondition:
         folded UNDER field by field.  The tab's prep button died with
         ``'NoneType' object has no attribute 'mpi_np'`` on 2026-09-02 for
         exactly this."""
-        from molbuilder.jobset._cli import prep_run_inputs
+        from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.jobset.model import Resources
         from molbuilder.task import read_task
 
@@ -1015,7 +1014,7 @@ class TestTheRunsOwnCondition:
           * `mem` is NOT among them and stays the calculation's
         """
         import json
-        from molbuilder.jobset._cli import prep_run_inputs
+        from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.jobset.model import Resources
         from molbuilder.jobset.prep import _under_description
         from molbuilder.task import read_task
@@ -1236,7 +1235,7 @@ def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
 def test_the_verb_renders_the_trial_decks_it_promises(calc):
     """I5 (2026-08-13): every earlier deck-content pin supplied the
     grid, pins and translation itself through library internals
-    (`_bench_inputs` + `prep_calculation`), so the VERB's own wiring of
+    (`bench_inputs` + `prep_calculation`), so the VERB's own wiring of
     them was unpinned.  This drives `jobset prep bench coarse` -- the
     command a user types -- and asserts the CONTENT of what lands: each
     trial deck carries the TRIAL's own identity line (§ 2.3.2's relabel,
@@ -1673,7 +1672,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100")).to_json() + "\n")
-    sweep, pins, translation = _bench_inputs(dest, None)
+    sweep, pins, translation = bench_inputs(dest, None)
     prep_calculation(dest, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
                      sweep=sweep, pins=pins, translation=translation,
@@ -1969,12 +1968,12 @@ def test_the_declared_grid_is_the_sweep(calc):
     """Declared axes produce exactly those points — nothing enumerated."""
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
-    sweep, _pins, translation = _bench_inputs(calc, None)
+    sweep, _pins, translation = bench_inputs(calc, None)
     assert sweep == [{"K": 1, "C": 1}, {"K": 2, "C": 1}]
     assert translation.axes == ("K", "C")
 
 
-def test_a_declared_point_over_capability_is_crossed_out_by_name(calc, capsys):
+def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
     """A point the machine cannot hold is CROSSED OUT naming the point, the
     ask and the bound — never clamped, because a clamped point measures a
     configuration nobody declared.
@@ -1988,12 +1987,12 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc, capsys):
     person is told which cell and by how much, not handed a sentence about
     one number.
     """
-    import click
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [4096], "omp_threads": [2]})
-    with pytest.raises(click.ClickException):
-        _bench_inputs(calc, None)
-    shown = capsys.readouterr().out
+    notes: list = []
+    with pytest.raises(PrepError):
+        bench_inputs(calc, None, notes=notes)
+    shown = "\n".join(notes)
     assert "0 fit a queue" in shown
     assert "crossed out (1)" in shown
     # The CELL, by the name its trial directory would carry, and both
@@ -2056,7 +2055,7 @@ def test_a_multi_point_value_entry_is_a_value_axis(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"block_size": [64, 128],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = _bench_inputs(calc, None)
+    sweep, pins, _tr = bench_inputs(calc, None)
     assert len(sweep) == 2
     assert sorted(p["block_size"] for p in sweep) == [64, 128]
     assert "block_size" not in pins, "an axis is not a pin"
@@ -2071,12 +2070,11 @@ def test_a_value_axis_naming_a_measurement_pin_is_refused(calc):
     preflight) that the bench pins to 0 on every trial.  The non-execution
     pins (``max_scf_iter``...) are barred upstream by
     `_bench_names_a_speed_knob`, so they never reach this refusal."""
-    import click
     _describe_cpu(calc)
     _declare_bench(calc, {"continue_retries": [0, 2],
                           "mpi_np": [4], "omp_threads": [1]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(calc, None)
     assert "continue_retries" in str(e.value)
     assert "measurement" in str(e.value)
 
@@ -2110,7 +2108,7 @@ def test_a_one_point_declaration_is_a_pin_and_decides_the_grid(calc):
     _declare_bench(calc, {"use_gpu": [True],
                           "diag_algorithm": ["ELPA-2STAGE"],
                           "mpi_np": [4], "omp_threads": [1]})
-    sweep, pins, _tr = _bench_inputs(calc, None)
+    sweep, pins, _tr = bench_inputs(calc, None)
     assert pins["use_gpu"] is True
     assert pins["diag_algorithm"] == "ELPA-2STAGE"
     assert pins["max_scf_iter"] == 3, "the measurement pins still ride"
@@ -2138,15 +2136,14 @@ def test_a_declared_pin_reaches_the_trial_deck(calc):
 
 
 def test_a_bad_enum_value_and_a_non_bool_are_refused_with_the_choices(calc):
-    import click
     _describe_cpu(calc)
     _declare_bench(calc, {"diag_algorithm": ["ELPA-9STAGE"]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(calc, None)
     assert "ELPA-9STAGE" in str(e.value) and "ScaLAPACK" in str(e.value)
     _declare_bench(calc, {"use_gpu": [1]})
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(calc, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(calc, None)
     assert "true or false" in str(e.value)
 
 
@@ -2154,7 +2151,7 @@ def test_a_declared_gpu_point_runs_the_declared_total_ranks(calc):
     """On a GPU description, G ranges over the divisors of each declared
     rank count, so G*K equals the declared mpi_np exactly."""
     _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1]})
-    sweep, _pins, _tr = _bench_inputs(calc, None)
+    sweep, _pins, _tr = bench_inputs(calc, None)
     assert all(p["G"] * p["K"] == 4 for p in sweep)
     assert {p["G"] for p in sweep} == {1}          # fixture probes one a100
 
@@ -2163,7 +2160,7 @@ def test_the_cap_is_clean_scf_must_converge_is_pinned_off(calc):
     """B2: the pins include scf_must_converge False, so a capped trial ends
     as the single-point measurement it is instead of ABNORMAL_TERMINATION —
     which is what lets `choose_winner` ever see a completed point."""
-    _sweep, pins, _tr = _bench_inputs(calc, None)
+    _sweep, pins, _tr = bench_inputs(calc, None)
     assert pins["scf_must_converge"] is False
     assert pins["max_scf_iter"] == 3
 
@@ -2250,7 +2247,7 @@ def test_summarize_writes_the_report_in_EXECUTIONS_vocabulary(calc):
 
     **The translation is the point.** The record speaks `cpus_per_task` and
     a `gres` string; `execution` speaks `omp_threads` and `gpu_count`
-    (`_cli._AS_RESOURCE`).  A report handing over the record's names would
+    (`prep_inputs._AS_RESOURCE`).  A report handing over the record's names would
     hand over a block the reader refuses -- and the person would have no way
     to tell whose fault that was.
 
@@ -2293,7 +2290,7 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     assert "bench recommendation" not in r.output
 
 
-def test_prep_names_what_an_unstated_shape_will_do(calc, capsys):
+def test_prep_names_what_an_unstated_shape_will_do(calc):
     """**Prep does not go silent about the ordinary case.**
 
     An unstated launch shape is normal, and *"sizing from the target"* and
@@ -2306,22 +2303,25 @@ def test_prep_names_what_an_unstated_shape_will_do(calc, capsys):
     an unstated shape was settled at run time on whatever machine the job
     landed on.  It is settled at prep now, from the target's record, so the
     note names the target instead of the policy.)*"""
-    from molbuilder.jobset._cli import prep_run_inputs
+    from molbuilder.jobset.prep_inputs import prep_run_inputs
     from molbuilder.jobset.model import Resources
     from molbuilder.task import read_task
 
     self_task = read_task(calc / "task.json")
 
     # nothing stated -> the note names where the width comes from
-    prep_run_inputs(calc, None, self_task, "coarse", allocation=Resources())
-    out = capsys.readouterr().out
+    notes: list = []
+    prep_run_inputs(calc, None, self_task, "coarse", allocation=Resources(),
+                    notes=notes)
+    out = "\n".join(notes)
     assert "no launch shape in `execution`" in out, out
     assert ("sizing from" in out or "refuse rather than guess" in out), out
 
     # a stated shape -> silence
+    notes = []
     prep_run_inputs(calc, None, self_task, "coarse",
-                    allocation=Resources(mpi_np=4))
-    assert capsys.readouterr().out == ""
+                    allocation=Resources(mpi_np=4), notes=notes)
+    assert notes == []
 
 
 def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
@@ -2418,7 +2418,6 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
     to be stopped only by ACCIDENT: those pins failing resolve, with a
     refusal blaming settings the user never wrote.  The seam now refuses
     by NAME, before any grid is enumerated."""
-    import click
 
     from molbuilder.config.pyscf import PySCFConfig
     struct = Structure(elements=["H", "H"],
@@ -2437,8 +2436,8 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
-    with pytest.raises(click.ClickException) as e:
-        _bench_inputs(dest, None)
+    with pytest.raises(PrepError) as e:
+        bench_inputs(dest, None)
     msg = str(e.value)
     assert "'pyscf'" in msg and "SIESTA" in msg, (
         "the refusal must name the engine and the reason")
@@ -2751,7 +2750,7 @@ def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):
 # --------------------------------------------------------------------- #
 
 def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
-        calc, capsys):
+        calc):
     """THE BUG THE USER HIT, in its smallest form.
 
     A declared grid mixing a point this machine holds with one it does not
@@ -2768,12 +2767,13 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
     """
     _describe_cpu(calc)                      # a 4-core box, no queues
     _declare_bench(calc, {"mpi_np": [2, 4096], "omp_threads": [1]})
-    sweep, _pins, _translation = _bench_inputs(calc, None)
+    notes: list = []
+    sweep, _pins, _translation = bench_inputs(calc, None, notes=notes)
 
     assert sweep == [{"K": 2, "C": 1}], (
         "the point that fits must survive its oversized sibling")
 
-    shown = capsys.readouterr().out
+    shown = "\n".join(notes)
     assert "2 combination(s) enumerated, 1 fit a queue" in shown
     assert "K2C1" in shown and "K4096C1" in shown
     # The struck one names its numbers (R4), not a verdict word.

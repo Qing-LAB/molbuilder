@@ -287,7 +287,7 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
        own arithmetic, rearranged: ``G*K*C <= node_cores``) -- only when the
        caller has both ``cores_per_rank`` and ``node_cores`` to check it
        with.  The bench-grid enumeration already enforces this one as a HARD
-       drop (`jobset/_cli.py`'s per-family core cap); it is repeated here so
+       drop (`jobset/prep_inputs.py`'s per-family core cap); it is repeated here so
        a caller with a single, non-swept request gets the same protection.
 
     ``gpu_count`` falsy/``None`` returns no lines -- a CPU-family request,

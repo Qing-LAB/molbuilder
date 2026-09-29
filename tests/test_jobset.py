@@ -2796,29 +2796,44 @@ def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
         f"{'refuses' if refuses else 'proceeds'}")
 
 
-def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
-    """The prep report's agreement half, at its unit (`_echo_resolved`).
+def _report(tmp_path, job):
+    """The prep report printed from the answer the one entry builds
+    (`_echo_prep_answer`; `prep.prep_stage`'s step 8: `launch_agreement`,
+    kept unless the deck makes no claim).
 
-    Until 2026-08-12 this drove the scenario through `prep` of a HAND-BUILT
-    bundle -- the pre-made-bundle arm, retired with U2/U4 (described-only:
-    `describe` is floor 2's only writer).  The contract these tests pin is
-    unchanged and lives where it lived: the reporter and submit's refusal
-    both read the ONE comparison, `agreement.launch_agreement`."""
+    API-level on purpose: a deck rendered for ANOTHER launch is what the road
+    cannot make -- prep renders the deck for the very launch it prepares --
+    so the report's wording for it is pinned here, and the ledger half rides
+    the road tests (`test_prep_from_the_browser.py`).  The contract is unchanged:
+    the reporter and submit's refusal both read the ONE comparison,
+    `agreement.launch_agreement`."""
     import contextlib, io
-    from molbuilder.jobset._cli import _echo_resolved
-    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset._cli import _echo_prep_answer
+    from molbuilder.jobset.agreement import launch_agreement
+    from molbuilder.jobset.materialize import Attempt
+    from molbuilder.jobset.prep import PrepAnswer
 
-    _deck_rendered_for(tmp_path / "JOB_01_coarse.fdf", mpi_np_deck)
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                          resources=Resources(mpi_np=mpi_np_launch))])
+    g = launch_agreement(tmp_path, job)
+    ans = PrepAnswer(
+        "run", "coarse",
+        attempt=Attempt("coarse", tmp_path, True, [], [], None, False),
+        resources={"mpi_np": job.resources.mpi_np, "cpus_per_task": None,
+                   "continue_retries": 0},
+        deck=job.script, agreement=g if g.verdict != "silent" else None)
     # stdout and stderr are one stream here, as at a terminal -- the warning
     # goes to stderr on purpose, so a report piped to a file still carries
     # it to the screen.
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        _echo_resolved(js, tmp_path, "coarse", tmp_path)
+        _echo_prep_answer(ans, tmp_path)
     return out.getvalue() + err.getvalue()
+
+
+def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
+    from molbuilder.jobset.model import Job, Resources
+    _deck_rendered_for(tmp_path / "JOB_01_coarse.fdf", mpi_np_deck)
+    return _report(tmp_path, Job(name="coarse", script="JOB_01_coarse.fdf",
+                                 resources=Resources(mpi_np=mpi_np_launch)))
 
 
 def test_prep_names_both_numbers_and_says_submit_will_refuse(tmp_path):
@@ -2848,18 +2863,11 @@ def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
     """A deck with no BENCH-MARKS block has said nothing about its launch, so
     there is nothing to report — and reporting *"agrees"* would be a claim
     nobody made."""
-    import contextlib, io
-    from molbuilder.jobset._cli import _echo_resolved
-    from molbuilder.jobset.model import Job, JobSet, Resources
+    from molbuilder.jobset.model import Job, Resources
 
     (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                          resources=Resources(mpi_np=99))])
-    buf, err = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        _echo_resolved(js, tmp_path, "coarse", tmp_path)
-    out = buf.getvalue() + err.getvalue()
+    out = _report(tmp_path, Job(name="coarse", script="JOB_01_coarse.fdf",
+                                resources=Resources(mpi_np=99)))
     assert "rendered for" not in out
     assert "resources:" in out                    # the rest of the report stays
 

@@ -4,8 +4,9 @@
 **Module**: the ONE comparison between what a deck was rendered for and the
 launch it is about to get, plus the ONE wording of why a mismatch matters.
 **Callers**: `jobset/submit._resolve_launch` (the refusal, M5's *"`submit`
-decides nothing … refuses if they do not"*), `jobset/_cli._echo_resolved`
-(the warning at `prep`, where changing your mind is still cheap), and --
+decides nothing … refuses if they do not"*), `jobset/prep.prep_stage`
+(the warning at `prep`, where changing your mind is still cheap -- each door
+shows it from the entry's answer), and --
 since the cold-start ruling (2026-08-21) -- `jobset/submit`'s per-trial
 gate calling :func:`check_trial_starts_cold` (the door VERIFIES the
 run's starting state; prep's measurement pin is the one setter); the

@@ -15,8 +15,10 @@ current → target status picture.
 `molbuilder jobset prep` then `molbuilder jobset launch --mode direct` — **a
 job set of one, through the same commands as a hundred** (there is no
 `molbuilder run`; decided 2026-08-11). The browser's part is the description
-(the hand-over + Task setup — [`web/task-setup.md`](?doc=web/task-setup.md));
-prep and submit run where the machine is. *(A legacy web install-wrapper
+(the hand-over + Task setup — [`web/task-setup.md`](?doc=web/task-setup.md))
+and `prep` for a named machine, through the one entry the terminal calls
+([`job-system.md`](?doc=execution/job-system.md) § 5.3); launching runs where
+the machine is. *(A legacy web install-wrapper
 endpoint survives as the low-level side door the described route supersedes —
 `job-contracts.md § 2.6`'s note.)* Everything here — the
 self-contained wrapper, the runtime resource resolution, `molbuilder.json`

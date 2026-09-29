@@ -411,8 +411,8 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
-            from molbuilder.jobset._cli import _bench_inputs
-            sweep, pins, translation = _bench_inputs(dest, None)
+            from molbuilder.jobset.prep_inputs import bench_inputs
+            sweep, pins, translation = bench_inputs(dest, None)
             prep_calculation(dest, stages[0], allocation=Resources(mpi_np=8),
                              sweep=sweep, pins=pins, translation=translation,
                              pipeline_log=True)

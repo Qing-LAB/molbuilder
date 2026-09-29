@@ -604,7 +604,7 @@ spec is a small form the engine fills in, and it has twelve slots:
 | `provenance_defaults` · `bench_marks` | the values only this engine can supply for two record blocks |
 | `derived` | facts computed once at spec time that later slots read (never re-derived downstream) |
 | `check_rules` | what a finished deck of this engine must satisfy |
-| `validate_subject` | what the settings gate judges, when it is not the structure as it arrived |
+| `validate_subject` | what the settings gate judges, when it is not the structure as it arrived — the placed copy, its `design` (the file's own coordinates), and `prior`, what an earlier stage left that this stage's checks judge (the `relax` stage's record at a SIESTA force-constant stage, `engines/vibration.md` § 5.2a) |
 | `engine` · `created_by` | whose catalogue rows to read, and what to record as the producer |
 
 > **Why a form and not a function.** A function can only be *called*; a form can

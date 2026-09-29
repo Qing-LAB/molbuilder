@@ -417,7 +417,8 @@ step above it: a bench hands down a sweep and its translation; a run hands
 down one condition, split by the catalogue into the launch shape and the pins
 (`_declared_execution_pins` for the second half, unchanged).
 
-**The run does NOT go through the grid enumerator.** `_bench_inputs` is a
+**The run does NOT go through the grid enumerator.** `bench_inputs`
+(`jobset/prep_inputs.py`; `_bench_inputs` in `jobset/_cli.py` until 2026-09-29) is a
 sweep's own machinery — it must invent the axes a condition does not mention —
 so the machine half is a **direct map** from the catalogue's name to the
 `Resources` field. See *"Where `execution`'s machine values land"* below, and
@@ -472,8 +473,8 @@ producer the sweep uses.
 
 > **It went through the grid enumerator for one afternoon** (2026-09-02) on
 > the argument that a run is a sweep of length one. It is — *below*
-> `resolve()`, which is where the shared pipeline actually is. `_bench_inputs`
-> sits **above** that and is a sweep's own machinery: it must invent the axes
+> `resolve()`, which is where the shared pipeline actually is. `bench_inputs`
+> (then `_bench_inputs`) sits **above** that and is a sweep's own machinery: it must invent the axes
 > a condition does not mention. So `{omp_threads: 4}` came back as a
 > **single-rank job** (its `mpi_np or [1]` default), `{use_gpu: true,
 > mpi_np: 8}` came back **empty** because the device axis enumerated three

@@ -111,15 +111,18 @@ class TestTheUserChoosesTheMachine:
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
         r = CliRunner()
+        # SIESTA, the engine the bench lane speaks: a PySCF description is
+        # refused before any machine is asked (`prep_inputs.bench_refusal`),
+        # so it cannot reach the question this test is about.
         init = r.invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/wb",
-            "--shape", "flat", "--engine", "pyscf"])
+            "--shape", "flat", "--engine", "siesta"])
         assert init.exit_code == 0, init.output
         # a bench needs an axis to measure; declare one the way the tab does
         import json as _json
         tj = machines.tree / "P" / "optimization" / "wb" / "task.json"
-        d = _json.loads(tj.read_text()); d["bench"] = {"threads": [1, 2]}
+        d = _json.loads(tj.read_text()); d["bench"] = {"omp_threads": [1, 2]}
         tj.write_text(_json.dumps(d))
         res = r.invoke(jobset_group,
                        ["prep", "bench", "coarse",

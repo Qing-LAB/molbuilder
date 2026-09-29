@@ -706,6 +706,28 @@
 .ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
 .ts-prep-say[data-state="warn"] { color: var(--warn-soft); }
 
+/* The one prep entry's answer (`task-setup.md` § 11.1): the command line's
+   report, a line each, under the buttons that asked for it.  A full row of
+   the wrapping strip, so it reads as the answer and not as a fourth button. */
+.ts-prep-answer {
+    flex-basis: 100%;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+.ts-prep-answer-line { overflow-wrap: anywhere; }
+.ts-prep-answer-line[data-state="warn"] { color: var(--warn-soft); }
+.ts-prep-answer-notes {
+    margin: var(--space-xs) 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    white-space: pre-wrap;
+}
+.ts-prep-answer .btn { margin-top: var(--space-xs); }
+
 /* ---- "Tell me how it is going" ------------------------------------- */
 /* A sibling of the queue card: this calculation's own asks, not the
    machine's.  Rows are checkboxes because the triggers combine with OR --

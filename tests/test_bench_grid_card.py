@@ -5,7 +5,7 @@ the parameters are set? this update is trivial when target and parameter
 list is known and can be updated in real time. this does not need to be a
 message with a window."*
 
-So `/api/task-setup/bench-grid` serves the report `_bench_inputs` already
+So `/api/task-setup/bench-grid` serves the report `bench_inputs` already
 computes — **the one enumerator**, handed the axes as they are being
 edited.  The browser paints it; it never enumerates a grid of its own,
 because a second enumerator is exactly the drifting decider that let a
@@ -567,7 +567,7 @@ def test_a_cell_this_box_cannot_hold_says_why_on_a_machine_with_no_queues():
     Found by walking the UI, not by a test: nothing exercised a grid whose
     cells exceed a queue-less machine's width.
     """
-    from molbuilder.jobset._cli import _local_refusals
+    from molbuilder.jobset.prep_inputs import _local_refusals
 
     why = _local_refusals((0, 8, 2), fam=False, gtype=None,
                           cores_total=4, gpus_per_node=0)

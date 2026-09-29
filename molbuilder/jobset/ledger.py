@@ -11,11 +11,15 @@ machine difference is then *reading the ledger in order*, not re-running.
 
 **The layering** mirrors the rest of the engine: library layers RETURN
 decision data (a picked trial, a provenance table, a merged plan) and the
-SURFACE that acted on it appends the line — policy stays at the verb, the
-ledger only records.  Where more than one surface records the SAME decision,
-what that line consists of lives here as a named function (:func:`prepped`)
-and the surfaces call it: appending stays theirs, and the recipe stops being
-something each of them has to remember.  Per-job launch provenance already
+VERB that acted on it appends the line — policy stays at the verb, the
+ledger only records.  A verb with one door appends at that surface; a verb
+whose doors share ONE ENTRY appends in the entry, once, whichever door
+called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
+all four of its lines (`preflight-report`, `underway-ask`, `prepped`,
+`launch-agreement`) for the command line and the Task setup tab alike.
+What a line consists of, where more than one caller records the same
+decision, lives here as a named function (:func:`prepped`), so the recipe
+is never something each caller has to remember.  Per-job launch provenance already
 has a home
 (``run.json``, `job-contracts.md` § 6.1) and is not duplicated here; the
 ledger is the bundle-level ORDER of decisions across verbs.
@@ -59,22 +63,22 @@ def record(base, verb: str, decision: str, **facts) -> None:
 def prepped(base, *, kind: str, stage, dirs):
     """Record one ``prep`` — and RETURN the provenance it recorded.
 
-    **What a prep line consists of lives here, not in each surface.**  The
-    module rule above puts the append at the surface, and that is right:
-    policy stays at the verb.  What it cannot do by itself is keep two
-    surfaces spelling the same four facts the same way.  A surface that
+    **What a prep line consists of lives here, not in each caller.**  The
+    module rule above puts the append at the verb -- for `prep`, its one
+    entry, which both doors call.  What it cannot do by itself is keep two
+    callers spelling the same four facts the same way.  A surface that
     hand-builds the line is free to spell it differently, or to omit it
     altogether — and then the Task Setup bundle card's promise that
     ``jobset-decisions.log`` holds *"every decision prep made, one line
     each"* is false for whoever prepped through that surface: they open the
     card, read the promise, and find no file.
 
-    So the recipe has one home and the surfaces have one call.  Adding a
-    third surface is that call, not four lines free to disagree with these.
+    So the recipe has one home and the entry has one call.
 
-    The provenance comes back because the CLI also PRINTS it
-    (`format_provenance`) — the same table, recorded once and displayed
-    once, rather than gathered twice.
+    The provenance comes back because the answer carries it: the command
+    line PRINTS it (`format_provenance`) and the Task setup tab receives it
+    -- the same table, recorded once and displayed from the answer, rather
+    than gathered twice.
     """
     from ..runtime_config import config_provenance
 

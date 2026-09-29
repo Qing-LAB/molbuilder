@@ -158,7 +158,7 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
         "prep from the browser wrote no ledger line; the bundle card "
         "promises one")
     lines = [_json.loads(x) for x in log.read_text().splitlines() if x.strip()]
-    assert [(e["verb"], e["decision"]) for e in lines] == [("prep", "prepped")]
+    assert ("prep", "prepped") in [(e["verb"], e["decision"]) for e in lines]
 
 
 def test_the_refusal_names_a_spelling_that_WORKS(web_client, described):
@@ -253,3 +253,361 @@ def test_a_remote_target_is_still_refused_without_its_own_activation():
     with pytest.raises(PrepError) as exc:
         _require_remote_activation("faraway", _record_without_activation())
     assert "enter its environment" in str(exc.value)
+
+
+# --------------------------------------------------------------------- #
+#  ONE prep entry, two doors (`job-system.md` § 5.3; plan W38 F7)       #
+# --------------------------------------------------------------------- #
+#
+# Until 2026-09-29 this door called the five steps alone: it skipped the
+# preflight, the *already under way* question, the launch agreement and
+# their ledger lines, refused an axis-less bench, and showed only the
+# folders.  Each test below runs the SAME prep through both doors -- the
+# command line and this route -- and compares what each says and records.
+
+def _twin(calc, name):
+    """A second, identical calculation beside *calc*, for the other door."""
+    twin = Path(calc).parent / name
+    shutil.copytree(calc, twin)
+    return twin
+
+
+def _ledger_decisions(calc):
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    log = Path(calc) / LEDGER_FILE
+    return [(e["verb"], e["decision"]) for e in
+            (json.loads(x) for x in log.read_text().splitlines() if x.strip())]
+
+
+def _cli(*args, input=None):
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, list(args), input=input)
+
+
+def _a_ladder_the_preflight_warns_about(calc):
+    """`tight` resolving to `coarse`'s settings and starting clean -- the
+    description's own preflight warns (`engines/stages.md` § 6.6a)."""
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    desc = Path(calc) / TASK_FILENAME
+    d = json.loads(desc.read_text())
+    d["varies"] = ["restart"]
+    d["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}},
+                   {"name": "tight", "enabled": True,
+                    "overrides": {"restart": "clean"}}]
+    desc.write_text(json.dumps(d))
+
+
+def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
+        web_client, described):
+    """The tab's answer carries what the command line prints -- the
+    preflight's note, the attempt, the deck's agreement -- and the two
+    calculations' ledgers hold the same decisions."""
+    calc = Path(described)
+    _make_preppable(calc)
+    _a_ladder_the_preflight_warns_about(calc)
+    twin = _twin(calc, "calc-cli")
+
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+    r = _cli("prep", "run", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code == 0, r.output
+
+    notes = [f["message"] for f in j["findings"]]
+    assert notes and any("starts clean" in n for n in notes), j["findings"]
+    for n in notes:
+        assert f"note: {n}" in r.output, n
+    assert j["attempt"]["dir"] == "01_coarse/run-0"
+    assert "prepared coarse: 01_coarse/run-0" in r.output
+    assert j["agreement"]["verdict"] == "agrees", j["agreement"]
+    assert (f"{j['deck']}: rendered for mpi_np "
+            f"{j['agreement']['rendered_for']} -- agrees") in r.output
+    assert _ledger_decisions(calc) == _ledger_decisions(twin)
+    assert ("prep", "preflight-report") in _ledger_decisions(calc)
+    assert ("prep", "launch-agreement") in _ledger_decisions(calc)
+    # What each deck's checks said reaches the tab too -- the terminal read
+    # it on stderr as the deck rendered.
+    assert j["deck_findings"], "the tab was not told what the deck's checks said"
+    for f in j["deck_findings"]:
+        assert f["message"] in r.output, f["message"]
+    # ...and the terminal says what was found BEFORE the decks are written,
+    # as it always has (`prep_stage`'s ``on_found``).
+    assert r.output.index(f"note: {notes[0]}") < min(
+        r.output.index(f["message"]) for f in j["deck_findings"]), r.output
+
+
+def test_already_under_way_is_asked_on_both_doors_and_nothing_renders_first(
+        web_client, described):
+    """A launched attempt is evidence: the tab gets the question with
+    nothing rendered, and its Confirm is the answer the ledger records; the
+    command line asks at the terminal, and *no* renders nothing."""
+    from molbuilder.jobset.materialize import RUN_LAUNCH_FILE
+    calc = Path(described)
+    _make_preppable(calc)
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+    (calc / "01_coarse" / "run-0" / RUN_LAUNCH_FILE).write_text("{}")
+    deck = calc / "01_coarse" / j["deck"]
+    twin = _twin(calc, "calc-cli")
+    before = deck.stat().st_mtime_ns
+
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200 and j["question"] is not None, j
+    assert any("01_coarse/run-0/ was launched" in e
+               for e in j["question"]["evidence"]), j["question"]
+    assert j["dirs"] == [] and deck.stat().st_mtime_ns == before, (
+        "a question unanswered rendered a deck")
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET, confirm=True,
+                  evidence=j["question"]["evidence"])
+    assert st == 200 and j["question"] is None, j
+    assert j["attempt"]["dir"] == "01_coarse/run-1"
+
+    r = _cli("prep", "run", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET, input="n\n")
+    assert r.exit_code != 0 and "stopped at your request" in r.output, (
+        r.output)
+    assert not (twin / "01_coarse" / "run-1").exists()
+
+    answers = [json.loads(x)["answer"] for d in (calc, twin)
+               for x in (d / "jobset-decisions.log").read_text().splitlines()
+               if '"underway-ask"' in x]
+    assert answers == ["confirmed on the Task setup tab", "no"], answers
+
+
+def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
+        web_client, described):
+    """`generator.md` § 4.3a: an absent declaration keeps the machine's
+    enumeration.  The tab refused it -- "declares nothing to measure" --
+    while the command line prepped it."""
+    calc = Path(described)
+    _make_preppable(calc)
+    twin = _twin(calc, "calc-cli")
+    st, j = _post(web_client, dest=str(calc), kind="bench", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code == 0, r.output
+    assert j["dirs"] and f"prepped {len(j['dirs'])} trial dir(s)" in r.output
+    assert any("combination(s) enumerated" in n for n in j["notes"]), j["notes"]
+
+
+def test_a_refusal_shows_what_it_points_at_on_both_doors(
+        web_client, described):
+    """A bench whose every declared point is crossed out refuses with "see
+    the crossed-out list above" -- and each door shows that list with the
+    sentence: the terminal before it, the tab beside it.  The entry
+    assembled the list before refusing; a refusal that dropped it would be
+    pointing at nothing."""
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    calc = Path(described)
+    _make_preppable(calc)
+    desc = calc / TASK_FILENAME
+    d = json.loads(desc.read_text())
+    d["bench"] = {"mpi_np": [4096]}
+    desc.write_text(json.dumps(d))
+    twin = _twin(calc, "calc-cli")
+
+    st, j = _post(web_client, dest=str(calc), kind="bench", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 400 and "crossed-out list" in j["error"], j
+    assert any("crossed out (1)" in n for n in j["notes"]), j["notes"]
+    r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code != 0, r.output
+    assert r.output.index("crossed out (1)") < r.output.index(
+        "crossed-out list"), r.output
+
+
+def test_a_confirm_answers_only_the_evidence_it_was_shown(
+        web_client, described):
+    """The tab can sit on its Confirm for hours.  An answer counts for the
+    evidence it names: when the folder shows more by the time it arrives,
+    the question comes back with the new evidence and nothing is
+    rendered; the ledger never records an answer to evidence nobody saw."""
+    from molbuilder.jobset.materialize import RUN_LAUNCH_FILE
+    calc = Path(described)
+    _make_preppable(calc)
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+    (calc / "01_coarse" / "run-0" / RUN_LAUNCH_FILE).write_text("{}")
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    shown = j["question"]["evidence"]
+
+    # ...and while the question sits on the screen, a second attempt is
+    # prepped and launched from elsewhere.
+    from molbuilder.jobset.prep import Answer, prep_stage
+    again = prep_stage(calc, "run", "coarse", target=LOCAL_TARGET,
+                       answer=Answer(True, "elsewhere"))
+    (again.attempt.dir / RUN_LAUNCH_FILE).write_text("{}")
+
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET, confirm=True, evidence=shown)
+    assert st == 200 and j["question"] is not None, j
+    assert j["question"]["evidence"] != shown and j["dirs"] == [], j
+    answers = [json.loads(x)["answer"] for x in
+               (calc / "jobset-decisions.log").read_text().splitlines()
+               if '"underway-ask"' in x]
+    assert "confirmed on the Task setup tab" not in answers, answers
+
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET, confirm=True,
+                  evidence=j["question"]["evidence"])
+    assert st == 200 and j["question"] is None and j["dirs"], j
+
+
+def _pyscf_calc(root, name):
+    """A described PySCF optimization -- its deck makes no claim about the
+    launch it was rendered for (no BENCH-MARKS block)."""
+    from molbuilder import template as _T
+    from molbuilder.config.pyscf import PySCFConfig
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    calc = Path(root) / name
+    calc.mkdir(parents=True)
+    (calc / TASK_FILENAME).write_text(json.dumps({
+        "schema": "molbuilder/task@1",
+        "engine": {"name": "pyscf"}, "shape": "hierarchical",
+        "run": {"name": "JOB", "id": "JOB_H2"},
+        "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
+        "varies": [],
+        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
+    }))
+    (calc / "h2.xyz").write_text("2\nH2\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    (calc / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate"}}))
+    (calc / "JOB.template.toml").write_text(
+        _T.template_with_values(PySCFConfig(), engine="pyscf"))
+    return calc
+
+
+def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
+        web_client, described, isolated_projects_root):
+    """`launch_agreement` answers *silent* for a deck with no launch claim,
+    and saying *agrees* would be a claim nobody made: no agreement in the
+    answer, no line printed, no `launch-agreement` in the ledger -- on
+    both doors.  A PySCF deck is such a deck."""
+    web = _pyscf_calc(isolated_projects_root, "py-web")
+    cli = _pyscf_calc(isolated_projects_root, "py-cli")
+    st, j = _post(web_client, dest=str(web), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 200, j
+    assert j["agreement"] is None and j["attempt"], j
+    r = _cli("prep", "run", "coarse", "--bundle", str(cli),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code == 0, r.output
+    assert "rendered for mpi_np" not in r.output
+    for calc in (web, cli):
+        assert ("prep", "launch-agreement") not in _ledger_decisions(calc)
+
+
+
+def test_the_terminal_is_asked_again_when_the_folder_changed_meanwhile(
+        described, monkeypatch):
+    """The terminal's answer counts for the evidence it was shown, as the
+    tab's does: a trial launched from another shell while the prompt waited
+    sends the question back, and the command line asks again -- it neither
+    reports a prep that rendered nothing nor answers for evidence nobody
+    saw (found by review, 2026-09-29)."""
+    import click as _click
+    from molbuilder.jobset.materialize import RUN_LAUNCH_FILE
+    from molbuilder.jobset.prep import Answer, prep_stage
+    calc = Path(described)
+    _make_preppable(calc)
+    first = prep_stage(calc, "run", "coarse", target=LOCAL_TARGET)
+    (first.attempt.dir / RUN_LAUNCH_FILE).write_text("{}")
+    asked = []
+
+    def _meanwhile(*_a, **_k):
+        # While the first prompt waits, another shell preps and launches.
+        if not asked:
+            other = prep_stage(calc, "run", "coarse", target=LOCAL_TARGET,
+                               answer=Answer(True, "elsewhere"))
+            (other.attempt.dir / RUN_LAUNCH_FILE).write_text("{}")
+        asked.append(True)
+        return True
+
+    monkeypatch.setattr(_click, "confirm", _meanwhile)
+    r = _cli("prep", "run", "coarse", "--bundle", str(calc),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code == 0, r.output
+    assert len(asked) == 2 and "asked again" in r.output, r.output
+    assert "prepared coarse: 01_coarse/run-2" in r.output, r.output
+
+
+def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
+        web_client, described):
+    """A description that fails its own preflight -- a physics value in the
+    run's `execution` block -- while its ladder also earns a note: each door
+    refuses with the note beside the sentence, and the ledger holds it, as
+    for every other refusal (HEAD's terminal did; the one entry dropped it
+    until review, 2026-09-29)."""
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    calc = Path(described)
+    _make_preppable(calc)
+    _a_ladder_the_preflight_warns_about(calc)
+    desc = calc / TASK_FILENAME
+    d = json.loads(desc.read_text())
+    d["execution"] = {"basis_size": "SZ"}
+    desc.write_text(json.dumps(d))
+    twin = _twin(calc, "calc-cli")
+
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 400 and "fails its own preflight" in j["error"], j
+    assert any("starts clean" in f["message"] for f in j["findings"]), j
+    r = _cli("prep", "run", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert r.exit_code != 0, r.output
+    assert r.output.index("starts clean") < r.output.index(
+        "fails its own preflight"), r.output
+    assert (_ledger_decisions(calc) == _ledger_decisions(twin)
+            == [("prep", "preflight-report")])
+
+
+def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
+        web_client, described):
+    """`find_template` refuses a folder with two templates -- a leftover the
+    person removes -- and the entry says so on both doors: a 400 with the
+    sentence, and the terminal's `Error:`, never a 500 or a traceback."""
+    calc = Path(described)
+    _make_preppable(calc)
+    shutil.copy(calc / "JOB.template.toml", calc / "OLD.template.toml")
+    twin = _twin(calc, "calc-cli")
+    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 400 and "holds 2 templates" in j["error"], j
+    r = _cli("prep", "run", "coarse", "--bundle", str(twin),
+             "--target", LOCAL_TARGET)
+    assert isinstance(r.exception, SystemExit), r.exception
+    assert r.exit_code == 1 and "holds 2 templates" in r.output, r.output
+
+
+def test_the_page_is_offered_a_bench_only_where_prep_takes_one(
+        web_client, described, isolated_projects_root):
+    """The folder answer carries the entry's own reason a description takes
+    no bench (`bench_refusal`), so the tab offers the Measure step exactly
+    where `prep bench` would take it -- and a bench preview is refused in
+    the same words as the write (found by review, 2026-09-29: the page
+    offered a bench on every PySCF and transport calculation)."""
+    calc = Path(described)
+    _make_preppable(calc)
+    py = _pyscf_calc(isolated_projects_root, "py")
+
+    def _folder(d):
+        return web_client.get("/api/task-setup/folder",
+                              query_string={"dir": str(d)}).get_json()
+
+    assert _folder(calc)["bench_refusal"] is None
+    why = _folder(py)["bench_refusal"]
+    assert why and "only speaks SIESTA" in why, why
+    for plan in (True, False):
+        st, j = _post(web_client, dest=str(py), kind="bench", stage="coarse",
+                      target=LOCAL_TARGET, plan=plan)
+        assert st == 400 and j["error"] == why, (plan, j)

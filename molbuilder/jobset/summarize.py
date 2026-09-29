@@ -566,7 +566,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
 
     # WHAT TO WRITE -- the `execution` block that would use this winner.
     # `omp_threads` and `gpu_count` are `execution`'s names for what the
-    # record calls `cpus_per_task` and a `gres` string (`_cli._AS_RESOURCE`);
+    # record calls `cpus_per_task` and a `gres` string (`prep_inputs._AS_RESOURCE`);
     # naming them here in the RECORD's vocabulary would hand over a block
     # `task.json` refuses.
     block: Dict = {}
@@ -597,7 +597,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # `hasattr(...) is False`, so the `or "siesta"` fired every time and a
     # `getattr` was doing the work of a hardcoded literal while looking
     # dynamic.  Harmless so far only because the bench lane refuses any
-    # non-SIESTA description by name (`_cli.py`) -- but this report is
+    # non-SIESTA description by name (`prep_inputs.bench_inputs`) -- but this report is
     # written for a person to read, so the day that lane admits PySCF it
     # would offer SIESTA's pin vocabulary for a PySCF run.
     vocab = _pins_vocabulary((res.system or {}).get("engine") or "siesta")

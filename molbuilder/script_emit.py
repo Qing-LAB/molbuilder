@@ -1746,7 +1746,8 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
 
 
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
-                 verbose: bool = True, log=None, dest_dir=None):
+                 verbose: bool = True, log=None, dest_dir=None,
+                 findings: "Optional[list]" = None):
     """**Validate → render → write → check**, in that order, for one deck.
 
     The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
@@ -1761,6 +1762,10 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     **Check** reads the written file and asks *does this deck say what it was
     meant to say?* -- a question that can only be asked of an artifact, which is
     why no validator in this tree could ask it before.
+
+    ``findings``, when a caller hands in a list, receives both halves of the
+    verdict too -- the one prep entry's answer carries them to the doors that
+    cannot read stderr (`jobset/prep.prep_stage`, `job-system.md` § 5.3).
     """
     from .validation import report
     if log is not None:
@@ -1790,6 +1795,8 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     # `report` -- which raises on an error, and a refused run is the one whose
     # reasons most need to be on disk.
     write_validation_report(written, list(rendered.findings) + list(issues))
+    if findings is not None:
+        findings.extend(list(rendered.findings) + list(issues))
     report(issues)
     return written
 
