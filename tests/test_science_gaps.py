@@ -222,10 +222,10 @@ def test_gap_7_installation_documents_siesta_version():
     it -- the packaged pin is a literal and is what the guide describes.
     """
     from pathlib import Path
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
 
     pinned = set()
-    for rec in BUILTIN_RECIPES:
+    for rec in builtin_recipes():
         for spec in rec.conda_specs:
             m = re.match(r"siesta=([0-9][0-9.]*)=", spec)
             if m:

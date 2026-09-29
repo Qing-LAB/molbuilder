@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from ._dispatch import route, run_in_env, run_tool
 from .recipes import (
-    BUILTIN_RECIPES,
     Recipe,
+    builtin_recipes,
     recipe_by_name,
     recipe_for_category,
 )
@@ -26,7 +26,7 @@ __all__ = [
     "run_tool",
     "route",
     "Recipe",
-    "BUILTIN_RECIPES",
+    "builtin_recipes",
     "recipe_by_name",
     "recipe_for_category",
 ]

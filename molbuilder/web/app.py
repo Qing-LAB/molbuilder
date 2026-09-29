@@ -300,8 +300,16 @@ def create_app(*, config=None) -> Flask:
     # Bind the diagnostics snapshot before any blueprint registers /
     # before any request handler runs.  All backend availability checks
     # (e.g. ``/api/backends``) then read from a consistent view of the
-    # machine's envs / PATH / config.  Cheap (~50 ms once per process).
+    # machine's envs and config.  AT START, because a server pays the
+    # conda env listing (0.76 s measured, 2026-09-29) once, and then no
+    # request pays it; a command takes it on first use instead
+    # (`diagnostics.get_capabilities`), since most commands never ask.
+    # The recipe registry is built here for the same reason: the notebook's
+    # status route reads a recipe, and the registry's first ask runs
+    # `nvidia-smi` (`envs/recipes.builtin_recipes`).
     _initialize_diagnostics()
+    from ..envs.recipes import builtin_recipes
+    builtin_recipes()
 
     # Load config from disk only when the caller didn't pass one.
     if config is None:
@@ -707,6 +715,20 @@ def create_app(*, config=None) -> Flask:
                               "`admin` section in molbuilder.json names "
                               "specific addresses, sign in as one of them"),
                 }), 403
+            # THE FILE THE FRESH SERVER WILL READ, read first -- as `serve
+            # restart` does (`deployment.md` § 1.0b): a child that cannot
+            # read it exits nonzero, the supervisor does not respawn it
+            # (§ 1.0c), and this server would be gone for a reload that
+            # cannot happen.
+            from ..runtime_config import RuntimeConfigError, read_config
+            try:
+                read_config()
+            except RuntimeConfigError as exc:
+                return jsonify({
+                    "ok": False,
+                    "error": (f"{exc} -- the server keeps running; fix the "
+                              f"file, then reload"),
+                }), 409
 
             def _exit_after_response():
                 # os._exit, not sys.exit: this runs on a request-handler

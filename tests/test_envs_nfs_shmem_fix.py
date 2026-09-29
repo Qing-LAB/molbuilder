@@ -32,7 +32,7 @@ from molbuilder.envs import recipes as _r
 
 
 def _gpu_recipe():
-    for r in _r.BUILTIN_RECIPES:
+    for r in _r.builtin_recipes():
         if r.name == "molbuilder-siesta-gpu":
             return r
     pytest.fail("molbuilder-siesta-gpu recipe not registered")
@@ -60,7 +60,7 @@ def test_activate_hook_sets_ompi_tmpdir_base():
 
 
 def _host_recipe():
-    for r in _r.BUILTIN_RECIPES:
+    for r in _r.builtin_recipes():
         if r.name == "molbuilder":
             return r
     pytest.fail("molbuilder host recipe not registered")

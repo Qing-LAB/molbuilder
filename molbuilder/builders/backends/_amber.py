@@ -48,10 +48,11 @@ from ._common import (parse_pdb_to_structure, select_chain,
 def is_available() -> bool:
     """``tleap`` reachable, either via routed conda env or host PATH.
 
-    Pure O(1) hashmap lookups against the diagnostics
-    :class:`~molbuilder.diagnostics.Capabilities` snapshot -- no subprocess
-    here, no PATH scan.  Whoever bootstrapped the process (CLI / web
-    `create_app`) ran :func:`~molbuilder.diagnostics.initialize` first.
+    Asked of the diagnostics :class:`~molbuilder.diagnostics.Capabilities`
+    snapshot (`tool_available`: the routed env, else ``shutil.which``).  The
+    snapshot is the server's, bound at start, or a command's, taken on its
+    first use (`diagnostics.get_capabilities`), which lists the conda envs
+    once for the process.
     """
     return get_capabilities().tool_available("tleap")
 

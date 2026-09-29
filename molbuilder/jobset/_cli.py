@@ -172,10 +172,12 @@ def _echo_config_root() -> None:
     have to already know that the config directory is the
     file to edit -- the first line of output says so.
 
-    A Click GROUP callback runs once, before the subcommand's own output, and
-    is skipped for ``--help`` and the bare group (verified empirically --
-    Click has no documented guarantee either way).  That is exactly the
-    placement: every real invocation, no help-text noise.
+    A Click GROUP callback runs once, before the subcommand's own output.  It
+    is skipped for the GROUP's own ``--help`` and for the bare group, and it
+    RUNS for a subcommand's ``--help``: Click invokes the group's callback
+    before it parses the subcommand, whose eager ``--help`` fires only then --
+    so ``jobset prep --help`` prints these two lines above its usage
+    (measured 2026-09-29).  Every real invocation carries them.
     """
     import click as _click
     from ..placement import machine_config_warnings

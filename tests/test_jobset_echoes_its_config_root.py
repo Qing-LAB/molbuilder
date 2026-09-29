@@ -41,8 +41,10 @@ def test_a_real_verb_opens_with_the_config_root():
     assert line.endswith("(not found -- defaults in effect, via config-dir)")
 
 
-def test_help_stays_clean_no_config_line():
-    """The line is root information for a REAL run, not help-text noise."""
+def test_the_groups_own_help_has_no_config_line():
+    """The GROUP's own ``--help`` carries no config line.  A verb's
+    ``--help`` does: Click runs the group's callback before it parses the
+    verb, whose eager ``--help`` fires only then (`_echo_config_root`)."""
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner().invoke(jobset_group, ["--help"])
     assert "molbuilder.json:" not in r.output

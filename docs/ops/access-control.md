@@ -492,7 +492,7 @@ The transferable part. A new gate should be able to point at one of these.
 | Auth config validation + provider entries | `tests/test_auth_config.py`, `tests/test_auth_setup.py` |
 | `--no-auth` refused off loopback | `tests/test_cli.py::test_serve_no_auth_refuses_non_loopback_host` |
 | TLS cert/key resolution (flags vs `molbuilder.json`, incomplete pairs fall back to HTTP) | `tests/test_cli_tls.py` |
-| The reload gate — **404 not 403** on either missing condition; the availability answer in four configurations; the respawn loop; the supervisor never importing the app | `tests/test_admin_reload.py` |
+| The reload gate — **404 not 403** on either missing condition; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
 | Revalidation staying invisible to the limiter (the § 4.3 assumption) | `tests/test_static_revalidates.py` |
 | No inline `<script>` anywhere (the CSP's `script-src 'self'` would break silently otherwise) | `tests/test_no_inline_scripts.py` |
 

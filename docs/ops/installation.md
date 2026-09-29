@@ -486,7 +486,7 @@ yourself.
 > | **A GPU, to build** | **No.** The build completes on a machine with no NVIDIA hardware at all. |
 > | **An NVIDIA driver, to build** | **No.** A missing driver is a warning, never an error. |
 > | **CUDA installed on the host** | **No, and it is never read.** The CUDA toolkit is a conda package and lives inside `$CONDA_PREFIX`. |
-> | **A minimum CUDA version** | **None is declared.** The toolkit version is the recipe's own pin (`cuda-version=`, default `13.*`), so there is nothing to check it against. ELPA documents no minimum either — the only CUDA version in its changelog is a workaround *for* versions below 12.1. |
+> | **A minimum CUDA version** | **None is declared.** The toolkit version is the recipe's own pin (`cuda-version=` — `MOLBUILDER_CUDA_VERSION`, else the major the driver reports, else `13.*`; [`env-framework.md`](?doc=ops/env-framework.md) § 3), so there is nothing to check it against. ELPA documents no minimum either — the only CUDA version in its changelog is a workaround *for* versions below 12.1. |
 > | **A driver, to RUN on the GPU** | **Yes** — on the machine that runs the job, and only for the GPU path. That is why it is listed as an *optional* system precondition, which `install --dry-run` prints. |
 > | **gcc pinned to 14.3** | **Yes, and not because of CUDA** — SIESTA 5.4.2's `Src/kpoint_t.F90` miscompiles under gcc 14.4. The pin is keyed by SIESTA tag (§ 6.1). CUDA↔gcc pairing is a *separate* check. |
 >
@@ -686,8 +686,10 @@ CUDA constrains the choice independently — *this is about nvcc accepting a hos
 compiler, and nothing else*: **CUDA 12.0–12.7 wants gcc ≤ 13**, **CUDA 11.x wants
 gcc ≤ 11**, and gcc 14 wants **CUDA ≥ 12.8**. The installer checks this pairing
 and fails fast with the value to use. It is checked against the toolkit **in the
-env**, which this recipe pins (`cuda-version=`, default `13.*`), so with the
-shipped defaults the pairing holds and there is nothing to do. It bites only if
+env**, which this recipe pins (`cuda-version=` — `MOLBUILDER_CUDA_VERSION`,
+else the major the driver reports, else `13.*`; `env-framework.md` § 3), so
+with the shipped defaults on a CUDA-13 host, or one with no driver, the pairing
+holds and there is nothing to do. It bites only if
 you move one of the two: setting `MOLBUILDER_CUDA_VERSION=12.4` with the default
 gcc 14.3 is refused, and the message names `MOLBUILDER_GCC=13` as the fix.
 
@@ -1202,7 +1204,11 @@ its own header documents the three and its error text names all three.
 ## 9. Test map
 
 - `test_envs_recipes.py` — the recipe registry shape (≥5 recipes, required fields,
-  the category↔env-name mapping, CUDA-wheel-tag derivation).
+  the category↔env-name mapping).
+- `test_the_machine_is_probed_on_first_use.py` — the CUDA version each GPU recipe
+  carries at each of its three tiers, read off `envs install --dry-run`; and that
+  a command needing neither the machine snapshot nor a recipe runs neither probe
+  (`env-framework.md` § 3, plan W36 ⑥).
 - `test_envs_siesta_gpu_recipe.py` — the whole GPU build recipe (ELPA-tarball,
   netcdf-fortran-tarball and SIESTA-cmake components, the toolchain pins, the
   Fortran module-ABI fence of § 6.3 asserted as a relationship to the § 6.1 pin,

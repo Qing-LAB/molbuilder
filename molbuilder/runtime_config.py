@@ -41,7 +41,8 @@ This reader is intentionally stateless: it reads the file each time
 it's called, parses, validates.  Callers that want a single
 process-wide read should go through :mod:`molbuilder.diagnostics`,
 which builds the immutable :class:`~molbuilder.diagnostics.Capabilities`
-snapshot once at startup.  Putting the cache there (not here) keeps
+snapshot once per process -- where it is first asked, or at the server's
+start.  Putting the cache there (not here) keeps
 this module a plain pure function: easy to test, easy to reason about,
 no hidden state.
 """

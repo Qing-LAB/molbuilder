@@ -422,6 +422,13 @@ plus a blueprint the tab calls. `status` answers **two** questions separately �
 `deployment.md` gives: the wedge worth catching is a server that is up and not
 answering.
 
+**`start` and `restart` read `molbuilder.json` before they signal**, and so
+does the tab's Start button (§ 5.2), because the shepherd reads it to find the
+notebook env: a broken file is refused in its own words (`Error: <path>: …`,
+exit 2, on the command line; a 409 on the button), and `restart` never stops a
+working notebook for a start that cannot happen — the rule `serve restart`
+keeps for the server ([`ops/deployment.md`](?doc=ops/deployment.md) § 1.0b).
+
 ### 5.1 `GET /api/jupyter/status` — the payload, stated once
 
 **Sixteen keys, authored in two modules and read by a third, and until
@@ -469,7 +476,7 @@ registered** and answer:
 | **404** | no supervisor to ask — the button is absent, and a misconfiguration reads as *missing*, never as *anyone may start a kernel here* |
 | **403** | there is one, and this caller may not run code on this machine |
 | **202** | the signal was delivered |
-| **409** | the supervisor refused it |
+| **409** | the supervisor refused it — or, on `start`, `molbuilder.json` cannot be read, in the file's own words (§ 5) |
 
 One gate, one refusal, both in `_refuse()`. They were registered behind an
 environment variable read at import until 2026-09-15, which made the app's

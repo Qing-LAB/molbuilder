@@ -67,6 +67,14 @@ stale, never signalled.
 * **`restart`** signals the supervisor (`SIGHUP`), which recycles the
   child — the Reload button's effect, workable from a script, and
   workable when the child is HUNG and the button's route cannot answer.
+  **It reads `molbuilder.json` first, as the fresh child will**, and so
+  does the Reload button: a child that cannot read the file exits
+  nonzero and the supervisor does not respawn it (§ 1.0c), so a restart
+  over a broken file would leave no server. The file's refusal comes
+  back instead — `Error: <path>: …`, exit 2, on the command line; a 409
+  with the same words on the button — and the running server is left
+  alone. `jupyter start` and `jupyter restart` read it first for the
+  same reason ([`web/jupyter.md`](?doc=web/jupyter.md) § 5).
 * **`stop`** is a polite `SIGTERM` to the supervisor, which takes the
   child down with it and removes the pidfile.
 
@@ -599,7 +607,11 @@ shared-filesystem assumptions.
   allowlist, XFF trust, the admin routes + role gate, the authenticated bypass).
 - `test_auth_config.py` — `molbuilder.json` auth validation + the session-cookie
   security flags.
-- `test_cli_tls.py` — the TLS precedence (CLI > json), the bind/HTTPS behaviour.
+- `test_cli_tls.py` — the TLS precedence (CLI > json), the bind/HTTPS behaviour;
+  a malformed `molbuilder.json` refused by the command that reads it.
+- `test_admin_reload.py` — a restart over a broken `molbuilder.json` refused
+  before anything is signalled: `serve restart`, `jupyter start`/`restart`, and
+  the Reload route (§ 1.0b).
 - `test_cli.py` — `--no-auth` refuses a non-loopback host.
 - `test_no_inline_scripts.py` — the CSP `script-src 'self'` invariant (no inline
   `<script>` in any template).

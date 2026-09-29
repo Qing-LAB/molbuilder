@@ -762,7 +762,7 @@ def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
 # --------------------------------------------------------------------- #
 #
 # Gates the ASU-deployment critical path: ``molbuilder envs bootstrap``
-# iterates BUILTIN_RECIPES, runs each install, runs doctor at the end.
+# iterates builtin_recipes(), runs each install, runs doctor at the end.
 # Audit 2026-06-24 found zero test coverage on this subcommand; this
 # block closes the gap.
 #
@@ -939,15 +939,15 @@ def test_dry_run_writes_nothing_when_every_env_is_present(monkeypatch,
     on every env.
     """
     from molbuilder.envs import _cli
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
     cfg = tmp_path / "cfg"
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
     # Every env present -> --skip-existing empties the plan.
-    _bind(conda_envs=tuple(r.name for r in BUILTIN_RECIPES))
+    _bind(conda_envs=tuple(r.name for r in builtin_recipes()))
     from molbuilder import diagnostics as _diag_mod
     monkeypatch.setattr(_diag_mod, "detect", lambda: Capabilities(
         runtime_config={}, conda_binary="/c/bin",
-        conda_envs=frozenset(r.name for r in BUILTIN_RECIPES)))
+        conda_envs=frozenset(r.name for r in builtin_recipes())))
 
     def _boom(*a, **k):
         raise AssertionError("a --dry-run must not seed the config directory")
@@ -996,8 +996,8 @@ def test_bootstrap_gives_a_source_build_the_same_eyes_as_install(monkeypatch):
         _cli.envs_group,
         ["bootstrap", "--yes", "--include-source-builds"])
 
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
-    source_builds = [r.name for r in BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
+    source_builds = [r.name for r in builtin_recipes()
                      if r.build_spec is not None]
     assert source_builds, "no source-build recipe to check"
     for name in source_builds:
@@ -1475,11 +1475,11 @@ def test_every_fix_command_a_recipe_prints_names_a_registered_recipe():
     than how any hint is spelled.
     """
     import re
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
 
-    registered = {r.name for r in BUILTIN_RECIPES}
+    registered = {r.name for r in builtin_recipes()}
     bad = []
-    for recipe in BUILTIN_RECIPES:
+    for recipe in builtin_recipes():
         blob = " ".join(recipe.verify_argv or ())
         for m in re.finditer(r"install\s+([A-Za-z0-9][A-Za-z0-9._-]*)", blob):
             cited = m.group(1)
@@ -1628,15 +1628,15 @@ def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
         _cli.envs_group, ["bootstrap", "--yes"],
         catch_exceptions=False,
     )
-    # Every conda-only recipe in BUILTIN_RECIPES should appear in
+    # Every conda-only recipe in builtin_recipes() should appear in
     # install_calls.  Source-build recipes (build_spec != None) must
     # NOT appear -- they're opt-in via --include-source-builds.
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
     expected = [
-        r.name for r in BUILTIN_RECIPES if r.opt_in is None
+        r.name for r in builtin_recipes() if r.opt_in is None
     ]
     forbidden = [
-        r.name for r in BUILTIN_RECIPES if r.opt_in is not None
+        r.name for r in builtin_recipes() if r.opt_in is not None
     ]
     assert install_calls == expected, (
         f"Expected the default stack to be installed in order; "
@@ -1673,13 +1673,13 @@ def test_bootstrap_include_source_builds_adds_them(monkeypatch):
         ["bootstrap", "--yes", "--include-source-builds"],
         catch_exceptions=False,
     )
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
     # The flag is about SOURCE BUILDS, and since 2026-09-14 that is not the
     # same set as "everything opt-in": the notebook env is opt-in and is not
     # a source build, so this flag does not reach it.  That is the point of
     # the separation -- `--include-source-builds` opts into a COST, and an
     # optional feature is chosen by name.
-    expected_names = {r.name for r in BUILTIN_RECIPES
+    expected_names = {r.name for r in builtin_recipes()
                       if r.opt_in is None or r.build_spec is not None}
     assert set(install_calls) == expected_names, (
         f"--include-source-builds should iterate every recipe; "
@@ -1692,9 +1692,9 @@ def test_bootstrap_skips_existing_envs_by_default(monkeypatch):
     """When ``--skip-existing`` is the default and the env already
     exists in caps, ``run_install`` is not called for that recipe.
     This keeps bootstrap idempotent (safe to re-run)."""
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
     conda_only_names = [
-        r.name for r in BUILTIN_RECIPES if r.opt_in is None
+        r.name for r in builtin_recipes() if r.opt_in is None
     ]
     # Pretend the FIRST conda-only env is already present.
     already_present = conda_only_names[0]

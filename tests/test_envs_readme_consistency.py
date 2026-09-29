@@ -103,7 +103,7 @@ def _parse_bash_array(text: str, name: str) -> list[str]:
 
 def test_install_env_sh_host_conda_packages_match_recipe():
     """install-env.sh::HOST_CONDA_PACKAGES bash array must match
-    Python ``BUILTIN_RECIPES.molbuilder.conda_packages`` exactly.
+    Python host recipe's ``conda_packages`` (`builtin_recipes()`) exactly.
 
     The bash array is what the bootstrap uses to create the host env
     on a fresh machine.  A drift between bash and Python means a

@@ -19,7 +19,7 @@ import pytest
 from molbuilder.envs._cli import _fix_cmd, _render_doctor
 from molbuilder.envs.doctor import (EnvReport, PackageAudit,
                                     PackageAuditIssue)
-from molbuilder.envs.recipes import BUILTIN_RECIPES
+from molbuilder.envs.recipes import builtin_recipes
 
 # CHOSEN BY THE PROPERTY UNDER TEST, not by index.  These tests split on
 # whether a recipe has post-install steps, because that is what decides how
@@ -28,11 +28,11 @@ from molbuilder.envs.recipes import BUILTIN_RECIPES
 # `extra_set()`, not `extra_steps`: the DEFAULT set is what decides how many
 # commands doctor prints, and since 2026-09-18 the two differ -- `_HOST`
 # declares an opt-in chromium step that a default install never dispatches.
-RECIPE = next(r for r in BUILTIN_RECIPES if not r.extra_set())
+RECIPE = next(r for r in builtin_recipes() if not r.extra_set())
 NAME = RECIPE.name
 
 #: One that DOES have post-install steps on a default run, for the other branch.
-RECIPE_WITH_STEPS = next(r for r in BUILTIN_RECIPES if r.extra_set())
+RECIPE_WITH_STEPS = next(r for r in builtin_recipes() if r.extra_set())
 
 
 def _report(**kw):

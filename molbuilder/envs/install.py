@@ -713,7 +713,7 @@ def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
     cannot be dispatched at all -- which is reported as such rather than
     guessed around:
 
-    0. **The startup snapshot**, when it knows this env.  `<mgr> env list
+    0. **The process's snapshot**, when it knows this env.  `<mgr> env list
        --json` costs 1.2 s on a warm workstation and `doctor` asks this question
        once per recipe, so five redundant registry reads per report was the
        measured cost of not looking at the reading already taken.  A snapshot
@@ -1000,7 +1000,7 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     """
 
     # Check 1: the registry, through the ONE reader (H2).  Read FRESH, not off
-    # the startup snapshot: this probe runs during an install, where an env was
+    # the process's snapshot: this probe runs during an install, where an env was
     # created or removed seconds ago and the snapshot is exactly wrong.
     from ..diagnostics import conda_env_prefixes
     prefix_from_registry: Optional[str] = conda_env_prefixes(
@@ -1062,7 +1062,7 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
 class _Dispatcher:
     """Where a recipe's steps get dispatched.
 
-    Holds the env prefix -- read off the startup snapshot when it knows the
+    Holds the env prefix -- read off the process's snapshot when it knows the
     env, a registry read when it does not -- so every phase of a recipe
     shares one resolution instead of asking again.
     ``conda create`` is the only step that needs no prefix; there is no
@@ -1419,7 +1419,7 @@ def run_install(
     )
     sys.stderr.flush()
 
-    # The prefix, resolved once for the whole run -- from the startup snapshot
+    # The prefix, resolved once for the whole run -- from the process's snapshot
     # when it knows this env, a registry read when it does not -- and handed
     # to every step through the dispatcher.  NOT for a `--clean` run: that
     # prefix names the env the first step removes, and `ensure_prefix` asks

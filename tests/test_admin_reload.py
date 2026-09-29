@@ -245,6 +245,72 @@ def test_the_code_the_route_exits_with_is_the_one_the_supervisor_respawns_on(
         f"with {code}: {len(spawned)} child(ren)")
 
 
+# --------------------------------------------------------------------- #
+#  A restart over a broken molbuilder.json leaves the running one alone #
+# --------------------------------------------------------------------- #
+
+def test_every_door_that_starts_a_process_reads_its_file_first(
+        monkeypatch, config_root, capsys):
+    """`ops/deployment.md` § 1.0b: a fresh child that cannot read
+    molbuilder.json exits nonzero and is not respawned (§ 1.0c), so a restart
+    over a broken file would leave no server -- or, for the notebook, stop a
+    working one for a start that cannot happen (`web/jupyter.md` § 5).  Each
+    door reads the file first and refuses in its words; nothing is signalled
+    and nothing exits.
+
+    The Reload route is pressed with the file broken AFTER the server started,
+    the way it happens: an edit while it runs.  Its exit is replaced so the
+    test runner survives a press that gets through.
+    """
+    import types
+
+    from molbuilder import cli
+    from molbuilder.web import app as web_app
+
+    exits = []
+
+    class _Inline:
+        def __init__(self, target=None, **_kw):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr("os._exit", exits.append)
+    monkeypatch.setattr(web_app, "time", types.SimpleNamespace(
+        sleep=lambda _s: None))
+    monkeypatch.setattr(web_app, "threading", types.SimpleNamespace(
+        Thread=_Inline))
+    app = _app(monkeypatch, supervised=True, admins=["boss@example.org"])
+    (config_root / "molbuilder.json").write_text("{ this is not json")
+
+    r = _as_logged_in(app.test_client(), "boss@example.org").post(
+        "/api/admin/reload")
+    assert r.status_code == 409, r.get_data(as_text=True)
+    assert "invalid JSON" in r.get_json()["error"]
+    assert exits == [], "the server exited for a reload that cannot happen"
+
+    # The notebook tab's Start button, past its own gate.  Its other 409
+    # (no supervisor answered) is why the words are what is asserted.
+    from molbuilder.web.blueprints import jupyter as nb
+    monkeypatch.setattr(nb, "_supervised", lambda: True)
+    monkeypatch.setattr(nb, "_may_control", lambda: True)
+    app.config["MOLBUILDER_SERVE_PORT"] = 59999
+    r = app.test_client().post("/api/jupyter/start")
+    assert r.status_code == 409, r.get_data(as_text=True)
+    assert "invalid JSON" in r.get_json()["error"]
+
+    # The command-line doors, on a port nothing listens on: the file's
+    # refusal comes before the supervisor is looked for.
+    for verb in (["serve", "restart"], ["jupyter", "start"],
+                 ["jupyter", "restart"]):
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as excinfo:
+            cli.main([*verb, "--port", "59999"])
+        assert excinfo.value.code == 2, verb
+        assert "invalid JSON" in capsys.readouterr().err, verb
+
+
 def test_the_supervisor_respawns_only_on_the_sentinel(monkeypatch):
     """Respawn when the child asked to be restarted; stop for anything else.
 

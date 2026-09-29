@@ -35,7 +35,6 @@ from typing import Iterator, Optional, Sequence
 
 import click
 
-from .diagnostics import initialize as _initialize_diagnostics
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
@@ -2602,8 +2601,14 @@ def _jupyter_signal(port: int, sig: int, verb: str) -> None:
     identical condition perfectly well (found in review 2026-09-15,
     `plan.md` § 5n.8).  Saying it on the way IN is the cheap half; the other
     half is `cmd_jupyter_status` not recommending this verb as the remedy.
+
+    A START reads molbuilder.json first, as the notebook's shepherd will
+    (`jupyter._shepherd` asks the machine snapshot): a broken file is refused
+    here, `Error: ...` (`cli.main`), not in a log after the signal.
     """
     from .serve_daemon import signal_supervisor
+    if sig_starts_a_notebook(sig):
+        read_config()
     ok, msg = signal_supervisor(port, sig)
     if not ok:
         raise click.ClickException(
@@ -2672,6 +2677,11 @@ def cmd_jupyter_restart(port):
     #
     # The pid read BEFORE the stop is the honest handle: `pid_state` answers
     # "ours" only while that process is alive and really is a shepherd.
+    #
+    # And molbuilder.json is read BEFORE the stop: the start below reads it,
+    # so a broken file refused only there would have stopped a working
+    # notebook for a start that cannot happen.
+    read_config()
     doomed = read_pid(port)
     _jupyter_signal(port, _signal.SIGUSR2, "stop")
     if doomed is not None:
@@ -3023,9 +3033,15 @@ def _survey() -> int:
 def cmd_serve_restart(port):
     """Signal the supervisor to recycle the child -- the Reload button's
     effect, workable from a script, and workable when the child is HUNG
-    and the button's route cannot answer (`deployment.md` 1.0b)."""
+    and the button's route cannot answer (`deployment.md` 1.0b).
+
+    READS molbuilder.json FIRST, as the fresh child will: a child that cannot
+    read it exits nonzero and the supervisor does not respawn it (§ 1.0c), so
+    a restart over a broken file would leave no server.  The refusal comes
+    here, `Error: ...` (`cli.main`), and the running server is left alone."""
     import signal as _signal
     from .serve_daemon import signal_supervisor
+    read_config()
     ok, msg = signal_supervisor(port, _signal.SIGHUP)
     click.echo(("restarting: " if ok else "") + msg)
     raise SystemExit(0 if ok else 1)
@@ -3579,17 +3595,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     import logging
     logging.basicConfig(level=logging.WARNING,
                         format="%(levelname)s: %(message)s")
-    # Bind the diagnostics snapshot once per CLI invocation, so every
-    # backend's ``is_available`` and every ``run_tool`` dispatch read
-    # from a consistent view of "what this machine has".  Cheap (~50 ms);
-    # idempotent if called again.  Catch RuntimeConfigError so a
-    # malformed molbuilder.json produces the same `Error: ...; exit 2`
-    # surface as any other UsageError instead of a Python traceback.
-    try:
-        _initialize_diagnostics()
-    except RuntimeConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(2)
+    # THE MACHINE SNAPSHOT IS TAKEN ON FIRST USE (`diagnostics.
+    # get_capabilities`), not here: it lists the conda envs, 0.76 s measured
+    # (2026-09-29), and most commands never ask what the machine has.  The
+    # first reader binds it for the rest of the invocation, so every
+    # backend's ``is_available`` and every ``run_tool`` still read one view.
     try:
         rc = cli.main(args=args, standalone_mode=False)
     except click.UsageError as e:
@@ -3597,6 +3607,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # bad type conversion -- all of these must exit(2) per the
         # contract above.
         click.echo(f"Error: {e.format_message()}", err=True)
+        sys.exit(2)
+    except RuntimeConfigError as e:
+        # THE CONFIG REFUSING -- a malformed molbuilder.json, or a setting
+        # this command needs and the file does not give -- said where it is
+        # read, in the UsageError surface above (`runtime_config.
+        # RuntimeConfigError`: "the CLI layer translates this into
+        # click.UsageError").  A command that reads no config runs:
+        # `molbuilder --help` is one; a `jobset` verb's `--help` is not, since
+        # the group's header reads the file (`jobset/_cli._echo_config_root`).
+        click.echo(f"Error: {e}", err=True)
         sys.exit(2)
     except click.ClickException as e:
         # Domain-level error raised by a subcommand (e.g. ASE rejecting

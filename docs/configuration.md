@@ -367,6 +367,19 @@ and frequent diagnosis. Two rules make it a readable one:
   and is therefore no answer. This was already learned once here (R10,
   2026-08-12) and reintroduced on 2026-08-17, where it cost thirteen confusing
   test failures whose real cause was a config file two directories up.
+- **A malformed file is refused by the command that reads it**, in the
+  resolved path's words — `Error: <path>: invalid JSON (…)`, exit 2, the CLI's
+  usage-error surface — and a command that reads none runs: `molbuilder
+  --help` and a group's own `--help` do, while a `jobset` verb's `--help` is
+  refused with the file, because the group's header reads it first
+  (`jobset/_cli._echo_config_root`). The CLI takes its machine snapshot on
+  first use (`diagnostics.get_capabilities`), not before it parses its
+  arguments, which until 2026-09-29 made a broken file fail even `--help`
+  (plan W36 ⑥). The server reads the file at start and refuses to start
+  ([`ops/deployment.md`](?doc=ops/deployment.md) § 5), and **a verb that makes
+  a running process read it again reads it first** — `serve restart`, the
+  Reload button, `jupyter start` and `restart` — so a broken file leaves the
+  running process alone (§ 1.0b there).
 - **`config_provenance` lists every scope it consulted** — path, found or
   absent, and how it was reached — including `environment.json`'s two scopes,
   and then which file supplied each effective value. It is safe for logs by

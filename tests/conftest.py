@@ -631,9 +631,9 @@ def product_toolchain_is_the_suites_own(_product_toolchain_stubs, monkeypatch):
 def _reset_diagnostics_singleton():
     """Every test starts AND ends with no bound Capabilities snapshot.
 
-    Without this, a test that calls ``cli.main()`` or otherwise
-    triggers ``diagnostics.initialize()`` would leak its snapshot into
-    whatever runs next, creating order-dependent failures.  Tests that
+    Without this, a test whose code takes the snapshot -- a command's
+    first ``get_capabilities()``, or the server's ``initialize()`` -- would
+    leak it into whatever runs next, creating order-dependent failures.  Tests that
     want a specific snapshot inject it via
     :func:`molbuilder.diagnostics.set_capabilities`; that injection is
     cleaned up by this fixture afterwards.

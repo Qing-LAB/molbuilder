@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
-from .recipes import BUILTIN_RECIPES, Recipe, effective_name
+from .recipes import Recipe, builtin_recipes, effective_name
 from . import install as _install
 
 
@@ -554,7 +554,7 @@ def _run_verify(
 def report_all(
     caps: Optional[Capabilities] = None,
     *,
-    recipes: Tuple[Recipe, ...] = BUILTIN_RECIPES,
+    recipes: Optional[Tuple[Recipe, ...]] = None,
     run_verify: bool = True,
 ) -> List[EnvReport]:
     """Build an :class:`EnvReport` for every recipe.
@@ -565,14 +565,15 @@ def report_all(
         Capabilities snapshot to read.  ``None`` (the default) reads
         the process singleton via :func:`get_capabilities`.
     recipes
-        Recipes to report on; defaults to the built-in five.
+        Recipes to report on; ``None`` (the default) reports every
+        recipe the registry holds (`builtin_recipes`).
     run_verify
         When ``False``, skip the verify-command dispatch (faster, for
         ``list``-style summaries).
     """
     caps = caps if caps is not None else get_capabilities()
     out: List[EnvReport] = []
-    for recipe in recipes:
+    for recipe in (recipes if recipes is not None else builtin_recipes()):
         effective = effective_name(recipe, caps)
         present = caps.env_available(effective)
         if not present:

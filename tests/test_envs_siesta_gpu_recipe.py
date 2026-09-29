@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.envs.recipes import (
-    BUILTIN_RECIPES,
+    builtin_recipes,
     BuildComponent,
     BuildSpec,
     Recipe,
@@ -36,7 +36,7 @@ def recipe() -> Recipe:
 
 def test_recipe_is_registered(recipe):
     """In the registry tuple AND lookup-able by name."""
-    assert recipe in BUILTIN_RECIPES
+    assert recipe in builtin_recipes()
 
 
 def test_recipe_category(recipe):
@@ -120,12 +120,12 @@ def test_pins_the_project_python(recipe):
     python, so conda-forge's `siesta` build brings its own.  Pinning it would
     constrain the one env whose purpose is installing anywhere.
     """
-    from molbuilder.envs.recipes import BUILTIN_RECIPES, _PYTHON_SPEC
+    from molbuilder.envs.recipes import builtin_recipes, _PYTHON_SPEC
     assert _PYTHON_SPEC in recipe.conda_specs, (
         f"the GPU recipe does not declare the project python "
         f"({_PYTHON_SPEC}): {recipe.conda_specs}")
     declared = {r.name: [p for p in r.conda_specs if p.startswith("python=")]
-                for r in BUILTIN_RECIPES}
+                for r in builtin_recipes()}
     disagree = {n: v for n, v in declared.items()
                 if v and v != [_PYTHON_SPEC]}
     assert not disagree, (

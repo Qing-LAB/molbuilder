@@ -46,7 +46,7 @@ def _caps():
 
 def _all_steps():
     """(recipe_name, label, argv) for every step of every install plan."""
-    for recipe in R.BUILTIN_RECIPES:
+    for recipe in R.builtin_recipes():
         name, steps = I.plan_install(recipe)
         for st in steps:
             yield name, st.label, tuple(st.argv)

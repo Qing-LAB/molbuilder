@@ -78,7 +78,15 @@
                     throw new Error("this session is not an admin");
                 }
                 if (!r.ok) {
-                    throw new Error("the server refused (HTTP " + r.status + ")");
+                    // THE SERVER'S OWN WORDS: a refusal says why -- a
+                    // molbuilder.json the fresh server could not read is
+                    // refused before this one exits (`deployment.md` § 1.0b)
+                    // -- and the status alone does not.
+                    return r.json().catch(function () { return null; })
+                        .then(function (b) {
+                            throw new Error((b && b.error) ? b.error
+                                : "the server refused (HTTP " + r.status + ")");
+                        });
                 }
                 return _waitForServer(Date.now() + GIVE_UP_MS);
             })

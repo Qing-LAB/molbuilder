@@ -57,8 +57,8 @@ def test_every_routed_tool_has_an_env_to_be_routed_to():
 def test_every_recipe_category_has_an_env_name():
     """The same agreement from the recipe side: a recipe that declares a
     category must be able to name its env."""
-    from molbuilder.envs.recipes import BUILTIN_RECIPES
-    missing = [r.name for r in BUILTIN_RECIPES
+    from molbuilder.envs.recipes import builtin_recipes
+    missing = [r.name for r in builtin_recipes()
                if r.category is not None and r.category not in DEFAULT_ENV_NAMES]
     assert not missing, f"recipe category names no env: {missing}"
 def test_every_tool_routes_to_a_known_category():

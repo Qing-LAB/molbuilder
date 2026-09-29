@@ -290,6 +290,14 @@ def api_jupyter_start():
     refused = _refuse()
     if refused is not None:
         return refused
+    # THE FILE THE SHEPHERD WILL READ, read first -- as `jupyter start` does
+    # on the command line (`jupyter.md` § 5): a broken molbuilder.json is
+    # refused here in its words, not in the notebook's log after the signal.
+    from ...runtime_config import RuntimeConfigError, read_config
+    try:
+        read_config()
+    except RuntimeConfigError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
     ok, msg = signal_supervisor(_serve_port(), signal.SIGUSR1)
     return jsonify({"ok": ok, "message": msg}), (202 if ok else 409)
 

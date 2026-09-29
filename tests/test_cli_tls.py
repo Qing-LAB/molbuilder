@@ -108,16 +108,23 @@ def test_resolve_malformed_json_raises_usage_error(monkeypatch, tmp_path):
         _resolve_tls(None, None)
 
 
-def test_main_exits_cleanly_when_molbuilder_json_is_malformed(
+def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
         monkeypatch, tmp_path, capsys):
-    """A malformed ``molbuilder.json`` should produce a clean
-    ``Error: ...`` line on stderr + ``SystemExit(2)`` from ``cli.main``
-    -- the same surface every other UsageError gets -- instead of a
-    Python traceback from the diagnostics ``initialize()`` call."""
+    """A malformed ``molbuilder.json`` is said by the command that reads it
+    -- a clean ``Error: ...`` line on stderr and ``SystemExit(2)`` from
+    ``cli.main``, the surface every other UsageError gets, never a
+    traceback -- and a command that reads no config, ``--help``, runs
+    (plan W36 ⑥).  Until 2026-09-29 `cli.main` took the machine snapshot
+    before it parsed anything, so a broken file failed even ``--help``."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "molbuilder.json").write_text("{ this is not json")
     with pytest.raises(SystemExit) as excinfo:
         cli.main(["--help"])
+    assert excinfo.value.code == 0
+    assert "Usage:" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["envs", "list"])
     assert excinfo.value.code == 2
     err = capsys.readouterr().err
     assert "Error:" in err

@@ -30,7 +30,7 @@ from . import doctor as _doctor
 from . import initconfig
 from . import install as _install
 from . import validate as _validate
-from .recipes import BUILTIN_RECIPES, effective_name, recipe_by_name
+from .recipes import builtin_recipes, effective_name, recipe_by_name
 
 
 # --------------------------------------------------------------------- #
@@ -501,7 +501,7 @@ def cmd_repair(name: str, include_optional: bool,
     caps = get_capabilities()
     recipe = recipe_by_name(name)
     if recipe is None:
-        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        registered = ", ".join(r.name for r in builtin_recipes())
         raise click.UsageError(
             f"unknown recipe `{name}`.  Registered: {registered}"
         )
@@ -767,7 +767,7 @@ def cmd_clean(name: str, auto_yes: bool, dry_run: bool,
     caps = get_capabilities()
     recipe = recipe_by_name(name)
     if recipe is None:
-        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        registered = ", ".join(r.name for r in builtin_recipes())
         raise click.UsageError(
             f"unknown recipe `{name}`.  Registered: {registered}"
         )
@@ -1057,7 +1057,7 @@ def cmd_validate(name: str, quiet_on_fail: bool) -> None:
     """
     recipe = recipe_by_name(name)
     if recipe is None:
-        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        registered = ", ".join(r.name for r in builtin_recipes())
         raise click.UsageError(
             f"unknown recipe `{name}`.  Registered: {registered}"
         )
@@ -1246,7 +1246,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
 
     recipe = recipe_by_name(name)
     if recipe is None:
-        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        registered = ", ".join(r.name for r in builtin_recipes())
         raise click.UsageError(
             f"unknown recipe `{name}`.  Registered: {registered}"
         )
@@ -1853,8 +1853,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
     # that meant "expensive, so ask first" and happened to hold for the only
     # opt-in env there was.  `Recipe.opt_in` states the reason instead, so a
     # cheap env can be opt-in too (the notebook tab is).
-    default_set  = [r for r in BUILTIN_RECIPES if r.opt_in is None]
-    opt_in_set   = [r for r in BUILTIN_RECIPES if r.opt_in is not None]
+    default_set  = [r for r in builtin_recipes() if r.opt_in is None]
+    opt_in_set   = [r for r in builtin_recipes() if r.opt_in is not None]
     source_builds = [r for r in opt_in_set if r.build_spec is not None]
 
     # Progress visibility: the steps from here through ``run_install``

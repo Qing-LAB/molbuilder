@@ -17,7 +17,7 @@ Routing tables
 The routing data lives at module scope as three small
 dicts, hand-written for clarity.  (It read "the four-env model" until
 2026-09-18; the registry has grown past any count worth writing down --
-`BUILTIN_RECIPES` is the list, and these dicts route the subset that
+`builtin_recipes()` is the list, and these dicts route the subset that
 needs routing.)  Renames go in ``molbuilder.json``;
 new categories require a code change here AND a documentation change
 in ``docs/ops/installation.md`` and ``docs/execution/job-contracts.md``, so
@@ -99,7 +99,8 @@ EXTENSION_TO_CATEGORY: Mapping[str, str] = {
 
 @dataclass(frozen=True)
 class Capabilities:
-    """What molbuilder knows about this machine after a startup probe.
+    """What molbuilder knows about this machine, from one probe (`detect`)
+    -- a command's taken on first use, the server's at its start.
 
     Attributes
     ----------
@@ -110,7 +111,7 @@ class Capabilities:
         Absolute path to the ``conda`` CLI, or ``None`` if not reachable.
     conda_envs
         ``{name: prefix}`` for every conda env on this machine -- the one
-        reading of the registry, taken once at startup.  Membership is the
+        reading of the registry, taken once per snapshot.  Membership is the
         common question (``name in caps.conda_envs``), and the prefix is there
         so that `install._env_prefix` does not pay the 1.2 s registry read
         again per recipe.
@@ -156,7 +157,7 @@ class Capabilities:
         return env_name in self.conda_envs
 
     def env_prefix(self, env_name: str) -> Optional[str]:
-        """Where that env is, from the startup reading -- or ``None``.
+        """Where that env is, from the snapshot's reading -- or ``None``.
 
         ``None`` means *"this snapshot does not know"*, which is not the same as
         *"it does not exist"*: an env created after the snapshot was taken (an
@@ -379,7 +380,8 @@ def conda_env_prefixes(conda: str) -> Dict[str, str]:
 
     Asking `info --json` for ``root_prefix`` would settle the degenerate case
     outright and costs a second subprocess -- measured 1.8 s against this read's
-    1.2 s, on the startup path of every command -- so it is not paid here.
+    1.2 s, on the path of every command that takes the snapshot -- so it is
+    not paid here.
 
     Returns ``{}`` on any failure (timeout, non-zero exit, malformed JSON):
     callers ask by membership, so "no envs" is a clean answer rather than an
@@ -421,8 +423,10 @@ def conda_env_prefixes(conda: str) -> Dict[str, str]:
 def detect() -> Capabilities:
     """Run the diagnostic and return a fresh ``Capabilities`` snapshot.
 
-    Idempotent and cheap to re-call.  Callers that want process-wide
-    state use :func:`initialize` + :func:`get_capabilities` instead.
+    Each call reads the config and lists the conda envs again (0.76 s
+    measured, 2026-09-29).  A caller that wants the process's one reading
+    asks :func:`get_capabilities`; the server binds it at start with
+    :func:`initialize`.
     """
     cfg = read_config()
     # THE RECORDED FACT FIRST (ops/installation.md "one manager, one
@@ -462,12 +466,11 @@ _snapshot: Optional[Capabilities] = None
 def initialize() -> Capabilities:
     """Run :func:`detect` and bind the result as the process snapshot.
 
-    Idempotent: re-calling overwrites the previous snapshot, which is
-    occasionally useful (long-running web app picks up a freshly-created
-    env without restart).  Returns the snapshot it bound.  Raises
-    whatever :func:`detect` raises (e.g. ``RuntimeConfigError`` from a
-    malformed ``molbuilder.json``); startup paths should catch and
-    translate to their UI-appropriate error shape.
+    The server's start (`web/app.create_app`), so that no request pays the
+    conda env listing; a CLI command takes the snapshot on first use instead
+    (:func:`get_capabilities`).  Re-calling overwrites the previous snapshot.
+    Returns the snapshot it bound.  Raises whatever :func:`detect` raises
+    (e.g. ``RuntimeConfigError`` from a malformed ``molbuilder.json``).
     """
     global _snapshot
     _snapshot = detect()
@@ -475,7 +478,14 @@ def initialize() -> Capabilities:
 
 
 def get_capabilities() -> Capabilities:
-    """Return the bound snapshot, auto-initialising on first call."""
+    """Return the bound snapshot, taking it on the first call.
+
+    THE door every reader asks.  A command's snapshot is taken here, at its
+    first use, not at start: :func:`detect` lists the conda envs (0.76 s
+    measured, 2026-09-29) and most commands never ask what the machine has.
+    A malformed ``molbuilder.json`` raises ``RuntimeConfigError`` here, which
+    the CLI answers ``Error: ...``, exit 2 (`cli.main`).
+    """
     global _snapshot
     if _snapshot is None:
         _snapshot = detect()

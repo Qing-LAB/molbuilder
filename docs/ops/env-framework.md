@@ -193,9 +193,19 @@ unavailable GPU wheel into a failed CPU env.
 ## 3. The registry
 
 `molbuilder/envs/recipes.py` holds one `Recipe` per environment, and a recipe is
-**data**. Nothing derives a package list at run time; what the file says is what
-gets installed. `molbuilder envs` reads the registry and does not know how to
-guess.
+**data**: what the file says is what gets installed, and `molbuilder envs` reads
+the registry and does not know how to guess.
+
+**One fact of the host enters it: the CUDA version** the GPU packages target —
+`MOLBUILDER_CUDA_VERSION`, else the major the driver reports (`nvidia-smi`),
+else `13.*` (`_resolve_cuda_version`). `molbuilder-pySCF`'s `cupy-cuda<N>x` and
+`gpu4pyscf-cuda<N>x`, and `molbuilder-siesta-gpu`'s `cuda-version=` pin and the
+driver its precondition names, carry it — so those two recipes are functions
+of it, and the registry is **`builtin_recipes()`, built on its first ask** and
+kept for the process (`recipe_by_name` and `recipe_for_category` ask it). The
+probe runs for a command that reads a recipe — `envs`, the notebook's start —
+and once at the server's start, so no request pays it; any other command runs
+none of it. It ran at import until 2026-09-29, on every command (plan W36 ⑥).
 
 ### 3.1 One rule for both package kinds
 

@@ -13,7 +13,7 @@ import pytest
 
 from molbuilder.diagnostics import Capabilities, set_capabilities
 from molbuilder.envs import builds as _builds, doctor, install as _install
-from molbuilder.envs.recipes import (BUILTIN_RECIPES, PipPackage, Recipe,
+from molbuilder.envs.recipes import (builtin_recipes, PipPackage, Recipe,
                                      recipe_by_name)
 
 
@@ -36,7 +36,7 @@ def test_report_all_marks_every_env_missing_on_empty_machine():
     _bind(conda_envs=())
     reports = doctor.report_all(run_verify=False)
     assert {r.recipe.name for r in reports} == {
-        r.name for r in BUILTIN_RECIPES
+        r.name for r in builtin_recipes()
     }
     for r in reports:
         assert r.present is False
