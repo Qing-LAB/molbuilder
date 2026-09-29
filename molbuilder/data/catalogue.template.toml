@@ -1154,7 +1154,7 @@ default = "RKS"
 group = "profile"
 label = "SCF method"
 help = """
-Which self-consistent field the run solves.  RKS and UKS are Kohn-Sham DFT and use the functional you pick; RHF and UHF are Hartree-Fock and ignore it.
+Which self-consistent field the run solves.  RKS and UKS are Kohn-Sham DFT and use the functional you pick; RHF and UHF are Hartree-Fock and ignore it, and the integration grid with it.  The dispersion correction applies to both: Hartree-Fock has no electron correlation at all, so it misses dispersion entirely, and D3 and D4 carry parameters fitted for it -- RHF with d3bj is HF-D3(BJ).  Set dispersion to none for plain Hartree-Fock.
 R is restricted -- the two electrons of a pair share one spatial orbital.  U is unrestricted -- the two spin channels are solved separately and are allowed to differ, which is what a system with unpaired electrons needs.
 Choosing R where the spins are not paired is not a cheaper answer, it is a different one.
 """
@@ -1254,16 +1254,15 @@ value = "d3bj"
 default = "d3bj"
 group = "profile"
 label = "Dispersion"
-optional = true
 help = """
-Adds the long-range attraction that standard DFT functionals miss -- Grimme's dispersion correction, written as ``mf.disp``.
+Adds the long-range attraction (London dispersion) that Hartree-Fock misses entirely and standard density functionals miss at long range -- Grimme's dispersion correction, written as ``mf.disp``.  It applies to every method: its damping parameters are fitted per functional, and for Hartree-Fock too, which PySCF reads as 'hf' -- so RHF with d3bj is HF-D3(BJ), carried through the energy, the forces and the Hessian.
   d3bj    D3 with Becke-Johnson damping (the default).
   d3zero  D3 with the original zero damping.
   d4      the newer, charge-dependent D4.
-  none    no correction at all.
+  none    no correction at all -- plain DFT, or plain Hartree-Fock.
 BJ damping is the usual recommendation for D3: it does not go to zero at short range, which is where zero damping tends to under-bind. Use d3zero only to reproduce a published number that used it.
 It matters most for biomolecules and anything weakly bound: pi-stacking, van der Waals contacts and hydrogen-bond geometries are all under-bound without a correction, and the cost of adding one is negligible.
-The accepted spellings are PySCF 2.13's own (pyscf/scf/dispersion.py); a value outside that set raises NotImplementedError at run time, not at setup.
+The four choices are spellings PySCF 2.13 accepts (pyscf/scf/dispersion.py).  Anything else is refused when the template is read -- PySCF itself would refuse it only at run time, with NotImplementedError.
 """
 
 [item.ecp]

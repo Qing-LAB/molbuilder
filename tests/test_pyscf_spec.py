@@ -279,7 +279,7 @@ def test_charge_explicit_zero_overrides_heuristic(deprotonated_diester):
     PySCFConfig(method="UKS", spin=1, net_charge=1),
     PySCFConfig(write_trajectory=False),
     PySCFConfig(solvent="water"),
-    PySCFConfig(dispersion=None),
+    PySCFConfig(dispersion="none"),
     PySCFConfig(threads=4),
     PySCFConfig(verbose_comments=False),
     PySCFConfig(basis="def2-TZVP"),

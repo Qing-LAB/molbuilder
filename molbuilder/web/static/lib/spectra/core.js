@@ -68,10 +68,13 @@
     // ----- DOM refs (resolved once at startup) -----------------
     const els = {
         spectrumChart:  null,
-        // The spectrum's whole section (heading, width control, chart) and
-        // the sentence that stands in its place when no strength was
-        // computed (web/spectra.md § 2, § 9b.3); the table they mark.
+        // The spectrum's whole section, its heading, its controls and the
+        // sentence saying why a result with no strength draws mode
+        // positions instead (web/spectra.md § 2, § 9b.3); the table the
+        // route marks.
         spectrumSection: null,
+        spectrumHeading: null,
+        spectrumControls: null,
         spectrumAbsent: null,
         modesTable:     null,
         // ``structureText`` slot removed 2026-06-10 along with the
@@ -861,9 +864,10 @@
 
     // ----- Selector / compatibility (lock unused value fields) --
     //
-    // The selector (skip/all/explicit) has one value field, the
-    // explicit list, live only under `explicit`; locking it otherwise
-    // matches the Build tab's pattern -- the user can't enter indices
+    // The selector (skip/all/explicit) has three value fields: the
+    // explicit list, live only under `explicit`, and the frequency
+    // window's two bounds, live only under `all`.  Locking the others
+    // matches the Build tab's pattern -- the user can't enter values
     // the selector would ignore.
     function _fieldIdByName(name) {
         // The catalogue owns id derivation (`_item_to_field`); this
@@ -893,22 +897,29 @@
         const sel = _esSelectionEl();
         if (!sel) return;
         const which = sel.value;
-        // Map selector value -> the field that's active for it.  All
-        // other Electronic-structure value fields get the disabled
-        // attribute so the form coercion drops them.
+        // Map selector value -> the fields that are active for it.  Every
+        // other one is disabled -- a lock on EDITING: the field keeps its
+        // value and the form still sends it (`formSchema.collectForm` reads
+        // no `disabled`), so a value typed before the switch reaches the
+        // template, where prep says it enters nothing (validation/
+        // spectra.py).  The window filters `all` alone -- `skip` selects
+        // nothing and `explicit` names its modes -- so outside `all` it
+        // enters nothing and is locked like the list is outside `explicit`
+        // (web/spectra.md § 9a.1; user, 2026-09-28).
         const activeByMode = {
-            "skip":      null,
-            "all":       null,
-            "explicit":  "es_explicit_indices",
+            "skip":      [],
+            "all":       ["freq_min_cm1", "freq_max_cm1"],
+            "explicit":  ["es_explicit_indices"],
         };
-        const valueFields = ["es_explicit_indices"];
-        const active = activeByMode[which] || null;
+        const valueFields = ["es_explicit_indices", "freq_min_cm1",
+                             "freq_max_cm1"];
+        const active = activeByMode[which] || [];
         for (const name of valueFields) {
             const id = _fieldIdByName(name);
             const f = (id && els.form.pyscf)
                 ? els.form.pyscf.querySelector("#" + id) : null;
             if (!f) continue;
-            const isActive = (name === active);
+            const isActive = active.includes(name);
             f.disabled = !isActive;
             // Visually fade the field set so it's obvious which one
             // is in play -- the disabled attr does some of this, but
@@ -1494,37 +1505,44 @@
     }
 
     /* A SPECTRUM ONLY WHERE A STRENGTH WAS COMPUTED (web/spectra.md § 2):
-     * with none, a height would mean nothing, so none is drawn. */
+     * with none, a height would mean nothing, so none is drawn.  The
+     * chart's own rule, read off the same fields and the same flag this
+     * viewer hands it -- a strength on a REAL mode (spectrumchart.md
+     * § 6.2, § 6.4) -- so the heading and the controls always name the
+     * picture the chart draws.  Counting an imaginary mode's strength
+     * titled a positions picture "Spectrum". */
     function _anyStrength(r) {
-        return ((r && r.modes) || []).some(m =>
-            Number.isFinite(m.raman_activity_a4_amu)
-            || Number.isFinite(m.ir_intensity_km_mol));
+        return ((r && r.modes) || []).some(m => !m.has_imag
+            && (Number.isFinite(m.raman_activity_a4_amu)
+                || Number.isFinite(m.ir_intensity_km_mol)));
     }
 
-    /* The one sentence standing where the spectrum would be -- which of
-     * the four cases it is (web/spectra.md § 2): the route computes no
-     * strengths; the run asked for none; they are still being computed;
-     * the run asked and recorded none. */
+    /* The one sentence under the mode positions, saying why there are no
+     * heights -- which of the four cases it is (web/spectra.md § 2): the
+     * route computes no strengths; the run asked for none; they are still
+     * being computed; the run asked and recorded none. */
     function _noSpectrumSentence(r) {
         if (!_routeHas(r, "compute_raman") && !_routeHas(r, "compute_ir")) {
-            return "No spectrum: this route computes the frequencies and the "
-                 + "mode shapes, not infrared or Raman intensities.  The modes "
-                 + "table and the animation are its result.";
+            return "Each line marks where a mode is -- this route computes "
+                 + "the frequencies and the mode shapes, not infrared or "
+                 + "Raman intensities, so there are no heights.  Click a line "
+                 + "to pick its mode.";
         }
         const cfg = r.config || {};
         if (!cfg.compute_raman && !cfg.compute_ir) {
-            return "No spectrum: infrared and Raman intensities were not "
-                 + "requested in this run -- the frequencies and the mode "
-                 + "shapes only.";
+            return "Each line marks where a mode is -- infrared and Raman "
+                 + "intensities were not requested in this run, so there are "
+                 + "no heights.";
         }
         const running = (v) => v === "empty" || v === "running";
         if (running(r.phase_frequencies) || running(r.phase_raman)
             || running(r.phase_ir)) {
-            return "The intensities are still being computed; the spectrum "
-                 + "is drawn as soon as the first ones land.";
+            return "The intensities are still being computed; until the "
+                 + "first ones land each line marks where a mode is.";
         }
-        return "No spectrum: the run asked for intensities and recorded "
-             + "none -- its log says why.";
+        return "Each line marks where a mode is -- the run asked for "
+             + "intensities and recorded none, so there are no heights; its "
+             + "log says why.";
     }
 
     function renderResults(results, path) {
@@ -1742,10 +1760,18 @@
             state.selectedMode = null;
         }
 
-        // THE SPECTRUM ONLY WHERE A STRENGTH WAS COMPUTED, and the columns
-        // only for what the route computes (web/spectra.md § 2, § 9b.3).
+        // A SPECTRUM WHERE A STRENGTH WAS COMPUTED, THE MODE POSITIONS WHERE
+        // NONE WAS -- one line at each mode, picked like a stick, with no
+        // width or floor control since there is no height for either to act
+        // on -- and the columns only for what the route computes
+        // (web/spectra.md § 2, § 9b.3; spectrumchart.md § 6.2).
         const drawn = _anyStrength(results);
-        if (els.spectrumSection) els.spectrumSection.hidden = !drawn;
+        const haveModes = (results.modes || []).length > 0;
+        if (els.spectrumSection) els.spectrumSection.hidden = !haveModes;
+        if (els.spectrumHeading) {
+            els.spectrumHeading.textContent = drawn ? "Spectrum" : "Mode positions";
+        }
+        if (els.spectrumControls) els.spectrumControls.hidden = !drawn;
         if (els.spectrumAbsent) {
             els.spectrumAbsent.hidden = drawn;
             els.spectrumAbsent.textContent = drawn ? ""
@@ -1759,7 +1785,7 @@
             els.modesTable.classList.toggle("route-no-es",
                                             !_routeHas(results, "es_mode_selection"));
         }
-        if (drawn) renderSpectrumChart(results.modes || []);
+        if (haveModes) renderSpectrumChart(results.modes || []);
         renderModesTable();
         renderESPanel();
         renderThermoPanel(results);
@@ -3650,6 +3676,8 @@
         els.modesTbody     = $("modes-tbody");
         els.spectrumChart  = $("spectrum-chart");
         els.spectrumSection = $("spectrum-section");
+        els.spectrumHeading = $("spectrum-heading");
+        els.spectrumControls = $("spectrum-controls");
         els.spectrumAbsent = $("spectrum-absent");
         els.modesTable     = $("modes-table");
         // Mode-table interactions + ES panel.

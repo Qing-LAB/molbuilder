@@ -90,6 +90,10 @@ def check_dft_grid_level(cfg, *, context: str) -> List[Issue]:
       * ``"optimisation"`` — geometry-opt forces (Build tab).
       * ``"spectra"``       — Hessian / harmonic frequencies (Spectra tab).
     """
+    # Hartree-Fock integrates no exchange-correlation on a grid: the item
+    # enters nothing there, whatever functional the template still names.
+    if not cfg.is_dft:
+        return []
     grid = getattr(cfg, "grid_level", None)
     functional = getattr(cfg, "functional", "") or ""
     meta = is_meta_gga_functional(functional)
@@ -413,6 +417,29 @@ def _validate_pyscf(struct: Structure, cfg,
             f"(e.g. anti-ferromagnetic system)",
             "config.method",
         ))
+
+    # A SETTING THAT ENTERS NOTHING IS NOT LEFT SILENT (engines/pyscf.md
+    # § 7a, engines/vibration.md § 3.1, § 4.10): Hartree-Fock has no
+    # functional (`PySCFConfig.is_dft`), so one changed from its default
+    # under RHF / UHF is said to do nothing -- on both kinds, since the deck
+    # sets no `mf.xc` for either.  The value is still RECORDED (the deck's
+    # parameter record, the result's `config`), as every value is.  The
+    # dispersion correction is NOT among them: HF takes it like any method.
+    # Placed after every finding a DFT run can raise and before the grid
+    # check, which says nothing under Hartree-Fock (it has no grid either)
+    # -- so no count-by-position caller sees a shift.
+    if not cfg.is_dft:
+        from ..config.pyscf import PySCFConfig
+        _default = PySCFConfig.__dataclass_fields__["functional"].default
+        _v = getattr(cfg, "functional", None)
+        if _v not in (None, _default):
+            issues.append(Issue(
+                "warn",
+                f"functional = {_v!r} has no effect here: method = {method} "
+                f"is Hartree-Fock, which has no functional -- the deck sets "
+                f"no `mf.xc`",
+                "config.functional",
+            ))
 
     # Meta-GGA / hybrid with grid_level < 4: the τ-dependent semi-local XC is
     # grid-sensitive, so forces become noisy at the ~1e-4 Ha/Bohr scale the

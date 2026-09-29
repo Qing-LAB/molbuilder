@@ -41,7 +41,7 @@ viewer for one kind of file. Today there are eight:
 |---|---|---|---|
 | `structure` | `.xyz`, `.pdb` | a read-only 3D structure (the MolView viewer) | yes — *Structure* |
 | `trajectory` | `.molwatch.log`, `.out`, `*_optim.xyz` | a trajectory **movie** + energy/force plots + SCF progress | yes — *Optimization* / *SIESTA optimization* / *PySCF optimization* |
-| `spectra` | `.spectra.json` | a modes table, the mode's animation and — where a strength was computed — a spectrum **chart** (a SIESTA result has none, `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
+| `spectra` | `.spectra.json` | a modes table, the mode's animation and a **chart** — the spectrum where a strength was computed, the mode positions where none was (a SIESTA result; `spectra.md` § 2) | yes — *Vibrational spectrum* (either engine's; it said *PySCF spectrum* until 2026-09-24) |
 | `bench-summary` | `job-set.json` (exact basename) | a **bench sweep** summary + chart, polled | yes — *Benchmark sweeps* |
 | `transport` | `*.transport.json` | a conductance run's **I–V table** — bias, G(E_F), current — and what is not drawn | yes — *Transport* |
 | `fc-sweep` | `*.fc-sweep.json` | a SIESTA vibration's **displacement sweep**: each force-constant stage — what it varied (with units), the displacement used, its stationarity, modes and SIESTA, and its own files — each mode's frequency per stage with the change, the shapes' overlap and the mode it matched, the force-constant changes, and the stages without a result with their state (`engines/vibration.md` § 5.9) | yes — *Spectrum* |

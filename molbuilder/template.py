@@ -408,10 +408,11 @@ class Item:
 
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
     #: it IS written to the file.  A surface must offer *(auto)* / *(no cap)*,
-    #: and it cannot be inferred from ``null_label``: 16 items are optional and
-    #: only 11 carry one, so five would silently lose the option.  (The gap of
-    #: five is the load-bearing part and has been stable; the totals are
-    #: asserted by ``tests/test_doc_claims.py`` so they cannot drift again.)
+    #: and it cannot be inferred from ``null_label``: some optional items carry
+    #: none, and would silently lose the option.  (How many is stated once, in
+    #: ``engines/template.md`` § 5 and ``web/form-schema.md`` § 1.2, where
+    #: ``tests/test_doc_claims.py`` asserts it -- this comment said "16 and 11"
+    #: while the documents said 17 and 13.)
     optional: bool = False
 
     #: ``basic`` or ``advanced`` — a judgement about the PARAMETER, so a

@@ -248,9 +248,12 @@ so there is no
 .modes-table.route-no-ir .ir-col,
 .modes-table.route-no-es .es-col { display: none; }
 
-/* The sentence standing where the spectrum would be when no strength was
- * computed. */
+/* The sentence under the mode positions when no strength was computed --
+ * which of the four cases it is (web/spectra.md § 2). */
 .spectrum-absent { margin: var(--space-sm) 0; }
+/* No strengths, no controls (web/spectra.md § 2): the grid rule above would
+ * beat the [hidden] attribute in the author cascade, as .phase's did. */
+.spectrum-controls[hidden] { display: none; }
 
 .modes-table th[data-col] {
     cursor: pointer;
@@ -668,4 +671,45 @@ so #phase-indicator was
 .thermo-chart { min-height: 260px; }
 @media (max-width: 900px) {
     .thermo-charts { grid-template-columns: 1fr; }
+}
+
+/* ---- Methods text (the Results panel) ------------------------------
+ * The inspector partial's own markup (#methods-block), so its own
+ * stylesheet -- the one both pages load.  It lived in spectra/style.css,
+ * which /results does not load, so on the Results tab the <pre> kept the
+ * browser's `white-space: pre` and ran off the card in one line (user,
+ * 2026-09-28: "not wrapped. unreadable"); and it named two theme tokens
+ * that do not exist (`--border`, `--surface-sunken`), so even where it
+ * loaded it drew a light-grey box on the dark theme.
+ *
+ * Monospace and pre-wrap: the text carries [CitationKey] markers and a
+ * bibliography list whose line structure is meaningful, and a user is
+ * about to paste it somewhere that will keep those line breaks. */
+.methods-block { margin: var(--space-md) 0 var(--space-sm); }
+.methods-block > summary { cursor: pointer; }
+.methods-hint { font-weight: 400; opacity: 0.7; }
+.methods-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: var(--space-sm) 0;
+}
+.methods-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    max-height: 22rem;
+    overflow-y: auto;
+    padding: var(--space-sm) var(--space-md);
+    margin: 0;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+}
+.methods-foot {
+    margin: var(--space-sm) 0 0;
+    font-size: var(--text-xs);
+    opacity: 0.75;
 }

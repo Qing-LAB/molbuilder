@@ -36,7 +36,7 @@ def _struct() -> Structure:
                                          [-0.24, 0.927, 0.]]))
 
 
-def _dft_block(text: str) -> str:
+def _theory_block(text: str) -> str:
     start = text.index("# --- Functional, density fitting, dispersion ---")
     rest = text[start:]
     end = rest.find("# ===")
@@ -59,11 +59,11 @@ def _render(**over) -> str:
 
 # ------------------------------------------------------- the rule itself --
 
-@pytest.mark.parametrize("name", [n for n in layout.DFT_SECTION.items
+@pytest.mark.parametrize("name", [n for n in layout.THEORY_SECTION.items
                                   if n not in ("density_fit",)])
-def test_every_emitted_dft_value_carries_the_catalogue_s_own_note(name):
+def test_every_emitted_theory_value_carries_the_catalogue_s_own_note(name):
     """The functional, the grid and dispersion, each with its declaration."""
-    block = _dft_block(_render())
+    block = _theory_block(_render())
     note = [ln for ln in parameter(name, "pyscf").note()
             if ln.startswith("# ") and len(ln) > 4]
     assert note, f"the catalogue declares no note for {name}"
@@ -72,16 +72,25 @@ def test_every_emitted_dft_value_carries_the_catalogue_s_own_note(name):
 
 def test_the_functional_deviation_and_its_citation_reach_the_script():
     """Why B3LYP rather than PySCF's fallback, in the file a scientist opens."""
-    block = _dft_block(_render())
+    block = _theory_block(_render())
     assert "PySCF's own default is 'LDA,VWN'" in block
     assert 'mf.xc = "B3LYP"' in block
 
 
-def test_a_non_dft_method_emits_no_functional_and_no_grid():
-    """`is_dft` is the engine's context, and the door honours it."""
-    block = _render(method="RHF")
+def test_a_hartree_fock_deck_emits_no_functional_and_no_grid_but_its_dispersion():
+    """`is_dft` is the engine's context, and the door honours it: HF has no
+    functional and no grid.  The dispersion correction is not a DFT
+    question -- HF takes it like any method (engines/pyscf.md § 7a) -- so
+    the default d3bj is written on an HF deck too, and "none" writes none.
+    Until 2026-09-28 the door dropped it under HF."""
+    block = _theory_block(_render(method="RHF"))
     assert "mf.xc" not in block
     assert "mf.grids.level" not in block
+    assert 'mf.disp = "d3bj"' in block, block
+    # the ASSIGNMENT is the guarantee; the parameter record below the
+    # section reads `mf.disp` back on purpose
+    assert "mf.disp = " not in _theory_block(_render(method="RHF",
+                                                     dispersion="none"))
 
 
 @pytest.mark.parametrize("name", [n for n in layout.SCF_SECTION.items

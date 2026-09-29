@@ -1,20 +1,21 @@
 """Engine-agnostic Methods-paragraph composer for the Spectra tab.
 
-Produces the Markdown prose that ships in three places:
+Produces the Markdown prose that ships in two places:
 
-  * the header docstring of the emitted ``<job>.spectra.py`` script
-    (spec § 11.2);
-  * the **Show methods text** modal in the Spectra-tab UI
-    (spec § 9.4);
-  * the ``methods_text`` field of :class:`SpectraResults`
-    (spec § 5 -- post-run, with real numbers from the parsed run).
+  * the header docstring of the emitted deck (spec § 11.2);
+  * the ``methods_text`` field of :class:`SpectraResults`, which the
+    run writes from the same paragraph and the Results panel's
+    "Methods text" block shows.
 
-The same prose appears in all three so the user sees identical
-content in the form, the emitted script, and the parsed JSON.
-Pre-run (no ``results`` arg) the prose describes what *will* be
-done with the configured knobs; post-run (``results`` provided)
-real numbers from the run replace the configuration placeholders
-(actual mode count, n_atoms / n_free from the parsed structure).
+The same prose appears in both, so the emitted script and the parsed
+JSON say the same thing.  (A third surface, the Spectra tab's "Show
+methods text" modal, left with the Generate lane at P3.)  It is
+composed ONCE, before the run, from the configured knobs: the count it
+states is R2's, equal to the run's by construction (R6), and the one
+thing only the run knows -- which dmu/dR route it took -- is added at
+load by :func:`with_ir_route`.  *(A ``results=`` arm that would have
+re-composed it after the run had no production caller and was deleted
+on 2026-09-28, V1.18.)*
 
 Engine-specific fragments are PASSED IN as ``fragment_md`` by the
 caller that knows its own engine (today the vibration deck, with
@@ -45,12 +46,11 @@ from typing import List, Optional
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotations only -- importing
     # vibration_deck at run time would cycle (it imports this), and the
-    # other two are named in annotations and never called: this module
-    # travels beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`),
-    # where neither is importable.
+    # other is named in annotations and never called: this module travels
+    # beside a SIESTA vibration job (`runwrap.VIBRATION_COMPANIONS`), where
+    # it is not importable.
     from .vibration_deck import VibrationConfigView
     from ..structure import Structure
-    from .results import SpectraResults
 
 
 # Citation marker regex.  Matches:
@@ -73,7 +73,6 @@ _CITE_RE = re.compile(
 def render_methods_md(
     cfg: "VibrationConfigView",
     *,
-    results: Optional[SpectraResults] = None,
     fragment_md: str = "",
     struct: Optional[Structure] = None,
 ) -> str:
@@ -85,11 +84,6 @@ def render_methods_md(
         The vibration deck's config view being rendered.  Drives every
         prose decision: functional / basis / dispersion / selector /
         amplitude / frequency window.
-    results
-        Optional parsed :class:`SpectraResults`.  Pre-run callers
-        pass ``None`` and get the "what will be done" form; post-run
-        callers pass the parsed results and get real mode counts
-        and frequency ranges interpolated into the prose.
     fragment_md
         Optional engine-specific paragraph, supplied by the caller
         (the vibration deck passes
@@ -113,10 +107,10 @@ def render_methods_md(
         name left with the Generate lane at P3, and the paragraph had
         no surface at all between then and 2026-09-11).
 
-        INCOMPLETE BY DESIGN on the pre-run path.  Which dmu/dR route a
-        run took cannot be known here -- it is settled inside the job --
-        so :func:`with_ir_route` adds that sentence later, from the load
-        path, where the results are in hand.
+        INCOMPLETE BY DESIGN, since it is composed before the run.  Which
+        dmu/dR route a run took cannot be known here -- it is settled
+        inside the job -- so :func:`with_ir_route` adds that sentence
+        later, from the load path, where the results are in hand.
         Use :func:`extract_citation_keys` on the result to obtain
         the bibliography-key list.
     """
@@ -126,7 +120,7 @@ def render_methods_md(
     # ------------------------------------------------------------------ #
     # Paragraph 1: vibrational analysis setup (always emitted)
     # ------------------------------------------------------------------ #
-    p1 = _paragraph_vibrational(cfg, results=results, struct=struct)
+    p1 = _paragraph_vibrational(cfg, struct=struct)
     parts.append(p1)
 
     # ------------------------------------------------------------------ #
@@ -140,16 +134,8 @@ def render_methods_md(
     # selector == "skip" -- nothing was / will be computed there).
     # ------------------------------------------------------------------ #
     if cfg.es_mode_selection != "skip":
-        p2 = _paragraph_electronic_structure(cfg, results=results)
+        p2 = _paragraph_electronic_structure(cfg)
         parts.append(p2)
-
-    # ------------------------------------------------------------------ #
-    # "Selected modes" line (post-run only; pre-run can't list real
-    # indices since the spectrum hasn't been computed yet).
-    # ------------------------------------------------------------------ #
-    sel_line = _selected_modes_line(cfg, results=results)
-    if sel_line:
-        parts.append(sel_line)
 
     # ------------------------------------------------------------------ #
     # Trailing bibliography (BibTeX keys, one per line).  Composed
@@ -272,27 +258,44 @@ def extract_citation_keys(text: str) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
+#: Each dispersion choice as the literature writes it, and the papers that
+#: define it: D3 itself [Grimme2010]; Becke-Johnson damping on top of it
+#: [Grimme2011]; D4 [Caldeweyher2019].  Until 2026-09-28 every version cited
+#: [Grimme2011] alone -- the damping paper, which is not where D3's zero
+#: damping or D4 come from.
+_DISPERSION_PROSE = {
+    "d3bj":   ("D3(BJ)", "Grimme2010, Grimme2011"),
+    "d3zero": ("D3(0)", "Grimme2010"),
+    "d4":     ("D4", "Caldeweyher2019"),
+}
+
+
 def _paragraph_vibrational(cfg: "VibrationConfigView",
                            *,
-                           results: Optional[SpectraResults],
                            struct: Optional[Structure]) -> str:
     """First Methods paragraph: harmonic vibrational analysis +
     (optional) Raman activities.  Always emitted -- L2 is the
     foundation layer, you can't have a Spectra-tab run without it."""
-    fxc = cfg.functional
     basis = cfg.basis
+    # THE LEVEL OF THEORY AS RUN (engines/vibration.md § 4.10): the one
+    # answer the deck's SCF construction asks, `is_dft`.  Hartree-Fock is
+    # named with its method and basis -- it has no functional, whatever
+    # that item still holds.  The dispersion correction is named on either
+    # method: HF takes it too, with parameters fitted for it (HF-D3(BJ)).
+    if cfg.is_dft:
+        fxc = cfg.functional
+        # Functional-specific citation: B3LYP gets [Becke1993]; other
+        # functionals would ideally cite their primary paper, but we
+        # don't carry a per-functional citation map yet, so we cite
+        # Becke1993 only for the B3 family.
+        fxc_cite = " [Becke1993]" if fxc.upper().startswith("B3") else ""
+        level = f"{fxc}/{basis}{fxc_cite}"
+    else:
+        level = f"Hartree-Fock ({str(cfg.method).upper()})/{basis}"
     disp_clause = ""
-    if cfg.dispersion and cfg.dispersion.lower() != "none":
-        # D3BJ is the default; cite Grimme2011.  Any other dispersion
-        # correction also points at Grimme2011 since it's the damping-
-        # function paper that defines the family in current use.
-        disp_clause = f" with the {cfg.dispersion.upper()} dispersion correction [Grimme2011]"
-
-    # Functional-specific citation: B3LYP gets [Becke1993]; other
-    # functionals would ideally cite their primary paper, but we
-    # don't carry a per-functional citation map yet, so we cite
-    # Becke1993 only for the B3 family.
-    fxc_cite = " [Becke1993]" if fxc.upper().startswith("B3") else ""
+    if cfg.dispersion != "none":
+        name, cite = _DISPERSION_PROSE[cfg.dispersion]
+        disp_clause = f" with the {name} dispersion correction [{cite}]"
 
     # Atom-count clause -- only when we have a Structure to count from.
     # Structure stores elements as a list of element symbols; n_atoms
@@ -303,7 +306,7 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
         n_atoms = _count_structure_atoms(struct)
         if n_atoms:
             n_free = _count_free_atoms(struct, cfg)
-            n_modes, n_rigid = _mode_count(struct, cfg, results=results)
+            n_modes, n_rigid = _mode_count(struct, cfg)
             removed = (f" after projecting out the {n_rigid} whole-body "
                        f"motion(s) the geometry permits" if n_rigid
                        else "")
@@ -332,7 +335,7 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
                         "coordinate framework [Wilson1955].")
 
     # IR.  DELIBERATELY ROUTE-NEUTRAL.  Methods text is composed at
-    # EMIT time (deck composer, results=None), and which dmu/dR route
+    # EMIT time (the deck composer, before the run), and which dmu/dR route
     # runs is only settled inside the job -- the analytic one needs
     # `pyscf.prop.infrared`, a property of the env the deck lands in.
     # A sentence here claiming "analytic" would therefore be a claim
@@ -340,9 +343,8 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
     # must never contain.  Both routes compute the same derivative and
     # project it the same way, so the sentence describes THAT, and the
     # route actually taken is reported beside the results
-    # (`SpectraResults.ir_route`, shown in the viewer's run summary).
-    # When this text is ever re-rendered WITH results in hand, this is
-    # the clause that gains the route.
+    # (`SpectraResults.ir_route`, shown in the viewer's run summary) and
+    # added to this text at load (`with_ir_route`).
     ir_clause = ""
     if cfg.compute_ir:
         ir_clause = (" Infrared intensities (km mol⁻¹) were obtained "
@@ -351,32 +353,12 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
                      "[Komornicki1979], projected onto the "
                      "mass-weighted normal coordinates [Wilson1955].")
 
-    para = (f"Harmonic vibrational analysis was performed at the "
-            f"{fxc}/{basis}{fxc_cite} level{disp_clause}.{atom_clause}"
+    return (f"Harmonic vibrational analysis was performed at the "
+            f"{level} level{disp_clause}.{atom_clause}"
             f"{ir_clause}{raman_clause}")
 
-    # Post-run: append the actual frequency span if we have it.
-    if results is not None and results.modes:
-        freqs = [m.frequency_cm1 for m in results.modes]
-        # filter NaN-like; ModeData.__post_init__ already enforces
-        # a real number so this is safe.
-        if freqs:
-            fmin = min(freqs)
-            fmax = max(freqs)
-            n_imag = sum(1 for f in freqs if f < 0)
-            extra = (f" The analysis yielded {len(freqs)} modes spanning "
-                     f"{fmin:.1f} to {fmax:.1f} cm⁻¹")
-            if n_imag:
-                extra += f" ({n_imag} imaginary)"
-            extra += "."
-            para = para + extra
 
-    return para
-
-
-def _paragraph_electronic_structure(cfg: "VibrationConfigView",
-                                    *,
-                                    results: Optional[SpectraResults]) -> str:
+def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
     """Second Methods paragraph: per-mode displaced-geometry SCFs.
     Only emitted when ``cfg.es_mode_selection != "skip"`` -- the
     L4 step is opt-in (spec § 8)."""
@@ -388,7 +370,7 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView",
     if sel == "all":
         criterion = "every vibrational mode"
     elif sel == "explicit":
-        criterion = (f"a user-specified set of {len(cfg.es_explicit_indices)} "
+        criterion = (f"a user-specified set of {len(cfg.explicit_modes)} "
                      f"modes")
     else:  # pragma: no cover (filtered above)
         criterion = "the selected modes"
@@ -406,14 +388,6 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView",
             f"downstream electron-phonon coupling analysis for "
             f"inelastic-transport modelling [Galperin2007, "
             f"Frederiksen2007].")
-
-    if results is not None:
-        n_with_es = sum(1 for m in results.modes
-                        if m.electronic_structure is not None)
-        if n_with_es:
-            para = para + (f"  In the present run {n_with_es} modes "
-                           f"received per-mode electronic-structure "
-                           f"data.")
     return para
 
 
@@ -432,27 +406,6 @@ def _frequency_window_clause(cfg: "VibrationConfigView") -> str:
     if fmin is not None:
         return f" with frequency ≥ {fmin:g} cm⁻¹"
     return f" with frequency ≤ {fmax:g} cm⁻¹"
-
-
-def _selected_modes_line(cfg: "VibrationConfigView",
-                         *,
-                         results: Optional[SpectraResults]) -> str:
-    """Post-run line listing the actual mode indices that received
-    L4 treatment, per spec § 11.2 ("selected modes" line).  Pre-run
-    we return "" -- the spectrum hasn't been computed yet so we
-    can't enumerate by frequency."""
-    if results is None:
-        return ""
-    if cfg.es_mode_selection == "skip":
-        return ""
-    picked = [m for m in results.modes
-              if m.electronic_structure is not None]
-    if not picked:
-        return ""
-    parts = [f"mode {m.index_1based} ({m.frequency_cm1:.1f} cm⁻¹)"
-             for m in picked]
-    return "**Selected modes:** " + "; ".join(parts) + "."
-
 
 
 def _count_structure_atoms(struct: Structure) -> int:
@@ -480,29 +433,18 @@ def _count_structure_atoms(struct: Structure) -> int:
 
 
 
-def _mode_count(struct: Structure, cfg: "VibrationConfigView", *,
-                results: "Optional[SpectraResults]" = None):
+def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
     """How many vibrations this system has, and how many motions were removed.
 
     Returns ``(n_modes, n_rigid)``.
 
-    **THE CALCULATION IS THE AUTHORITY when there is one**: where results
-    exist the count is the length of the mode list the run produced and the
-    removed count is what the run recorded, never a formula re-derived
-    beside them (science/normal-modes.md R6).
-
-    Before the run, the count is R2 -- ``3 N_free - n_rigid`` -- with
+    The count is R2 -- ``3 N_free - n_rigid`` -- with
     ``n_rigid`` from the one derivation (R1): the rank rule in
     ``spectra.normal_modes``, the same function the deck splices, so the
     paragraph written into the deck header and the list the run produces
     agree by construction.  Straight molecules, a lone atom, held atoms
     on a line: none is a case here, because none is a case there.
     """
-    if results is not None:
-        modes = getattr(results, "modes", None)
-        if modes is not None:
-            removed = getattr(results, "removed_motions", None) or {}
-            return len(modes), int(removed.get("count", 0) or 0)
     from .normal_modes import rigid_motions
     n_free = _count_free_atoms(struct, cfg)
     try:

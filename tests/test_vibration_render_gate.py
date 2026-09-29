@@ -79,7 +79,7 @@ def test_the_kind_door_runs_the_same_gate_body():
     the Task-setup preflight both go through.
     """
     from molbuilder.validation import validate
-    cfg = PySCFConfig(es_mode_selection="explicit", es_explicit_indices=[])
+    cfg = PySCFConfig(es_mode_selection="explicit", es_explicit_indices="")
     issues = validate(_water(), cfg, calculation="vibration")
     assert any(i.where == "config.es_explicit_indices" for i in issues), [
         (i.where, i.message) for i in issues]
@@ -315,24 +315,33 @@ def test_each_deck_carries_one_gpu_mechanism():
     assert "mf = _mb_to_gpu_if_enabled(mf)" in opt
 
 
-def test_the_dft_trio_has_one_spelling_per_deck():
+def test_the_level_of_theory_has_one_spelling_per_deck():
     """M1.2: the functional / grid / dispersion trio was spelled twice
     -- layout's for the optimization deck, hand-constants inside the
     vibration deck's constructions.  The vibration deck now defines
-    `_mb_configure_dft` (generated from the SAME DFT_SECTION + line)
-    and every construction site calls it; the hand spellings are gone."""
+    `_mb_configure_theory` (generated from the SAME THEORY_SECTION + line)
+    and every construction site calls it; the hand spellings are gone.
+
+    On a Hartree-Fock deck too: HF has no functional and no grid, and
+    takes the dispersion correction like any method (engines/pyscf.md
+    § 7a), so its dresser holds the dispersion line alone and both of its
+    construction sites call it.  Until 2026-09-28 an HF deck carried no
+    dresser, and its run lost the dispersion its template asked for.
+
+    MUTATION THIS MUST FAIL AGAINST: the dresser emitted for DFT alone."""
     text = _render(PySCFConfig(functional="b3lyp", dispersion="d3bj",
                                grid_level=4))
-    assert "def _mb_configure_dft(mf):" in text
-    assert text.count("_mb_configure_dft(") >= 3   # def + 2 call sites
-    assert 'mf.xc = "b3lyp"' in text               # layout's spelling
-    assert "mf.xc = FUNCTIONAL" not in text        # the hand spelling
+    assert "def _mb_configure_theory(mf):" in text
+    assert text.count("_mb_configure_theory(") >= 3   # def + 2 call sites
+    assert 'mf.xc = "b3lyp"' in text                  # layout's spelling
+    assert "mf.xc = FUNCTIONAL" not in text           # the hand spelling
     assert "_mf2.grids.level = GRID_LEVEL" not in text
-    # An HF deck carries NO dresser at all -- both call sites branch
-    # on the method, so an emitted pass-through would be dead text
-    # (tightened at the U6 close).
-    hf = _render(PySCFConfig(method="RHF"))
-    assert "_mb_configure_dft" not in hf
+    hf = _render(PySCFConfig(method="RHF", dispersion="d3bj"))
+    fn = hf[hf.index("def _mb_configure_theory(mf):"):]
+    fn = fn[:fn.index("return mf")]
+    assert 'mf.disp = "d3bj"' in fn, fn
+    assert "mf.xc" not in fn and "mf.grids" not in fn, fn
+    assert hf.count("_mb_configure_theory(") >= 3, "a call site skips it"
 
 
 def test_the_kind_gate_refuses_an_engine_it_has_no_science_for():

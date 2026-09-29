@@ -27,10 +27,12 @@ frequencies and mode shapes, and on PySCF the infrared and Raman strengths
 beside them ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.5) — and then shows it as an interactive chart: two stacked
 panels of sticks over one frequency axis, a sortable table of the vibrational
 modes, and — when you click a peak — a **3D animation of that normal mode**. You reach it two ways, but it is the same code
-both times. **A result with no strength computed has no spectrum**: every
-SIESTA result, whose route computes none, and a PySCF run with infrared and
-Raman both off show the modes table and the animation, and one sentence
-says why (§ 2, § 9b.3).
+both times. **A result with no strength computed draws its mode
+positions, not a spectrum**: every SIESTA result, whose route computes none,
+and a PySCF run with infrared and Raman both off draw one line at each mode's
+wavenumber — no heights, no broadening — which is still where a mode is
+picked for its animation and its electronic structure, and one sentence says
+why there are no heights (§ 2, § 9b.3).
 
 ## 1. Two surfaces, one engine
 
@@ -99,21 +101,29 @@ Two special cases are worth knowing:
 - **Imaginary modes** (a negative frequency — a sign the geometry is a saddle
   point, not a true minimum) are drawn in **red at their negative frequency**, so
   a bad optimization is visible at a glance.
-- **No strengths, no chart** *(user, 2026-09-28: "there should be no width or
-  spectrum for siesta result. it is just mode of frequency, and animation of
-  the mode")*. A result in which no mode carries a strength draws no chart
-  and no width control — a height that means nothing is not drawn at all.
-  One sentence stands where the chart would be and says which of four cases
-  it is: **the route computes none** (SIESTA — *this route computes the
-  frequencies and the mode shapes, not infrared or Raman intensities*);
-  **the run asked for none** (a PySCF run with both strengths off);
-  **they are still being computed** (a PySCF run before its first strength
-  lands — its `phase_raman` or `phase_ir` still to finish, § 7 — which draws
-  the chart the moment one does); or **the run asked and recorded none**
-  (its log says why). The modes are picked from the table. *(Until 2026-09-28 the chart drew every
-  mode as a unit-height stick with a broadened curve over them — a
-  frequency distribution, which read as an intensity spectrum wherever modes
-  crowded.)*
+- **No strengths, mode positions** *(user, 2026-09-28: "there should be no
+  width or spectrum for siesta result. it is just mode of frequency, and
+  animation of the mode"; and, the same day: "we can still have the modes
+  ploted as one straight bar in a wave-number plot. this visualization can be
+  useful in selecting different modes for showing animation and electronic
+  structure, just like the pyscf case the only differene is that there is no
+  'peak fitting with lorentz shape or peak height', just bar/line to show
+  where the mode is")*. A result in which no mode carries a strength draws
+  **one line of one height at each mode's wavenumber** under the heading
+  *Mode positions* — no broadened curve, no height scale, and **no width or
+  display-floor control**, since there is no height for either to act on
+  ([`spectrumchart.md`](?doc=web/spectrumchart.md) § 6.2). A click on a line
+  picks the mode exactly as on a spectrum. One sentence above the lines says
+  which of four cases it is: **the route computes none** (SIESTA — *this route
+  computes the frequencies and the mode shapes, not infrared or Raman
+  intensities*); **the run asked for none** (a PySCF run with both strengths
+  off); **they are still being computed** (a PySCF run before its first
+  strength lands — its `phase_raman` or `phase_ir` still to finish, § 7 —
+  which draws the spectrum the moment one does); or **the run asked and
+  recorded none** (its log says why). *(Until 2026-09-28 the chart drew every
+  mode as a unit-height stick with a broadened curve over them — a frequency
+  distribution, which read as an intensity spectrum wherever modes crowded;
+  and for a few hours that day it drew nothing at all.)*
 
 ## 3. The three views of one mode
 
@@ -648,7 +658,9 @@ SIESTA's route has no probe (§ 9b.3) — takes one of three answers:
 
 **The frequency window filters `all` (`skip` selects nothing) and is IGNORED by `explicit`** —
 naming a mode by index is saying *that one*, and a window that silently
-dropped it would answer a question you did not ask.
+dropped it would answer a question you did not ask. So the form locks the
+window outside `all`, as it locks the explicit list outside `explicit`
+*(user, 2026-09-28)*.
 
 **A mode that already has its electronic structure is skipped on a resume**,
 whatever the selector says: the result persists, so re-running it buys
@@ -657,19 +669,21 @@ nothing.
 ### 9a.2 The Methods paragraph is composed, not written
 
 `render_methods_md` builds the Markdown that ships **in the emitted script's
-header, in the preview modal, and beside the finished result** — one composer,
-so the three cannot describe different calculations. Every prose decision
-comes off the config: functional, basis, dispersion, the selector above, the
-amplitude convention (§ 4.1) and the frequency window.
+header and beside the finished result** — one composer, so the two cannot
+describe different calculations. Every prose decision comes off the config:
+the level of theory (`PySCFConfig.is_dft` — under Hartree–Fock no functional),
+basis, the dispersion correction on either method with its own papers, the
+selector above, the amplitude convention (§ 4.1) and the frequency window.
 
-It has two forms and takes one optional engine paragraph:
-
-- **before the run** — no results, so it says *what will be done*;
-- **after** — the parsed results interpolate real mode counts and frequency
-  ranges;
-- **the engine fragment** is passed IN by the caller, because this composer is
-  engine-ignorant on purpose; the one producer that has an engine knows which
-  it is.
+It is composed **once, before the run**, and says *what will be done*; the
+mode count it states is the run's by construction, and the load path adds the
+one sentence only the run can settle — which infrared route ran
+(`with_ir_route`, [`engines/vibration.md`](?doc=engines/vibration.md) § 4.10).
+**The engine fragment** is passed IN by the caller, because this composer is
+engine-ignorant on purpose; the one producer that has an engine knows which
+it is. *(An **after** form that re-composed the paragraph from the parsed
+results, which nothing in production called, was deleted on 2026-09-28 —
+V1.18; so was the preview modal it once also shipped in.)*
 
 `extract_citation_keys` reads the bibliography keys back out of the rendered
 prose, so what is cited is what was actually said rather than a second list
@@ -710,8 +724,8 @@ compute a channel and for a run that did not ask for one:
 
 | where | what a reader sees |
 |---|---|
-| the chart | **no chart and no width control** when no mode carries a strength — every SIESTA result — and one sentence in its place: *not computed on this route* (§ 2) *(user, 2026-09-28)*. With some strengths computed, a lane whose channel is missing is titled *not computed* |
-| the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked. With no chart, the modes table carries every mode |
+| the chart | **mode positions, not a spectrum**, when no mode carries a strength — every SIESTA result: one line of one height at each mode, no curve, no height scale, no width or display-floor control, and one sentence above them: *not computed on this route* (§ 2) *(user, 2026-09-28)*. With some strengths computed, a lane whose channel is missing is titled *not computed* |
+| the rug | part of the chart: every mode, in the `partial` colour where nothing was computed for it — never `silent`, because nobody looked |
 | the modes table | **a column the file's route cannot compute is not shown** — IR, Raman and the per-mode orbital columns on SIESTA, read BY ROLE: the file's own config carries no switch for them. Within a route, a `—` in a cell, not a `0.00`; the CSV export follows the table |
 | the electronic-structure tab | on SIESTA: the electrons' response along a mode is the projected density of states at structures displaced along it — **planned** ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.10, plan W42), not built — and the tab says so; it never names PySCF's `es_mode_selection`, which a SIESTA run has no way to set. On PySCF: *not requested* under `skip`, *not in the selection* for a mode the selector left out |
 | the run summary | *not computed on this route* for every channel the route lacks — infrared, Raman, the per-mode orbital energies — by the same rule; *not requested* only where the run could have asked |

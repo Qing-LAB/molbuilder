@@ -277,20 +277,59 @@ def test_a_list_that_is_not_a_list_is_refused():
 
 # --- § 6.2  heights only where strengths exist --------------------------------
 
-def test_with_no_strengths_anywhere_no_height_and_no_curve_is_drawn():
-    """§ 6.2 — with nothing computed there is nothing to draw: no stick, no
-    curve (the rug alone carries the positions).  Until 2026-09-28 every
-    stick stood at height one under a broadened curve, a frequency
-    distribution that read as an intensity spectrum."""
-    calls = drive(
-        "chart.setModes(MODES.map(m => ({ index: m.index, freq: m.freq })));\n"
+def test_with_no_strengths_anywhere_the_modes_are_drawn_as_positions():
+    """§ 6.2 — with nothing computed the chart draws where each mode is: one
+    lane, one line of one height at every mode, no curve whatever the width,
+    and no numbers on the height axis -- and a click still picks a mode
+    (user, 2026-09-28: "just bar/line to show where the mode is").  Mounted
+    with the Results tab's two channels, since what it must not do is draw
+    one lane per channel.  An imaginary mode is a position like any other,
+    marked apart (§ 6.4).  And the picture is the DATA's: once strengths
+    land, the same chart draws its two lanes with heights and a curve.
+    Until that day every stick stood at height one under a broadened curve,
+    a frequency distribution that read as an intensity spectrum.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the curve kept (a width draws a
+    distribution again); one lane per channel (the same lines twice read as
+    two spectra that agree); the picture fixed at mount."""
+    program = (
+        f"const {{ mount }} = await import({json.dumps(ENTRY.resolve().as_uri())});\n"
+        f"const MODES = {json.dumps(MODES)};\n"
+        "const host = globalThis.__host();\n"
+        "const picked = [];\n"
+        "const chart = await mount(host, { onSelect: (i) => picked.push(i),\n"
+        "  channels: [{ key: 'raman', label: 'Raman', unit: '', direction: 'up' },\n"
+        "             { key: 'ir', label: 'IR', unit: '', direction: 'down' }] });\n"
+        "chart.setModes(MODES.map((m, i) => ({ index: m.index, freq: m.freq,\n"
+        "                                      imaginary: i === 0 })));\n"
         "chart.setBroadening(20);\n"
-        "console.log(JSON.stringify(__calls));"
+        "__click(host, MODES[1].freq);\n"
+        "const positions = __calls.filter(c => c.call === 'react').pop();\n"
+        "chart.setModes(MODES.map(m => ({ index: m.index, freq: m.freq,\n"
+        "  values: { raman: m.values.activity, ir: 2 * m.values.activity } })));\n"
+        "const heights = __calls.filter(c => c.call === 'react').pop();\n"
+        "console.log(JSON.stringify({ positions, heights, picked }));"
     )
-    react = last_react(calls)
+    out = run_node([], program, globals_js=BROWSER)
+    react = out["positions"]
     bars = [t for t in react["traces"] if t["type"] == "bar"]
-    assert bars and all(not b.get("y") for b in bars), bars
+    assert len(bars) == 1, bars
+    assert bars[0]["x"] == [m["freq"] for m in MODES], bars[0]
+    assert len(set(bars[0]["y"])) == 1, bars[0]["y"]
+    colours = bars[0]["marker"]["color"]
+    assert colours[0] == "#ff0000" != colours[2], colours  # imaginary, marked
     assert not [t for t in react["traces"] if t.get("mode") == "lines"]
+    assert react["layout"]["yaxis"]["showticklabels"] is False
+    assert "yaxis2" not in react["layout"], sorted(react["layout"])
+    assert out["picked"] == [MODES[1]["index"]], out["picked"]
+
+    # the strengths land: two lanes, heights, a curve under the width set
+    react = out["heights"]
+    assert "yaxis2" in react["layout"], sorted(react["layout"])
+    assert react["layout"]["yaxis"]["showticklabels"] is not False
+    assert [t for t in react["traces"] if t.get("mode") == "lines"]
+    bars = [t for t in react["traces"] if t["type"] == "bar"]
+    assert len(bars) == 2 and len(set(bars[0]["y"])) == 3, bars
 
 
 def test_a_mode_with_no_strength_is_marked_not_drawn_at_zero():

@@ -1277,7 +1277,7 @@ def config_from_params(cls, params: Dict[str, Any],
     and constructs the dataclass.
 
     ``none_sentinels``: per-field rule for "this string means None"
-    (e.g. ``("solvent", "auxbasis", "dispersion")`` for PySCFConfig
+    (e.g. ``("solvent", "auxbasis")`` for PySCFConfig
     where the form sends an empty string for "leave default").
     """
     by_name = {f.name: f for f in fields(cls)}
@@ -1289,11 +1289,6 @@ def config_from_params(cls, params: Dict[str, Any],
         # Form-sentinel "empty string -> None / drop" handling for
         # specific Optional fields the JS deliberately blanks out.
         if k in none_sentinels and (v == "" or v is None):
-            kwargs[k] = None
-            continue
-        # Backwards-compat: JS sometimes sends "none" for "no
-        # dispersion".  Same treatment as the empty-string case.
-        if k == "dispersion" and isinstance(v, str) and v.strip().lower() == "none":
             kwargs[k] = None
             continue
         # net_charge: empty string from the form means "auto-detect"

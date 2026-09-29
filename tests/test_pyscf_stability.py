@@ -30,7 +30,7 @@ from molbuilder.structure import Structure
 _BASE = dict(basis="sto-3g", optimize=False,
              write_molwatch_log=False, write_trajectory=False,
              save_optimized_xyz=False, save_initial_xyz=False,
-             chkfile=False, dispersion=None)
+             chkfile=False, dispersion="none")
 
 
 def _o2():

@@ -1005,11 +1005,12 @@ def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
 def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
     """Build a PySCFConfig from a JSON params dict, with per-field
     type coercion (R5).  Empty-string sentinels for solvent /
-    auxbasis / dispersion are normalised to None so the form's "leave
-    default" UI gesture round-trips correctly."""
+    auxbasis are normalised to None so the form's "leave default" UI
+    gesture round-trips correctly.  Dispersion has none: ``"none"`` is
+    its value for no correction, kept as itself (the field's note)."""
     return _config_from_params(
         PySCFConfig, params, _PYSCF_HINTS,
-        none_sentinels=("solvent", "auxbasis", "dispersion"),
+        none_sentinels=("solvent", "auxbasis"),
     )
 
 

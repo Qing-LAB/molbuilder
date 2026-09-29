@@ -56,7 +56,7 @@ class TestSelectModes:
     def test_selector_explicit(self):
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[3, 5])
+                            es_explicit_indices="3, 5")
         assert select_modes(_modes_fixture(), cfg) == [3, 5]
 
     def test_selector_explicit_ignores_freq_window(self):
@@ -65,17 +65,19 @@ class TestSelectModes:
         any window, the explicit selector returns them all."""
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[3, 5, 6],
+                            es_explicit_indices="3, 5, 6",
                             # Window that would exclude 3 if applied
                             freq_min_cm1=2000.0)
         assert select_modes(_modes_fixture(), cfg) == [3, 5, 6]
 
-    def test_explicit_dedupes_repeats(self):
-        """Repeated explicit indices collapse; order preserved."""
+    def test_explicit_reads_ranges_and_repeats_as_modes(self):
+        """The list is TEXT, read by the one index-list reader
+        (`PySCFConfig.explicit_modes`, vibration.md § 4.8): a range
+        expands, a repeat counts once, and the modes come back in order."""
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[2, 5, 2, 5, 3])
-        assert select_modes(_modes_fixture(), cfg) == [2, 5, 3]
+                            es_explicit_indices="5, 2-3, 5")
+        assert select_modes(_modes_fixture(), cfg) == [2, 3, 5]
 
 
 class TestSelectModesWithPriorResume:
@@ -122,12 +124,12 @@ class TestSelectModesWithPriorResume:
         )
 
     def test_prior_with_es_filters_out_completed_mode(self):
-        """User re-runs with selector=explicit=[2,3,5] but mode 3
+        """User re-runs with selector=explicit="2, 3, 5" but mode 3
         already has ES from a prior run.  select_modes returns
         [2, 5] -- the engine will only compute ES for those."""
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[2, 3, 5])
+                            es_explicit_indices="2, 3, 5")
         prior = self._prior_with_es_on_mode(idx=3)
         assert select_modes(_modes_fixture(), cfg, prior=prior) == [2, 5]
 
@@ -135,7 +137,7 @@ class TestSelectModesWithPriorResume:
         """prior=None leaves the selection unchanged."""
         from molbuilder.spectra import select_modes
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[2, 3])
+                            es_explicit_indices="2, 3")
         assert select_modes(_modes_fixture(), cfg, prior=None) == [2, 3]
 
 # (TestValidateSelection retired 2026-08-21 with its subject -- see the
@@ -158,15 +160,21 @@ class TestSelectorEquivalence:
 
     def _build_selector_namespace(self, cfg, modes_payload):
         """Re-create the runtime environment the inlined selector
-        sees: ES_MODE_SELECTION / ES_EXPLICIT_INDICES / FREQ_MIN_CM1 /
-        FREQ_MAX_CM1 plus the modes_payload list."""
-        return {
-            "ES_MODE_SELECTION":    cfg.es_mode_selection,
-            "ES_EXPLICIT_INDICES":  list(cfg.es_explicit_indices),
-            "FREQ_MIN_CM1":         cfg.freq_min_cm1,
-            "FREQ_MAX_CM1":         cfg.freq_max_cm1,
-            "modes_payload":        modes_payload,
-        }
+        sees: the deck's OWN lines for ES_MODE_SELECTION /
+        ES_EXPLICIT_INDICES / FREQ_MIN_CM1 / FREQ_MAX_CM1, exec'd as
+        `_emit_constants` writes them, plus the modes_payload list.
+        The explicit list is text the emitter reads, so a namespace
+        built here by hand would test a deck nobody runs -- that is how
+        a deck reading "1, 3" character by character passed."""
+        from molbuilder.pyscf.vibration_emitters import _emit_constants
+        wanted = ("ES_MODE_SELECTION ", "ES_EXPLICIT_INDICES ",
+                  "FREQ_MIN_CM1 ", "FREQ_MAX_CM1 ")
+        lines = _emit_constants(_struct_water(), cfg, methods_md="",
+                                bibliography_keys=[])
+        ns = {"modes_payload": modes_payload}
+        exec("\n".join(ln for ln in lines if ln.startswith(wanted)), ns)
+        assert set(ns) >= {w.strip() for w in wanted}, sorted(ns)
+        return ns
 
     def _modes_payload_for_fixture(self):
         """A modes_payload list shaped like what the in-script
@@ -211,8 +219,9 @@ class TestSelectorEquivalence:
         dict(es_mode_selection="skip"),
         dict(es_mode_selection="all"),
         dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
-        dict(es_mode_selection="explicit", es_explicit_indices=[1, 3, 5]),
-        dict(es_mode_selection="explicit", es_explicit_indices=[2]),
+        dict(es_mode_selection="explicit", es_explicit_indices="1, 3, 5"),
+        dict(es_mode_selection="explicit", es_explicit_indices="2"),
+        dict(es_mode_selection="explicit", es_explicit_indices="4-6, 2"),
     ])
     def test_inlined_selector_matches_select_modes(self, cfg_overrides):
         from molbuilder.spectra import select_modes

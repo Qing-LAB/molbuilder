@@ -41,8 +41,12 @@ SCF_SECTION = Section(
 )
 
 
-#: The DFT setup, in the order PySCF needs it applied to ``mf``.
-DFT_SECTION = Section(
+#: The level of theory above the SCF class, in the order PySCF needs it
+#: applied to ``mf``: the functional and its integration grid (Kohn-Sham DFT
+#: only -- Hartree-Fock has neither), density fitting and the dispersion
+#: correction (every method).  It was ``DFT_SECTION`` until 2026-09-28, which
+#: named two of its four items for a method class they are not limited to.
+THEORY_SECTION = Section(
     "Functional, density fitting, dispersion",
     ("functional", "grid_level", "density_fit", "dispersion"),
 )
@@ -81,7 +85,8 @@ def line(cfg, *, is_dft: bool):
     """**Door 2 — the engine's syntax, and there is one of it.**
 
     Returns ``(Parameter) -> str | None`` for EVERY item this engine lays out:
-    the SCF settings, the DFT ones, and geomeTRIC's convergence targets.
+    the SCF settings, the level of theory, and geomeTRIC's convergence
+    targets.
 
     **It was three functions until 2026-08-18** -- ``line``, ``dft_line`` and
     ``geom_line`` -- and that is why the writer built a separate ``DeckSpec``
@@ -116,9 +121,17 @@ def line(cfg, *, is_dft: bool):
         if not param.known or param.value is None:
             return None
         name, value = param.name, param.value
-        return (_scf(name, value) or _dft(name, value) or _geom(name, value))
+        return (_scf(name, value) or _theory(name, value)
+                or _geom(name, value))
 
-    def _dft(name, value):
+    def _theory(name, value):
+        # The functional and the grid exist only in Kohn-Sham DFT.  The
+        # dispersion correction does NOT depend on the method: Hartree-Fock
+        # has no correlation and misses dispersion entirely, D3 and D4 carry
+        # parameters fitted for it, and PySCF applies `mf.disp` to an HF
+        # object through the energy, the gradient and the Hessian, reading
+        # the method as 'hf' (`scf/dispersion.py`, `grad/rhf.py`,
+        # `hessian/rhf.py`).  Until 2026-09-28 it was dropped under HF.
         if name == "functional":
             return f'mf.xc = "{value}"' if is_dft else None
         if name == "grid_level":
@@ -130,7 +143,7 @@ def line(cfg, *, is_dft: bool):
             return (f'mf = mf.density_fit(auxbasis="{aux}")' if aux
                     else "mf = mf.density_fit()")
         if name == "dispersion":
-            if not value or str(value).lower() == "none" or not is_dft:
+            if value == "none":
                 return None
             return f'mf.disp = "{value}"'
         return None

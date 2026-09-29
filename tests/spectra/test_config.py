@@ -129,8 +129,6 @@ class TestSpectraFieldMetadata:
                if i.severity == "error" and "dispersion" in (i.message or "")]
         assert bad, [i.message for i in issues]
         assert "not one of" in bad[0].message
-        # None on Optional[str] field stays valid.
-        _spectra_cfg(dispersion=None)
         # All declared choices remain accepted.
         for v in ("skip", "all", "explicit"):
             _spectra_cfg(es_mode_selection=v)

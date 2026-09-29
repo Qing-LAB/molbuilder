@@ -179,6 +179,51 @@ export async function mount(host, options = {}) {
             .filter((m) => !m.imaginary)
             .map((m) => Math.abs(valueIn(m, key) ?? 0)));
 
+        /* THE RUG CARRIES EVERY MODE, AND ONLY ITS POSITION.
+         *
+         * A mode active in neither channel has no height in either, so
+         * the sticks cannot show it at all -- and giving it one would be
+         * a lie in whichever direction it pointed.  Ticks on the axis
+         * are the only honest place it can appear, which is why the rug
+         * exists and why it never varies in height.  `cls` is the
+         * classification decided server-side (spectra/activity.py), not
+         * a threshold re-invented here. */
+        const rug = {
+            x: modes.map((m) => m.freq),
+            cls: modes.map((m) => (typeof m.cls === "string" ? m.cls : "partial")),
+            index: modes.map((m) => m.index),
+        };
+
+        /* NONE KNOWN: MODE POSITIONS (§ 6.2).  One lane, one line of one
+         * height at every mode, no curve and no height scale -- where each
+         * mode is, for finding and picking it, and nothing about how strong
+         * (user, 2026-09-28: "just bar/line to show where the mode is").
+         * One lane, not one per channel: the same lines in two panels would
+         * read as two spectra that happen to agree exactly.  The lines are
+         * picked like sticks, so choosing a mode is unchanged. */
+        if (!anyKnown) {
+            return {
+                lanes: [{
+                    key: "positions",
+                    direction: "up",
+                    title: "mode positions — no intensities",
+                    known: false,
+                    positions: true,
+                    sticks: {
+                        x: modes.map((m) => m.freq),
+                        y: modes.map(() => 1),
+                        width: modes.map(() => stickWidth),
+                        state: modes.map((m) => stateOf(m, false, null)),
+                    },
+                    curve: null,
+                }],
+                rug,
+                readout,
+                xTitle: "frequency (cm⁻¹)",
+                note: "",
+            };
+        }
+
         const lanes = channels.map((c) => {
             const known = laneKnown(c.key);
             const lanePeak = peakIn(c.key);
@@ -206,20 +251,6 @@ export async function mount(host, options = {}) {
             const toScreen = (v) => (
                 c.relative && lanePeak > 0 ? (v / lanePeak) * 100 : v);
 
-            /* WITH NOTHING COMPUTED THERE IS NOTHING TO DRAW (§ 6.2).
-             * No strength anywhere means no height, so no lane draws a
-             * stick or a curve -- the rug still carries the positions,
-             * and the Spectrum viewer does not mount a chart for such a
-             * result at all (web/spectra.md § 2).  Until 2026-09-28 the
-             * first lane drew every mode at height one with a curve over
-             * them, a frequency distribution that read as an intensity
-             * spectrum wherever modes crowded.
-             *
-             * `blank` is about having nothing to DRAW.  It is not the
-             * `silent` activity class, which is a statement about the
-             * physics of a mode; one word for both would be two ideas
-             * wearing one name. */
-            const blank = !anyKnown;
             return {
                 key: c.key,
                 direction: c.direction,
@@ -235,44 +266,25 @@ export async function mount(host, options = {}) {
                     ? `${c.label} (${c.unit})`.replace(" ()", "")
                     : `${c.label} — not computed`,
                 known,
-                sticks: blank
-                    ? { x: [], y: [], width: [], state: [] }
-                    : {
-                        x: modes.map((m) => m.freq),
-                        y: modes.map((m) => {
-                            const v = valueIn(m, c.key);
-                            if (v === null) return 0;
-                            return shown(m) ? toScreen(v) : 0;
-                        }),
-                        width: modes.map(() => stickWidth),
-                        state: modes.map((m) => stateOf(m, known, c.key)),
-                    },
+                sticks: {
+                    x: modes.map((m) => m.freq),
+                    y: modes.map((m) => {
+                        const v = valueIn(m, c.key);
+                        if (v === null) return 0;
+                        return shown(m) ? toScreen(v) : 0;
+                    }),
+                    width: modes.map(() => stickWidth),
+                    state: modes.map((m) => stateOf(m, known, c.key)),
+                },
                 /* The envelope is a sum over the bands that are drawn,
                  * so a filtered band must not keep contributing to it --
                  * otherwise raising the floor would empty the sticks
                  * while the curve stayed exactly where it was. */
-                curve: blank
-                    ? null
-                    : envelope(modes, broadening,
-                               (m) => (shown(m)
-                                   ? toScreen(valueIn(m, c.key)) : null)),
+                curve: envelope(modes, broadening,
+                                (m) => (shown(m)
+                                    ? toScreen(valueIn(m, c.key)) : null)),
             };
         });
-
-        /* THE RUG CARRIES EVERY MODE, AND ONLY ITS POSITION.
-         *
-         * A mode active in neither channel has no height in either, so
-         * the sticks cannot show it at all -- and giving it one would be
-         * a lie in whichever direction it pointed.  Ticks on the axis
-         * are the only honest place it can appear, which is why the rug
-         * exists and why it never varies in height.  `cls` is the
-         * classification decided server-side (spectra/activity.py), not
-         * a threshold re-invented here. */
-        const rug = {
-            x: modes.map((m) => m.freq),
-            cls: modes.map((m) => (typeof m.cls === "string" ? m.cls : "partial")),
-            index: modes.map((m) => m.index),
-        };
 
         return {
             lanes,

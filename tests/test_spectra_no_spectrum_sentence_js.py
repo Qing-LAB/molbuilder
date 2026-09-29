@@ -1,7 +1,8 @@
 """L2 Node test: whether a spectrum is still coming, and what to say if not.
 
-`web/spectra.md` § 2: with no strength in the file, one sentence stands where
-the chart would be, and it names one of FOUR cases, read BY ROLE from the file
+`web/spectra.md` § 2: with no strength in the file the chart draws the mode
+positions, and one sentence under them says why there are no heights, naming
+one of FOUR cases, read BY ROLE from the file
 (`_routeHas`: the file's own config carries the switch or it does not) --
 
 * the route computes none: a SIESTA file, whose config has no strength switch;

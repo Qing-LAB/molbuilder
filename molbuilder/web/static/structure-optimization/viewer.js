@@ -1344,14 +1344,14 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * Comments describing removed behaviour are worse than none: they are
      * read as the reason the function exists.
      *
-     * The two normalisations stay and are PySCF's alone, for stated reasons:
-     *   - `dispersion = "none"` arrives as the literal string; the server
-     *     normalises it, and dropping it here too keeps the placeholder out
-     *     of the validation panel;
-     *   - null-valued keys are dropped so a dataclass falls back to its own
-     *     default instead of receiving None where it declares an int/float —
-     *     `charge = null` in particular must leave the field ABSENT, because
-     *     the server's auto-detect runs only when no charge key was sent.
+     * One normalisation stays and is PySCF's alone, for a stated reason:
+     * null-valued keys are dropped so a dataclass falls back to its own
+     * default instead of receiving None where it declares an int/float —
+     * `charge = null` in particular must leave the field ABSENT, because
+     * the server's auto-detect runs only when no charge key was sent.
+     * `dispersion = "none"` is sent as itself: it is the value for no
+     * correction, and turning it into null here DROPPED it, so the server
+     * built the default D3BJ (fixed 2026-09-28).
      */
     function collectParams(engine) {
         const schema = formSchemas[engine];
@@ -1359,7 +1359,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         const fs = (window.molbuilder || {}).formSchema;
         const params = fs.collectForm($(engine + "-form-container"), schema);
         if (engine !== "pyscf") return params;
-        if (params.dispersion === "none") params.dispersion = null;
         Object.keys(params).forEach(k => {
             if (params[k] === null) delete params[k];
         });

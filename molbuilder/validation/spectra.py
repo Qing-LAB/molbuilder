@@ -200,22 +200,37 @@ def spectra_render_checks(struct: Structure,
                      f"(open-shell Hartree-Fock)."),
             where="config.method",
         ))
-    # Empty explicit list: the run will produce no orbital-energy
-    # data even though the user asked for it.  Warn so they don't
-    # waste wall time discovering this after the run.
-    if (cfg.es_mode_selection == "explicit"
-            and not cfg.es_explicit_indices):
-        issues.append(Issue(
-            severity="warn",
-            message=(
-                "Mode selection is set to \"explicit\" but no "
-                "mode indices were entered.  No per-mode "
-                "orbital-energy data will be computed.  Either "
-                "add at least one mode index, or switch the "
-                "selector to \"skip\" or \"all\"."
-            ),
-            where="config.es_explicit_indices",
-        ))
+    # The explicit list, read by its one reader (`explicit_modes`).  Text
+    # it cannot read is refused here, before a deck is written from it;
+    # an empty list is a run that computes no orbital-energy data though
+    # the person asked for some -- said now, not after the wall time.
+    if cfg.es_mode_selection == "explicit":
+        try:
+            listed = cfg.explicit_modes
+        except ValueError as e:
+            issues.append(Issue(
+                severity="error",
+                message=(
+                    f"The explicit mode list {cfg.es_explicit_indices!r} "
+                    f"can't be read: {e}.  Write 1-based mode numbers "
+                    f"separated by commas, with ranges if you like: "
+                    f"\"3, 7, 12\" or \"3-7, 12\"."
+                ),
+                where="config.es_explicit_indices",
+            ))
+        else:
+            if not listed:
+                issues.append(Issue(
+                    severity="warn",
+                    message=(
+                        "Mode selection is set to \"explicit\" but no "
+                        "mode indices were entered.  No per-mode "
+                        "orbital-energy data will be computed.  Either "
+                        "add at least one mode index, or switch the "
+                        "selector to \"skip\" or \"all\"."
+                    ),
+                    where="config.es_explicit_indices",
+                ))
 
     # Large-system cost advisory.  The Hessian cost scales like
     # N_free² and the Raman finite-difference step adds 6·N_free
@@ -292,6 +307,49 @@ def spectra_render_checks(struct: Structure,
                 ),
                 where="structure.regions",
             ))
+
+    # A SETTING THAT ENTERS NOTHING IS NOT LEFT SILENT (engines/vibration.md
+    # § 3.1; user, 2026-09-28).  The pressure enters only the free molecule's
+    # gas-phase translation; with atoms held the thermochemistry is the
+    # vibrational sums alone and records no pressure (§ 4.7).  A value the
+    # person set is said to do nothing -- warned, not hidden, so the form's
+    # shape does not follow the structure.  The default is the config's own.
+    from ..config.pyscf import PySCFConfig
+    _p_set = getattr(cfg, "pressure_atm", None)
+    _p_default = PySCFConfig.__dataclass_fields__["pressure_atm"].default
+    if _frozen_idx and _p_set is not None and float(_p_set) != float(_p_default):
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"pressure_atm = {float(_p_set):g} atm has no effect here: "
+                f"atoms are held, so the thermochemistry is the vibrational "
+                f"contributions alone, and a pressure enters only a free "
+                f"molecule's gas-phase translation.  The result records no "
+                f"pressure (engines/vibration.md § 4.7)."
+            ),
+            where="config.pressure_atm",
+        ))
+
+    # The frequency window filters the modes `all` selects and nothing else
+    # (§ 4.8): `skip` selects none, and naming a mode is saying *that one*.
+    # The form locks the two fields outside `all`, but a locked field keeps
+    # its value and the hand-over carries it, as a hand-edited template
+    # does -- so a window set there is said to do nothing, by the same rule.
+    _window = [(k, getattr(cfg, k, None))
+               for k in ("freq_min_cm1", "freq_max_cm1")]
+    _window = [(k, v) for k, v in _window if v is not None]
+    if _window and cfg.es_mode_selection != "all":
+        issues.append(Issue(
+            severity="warn",
+            message=(
+                f"{' and '.join(f'{k} = {float(v):g} cm⁻¹' for k, v in _window)}"
+                f" {'has' if len(_window) == 1 else 'have'} no effect here: "
+                f"the frequency window filters the modes \"all\" selects, "
+                f"and es_mode_selection is {cfg.es_mode_selection!r} "
+                f"(engines/vibration.md § 4.8)."
+            ),
+            where=f"config.{_window[0][0]}",
+        ))
 
     # THIS ENGINE COMPUTES A MOLECULE IN FREE SPACE.  gto.M has no lattice, so
     # a structure that repeats or continues along an axis would be computed

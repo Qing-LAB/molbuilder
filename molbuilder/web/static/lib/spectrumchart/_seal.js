@@ -277,6 +277,10 @@ export async function openSurface(host) {
                 rangemode: "tozero",
                 range: [0, axisRange(lane)],
                 tickfont: { color: laneColourFor(lane.direction, palette) },
+                // Mode positions have no height to read (§ 6.2): no numbers
+                // on an axis whose lines are all one height.
+                showticklabels: !lane.positions,
+                showgrid: !lane.positions,
             };
         });
         /* One x-axis, anchored under the LAST panel and shared by the

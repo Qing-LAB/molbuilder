@@ -530,3 +530,180 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
         assert float(drift) < (1e-7 if name.endswith("rhf") else 5e-5), (name, drift)
         assert float(zeros) == 0.0, (name, zeros)
         assert route == "finite-difference" and dmu_none == "True", (name, route)
+
+
+def test_a_setting_that_enters_nothing_is_said_to_at_prep(tmp_path,
+                                                          monkeypatch):
+    """`engines/vibration.md` § 3.1 (user, 2026-09-28): a value the person set
+    that the run cannot use is warned about at prep -- and only then.
+
+    * The PRESSURE: with atoms held the thermochemistry is the vibrational
+      contributions alone and no pressure enters it; on the free molecule
+      it enters the gas-phase translation, and nothing is said.
+    * The FREQUENCY WINDOW: it filters the modes `all` selects and nothing
+      else (§ 4.8); set under `skip` it is said to do nothing, under `all`
+      it is not.
+
+    Prep alone; nothing is launched.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the pressure warning keyed on the
+    pressure alone (it would speak for the free molecule too); the window
+    warning keyed on the window alone (it would speak under `all`).
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    said = {}
+    for held, selector in (((0,), '"skip"'), ((), '"all"')):
+        sub = tmp_path / ("held" if held else "free")
+        sub.mkdir()
+        bundle = _describe(sub, monkeypatch, frozen=held)
+        tpl = bundle / "W.template.toml"
+        t = tpl.read_text()
+        for item, old, new in (("pressure_atm", "value = 1.0", "value = 10.0"),
+                               ("es_mode_selection", 'value = "skip"',
+                                f"value = {selector}")):
+            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
+            assert old in t[i:j], t[i:j]
+            t = t[:i] + t[i:j].replace(old, new, 1) + t[j:]
+        # the window is valueless until set: its value line goes in first
+        i = t.index("[item.freq_min_cm1]"); j = t.index("[item.", i + 1)
+        assert "\nvalue = " not in t[i:j], t[i:j]
+        t = (t[:i] + t[i:j].replace('\ntype = "float"\n',
+                                    '\ntype = "float"\nvalue = 500.0\n', 1)
+             + t[j:])
+        tpl.write_text(t)
+        r = CliRunner().invoke(jobset_group, ["prep", "run", "freq",
+                                              "--bundle", str(bundle)])
+        assert r.exit_code == 0, r.output
+        said[bool(held)] = (
+            "pressure_atm = 10 atm has no effect here" in r.output,
+            "freq_min_cm1 = 500 cm⁻¹ has no effect here" in r.output)
+    assert said == {True: (True, True), False: (False, False)}, said
+
+
+def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
+    """`engines/vibration.md` § 4.10 (V1.8): the level of theory is one
+    answer, `is_dft`.  Described as Hartree-Fock with the functional changed
+    to the hybrid PBE0 and the grid to 3, the prepped deck's header and
+    Methods paragraph name Hartree-Fock and no functional, its constants
+    carry no functional and no grid, prep says the changed functional enters
+    nothing, and the grid advisory -- which a hybrid DFT run at level 3
+    draws -- says nothing, since HF has no grid.
+
+    THE DISPERSION CORRECTION IS NOT A DFT QUESTION (`engines/pyscf.md`
+    § 7a; user, 2026-09-28: "scientifically correct decision applied"): HF
+    takes it like any method, so d4 reaches the deck as `mf.disp = "d4"` in
+    the dresser every construction calls, is named in the header and in the
+    Methods paragraph with its own paper, and draws no warning; "none" is
+    plain Hartree-Fock.  Prep alone; nothing is launched.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the paragraph reading `cfg.functional`
+    whatever the method (its write-up named B3LYP under RHF until
+    2026-09-28); the grid advisory asking the functional without asking the
+    method; the dispersion dropped under Hartree-Fock (as both decks did
+    until the same day).
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    for disp in ("d4", "none"):
+        sub = tmp_path / disp
+        sub.mkdir()
+        bundle = _describe(sub, monkeypatch)
+        tpl = bundle / "W.template.toml"
+        t = tpl.read_text()
+        for item, old, new in (("method", '"RKS"', '"RHF"'),
+                               ("functional", '"B3LYP"', '"PBE0"'),
+                               ("dispersion", '"d3bj"', f'"{disp}"'),
+                               ("grid_level", "4", "3")):
+            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
+            assert f"value = {old}" in t[i:j], t[i:j]
+            t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
+                 + t[j:])
+        tpl.write_text(t)
+        r = CliRunner().invoke(jobset_group, ["prep", "run", "freq",
+                                              "--bundle", str(bundle)])
+        assert r.exit_code == 0, r.output
+        assert "functional = 'PBE0' has no effect here" in r.output, r.output
+        assert "dispersion =" not in r.output, r.output
+        assert "Grid level" not in r.output, r.output
+        deck = next((bundle / "01_freq").glob("*.py")).read_text()
+        head = deck[:deck.index('"""', 3)]
+        assert "Method    : RHF (Hartree-Fock)" in head, head
+        start = deck.index('METHODS_TEXT = """') + len('METHODS_TEXT = """')
+        methods = deck[start:deck.index('"""', start)]
+        assert "Hartree-Fock (RHF)" in methods, methods[:600]
+        for dft_word in ("PBE", "B3LYP"):
+            assert dft_word not in methods, (dft_word, methods[:600])
+        assert "FUNCTIONAL                 = None" in deck
+        assert "GRID_LEVEL                 = None" in deck
+        assert f"DISPERSION                 = '{disp}'" in deck
+        fn = deck[deck.index("def _mb_configure_theory(mf):"):]
+        fn = fn[:fn.index("return mf")]
+        if disp == "d4":
+            assert "Dispersion: d4" in head, head
+            assert ("with the D4 dispersion correction [Caldeweyher2019]"
+                    in methods), methods[:600]
+            assert 'mf.disp = "d4"' in fn, fn
+        else:
+            assert "Dispersion:" not in head, head
+            assert "dispersion correction" not in methods, methods[:600]
+            assert "mf.disp" not in fn, fn
+
+
+def test_the_listed_modes_get_the_probe_and_no_other(tmp_path, monkeypatch):
+    """`engines/vibration.md` § 4.8: `explicit` gives the per-mode probe to
+    the modes its list names -- TEXT, "1, 3", read by the one index-list
+    reader (`PySCFConfig.explicit_modes`).  Until 2026-09-28 the deck wrote
+    `list()` of that text, its characters, and the inlined selector's
+    `int(',')` stopped the probe; no run through the road had ever selected
+    a mode, so nothing saw it.  A list the reader cannot take -- "0, 2", the
+    modes count from 1 -- is refused at prep, before a deck exists.
+
+    MUTATION THIS MUST FAIL AGAINST: the deck's constant written as
+    `list(cfg.es_explicit_indices)`.
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    bundle = _describe(tmp_path, monkeypatch)
+    tpl = bundle / "W.template.toml"
+    original = tpl.read_text()
+
+    def _answer(listed):
+        t = original
+        for item, old, new in (("es_mode_selection", '"skip"', '"explicit"'),
+                               ("es_explicit_indices", '""', f'"{listed}"'),
+                               # the probe is the subject; Raman's 6N SCFs
+                               # are not
+                               ("compute_raman", "true", "false")):
+            i = t.index(f"[item.{item}]"); j = t.index("[item.", i + 1)
+            assert f"value = {old}" in t[i:j], t[i:j]
+            t = (t[:i] + t[i:j].replace(f"value = {old}", f"value = {new}", 1)
+                 + t[j:])
+        tpl.write_text(t)
+
+    _answer("0, 2")
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "run", "freq", "--bundle", str(bundle)])
+    assert r.exit_code != 0, r.output
+    assert "can't be read: 0 is below 1" in r.output, r.output
+    assert not list((bundle / "01_freq").glob("*.py")), "a deck was written"
+
+    _answer("1, 3")
+    d = _prep_and_run(bundle)
+    assert d["phase_es"] == "complete", d["phase_es"]
+    assert d["phase_raman"] == "not requested"
+    probed = sorted(m["index_1based"] for m in d["modes"]
+                    if m["electronic_structure"] is not None)
+    assert probed == [1, 3], probed
+    assert d["selected_mode_idxs_1based"] == [1, 3]
+    for m in d["modes"]:
+        es = m["electronic_structure"]
+        if es is None:
+            continue
+        # the two displaced SCFs and their orbital windows, both sides
+        assert np.isfinite(es["scf_energy_plus_eh"]), es
+        assert np.isfinite(es["scf_energy_minus_eh"]), es
+        assert es["mo_energies_plus_eh"] and es["mo_energies_minus_eh"], es

@@ -191,7 +191,7 @@ def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
         spin=1,                   # 2S = 1 (one unpaired electron)
         basis="STO-3G",
         density_fit=False,
-        dispersion=None,
+        dispersion="none",
     )
     script = render_script(methyl_radical, cfg)
     # A *commented* mention in the troubleshooting block isn't enough;
@@ -254,7 +254,7 @@ def test_gap_6_pyscf_emits_post_processing_hook(h2):
     script = render_script(
         h2,
         PySCFConfig(job_name="h2", density_fit=False,
-                    dispersion=None),
+                    dispersion="none"),
     )
     assert (
         "Post-processing" in script
@@ -349,7 +349,7 @@ def test_ecp_absent_when_the_user_declared_none():
     """A Pt complex on cc-pVDZ used to get ``lanl2dz`` added for it.  It
     no longer does: nothing is emitted that was not asked for."""
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
-                      density_fit=False, dispersion=None)
+                      density_fit=False, dispersion="none")
     script = render_script(_pt_complex(), cfg)
     assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
         "no ecp was declared, so no ecp= kwarg may appear")
@@ -365,7 +365,7 @@ def test_ecp_emitted_as_a_dict_literal_not_a_quoted_string():
     """
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
                       ecp="lanl2dz", ecp_atoms=["Pt"],
-                      density_fit=False, dispersion=None)
+                      density_fit=False, dispersion="none")
     script = render_script(_pt_complex(), cfg)
 
     ecp_lines = [ln for ln in script.splitlines()
@@ -384,7 +384,7 @@ def test_ecp_selector_reaches_only_the_named_element():
     """``["Pt"]`` in a Pt/C structure selects Pt and leaves C alone."""
     cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
                       ecp="lanl2dz", ecp_atoms=["Pt"],
-                      density_fit=False, dispersion=None)
+                      density_fit=False, dispersion="none")
     line = [ln for ln in render_script(_pt_complex(), cfg).splitlines()
             if re.match(r"\s*ecp\s*=", ln)][0]
     assert "'Pt'" in line and "'C'" not in line, line
@@ -396,7 +396,7 @@ def test_empty_means_empty():
                {"ecp": "lanl2dz", "ecp_atoms": []},
                {"ecp": "", "ecp_atoms": []}):
         cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
-                          density_fit=False, dispersion=None, **kw)
+                          density_fit=False, dispersion="none", **kw)
         script = render_script(_pt_complex(), cfg)
         assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), kw
 
@@ -412,7 +412,7 @@ def test_a_def2_basis_no_longer_suppresses_a_declared_ecp():
     """
     cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
                       ecp="stuttgart", ecp_atoms=["Pt"],
-                      density_fit=False, dispersion=None)
+                      density_fit=False, dispersion="none")
     script = render_script(_pt_complex(), cfg)
     line = [ln for ln in script.splitlines()
             if re.match(r"\s*ecp\s*=", ln)]
@@ -437,7 +437,7 @@ def test_gap_9_pyscf_reevaluates_energy_at_optimized_geom(h2):
     non-converged opt prints an energy that doesn't correspond to
     the saved coordinates."""
     cfg = PySCFConfig(
-        job_name="h2", density_fit=False, dispersion=None,
+        job_name="h2", density_fit=False, dispersion="none",
     )
     script = render_script(h2, cfg)
     # The fix should re-evaluate mf at mol_eq's geometry before
@@ -474,14 +474,14 @@ def test_gap_10_diis_damp_emitted_only_when_tuned(h2):
                 and "_MB_PARAMS[" not in ln]
 
     cfg_default = PySCFConfig(job_name="h2",
-                              density_fit=False, dispersion=None)
+                              density_fit=False, dispersion="none")
     s_default = render_script(h2, cfg_default)
     assert live_lines(s_default, "mf.diis_space") == []
     assert live_lines(s_default, "mf.damp")       == []
 
     # Hard-SCF case: both bumped to typical troubleshooting values
     cfg_hard = PySCFConfig(job_name="h2",
-                           density_fit=False, dispersion=None,
+                           density_fit=False, dispersion="none",
                            diis_space=16, damp=0.4)
     s_hard = render_script(h2, cfg_hard)
     live_diis = live_lines(s_hard, "mf.diis_space = 16")

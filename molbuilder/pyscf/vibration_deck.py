@@ -669,15 +669,17 @@ def vibration_spec(struct: Structure, cfg, *,
         # deck builds calls _mb_configure_scf, so the machinery knobs
         # apply identically at the equilibrium, displaced and
         # relaxation sites.
-        from .scf_setup import (emit_dft_configure_fn,
+        from .scf_setup import (emit_theory_configure_fn,
                                 emit_scf_configure_fn,
                                 emit_density_fit_kw,
                                 emit_solvent_apply_fn)
         out += emit_scf_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
-        # The DFT dresser beside the SCF one (M1.2): functional / grid /
-        # dispersion get ONE spelling, generated from the same section
-        # and line the optimization deck's layout walks.
-        out += emit_dft_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
+        # The level-of-theory dresser beside the SCF one (M1.2):
+        # functional / grid / dispersion get ONE spelling, generated from
+        # the same section and line the optimization deck's layout walks
+        # -- on every deck, since the dispersion correction applies to
+        # Hartree-Fock too (pyscf.md § 7a).
+        out += emit_theory_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
         out += [""] + emit_density_fit_kw(cfg)
         out += emit_solvent_apply_fn(cfg)
         # with_promotion_helper=False: this deck's ONE GPU mechanism is
@@ -690,7 +692,7 @@ def vibration_spec(struct: Structure, cfg, *,
         )
         out.append("if _USING_GPU:")
         out.append("    from gpu4pyscf import scf as _gpu_scf")
-        if str(view.method).upper() in ("RKS", "UKS"):
+        if view.is_dft:
             out.append("    from gpu4pyscf import dft as _gpu_dft")
             out.append("    _scf = _gpu_scf")
             out.append("    _dft = _gpu_dft")
@@ -699,7 +701,7 @@ def vibration_spec(struct: Structure, cfg, *,
             out.append("    _dft = None")
         out.append("else:")
         out.append("    _scf = scf")
-        if str(view.method).upper() in ("RKS", "UKS"):
+        if view.is_dft:
             out.append("    _dft = dft")
         else:
             out.append("    _dft = None")
@@ -773,7 +775,7 @@ def vibration_spec(struct: Structure, cfg, *,
         # Hartree-Fock spellings too, and classifying them as DFT would
         # emit mf.xc / grids lines into a wavefunction-method deck.
         line=_layout.line(cfg,
-                          is_dft=(str(cfg.method).upper() in ("RKS", "UKS"))),
+                          is_dft=cfg.is_dft),
         provenance_defaults=lambda c: {
             "use_gpu":     str(bool(getattr(c, "use_gpu", False))).lower(),
             "density_fit": str(bool(getattr(c, "density_fit", True))).lower(),

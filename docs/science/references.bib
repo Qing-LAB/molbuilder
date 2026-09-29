@@ -425,6 +425,43 @@
 }
 % @verified 2026-05-11 QQ
 
+% ----- D3 itself, and D4 (dispersion) -----
+% Added 2026-09-28 with the Methods paragraph's per-version citations
+% (spectra/methods.py::_DISPERSION_PROSE).  NOT yet @verified -- that stamp
+% is granted by a person after checking the entry against the paper.
+
+@article{Grimme2010,
+  author  = {Grimme, Stefan and Antony, Jens and Ehrlich, Stephan and
+             Krieg, Helge},
+  title   = {A consistent and accurate ab initio parametrization of density
+             functional dispersion correction ({DFT-D}) for the 94 elements
+             {H}--{Pu}},
+  journal = {The Journal of Chemical Physics},
+  volume  = {132},
+  number  = {15},
+  pages   = {154104},
+  year    = {2010},
+  doi     = {10.1063/1.3382344}
+  % Defines D3 (with its original zero damping, D3(0)).  Cite for any D3
+  % correction -- with Grimme2011 when the damping is Becke-Johnson.
+}
+
+@article{Caldeweyher2019,
+  author  = {Caldeweyher, Eike and Ehlert, Sebastian and Hansen, Andreas and
+             Neugebauer, Hagen and Spicher, Sebastian and Bannwarth,
+             Christoph and Grimme, Stefan},
+  title   = {A generally applicable atomic-charge dependent {London}
+             dispersion correction},
+  journal = {The Journal of Chemical Physics},
+  volume  = {150},
+  number  = {15},
+  pages   = {154122},
+  year    = {2019},
+  doi     = {10.1063/1.5090222}
+  % Defines D4, the charge-dependent successor of D3.  Cite when D4 is the
+  % dispersion correction chosen in the script.
+}
+
 % ----- SCF convergence machinery (vibration-parameter-integration-plan) -----
 % Added 2026-08-21 for the catalogue's `refs` keys.  NOT yet @verified --
 % that stamp is granted by a person after checking the entry against the

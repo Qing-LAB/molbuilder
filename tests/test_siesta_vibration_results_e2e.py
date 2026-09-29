@@ -12,8 +12,11 @@ walks every state of that road; this file walks it once, to have a result).
 Then the result is opened the way a person opens it, through the Results
 tab's dropdown, and the page is read against `web/spectra.md`:
 
-* **no chart and no width control**, and one sentence where the chart would
-  be, saying the route computes no intensities (§ 2);
+* **mode positions, not a spectrum**: one line of one height at each mode,
+  no curve, no height numbers, no width control, under the heading *Mode
+  positions* and one sentence saying the route computes no intensities
+  (§ 2; `spectrumchart.md` § 6.2 -- user, 2026-09-28: "just bar/line to show
+  where the mode is");
 * the modes table without the columns the route cannot compute -- infrared,
   Raman, the per-mode orbitals -- and the run summary saying *not computed
   on this route* for each (§ 9b.3);
@@ -29,8 +32,8 @@ class: a ``display`` rule of the element's own beats ``[hidden]`` in the
 author cascade, which is how the dots stayed visible under ``hidden`` until
 ``.phase[hidden]`` was added.
 
-MUTATIONS THIS MUST FAIL AGAINST: the chart drawn whatever the strengths
-(``drawn`` forced true -- the section shows); the ``.phase[hidden]`` guard
+MUTATIONS THIS MUST FAIL AGAINST: the width control shown whatever the
+strengths (``drawn`` forced true); the ``.phase[hidden]`` guard
 removed (the Raman dot stays on screen); the electronic-structure notice
 without its route branch (a SIESTA reader is then told about a selection
 their run could not make); the full-RRHO labels forced on every result.
@@ -112,14 +115,32 @@ def test_the_results_tab_shows_a_siesta_vibration_as_its_modes(
         page.wait_for_selector("#modes-tbody tr", state="attached",
                                timeout=30000)
 
-        # THE MODES, NOT A SPECTRUM (§ 2): no chart, no width control, and
-        # the one sentence saying why.
-        assert not _shown(page, "#spectrum-section")
-        assert not _shown(page, "#spectrum-chart")
+        # MODE POSITIONS, NOT A SPECTRUM (§ 2): one line of one height at
+        # each mode, no curve and no height numbers, no width control, and
+        # the one sentence saying why there are no heights.
+        assert _shown(page, "#spectrum-chart")
+        assert page.inner_text("#spectrum-heading") == "Mode positions"
         assert not _shown(page, "#broadening-fwhm")
+        assert not _shown(page, "#display-floor")
         absent = page.inner_text("#spectrum-absent")
         assert "not infrared or Raman intensities" in absent, absent
         assert page.locator("#modes-tbody tr").count() == len(d["modes"]) == 1
+        drawn = page.wait_for_function(
+            "() => { const g = document.querySelector("
+            "  '#spectrum-chart .js-plotly-plot');"
+            "  if (!g || !g.data) return null;"
+            "  return {traces: g.data.map(t => ({type: t.type,"
+            "    mode: t.mode || '', x: t.x, y: t.y})),"
+            "    ticks: g.layout.yaxis.showticklabels}; }",
+            timeout=20000).json_value()
+        bars = [t for t in drawn["traces"] if t["type"] == "bar"]
+        assert len(bars) == 1, drawn
+        freqs = [m["frequency_cm1"] for m in d["modes"]]
+        assert bars[0]["x"] == pytest.approx(freqs)
+        assert len(set(bars[0]["y"])) == 1, bars[0]["y"]
+        assert not [t for t in drawn["traces"]
+                    if t["type"] == "scatter" and "lines" in t["mode"]], drawn
+        assert drawn["ticks"] is False, drawn
 
         # THE TABLE AND THE SUMMARY BY ROUTE (§ 9b.3): what SIESTA cannot
         # compute has no column, and the summary says so for each.

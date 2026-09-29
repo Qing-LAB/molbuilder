@@ -126,13 +126,14 @@
            <code>docs/science/references.bib</code>.</p>
       </details>
 
-      {#- THE SPECTRUM, ONLY WHERE A STRENGTH WAS COMPUTED (web/spectra.md § 2,
-          § 9b.3): a result with none -- every SIESTA result -- hides this
-          whole section, width control included, and the sentence below
-          (#spectrum-absent) says why.  The modes table and the animation
-          are that result's whole view. -#}
-      <div id="spectrum-section">
-      <h3 class="subsection-h">Spectrum</h3>
+      {#- THE SPECTRUM, OR THE MODE POSITIONS (web/spectra.md § 2, § 9b.3):
+          with no strength computed -- every SIESTA result -- the chart draws
+          one line at each mode (spectrumchart.md § 6.2), the heading says
+          "Mode positions", the controls below go (no height for a width or
+          a floor to act on), and #spectrum-absent says why. -#}
+      <div id="spectrum-section" hidden>
+      <h3 id="spectrum-heading" class="subsection-h">Spectrum</h3>
+      <p id="spectrum-absent" class="status muted spectrum-absent" hidden></p>
       <!-- Spectrum controls.  Each control is a BLOCK carrying its own
            label and its own hint, and the blocks lay out side by side
            when there is room.  They were four siblings in one flex row
@@ -140,7 +141,7 @@
            and squeezed the labels between them until "Hide bands below"
            broke across three lines.  A control and its explanation are
            one thing; the layout says so now. -->
-      <div class="spectrum-controls">
+      <div id="spectrum-controls" class="spectrum-controls">
         <div class="spectrum-control">
           <label class="inline-label">
             <span>Lorentzian FWHM</span>
@@ -195,11 +196,13 @@
           what matters is how wide THIS box is, not the window. -#}
       {#- The spectrum, full width: every mode at once, and the place you
           pick one from.  It used to share its row with the mode viewer,
-          which took two fifths of the width for one molecule. -#}
+          which took two fifths of the width for one molecule.  Named by
+          the section's heading, which says which picture is drawn -- the
+          spectrum or the mode positions (web/spectra.md § 2); a label of
+          its own said "Raman spectrum" over every picture. -#}
         <div id="spectrum-chart" class="spectrum-chart"
-             aria-label="Raman spectrum (frequency vs activity)"></div>
+             aria-labelledby="spectrum-heading"></div>
       </div>
-      <p id="spectrum-absent" class="status muted spectrum-absent" hidden></p>
 
       {#- ONE SELECTION, THREE VIEWS.
           The modes table, the 3-D animation and the electronic structure all

@@ -667,6 +667,58 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         pass    # tmp_path removes the tree
 
 
+def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
+        web_client, tmp_path, isolated_projects_root):
+    """``dispersion = "none"`` from a form reaches the deck as no correction.
+
+    "none" is the item's VALUE for no correction (`config/pyscf.py`'s note on
+    the field).  Until 2026-09-28 the form's server side turned it into None,
+    None is what an UNSET item reads as, the template wrote the item valueless
+    and `prep` filled the class default: a person who chose "none" ran D3BJ.
+    Every link returned ok -- so this follows the value through all of them,
+    hand-over to template to `prep` to the deck `prep` renders.
+    """
+    import json as _json, subprocess, sys
+    d = _fresh_calc_dir(isolated_projects_root)
+    from support.envelope import envelope
+    env = {"structure": envelope(
+        ["O", "H", "H"],
+        [[0, 0, 0.117], [0, 0.757, -0.467], [0, -0.757, -0.467]])}
+    r = web_client.post("/api/task-setup/handover", json=dict(
+        env, engine="pyscf", name="nodisp",
+        params={"method": "RKS", "dispersion": "none"}))
+    assert r.status_code == 200, r.get_json()
+    out = r.get_json()
+    for f in out["structure_files"]:
+        (d / f["name"]).write_text(f["text"])
+    (d / out["template_name"]).write_text(out["template_text"])
+    blk = out["template_text"].split("[item.dispersion]", 1)[1].split("help", 1)[0]
+    assert 'value = "none"' in blk, blk
+
+    over = _json.loads(out["handover_text"])
+    described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                 "shape": "flat", "run": over["run"],
+                 "structure": over["structure"], "varies": [],
+                 "stages": [{"name": "coarse", "enabled": True,
+                             "overrides": {}}]}
+    s = web_client.post("/api/task-setup/save",
+                        json={"dest": str(d), "text": _json.dumps(described)})
+    assert s.status_code == 200, s.get_json()
+
+    p = subprocess.run(
+        [sys.executable, "-m", "molbuilder.cli", "jobset", "prep", "run",
+         "coarse", "--bundle", str(d)],
+        capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+        env=_child_env_with_a_config(tmp_path))
+    assert p.returncode == 0, p.stdout + p.stderr
+    decks = sorted(d.glob("*_01_coarse.py"))
+    assert decks, sorted(x.name for x in d.iterdir())
+    deck = decks[0].read_text()
+    assert 'mf.xc = "' in deck, "not a DFT deck -- the check below proves nothing"
+    assert "mf.disp = " not in deck, [
+        ln for ln in deck.splitlines() if "mf.disp" in ln]
+
+
 def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_projects_root):
     """The machine half of § 7's bar, which the chain test above does not reach.
 

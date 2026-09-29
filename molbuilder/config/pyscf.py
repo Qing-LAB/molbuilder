@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..identity import RestartGroup
+from ..selection import parse_index_list
 from .siesta import _validate_basename     # shared with SiestaConfig
 
 
@@ -252,7 +253,7 @@ class PySCFConfig:
         "label":   "Density fitting",
         "engine_key":  'mf = mf.density_fit()',
     })
-    dispersion: Optional[str] = field(default="d3bj", metadata={
+    dispersion: str = field(default="d3bj", metadata={
         "category": ("method",),
         "section": "Method",
         # Profile-level: method-family choice; the vibration deck's
@@ -264,10 +265,14 @@ class PySCFConfig:
         # 2026-08-15, and PySCF has no such method: anyone who trusted the
         # badge and searched the docs for it found nothing.
         "engine_key":  'mf.disp = ...',
-        # ``none`` is in the choices list so that the case-insensitive
-        # click.Choice still accepts the disable spelling; cmd_pyscf
-        # then normalises ``none`` -> None before constructing the
-        # config.  (R4)
+        # ``none`` IS THE VALUE for no correction -- stored, written into
+        # the template, read back as itself.  It was normalised to None by
+        # the form and the Build page until 2026-09-28, and None is what an
+        # UNSET item reads as: the template wrote the item valueless and
+        # `prep` filled the class default, so a person who chose "none"
+        # ran D3BJ (`template.config_from_template`: "an unset item is
+        # omitted ... so the class default applies").  One spelling, and
+        # never None.
         #
         # ``d3`` WAS offered here and always crashed.  PySCF's own
         # ``pyscf/scf/dispersion.py`` accepts exactly d3bj, d3bjm, d3op,
@@ -868,6 +873,33 @@ class PySCFConfig:
         "label":   "Verbose inline comments",
         "engine_key":  '(molbuilder: comment-block control in the generated input)',
     })
+
+    @property
+    def is_dft(self) -> bool:
+        """Whether the method is a density functional -- RKS or UKS.  THE one
+        answer every reader of the level of theory asks: the decks' SCF
+        construction, headers, constants and line spellings, the grid
+        advisory and the Methods paragraph (`engines/vibration.md` § 4.10).
+        Hartree-Fock (RHF, UHF) has no functional and no integration grid,
+        whatever those items hold.  The dispersion correction is not asked
+        of this answer: HF takes it like any method -- it has no correlation
+        at all, so it misses dispersion entirely, D3 and D4 carry parameters
+        fitted for it, and PySCF applies them through the energy, gradient
+        and Hessian, reading the method as ``hf`` (`engines/pyscf.md`
+        § 7a)."""
+        return str(self.method).upper() in ("RKS", "UKS")
+
+    @property
+    def explicit_modes(self) -> List[int]:
+        """The modes ``es_explicit_indices`` names: 1-based, sorted, each once.
+        THE one reading of that text -- the deck's constant, the Methods
+        paragraph, the reference selector and the kind's check all take it
+        from here (`engines/vibration.md` § 4.8).  The grammar is the atom
+        index list's (``selection.parse_index_list``): ``"3, 7, 12"``,
+        ``"3-7, 12"``.  Raises ``SelectionError`` (a ``ValueError``) on text
+        it cannot read; the kind's check turns that into a refusal at
+        ``prep``, so no deck is written from it."""
+        return parse_index_list(self.es_explicit_indices, first=1)
 
     # Back-compat: the field was named ``molwatch_log`` before the
     # 2026-05-10 naming alignment with SiestaConfig.write_molwatch_log.

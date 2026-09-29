@@ -15,9 +15,10 @@ The three selectors (`engines/vibration.md` § 4.8):
 
     skip      -> []  (no L4 work)
     all       -> every mode (respecting the freq filter)
-    explicit  -> exactly cfg.es_explicit_indices (frequency
-                 filter IGNORED -- the user named specific modes,
-                 the window doesn't override)
+    explicit  -> exactly the listed modes, cfg.explicit_modes
+                 (sorted, each once; frequency filter IGNORED --
+                 the user named specific modes, the window doesn't
+                 override)
 
 (`top_n` and `threshold` ranked modes by Raman activity; retired by
 decision 2026-09-23 and removed 2026-09-28, V1.6 -- the probe measures
@@ -58,7 +59,7 @@ def select_modes(modes: List[ModeData],
 
       * cfg.es_mode_selection == "skip"  -> []
       * cfg.es_mode_selection == "all"   -> every mode (after freq filter)
-      * cfg.es_mode_selection == "explicit" -> cfg.es_explicit_indices
+      * cfg.es_mode_selection == "explicit" -> cfg.explicit_modes
                                             (freq filter IGNORED)
 
       * When ``prior`` is supplied, modes that already have ES data
@@ -81,9 +82,11 @@ def select_modes(modes: List[ModeData],
         # spec's § 8.1 rule, now stated here).  Index-range validation
         # is the KIND validator's job (validation/spectra.py's
         # frozen/explicit-index bounds; validate_selection retired), so
-        # this path produces the raw user input; out-of-range indices
-        # simply find no matching mode in the engine's later lookup.
-        base = [int(i) for i in cfg.es_explicit_indices]
+        # this path produces the listed modes as the config reads them
+        # (`PySCFConfig.explicit_modes`, the one reader of the text);
+        # out-of-range indices simply find no matching mode in the
+        # engine's later lookup.
+        base = list(cfg.explicit_modes)
 
     else:
         # Unknown selector -- caller should have caught this via
@@ -102,15 +105,9 @@ def select_modes(modes: List[ModeData],
         }
         base = [i for i in base if i not in already_done]
 
-    # 3. De-duplicate while preserving order (user-supplied
-    #    explicit lists can have repeats).
-    seen: set = set()
-    out: List[int] = []
-    for i in base:
-        if i not in seen:
-            seen.add(i)
-            out.append(i)
-    return out
+    # Each mode once already: `all` walks the modes, and the explicit
+    # list's reader collapses a repeat.
+    return base
 
 
 # (validate_selection retired 2026-08-21, C-spectra-config: its caller --

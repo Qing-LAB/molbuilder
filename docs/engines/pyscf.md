@@ -689,12 +689,38 @@ finite-difference point, and a relaxation `mf` — **emits one function,
 N call sites; the body's generator is one shared home
 (`pyscf/scf_setup.py`), so the two decks' spellings cannot fork.  A future
 kind with many `mf`s inherits the same function by calling the same
-generator.  **The DFT trio has its symmetric dresser since 2026-08-21
-(M1.2)**: `_mb_configure_dft(mf)`, generated from `DFT_SECTION` +
+generator.  **The level of theory has its symmetric dresser since 2026-08-21
+(M1.2)**: `_mb_configure_theory(mf)`, generated from `THEORY_SECTION` +
 `layout.line` (minus `density_fit`, which rebinds `mf` and is per-site
 conditional — the Raman polarizability path forces non-DF), so the
-functional / grid / dispersion spellings cannot fork either; on an HF deck
-it is an explicit pass-through and call sites stay uniform.
+functional / grid / dispersion spellings cannot fork either. It is emitted
+on **every** deck and every construction calls it; on a Hartree–Fock deck it
+holds the dispersion line alone, or an explicit `pass` when that is `none`.
+*(It was `_mb_configure_dft`, emitted for DFT alone and skipped by the HF
+branches, until 2026-09-28 — which is how an HF run lost the dispersion its
+template asked for.)*
+
+**Hartree–Fock has no functional and no grid; it takes the dispersion
+correction like any method.** Whether the method is a density functional is
+one answer, `PySCFConfig.is_dft` (RKS, UKS), asked by every deck line and
+check that depends on it ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 4.10). Under RHF and UHF the deck sets no `mf.xc` and no `mf.grids.level`,
+`prep` warns about a functional changed from its default — on **both kinds**
+— and the grid advisory says nothing. The dispersion item is applied as
+written: Hartree–Fock has no electron correlation at all, so it misses
+London dispersion entirely; D3 and D4 carry damping parameters fitted for it
+(HF-D3(BJ) is a standard method); and PySCF applies `mf.disp` to an HF
+object through the energy, the gradient and the Hessian, reading the method
+as `hf` (`scf/dispersion.py`, `grad/rhf.py`, `hessian/rhf.py`, and the same
+in gpu4pyscf). So RHF with the default `d3bj` is HF-D3(BJ), said so in the
+deck's header and the Methods paragraph; `none` is plain Hartree–Fock.
+*(Until 2026-09-28 molbuilder dropped the correction under HF — silently at
+its default, with a warning otherwise — while recording the value as if it
+had run; that was molbuilder's choice, not the method's or the engine's.)*
+**`"none"` is the dispersion item's value for no correction, its one
+spelling:** until the same day the forms turned it into `None`, which is what
+an unset item reads as, so the template wrote the item valueless and `prep`
+filled the D3BJ default — a person who switched dispersion off ran D3BJ.
 
 **The role table** — what each construction site adds ON TOP of
 `_mb_configure_scf(mf)`, and why it is site-specific rather than shared:

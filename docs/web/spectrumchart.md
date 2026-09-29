@@ -40,9 +40,10 @@ It is not a tour of the current code; the code it replaces is 345 lines inside a
 >   counts as clicking that mode (§ 6.3). It is the reason picking a mode is not
 >   a test of aim.
 > - **Heights only where strengths exist** — with strengths known, a stick's
->   height means its strength; with none known there is nothing to draw but
->   the positions, and the Spectrum viewer does not mount a chart at all
->   (§ 6.2).
+>   height means its strength; with none known the chart draws **mode
+>   positions** — one line of one height at each mode, no curve, no height
+>   scale — which are for finding and picking a mode, not for reading a
+>   strength (§ 6.2).
 > - **An imaginary mode** — one whose frequency came out imaginary, meaning the
 >   structure is not sitting at rest (§ 6.4).
 
@@ -370,15 +371,33 @@ compute none (SIESTA's, [`engines/vibration.md`](?doc=engines/vibration.md)
               mistaken for silent
 ```
 
-**None known draws no heights.** With no strength anywhere there is no height
-to draw: the chart draws no sticks and no curve, only the rug of positions —
-and its caller does not mount it for such a result at all. The Spectrum viewer
-shows the modes table and one sentence saying why instead
-([`spectra.md`](?doc=web/spectra.md) § 2) *(user, 2026-09-28: "there should be no
-width or spectrum for siesta result. it is just mode of frequency, and
-animation of the mode")*. *(Until 2026-09-28 a list with none known drew every
-stick at height one with the curve over them — a frequency distribution, which
-read as an intensity spectrum wherever modes crowded.)*
+**None known draws mode positions.** With no strength anywhere there is no
+height to draw, and the chart draws where each mode IS: **one lane, one line of
+one height at every mode's frequency, no curve and no height scale** — the lane
+is titled as positions, its axis carries no numbers, and the lines are picked
+exactly as sticks are, so the chart is still the place a mode is found and
+chosen for its animation and its electronic structure (§ 6.3):
+
+```
+  NONE KNOWN
+  mode positions -- no heights
+
+      │  │   │  │      │
+      │  │   │  │      │
+      └──┴───┴──┴──────┴────▶  cm⁻¹
+```
+
+*(User, 2026-09-28: "we can still have the modes ploted as one straight bar in a
+wave-number plot. this visualization can be useful in selecting different modes
+for showing animation and electronic structure, just like the pyscf case the
+only differene is that there is no 'peak fitting with lorentz shape or peak
+height', just bar/line to show where the mode is". For a few hours that day the
+chart was not mounted for such a result at all, on a reading of the user's
+earlier "no width or spectrum for siesta result" — which asked for no
+broadening and no strengths, not for no plot. And until that day a list with
+none known drew every stick at height one with a broadened curve over them — a
+frequency distribution, which read as an intensity spectrum wherever modes
+crowded; the curve is what goes, § 9.)*
 
 **The marking is drawn in the plot**, as the picture shows: the `×` on the
 axis. It is not a label beside the chart or a banner above it — a chart made of
@@ -704,10 +723,14 @@ nothing in it is a colour or a mode:
 
 ```js
 picture = {
-    lanes: [{                                     // one per channel, in order
+    lanes: [{                                     // one per channel, in order --
+                                                  // or ONE, the positions, when no
+                                                  // channel has a number (§ 6.2)
         key, direction: "up" | "down",            // which half-plane it occupies
         title,                                    // the words on ITS axis, unit included
         known,                                    // whether this channel has numbers yet
+        positions,                                // true on the positions lane only:
+                                                  // its heights carry no number
         sticks: { x: [...], y: [...], width: [...],
                   state: ["plain" | "chosen" | "hovered" | "pending" | "imaginary", …] },
         curve:  { x: [...], y: [...] } | null,    // null when there is no curve
@@ -730,7 +753,10 @@ otherwise quantity-agnostic came to carry the string `"Raman activity
 `values[key]`; this layer still learns nothing about what Raman or IR are, which
 is what leaves room for the next one.
 
-`direction` is the only thing a lane says about layout. Both channels peak at
+`direction` and `positions` are the two things a lane says about layout.
+`positions` marks the lane of § 6.2's *none known* picture: its lines all stand
+at one height that means nothing, so the seal draws its y-axis with no numbers
+and no grid. Both channels peak at
 the same frequencies, so sharing one half-plane makes them collide — and
 absorption drawn downward reads the way absorption does. The seal gives each
 lane its own y-axis, because the quantities are incommensurate and forcing them
@@ -1005,7 +1031,7 @@ the difference, because § 8.4 is the whole of what it asks of that library.
 | § 6.1 — absent is not zero | a mode with no `activity` field, and one with `activity: null`, are treated the same and neither is drawn as a strength of zero |
 | § 6.1 — the caller's numbering is carried, not interpreted | an unsorted, sparse, 1-based list draws in the order given, and the index a click reports is the index that was handed in |
 | § 6.1 — the indices must differ | a list containing the same index twice is refused whole, rather than resolved by a rule the caller cannot see |
-| § 6.2 — the picture is derived | a result with no activities anywhere draws no sticks and no curve; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
+| § 6.2 — the picture is derived | a result with no activities anywhere draws one lane of equal lines at the modes' frequencies, an imaginary one among them marked apart, no curve and no height scale — and the same chart draws its lanes with heights and a curve once activities land; one with some activities draws the rest as pending — and neither picture is reachable by a setting |
 | § 6.2 — the markings are in the plot | the pending marks and the "not computed" wording are drawn on the surface: the module's markup carries no label, banner or text node beside the chart |
 | § 6.3 — one width, two uses | changing the broadening changes both the envelope and the band widths, and there is no way to set either alone |
 | § 6.3 — every mode keeps a full-size target | the width does not take the frequencies as an argument at all, so no arrangement of neighbours can shrink one |

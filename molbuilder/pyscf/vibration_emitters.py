@@ -149,8 +149,14 @@ def _emit_header_docstring(struct: Structure,
     out.append("")
     out.append(f"System    : {getattr(struct, 'title', None) or 'untitled'}")
     out.append(f"Engine    : {PYSCF_ENGINE_LABEL}")
-    out.append(f"Method    : {cfg.method} / {cfg.functional} / {cfg.basis}")
-    if cfg.dispersion and cfg.dispersion.lower() != "none":
+    # The level of theory as run: a Hartree-Fock run names no functional,
+    # since it has none, whatever that item holds; the dispersion
+    # correction applies to either method (vibration.md § 4.10).
+    if cfg.is_dft:
+        out.append(f"Method    : {cfg.method} / {cfg.functional} / {cfg.basis}")
+    else:
+        out.append(f"Method    : {cfg.method} (Hartree-Fock) / {cfg.basis}")
+    if cfg.dispersion != "none":
         out.append(f"Dispersion: {cfg.dispersion}")
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
@@ -228,9 +234,7 @@ def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
     out.append("import numpy as np")
     # PySCF imports -- pin to the modules we actually use so the
     # error trail on a missing-dep is targeted.
-    method = cfg.method.upper()
-    is_dft = method in ("RKS", "UKS")
-    if is_dft:
+    if cfg.is_dft:
         out.append("from pyscf import gto, scf, dft")
     else:
         out.append("from pyscf import gto, scf")
@@ -272,17 +276,24 @@ def _emit_constants(struct: Structure,
     out.append("")
     out.append("# Method + functional + basis + dispersion.")
     out.append(f"METHOD                     = {cfg.method!r}")
-    out.append(f"FUNCTIONAL                 = {cfg.functional!r}")
+    # A Hartree-Fock run has no functional (`PySCFConfig.is_dft`); the
+    # constant says so rather than carry a value nothing reads
+    # (vibration.md § 4.10).  The dispersion correction applies to either
+    # method.
+    out.append(f"FUNCTIONAL                 = "
+               f"{(cfg.functional if cfg.is_dft else None)!r}")
     out.append(f"BASIS                      = {cfg.basis!r}")
     out.append(f"DISPERSION                 = {cfg.dispersion!r}   "
-               f"# None / 'd3' / 'd3bj' / 'd4'")
+               f"# 'd3bj' / 'd3zero' / 'd4' / 'none'")
     out.append(f"DENSITY_FIT                = {bool(cfg.density_fit)!r}")
     out.append("")
     out.append("# SCF knobs.")
     out.append(f"SCF_CONV_TOL               = {float(cfg.scf_conv_tol)!r}  "
                f"# Hartree (energy)")
     out.append(f"SCF_MAX_CYCLE              = {int(cfg.scf_max_cycle)!r}")
-    out.append(f"GRID_LEVEL                 = {int(cfg.grid_level)!r}")
+    # No grid under Hartree-Fock either -- the same rule as FUNCTIONAL's.
+    out.append(f"GRID_LEVEL                 = "
+               f"{(int(cfg.grid_level) if cfg.is_dft else None)!r}")
     out.append(f"MAX_MEMORY_MB              = {int(cfg.max_memory_mb)!r}")
     out.append(f"VERBOSE                    = {int(cfg.verbose)!r}")
     out.append(f"USE_GPU                    = {bool(cfg.use_gpu)!r}  "
@@ -310,7 +321,14 @@ def _emit_constants(struct: Structure,
     out.append("# Electronic-structure (L4) selection.")
     out.append(f"ES_MODE_SELECTION          = {cfg.es_mode_selection!r}  "
                f"# skip / all / explicit")
-    out.append(f"ES_EXPLICIT_INDICES        = {list(cfg.es_explicit_indices)!r}")
+    # The modes as numbers, read by the config's one reader (the item is
+    # text, "3-7, 12"); `list()` of that text was its characters, and the
+    # selector's `int(',')` stopped Phase 4 (vibration.md § 4.8).  Only
+    # `explicit` reads the list, so only `explicit` has one.
+    _explicit = (cfg.explicit_modes if cfg.es_mode_selection == "explicit"
+                 else [])
+    out.append(f"ES_EXPLICIT_INDICES        = {_explicit!r}  "
+               f"# 1-based; read from {cfg.es_explicit_indices!r}")
     out.append(f"FREQ_MIN_CM1               = {cfg.freq_min_cm1!r}")
     out.append(f"FREQ_MAX_CM1               = {cfg.freq_max_cm1!r}")
     out.append(f"ES_N_HOMO_BELOW            = {int(cfg.es_n_homo_below)!r}")
@@ -928,14 +946,15 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("#  Equilibrium SCF")
     out.append("# ============================================================")
     out.append("print('=== Stage: equilibrium SCF ===')")
-    if method.endswith("KS"):
+    if cfg.is_dft:
         # _dft is gpu4pyscf.dft when USE_GPU AND the import succeeded;
         # plain pyscf.dft otherwise.  Same RKS / UKS class names in
         # both, so the rest of the SCF setup is identical.
         out.append(f"mf = _dft.{scf_class}(mol)")
-        out.append("mf = _mb_configure_dft(mf)   # the one DFT spelling (§ 7a)")
     else:
         out.append(f"mf = _scf.{scf_class}(mol)")
+    # Every method: the dispersion correction applies to Hartree-Fock too.
+    out.append("mf = _mb_configure_theory(mf)   # the one spelling (§ 7a)")
     out.append("if DENSITY_FIT:")
     out.append("    mf = mf.density_fit(**_MB_DF_KW)")
     out.append("mf = _mb_apply_solvent(mf)")
@@ -967,7 +986,7 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # objects hold -- the optimization deck's own emitter, so the two decks
     # cannot record differently.  This deck printed none until 2026-09-26.
     from .input import _emit_effective_parameters
-    out.extend(_emit_effective_parameters(cfg, method.endswith("KS"),
+    out.extend(_emit_effective_parameters(cfg, cfg.is_dft,
                                           calculation="vibration"))
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
@@ -1320,20 +1339,19 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     # THE METHOD IS A RENDER-TIME FACT, so only the live arm is
     # emitted (the E-M4.7 shape, taken one step further at the U6
     # close): an HF deck used to carry the DFT arm as dead text, with
-    # references -- `dft`, `_mb_configure_dft` -- that exist only on
-    # DFT decks.  Dead text with dead names is exactly where that
-    # NameError class hides.
-    if str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS"):
+    # a reference -- `dft` -- that exists only on DFT decks.  Dead text
+    # with dead names is exactly where that NameError class hides.
+    if cfg.is_dft:
         out.append("    # _dft is gpu4pyscf when _USING_GPU else stock pyscf;")
         out.append("    # force_cpu overrides to stock pyscf regardless.")
         out.append("    _dft_mod = dft if force_cpu else _dft")
         out.append("    _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
         out.append("    _mf2 = _cls(_mol_new)")
-        out.append("    _mf2 = _mb_configure_dft(_mf2)  # one DFT spelling (§ 7a)")
     else:
         out.append("    _scf_mod = scf if force_cpu else _scf")
         out.append("    _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
         out.append("    _mf2 = _cls(_mol_new)")
+    out.append("    _mf2 = _mb_configure_theory(_mf2)  # the one spelling (§ 7a)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
     out.append("    if _use_df:")
     out.append("        _mf2 = _mf2.density_fit(**_MB_DF_KW)")
@@ -1689,7 +1707,7 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("# Defensive: skip out-of-range explicit indices.  The")
     out.append("# pre-render validator can't range-check explicit indices")
     out.append("# because the mode count isn't known until L2 completes,")
-    out.append("# so a user typo (es_explicit_indices=[1, 99] on a 12-mode")
+    out.append("# so a user typo (es_explicit_indices=\"1, 99\" on a 12-mode")
     out.append("# system) would otherwise crash here with IndexError after")
     out.append("# L2 + L3 already burned wall time.  Print + skip instead.")
     out.append("_n_modes_available = len(modes_payload)")
@@ -1913,7 +1931,7 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
         parts.append(df_note)
 
     # Grid level for DFT runs.
-    if method.endswith("KS"):
+    if cfg.is_dft:
         parts.append(
             f"DFT integration used PySCF's grid level "
             f"{cfg.grid_level} (production setting for hybrid "

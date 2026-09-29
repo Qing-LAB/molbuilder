@@ -34,7 +34,7 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     from .. import script_emit as _sc
     from . import layout as _layout
 
-    is_dft = str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS")
+    is_dft = cfg.is_dft
     spell = _layout.line(cfg, is_dft=is_dft)
 
     out: List[str] = [
@@ -65,47 +65,52 @@ def emit_scf_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
     return out
 
 
-def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
-    """Lines defining ``_mb_configure_dft(mf)`` for this ``cfg`` -- the
-    SCF dresser's symmetric sibling (M1.2, 2026-08-21).
+def emit_theory_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
+    """Lines defining ``_mb_configure_theory(mf)`` for this ``cfg`` -- the
+    SCF dresser's symmetric sibling (M1.2, 2026-08-21): the level of
+    theory above the SCF class.
 
-    The DFT trio (functional / grid level / dispersion) had two
-    spellings: the optimization deck's through ``DFT_SECTION`` +
-    ``layout.line``, and hand-written constants inside the vibration
-    deck's constructions -- the same drift class § 7a closed for SCF,
-    one section over.  This body is generated from the SAME section and
-    the SAME ``line``, minus ``density_fit``: the fitting call REBINDS
-    ``mf`` and is per-site conditional (the Raman polarizability path
-    forces non-DF), so it stays at the construction sites.
+    The trio (functional / grid level / dispersion) had two spellings:
+    the optimization deck's through ``THEORY_SECTION`` + ``layout.line``,
+    and hand-written constants inside the vibration deck's constructions
+    -- the same drift class § 7a closed for SCF, one section over.  This
+    body is generated from the SAME section and the SAME ``line``, minus
+    ``density_fit``: the fitting call REBINDS ``mf`` and is per-site
+    conditional (the Raman polarizability path forces non-DF), so it
+    stays at the construction sites.
 
-    Not emitted on a wavefunction-method deck (RHF/UHF): both call
-    sites branch on the method before calling, so a pass-through body
-    would be text nothing runs.  Ordering note, MEASURED 2026-08-22
+    EMITTED ON EVERY DECK, and every construction calls it.  On a
+    Hartree-Fock deck ``line`` spells no functional and no grid -- HF has
+    neither -- and the dispersion correction, which HF takes like any
+    method (`engines/pyscf.md` § 7a); with dispersion "none" too, the
+    body is an explicit ``pass``.  It was ``_mb_configure_dft``, emitted
+    for DFT alone, until 2026-09-28, when that left an HF run without the
+    dispersion its template asked for.  Ordering note, MEASURED 2026-08-22
     (molbuilder-pySCF, pyscf 2.13): ``density_fit()`` carries ``disp``
-    across the rebind in both directions, so dressing before the
-    fitting call is safe.
+    across the rebind in both directions, so dressing before the fitting
+    call is safe.
     """
     from .. import script_emit as _sc
     from . import layout as _layout
 
-    is_dft = str(getattr(cfg, "method", "")).upper() in ("RKS", "UKS")
+    is_dft = cfg.is_dft
     spell = _layout.line(cfg, is_dft=is_dft)
 
     out: List[str] = [
         "",
         "",
-        "def _mb_configure_dft(mf):",
-        '    """The one DFT dresser (molbuilder: engines/pyscf.md § 7a).',
+        "def _mb_configure_theory(mf):",
+        '    """The one level-of-theory dresser (molbuilder: engines/pyscf.md',
+        "    § 7a).",
         "",
         "    The functional / grid / dispersion trio, one spelling for",
-        "    every mf this deck constructs.  density_fit is deliberately",
-        '    NOT here -- it rebinds mf and is per-site conditional."""',
+        "    every mf this deck constructs -- the functional and grid on a",
+        "    Kohn-Sham deck only, the dispersion correction on every one.",
+        "    density_fit is deliberately NOT here -- it rebinds mf and is",
+        '    per-site conditional."""',
     ]
-    if not is_dft:
-        return []          # both call sites branch on the method; an
-                           # emitted pass-through would be dead text
     emitted = 0
-    for name in _layout.DFT_SECTION.items:
+    for name in _layout.THEORY_SECTION.items:
         if name == "density_fit":
             continue
         p = _sc.parameter(name, "pyscf", config=cfg)
@@ -117,7 +122,9 @@ def emit_dft_configure_fn(cfg, *, verbose: bool = True) -> List[str]:
         out.append("    " + ln)
         emitted += 1
     if not emitted:
-        out.append("    pass  # every DFT knob at its engine default")
+        out.append("    pass  # nothing to set: "
+                   + ("every knob at its engine default" if is_dft
+                      else "Hartree-Fock, and dispersion \"none\""))
     out.append("    return mf")
     return out
 

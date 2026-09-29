@@ -236,7 +236,7 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
         # enough to produce the preview block this test reads.
         geom_max_steps=2,
         basis="STO-3G",
-        dispersion=None,
+        dispersion="none",
         density_fit=False,
         write_trajectory=False,
     )

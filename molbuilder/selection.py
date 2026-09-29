@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, fields
-from typing import Any, ClassVar, Dict, FrozenSet, List, Tuple
+from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Tuple
 
 
 # --------------------------------------------------------------------- #
@@ -110,10 +110,11 @@ class ByChainId:
 class ByIndexRange:
     """Atoms whose 0-based index matches ``expression``.
 
-    Expression grammar (matches the frozen-atom index list
-    today): comma-separated tokens, each either a single integer
-    (``42``) or a range (``0-35``).  Whitespace around tokens is
-    tolerated.  Examples::
+    Expression grammar (:func:`parse_index_list`, the one reader --
+    the vibration's explicit mode list is read by it too, 1-based):
+    comma-separated tokens, each either a single integer (``42``) or
+    a range (``0-35``).  Whitespace around tokens is tolerated.
+    Examples::
 
         "0-35"
         "0-35, 100, 150-200"
@@ -255,7 +256,7 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
         )
 
     if isinstance(rule, ByIndexRange):
-        return frozenset(_parse_index_range(rule.expression, n))
+        return frozenset(parse_index_list(rule.expression, count=n))
 
     if isinstance(rule, ByRegion):
         regions = getattr(struct, "regions", {}) or {}
@@ -322,12 +323,20 @@ def _evaluate(rule: Rule, struct, n: int) -> FrozenSet[int]:
 _RANGE_TOKEN_RE = re.compile(r"^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$")
 
 
-def _parse_index_range(expression: str, n: int) -> List[int]:
-    """Parse ``"0-35, 100, 150-200"`` into a sorted unique list of
-    0-based indices in ``[0, n)``.  Empty expression -> empty list.
+def parse_index_list(expression: str, *, first: int = 0,
+                     count: Optional[int] = None) -> List[int]:
+    """Parse ``"0-35, 100, 150-200"`` into a sorted unique list of indices.
 
-    Raises :class:`SelectionError` on malformed tokens, reversed
-    ranges (``35-0``), or out-of-range values.
+    The one reader of the index-list grammar: comma-separated tokens, each
+    ``<int>`` or ``<lo>-<hi>`` (inclusive), whitespace tolerated; an empty
+    expression is an empty list.  ``first`` is where the numbering starts --
+    0 for atoms (``model/overview.md`` § 2), 1 for vibrational modes
+    (``engines/vibration.md`` § 4.8) -- and ``count``, when the number of
+    items is known, bounds it above.
+
+    Raises :class:`SelectionError` on a malformed token (a stray comma
+    included), a reversed range (``35-0``), or an index outside
+    ``[first, first + count)``.
     """
     if not expression or not expression.strip():
         return []
@@ -336,19 +345,19 @@ def _parse_index_range(expression: str, n: int) -> List[int]:
         m = _RANGE_TOKEN_RE.fullmatch(tok)
         if not m:
             raise SelectionError(
-                f"ByIndexRange: invalid token {tok!r} in expression "
-                f"{expression!r}; expected '<int>' or '<int>-<int>'"
+                f"invalid token {tok.strip()!r} in {expression!r}; "
+                f"expected '<int>' or '<int>-<int>'"
             )
         lo = int(m.group(1))
         hi = int(m.group(2)) if m.group(2) is not None else lo
         if hi < lo:
+            raise SelectionError(f"range {lo}-{hi} has hi < lo")
+        if lo < first:
             raise SelectionError(
-                f"ByIndexRange: range {lo}-{hi} has hi < lo"
-            )
-        if lo < 0 or hi >= n:
+                f"{lo} is below {first}, where the numbering starts")
+        if count is not None and hi >= first + count:
             raise SelectionError(
-                f"ByIndexRange: range {lo}-{hi} out of [0, {n})"
-            )
+                f"range {lo}-{hi} out of [{first}, {first + count})")
         out.update(range(lo, hi + 1))
     return sorted(out)
 
@@ -544,4 +553,6 @@ __all__ = [
     "Or", "And", "Minus", "Not", "FirstN",
     # Evaluator + round-trip:
     "evaluate", "to_json", "from_json",
+    # The index-list grammar (atoms here; the vibration's explicit modes):
+    "parse_index_list",
 ]

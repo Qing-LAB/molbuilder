@@ -207,7 +207,7 @@ def spec_for(struct: Structure,
     # surfaces as a named preflight finding instead of this door's old
     # bare ValueError.  The render path below runs that gate before any
     # text is emitted, so the contradiction cannot reach a deck.
-    is_dft = method_class.endswith("KS")
+    is_dft = cfg.is_dft
     label = cfg.job_name
     v = cfg.verbose_comments
 
@@ -943,7 +943,7 @@ def spec_for(struct: Structure,
         engine="pyscf",
         engine_frame=_frame,
         layout=(_sc.Block("system, molecule and the mean field", _science_a),
-                _layout.DFT_SECTION,
+                _layout.THEORY_SECTION,
                 _sc.Block("solvent and the SCF preamble", _science_b),
                 _layout.SCF_SECTION,
                 _sc.Block("what the run writes", _science_c),
@@ -1046,9 +1046,11 @@ def _emit_effective_parameters(cfg: PySCFConfig, is_dft: bool,
     for name in _layout.recorded_items(calculation):
         param = _sc.parameter(name, "pyscf", config=cfg)
         expr = _layout.readback(param)
-        if expr and not is_dft and name in ("functional", "grid_level",
-                                            "dispersion"):
-            expr = None       # no such attribute on a Hartree-Fock object
+        if expr and not is_dft and name in ("functional", "grid_level"):
+            # No such attribute on a Hartree-Fock object.  `mf.disp` is one
+            # (`scf.hf.SCF.disp`), and HF takes the correction, so it is
+            # read back like any other setting (pyscf.md § 7a).
+            expr = None
         third = f"_mb_read(lambda: {expr})" if expr else "None"
         out.append(f"_MB_PARAMS[{name!r}] = ({param.default!r}, "
                    f"{param.value!r}, {third})")

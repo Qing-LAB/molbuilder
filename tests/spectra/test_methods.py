@@ -1,17 +1,19 @@
 """Methods-section composer tests: citation-key extraction +
-``render_methods_md`` across the pre-run / post-run / engine-fragment
-forms.
+``render_methods_md`` and its engine fragment.
 
 `web/spectra.md` § 9a.2.  These tests verify the Methods prose
-that ships embedded in the emitted script and in the post-run output:
+that ships embedded in the emitted script and beside the result:
 
   * citation keys parse cleanly from the prose's [Foo, Bar] markers;
-  * the pre-run renderer emits the configured method/basis/dispersion
-    text + the structure-conditional phrasings ("5 fixed Au atoms");
-  * the post-run renderer substitutes actual numbers from a parsed
-    SpectraResults;
+  * the one renderer, composed before the run, emits the configured
+    method/basis/dispersion text + the structure-conditional phrasings
+    ("5 fixed Au atoms"); the level of theory under Hartree-Fock is
+    asserted on a prepped deck (`test_vibration_e2e.py`);
   * the engine-fragment composition uses every engine's own
     ``methods_fragment()`` hook.
+
+(A post-run form that re-composed the paragraph from parsed results was
+deleted on 2026-09-28 with its tests -- V1.18; nothing called it.)
 
 No PySCF / SCF anywhere -- prose composition only.
 """
@@ -22,7 +24,7 @@ import numpy as np
 import pytest
 
 
-from tests.spectra._helpers import _make_mode, _make_results, _spectra_cfg
+from tests.spectra._helpers import _spectra_cfg
 
 
 # --------------------------------------------------------------------- #
@@ -101,10 +103,9 @@ class TestExtractCitationKeys:
 
 
 class TestRenderMethodsMdPreRun:
-    """Pre-run path (`results=None`): the prose describes what
-    *will* be done with the configured knobs.  Used by the
-    Methods-preview modal (archived-spec § 9.4) before the user runs the
-    script."""
+    """The one path -- composed before the run: the prose describes what
+    *will* be done with the configured knobs, in the deck's header and
+    beside the result."""
 
     def test_minimal_config_produces_paragraph(self):
         """Default config (selector=none, no ES) -> single
@@ -113,12 +114,31 @@ class TestRenderMethodsMdPreRun:
         cfg = _spectra_cfg()
         md = render_methods_md(cfg)
         assert "## Methods" in md
-        # Default level: B3LYP / def2-SVP / D3BJ.
+        # Default level: B3LYP / def2-SVP / D3(BJ).
         assert "B3LYP" in md
         assert "def2-SVP" in md
-        assert "D3BJ" in md or "d3bj" in md.lower()
+        assert "D3(BJ)" in md
         # selector=none -> NO per-mode-ES paragraph.
         assert "per-mode electronic" not in md.lower()
+
+    @pytest.mark.parametrize("disp, name, keys", [
+        ("d3bj", "D3(BJ)", "Grimme2010, Grimme2011"),
+        ("d3zero", "D3(0)", "Grimme2010"),
+        ("d4", "D4", "Caldeweyher2019"),
+    ])
+    def test_each_dispersion_is_named_and_cited_by_its_own_papers(
+            self, disp, name, keys):
+        """D3 is Grimme2010, Becke-Johnson damping on top of it Grimme2011,
+        D4 Caldeweyher2019 (`engines/vibration.md` § 4.10) -- and every key
+        the paragraph cites resolves in the one bibliography, so a
+        manuscript's reference list gets entries, not dangling keys.  Until
+        2026-09-28 every version cited the damping paper alone."""
+        from molbuilder.references import known_keys
+        from molbuilder.spectra import extract_citation_keys, render_methods_md
+        md = render_methods_md(_spectra_cfg(dispersion=disp))
+        assert f"with the {name} dispersion correction [{keys}]" in md, md
+        missing = set(extract_citation_keys(md)) - set(known_keys())
+        assert not missing, missing
 
     def test_dispersion_none_omits_dispersion_clause(self):
         from molbuilder.spectra import render_methods_md
@@ -155,11 +175,13 @@ class TestRenderMethodsMdPreRun:
         assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
 
     def test_selector_explicit_states_count(self):
+        """The count is of MODES, read from the text by the one reader:
+        "3, 5-7, 12" is five."""
         from molbuilder.spectra import render_methods_md
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[3, 5, 8, 12])
+                            es_explicit_indices="3, 5-7, 12")
         md = render_methods_md(cfg)
-        assert "user-specified set of 4 modes" in md
+        assert "user-specified set of 5 modes" in md
 
     def test_frequency_window_clause_both_bounds(self):
         from molbuilder.spectra import render_methods_md
@@ -181,7 +203,7 @@ class TestRenderMethodsMdPreRun:
         actually be enforced."""
         from molbuilder.spectra import render_methods_md
         cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[1, 2],
+                            es_explicit_indices="1, 2",
                             freq_min_cm1=1000.0,
                             freq_max_cm1=2000.0)
         md = render_methods_md(cfg)
@@ -209,56 +231,6 @@ class TestRenderMethodsMdPreRun:
         # All inline citations precede the bibliography.
         first_cite = md.index("[")
         assert first_cite < bib_pos
-
-
-class TestRenderMethodsMdPostRun:
-    """Post-run path (`results` provided): real numbers from the
-    parsed SpectraResults replace pre-run placeholders.  Used to
-    populate SpectraResults.methods_text (archived-spec § 5) -- the same
-    prose lands in the JSON for downstream consumers."""
-
-    def test_frequency_span_appended_when_modes_present(self):
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg()
-        results = _make_results(complete=True)
-        md = render_methods_md(cfg, results=results)
-        # Real frequencies from _make_results: 412.3, 1023.4, 3656.0
-        assert "3 modes" in md
-        assert "412" in md
-        assert "3656" in md
-
-    def test_imaginary_modes_called_out(self):
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg()
-        results = _make_results(complete=True)
-        # Inject an imaginary mode.
-        results.modes.append(_make_mode(index=4, freq=-150.0, with_es=False))
-        md = render_methods_md(cfg, results=results)
-        assert "imaginary" in md
-
-    def test_selected_modes_line_post_run(self):
-        """When ES data is present in results, the post-run prose
-        ends with a "Selected modes: ..." line listing the indices
-        + frequencies (archived-spec § 11.2)."""
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices=[2])
-        results = _make_results(complete=True)
-        md = render_methods_md(cfg, results=results)
-        assert "Selected modes" in md
-        # _make_results gives mode 2 ES at 1023.4 cm⁻¹.
-        assert "mode 2" in md
-        assert "1023" in md
-
-    def test_es_count_appended_to_l4_paragraph(self):
-        """The L4 paragraph gains "In the present run X modes
-        received per-mode electronic-structure data." when results
-        exist."""
-        from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(es_mode_selection="all")
-        results = _make_results(complete=True)
-        md = render_methods_md(cfg, results=results)
-        assert "1 modes received" in md or "In the present run" in md
 
 
 class TestRenderMethodsMdFragment:

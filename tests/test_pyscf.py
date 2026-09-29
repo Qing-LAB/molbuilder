@@ -328,17 +328,12 @@ def test_stability_analysis_skipped_for_closed_shell(h2o):
 
 
 def test_dispersion_can_be_disabled(h2o):
-    text = render_script(h2o, PySCFConfig(dispersion=None))
-    # The ASSIGNMENT is the guarantee.  The effective-parameters record reads
-    # `mf.disp` back to show the engine has none, and that read is the record
-    # working, not the setting leaking.
-    assert "mf.disp = " not in text
-
-
-def test_dispersion_none_string_does_not_crash_pyscf(h2o):
-    # PySCF's check_disp raises NotImplementedError if mf.disp is the
-    # literal string "none" (only None / 0 / a real version like "d3bj"
-    # are accepted).  Make sure the string sentinel is treated like None.
+    # "none" is the item's value for no correction -- its one spelling
+    # (`config/pyscf.py`'s note on the field).  PySCF's check_disp raises
+    # NotImplementedError on the literal string, so the deck writes no
+    # assignment at all.  The ASSIGNMENT is the guarantee: the
+    # effective-parameters record reads `mf.disp` back to show the engine has
+    # none, and that read is the record working, not the setting leaking.
     text = render_script(h2o, PySCFConfig(dispersion="none"))
     assert "mf.disp = " not in text
 
